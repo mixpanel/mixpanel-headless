@@ -106,19 +106,19 @@ ENDPOINTS: dict[str, dict[str, str]] = {
     "us": {
         "query": "https://mixpanel.com/api/query",
         "export": "https://data.mixpanel.com/api/2.0",
-        "engage": "https://mixpanel.com/api/2.0/engage",
+        "engage": "https://mixpanel.com/api/query/engage",
         "app": "https://mixpanel.com/api/app",
     },
     "eu": {
         "query": "https://eu.mixpanel.com/api/query",
         "export": "https://data-eu.mixpanel.com/api/2.0",
-        "engage": "https://eu.mixpanel.com/api/2.0/engage",
+        "engage": "https://eu.mixpanel.com/api/query/engage",
         "app": "https://eu.mixpanel.com/api/app",
     },
     "in": {
         "query": "https://in.mixpanel.com/api/query",
         "export": "https://data-in.mixpanel.com/api/2.0",
-        "engage": "https://in.mixpanel.com/api/2.0/engage",
+        "engage": "https://in.mixpanel.com/api/query/engage",
         "app": "https://in.mixpanel.com/api/app",
     },
 }
@@ -1865,7 +1865,7 @@ class MixpanelAPIClient:
     ) -> dict[str, Any]:
         """Fetch aggregate statistics from the Engage API.
 
-        POSTs to ``/api/2.0/engage/stats`` to retrieve aggregate metrics
+        POSTs to ``/api/query/engage/stats`` to retrieve aggregate metrics
         over the user/group population.
 
         Args:

@@ -99,6 +99,18 @@ class TestEndpoints:
         assert "query" in ENDPOINTS["in"]
         assert "export" in ENDPOINTS["in"]
 
+    def test_engage_uses_query_api_path(self) -> None:
+        """Engage endpoint should use the documented /api/query/engage path.
+
+        The Mixpanel Query API spec documents Engage profile queries under
+        ``https://{regionAndDomain}.com/api/query/engage``. The analytics
+        request handler accepts both ``/api/query/`` and ``/api/2.0/`` as
+        equivalent prefixes, but we follow the documented contract.
+        """
+        assert ENDPOINTS["us"]["engage"] == "https://mixpanel.com/api/query/engage"
+        assert ENDPOINTS["eu"]["engage"] == "https://eu.mixpanel.com/api/query/engage"
+        assert ENDPOINTS["in"]["engage"] == "https://in.mixpanel.com/api/query/engage"
+
 
 class TestClientInit:
     """Test client initialization."""
