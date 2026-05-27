@@ -87,6 +87,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic.alias_generators import to_camel
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 T = TypeVar("T")
 
@@ -6760,7 +6761,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """Regex for YYYY-MM-DD date format validation."""
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class TimeComparison:
     """Overlay a comparison time period on insights, funnel, or retention queries.
 
@@ -6955,7 +6956,7 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class Metric:
     """Encapsulates a single event to query with its aggregation settings.
 
@@ -7052,7 +7053,7 @@ class Metric:
                 )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class Formula:
     """A formula expression referencing events by position letter (A, B, C...).
 
@@ -7104,7 +7105,7 @@ class Formula:
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class Filter:
     """Represents a typed filter condition on a property.
 
@@ -8200,7 +8201,7 @@ class Filter:
         )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class ListItemGroupMode:
     """Discriminator for ``GroupBy.list_item`` — sub-property name + scalar type.
 
@@ -8248,7 +8249,7 @@ class ListItemGroupMode:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class GroupBy:
     """Specifies a property breakdown with optional numeric bucketing.
 
@@ -9287,7 +9288,7 @@ class CohortMetric:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class FrequencyBreakdown:
     """Break down query results by how often users performed an event.
 
@@ -9368,7 +9369,7 @@ class FrequencyBreakdown:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True)
 class FrequencyFilter:
     """Filter query results by how often users performed an event.
 

@@ -7,6 +7,7 @@ objects into the legacy segfilter dict format used by flows step filters.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from mixpanel_headless._internal.segfilter import (
     RESOURCE_TYPE_MAP,
@@ -14,6 +15,8 @@ from mixpanel_headless._internal.segfilter import (
     build_segfilter_entry,
 )
 from mixpanel_headless.types import Filter
+
+_INVALID_OPERATOR = (ValueError, PydanticValidationError)
 
 # =============================================================================
 # String Operators
@@ -175,24 +178,16 @@ class TestSegfilterNumberOperators:
         assert result["filter"]["operator"] == "=="
         assert result["filter"]["operand"] == "42"
 
-    def test_is_equal_to_number(self) -> None:
-        """Number 'is equal to' maps to '==' with stringified operand.
-
-        Exercises segfilter's backward-compat dispatch for the
-        ``"is equal to"`` alias (no Filter classmethod produces this
-        value, hence the type: ignore).
-        """
-        f = Filter(
-            _property="count",
-            _operator="is equal to",  # type: ignore[arg-type]
-            _value=42,
-            _property_type="number",
-            _resource_type="events",
-        )
-        result = build_segfilter_entry(f)
-
-        assert result["filter"]["operator"] == "=="
-        assert result["filter"]["operand"] == "42"
+    def test_is_equal_to_number_rejected(self) -> None:
+        """'is equal to' is not a valid FilterOperator and is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
+            Filter(
+                _property="count",
+                _operator="is equal to",  # type: ignore[arg-type]
+                _value=42,
+                _property_type="number",
+                _resource_type="events",
+            )
 
     def test_not_equals_number(self) -> None:
         """Number 'does not equal' maps to '!=' with stringified operand."""
@@ -492,40 +487,37 @@ class TestSegfilterEdgeCases:
     """Edge-case coverage for segfilter conversion."""
 
     def test_unknown_operator_raises(self) -> None:
-        """Unknown operator for a property type raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value="y",
-            _property_type="string",
-            _resource_type="events",
-        )
-        with pytest.raises(ValueError, match="Unknown string operator"):
-            build_segfilter_entry(f)
+        """Unknown string operator is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
+            Filter(
+                _property="x",
+                _operator="magical_unicorn",  # type: ignore[arg-type]
+                _value="y",
+                _property_type="string",
+                _resource_type="events",
+            )
 
     def test_unknown_number_operator_raises(self) -> None:
-        """Unknown number operator raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value=1,
-            _property_type="number",
-            _resource_type="events",
-        )
-        with pytest.raises(ValueError, match="Unknown number operator"):
-            build_segfilter_entry(f)
+        """Unknown number operator is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
+            Filter(
+                _property="x",
+                _operator="magical_unicorn",  # type: ignore[arg-type]
+                _value=1,
+                _property_type="number",
+                _resource_type="events",
+            )
 
     def test_unknown_datetime_operator_raises(self) -> None:
-        """Unknown datetime operator raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value="2026-01-01",
-            _property_type="datetime",
-            _resource_type="events",
-        )
-        with pytest.raises(ValueError, match="Unknown datetime operator"):
-            build_segfilter_entry(f)
+        """Unknown datetime operator is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
+            Filter(
+                _property="x",
+                _operator="magical_unicorn",  # type: ignore[arg-type]
+                _value="2026-01-01",
+                _property_type="datetime",
+                _resource_type="events",
+            )
 
     def test_unknown_property_type_raises(self) -> None:
         """Unknown property type raises ValueError."""

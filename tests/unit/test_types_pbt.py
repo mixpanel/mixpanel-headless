@@ -28,6 +28,7 @@ import pandas as pd
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError as PydanticValidationError
 
 from mixpanel_headless._internal.bookmark_enums import VALID_FREQUENCY_FILTER_OPERATORS
 from mixpanel_headless._literal_types import MathType, TimeComparisonUnit
@@ -57,6 +58,8 @@ from mixpanel_headless.types import (
     TopEvent,
     UserEvent,
 )
+
+_INVALID_OPERATOR = (ValueError, PydanticValidationError)
 
 # =============================================================================
 # Custom Strategies
@@ -1722,8 +1725,8 @@ class TestFrequencyFilterProperties:
         value=st.integers(min_value=0, max_value=100),
     )
     def test_invalid_operator_raises(self, event: str, bad_op: str, value: int) -> None:
-        """FF2: invalid operator always raises ValueError."""
-        with pytest.raises(ValueError, match="operator must be one of"):
+        """FF2: invalid operator is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
             FrequencyFilter(event=event, operator=bad_op, value=value)  # type: ignore[arg-type]
 
     @given(
