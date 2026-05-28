@@ -1297,3 +1297,153 @@ class BookmarkValidationError(MixpanelHeadlessError):
     def warning_count(self) -> int:
         """Number of severity="warning" items."""
         return self._warning_count
+
+
+# =============================================================================
+# Session-Replay Exceptions (044-session-replay)
+# =============================================================================
+
+
+class SessionReplayError(APIError):
+    """Base class for session-replay-specific failures.
+
+    Subclasses cover the three replay-specific failure modes:
+    :class:`SessionReplayAccessError` (sensitive-data permission denied),
+    :class:`SignedURLExpiredError` (5-minute signed-URL TTL elapsed), and
+    :class:`ReplayNotFoundError` (CDN walker found no bytes for the
+    replay). All carry the standard :class:`APIError` HTTP context
+    (``status_code``, ``response_body``, ``request_url``, etc.) plus a
+    replay-specific ``details`` dict that the subclass merges in on top
+    (``replay_id``, ``project_id``, ``flag``, ``retention_days``, …).
+
+    Catch this base class to handle any replay failure uniformly:
+
+    Example:
+        ```python
+        try:
+            replay = ws.fetch_replay("r-19221")
+        except SessionReplayError as exc:
+            log.warning("replay fetch failed: %s", exc.to_dict())
+        ```
+
+    Because :class:`SessionReplayError` is an :class:`APIError`, existing
+    ``except APIError:`` handlers — including the CLI ``handle_errors``
+    decorator that maps HTTP failures to exit codes — continue to catch
+    these without modification.
+    """
+
+    _DEFAULT_CODE = "SESSION_REPLAY_ERROR"
+    _DEFAULT_STATUS: int = 500
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        status_code: int | None = None,
+        response_body: str | dict[str, Any] | None = None,
+        request_method: str | None = None,
+        request_url: str | None = None,
+        request_params: dict[str, Any] | None = None,
+        request_body: dict[str, Any] | None = None,
+        code: str | None = None,
+    ) -> None:
+        """Initialize SessionReplayError.
+
+        Args:
+            message: Human-readable error message; see error-messages.md for
+                the catalog of stable wording per subclass.
+            details: Replay-specific structured context (``replay_id``,
+                ``project_id``, ``flag``, ``retention_days``,
+                ``cdn_url_prefix``, ``signed_at``, ``expired_at`` —
+                whichever keys the subclass documents). Merged into the
+                base :class:`APIError` ``details`` dict so consumers see
+                both HTTP context and replay context in one place.
+            status_code: HTTP status that triggered the error. Defaults
+                to the subclass's ``_DEFAULT_STATUS`` (403 for access /
+                expiry, 404 for not-found, 500 for the base class).
+            response_body: Raw response body for debugging.
+            request_method: HTTP method (GET, POST, …).
+            request_url: Full request URL.
+            request_params: Query parameters sent on the failing request.
+            request_body: Request body sent on the failing request.
+            code: Machine-readable error code. Defaults to the subclass's
+                ``_DEFAULT_CODE``.
+        """
+        super().__init__(
+            message,
+            status_code=status_code
+            if status_code is not None
+            else self._DEFAULT_STATUS,
+            response_body=response_body,
+            request_method=request_method,
+            request_url=request_url,
+            request_params=request_params,
+            request_body=request_body,
+            code=code if code is not None else self._DEFAULT_CODE,
+        )
+        if details:
+            self._details.update(details)
+
+
+class SessionReplayAccessError(SessionReplayError):
+    """Project has SESSION_RECORDING_SENSITIVE_DATA enabled and caller lacks access.
+
+    Raised when the bulk-sign endpoint returns 403 with a body that
+    mentions the ``SESSION_RECORDING_SENSITIVE_DATA`` project flag. The
+    project owner can grant the ``sensitive_data_replay`` permission to
+    unblock the caller; a service account with that permission works too.
+
+    Details:
+        project_id (int): The project that gated the call.
+        flag (str): Always ``"SESSION_RECORDING_SENSITIVE_DATA"``.
+        permission_required (str): Always ``"sensitive_data_replay"``.
+
+    See error-messages.md §1 for the canonical message wording.
+    """
+
+    _DEFAULT_CODE = "SESSION_REPLAY_ACCESS_ERROR"
+    _DEFAULT_STATUS = 403
+
+
+class SignedURLExpiredError(SessionReplayError):
+    """Signed CDN URL passed to a fetch has expired (5-minute TTL).
+
+    Raised when a CDN fetch returns 403 with an expiration body AND the
+    caller opted out of automatic re-signing (``stream_replay`` with
+    ``re_sign_on_expiry=False``). Re-sign via :meth:`Workspace.sign_replay`
+    and retry, or pass ``re_sign_on_expiry=True`` (the default) to let the
+    library re-sign transparently.
+
+    Details:
+        replay_id (str): The replay whose URL expired.
+        signed_at (float): Unix seconds when the original URL was signed.
+        expired_at (float): Unix seconds when the URL expired
+            (typically ``signed_at + 300``).
+
+    See error-messages.md §2 for the canonical message wording.
+    """
+
+    _DEFAULT_CODE = "SIGNED_URL_EXPIRED"
+    _DEFAULT_STATUS = 403
+
+
+class ReplayNotFoundError(SessionReplayError):
+    """No CDN bytes found for a requested replay.
+
+    Raised when the CDN walker hits a 404 on the very first file
+    (``0000-N.json``). The replay either aged out of its retention
+    window, was never recorded, or has been deleted. Mid-walk 404s are
+    treated as the end-of-replay sentinel and do NOT raise.
+
+    Details:
+        replay_id (str): The replay that returned no bytes.
+        retention_days (int): The retention window that was assumed
+            (1, 7, 30, or 90).
+        cdn_url_prefix (str): The CDN prefix that was walked.
+
+    See error-messages.md §3 for the canonical message wording.
+    """
+
+    _DEFAULT_CODE = "REPLAY_NOT_FOUND"
+    _DEFAULT_STATUS = 404

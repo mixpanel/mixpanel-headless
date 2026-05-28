@@ -20,7 +20,9 @@ import copy
 import json
 import math
 import re
+import time
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date as dt_date
 from datetime import datetime
@@ -12264,3 +12266,711 @@ class OAuthLoginResult(BaseModel):
 
     client_path: Path
     """Where the DCR client info was persisted (``~/.mp/accounts/{name}/client.json``)."""
+
+
+# =============================================================================
+# Session Replay Types (044-session-replay)
+# =============================================================================
+#
+# Six in-memory dataclasses backing the session-replay surface. The Phase 1
+# types ship now (``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``,
+# ``UserAction`` placeholder, ``Replay``); ``ReplayBundle`` lands in Phase 2
+# alongside the vendored rrweb analyzer that populates ``Replay.actions``.
+# See ``specs/044-session-replay/data-model.md`` for the full schema and
+# state-transition diagram, and ``contracts/python-api.md`` for the
+# canonical method signatures these types appear in.
+
+
+_REPLAY_ACTION_LITERAL = Literal[
+    "click",
+    "input",
+    "scroll",
+    "navigate",
+    "select",
+    "console_error",
+    "viewport_resize",
+    "touch_start",
+    "media_interaction",
+]
+"""Closed set of normalized action labels emitted by the vendored rrweb analyzer.
+
+Locked here so callers can write exhaustive ``match`` statements and so
+mypy --strict catches typos in label-fn implementations. New action types
+require a minor version bump and a CHANGELOG entry.
+"""
+
+
+_ALLOWED_RETENTION_DAYS = frozenset({1, 7, 30, 90})
+"""Allowed Mixpanel session-replay retention windows.
+
+Mixpanel only stores recordings at one of these four retention windows;
+``ReplaySummary`` and ``Replay`` reject any other value at construction.
+"""
+
+
+@dataclass(frozen=True)
+class ReplaySummary(ResultWithDataFrame):
+    """Discovery handle for a single replay (data-model §2.1).
+
+    Returned by :meth:`Workspace.list_replays`. Holds the minimum info
+    needed to decide whether to materialize the full recording: replay
+    ID, distinct ID, project, start time, retention window. Use
+    :meth:`Workspace.fetch_replay` to upgrade a summary into a full
+    :class:`Replay` with the rrweb bytes pulled and parsed.
+
+    Attributes:
+        replay_id: Mixpanel replay identifier; non-empty.
+        distinct_id: Mixpanel user identifier; ``None`` for anonymous sessions.
+        project_id: Owning project; positive int.
+        start_time: Unix ms timestamp from the ``$mp_session_record`` event.
+        retention_days: Days of CDN retention; one of ``{1, 7, 30, 90}``.
+
+    Example:
+        ```python
+        for s in ws.list_replays(distinct_id="u-42", from_date="2026-05-20",
+                                 to_date="2026-05-27"):
+            replay = ws.fetch_replay(s.replay_id, retention_days=s.retention_days)
+            print(replay.duration_seconds)
+        ```
+    """
+
+    replay_id: str
+    distinct_id: str | None
+    project_id: int
+    start_time: int
+    retention_days: int
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.1.
+
+        Raises:
+            ValueError: ``replay_id`` is empty, ``project_id`` is non-positive,
+                ``start_time`` is non-positive, or ``retention_days`` is
+                outside ``{1, 7, 30, 90}``.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if self.project_id <= 0:
+            raise ValueError(f"project_id must be positive; got {self.project_id}")
+        if self.start_time <= 0:
+            raise ValueError(
+                f"start_time must be a positive unix ms timestamp; got "
+                f"{self.start_time}"
+            )
+        if self.retention_days not in _ALLOWED_RETENTION_DAYS:
+            raise ValueError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            )
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Single-row DataFrame projection of this summary.
+
+        Returns:
+            DataFrame with columns ``replay_id``, ``distinct_id``,
+            ``project_id``, ``start_time``, ``retention_days`` — one row.
+            Cached on first access.
+        """
+        if self._df_cache is not None:
+            return self._df_cache
+        result = pd.DataFrame(
+            [
+                {
+                    "replay_id": self.replay_id,
+                    "distinct_id": self.distinct_id,
+                    "project_id": self.project_id,
+                    "start_time": self.start_time,
+                    "retention_days": self.retention_days,
+                }
+            ]
+        )
+        object.__setattr__(self, "_df_cache", result)
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the five summary fields.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "distinct_id": self.distinct_id,
+            "project_id": self.project_id,
+            "start_time": self.start_time,
+            "retention_days": self.retention_days,
+        }
+
+
+@dataclass(frozen=True)
+class SignedReplay:
+    """Signed CDN access handle (data-model §2.2).
+
+    SECURITY: ``query_string`` is a bearer credential valid for ~5 minutes.
+    :meth:`__repr__` and :meth:`__str__` mask it so default Python logging
+    cannot leak the signature. :meth:`to_dict` IS the documented escape
+    hatch — callers that need the raw credential opt in explicitly and
+    receive an extra ``_warning`` key as a reminder.
+
+    Attributes:
+        replay_id: Mixpanel replay identifier.
+        url: CDN URL prefix with trailing slash; CDN files live at
+            ``f"{url}{N:04d}-{retention_days}.json?{query_string}"``.
+        query_string: The signed bearer credential (NOT logged by default).
+        env: Replay environment, ``"prod"`` or ``"dev"``.
+        signed_at: Unix seconds when the URL was signed; ``expires_at``
+            arithmetic uses ``signed_at + 300``.
+
+    Example:
+        ```python
+        signed = ws.sign_replay("r-19221")
+        if not signed.is_expired:
+            url = f"{signed.url}0000-30.json?{signed.query_string}"
+        ```
+    """
+
+    replay_id: str
+    url: str
+    query_string: str
+    env: Literal["prod", "dev"]
+    signed_at: float
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.2.
+
+        Raises:
+            ValueError: ``url`` lacks a trailing slash, ``query_string``
+                is empty, ``env`` is not ``"prod"`` or ``"dev"``, or
+                ``signed_at`` is negative.
+        """
+        if not self.url.endswith("/"):
+            raise ValueError(
+                f"url must end with '/' for CDN-path concatenation; got {self.url!r}"
+            )
+        if not self.query_string:
+            raise ValueError("query_string must be non-empty")
+        if self.env not in ("prod", "dev"):
+            raise ValueError(f"env must be 'prod' or 'dev'; got {self.env!r}")
+        if self.signed_at < 0:
+            raise ValueError(f"signed_at must be non-negative; got {self.signed_at}")
+
+    @property
+    def expires_at(self) -> float:
+        """Approximate expiration timestamp (``signed_at + 300`` seconds).
+
+        Returns:
+            Unix seconds at which the signed URL is considered expired.
+        """
+        return self.signed_at + 300
+
+    @property
+    def is_expired(self) -> bool:
+        """Whether the URL has crossed the 5-minute TTL boundary.
+
+        Returns:
+            True when ``time.time() >= expires_at``.
+        """
+        return time.time() >= self.expires_at
+
+    def to_dict(self) -> dict[str, Any]:
+        """Full serialization including the bearer credential.
+
+        WARNING: includes the full ``query_string``. The returned dict
+        carries a top-level ``_warning`` key noting the bearer nature so
+        downstream serializers can surface the risk.
+
+        Returns:
+            Dict with ``_warning`` plus the five visible fields.
+        """
+        return {
+            "_warning": ("query_string is a bearer credential valid for ~5 minutes"),
+            "replay_id": self.replay_id,
+            "url": self.url,
+            "query_string": self.query_string,
+            "env": self.env,
+            "signed_at": self.signed_at,
+        }
+
+    def __repr__(self) -> str:
+        """Masked representation — never leaks ``query_string``.
+
+        Returns:
+            String of the form
+            ``SignedReplay(replay_id='r-19221', url='...', query_string='<redacted N chars>', env='prod', signed_at=...)``.
+        """
+        masked = f"<redacted {len(self.query_string)} chars>"
+        return (
+            f"SignedReplay(replay_id={self.replay_id!r}, url={self.url!r}, "
+            f"query_string={masked!r}, env={self.env!r}, "
+            f"signed_at={self.signed_at!r})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so f-strings and ``print()`` stay safe."""
+        return self.__repr__()
+
+
+@dataclass(frozen=True)
+class UserAction:
+    """Normalized user action extracted from rrweb events (data-model §2.3).
+
+    Produced by the vendored rrweb analyzer (Phase 2). The atomic unit
+    :class:`ReplayBundle` aggregations operate over. In Phase 1 this
+    class ships as a placeholder so callers can type-annotate against it,
+    but no instances are produced until the analyzer wires in via T056.
+
+    Attributes:
+        timestamp: Unix ms timestamp of the action.
+        action: One of the closed-set action labels (``click``, ``input``,
+            ``scroll``, ``navigate``, ``select``, ``console_error``,
+            ``viewport_resize``, ``touch_start``, ``media_interaction``).
+        target_node_id: rrweb DOM node ID of the action target, if any.
+        target_desc: Human-readable target description (e.g.
+            ``'button "Sign in"'``); non-empty.
+        url: Active page URL when the action happened, if known.
+        metadata: Action-specific extras (text_length, is_checked, …).
+    """
+
+    timestamp: int
+    action: _REPLAY_ACTION_LITERAL
+    target_node_id: int | None
+    target_desc: str
+    url: str | None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.3.
+
+        Raises:
+            ValueError: ``timestamp`` is non-positive or ``target_desc``
+                is empty.
+        """
+        if self.timestamp <= 0:
+            raise ValueError(
+                f"timestamp must be a positive unix ms timestamp; got {self.timestamp}"
+            )
+        if not self.target_desc:
+            raise ValueError("target_desc must be non-empty")
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the six visible fields.
+        """
+        return {
+            "timestamp": self.timestamp,
+            "action": self.action,
+            "target_node_id": self.target_node_id,
+            "target_desc": self.target_desc,
+            "url": self.url,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class ReplayEvent(ResultWithDataFrame):
+    """Mixpanel event that occurred during a replay's time window
+    (data-model §2.4).
+
+    Optional enrichment on :class:`Replay` (via
+    ``fetch_replay(include_mixpanel_events=True)``) and the primary return
+    type of :meth:`Workspace.events_for_replay`.
+
+    Attributes:
+        replay_id: Owning replay ID; non-empty.
+        event_name: Mixpanel event name; non-empty.
+        event_time: Unix SECONDS timestamp (Mixpanel native), not ms.
+        properties: Selected event properties; ``None`` when the caller
+            skipped enrichment via ``event_properties=None``.
+    """
+
+    replay_id: str
+    event_name: str
+    event_time: int
+    properties: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.4.
+
+        Raises:
+            ValueError: ``replay_id`` or ``event_name`` is empty, or
+                ``event_time`` is non-positive.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if not self.event_name:
+            raise ValueError("event_name must be non-empty")
+        if self.event_time <= 0:
+            raise ValueError(
+                f"event_time must be a positive unix seconds timestamp; got "
+                f"{self.event_time}"
+            )
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Single-row DataFrame projection of this event.
+
+        Returns:
+            DataFrame with columns ``replay_id``, ``event_name``,
+            ``event_time``, ``properties`` — one row. Cached on first access.
+        """
+        if self._df_cache is not None:
+            return self._df_cache
+        result = pd.DataFrame(
+            [
+                {
+                    "replay_id": self.replay_id,
+                    "event_name": self.event_name,
+                    "event_time": self.event_time,
+                    "properties": self.properties,
+                }
+            ]
+        )
+        object.__setattr__(self, "_df_cache", result)
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the four visible fields.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "event_name": self.event_name,
+            "event_time": self.event_time,
+            "properties": (
+                copy.deepcopy(self.properties) if self.properties is not None else None
+            ),
+        }
+
+
+# rrweb event-type discriminators — exposed as named constants so the
+# Replay projection code stays self-documenting. Phase 2's vendored
+# analyzer carries the full set; Phase 1 only needs the four below.
+_RRWEB_TYPE_FULL_SNAPSHOT = 2
+_RRWEB_TYPE_INCREMENTAL_SNAPSHOT = 3
+_RRWEB_TYPE_META = 4
+
+# IncrementalSnapshot.data.source discriminators relevant to Phase 1
+# projections. The Phase 2 analyzer adds the rest.
+_RRWEB_SOURCE_MOUSE_INTERACTION = 2
+
+
+def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
+    """Project one rrweb event into the ``events_df`` row shape.
+
+    Pulls the discriminators the analyzer would care about — ``source``
+    for IncrementalSnapshot events, ``type`` of MouseInteraction events
+    (mapped to a friendly string under ``mouse_type``), DOM node ID under
+    ``target_node_id``, and the page ``url`` for Meta events.
+
+    Args:
+        event: Raw rrweb event dict (``type``, ``data``, ``timestamp``).
+
+    Returns:
+        Dict with the seven ``events_df`` columns populated; missing
+        attributes are ``None``. ``raw`` always points at the original
+        event so callers can fall back to it for any analyzer-specific
+        introspection.
+    """
+    type_ = event.get("type")
+    raw_data = event.get("data")
+    data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    source = data.get("source") if type_ == _RRWEB_TYPE_INCREMENTAL_SNAPSHOT else None
+    mouse_type: int | None = None
+    if source == _RRWEB_SOURCE_MOUSE_INTERACTION:
+        raw_mouse_type = data.get("type")
+        if isinstance(raw_mouse_type, int):
+            mouse_type = raw_mouse_type
+    target_node_id = data.get("id") if isinstance(data.get("id"), int) else None
+    url = data.get("href") if type_ == _RRWEB_TYPE_META else None
+    return {
+        "t": int(event.get("timestamp", 0)),
+        "type": type_,
+        "source": source,
+        "mouse_type": mouse_type,
+        "target_node_id": target_node_id,
+        "url": url,
+        "raw": event,
+    }
+
+
+@dataclass(frozen=True)
+class Replay(ResultWithDataFrame):
+    """Single fully-materialized session replay (data-model §2.5).
+
+    Returned by :meth:`Workspace.fetch_replay`. Conceptually a
+    :class:`ReplayBundle` of size 1; the same DataFrame projections are
+    available on both. In Phase 1 ``actions`` is always empty — the
+    vendored analyzer that populates it ships in Phase 2 (US2 / T056).
+
+    Attributes:
+        replay_id: Mixpanel replay identifier.
+        distinct_id: Mixpanel user identifier; may be ``None`` for
+            anonymous sessions.
+        project_id: Owning project.
+        start_time: Unix ms timestamp of the first event.
+        end_time: Unix ms timestamp of the last event.
+        retention_days: One of ``{1, 7, 30, 90}``.
+        rrweb_events: Raw rrweb event dicts, timestamp-sorted.
+        actions: Normalized :class:`UserAction` records produced by the
+            analyzer. ALWAYS empty in Phase 1.
+        mixpanel_events: Mixpanel events that occurred in the replay
+            window. Populated only when the caller passed
+            ``include_mixpanel_events=True`` to ``fetch_replay``.
+    """
+
+    replay_id: str
+    distinct_id: str | None
+    project_id: int
+    start_time: int
+    end_time: int
+    retention_days: int
+    rrweb_events: list[dict[str, Any]] = field(default_factory=list)
+    actions: list[UserAction] = field(default_factory=list)
+    mixpanel_events: list[ReplayEvent] = field(default_factory=list)
+    _events_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _actions_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _mixpanel_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _pages_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.5.
+
+        Raises:
+            ValueError: ``replay_id`` is empty, ``project_id`` is
+                non-positive, ``start_time`` is non-positive,
+                ``end_time < start_time``, or ``retention_days`` is
+                outside ``{1, 7, 30, 90}``.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if self.project_id <= 0:
+            raise ValueError(f"project_id must be positive; got {self.project_id}")
+        if self.start_time <= 0:
+            raise ValueError(
+                f"start_time must be a positive unix ms timestamp; got "
+                f"{self.start_time}"
+            )
+        if self.end_time < self.start_time:
+            raise ValueError(
+                f"end_time must be >= start_time; got start={self.start_time}, "
+                f"end={self.end_time}"
+            )
+        if self.retention_days not in _ALLOWED_RETENTION_DAYS:
+            raise ValueError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            )
+
+    @property
+    def duration_seconds(self) -> float:
+        """Replay duration in seconds.
+
+        Returns:
+            ``(end_time - start_time) / 1000`` — converts ms to seconds.
+        """
+        return (self.end_time - self.start_time) / 1000
+
+    @property
+    def events_df(self) -> pd.DataFrame:
+        """Long-format projection of raw rrweb events (data-model §2.5).
+
+        Returns:
+            DataFrame with columns ``t``, ``type``, ``source``,
+            ``mouse_type``, ``target_node_id``, ``url``, ``raw`` — one
+            row per rrweb event in input order. Cached after first access.
+        """
+        if self._events_df_cache is not None:
+            return self._events_df_cache
+        cols = ["t", "type", "source", "mouse_type", "target_node_id", "url", "raw"]
+        rows = [_rrweb_event_row(e) for e in self.rrweb_events]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_events_df_cache", result)
+        return result
+
+    @property
+    def actions_df(self) -> pd.DataFrame:
+        """Long-format projection of normalized actions (data-model §2.5).
+
+        Phase 1: ``actions`` is empty, so this returns an empty DataFrame
+        with the documented columns. Phase 2 populates it via the
+        vendored analyzer.
+
+        Returns:
+            DataFrame with columns ``t``, ``action``, ``target_node_id``,
+            ``target_desc``, ``url``, ``metadata`` — one row per action.
+            Cached after first access.
+        """
+        if self._actions_df_cache is not None:
+            return self._actions_df_cache
+        cols = ["t", "action", "target_node_id", "target_desc", "url", "metadata"]
+        rows = [
+            {
+                "t": a.timestamp,
+                "action": a.action,
+                "target_node_id": a.target_node_id,
+                "target_desc": a.target_desc,
+                "url": a.url,
+                "metadata": dict(a.metadata),
+            }
+            for a in self.actions
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_actions_df_cache", result)
+        return result
+
+    @property
+    def mixpanel_df(self) -> pd.DataFrame:
+        """Long-format projection of associated Mixpanel events
+        (data-model §2.5).
+
+        Returns:
+            DataFrame with columns ``t``, ``event_name``, ``properties``
+            — empty when the caller did not pass
+            ``include_mixpanel_events=True`` to ``fetch_replay``.
+            Cached after first access.
+        """
+        if self._mixpanel_df_cache is not None:
+            return self._mixpanel_df_cache
+        cols = ["t", "event_name", "properties"]
+        rows = [
+            {
+                "t": e.event_time,
+                "event_name": e.event_name,
+                "properties": e.properties,
+            }
+            for e in self.mixpanel_events
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_mixpanel_df_cache", result)
+        return result
+
+    @property
+    def pages_df(self) -> pd.DataFrame:
+        """Long-format projection of Meta navigations (data-model §2.5).
+
+        Derived from rrweb events of type 4 (Meta). ``dwell_ms`` for each
+        page is the gap to the next Meta event, or ``end_time - t`` for
+        the final page.
+
+        Returns:
+            DataFrame with columns ``t``, ``url``, ``dwell_ms`` — one row
+            per page visit. Cached after first access.
+        """
+        if self._pages_df_cache is not None:
+            return self._pages_df_cache
+        meta_events: list[dict[str, Any]] = []
+        for e in self.rrweb_events:
+            if e.get("type") == _RRWEB_TYPE_META:
+                raw_data = e.get("data")
+                data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+                meta_events.append(
+                    {"t": int(e.get("timestamp", 0)), "url": data.get("href")}
+                )
+        rows: list[dict[str, Any]] = []
+        for i, page in enumerate(meta_events):
+            next_t = (
+                meta_events[i + 1]["t"] if i + 1 < len(meta_events) else self.end_time
+            )
+            rows.append(
+                {
+                    "t": page["t"],
+                    "url": page["url"],
+                    "dwell_ms": max(0, next_t - page["t"]),
+                }
+            )
+        result = pd.DataFrame(rows, columns=["t", "url", "dwell_ms"])
+        object.__setattr__(self, "_pages_df_cache", result)
+        return result
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Default projection per FR-018: returns ``actions_df``.
+
+        Returns:
+            The same DataFrame as ``actions_df``.
+        """
+        return self.actions_df
+
+    def page_path(self) -> list[str]:
+        """URL sequence visited during the replay.
+
+        Returns:
+            List of unique-in-sequence URLs from the Meta events.
+        """
+        return [str(url) for url in self.pages_df["url"].tolist() if url is not None]
+
+    def to_rrweb_player_json(self) -> list[dict[str, Any]]:
+        """Timestamp-sorted rrweb events ready for the rrweb JS player.
+
+        Returns:
+            A new list of the raw rrweb dicts sorted ascending by
+            ``timestamp``. The originals are not mutated.
+        """
+        return sorted(
+            self.rrweb_events,
+            key=lambda e: int(e.get("timestamp", 0)),
+        )
+
+    @property
+    def summary_markdown(self) -> str:
+        """Analyzer-produced markdown timeline.
+
+        Raises:
+            NotImplementedError: Phase 1. The vendored analyzer ships in
+                Phase 2 (T055/T056); see ``contracts/python-api.md`` Phase
+                boundaries.
+        """
+        raise NotImplementedError("Replay.summary_markdown: analyzer ships in Phase 2")
+
+    @property
+    def errors(self) -> pd.DataFrame:
+        """Console errors captured during the replay.
+
+        Raises:
+            NotImplementedError: Phase 1. The vendored analyzer ships in
+                Phase 2 — Phase 1 ``actions`` is always empty, so there
+                is nothing to filter for ``console_error``.
+        """
+        raise NotImplementedError("Replay.errors: analyzer ships in Phase 2")
+
+    def clicks_on(self, predicate: Callable[[UserAction], bool]) -> pd.DataFrame:
+        """Filter actions by an arbitrary predicate.
+
+        Args:
+            predicate: Callable taking a :class:`UserAction` and returning
+                ``True`` to include the row.
+
+        Raises:
+            NotImplementedError: Phase 1. The vendored analyzer that
+                populates ``actions`` ships in Phase 2.
+        """
+        raise NotImplementedError("Replay.clicks_on: analyzer ships in Phase 2")
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the eight visible fields. ``rrweb_events`` is
+            included so the dict can re-hydrate a full :class:`Replay`
+            via :meth:`Workspace.fetch_replay` follow-ups.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "distinct_id": self.distinct_id,
+            "project_id": self.project_id,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "retention_days": self.retention_days,
+            "rrweb_events": list(self.rrweb_events),
+            "actions": [a.to_dict() for a in self.actions],
+            "mixpanel_events": [e.to_dict() for e in self.mixpanel_events],
+        }
