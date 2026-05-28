@@ -187,6 +187,7 @@ def _register_commands() -> None:
     from mixpanel_headless.cli.commands.lookup_tables import lookup_tables_app
     from mixpanel_headless.cli.commands.project import project_app
     from mixpanel_headless.cli.commands.query import query_app
+    from mixpanel_headless.cli.commands.replays import replays_app
     from mixpanel_headless.cli.commands.reports import reports_app
     from mixpanel_headless.cli.commands.schemas import schemas_app
     from mixpanel_headless.cli.commands.session import session_app
@@ -241,6 +242,11 @@ def _register_commands() -> None:
         business_context_app,
         name="business-context",
         help="Read and write project / organization business context.",
+    )
+    app.add_typer(
+        replays_app,
+        name="replays",
+        help="Session replay discovery, signing, and fetch.",
     )
 
 
