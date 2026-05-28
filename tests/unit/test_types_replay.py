@@ -7,8 +7,6 @@ NotImplementedError until T056 wires the analyzer in US2.
 
 from __future__ import annotations
 
-import pytest
-
 from mixpanel_headless.types import Replay, ReplayEvent, UserAction
 
 
@@ -167,23 +165,29 @@ class TestReplayPhase1Empty:
         assert r.df.equals(r.actions_df)
 
 
-class TestReplayAnalyzerAccessorsPhase1:
-    """Phase 1: analyzer-dependent accessors raise NotImplementedError."""
+class TestReplayAnalyzerAccessorsEmptyActions:
+    """With actions=[] the analyzer accessors return safe defaults.
 
-    def test_summary_markdown_raises(self) -> None:
-        """summary_markdown raises NotImplementedError in Phase 1."""
-        with pytest.raises(NotImplementedError, match="analyzer ships in Phase 2"):
-            _ = _build().summary_markdown
+    Phase 2 (T056) replaced the Phase 1 NotImplementedError raises with
+    real implementations. When the Replay is hand-constructed with
+    actions=[] (e.g. a unit-test fixture) the accessors should still
+    return sensible empty/placeholder values rather than raise.
+    """
 
-    def test_errors_raises(self) -> None:
-        """errors raises NotImplementedError in Phase 1."""
-        with pytest.raises(NotImplementedError, match="analyzer ships in Phase 2"):
-            _ = _build().errors
+    def test_summary_markdown_placeholder(self) -> None:
+        """summary_markdown returns a one-line placeholder for an actionless replay."""
+        out = _build().summary_markdown
+        assert "no actions extracted" in out
 
-    def test_clicks_on_raises(self) -> None:
-        """clicks_on raises NotImplementedError in Phase 1."""
-        with pytest.raises(NotImplementedError, match="analyzer ships in Phase 2"):
-            _build().clicks_on(lambda _a: True)
+    def test_errors_empty(self) -> None:
+        """errors returns an empty DataFrame for an actionless replay."""
+        out = _build().errors
+        assert len(out) == 0
+
+    def test_clicks_on_empty(self) -> None:
+        """clicks_on returns an empty DataFrame for an actionless replay."""
+        out = _build().clicks_on(lambda _a: True)
+        assert len(out) == 0
 
 
 class TestReplayMixpanelDataFrame:

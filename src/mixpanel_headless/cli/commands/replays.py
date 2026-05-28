@@ -323,3 +323,142 @@ def replays_fetch(
         f"{duration_minutes}m {duration_seconds:02d}s, "
         f"{replay.retention_days}-day retention"
     )
+
+
+# =============================================================================
+# mp replays analyze (Phase 2)
+# =============================================================================
+
+
+@replays_app.command("analyze")
+@handle_errors
+def replays_analyze(
+    ctx: typer.Context,
+    replay_id: Annotated[
+        str,
+        typer.Argument(help="The replay ID to analyze."),
+    ],
+    format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format. 'plain' = markdown timeline; 'json' = action list.",
+        ),
+    ] = "plain",
+) -> None:
+    """Render an analyzer-produced markdown timeline for a single replay.
+
+    Default output is the markdown timeline (suitable for stdout or LLM
+    consumption). With ``--format json`` the command emits the normalized
+    action list as a JSON array.
+
+    Args:
+        ctx: Typer context.
+        replay_id: The replay to analyze.
+        format: 'plain' (default markdown) or 'json' (action list).
+    """
+    workspace = get_workspace(ctx)
+    with status_spinner(ctx, "Analyzing replay..."):
+        replay = workspace.fetch_replay(replay_id)
+    if format == "json":
+        print(json.dumps([a.to_dict() for a in replay.actions], indent=2))
+    else:
+        print(replay.summary_markdown)
+
+
+# =============================================================================
+# mp replays for-user (Phase 2)
+# =============================================================================
+
+
+@replays_app.command("for-user")
+@handle_errors
+def replays_for_user(
+    ctx: typer.Context,
+    user: Annotated[
+        str,
+        typer.Argument(help="Mixpanel distinct_id to fetch replays for."),
+    ],
+    from_date: Annotated[
+        str,
+        typer.Option("--from", help="ISO date (YYYY-MM-DD)."),
+    ],
+    to_date: Annotated[
+        str,
+        typer.Option("--to", help="ISO date (YYYY-MM-DD)."),
+    ],
+    include: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--include",
+            help="Extras to fetch; repeatable. Accepts 'analyze' and 'events'.",
+        ),
+    ] = None,
+    out_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--out-dir",
+            help=(
+                "Directory to write per-replay markdown + index.json. "
+                "When omitted, markdown summaries are concatenated to stdout."
+            ),
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="Maximum replays. Default 100."),
+    ] = 100,
+) -> None:
+    """Discovery + fetch + analyze in one command.
+
+    Args:
+        ctx: Typer context.
+        user: Mixpanel distinct_id.
+        from_date: ISO date window start.
+        to_date: ISO date window end.
+        include: Repeatable 'analyze' / 'events' opt-ins.
+        out_dir: Directory to write per-replay outputs (+ index.json).
+        limit: Maximum replays.
+    """
+    include_set = set(include or [])
+    workspace = get_workspace(ctx)
+    with status_spinner(ctx, "Fetching replay bundle..."):
+        bundle = workspace.replays_for_user(
+            user,
+            from_date=from_date,
+            to_date=to_date,
+            limit=limit,
+            include_mixpanel_events="events" in include_set,
+        )
+    if not bundle.replays:
+        print(f"no replays found for {user} in {from_date}..{to_date}")
+        return
+
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if "analyze" in include_set:
+            for replay in bundle.replays:
+                (out_dir / f"{replay.replay_id}-summary.md").write_text(
+                    replay.summary_markdown
+                )
+        # index.json mirrors bundle.sessions_df for downstream consumers.
+        index_path = out_dir / "index.json"
+        index_path.write_text(bundle.sessions_df.to_json(orient="records"))
+        df = bundle.sessions_df
+        total_actions = int(df["n_actions"].sum()) if not df.empty else 0
+        total_clicks = int(df["n_clicks"].sum()) if not df.empty else 0
+        total_errors = int(df["n_errors"].sum()) if not df.empty else 0
+        print(
+            f"wrote {len(bundle.replays)} replays to {out_dir}/\n"
+            f"total: {total_actions} actions, {total_clicks} clicks, "
+            f"{total_errors} errors"
+        )
+        return
+
+    # Stdout fall-through: concatenated markdown summaries.
+    if "analyze" in include_set:
+        for replay in bundle.replays:
+            print(replay.summary_markdown)
+            print("\n---\n")
+    else:
+        print(bundle.summary_markdown)

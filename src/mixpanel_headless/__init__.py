@@ -6,6 +6,11 @@ run live analytics, stream data, and manage entities via the App API.
 """
 
 from mixpanel_headless import accounts, session, targets
+from mixpanel_headless._internal.replays.labels import (
+    default_label_fn,
+    selector_label_fn,
+    url_normalizer,
+)
 from mixpanel_headless._internal.validation import validate_bookmark
 from mixpanel_headless._literal_types import (
     CohortAggregationType,
@@ -233,6 +238,7 @@ from mixpanel_headless.types import (
     RcaSourceData,
     ReplaceSchemaEnforcementParams,
     Replay,
+    ReplayBundle,
     ReplayEvent,
     ReplaySummary,
     RetentionCohortData,
@@ -387,10 +393,15 @@ __all__ = [
     "ReplayNotFoundError",
     # Session-replay types (044)
     "Replay",
+    "ReplayBundle",
     "ReplayEvent",
     "ReplaySummary",
     "SignedReplay",
     "UserAction",
+    # Session-replay label functions (044, US2)
+    "default_label_fn",
+    "selector_label_fn",
+    "url_normalizer",
     # Result types
     "SegmentationResult",
     "FunnelResult",

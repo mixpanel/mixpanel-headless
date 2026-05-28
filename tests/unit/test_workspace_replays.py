@@ -377,12 +377,13 @@ class TestFetchReplay:
 # =============================================================================
 
 
-class TestReplaysForUserPhase1Stub:
-    """Phase 1: replays_for_user exists on Workspace and raises NotImplementedError.
+class TestReplaysForUserUS2:
+    """Phase 2 / T062 — replays_for_user returns a ReplayBundle.
 
-    Per T028.5 — the stub is replaced in T062 (US2) with the real
-    ReplayBundle-returning implementation. Until then it MUST exist and
-    MUST raise so callers don't silently fall back to None.
+    Replaces the Phase 1 stub. The full coverage of bundle internals is
+    in tests/unit/test_types_replay_bundle.py; here we only verify the
+    composition (list_replays + fetch_replays) and the empty-result
+    short-circuit.
     """
 
     def test_method_exists(self) -> None:
@@ -390,15 +391,19 @@ class TestReplaysForUserPhase1Stub:
         ws = _make_workspace()
         assert hasattr(ws, "replays_for_user")
 
-    def test_raises_not_implemented(self) -> None:
-        """Calling replays_for_user raises NotImplementedError in Phase 1."""
+    def test_empty_window_returns_empty_bundle(self) -> None:
+        """No replays in the window → empty bundle, no fetch_replays call."""
+        from mixpanel_headless.types import ReplayBundle
+
         ws = _make_workspace()
-        with pytest.raises(NotImplementedError, match="US2"):
-            ws.replays_for_user(
-                "u-42",
-                from_date="2026-05-20",
-                to_date="2026-05-27",
-            )
+        svc = _install_mock_replays_service(ws)
+        svc.discover.return_value = []
+        bundle = ws.replays_for_user(
+            "u-42", from_date="2026-05-20", to_date="2026-05-27"
+        )
+        assert isinstance(bundle, ReplayBundle)
+        assert bundle.replays == []
+        svc.sign.assert_not_called()
 
 
 # =============================================================================

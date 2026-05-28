@@ -342,6 +342,56 @@ class TestExitCodeMapping:
         assert "sensitive replay data" in result.stderr
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_analyze_prints_markdown(self, mock_get_ws: MagicMock) -> None:
+        """`mp replays analyze` prints summary_markdown by default."""
+        replay = _replay()
+        mock_ws = MagicMock()
+        mock_ws.fetch_replay.return_value = replay
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["replays", "analyze", "r-19221"])
+        assert result.exit_code == 0
+        assert "no actions extracted" in result.stdout
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_for_user_writes_to_out_dir(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """`mp replays for-user --out-dir DIR` writes index.json + per-replay md."""
+        from mixpanel_headless.types import ReplayBundle
+
+        bundle = ReplayBundle(
+            replays=[_replay("r-1"), _replay("r-2")],
+            computed_at="2026-05-27T00:00:00Z",
+            project_id=12345,
+        )
+        mock_ws = MagicMock()
+        mock_ws.replays_for_user.return_value = bundle
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "for-user",
+                "user-42",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+                "--include",
+                "analyze",
+                "--out-dir",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert (tmp_path / "index.json").exists()
+        assert (tmp_path / "r-1-summary.md").exists()
+        assert (tmp_path / "r-2-summary.md").exists()
+        assert "wrote 2 replays" in result.stdout
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_replay_not_found_exits_4(self, mock_get_ws: MagicMock) -> None:
         """ReplayNotFoundError maps to exit code 4 (NOT_FOUND)."""
         mock_ws = MagicMock()

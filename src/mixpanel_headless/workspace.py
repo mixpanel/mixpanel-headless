@@ -237,6 +237,7 @@ from mixpanel_headless.types import (
     QueryResult,
     ReplaceSchemaEnforcementParams,
     Replay,
+    ReplayBundle,
     ReplayEvent,
     ReplaySummary,
     RetentionAlignment,
@@ -10599,7 +10600,10 @@ class Workspace:
 
         start_time = int(rrweb_events[0]["timestamp"])
         end_time = int(rrweb_events[-1]["timestamp"])
-        # Phase 1 — actions=[] until the vendored analyzer lands in T056.
+        # Phase 2 (T056) — run the rrweb analyzer to populate actions.
+        from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
+
+        analyzer_result = RrwebAnalyzer().analyze(rrweb_events)
         return Replay(
             replay_id=replay_id,
             distinct_id=None,
@@ -10608,7 +10612,7 @@ class Workspace:
             end_time=end_time,
             retention_days=resolved_retention,
             rrweb_events=rrweb_events,
-            actions=[],
+            actions=list(analyzer_result.actions),
             mixpanel_events=mixpanel_events,
         )
 
@@ -10670,6 +10674,64 @@ class Workspace:
                 loop.run_until_complete(gen.aclose())
             loop.close()
 
+    def fetch_replays(
+        self,
+        replay_ids: list[str],
+        *,
+        env: Literal["prod", "dev"] = "prod",
+        max_files: int = 500,
+        include_mixpanel_events: bool = False,
+        event_properties: list[str] | None = None,
+        concurrency: int = 4,
+        cdn_concurrency: int = 50,
+    ) -> ReplayBundle:
+        """Fetch N replays in parallel; return a :class:`ReplayBundle`.
+
+        Materializes each replay via :meth:`fetch_replay` (signed CDN walk
+        + analyzer) and bundles them. Outer ``concurrency`` parallelizes
+        across replays; inner ``cdn_concurrency`` parallelizes the
+        per-replay CDN file walk. Threads are used at the outer level so
+        each replay's async event loop runs in isolation.
+
+        Args:
+            replay_ids: Replays to fetch.
+            env: ``"prod"`` (default) or ``"dev"``.
+            max_files: Per-replay CDN bound.
+            include_mixpanel_events: Fire the Mixpanel-events join.
+            event_properties: Up to 5 properties for the join.
+            concurrency: Replay-level parallelism.
+            cdn_concurrency: Per-replay CDN parallelism.
+
+        Returns:
+            A :class:`ReplayBundle` with ``replays`` populated in input
+            order.
+        """
+        _check_event_properties_count(event_properties)
+        # Use a thread pool so each fetch_replay invocation owns its own
+        # async event loop without clashing.
+        results: dict[int, Replay] = {}
+        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+            futures = {
+                pool.submit(
+                    self.fetch_replay,
+                    rid,
+                    env=env,
+                    max_files=max_files,
+                    include_mixpanel_events=include_mixpanel_events,
+                    event_properties=event_properties,
+                    cdn_concurrency=cdn_concurrency,
+                ): i
+                for i, rid in enumerate(replay_ids)
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+        ordered = [results[i] for i in sorted(results)]
+        return ReplayBundle(
+            replays=ordered,
+            computed_at=datetime.now(timezone.utc).isoformat(),
+            project_id=int(self._session.project.id),
+        )
+
     def replays_for_user(
         self,
         distinct_id: str,
@@ -10679,8 +10741,13 @@ class Workspace:
         limit: int = 100,
         include_mixpanel_events: bool = True,
         event_properties: list[str] | None = None,
-    ) -> Any:
-        """Discovery + fetch in one call. Phase 1 placeholder.
+    ) -> ReplayBundle:
+        """Discovery + fetch in one call (US2/T062).
+
+        Composes :meth:`list_replays` and :meth:`fetch_replays`. Defaults
+        ``include_mixpanel_events`` to True since this is the "show me
+        what this user did" convenience method — having the Mixpanel
+        event stream alongside the actions is usually what callers want.
 
         Args:
             distinct_id: Mixpanel user identifier.
@@ -10691,15 +10758,44 @@ class Workspace:
             event_properties: Up to 5 properties for Mixpanel join.
 
         Returns:
-            ``ReplayBundle`` once Phase 2 lands.
+            A :class:`ReplayBundle`; empty when no replays exist in the
+            window.
 
         Raises:
-            NotImplementedError: Always — ``ReplayBundle`` ships in US2 (T062).
+            ValueError: ``len(event_properties) > 5`` or invalid dates.
         """
-        raise NotImplementedError(
-            "Workspace.replays_for_user ships in US2 (Phase 2); requires "
-            "ReplayBundle which lands in T059."
+        _check_event_properties_count(event_properties)
+        summaries = self.list_replays(
+            distinct_id=distinct_id,
+            from_date=from_date,
+            to_date=to_date,
+            limit=limit,
         )
+        if not summaries:
+            return ReplayBundle(
+                replays=[],
+                computed_at=datetime.now(timezone.utc).isoformat(),
+                project_id=int(self._session.project.id),
+            )
+        return self.fetch_replays(
+            [s.replay_id for s in summaries],
+            include_mixpanel_events=include_mixpanel_events,
+            event_properties=event_properties,
+        )
+
+    def analyze_replay(self, replay_id: str) -> str:
+        """Sign + fetch + run the analyzer; return the markdown timeline.
+
+        Sugar for ``self.fetch_replay(replay_id).summary_markdown`` —
+        skips the analyzer for callers that only need the rendered output.
+
+        Args:
+            replay_id: The replay to analyze.
+
+        Returns:
+            Markdown timeline string.
+        """
+        return self.fetch_replay(replay_id).summary_markdown
 
     def _resolve_retention(self, replay_id: str, retention_days: int | None) -> int:
         """Resolve a replay's retention window, discovering it when None.
