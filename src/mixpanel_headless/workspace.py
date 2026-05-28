@@ -25,7 +25,9 @@ Example:
 
 from __future__ import annotations
 
+import asyncio
 import calendar
+import contextlib
 import json
 import logging
 import math
@@ -93,6 +95,7 @@ from mixpanel_headless._internal.query.user_validators import (
 from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.services.discovery import DiscoveryService
 from mixpanel_headless._internal.services.live_query import LiveQueryService
+from mixpanel_headless._internal.services.replays import ReplaysService
 from mixpanel_headless._internal.transforms import transform_event, transform_profile
 from mixpanel_headless._internal.validation import (
     _scan_custom_properties,
@@ -126,6 +129,7 @@ from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     QueryError,
     RateLimitError,
+    ReplayNotFoundError,
     ServerError,
     ValidationError,
     WorkspaceScopeError,
@@ -232,6 +236,9 @@ from mixpanel_headless.types import (
     PublicWorkspace,
     QueryResult,
     ReplaceSchemaEnforcementParams,
+    Replay,
+    ReplayEvent,
+    ReplaySummary,
     RetentionAlignment,
     RetentionEvent,
     RetentionMathType,
@@ -245,6 +252,7 @@ from mixpanel_headless.types import (
     SchemaGraphResult,
     SegmentationResult,
     SetTestUsersParams,
+    SignedReplay,
     SubPropertyInfo,
     TimeComparison,
     TopEvent,
@@ -281,6 +289,27 @@ logger = logging.getLogger(__name__)
 # Limit validation bounds (Mixpanel API restriction)
 _MIN_LIMIT = 1
 _MAX_LIMIT = 100_000
+
+
+def _check_event_properties_count(event_properties: list[str] | None) -> None:
+    """Raise ``ValueError`` when ``event_properties`` exceeds the Insights cap.
+
+    Mixpanel's Insights API caps group-by at 5 properties; the
+    session-replay ``events_for_replay(s)`` and ``fetch_replay(include=)``
+    surfaces all pass through to that endpoint, so the cap applies uniformly.
+
+    Args:
+        event_properties: Caller-supplied list (or None).
+
+    Raises:
+        ValueError: Per error-messages.md §4 wording.
+    """
+    if event_properties is not None and len(event_properties) > 5:
+        raise ValueError(
+            f"events_for_replay accepts at most 5 event_properties "
+            f"(Insights group-by limit). Got {len(event_properties)}: "
+            f"{event_properties}"
+        )
 
 
 def _validate_limit(limit: int | None) -> None:
@@ -416,6 +445,9 @@ class Workspace:
         self._discovery: DiscoveryService | None = None
         self._live_query: LiveQueryService | None = None
         self._me_service: MeService | None = None
+        # 044-session-replay: lazy ReplaysService, created on first replay-method
+        # access so non-replay sessions never pay for the import or async client.
+        self._replays_svc: ReplaysService | None = None
 
         if session is not None:
             sess = session
@@ -621,6 +653,7 @@ class Workspace:
         self._discovery = None
         self._live_query = None
         self._me_service = None
+        self._replays_svc = None
 
         if persist:
             self._persist_active()
@@ -949,6 +982,22 @@ class Workspace:
         if self._live_query is None:
             self._live_query = LiveQueryService(self._require_api_client())
         return self._live_query
+
+    @property
+    def _replays_service(self) -> ReplaysService:
+        """Get or create the session-replay service (044, lazy initialization).
+
+        Constructed on first access with the bound :meth:`query` so
+        :meth:`ReplaysService.discover` and :meth:`ReplaysService.events_for`
+        can issue Insights queries without taking a hard dependency on
+        :class:`Workspace`.
+        """
+        if self._replays_svc is None:
+            self._replays_svc = ReplaysService(
+                self._require_api_client(),
+                query_fn=self.query,
+            )
+        return self._replays_svc
 
     # =========================================================================
     # DISCOVERY METHODS
@@ -10302,3 +10351,371 @@ class Workspace:
                 project_id=self._session.project.id,
             ),
         )
+
+    # =========================================================================
+    # Session Replay (044-session-replay)
+    # =========================================================================
+
+    def list_replays(
+        self,
+        *,
+        distinct_id: str | None = None,
+        replay_ids: list[str] | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        limit: int = 100,
+    ) -> list[ReplaySummary]:
+        """List replays for a user, or hydrate summaries for explicit IDs.
+
+        Issues one Insights query against ``$mp_session_record`` grouped on
+        ``$mp_replay_id`` and ``$mp_replay_retention_period`` (and ``$time``
+        for the start-time column), then collapses the result rows into
+        :class:`ReplaySummary` objects.
+
+        Exactly one of ``distinct_id`` or ``replay_ids`` MUST be provided.
+        When ``distinct_id`` is set, ``from_date`` and ``to_date`` are
+        required. When ``replay_ids`` is given, the date window is
+        inferred from the events themselves and the kwargs are optional.
+
+        Args:
+            distinct_id: Mixpanel user identifier. Mutually exclusive with
+                ``replay_ids``.
+            replay_ids: Explicit list of replay IDs to hydrate. Mutually
+                exclusive with ``distinct_id``.
+            from_date: ISO date string (YYYY-MM-DD). Required with
+                ``distinct_id``.
+            to_date: ISO date string (YYYY-MM-DD). Required with
+                ``distinct_id``.
+            limit: Maximum summaries to return. Default 100.
+
+        Returns:
+            List of :class:`ReplaySummary`, possibly empty.
+
+        Raises:
+            ValueError: Neither or both of ``distinct_id`` and ``replay_ids``
+                were provided; or ``distinct_id`` was set without a date window.
+            QueryError: Underlying Insights API failure.
+
+        Example:
+            ```python
+            ws = mp.Workspace()
+            for s in ws.list_replays(
+                distinct_id="u-42",
+                from_date="2026-05-20",
+                to_date="2026-05-27",
+            ):
+                print(s.replay_id, s.retention_days)
+            ```
+        """
+        if distinct_id is None and not replay_ids:
+            raise ValueError(
+                "list_replays requires exactly one of distinct_id or replay_ids."
+            )
+        if distinct_id is not None and replay_ids:
+            raise ValueError(
+                "list_replays requires exactly one of distinct_id or "
+                "replay_ids; both were given."
+            )
+        if distinct_id is not None and (from_date is None or to_date is None):
+            raise ValueError(
+                "list_replays(distinct_id=...) requires from_date and to_date."
+            )
+
+        return self._replays_service.discover(
+            distinct_id=distinct_id,
+            replay_ids=replay_ids,
+            from_date=from_date,
+            to_date=to_date,
+            limit=limit,
+        )
+
+    def events_for_replay(
+        self,
+        replay_id: str,
+        *,
+        event_properties: list[str] | None = None,
+    ) -> list[ReplayEvent]:
+        """Mixpanel events that occurred during a single replay's time window.
+
+        Args:
+            replay_id: The replay to fetch events for.
+            event_properties: Up to 5 additional event properties to include
+                as group keys.
+
+        Returns:
+            Ordered list of :class:`ReplayEvent`. Empty when the replay
+            window contains no Mixpanel events.
+
+        Raises:
+            ValueError: ``len(event_properties) > 5`` (Insights group-by cap).
+            QueryError: Underlying Insights API failure.
+        """
+        _check_event_properties_count(event_properties)
+        bundle = self._replays_service.events_for(
+            [replay_id], event_properties=event_properties
+        )
+        return bundle.get(replay_id, [])
+
+    def events_for_replays(
+        self,
+        replay_ids: list[str],
+        *,
+        event_properties: list[str] | None = None,
+    ) -> dict[str, list[ReplayEvent]]:
+        """Batched version of :meth:`events_for_replay`. Single round-trip.
+
+        Args:
+            replay_ids: Replays to fetch events for.
+            event_properties: Up to 5 additional event properties to include
+                as group keys.
+
+        Returns:
+            Dict mapping ``replay_id`` → ordered :class:`ReplayEvent` list.
+            Replays with no events are omitted from the dict.
+
+        Raises:
+            ValueError: ``len(event_properties) > 5``.
+            QueryError: Underlying Insights API failure.
+        """
+        _check_event_properties_count(event_properties)
+        return self._replays_service.events_for(
+            replay_ids, event_properties=event_properties
+        )
+
+    def sign_replay(
+        self,
+        replay_id: str,
+        *,
+        env: Literal["prod", "dev"] = "prod",
+    ) -> SignedReplay:
+        """Sign a single replay ID; sugar over :meth:`sign_replays`.
+
+        Args:
+            replay_id: Replay to sign.
+            env: ``"prod"`` (default) or ``"dev"``.
+
+        Returns:
+            One :class:`SignedReplay`. ``query_string`` is a 5-minute bearer
+            credential — treat it like a session token.
+
+        Raises:
+            SessionReplayAccessError: Project has sensitive-data flag set.
+            APIError: Other 4xx / 5xx on the sign endpoint.
+        """
+        return self._replays_service.sign([replay_id], env=env)[0]
+
+    def sign_replays(
+        self,
+        replay_ids: list[str],
+        *,
+        env: Literal["prod", "dev"] = "prod",
+    ) -> list[SignedReplay]:
+        """Sign multiple replays via the bulk endpoint.
+
+        Args:
+            replay_ids: Replays to sign.
+            env: ``"prod"`` (default) or ``"dev"``.
+
+        Returns:
+            List of :class:`SignedReplay` in input order.
+
+        Raises:
+            SessionReplayAccessError: Project has sensitive-data flag set.
+            APIError: Other 4xx / 5xx.
+        """
+        return self._replays_service.sign(replay_ids, env=env)
+
+    def fetch_replay(
+        self,
+        replay_id: str,
+        *,
+        env: Literal["prod", "dev"] = "prod",
+        retention_days: int | None = None,
+        max_files: int = 500,
+        include_mixpanel_events: bool = False,
+        event_properties: list[str] | None = None,
+        cdn_concurrency: int = 50,
+    ) -> Replay:
+        """Sign, fetch, and assemble a single :class:`Replay`.
+
+        Phase 1: ``Replay.actions`` is always empty — the vendored rrweb
+        analyzer that populates it ships in Phase 2 (US2). The raw
+        ``rrweb_events`` list is populated and exposed for downstream tools
+        (e.g. the rrweb JS player).
+
+        Args:
+            replay_id: The replay to fetch.
+            env: ``"prod"`` (default) or ``"dev"``.
+            retention_days: 1, 7, 30, or 90. Auto-discovered when ``None``
+                via a single ``list_replays`` round-trip.
+            max_files: Hard upper bound on CDN file walk (default 500).
+            include_mixpanel_events: When True, follow with a
+                :meth:`events_for_replay` call and populate
+                :attr:`Replay.mixpanel_events`.
+            event_properties: Up to 5 extra properties for the Mixpanel
+                join query (only used when ``include_mixpanel_events`` is
+                True).
+            cdn_concurrency: Parallel batch size for CDN fetches.
+
+        Returns:
+            A :class:`Replay` with ``rrweb_events`` populated.
+
+        Raises:
+            ReplayNotFoundError: First CDN file returned 404.
+            SessionReplayAccessError: Sensitive-data flag set.
+            SignedURLExpiredError: Signed URL expired during fetch (rare;
+                fetch signs and fetches immediately).
+            ValueError: ``len(event_properties) > 5``.
+        """
+        _check_event_properties_count(event_properties)
+        resolved_retention = self._resolve_retention(replay_id, retention_days)
+        signed = self._replays_service.sign([replay_id], env=env)[0]
+        rrweb_events = self._replays_service.fetch_files(
+            signed,
+            retention_days=resolved_retention,
+            max_files=max_files,
+            concurrency=cdn_concurrency,
+        )
+        if not rrweb_events:
+            raise ReplayNotFoundError(
+                (
+                    f"Replay {replay_id} not found on CDN. The replay may have "
+                    f"aged out of its retention window ({resolved_retention} "
+                    f"days), never been recorded, or been deleted."
+                ),
+                details={
+                    "replay_id": replay_id,
+                    "retention_days": resolved_retention,
+                    "cdn_url_prefix": signed.url,
+                },
+                status_code=404,
+            )
+
+        mixpanel_events: list[ReplayEvent] = []
+        if include_mixpanel_events:
+            mixpanel_events = self.events_for_replay(
+                replay_id, event_properties=event_properties
+            )
+
+        start_time = int(rrweb_events[0]["timestamp"])
+        end_time = int(rrweb_events[-1]["timestamp"])
+        # Phase 1 — actions=[] until the vendored analyzer lands in T056.
+        return Replay(
+            replay_id=replay_id,
+            distinct_id=None,
+            project_id=int(self._session.project.id),
+            start_time=start_time,
+            end_time=end_time,
+            retention_days=resolved_retention,
+            rrweb_events=rrweb_events,
+            actions=[],
+            mixpanel_events=mixpanel_events,
+        )
+
+    def stream_replay(
+        self,
+        replay_id: str,
+        *,
+        env: Literal["prod", "dev"] = "prod",
+        retention_days: int | None = None,
+        max_files: int = 500,
+        re_sign_on_expiry: bool = True,
+        cdn_concurrency: int = 50,
+    ) -> Iterator[dict[str, Any]]:
+        """Yield raw rrweb events one at a time, batched-parallel under the hood.
+
+        Drives :meth:`ReplaysService.walk_cdn_async` via a private event
+        loop so callers consume from a normal sync iterator. The underlying
+        AsyncClient closes when the generator is exhausted or closed.
+
+        Args:
+            replay_id: The replay to stream.
+            env: ``"prod"`` (default) or ``"dev"``.
+            retention_days: 1, 7, 30, or 90. Auto-discovered when ``None``.
+            max_files: Hard upper bound on CDN file walk.
+            re_sign_on_expiry: When True (default), catches mid-walk 403s
+                indicating signature expiration and re-signs once
+                transparently. When False, propagates
+                :class:`SignedURLExpiredError`.
+            cdn_concurrency: Parallel batch size.
+
+        Yields:
+            Raw rrweb event dicts in timestamp order.
+
+        Raises:
+            ReplayNotFoundError: First CDN file returned 404.
+            SignedURLExpiredError: Re-sign retry exhausted or disabled.
+            SessionReplayAccessError: Sensitive-data flag set.
+        """
+        resolved_retention = self._resolve_retention(replay_id, retention_days)
+        signed = self._replays_service.sign([replay_id], env=env)[0]
+
+        loop = asyncio.new_event_loop()
+        gen = self._replays_service.walk_cdn_async(
+            signed,
+            retention_days=resolved_retention,
+            max_files=max_files,
+            concurrency=cdn_concurrency,
+            re_sign_on_expiry=re_sign_on_expiry,
+        )
+        try:
+            while True:
+                try:
+                    event = loop.run_until_complete(gen.__anext__())
+                except StopAsyncIteration:
+                    return
+                yield event
+        finally:
+            with contextlib.suppress(RuntimeError, StopAsyncIteration):
+                loop.run_until_complete(gen.aclose())
+            loop.close()
+
+    def replays_for_user(
+        self,
+        distinct_id: str,
+        *,
+        from_date: str,
+        to_date: str,
+        limit: int = 100,
+        include_mixpanel_events: bool = True,
+        event_properties: list[str] | None = None,
+    ) -> Any:
+        """Discovery + fetch in one call. Phase 1 placeholder.
+
+        Args:
+            distinct_id: Mixpanel user identifier.
+            from_date: ISO date (YYYY-MM-DD).
+            to_date: ISO date (YYYY-MM-DD).
+            limit: Maximum replays. Default 100.
+            include_mixpanel_events: Default True for this convenience method.
+            event_properties: Up to 5 properties for Mixpanel join.
+
+        Returns:
+            ``ReplayBundle`` once Phase 2 lands.
+
+        Raises:
+            NotImplementedError: Always — ``ReplayBundle`` ships in US2 (T062).
+        """
+        raise NotImplementedError(
+            "Workspace.replays_for_user ships in US2 (Phase 2); requires "
+            "ReplayBundle which lands in T059."
+        )
+
+    def _resolve_retention(self, replay_id: str, retention_days: int | None) -> int:
+        """Resolve a replay's retention window, discovering it when None.
+
+        Args:
+            replay_id: The replay to look up.
+            retention_days: Caller-provided value; pass-through when set.
+
+        Returns:
+            One of 1, 7, 30, or 90. Defaults to 30 when discovery returns
+            no summary (with the warning already emitted by
+            :meth:`ReplaysService.discover`).
+        """
+        if retention_days is not None:
+            return retention_days
+        summaries = self.list_replays(replay_ids=[replay_id])
+        if summaries:
+            return summaries[0].retention_days
+        return 30
