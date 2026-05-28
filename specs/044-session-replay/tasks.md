@@ -137,7 +137,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 
 - [ ] T043 [P] [US2] Add fixture files `tests/fixtures/rrweb/sample-replay-002.json` and `sample-replay-003.json`. (DEFERRED — sample-replay-001.json + synthetic action fixtures inside `tests/unit/test_us2_replay_bundle.py` cover the analyzer + aggregator paths for Phase 2.)
 - [ ] T044 [P] [US2] `tests/fixtures/rrweb/sample_bundle_fixture.py`. (DEFERRED — synthetic `_sample_bundle()` fixture inside `tests/unit/test_us2_replay_bundle.py` plays the same role for the bundle tests.)
-- [ ] T045 [P] [US2] Port upstream `test_rrweb_analyzer.py` from the analytics monorepo. (DEFERRED — the upstream source is not reachable from this repo; the in-repo Phase 2 analyzer is a from-scratch implementation against the rrweb-types spec and the sample-replay-001 fixture, with its own tests in `tests/unit/test_us2_replay_bundle.py::TestRrwebAnalyzer`. Re-port once the analytics monorepo path is accessible.)
+- [ ] T045 [P] [US2] Port the analyzer test suite. (N/A — the analyzer in this repo is now a fork that evolves on its own cadence rather than a vendored copy of an external source. Coverage lives in `tests/unit/test_us2_replay_bundle.py::TestRrwebAnalyzer` against the hand-built `sample-replay-001.json` fixture.)
 - [X] T046 [P] [US2] Label-fn behavior covered in `tests/unit/test_us2_replay_bundle.py::TestUrlNormalizer`, `TestDefaultLabelFn`, `TestSelectorLabelFn`.
 - [ ] T047 [P] [US2] PBT for label stability. (DEFERRED — the example-based tests in T046 already verify the documented invariants; PBT is a pre-merge nice-to-have.)
 - [X] T048 [P] [US2] Aggregator functions tested in `tests/unit/test_us2_replay_bundle.py::TestAggregatorFunctions` plus the bundle-method equivalents in `TestReplayBundleAggregations`.
@@ -150,7 +150,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 ### Implementation for User Story 2
 
 - [X] T054 [P] [US2] Created `src/mixpanel_headless/_internal/replays/__init__.py` plus the directory.
-- [X] T055 [US2] Created `src/mixpanel_headless/_internal/replays/rrweb_analyzer.py` (~360 LoC). NOTE: written from-scratch against the rrweb-types spec since the upstream `analytics/backend/replays/rrweb_analyzer.py` source is not reachable from this repo. Module docstring documents the provenance plus the next-upstream-diff date (2026-Q4). Pure stdlib. Public surface matches the spec: `RrwebAnalyzer.analyze(events) -> AnalyzerResult` with `actions / markdown_summary / pages / errors`.
+- [X] T055 [US2] Created `src/mixpanel_headless/_internal/replays/rrweb_analyzer.py`. Pure stdlib. Public surface matches the spec: `RrwebAnalyzer.analyze(events) -> AnalyzerResult` with `actions / markdown_summary / pages / errors`. Module is a fork — initial cut took its DOM tracker, debouncing thresholds, and console-plugin filtering from a similar internal analyzer, then evolved independently. No ongoing tracking relationship with any external source.
 - [X] T056 [US2] Modified `Workspace.fetch_replay` to call `RrwebAnalyzer.analyze(rrweb_events)` and populate `actions`. Replaced the Phase 1 `NotImplementedError` raises on `summary_markdown` / `errors` / `clicks_on` with real implementations that derive from the action stream.
 - [X] T057 [P] [US2] Created `src/mixpanel_headless/_internal/replays/labels.py` with `default_label_fn`, `selector_label_fn`, `url_normalizer`. Re-exported from `mixpanel_headless.__init__` and added to `__all__`.
 - [X] T058 [P] [US2] Created `src/mixpanel_headless/_internal/replays/aggregators.py` with the seven documented module-level functions (`top_paths`, `top_clicks`, `top_pages`, `dead_clicks`, `rage_clicks`, `long_pauses`, `error_sessions`).
@@ -224,7 +224,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T089 [P] Added `CHANGELOG.md` with entries for PRs 1, 2, and 3 under an `Unreleased — Session Replay (044, PRs 1–3)` heading. Documents every new public method, type, exception, CLI command, optional extra, and security invariant.
 - [ ] T090 [P] Add a versioning bump per PR. (DEFERRED — release decision, not implementation. Each PR's bump happens at merge time.)
 - [X] T091 [P] Verified `pyproject.toml` `[project.optional-dependencies]` includes `replay-mining`, `replay-ml`, and `replay-all` after T078.
-- [X] T092 Documented the quarterly-diff cadence in `_internal/replays/rrweb_analyzer.py`'s module docstring ("Next upstream diff due: 2026-Q4"). NOTE: The vendored-from-monorepo step is currently a from-scratch implementation since the upstream source isn't reachable from this repo; the quarterly diff becomes a real re-port once the monorepo path is accessible.
+- [X] T092 Reframed the analyzer as a fork (no ongoing tracking relationship). Module docstring documents the public-surface contract and the structured-action mapping. No re-diff cadence to maintain.
 - [X] T093 `CLAUDE.md`'s "Active Technologies" section already lists the session-replay row (added during `/speckit-plan`); the SPECKIT marker points at this plan.
 - [X] T094 Final security review: re-ran the `grep` audit for `Signature=` / `URLPrefix=` / `Expires=` against `src/`. Zero literal credential markers; `query_string` only appears in validation, masking, doc examples, and the documented escape-hatch `to_dict()`. CLI `mp replays sign` masks by default; `--reveal-signed-urls` emits the stderr warning on every invocation.
 
@@ -288,7 +288,7 @@ Task: "Add integration test file tests/integration/test_replays_live.py"  # T018
 Task: "Create tests/fixtures/rrweb/sample-replay-002.json"           # T043
 Task: "Create tests/fixtures/rrweb/sample-replay-003.json"           # T043 (continued)
 Task: "Create tests/fixtures/rrweb/sample_bundle_fixture.py"         # T044
-Task: "Port tests/unit/test_rrweb_analyzer.py from upstream"         # T045
+Task: "Add tests/unit/test_rrweb_analyzer.py"                        # T045
 Task: "Add tests/unit/test_replay_labels.py"                         # T046
 Task: "Add tests/pbt/test_replay_labels_pbt.py"                      # T047
 ```
@@ -329,7 +329,7 @@ With multiple developers per PR:
 - [Story] label maps task to user story for traceability.
 - Bearer-credential audit is non-negotiable: every PR runs the grep audit before merge.
 - Mutation score gate (80%) applies only to the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`). The workspace methods and CLI commands are coverage-gated (90%) but not mutation-gated.
-- The vendored analyzer (T055) is a one-time port. Subsequent upstream changes are picked up via the quarterly diff (T092), not automated sync.
+- The analyzer (T055) is a fork that evolves on its own cadence inside this repo. No external-source tracking.
 - `Workspace.cluster()` and `event_log()` pm4py path do NOT require US4 to ship — US2 lands them with the fallback path (DataFrame return, ImportError on cluster). US4 only wires the present-pm4py / present-tslearn upgrade paths.
 - Stop at any checkpoint (after T042, T073, T086) to validate a PR independently.
 - Avoid: cross-PR file conflicts (US2 modifies `Replay` from US1 — coordinate via T056 only after T020 has merged), same-file parallel work (e.g. `types.py` edits in T020 vs T059), bypassing tests-first (every implementation task lists the test task it MUST follow).

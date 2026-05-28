@@ -35,7 +35,7 @@ may include API changes.
 - Depends on the undocumented `/app/projects/<id>/replays/sign[/bulk]`
   endpoint — the same endpoint Mixpanel's own MCP server uses.
 
-### Added (PR 2 — Phase 2: vendored analyzer + ReplayBundle)
+### Added (PR 2 — Phase 2: analyzer + ReplayBundle)
 
 - `Workspace.fetch_replays(ids, …)` — parallel multi-replay fetch
   returning a `ReplayBundle`.
@@ -44,13 +44,13 @@ may include API changes.
   `include_mixpanel_events=True`.
 - `Workspace.analyze_replay(id)` — sugar for
   `fetch_replay(id).summary_markdown`.
-- `RrwebAnalyzer` (`_internal/replays/rrweb_analyzer.py`) — pragmatic
-  from-scratch rrweb event-stream analyzer producing normalized
-  `UserAction` records + markdown timeline. Handles click / input /
-  scroll / navigate / viewport_resize / console_error event families
-  plus a DOM tracker for human-readable target descriptions. Pure
-  stdlib; quarterly diff against the analytics-monorepo source noted
-  in the module docstring.
+- `RrwebAnalyzer` (`_internal/replays/rrweb_analyzer.py`) — rrweb
+  event-stream analyzer producing normalized `UserAction` records +
+  markdown timeline. Handles click / input / scroll / navigate /
+  select / console_error event families with per-source debouncing
+  (scroll / input / selection at 1s each), plus a DOM tracker with
+  ancestor traversal and descriptive-attrs extraction for
+  human-readable target descriptions. Pure stdlib.
 - `ReplayBundle` (`types.py`): seven DataFrame projections
   (`sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`,
   `elements_df`, `transitions_df`); two graph projections

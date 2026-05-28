@@ -607,11 +607,14 @@ class ReplaysService:
     ) -> dict[str, list[ReplayEvent]]:
         """Mixpanel events for a list of replays in one round-trip.
 
-        Issues one Insights query filtered on ``$mp_replay_id IN replay_ids``
-        and grouped on ``$mp_replay_id`` plus any caller-supplied
-        ``event_properties``. The caller (typically
-        :meth:`Workspace.events_for_replay`) already validated
-        ``len(event_properties) <= 5``.
+        Mirrors the upstream
+        ``analytics/backend/replays/query_utils.py::build_replay_events_request``:
+        queries the ``$all_events`` wildcard grouped on ``$time`` /
+        ``$event_name`` / ``$mp_replay_id`` (+ any caller-supplied
+        ``event_properties``), filters on ``$mp_replay_id IN replay_ids``,
+        and excludes the ``$mp_session_record`` event itself (per the
+        contract — these are events that happened DURING the replay
+        window, not the recording event).
 
         Args:
             replay_ids: Replays to look up events for. May be empty.
@@ -619,7 +622,7 @@ class ReplaysService:
                 group keys.
 
         Returns:
-            Dict mapping replay_id → ordered :class:`ReplayEvent` list.
+            Dict mapping replay_id → time-sorted :class:`ReplayEvent` list.
             Replays with no events are omitted.
 
         Raises:
@@ -633,13 +636,23 @@ class ReplaysService:
         if not replay_ids:
             return {}
 
-        group_by: list[str] = ["$mp_replay_id"]
+        # Group on time + event_name + replay_id (+ any caller extras) so
+        # the result has one row per event per replay. Matches upstream's
+        # REPLAY_EVENT_BASE_GROUPS.
+        group_by: list[str] = ["$time", "$event_name", "$mp_replay_id"]
         if event_properties:
             group_by.extend(event_properties)
 
-        where = Filter.equals("$mp_replay_id", list(replay_ids))
+        # Two filters: limit to the requested replays AND exclude the
+        # recording event itself. Without the exclusion, every replay's
+        # event list would have an N-second-resolution duplicate of the
+        # recording-start event.
+        where = [
+            Filter.equals("$mp_replay_id", list(replay_ids)),
+            Filter.not_equals("$event_name", "$mp_session_record"),
+        ]
         result = self._query_fn(
-            "$mp_session_record",
+            "$all_events",
             group_by=group_by,
             where=where,
             mode="table",
@@ -652,7 +665,11 @@ class ReplaysService:
 
         rid_col = _pick_column(df, "$mp_replay_id")
         time_col = _pick_column(df, "$time") or _pick_column(df, "datetime")
-        name_col = _pick_column(df, "event") or _pick_column(df, "$event")
+        name_col = (
+            _pick_column(df, "$event_name")
+            or _pick_column(df, "event")
+            or _pick_column(df, "$event")
+        )
 
         if rid_col is None:
             return out
@@ -667,9 +684,7 @@ class ReplaysService:
             )
             if event_time <= 0:
                 continue
-            event_name = (
-                str(row[name_col]) if name_col is not None else "$mp_session_record"
-            )
+            event_name = str(row[name_col]) if name_col is not None else "(unknown)"
             properties: dict[str, Any] | None = None
             if event_properties:
                 properties = {
@@ -683,6 +698,10 @@ class ReplaysService:
                     properties=properties,
                 )
             )
+
+        # Match upstream's deterministic time-ordered output per replay.
+        for replay_id_str in out:
+            out[replay_id_str].sort(key=lambda e: e.event_time)
 
         return out
 

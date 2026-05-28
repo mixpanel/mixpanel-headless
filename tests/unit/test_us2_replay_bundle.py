@@ -182,9 +182,10 @@ class TestRrwebAnalyzer:
         inputs = [a for a in result.actions if a.action == "input"]
         assert len(inputs) == 2
 
-        # markdown_summary is non-empty.
+        # markdown_summary is non-empty; format is one "{timestamp_seconds}: {description}"
+        # line per action.
         assert result.markdown_summary
-        assert "Timeline" in result.markdown_summary
+        assert "Navigated to https://app.example.com/login" in result.markdown_summary
 
     def test_empty_input_returns_empty_result(self) -> None:
         """Empty event stream → empty result, no crash."""

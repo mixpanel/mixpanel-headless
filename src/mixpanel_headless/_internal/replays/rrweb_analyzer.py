@@ -1,71 +1,103 @@
-"""Pragmatic rrweb event-stream analyzer (044-session-replay, US2/T055).
+"""rrweb event-stream analyzer (044-session-replay, US2/T055).
 
-Walks the raw rrweb event stream and emits normalized :class:`UserAction`
-records plus a markdown timeline. Pure stdlib — no third-party deps —
-so it works in every environment ``mixpanel-headless`` already supports.
+Walks the raw rrweb event stream, maintains DOM state, and emits two
+parallel outputs from a single pass:
 
-**Source provenance**: the spec calls for a one-time port of
-``analytics/backend/replays/rrweb_analyzer.py`` from Mixpanel's
-analytics monorepo. That source is not accessible from this repo, so
-this file is a from-scratch implementation against the rrweb-types
-event spec and the documented Phase 1 fixture
-(``tests/fixtures/rrweb/sample-replay-001.json``). The public surface
-(``RrwebAnalyzer.analyze``, the ``AnalyzerResult`` dataclass) matches
-what Phase 2 callers — :class:`Workspace.fetch_replay`,
-:class:`ReplayBundle` aggregations — expect.
+- a list of :class:`mixpanel_headless.types.UserAction` records (the
+  structured surface that :class:`ReplayBundle` aggregations consume), and
+- a plain-text markdown timeline (``{timestamp_seconds}: {description}``
+  per line) for stdout / LLM consumption.
 
-**Coverage** (Phase 2 baseline):
+This module is a fork. The initial cut took its DOM tracker, debouncing
+thresholds, mouse-interaction naming, and console-plugin event detection
+from a similar analyzer used internally inside Mixpanel; from this point
+on it lives entirely in this repo and evolves on its own cadence. The
+public surface here is wider than the initial source: :class:`AnalyzerResult`
+exposes both the structured action list and the markdown string so
+:class:`Workspace.fetch_replay` and :class:`ReplayBundle` can lean on
+schema-stable activity labels.
 
-- Type 4 (Meta) → ``navigate`` action; updates active URL
-- Type 3 source 2 type 2 (MouseInteraction Click) → ``click`` action
-- Type 3 source 5 (Input) → ``input`` action with ``text_length``
-- Type 3 source 3 (Scroll) → ``scroll`` action
-- Type 3 source 4 (ViewportResize) → ``viewport_resize`` action
-- Type 3 source 11 + ``level: "error"`` (Log plugin) → ``console_error``
-- Type 2 (FullSnapshot) / Type 3 source 0 (Mutation) → updates the
-  DOM tracker; no action emitted
+The structured-action mapping from internal interactions to public
+``UserAction.action`` literals:
 
-A "DOM tracker" walks ``FullSnapshot`` nodes plus IncrementalSnapshot
-Mutation events so the analyzer can produce human-readable target
-descriptions (``button "Sign in"``, ``input[type=email]``) instead of
-bare node IDs.
-
-**Next upstream diff due**: 2026-Q4. Re-diff this file against
-``analytics/backend/replays/rrweb_analyzer.py`` once that path becomes
-reachable and pick up any new IncrementalSource handlers / dead-click
-heuristics that ship upstream in the interim.
+- ``Navigated to {url}`` → ``navigate``
+- ``Clicked {desc}`` / ``Double-clicked`` / ``Right-clicked`` → ``click``
+- ``Focused {desc}`` → ``click`` (with ``metadata["interaction"]="focus"``)
+- ``Tapped {desc}`` → ``touch_start``
+- ``Scrolled`` → ``scroll``
+- ``Set {desc} to {state}`` / ``Entered ... in {desc}`` / ``Modified
+  {desc}`` → ``input``
+- ``Selected '{text}'`` / ``Selected text`` → ``select``
+- ``Console error: {msg}`` → ``console_error``
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+from enum import IntEnum
+from typing import Any, cast
+from urllib.parse import urlparse
 
 from mixpanel_headless.types import UserAction
 
-# rrweb event discriminators reused throughout.
-_TYPE_FULL_SNAPSHOT = 2
-_TYPE_INCREMENTAL_SNAPSHOT = 3
-_TYPE_META = 4
+log = logging.getLogger(__name__)
 
-_SOURCE_MUTATION = 0
-_SOURCE_MOUSE_INTERACTION = 2
-_SOURCE_SCROLL = 3
-_SOURCE_VIEWPORT_RESIZE = 4
-_SOURCE_INPUT = 5
-_SOURCE_LOG = 11
 
-_MOUSE_TYPE_CLICK = 2
+# =============================================================================
+# rrweb event-shape enums
+# =============================================================================
 
-# Default truncation for description strings so we never balloon a
-# bundle DataFrame with multi-kilobyte cells.
-_DESC_TRUNCATE = 80
+
+class EventType(IntEnum):
+    """RRWeb event types."""
+
+    FULL_SNAPSHOT = 2
+    INCREMENTAL_SNAPSHOT = 3
+    META = 4
+    PLUGIN = 6
+
+
+class IncrementalSource(IntEnum):
+    """RRWeb IncrementalSnapshot.data.source discriminators we handle."""
+
+    MUTATION = 0
+    MOUSE_INTERACTION = 2
+    SCROLL = 3
+    INPUT = 5
+    SELECTION = 14
+
+
+class MouseInteractionType(IntEnum):
+    """MouseInteraction.data.type values we emit actions for."""
+
+    CLICK = 2
+    CONTEXT_MENU = 3
+    DBL_CLICK = 4
+    FOCUS = 5
+    TOUCH_START = 7
+
+
+class NodeType(IntEnum):
+    """rrweb DOM node types."""
+
+    ELEMENT = 2
+    TEXT = 3
+
+
+# =============================================================================
+# Public result types
+# =============================================================================
 
 
 @dataclass(frozen=True)
 class PageVisit:
-    """A single page navigation extracted from Meta events."""
+    """A single page navigation extracted from Meta events.
+
+    Attributes:
+        timestamp: Unix ms timestamp of the Meta event.
+        url: The navigated-to URL.
+    """
 
     timestamp: int
     url: str
@@ -73,11 +105,17 @@ class PageVisit:
 
 @dataclass(frozen=True)
 class ConsoleError:
-    """A console-error log entry extracted from rrweb's Log plugin events."""
+    """A console-error log entry extracted from the rrweb console plugin.
+
+    Attributes:
+        timestamp: Unix ms timestamp.
+        message: Joined message text.
+        url: Active page URL at the time of the error (None if unknown).
+    """
 
     timestamp: int
     message: str
-    url: str | None
+    url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,8 +123,10 @@ class AnalyzerResult:
     """The full bundle returned by :meth:`RrwebAnalyzer.analyze`.
 
     Attributes:
-        actions: Normalized :class:`UserAction` records in timestamp order.
-        markdown_summary: Human-readable markdown timeline of the session.
+        actions: Structured :class:`UserAction` records in timestamp order;
+            consumed by :class:`ReplayBundle` aggregations.
+        markdown_summary: Plain-text markdown timeline
+            (``{timestamp_seconds}: {description}`` per line).
         pages: Each Meta navigation as a :class:`PageVisit`.
         errors: Console errors emitted during the session.
     """
@@ -97,109 +137,643 @@ class AnalyzerResult:
     errors: list[ConsoleError] = field(default_factory=list)
 
 
-class _DomTracker:
-    """Maintain a node_id → element-info map across rrweb mutations.
+# =============================================================================
+# DOMTracker
+# =============================================================================
 
-    rrweb nests its DOM snapshots arbitrarily deep. The tracker walks
-    each ``FullSnapshot.data.node`` recursively, and applies
-    ``Mutation.adds`` to extend the map. ``Mutation.removes`` and
-    ``Mutation.attributes`` are deliberately NOT modeled — for label
-    purposes the tracker only needs the element's tag + attributes at
-    interaction time, which the initial snapshot + adds cover for the
-    vast majority of clicks.
+
+class DOMTracker:
+    """Lightweight DOM state tracker.
+
+    Tracks all nodes with metadata needed for user-action descriptions.
+    Walks ``FullSnapshot`` roots, applies ``Mutation.adds`` / removes /
+    text-changes / attribute-changes, and exposes
+    :meth:`get_node_description` for human-readable element labels.
     """
 
+    INTERACTIVE_TAGS = {
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+        "form",
+        "video",
+        "audio",
+        "svg",
+        "img",
+        "canvas",
+    }
+
+    DESCRIPTIVE_ATTRS = [
+        "aria-label",
+        "title",
+        "alt",
+        "placeholder",
+        "href",
+        "id",
+        "type",
+    ]
+
+    MAX_ANCESTOR_DEPTH = 3
+    MAX_NODES = 50000
+
     def __init__(self) -> None:
-        """Initialize an empty node map."""
-        self._nodes: dict[int, dict[str, Any]] = {}
+        """Initialize an empty node map + description cache."""
+        self.nodes: dict[int, dict[str, Any]] = {}
+        self._description_cache: dict[int, str] = {}
+        self.reached_max_nodes = False
 
-    def ingest_snapshot(self, node: Any) -> None:
-        """Recursively walk a FullSnapshot's root node, recording each element."""
-        self._walk(node)
+    @staticmethod
+    def _sanitize_value(value: Any) -> Any:
+        """Strip / drop trivially uninformative string values (empty, 'none')."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped or stripped.lower() == "none":
+                return ""
+            return stripped
+        return value
 
-    def ingest_adds(self, adds: list[dict[str, Any]] | None) -> None:
-        """Apply ``Mutation.adds`` so freshly inserted nodes are findable."""
-        if not adds:
-            return
-        for add in adds:
-            node = add.get("node")
-            if node is not None:
-                self._walk(node)
-
-    def describe(self, node_id: int | None) -> str:
-        """Produce a human-readable description of the node, if known.
-
-        Examples:
-        - ``button "Sign in"`` for ``<button>Sign in</button>``
-        - ``input[type=email]`` for an email input
-        - ``div#main`` for a node with an id attribute
-        - ``a "Edit profile"`` for ``<a>Edit profile</a>``
+    def add_node(self, node: dict[str, Any], parent_id: int | None = None) -> None:
+        """Walk a FullSnapshot / mutation-add root and record element nodes.
 
         Args:
-            node_id: rrweb node identifier; ``None`` returns the
-                ``(unknown)`` placeholder.
+            node: The rrweb node dict to ingest.
+            parent_id: Optional parent rrweb node id for ancestor traversal.
+        """
+        queue: list[tuple[dict[str, Any], int | None]] = [(node, parent_id)]
+
+        while queue:
+            current_node, current_parent_id = queue.pop(0)
+
+            node_id = current_node.get("id")
+            if not node_id:
+                continue
+
+            if (
+                node_id not in self.nodes
+                and len(self.nodes) >= self.MAX_NODES
+                and not self.reached_max_nodes
+            ):
+                log.warning("DOMTracker reached maximum node limit; skipping new nodes")
+                self.reached_max_nodes = True
+                continue
+
+            node_type = current_node.get("type")
+
+            self.nodes[node_id] = {
+                "type": node_type,
+                "parent_id": current_parent_id,
+            }
+
+            if node_type == NodeType.ELEMENT:
+                tag_name = current_node.get("tagName", "").lower()
+                attributes = current_node.get("attributes", {})
+                self.nodes[node_id]["tag"] = tag_name
+                sanitized_attrs = {
+                    k: v for k, v in attributes.items() if self._sanitize_value(v)
+                }
+                descriptive_attrs = {
+                    attr: sanitized_attrs[attr]
+                    for attr in self.DESCRIPTIVE_ATTRS
+                    if attr in sanitized_attrs
+                }
+
+                if descriptive_attrs:
+                    self.nodes[node_id]["attributes"] = descriptive_attrs
+
+                if tag_name in self.INTERACTIVE_TAGS:
+                    self.nodes[node_id]["text"] = self._extract_text(current_node)
+
+            elif node_type == NodeType.TEXT:
+                text_content = self._sanitize_value(current_node.get("textContent", ""))
+                if text_content:
+                    self.nodes[node_id]["text"] = text_content
+                    if (
+                        current_parent_id
+                        and current_parent_id in self.nodes
+                        and "text" in self.nodes[current_parent_id]
+                    ):
+                        self.nodes[current_parent_id]["text"] = text_content
+
+            for child in current_node.get("childNodes", []):
+                queue.append((child, node_id))
+
+    def _extract_text(self, node: dict[str, Any]) -> str:
+        """Concatenate direct text-child content for an interactive element."""
+        texts: list[str] = []
+        for child in node.get("childNodes", []):
+            if child.get("type") == NodeType.TEXT:
+                text = self._sanitize_value(child.get("textContent", ""))
+                if text:
+                    texts.append(text)
+        return " ".join(texts)
+
+    def remove_node(self, node_id: int) -> None:
+        """Drop a node + its cached description (mutation remove)."""
+        self.nodes.pop(node_id, None)
+        self._description_cache.pop(node_id, None)
+
+    def update_text(self, node_id: int, text: str) -> None:
+        """Update the text of a node + its interactive ancestor, if any."""
+        sanitized_text = self._sanitize_value(text)
+        if node_id in self.nodes:
+            if sanitized_text:
+                self.nodes[node_id]["text"] = sanitized_text
+            else:
+                self.nodes[node_id].pop("text", None)
+            self._description_cache.pop(node_id, None)
+
+        parent_id = self.nodes.get(node_id, {}).get("parent_id")
+        if parent_id and parent_id in self.nodes and "text" in self.nodes[parent_id]:
+            if sanitized_text:
+                self.nodes[parent_id]["text"] = sanitized_text
+            else:
+                self.nodes[parent_id].pop("text", None)
+            self._description_cache.pop(parent_id, None)
+
+    def update_attributes(self, node_id: int, attributes: dict[str, Any]) -> None:
+        """Merge new descriptive attributes onto an existing node."""
+        sanitized_attrs = {
+            k: v for k, v in attributes.items() if self._sanitize_value(v)
+        }
+        descriptive_attrs = {
+            attr: sanitized_attrs[attr]
+            for attr in self.DESCRIPTIVE_ATTRS
+            if attr in sanitized_attrs
+        }
+        if node_id in self.nodes:
+            if "attributes" not in self.nodes[node_id]:
+                self.nodes[node_id]["attributes"] = {}
+            self.nodes[node_id]["attributes"].update(descriptive_attrs)
+            self._description_cache.pop(node_id, None)
+
+    def get_node_description(self, node_id: int) -> str:
+        """Best-effort human-readable description of a node.
+
+        Returns a description built from the node's own tag / attributes /
+        text, falling back to ancestor context, then to the literal
+        ``"element"`` sentinel.
+        """
+        if node_id in self._description_cache:
+            return self._description_cache[node_id]
+
+        direct_desc = self._build_node_description(node_id)
+        if direct_desc:
+            self._description_cache[node_id] = direct_desc
+            return direct_desc
+
+        ancestor_desc = self._get_ancestor_context(node_id)
+        if ancestor_desc:
+            self._description_cache[node_id] = ancestor_desc
+            return ancestor_desc
+
+        fallback = "element"
+        self._description_cache[node_id] = fallback
+        return fallback
+
+    def _build_node_description(self, node_id: int) -> str | None:
+        """Build a description from the node's own metadata, if any.
 
         Returns:
-            Best-effort element description. Always non-empty.
+            The description string, or None when the node carries no
+            meaningful descriptive info (caller falls back to ancestor
+            traversal).
         """
-        if node_id is None or node_id not in self._nodes:
-            return "(unknown)"
-        info = self._nodes[node_id]
-        tag = str(info.get("tagName", "")).lower() or "(unknown)"
-        attrs = info.get("attributes") or {}
-        text = info.get("text")
+        if node_id not in self.nodes:
+            return None
 
-        if tag in {"button", "a"} and text:
-            return f'{tag} "{text[:_DESC_TRUNCATE]}"'
-        if tag == "input":
-            input_type = attrs.get("type") or "text"
-            return f"input[type={input_type}]"
-        if tag in {"textarea", "select"}:
-            return tag
-        if "id" in attrs and attrs["id"]:
-            return f"{tag}#{attrs['id']}"
-        if "data-testid" in attrs and attrs["data-testid"]:
-            return f"{tag}[data-testid={attrs['data-testid']}]"
-        if text:
-            return f'{tag} "{text[:_DESC_TRUNCATE]}"'
-        return tag
+        node_data = self.nodes[node_id]
+        tag = node_data.get("tag", "element")
+        attrs = node_data.get("attributes", {})
+        text = node_data.get("text", "")
+        parts: list[str] = [tag]
+        has_meaningful_info = False
 
-    def attrs(self, node_id: int | None) -> dict[str, Any]:
-        """Return the attribute dict for the node, or empty when unknown."""
-        if node_id is None or node_id not in self._nodes:
-            return {}
-        attrs = self._nodes[node_id].get("attributes") or {}
-        return dict(attrs)
+        if attrs.get("aria-label") is not None:
+            parts.append(f'"{attrs["aria-label"]}"')
+            has_meaningful_info = True
+        elif attrs.get("title") is not None:
+            parts.append(f'"{attrs["title"]}"')
+            has_meaningful_info = True
+        elif attrs.get("alt") is not None:
+            parts.append(f'alt="{attrs["alt"]}"')
+            has_meaningful_info = True
+        elif text:
+            parts.append(f'"{text}"')
+            has_meaningful_info = True
+        elif attrs.get("placeholder") is not None:
+            parts.append(f'placeholder="{attrs["placeholder"]}"')
+            has_meaningful_info = True
 
-    def _walk(self, node: Any) -> None:
-        """Recursively record element nodes plus their first child text."""
-        if not isinstance(node, dict):
+        if attrs.get("href") is not None and tag == "a":
+            href = attrs["href"]
+            if href.startswith("http"):
+                try:
+                    parsed = urlparse(href)
+                    path = parsed.path
+                    if path and path != "/":
+                        parts.append(f"to {path}")
+                        has_meaningful_info = True
+                except Exception:  # noqa: BLE001 — defensively swallow URL parse failures
+                    pass
+
+        if attrs.get("id") is not None and not has_meaningful_info:
+            parts.append(f"#{attrs['id']}")
+            has_meaningful_info = True
+
+        if tag == "input" and attrs.get("type") is not None:
+            parts.append(f"type={attrs['type']}")
+            has_meaningful_info = True
+
+        if has_meaningful_info:
+            return " ".join(parts)
+        return None
+
+    def _get_ancestor_context(self, node_id: int) -> str | None:
+        """Walk up to :data:`MAX_ANCESTOR_DEPTH` parents for descriptive context.
+
+        Returns:
+            ``"{tag} in {parent_description}"`` when a describable ancestor
+            is reachable; None otherwise.
+        """
+        if node_id not in self.nodes:
+            return None
+
+        node_data = self.nodes[node_id]
+        tag = node_data.get("tag", "element")
+
+        parent_id = node_data.get("parent_id")
+        depth = 0
+        visited: set[int] = set()
+
+        while parent_id and depth < self.MAX_ANCESTOR_DEPTH:
+            if parent_id in visited:
+                break
+            visited.add(parent_id)
+
+            parent_desc = self._description_cache.get(
+                parent_id
+            ) or self._build_node_description(parent_id)
+            if parent_desc:
+                return f"{tag} in {parent_desc}"
+
+            if parent_id in self.nodes:
+                parent_id = self.nodes[parent_id].get("parent_id")
+                depth += 1
+            else:
+                break
+
+        return None
+
+
+# =============================================================================
+# EventAnalyzer — emits structured public UserAction + description lines
+# =============================================================================
+
+
+# Maps MouseInteractionType to a human-readable verb used in description strings.
+_MOUSE_INTERACTION_NAMES: dict[int, str] = {
+    int(MouseInteractionType.CLICK): "clicked",
+    int(MouseInteractionType.DBL_CLICK): "double-clicked",
+    int(MouseInteractionType.CONTEXT_MENU): "right-clicked",
+    int(MouseInteractionType.FOCUS): "focused",
+    int(MouseInteractionType.TOUCH_START): "tapped",
+}
+
+# Maps the human-readable verb to the public UserAction.action literal.
+# All click-family interactions collapse to "click" so ReplayBundle
+# aggregations (top_clicks, dead_clicks, rage_clicks) work uniformly;
+# the original interaction is preserved in metadata["interaction"].
+_INTERACTION_TO_ACTION: dict[str, str] = {
+    "clicked": "click",
+    "double-clicked": "click",
+    "right-clicked": "click",
+    "focused": "click",
+    "tapped": "touch_start",
+}
+
+
+class EventAnalyzer:
+    """Single-pass rrweb event walker emitting structured + textual actions.
+
+    Applies per-source debouncing (scroll / input / selection at 1s each)
+    and plugin-event filtering for ``rrweb/console@*`` console errors.
+    Emits the public :class:`mixpanel_headless.types.UserAction` so
+    downstream aggregations keep their schema-stable action literals.
+    """
+
+    SCROLL_DEBOUNCE_MS = 1000
+    SELECTION_DEBOUNCE_MS = 1000
+    INPUT_DEBOUNCE_MS = 1000
+
+    def __init__(self, dom_tracker: DOMTracker | None = None) -> None:
+        """Initialize the analyzer with an optional pre-seeded DOM tracker."""
+        self.dom_tracker = dom_tracker or DOMTracker()
+        self.user_actions: list[UserAction] = []
+        # Parallel list of (timestamp_ms, description) pairs for the markdown
+        # reporter — kept distinct from user_actions so we render the
+        # `{ts}: {desc}` line format directly instead of reverse-engineering
+        # it from the structured UserAction objects.
+        self.descriptions: list[tuple[int, str]] = []
+        self.pages: list[PageVisit] = []
+        self.errors: list[ConsoleError] = []
+        self.current_url: str | None = None
+        self.last_scroll_time = 0
+        self.last_selection_time = 0
+        self.last_input_time: dict[int, int] = {}
+
+    def _emit(
+        self,
+        timestamp: int,
+        action: str,
+        description: str,
+        *,
+        target_node_id: int | None = None,
+        target_desc: str | None = None,
+        url: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Append both a structured UserAction and a (timestamp, description) line.
+
+        Args:
+            timestamp: Unix ms.
+            action: One of the public ``UserAction.action`` literal values.
+            description: Human-readable description text for the markdown line.
+            target_node_id: rrweb node id, if applicable.
+            target_desc: Human-readable element label (defaults to the
+                description when not provided).
+            url: Active page URL.
+            metadata: Action-specific extras.
+        """
+        self.descriptions.append((timestamp, description))
+        self.user_actions.append(
+            UserAction(
+                timestamp=timestamp,
+                action=cast(Any, action),
+                target_node_id=target_node_id,
+                target_desc=target_desc or description,
+                url=url if url is not None else self.current_url,
+                metadata=metadata or {},
+            )
+        )
+
+    def process_event(self, event: dict[str, Any]) -> None:
+        """Dispatch a single rrweb event to its type-specific handler."""
+        event_type = event.get("type")
+        timestamp = int(event.get("timestamp", 0))
+        raw_data = event.get("data")
+        data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+
+        if event_type == EventType.META:
+            self._process_meta(timestamp, data)
+        elif event_type == EventType.FULL_SNAPSHOT:
+            self._process_full_snapshot(timestamp, data)
+        elif event_type == EventType.INCREMENTAL_SNAPSHOT:
+            self._process_incremental_snapshot(timestamp, data)
+        elif event_type == EventType.PLUGIN:
+            self._process_plugin_event(timestamp, data)
+
+    def _process_meta(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Handle navigations (Meta events): update current URL + emit action."""
+        url = data.get("href")
+        if url:
+            self.current_url = url
+            self.pages.append(PageVisit(timestamp=timestamp, url=url))
+            self._emit(
+                timestamp,
+                "navigate",
+                f"Navigated to {url}",
+                url=url,
+                metadata={"url": url},
+            )
+
+    def _process_full_snapshot(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Ingest a FullSnapshot root into the DOM tracker; emit no action."""
+        _ = timestamp
+        node = data.get("node")
+        if node:
+            self.dom_tracker.add_node(node)
+
+    def _process_incremental_snapshot(
+        self, timestamp: int, data: dict[str, Any]
+    ) -> None:
+        """Route incremental snapshots by their `data.source` discriminator."""
+        source = data.get("source")
+        if source == IncrementalSource.MUTATION:
+            self._process_mutation(timestamp, data)
+        elif source == IncrementalSource.MOUSE_INTERACTION:
+            self._process_mouse_interaction(timestamp, data)
+        elif source == IncrementalSource.SCROLL:
+            self._process_scroll(timestamp, data)
+        elif source == IncrementalSource.INPUT:
+            self._process_input(timestamp, data)
+        elif source == IncrementalSource.SELECTION:
+            self._process_selection(timestamp, data)
+
+    def _process_mutation(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Apply Mutation adds / removes / texts / attributes to the DOM tracker."""
+        _ = timestamp
+        for add in data.get("adds", []) or []:
+            node = add.get("node")
+            parent_id = add.get("parentId")
+            if node:
+                self.dom_tracker.add_node(node, parent_id)
+        for remove in data.get("removes", []) or []:
+            node_id = remove.get("id")
+            if node_id:
+                self.dom_tracker.remove_node(node_id)
+        for text_change in data.get("texts", []) or []:
+            node_id = text_change.get("id")
+            value = text_change.get("value")
+            if node_id and value:
+                self.dom_tracker.update_text(node_id, value)
+        for attr_change in data.get("attributes", []) or []:
+            node_id = attr_change.get("id")
+            attributes = attr_change.get("attributes")
+            if node_id and attributes:
+                self.dom_tracker.update_attributes(node_id, attributes)
+
+    def _process_mouse_interaction(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Emit click-family / focus / touch-start actions for interactions."""
+        interaction_type = data.get("type")
+        node_id = data.get("id")
+
+        if not isinstance(interaction_type, int):
             return
-        node_id = node.get("id")
-        # rrweb node types: 0=Document, 1=DocumentType, 2=Element, 3=Text, 4=CDATA, 5=Comment.
-        if node.get("type") == 2 and isinstance(node_id, int):
-            info: dict[str, Any] = {
-                "tagName": node.get("tagName", ""),
-                "attributes": dict(node.get("attributes", {})),
-            }
-            # Pull the first text-child as the element's "text" so
-            # describe() can produce 'button "Sign in"'-style labels.
-            for child in node.get("childNodes", []) or []:
-                if isinstance(child, dict) and child.get("type") == 3:
-                    text = child.get("textContent")
-                    if isinstance(text, str) and text.strip():
-                        info["text"] = text.strip()
-                        break
-            self._nodes[node_id] = info
-        for child in node.get("childNodes", []) or []:
-            self._walk(child)
+        verb = _MOUSE_INTERACTION_NAMES.get(interaction_type)
+        if not verb:
+            return
+
+        node_desc = (
+            self.dom_tracker.get_node_description(node_id)
+            if node_id
+            else "unknown element"
+        )
+        if node_desc == "unknown element":
+            return
+
+        action_literal = _INTERACTION_TO_ACTION.get(verb, "click")
+        self._emit(
+            timestamp,
+            action_literal,
+            f"{verb.capitalize()} {node_desc}",
+            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_desc=node_desc,
+            metadata={"interaction": verb},
+        )
+
+    def _process_scroll(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Emit a debounced scroll action (one per :data:`SCROLL_DEBOUNCE_MS`)."""
+        _ = data
+        if timestamp - self.last_scroll_time > self.SCROLL_DEBOUNCE_MS:
+            self._emit(timestamp, "scroll", "Scrolled", target_desc="(viewport)")
+        self.last_scroll_time = timestamp
+
+    def _process_input(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Emit a debounced input action (per-node, :data:`INPUT_DEBOUNCE_MS`)."""
+        node_id = data.get("id")
+        text = data.get("text", "")
+        is_checked = data.get("isChecked")
+
+        if node_id:
+            last_time = self.last_input_time.get(node_id, 0)
+            if timestamp - last_time <= self.INPUT_DEBOUNCE_MS:
+                return
+            self.last_input_time[node_id] = timestamp
+
+        node_desc = (
+            self.dom_tracker.get_node_description(node_id) if node_id else "input"
+        )
+
+        if is_checked is not None:
+            state = "checked" if is_checked else "unchecked"
+            description = f"Set {node_desc} to {state}"
+        elif text:
+            description = f"Entered '{text}' in {node_desc}"
+        else:
+            description = f"Modified {node_desc}"
+
+        self._emit(
+            timestamp,
+            "input",
+            description,
+            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_desc=node_desc,
+            metadata={
+                "text_length": len(text) if isinstance(text, str) else 0,
+                "is_checked": is_checked,
+            },
+        )
+
+    def _process_selection(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Emit a debounced text-selection action when the user selects text."""
+        ranges = data.get("ranges", [])
+        if not ranges:
+            return
+
+        if timestamp - self.last_selection_time > self.SELECTION_DEBOUNCE_MS:
+            selected_texts: list[str] = []
+
+            for range_data in ranges:
+                start_node_id = range_data.get("start")
+                end_node_id = range_data.get("end")
+                start_offset = range_data.get("startOffset", 0)
+                end_offset = range_data.get("endOffset", 0)
+
+                if (
+                    start_node_id == end_node_id
+                    and start_node_id
+                    and start_node_id in self.dom_tracker.nodes
+                ):
+                    node_data = self.dom_tracker.nodes[start_node_id]
+                    if "text" in node_data:
+                        text_content = node_data["text"]
+                        text = text_content[start_offset:end_offset].strip()
+                        if text:
+                            selected_texts.append(text)
+
+            if selected_texts:
+                combined = " ... ".join(selected_texts)
+                description = f"Selected '{combined}'"
+            else:
+                description = "Selected text"
+
+            self._emit(
+                timestamp,
+                "select",
+                description,
+                target_desc="(selection)",
+                metadata={"range_count": len(ranges)},
+            )
+        self.last_selection_time = timestamp
+
+    def _process_plugin_event(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Emit console_error actions for `rrweb/console@*` plugin payloads."""
+        plugin = data.get("plugin", "")
+        if not plugin.startswith("rrweb/console@"):
+            return
+
+        payload = data.get("payload", {})
+        level = payload.get("level", "")
+        if level != "error":
+            return
+
+        messages = payload.get("payload", [])
+        if not messages:
+            return
+
+        message = " ".join(str(m).strip('"') for m in messages)
+        if not message:
+            return
+
+        self.errors.append(
+            ConsoleError(timestamp=timestamp, message=message, url=self.current_url)
+        )
+        self._emit(
+            timestamp,
+            "console_error",
+            f"Console error: {message}",
+            target_desc=message,
+            metadata={"message": message},
+        )
+
+
+# =============================================================================
+# Markdown reporter
+# =============================================================================
+
+
+class MarkdownReporter:
+    """Render ``{ts_seconds}: {description}`` lines from a description list."""
+
+    def __init__(self, descriptions: list[tuple[int, str]]) -> None:
+        """Initialize with parallel (timestamp_ms, description) pairs."""
+        self.descriptions = descriptions
+
+    def generate(self) -> str:
+        """Produce the markdown string.
+
+        Returns:
+            ``"No user actions recorded."`` for an empty list; otherwise
+            one line per (timestamp, description) pair in input order.
+        """
+        if not self.descriptions:
+            return "No user actions recorded."
+        return "\n".join(f"{ts // 1000}: {desc}" for ts, desc in self.descriptions)
+
+
+# =============================================================================
+# Public entry point
+# =============================================================================
 
 
 class RrwebAnalyzer:
-    """Convert a raw rrweb event stream into normalized actions + summary.
+    """Convert a raw rrweb event stream into normalized actions + markdown.
 
-    The analyzer is stateless across calls — each :meth:`analyze` call
-    constructs its own DOM tracker. Inputs are not mutated.
+    Stateless across calls: each :meth:`analyze` invocation constructs its
+    own :class:`DOMTracker` + :class:`EventAnalyzer`. Inputs are not
+    mutated; events are sorted by timestamp before processing.
 
     Example:
         ```python
@@ -215,217 +789,80 @@ class RrwebAnalyzer:
         """Walk ``events`` once and produce the :class:`AnalyzerResult`.
 
         Args:
-            events: A timestamp-sorted list of raw rrweb event dicts (or
-                any order — the analyzer sorts a shallow copy before
-                walking).
+            events: Raw rrweb event dicts. Order doesn't matter — the
+                analyzer sorts a shallow copy by ``timestamp`` before
+                walking.
 
         Returns:
             An :class:`AnalyzerResult` with the action list, markdown
             timeline, page visits, and console errors populated. Empty
-            lists / empty string on an empty event stream.
+            on empty input.
         """
         if not events:
-            return AnalyzerResult(actions=[], markdown_summary="", pages=[], errors=[])
+            return AnalyzerResult()
 
-        # Sort defensively — analyzer behavior should be order-stable.
         sorted_events = sorted(events, key=lambda e: int(e.get("timestamp", 0)))
 
-        tracker = _DomTracker()
-        actions: list[UserAction] = []
-        pages: list[PageVisit] = []
-        errors: list[ConsoleError] = []
-        current_url: str | None = None
-
+        dom_tracker = DOMTracker()
+        event_analyzer = EventAnalyzer(dom_tracker)
         for event in sorted_events:
-            type_ = event.get("type")
-            raw_data = event.get("data")
-            data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
-            timestamp = int(event.get("timestamp", 0))
+            event_analyzer.process_event(event)
 
-            if type_ == _TYPE_META:
-                href = data.get("href")
-                if isinstance(href, str):
-                    current_url = href
-                    pages.append(PageVisit(timestamp=timestamp, url=href))
-                    actions.append(
-                        UserAction(
-                            timestamp=timestamp,
-                            action="navigate",
-                            target_node_id=None,
-                            target_desc=href[:_DESC_TRUNCATE] or "(no-url)",
-                            url=href,
-                            metadata={"href": href},
-                        )
-                    )
-                continue
-
-            if type_ == _TYPE_FULL_SNAPSHOT:
-                root = data.get("node")
-                if root is not None:
-                    tracker.ingest_snapshot(root)
-                continue
-
-            if type_ != _TYPE_INCREMENTAL_SNAPSHOT:
-                continue
-
-            source = data.get("source")
-
-            if source == _SOURCE_MUTATION:
-                tracker.ingest_adds(data.get("adds"))
-                continue
-
-            if source == _SOURCE_MOUSE_INTERACTION:
-                if data.get("type") != _MOUSE_TYPE_CLICK:
-                    continue
-                node_id = data.get("id") if isinstance(data.get("id"), int) else None
-                desc = tracker.describe(node_id)
-                metadata: dict[str, Any] = {
-                    "x": data.get("x"),
-                    "y": data.get("y"),
-                }
-                attrs = tracker.attrs(node_id)
-                if "data-testid" in attrs:
-                    metadata["data-testid"] = attrs["data-testid"]
-                actions.append(
-                    UserAction(
-                        timestamp=timestamp,
-                        action="click",
-                        target_node_id=node_id,
-                        target_desc=desc,
-                        url=current_url,
-                        metadata=metadata,
-                    )
-                )
-                continue
-
-            if source == _SOURCE_INPUT:
-                node_id = data.get("id") if isinstance(data.get("id"), int) else None
-                desc = tracker.describe(node_id)
-                text = data.get("text", "")
-                metadata = {
-                    "text_length": len(text) if isinstance(text, str) else 0,
-                    "is_checked": bool(data.get("isChecked", False)),
-                }
-                attrs = tracker.attrs(node_id)
-                if "data-testid" in attrs:
-                    metadata["data-testid"] = attrs["data-testid"]
-                actions.append(
-                    UserAction(
-                        timestamp=timestamp,
-                        action="input",
-                        target_node_id=node_id,
-                        target_desc=desc,
-                        url=current_url,
-                        metadata=metadata,
-                    )
-                )
-                continue
-
-            if source == _SOURCE_SCROLL:
-                node_id = data.get("id") if isinstance(data.get("id"), int) else None
-                actions.append(
-                    UserAction(
-                        timestamp=timestamp,
-                        action="scroll",
-                        target_node_id=node_id,
-                        target_desc=tracker.describe(node_id),
-                        url=current_url,
-                        metadata={"x": data.get("x"), "y": data.get("y")},
-                    )
-                )
-                continue
-
-            if source == _SOURCE_VIEWPORT_RESIZE:
-                actions.append(
-                    UserAction(
-                        timestamp=timestamp,
-                        action="viewport_resize",
-                        target_node_id=None,
-                        target_desc="(viewport)",
-                        url=current_url,
-                        metadata={
-                            "width": data.get("width"),
-                            "height": data.get("height"),
-                        },
-                    )
-                )
-                continue
-
-            if source == _SOURCE_LOG and data.get("level") == "error":
-                message = " ".join(str(p) for p in data.get("payload", []))
-                errors.append(
-                    ConsoleError(
-                        timestamp=timestamp,
-                        message=message,
-                        url=current_url,
-                    )
-                )
-                actions.append(
-                    UserAction(
-                        timestamp=timestamp,
-                        action="console_error",
-                        target_node_id=None,
-                        target_desc=message[:_DESC_TRUNCATE] or "(console error)",
-                        url=current_url,
-                        metadata={"message": message},
-                    )
-                )
-                continue
-
-        markdown = _render_markdown(actions, pages)
+        markdown = MarkdownReporter(event_analyzer.descriptions).generate()
+        log.info("Generated %d user actions", len(event_analyzer.user_actions))
         return AnalyzerResult(
-            actions=actions,
+            actions=event_analyzer.user_actions,
             markdown_summary=markdown,
-            pages=pages,
-            errors=errors,
+            pages=event_analyzer.pages,
+            errors=event_analyzer.errors,
         )
 
 
-def _render_markdown(actions: list[UserAction], pages: list[PageVisit]) -> str:
-    """Render the action stream as a markdown timeline.
+def analyze_events(rrweb_events: list[dict[str, Any]]) -> str:
+    """Convenience entry: walk events + return the markdown string.
 
-    The format is intended for direct stdout consumption — agents and
-    operators read this for a quick "what happened in this session".
+    Sugar for ``RrwebAnalyzer().analyze(events).markdown_summary`` for
+    callers that only want the markdown timeline.
 
     Args:
-        actions: All analyzer actions in timestamp order.
-        pages: All Meta navigations.
+        rrweb_events: List of rrweb event dicts.
 
     Returns:
-        Multi-line markdown string. Empty string when ``actions`` is empty.
+        The markdown timeline string.
+
+    Raises:
+        ValueError: ``rrweb_events`` is empty or not a list.
     """
+    if not rrweb_events:
+        raise ValueError("Events list cannot be empty")
+    if not isinstance(rrweb_events, list):
+        raise ValueError("Events must be a list of dictionaries")
+
+    log.info("Analyzing %d rrweb events", len(rrweb_events))
+    return RrwebAnalyzer().analyze(rrweb_events).markdown_summary
+
+
+# Backward-compat alias used by Replay.summary_markdown — renders a
+# minimal markdown for a Replay built without going through the analyzer
+# (e.g. test fixtures hand-constructing Replay with actions=[]).
+def _render_markdown(
+    actions: list[UserAction], pages: list[PageVisit] | None = None
+) -> str:
+    """Render a minimal markdown summary from a structured action list.
+
+    Used by :meth:`Replay.summary_markdown` for the no-analyzer-output
+    path (where the Replay was built without going through the analyzer
+    — e.g. test fixtures with an empty actions list).
+
+    Args:
+        actions: Structured action list (may be empty).
+        pages: Optional page list (currently unused; reserved for the
+            future "Pages visited" preamble).
+
+    Returns:
+        Multi-line markdown string. Empty when ``actions`` is empty.
+    """
+    _ = pages
     if not actions:
         return ""
-    first_ts = actions[0].timestamp
-    last_ts = actions[-1].timestamp
-    duration_s = max(0, (last_ts - first_ts) // 1000)
-    minutes, seconds = divmod(duration_s, 60)
-    pages_count = len(pages)
-    lines = [
-        f"# Session — {minutes}m {seconds:02d}s — {pages_count} page(s)",
-        "",
-        "## Timeline",
-        "",
-    ]
-    for action in actions:
-        hhmmss = datetime.fromtimestamp(
-            action.timestamp / 1000.0, tz=timezone.utc
-        ).strftime("%H:%M:%S")
-        if action.action == "navigate":
-            lines.append(f"- {hhmmss} navigate to `{action.url or '(no-url)'}`")
-        elif action.action == "click":
-            lines.append(f"- {hhmmss} click `{action.target_desc}`")
-        elif action.action == "input":
-            length = action.metadata.get("text_length", 0) if action.metadata else 0
-            lines.append(f"- {hhmmss} input `{action.target_desc}` ({length} chars)")
-        elif action.action == "scroll":
-            lines.append(f"- {hhmmss} scroll on `{action.target_desc}`")
-        elif action.action == "viewport_resize":
-            w = action.metadata.get("width") if action.metadata else None
-            h = action.metadata.get("height") if action.metadata else None
-            lines.append(f"- {hhmmss} viewport resize → {w}×{h}")
-        elif action.action == "console_error":
-            lines.append(f"- {hhmmss} console error: `{action.target_desc}`")
-        else:
-            lines.append(f"- {hhmmss} {action.action} on `{action.target_desc}`")
-    return "\n".join(lines)
+    return "\n".join(f"{a.timestamp // 1000}: {a.target_desc}" for a in actions)

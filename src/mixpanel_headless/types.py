@@ -12275,7 +12275,7 @@ class OAuthLoginResult(BaseModel):
 # Six in-memory dataclasses backing the session-replay surface. The Phase 1
 # types ship now (``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``,
 # ``UserAction`` placeholder, ``Replay``); ``ReplayBundle`` lands in Phase 2
-# alongside the vendored rrweb analyzer that populates ``Replay.actions``.
+# alongside the rrweb analyzer that populates ``Replay.actions``.
 # See ``specs/044-session-replay/data-model.md`` for the full schema and
 # state-transition diagram, and ``contracts/python-api.md`` for the
 # canonical method signatures these types appear in.
@@ -12292,7 +12292,7 @@ _REPLAY_ACTION_LITERAL = Literal[
     "touch_start",
     "media_interaction",
 ]
-"""Closed set of normalized action labels emitted by the vendored rrweb analyzer.
+"""Closed set of normalized action labels emitted by the rrweb analyzer.
 
 Locked here so callers can write exhaustive ``match`` statements and so
 mypy --strict catches typos in label-fn implementations. New action types
@@ -12514,7 +12514,7 @@ class SignedReplay:
 class UserAction:
     """Normalized user action extracted from rrweb events (data-model §2.3).
 
-    Produced by the vendored rrweb analyzer (Phase 2). The atomic unit
+    Produced by the rrweb analyzer (Phase 2). The atomic unit
     :class:`ReplayBundle` aggregations operate over. In Phase 1 this
     class ships as a placeholder so callers can type-annotate against it,
     but no instances are produced until the analyzer wires in via T056.
@@ -12647,8 +12647,8 @@ class ReplayEvent(ResultWithDataFrame):
 
 
 # rrweb event-type discriminators — exposed as named constants so the
-# Replay projection code stays self-documenting. Phase 2's vendored
-# analyzer carries the full set; Phase 1 only needs the four below.
+# Replay projection code stays self-documenting. The analyzer (Phase 2)
+# carries the full set; Phase 1 only needs the four below.
 _RRWEB_TYPE_FULL_SNAPSHOT = 2
 _RRWEB_TYPE_INCREMENTAL_SNAPSHOT = 3
 _RRWEB_TYPE_META = 4
@@ -12704,7 +12704,7 @@ class Replay(ResultWithDataFrame):
     Returned by :meth:`Workspace.fetch_replay`. Conceptually a
     :class:`ReplayBundle` of size 1; the same DataFrame projections are
     available on both. In Phase 1 ``actions`` is always empty — the
-    vendored analyzer that populates it ships in Phase 2 (US2 / T056).
+    analyzer that populates it ships in Phase 2 (US2 / T056).
 
     Attributes:
         replay_id: Mixpanel replay identifier.
@@ -12802,7 +12802,7 @@ class Replay(ResultWithDataFrame):
 
         Phase 1: ``actions`` is empty, so this returns an empty DataFrame
         with the documented columns. Phase 2 populates it via the
-        vendored analyzer.
+        analyzer.
 
         Returns:
             DataFrame with columns ``t``, ``action``, ``target_node_id``,
@@ -12924,7 +12924,7 @@ class Replay(ResultWithDataFrame):
     def summary_markdown(self) -> str:
         """Analyzer-produced markdown timeline rendered from ``actions``.
 
-        Phase 2 wired the vendored rrweb analyzer through
+        Phase 2 wired the rrweb analyzer through
         :meth:`Workspace.fetch_replay`; when ``actions`` is non-empty
         this returns the markdown timeline. When ``actions`` is empty
         (test fixture, no-events fetch) it returns a one-line placeholder.
