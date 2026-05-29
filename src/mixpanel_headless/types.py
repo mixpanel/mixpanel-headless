@@ -13438,17 +13438,26 @@ class ReplayBundle(ResultWithDataFrame):
     ) -> Any:
         """Event log suitable for pm4py process mining.
 
-        Returns a DataFrame with ``case:concept:name``, ``concept:name``,
-        ``time:timestamp`` columns. When pm4py is importable, the
-        DataFrame is wrapped in a ``pm4py.objects.log.obj.EventLog``;
-        otherwise the bare DataFrame is returned (no ImportError).
+        Returns a pm4py-compatible event log: a pandas DataFrame with the XES
+        columns ``case:concept:name``, ``concept:name``, ``time:timestamp``.
+        When pm4py is installed the frame is run through
+        ``pm4py.format_dataframe`` so it carries pm4py's standard event-log
+        metadata and is accepted directly by the mining functions
+        (``discover_petri_net_inductive``, ``discover_bpmn_inductive``, …);
+        without pm4py the bare DataFrame is returned (no ImportError).
+
+        pm4py 2.7+ treats a formatted DataFrame as a first-class event log, so
+        no separate ``pm4py.objects.log.obj.EventLog`` object is constructed —
+        call ``pm4py.convert_to_event_log(result)`` if you specifically need
+        the legacy object form.
 
         Args:
             label_fn: Optional label-fn override. Defaults to
                 :func:`default_label_fn`.
 
         Returns:
-            ``pd.DataFrame`` (without pm4py) or ``EventLog`` (with pm4py).
+            A pandas ``DataFrame`` — pm4py-formatted when pm4py is installed,
+            otherwise the bare XES-column frame.
         """
         # Local import to avoid a hard dependency on the analyzer at module
         # import time (and to dodge the types ↔ labels circular).

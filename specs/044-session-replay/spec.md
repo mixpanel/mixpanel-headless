@@ -66,12 +66,12 @@ A behavioral scientist wants to discover the implicit process model in user beha
 
 **Why this priority**: Specialist. Adds heavy dependencies (`pm4py`, `scipy`, `scikit-learn` via `tslearn`). The plan gates Phase 3 on actual user demand — ship only if pull materializes.
 
-**Independent Test**: With `mixpanel-headless[replay-mining]` installed, `ReplayBundle.event_log()` returns a `pm4py.objects.log.obj.EventLog` directly usable in `pm4py.discover_petri_net_inductive`. Without it, the same call returns a pm4py-compatible DataFrame (with `case:concept:name`, `concept:name`, `time:timestamp` columns) that any pm4py 2.7+ install can consume. With `mixpanel-headless[replay-ml]` installed, `bundle.cluster(n=5)` returns a new bundle whose replays each carry a `cluster_label`.
+**Independent Test**: With `mixpanel-headless[replay-mining]` installed, `ReplayBundle.event_log()` returns a pm4py-formatted DataFrame (via `pm4py.format_dataframe`) directly usable in `pm4py.discover_petri_net_inductive`. Without it, the same call returns the bare pm4py-compatible DataFrame (with `case:concept:name`, `concept:name`, `time:timestamp` columns) that any pm4py 2.7+ install can consume. With `mixpanel-headless[replay-ml]` installed, `bundle.cluster(n=5)` returns a new bundle whose replays each carry a `cluster_label`.
 
 **Acceptance Scenarios**:
 
 1. **Given** pm4py is NOT installed, **When** the caller invokes `bundle.event_log()`, **Then** a pandas DataFrame is returned with the three XES-canonical columns.
-2. **Given** pm4py IS installed, **When** the caller invokes `bundle.event_log()`, **Then** a `pm4py.objects.log.obj.EventLog` is returned, ready for downstream pm4py functions.
+2. **Given** pm4py IS installed, **When** the caller invokes `bundle.event_log()`, **Then** a pm4py-formatted DataFrame is returned (pm4py 2.7+ treats a formatted DataFrame as a first-class event log), ready for downstream pm4py functions.
 3. **Given** a custom `label_fn`, **When** `event_log(label_fn=label_fn)` is called, **Then** every activity label in the output is produced exclusively by that function (no fallback to the default).
 4. **Given** `tslearn` is installed AND a bundle of ≥10 replays, **When** `bundle.cluster(n=3, features="actions")` is called, **Then** a new bundle is returned and every replay has a `cluster_label` in `{0, 1, 2}`.
 
@@ -132,7 +132,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - **FR-022**: System MUST provide a `ReplayBundle` collection type exposing long-format DataFrame projections: `sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`, `elements_df`, `transitions_df`.
 - **FR-023**: `ReplayBundle.df` MUST default to `sessions_df` (one row per replay).
 - **FR-024**: `ReplayBundle` MUST expose graph projections `page_graph` and `element_graph` (using `networkx`) and `path_tree` (using `anytree`), lazily imported inside the property body — never at module import time.
-- **FR-025**: `ReplayBundle` MUST expose a pm4py-compatible event log via `event_log(label_fn=None)`: a DataFrame with `case:concept:name`, `concept:name`, `time:timestamp` columns when pm4py is absent; a `pm4py.objects.log.obj.EventLog` when present.
+- **FR-025**: `ReplayBundle` MUST expose a pm4py-compatible event log via `event_log(label_fn=None)`: a DataFrame with `case:concept:name`, `concept:name`, `time:timestamp` columns when pm4py is absent; the same DataFrame run through `pm4py.format_dataframe` when present (pm4py 2.7+ consumes a formatted DataFrame directly — no separate `EventLog` object is constructed).
 - **FR-026**: `ReplayBundle` MUST expose convenience aggregations following the existing `FlowQueryResult` idiom: `top_paths(n)`, `top_pages(n)`, `top_clicks(n)`, `dead_clicks(window_ms)`, `rage_clicks(threshold, window_ms)`, `long_pauses(threshold_s)`, `error_sessions()`.
 - **FR-027**: `ReplayBundle` MUST expose chainable filter operations that return new bundles (immutable semantics): `filter(predicate)`, `where(distinct_id=..., contains_url=..., has_event=..., min_duration_s=..., max_duration_s=...)`, `find_pattern(action_sequence)`, `head(n)`, `sample(n, seed)`.
 - **FR-028**: `ReplayBundle` MUST expose lazy enrichment via `join_mixpanel_events(properties=None)` returning a new bundle with `mixpanel_df` populated on first access.
@@ -203,7 +203,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - `mixpanel-headless` is now considered an official second client to mixpanel.com and is already at near-parity on undocumented API usage; no special gating is required beyond the existing pre-release version warning.
 - The existing `Workspace.query()` typed Insights surface (Phase 029) supports the grouping required for discovery; no Insights API changes are needed.
 - `networkx` and `anytree` are reused from existing optional extras (already in `pyproject.toml` for flow-query usage), not introduced fresh by this feature.
-- pm4py 2.7+ uses DataFrames as primary citizens, so the DataFrame-vs-EventLog branch in `event_log()` is a pure type-level fork, not a data-shape change.
+- pm4py 2.7+ uses DataFrames as primary citizens, so `event_log()` returns a DataFrame either way — pm4py-present just runs it through `pm4py.format_dataframe` to attach pm4py's standard metadata. No `EventLog` object is built (callers needing the legacy form call `pm4py.convert_to_event_log`).
 - The vendored rrweb analyzer (ported from `analytics/backend/replays/rrweb_analyzer.py` in the analytics monorepo) is pure-stdlib Python and adds no install weight to the core package.
 - The optional `replay-ml` extra carries heavy dependencies (`scipy`, `scikit-learn`, `joblib` via `tslearn`); users who opt in accept the install weight.
 - Cohort-driven replay enumeration, real-time replay streaming, replay deletion / retention management, LLM-based replay summarization, replay bookmarking, and direct GCS access via internal service accounts are explicitly out of scope.

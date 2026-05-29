@@ -76,8 +76,10 @@ may include API changes.
 - New optional extras: `replay-mining` (`pm4py>=2.7`),
   `replay-ml` (`tslearn>=0.6`), `replay-all`
   (`mixpanel-headless[replay-mining,replay-ml]`).
-- `ReplayBundle.event_log()` returns a pm4py `EventLog` when pm4py is
-  installed; otherwise the DataFrame fallback per data-model §2.6.
+- `ReplayBundle.event_log()` returns a pm4py-formatted DataFrame (via
+  `pm4py.format_dataframe`) when pm4py is installed — pm4py 2.7+ consumes a
+  formatted DataFrame directly; otherwise the bare DataFrame fallback per
+  data-model §2.6.
 - `ReplayBundle.cluster(n, features, seed)` — DTW k-means clustering
   via the `_internal/replays/ml_adapter` module; raises `ImportError`
   with the canonical install message when `tslearn` is missing.

@@ -140,6 +140,18 @@ ignore_missing_imports = true
 module = "anytree.*"
 ignore_missing_imports = true
 
+# Optional replay extras ([replay-mining] / [replay-ml]). Neither ships type
+# stubs, so ignore_missing_imports keeps mypy clean whether or not the extras
+# are installed (absent => "module not found"; present => "no py.typed").
+# Same pattern as networkx / anytree above.
+[[tool.mypy.overrides]]
+module = "pm4py.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tslearn.*"
+ignore_missing_imports = true
+
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false

@@ -235,8 +235,8 @@ pip install 'mixpanel-headless[replay-mining]'
 ```python
 import pm4py
 
-# Without pm4py installed, event_log returns a DataFrame.
-# With pm4py installed, it returns an EventLog.
+# event_log returns a DataFrame either way; with pm4py installed it's run
+# through pm4py.format_dataframe so the mining functions accept it directly.
 log = bundle.event_log()
 
 # Inductive miner produces a Petri net

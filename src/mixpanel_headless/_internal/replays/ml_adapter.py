@@ -43,7 +43,7 @@ def cluster_bundle(
         ImportError: ``tslearn`` is not installed.
     """
     import numpy as np
-    from tslearn.clustering import TimeSeriesKMeans  # type: ignore[import-not-found]
+    from tslearn.clustering import TimeSeriesKMeans
 
     # Import here to dodge the types ↔ ml_adapter circular at module load.
     from mixpanel_headless.types import ReplayBundle as _Bundle
@@ -72,14 +72,25 @@ def cluster_bundle(
             if token not in vocab:
                 vocab[token] = len(vocab)
 
+    # A replay can legitimately have an empty feature sequence — e.g. a
+    # clicks-only session under features="pages" (no navigations), or a replay
+    # the analyzer produced no actions for. tslearn's resampler calls
+    # numpy.interp, which raises "array of sample points is empty" on a
+    # zero-length series, so represent an empty sequence with a single sentinel
+    # token (distinct from any vocab index, which start at 0). Such replays
+    # then cluster together by their emptiness rather than crashing the run.
+    _empty_sentinel = -1.0
     integer_series = [
-        np.array([vocab[token] for token in seq], dtype=float).reshape(-1, 1)
+        np.array(
+            [float(vocab[token]) for token in seq] or [_empty_sentinel],
+            dtype=float,
+        ).reshape(-1, 1)
         for seq in sequences
     ]
 
     # tslearn expects a 3-D numpy array of shape (n_series, max_len, 1);
     # use its padding utility.
-    from tslearn.utils import to_time_series_dataset  # type: ignore[import-not-found]
+    from tslearn.utils import to_time_series_dataset
 
     X = to_time_series_dataset(integer_series)
     model = TimeSeriesKMeans(n_clusters=n, metric="dtw", random_state=seed)

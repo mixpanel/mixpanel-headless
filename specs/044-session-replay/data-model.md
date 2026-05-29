@@ -285,7 +285,7 @@ class ReplayBundle(ResultWithDataFrame):
         self,
         *,
         label_fn: Callable[[UserAction], str] | None = None,
-    ) -> "pd.DataFrame | pm4py.objects.log.obj.EventLog": ...
+    ) -> pd.DataFrame: ...  # pm4py-formatted when pm4py is installed
 
     # Aggregations (return DataFrames)
     def top_paths(self, n: int = 10, *, label_fn: ...) -> pd.DataFrame: ...
@@ -338,7 +338,7 @@ class ReplayBundle(ResultWithDataFrame):
 **Event log (for process mining)**:
 
 - pm4py absent: returns a `pd.DataFrame` with columns `case:concept:name` (= `replay_id`), `concept:name` (= `label_fn(action)` or default), `time:timestamp` (= `t`).
-- pm4py present: returns a `pm4py.objects.log.obj.EventLog` constructed via `pm4py.format_dataframe()`. Same data, different type.
+- pm4py present: returns the DataFrame run through `pm4py.format_dataframe()` — pm4py 2.7+ treats a formatted DataFrame as a first-class event log, so the mining functions accept it directly. Same shape, pm4py-standard metadata; no `EventLog` object is built.
 
 ---
 
