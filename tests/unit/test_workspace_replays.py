@@ -534,5 +534,85 @@ class TestReplaysForUserLimit:
         assert kwargs["limit"] == 20
 
 
+# =============================================================================
+# fetch_replays Insights batching (QA finding #5 — full MCP parity)
+# =============================================================================
+
+
+class TestFetchReplaysBatching:
+    """fetch_replays threads retention and batches the events join."""
+
+    def test_retention_by_id_passed_to_each_fetch(self) -> None:
+        """5a: a retention map lets each fetch skip its discovery query."""
+        ws = _make_workspace()
+        ws.fetch_replay = MagicMock(  # type: ignore[method-assign]
+            side_effect=lambda rid, **_kw: _replay(rid)
+        )
+        ws.fetch_replays(["r-1", "r-2"], retention_by_id={"r-1": 7, "r-2": 90})
+        passed = {
+            call.args[0]: call.kwargs["retention_days"]
+            for call in ws.fetch_replay.call_args_list
+        }
+        assert passed == {"r-1": 7, "r-2": 90}
+
+    def test_events_joined_in_one_batched_call(self) -> None:
+        """5b: events come from one events_for_replays call, not per replay."""
+        ws = _make_workspace()
+        ws.fetch_replay = MagicMock(  # type: ignore[method-assign]
+            side_effect=lambda rid, **_kw: _replay(rid)
+        )
+        ws.events_for_replays = MagicMock(  # type: ignore[method-assign]
+            return_value={
+                "r-1": [
+                    ReplayEvent(
+                        replay_id="r-1", event_name="Login", event_time=1716810002
+                    )
+                ]
+            }
+        )
+        bundle = ws.fetch_replays(["r-1", "r-2"], include_mixpanel_events=True)
+
+        # Exactly one batched events query, covering both replays.
+        ws.events_for_replays.assert_called_once()
+        args, _kwargs = ws.events_for_replays.call_args
+        assert set(args[0]) == {"r-1", "r-2"}
+        # Per-replay fetch never fired its own events query (no fan-out).
+        for call in ws.fetch_replay.call_args_list:
+            assert call.kwargs["include_mixpanel_events"] is False
+        # Events land on the right replay; the other stays empty.
+        by_id = {r.replay_id: r for r in bundle.replays}
+        assert [e.event_name for e in by_id["r-1"].mixpanel_events] == ["Login"]
+        assert by_id["r-2"].mixpanel_events == []
+
+    def test_no_events_call_when_flag_off(self) -> None:
+        """Default (no events) makes no events_for_replays call at all."""
+        ws = _make_workspace()
+        ws.fetch_replay = MagicMock(  # type: ignore[method-assign]
+            side_effect=lambda rid, **_kw: _replay(rid)
+        )
+        ws.events_for_replays = MagicMock()  # type: ignore[method-assign]
+        ws.fetch_replays(["r-1"])
+        ws.events_for_replays.assert_not_called()
+
+
+class TestReplaysForUserThreadsRetention:
+    """replays_for_user forwards discovered retention to fetch_replays (5a)."""
+
+    def test_retention_map_built_from_summaries(self) -> None:
+        """The retention each summary carries is threaded through, not rediscovered."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.discover.return_value = [
+            _summary("r-1", retention_days=7),
+            _summary("r-2", retention_days=90),
+        ]
+        ws.fetch_replays = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(replays=[])
+        )
+        ws.replays_for_user("u-42", from_date="2026-05-20", to_date="2026-05-27")
+        _args, kwargs = ws.fetch_replays.call_args
+        assert kwargs["retention_by_id"] == {"r-1": 7, "r-2": 90}
+
+
 # Touch Any to keep the import meaningful for type-stubs scenarios.
 _ = Any

@@ -34,6 +34,7 @@ import math
 import time
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10718,6 +10719,7 @@ class Workspace:
         event_properties: list[str] | None = None,
         concurrency: int = 4,
         cdn_concurrency: int = 50,
+        retention_by_id: dict[str, int] | None = None,
     ) -> ReplayBundle:
         """Fetch N replays in parallel; return a :class:`ReplayBundle`.
 
@@ -10727,22 +10729,47 @@ class Workspace:
         per-replay CDN file walk. Threads are used at the outer level so
         each replay's async event loop runs in isolation.
 
+        To keep Insights round-trips bounded (matching the reference MCP
+        server, which batches), this method:
+
+        - passes a caller-supplied ``retention_by_id`` to each
+          :meth:`fetch_replay` so it skips the per-replay retention-discovery
+          query when the caller already knows the value (e.g.
+          :meth:`replays_for_user`, which gets it from ``list_replays``); and
+        - when ``include_mixpanel_events`` is set, joins Mixpanel events in a
+          single :meth:`events_for_replays` call across every fetched replay
+          rather than one query per replay.
+
+        Per-replay failures are isolated: a replay that 404s, stalls, or fails
+        to parse is logged and skipped; only an all-fail batch raises (the
+        first underlying error, preserving its type).
+
         Args:
             replay_ids: Replays to fetch.
             env: ``"prod"`` (default) or ``"dev"``.
             max_files: Per-replay CDN bound.
-            include_mixpanel_events: Fire the Mixpanel-events join.
+            include_mixpanel_events: Join Mixpanel events (one batched query
+                across all replays).
             event_properties: Up to 5 properties for the join.
             concurrency: Replay-level parallelism.
             cdn_concurrency: Per-replay CDN parallelism.
+            retention_by_id: Optional ``{replay_id: retention_days}`` map that
+                lets each fetch skip its retention-discovery round-trip.
 
         Returns:
-            A :class:`ReplayBundle` with ``replays`` populated in input
-            order.
+            A :class:`ReplayBundle` with ``replays`` populated in input order
+            (failed replays omitted).
+
+        Raises:
+            MixpanelHeadlessError: Only when every requested replay failed;
+                the first underlying error propagates with its type.
         """
         _check_event_properties_count(event_properties)
-        # Use a thread pool so each fetch_replay invocation owns its own
-        # async event loop without clashing.
+        retention_map = retention_by_id or {}
+        # Use a thread pool so each fetch_replay invocation owns its own async
+        # event loop without clashing. Events are joined once after assembly
+        # (below), not per replay — so each fetch runs with
+        # include_mixpanel_events=False here regardless of the caller's flag.
         results: dict[int, Replay] = {}
         failures: list[tuple[str, Exception]] = []
         with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
@@ -10751,9 +10778,9 @@ class Workspace:
                     self.fetch_replay,
                     rid,
                     env=env,
+                    retention_days=retention_map.get(rid),
                     max_files=max_files,
-                    include_mixpanel_events=include_mixpanel_events,
-                    event_properties=event_properties,
+                    include_mixpanel_events=False,
                     cdn_concurrency=cdn_concurrency,
                 ): (i, rid)
                 for i, rid in enumerate(replay_ids)
@@ -10780,6 +10807,29 @@ class Workspace:
             # SignedURLExpiredError, ...) for callers that branch on it.
             raise failures[0][1]
         ordered = [results[i] for i in sorted(results)]
+
+        # Join Mixpanel events in ONE query across all replays (the per-replay
+        # alternative fans out N queries and exhausts the Insights rate limit).
+        # The combined window spans the earliest start to the latest end.
+        if include_mixpanel_events and ordered:
+            win_from = datetime.fromtimestamp(
+                min(r.start_time for r in ordered) / 1000, timezone.utc
+            ).strftime("%Y-%m-%d")
+            win_to = datetime.fromtimestamp(
+                max(r.end_time for r in ordered) / 1000, timezone.utc
+            ).strftime("%Y-%m-%d")
+            events_by_replay = self.events_for_replays(
+                [r.replay_id for r in ordered],
+                event_properties=event_properties,
+                from_date=win_from,
+                to_date=win_to,
+            )
+            ordered = [
+                replace(r, mixpanel_events=events_by_replay[r.replay_id])
+                if r.replay_id in events_by_replay
+                else r
+                for r in ordered
+            ]
         return ReplayBundle(
             replays=ordered,
             computed_at=datetime.now(timezone.utc).isoformat(),
@@ -10842,6 +10892,10 @@ class Workspace:
             [s.replay_id for s in summaries],
             include_mixpanel_events=include_mixpanel_events,
             event_properties=event_properties,
+            # We already discovered each replay's retention in the list_replays
+            # call above — pass it through so fetch_replay skips re-discovering
+            # it per replay (one fewer Insights query each).
+            retention_by_id={s.replay_id: s.retention_days for s in summaries},
         )
 
     def analyze_replay(self, replay_id: str) -> str:
