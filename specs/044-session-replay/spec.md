@@ -98,7 +98,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 
 - **FR-001**: System MUST let callers list a user's replays by `distinct_id` and date window, returning lightweight summaries.
 - **FR-002**: System MUST let callers hydrate summaries for an explicit list of `replay_ids` without requiring a `distinct_id`.
-- **FR-003**: Discovery MUST use the existing typed Insights query path (`Workspace.query()`), grouping on `$mp_replay_id`, `$mp_replay_retention_period`, and `$time` — never the legacy Segmentation API.
+- **FR-003**: Discovery MUST use the existing typed Insights query path (`Workspace.query()`) against `$mp_session_record`, grouping on `$mp_replay_id` and `$mp_replay_retention_period` and reading each replay's `start_time` from a `min` aggregation on `$time` (`math="min", math_property="$time"`) — never the legacy Segmentation API. (A `min($time)` aggregation returns one compact min-timestamp per replay; grouping on `$time` directly would emit a per-second bucket per event and risk the Insights result cap for no benefit.) Discovery MUST parse the raw `result.series` nested dict, not the lossy single-level `result.df` projection.
 - **FR-004**: Discovery MUST return an empty list when no replays are found in range. It MUST NOT raise.
 - **FR-005**: Per-replay retention MUST be read from `$mp_replay_retention_period` on the discovered event. When missing, retention MUST default to 30 days AND a structured warning MUST be emitted naming the replay ID.
 - **FR-006**: System MUST let callers fetch Mixpanel events filtered to a replay's time window — single (`events_for_replay`) AND batched (`events_for_replays`) — optionally with up to 5 event properties as additional group keys.

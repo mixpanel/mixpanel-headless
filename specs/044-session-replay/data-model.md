@@ -15,7 +15,7 @@ The session-replay feature adds six new in-memory types and one new exception hi
 | `Workspace` | `workspace.py` | Public facade. Gains 9 new methods (Phase 1: 4; Phase 2: 5). No schema change. |
 | `MixpanelAPIClient` | `_internal/api_client.py` | Gains `sign_replays(replay_ids, env)` method and one new error-mapping case (403 → `SessionReplayAccessError`). No schema change. |
 | `Filter` / `InsightsBookmarkParams` | `_internal/query/` | Reused by `list_replays` and `events_for_replay` discovery queries. No schema change. |
-| `QueryResult` | `types.py` | Returned by the underlying `Workspace.query()` call; `ReplaySummary` and `ReplayEvent` are constructed from its `.df`. |
+| `QueryResult` | `types.py` | Returned by the underlying `Workspace.query()` call; `ReplaySummary` and `ReplayEvent` are constructed by walking its raw `.series` nested dict (skipping `$overall` rollups), **not** its single-level `.df` projection, which cannot represent the multi-key replay group-by. |
 | `APIError`, `QueryError`, `ServerError` | `exceptions.py` | Parent classes for the new `SessionReplayError` hierarchy. |
 
 ---

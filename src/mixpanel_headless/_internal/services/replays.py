@@ -492,12 +492,20 @@ class ReplaysService:
         else:
             return []
 
+        # math="min" on the event $time property returns the earliest event
+        # timestamp per (replay, retention) segment as a single compact leaf —
+        # one value per replay, no per-second time buckets and no result-cap
+        # risk. The leaf is unix SECONDS; _to_unix_ms up-converts it. Note the
+        # property is "$time" (the reserved event-time property); plain "time"
+        # silently returns an empty series.
         result = self._query_fn(
             "$mp_session_record",
             from_date=from_date,
             to_date=to_date,
             group_by=["$mp_replay_id", "$mp_replay_retention_period"],
             where=where,
+            math="min",
+            math_property="$time",
             mode="table",
         )
 
@@ -517,14 +525,23 @@ class ReplaysService:
         distinct_id: str | None,
         limit: int,
     ) -> list[ReplaySummary]:
-        """Collapse a grouped Insights result into :class:`ReplaySummary` rows.
+        """Collapse a min-time Insights ``series`` into :class:`ReplaySummary` rows.
 
-        Walks the result's ``.df`` looking for replay-id / retention /
-        timestamp columns under their well-known Mixpanel names. Defaults
-        retention to 30 with a :class:`UserWarning` per error-messages.md §10.
+        Walks ``result.series`` — the raw nested dict the Insights API returns —
+        rather than the lossy ``.df`` projection. ``.df`` only flattens one
+        segment level and never names columns after the grouped property, so it
+        is unusable for the multi-key replay discovery group-by. The series
+        nests in group order with an ``$overall`` rollup key at every level::
+
+            {metric: {replay_id: {retention: {"all": min_time_seconds}}}}
+
+        The leaf is the per-replay minimum event time in unix SECONDS (from the
+        ``math="min"`` / ``math_property="time"`` aggregation);
+        :func:`_to_unix_ms` up-converts it. Retention defaults to 30 with a
+        :class:`UserWarning` when the property is absent, per error-messages.md §10.
 
         Args:
-            result: Output of :func:`Workspace.query`.
+            result: Output of :func:`Workspace.query` (reads ``.series``).
             project_id: Project to stamp on each summary.
             distinct_id: When set, used as the ``distinct_id`` on every
                 summary; otherwise the parser leaves it ``None``.
@@ -532,59 +549,33 @@ class ReplaysService:
 
         Returns:
             Up to ``limit`` :class:`ReplaySummary` rows. Empty when the
-            query produced no rows.
+            query produced no replays.
         """
-        df = getattr(result, "df", None)
-        if df is None or df.empty:
+        replay_level = _first_metric_node(getattr(result, "series", None))
+        if replay_level is None:
             return []
 
         summaries: list[ReplaySummary] = []
-        # The Insights table-mode result groups on the requested keys; pick
-        # the columns by name when present, else fall back to the labelled
-        # group axes.
-        rid_col = _pick_column(df, "$mp_replay_id")
-        retention_col = _pick_column(df, "$mp_replay_retention_period")
-        time_col = _pick_column(df, "$time") or _pick_column(df, "datetime")
-
-        if rid_col is None:
-            return []
-
         seen: set[str] = set()
-        for _, row in df.iterrows():
-            replay_id = row[rid_col]
-            if replay_id is None or str(replay_id) == "":
+        for replay_id, retention_node in replay_level.items():
+            if replay_id == "$overall":
                 continue
             replay_id_str = str(replay_id)
-            if replay_id_str in seen:
+            if not replay_id_str or replay_id_str in seen:
                 continue
-            seen.add(replay_id_str)
+            if not isinstance(retention_node, dict):
+                continue
 
-            retention_raw = row[retention_col] if retention_col is not None else None
-            try:
-                retention_days = int(retention_raw) if retention_raw is not None else 0
-            except (TypeError, ValueError):
-                retention_days = 0
-            if retention_days not in (1, 7, 30, 90):
-                warnings.warn(
-                    (
-                        f"UserWarning: replay {replay_id_str} is missing "
-                        f"$mp_replay_retention_period; defaulting to 30 days. "
-                        f"Upgrade your Mixpanel SDK to stamp this property on "
-                        f"new recordings."
-                    ),
-                    UserWarning,
-                    stacklevel=3,
-                )
-                retention_days = _DEFAULT_RETENTION_DAYS
-
-            start_time_raw = row[time_col] if time_col is not None else None
-            start_time = _to_unix_ms(start_time_raw)
+            retention_days, min_time = _extract_retention_and_time(
+                retention_node, replay_id_str
+            )
+            start_time = _to_unix_ms(min_time)
             if start_time <= 0:
-                # Skip rows that have no usable start time — they can't form
-                # a valid ReplaySummary (positive unix-ms is a constructor
-                # invariant).
+                # No usable start time — can't form a valid ReplaySummary
+                # (positive unix-ms is a constructor invariant).
                 continue
 
+            seen.add(replay_id_str)
             summaries.append(
                 ReplaySummary(
                     replay_id=replay_id_str,
@@ -658,37 +649,25 @@ class ReplaysService:
             mode="table",
         )
 
+        # Parse result.series directly. The .df projection only flattens one
+        # segment level and labels group axes generically (segment/date), so it
+        # silently drops every row for this 3+-key group-by. _flatten_series
+        # walks the nested dict in group_by order, skipping $overall rollups.
         out: dict[str, list[ReplayEvent]] = {}
-        df = getattr(result, "df", None)
-        if df is None or df.empty:
-            return out
-
-        rid_col = _pick_column(df, "$mp_replay_id")
-        time_col = _pick_column(df, "$time") or _pick_column(df, "datetime")
-        name_col = (
-            _pick_column(df, "$event_name")
-            or _pick_column(df, "event")
-            or _pick_column(df, "$event")
-        )
-
-        if rid_col is None:
-            return out
-
-        for _, row in df.iterrows():
-            replay_id = row[rid_col]
+        rows = _flatten_series(getattr(result, "series", None), group_by)
+        for row in rows:
+            replay_id = row.get("$mp_replay_id")
             if replay_id is None:
                 continue
             replay_id_str = str(replay_id)
-            event_time = _to_unix_seconds(
-                row[time_col] if time_col is not None else None
-            )
+            event_time = _to_unix_seconds(row.get("$time"))
             if event_time <= 0:
                 continue
-            event_name = str(row[name_col]) if name_col is not None else "(unknown)"
+            event_name = str(row.get("$event_name", "(unknown)"))
             properties: dict[str, Any] | None = None
             if event_properties:
                 properties = {
-                    prop: row[prop] for prop in event_properties if prop in df.columns
+                    prop: row[prop] for prop in event_properties if prop in row
                 }
             out.setdefault(replay_id_str, []).append(
                 ReplayEvent(
@@ -706,22 +685,146 @@ class ReplaysService:
         return out
 
 
-def _pick_column(df: Any, name: str) -> str | None:
-    """Return ``name`` if it's a column of ``df``, else ``None``.
+def _first_metric_node(series: Any) -> dict[str, Any] | None:
+    """Return the first dict-valued metric node of an Insights ``series``.
+
+    A grouped Insights response is ``{metric_name: {segment: ...}}``. Discovery
+    queries a single metric, so the first dict value is the segment (replay)
+    level. Returns ``None`` when ``series`` is absent, not a dict, or carries no
+    dict-valued metric.
 
     Args:
-        df: A pandas DataFrame (typed loosely to avoid pandas import here).
-        name: Column name to probe.
+        series: The ``result.series`` value (expected ``dict[str, Any]``).
 
     Returns:
-        ``name`` if present; ``None`` otherwise.
+        The replay-level dict, or ``None``.
     """
-    try:
-        if name in df.columns:
-            return name
-    except (AttributeError, TypeError):
+    if not isinstance(series, dict):
         return None
+    for value in series.values():
+        if isinstance(value, dict):
+            return value
     return None
+
+
+def _leaf_value(leaf: Any) -> Any:
+    """Extract the scalar from a series leaf — ``{"all": v}`` → ``v``.
+
+    Args:
+        leaf: A series leaf node, normally ``{"all": value}``.
+
+    Returns:
+        The ``"all"`` value when ``leaf`` is a dict; otherwise ``leaf`` itself.
+    """
+    if isinstance(leaf, dict):
+        return leaf.get("all")
+    return leaf
+
+
+def _extract_retention_and_time(
+    retention_node: dict[str, Any], replay_id: str
+) -> tuple[int, Any]:
+    """Pull ``(retention_days, min_time)`` from a replay's retention subtree.
+
+    The subtree maps retention windows (plus an ``$overall`` rollup) to a leaf
+    ``{"all": min_time_seconds}``. Returns the first standard retention window
+    in ``{1, 7, 30, 90}`` with its min-time leaf. When none is present (older
+    SDK that doesn't stamp ``$mp_replay_retention_period``), defaults to 30
+    days, emits a :class:`UserWarning` naming the replay, and recovers the
+    min-time from any available branch (a non-standard key if one exists, else
+    the ``$overall`` rollup).
+
+    Args:
+        retention_node: The replay's retention-level dict from ``series``.
+        replay_id: The replay id, used in the warning message.
+
+    Returns:
+        A ``(retention_days, min_time_value)`` pair. ``min_time_value`` is the
+        raw leaf scalar (unix seconds) for the caller to convert; may be
+        ``None`` when the subtree carries no usable leaf.
+    """
+    fallback_key: str | None = None
+    for key, leaf in retention_node.items():
+        if key == "$overall":
+            continue
+        if fallback_key is None:
+            fallback_key = key
+        try:
+            window = int(key)
+        except (TypeError, ValueError):
+            continue
+        if window in (1, 7, 30, 90):
+            return window, _leaf_value(leaf)
+
+    warnings.warn(
+        (
+            f"UserWarning: replay {replay_id} is missing "
+            f"$mp_replay_retention_period; defaulting to 30 days. Upgrade your "
+            f"Mixpanel SDK to stamp this property on new recordings."
+        ),
+        UserWarning,
+        stacklevel=3,
+    )
+    if fallback_key is not None:
+        return _DEFAULT_RETENTION_DAYS, _leaf_value(retention_node[fallback_key])
+    return _DEFAULT_RETENTION_DAYS, _leaf_value(retention_node.get("$overall"))
+
+
+def _flatten_series(series: Any, group_by: list[str]) -> list[dict[str, Any]]:
+    """Flatten a nested Insights ``series`` into one row dict per leaf.
+
+    Walks the nested dict in ``group_by`` order, skipping the ``$overall``
+    rollup key at every level, and emits a flat row dict for each surviving
+    leaf — e.g. ``{"$time": ..., "$event_name": ..., "$mp_replay_id": ...,
+    "count": N}``. Handles arbitrary depth, so callers that append extra group
+    keys (event properties) get those keys in each row automatically.
+
+    Args:
+        series: The ``result.series`` nested dict (``{metric: {...}}``).
+        group_by: Group-by property names in request order — the nesting order
+            of the series.
+
+    Returns:
+        One row dict per non-rollup leaf. Empty when ``series`` is empty or not
+        a dict.
+    """
+    rows: list[dict[str, Any]] = []
+    if not isinstance(series, dict):
+        return rows
+    for node in series.values():
+        if isinstance(node, dict):
+            _walk_series(node, group_by, 0, {}, rows)
+    return rows
+
+
+def _walk_series(
+    node: dict[str, Any],
+    group_by: list[str],
+    depth: int,
+    acc: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> None:
+    """Recursively collect leaf rows from a nested series node.
+
+    Args:
+        node: The current sub-dict.
+        group_by: Group-by property names (the nesting order).
+        depth: How many group levels have been consumed so far.
+        acc: Group key/value pairs accumulated down this branch.
+        rows: Output accumulator, appended in place.
+
+    Returns:
+        None. Results are appended to ``rows``.
+    """
+    if depth >= len(group_by):
+        rows.append({**acc, "count": _leaf_value(node)})
+        return
+    prop = group_by[depth]
+    for key, child in node.items():
+        if key == "$overall":
+            continue
+        if isinstance(child, dict):
+            _walk_series(child, group_by, depth + 1, {**acc, prop: key}, rows)
 
 
 def _to_unix_ms(value: Any) -> int:

@@ -386,5 +386,225 @@ class TestDiscoverNoQueryFn:
         query_fn.assert_not_called()
 
 
+# =============================================================================
+# discover() / events_for() parsing — against the REAL Insights `series` shape
+#
+# These mock `result.series` with the nested-dict structure the live Insights
+# API actually returns (captured from project 3), NOT a hand-built `.df`. The
+# old tests mocked a `.df` with property-named columns — a shape the API never
+# produces — which is exactly why the silent-empty bug shipped green.
+# =============================================================================
+
+
+def _series_result(series: dict[str, Any]) -> MagicMock:
+    """A stand-in Workspace.query() result exposing only `.series`."""
+    result = MagicMock()
+    result.series = series
+    return result
+
+
+# Discovery: $mp_session_record grouped by [replay_id, retention] with
+# math="min", math_property="time". Leaf `all` is the min event-time in unix
+# SECONDS. Each replay carries an `$overall` rollup sibling that must be skipped.
+_DISCOVERY_SERIES: dict[str, Any] = {
+    "Session Recording Checkpoint [Minimum Time]": {
+        "$overall": {"all": 1779319127},
+        "rid-aaa": {
+            "$overall": {"all": 1779322882},
+            "30": {"all": 1779322882},
+        },
+        "rid-bbb": {
+            "$overall": {"all": 1779332317},
+            "7": {"all": 1779332317},
+        },
+    }
+}
+
+# Older SDK: the replay has no `$mp_replay_retention_period`, so its only child
+# is the `$overall` rollup. Parser must default retention to 30 + warn, and
+# still recover start_time from the `$overall` branch.
+_DISCOVERY_SERIES_NO_RETENTION: dict[str, Any] = {
+    "Session Recording Checkpoint [Minimum Time]": {
+        "$overall": {"all": 1779319127},
+        "rid-old": {"$overall": {"all": 1779319127}},
+    }
+}
+
+# events_for: $all_events grouped by [$time, $event_name, $mp_replay_id]. $time
+# keys are second-precision ISO strings; leaf `all` is the event count.
+_EVENTS_SERIES: dict[str, Any] = {
+    "All Events [Total Events]": {
+        "$overall": {"all": 13},
+        "2026-05-21T16:31:31": {
+            "$overall": {"all": 1},
+            "$mp_dead_click": {
+                "$overall": {"all": 1},
+                "rid-bab": {"all": 1},
+            },
+        },
+        "2026-05-21T16:31:25": {
+            "$overall": {"all": 12},
+            "Browser API fetch": {
+                "$overall": {"all": 12},
+                "rid-bab": {"all": 12},
+            },
+        },
+    }
+}
+
+# events_for with one extra group key ($browser) → one deeper nesting level.
+_EVENTS_SERIES_WITH_PROP: dict[str, Any] = {
+    "All Events [Total Events]": {
+        "$overall": {"all": 1},
+        "2026-05-21T16:31:25": {
+            "$overall": {"all": 1},
+            "Browser API fetch": {
+                "$overall": {"all": 1},
+                "rid-bab": {
+                    "$overall": {"all": 1},
+                    "Chrome": {"all": 1},
+                },
+            },
+        },
+    }
+}
+
+
+class TestDiscoverParsing:
+    """discover() parses the real min-time `series` into ReplaySummary rows."""
+
+    def test_one_summary_per_replay(self) -> None:
+        """Two replays in the series → two summaries, correct retention + start_time."""
+        api = _mock_api_client(project_id="3")
+        query_fn = MagicMock(return_value=_series_result(_DISCOVERY_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        out = service.discover(
+            distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+        )
+        by_id = {s.replay_id: s for s in out}
+        assert set(by_id) == {"rid-aaa", "rid-bbb"}
+        assert by_id["rid-aaa"].retention_days == 30
+        assert by_id["rid-bbb"].retention_days == 7
+        # Leaf is unix seconds; start_time is unix ms.
+        assert by_id["rid-aaa"].start_time == 1779322882 * 1000
+        assert by_id["rid-aaa"].distinct_id == "u-1"
+        assert by_id["rid-aaa"].project_id == 3
+
+    def test_query_uses_min_time_aggregation(self) -> None:
+        """discover asks Insights for min(time) grouped by replay_id + retention."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_DISCOVERY_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.discover(
+            distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+        )
+        _args, kwargs = query_fn.call_args
+        assert kwargs["math"] == "min"
+        assert kwargs["math_property"] == "$time"
+        assert kwargs["group_by"] == [
+            "$mp_replay_id",
+            "$mp_replay_retention_period",
+        ]
+
+    def test_missing_retention_defaults_30_with_warning(self) -> None:
+        """A replay whose only child is `$overall` → retention 30 + UserWarning."""
+        api = _mock_api_client()
+        query_fn = MagicMock(
+            return_value=_series_result(_DISCOVERY_SERIES_NO_RETENTION)
+        )
+        service = ReplaysService(api, query_fn=query_fn)
+        with pytest.warns(UserWarning, match=r"\$mp_replay_retention_period"):
+            out = service.discover(
+                distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+            )
+        assert len(out) == 1
+        assert out[0].retention_days == 30
+        assert out[0].start_time == 1779319127 * 1000
+
+    def test_empty_series_returns_empty(self) -> None:
+        """An empty series yields no summaries and does not raise."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result({}))
+        service = ReplaysService(api, query_fn=query_fn)
+        assert (
+            service.discover(
+                distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+            )
+            == []
+        )
+
+    def test_nonstandard_retention_defaults_30_with_warning(self) -> None:
+        """A retention key outside {1,7,30,90} → default 30 + warn, time kept."""
+        api = _mock_api_client()
+        series: dict[str, Any] = {
+            "Session Recording Checkpoint [Minimum Time]": {
+                "$overall": {"all": 1779319127},
+                "rid-weird": {
+                    "$overall": {"all": 1779322882},
+                    "15": {"all": 1779322882},
+                },
+            }
+        }
+        query_fn = MagicMock(return_value=_series_result(series))
+        service = ReplaysService(api, query_fn=query_fn)
+        with pytest.warns(UserWarning, match=r"\$mp_replay_retention_period"):
+            out = service.discover(
+                distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+            )
+        assert len(out) == 1
+        assert out[0].retention_days == 30
+        assert out[0].start_time == 1779322882 * 1000
+
+    def test_limit_caps_summaries(self) -> None:
+        """limit truncates the returned summaries."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_DISCOVERY_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        out = service.discover(
+            distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27", limit=1
+        )
+        assert len(out) == 1
+
+
+class TestEventsForParsing:
+    """events_for() parses the real $all_events `series` into ReplayEvent rows."""
+
+    def test_returns_time_sorted_events_per_replay(self) -> None:
+        """Two events for one replay come back time-sorted."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_EVENTS_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        out = service.events_for(["rid-bab"])
+        assert set(out) == {"rid-bab"}
+        events = out["rid-bab"]
+        assert [e.event_name for e in events] == ["Browser API fetch", "$mp_dead_click"]
+        assert events[0].event_time < events[1].event_time
+
+    def test_event_properties_surface(self) -> None:
+        """An extra group key lands in ReplayEvent.properties."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_EVENTS_SERIES_WITH_PROP))
+        service = ReplaysService(api, query_fn=query_fn)
+        out = service.events_for(["rid-bab"], event_properties=["$browser"])
+        assert out["rid-bab"][0].properties == {"$browser": "Chrome"}
+
+    def test_issues_all_events_query_shape(self) -> None:
+        """events_for queries $all_events grouped by time/event_name/replay_id."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_EVENTS_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.events_for(["rid-bab"])
+        args, kwargs = query_fn.call_args
+        assert args[0] == "$all_events"
+        assert kwargs["group_by"][:3] == ["$time", "$event_name", "$mp_replay_id"]
+
+    def test_empty_series_returns_empty_dict(self) -> None:
+        """An empty series yields an empty dict, no raise."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result({}))
+        service = ReplaysService(api, query_fn=query_fn)
+        assert service.events_for(["rid-bab"]) == {}
+
+
 # Ensure the module is importable as a package for pytest collection.
 _ = json

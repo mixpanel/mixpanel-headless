@@ -165,11 +165,9 @@ class TestListReplaysQueryCall:
         from mixpanel_headless._internal.services.replays import ReplaysService
 
         query_mock = MagicMock()
-        # query() returns an object with .df — empty DataFrame keeps the
-        # parser path simple (returns []).
-        import pandas as pd
-
-        query_mock.return_value = MagicMock(df=pd.DataFrame())
+        # query() returns an object whose .series is the parser's input; an
+        # empty series keeps the parser path simple (returns []).
+        query_mock.return_value = MagicMock(series={})
 
         ws = _make_workspace()
         # Replace the lazy service with one that uses the mocked query_fn.
@@ -189,6 +187,9 @@ class TestListReplaysQueryCall:
         gb = kwargs.get("group_by", [])
         assert "$mp_replay_id" in gb
         assert "$mp_replay_retention_period" in gb
+        # start_time comes from a min(time) aggregation, not a $time grouping.
+        assert kwargs.get("math") == "min"
+        assert kwargs.get("math_property") == "$time"
         assert kwargs.get("from_date") == "2026-05-20"
         assert kwargs.get("to_date") == "2026-05-27"
 
@@ -203,23 +204,20 @@ class TestRetentionWarning:
 
     def test_missing_retention_emits_userwarning(self) -> None:
         """A discover result missing retention triggers UserWarning + default 30."""
-        import pandas as pd
-
         from mixpanel_headless._internal.services.replays import ReplaysService
 
         query_mock = MagicMock()
-        # Synthetic discover result: rows have $mp_replay_id and $time but
-        # $mp_replay_retention_period is missing → parser defaults to 30.
+        # Real series shape for a replay whose only child is the $overall
+        # rollup — i.e. $mp_replay_retention_period was never stamped. The
+        # parser must default to 30 and warn, recovering start_time from the
+        # $overall branch's min-time leaf (unix seconds).
         query_mock.return_value = MagicMock(
-            df=pd.DataFrame(
-                [
-                    {
-                        "$mp_replay_id": "r-1",
-                        "$mp_replay_retention_period": None,
-                        "$time": 1716810000000,
-                    }
-                ]
-            )
+            series={
+                "Session Recording Checkpoint [Minimum Time]": {
+                    "$overall": {"all": 1716810000},
+                    "r-1": {"$overall": {"all": 1716810000}},
+                }
+            }
         )
 
         ws = _make_workspace()
