@@ -50,6 +50,20 @@ _logger = logging.getLogger(__name__)
 # warning path can default a missing $mp_replay_retention_period.
 _DEFAULT_RETENTION_DAYS = 30
 
+# Lookback for events_for when the caller doesn't pass an explicit window.
+# 90 = the maximum replay retention window, so a windowless events query still
+# covers every replay that could possibly still exist on the CDN.
+_EVENTS_DEFAULT_LOOKBACK_DAYS = 90
+
+# Per-request CDN timeout. Replaces a flat 120s that let one stalled read hang
+# for two minutes (and, in fetch_replays, sink the whole bundle). connect=10s
+# fails fast on a dead/slow host (the reference cdn_fetcher uses 10s); read=30s
+# gives a slow-but-progressing file enough headroom not to be false-skipped on
+# the single-replay path; pool=30s tolerates request queueing under batched
+# concurrency. fetch_replays' continue-on-error is the primary resilience
+# mechanism — this just bounds how long a single stall can cost.
+_CDN_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=30.0)
+
 
 def _looks_like_rrweb(event: object) -> bool:
     """Heuristic: does this look like an rrweb web-recording event?
@@ -272,7 +286,7 @@ class ReplaysService:
 
         async with httpx.AsyncClient(
             transport=self._async_transport,
-            timeout=120.0,
+            timeout=_CDN_TIMEOUT,
         ) as client:
             while file_num < max_files:
                 batch_end = min(file_num + concurrency, max_files)
@@ -595,6 +609,8 @@ class ReplaysService:
         replay_ids: list[str],
         *,
         event_properties: list[str] | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
     ) -> dict[str, list[ReplayEvent]]:
         """Mixpanel events for a list of replays in one round-trip.
 
@@ -611,6 +627,14 @@ class ReplaysService:
             replay_ids: Replays to look up events for. May be empty.
             event_properties: Up to 5 extra event properties to include as
                 group keys.
+            from_date: ISO date (YYYY-MM-DD) lower bound for the events scan.
+                When omitted, the query falls back to a 90-day lookback
+                (``last=90``) so events for replays anywhere in the maximum
+                retention window are captured — the underlying
+                ``Workspace.query`` default of ``last=30`` would silently miss
+                events for replays 31–90 days old.
+            to_date: ISO date (YYYY-MM-DD) upper bound. Paired with
+                ``from_date``; ignored unless ``from_date`` is also set.
 
         Returns:
             Dict mapping replay_id → time-sorted :class:`ReplayEvent` list.
@@ -642,11 +666,22 @@ class ReplaysService:
             Filter.equals("$mp_replay_id", list(replay_ids)),
             Filter.not_equals("$event_name", "$mp_session_record"),
         ]
+        # Scope the events scan. With an explicit window (callers that know the
+        # replay's time — e.g. fetch_replay) the query is tight and precise.
+        # Without one, fall back to a 90-day lookback so we cover the maximum
+        # retention window; the underlying Workspace.query default (last=30)
+        # would silently miss events for replays 31–90 days old.
+        date_kwargs: dict[str, Any]
+        if from_date is not None and to_date is not None:
+            date_kwargs = {"from_date": from_date, "to_date": to_date}
+        else:
+            date_kwargs = {"last": _EVENTS_DEFAULT_LOOKBACK_DAYS}
         result = self._query_fn(
             "$all_events",
             group_by=group_by,
             where=where,
             mode="table",
+            **date_kwargs,
         )
 
         # Parse result.series directly. The .df projection only flattens one

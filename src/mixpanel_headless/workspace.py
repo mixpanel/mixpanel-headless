@@ -10435,6 +10435,8 @@ class Workspace:
         replay_id: str,
         *,
         event_properties: list[str] | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
     ) -> list[ReplayEvent]:
         """Mixpanel events that occurred during a single replay's time window.
 
@@ -10442,6 +10444,12 @@ class Workspace:
             replay_id: The replay to fetch events for.
             event_properties: Up to 5 additional event properties to include
                 as group keys.
+            from_date: ISO date (YYYY-MM-DD) lower bound for the events scan.
+                When omitted, a 90-day lookback is used (covers the maximum
+                retention window). Pass an explicit window — e.g. the replay's
+                own day — to scope the scan tightly.
+            to_date: ISO date (YYYY-MM-DD) upper bound; paired with
+                ``from_date``.
 
         Returns:
             Ordered list of :class:`ReplayEvent`. Empty when the replay
@@ -10453,7 +10461,10 @@ class Workspace:
         """
         _check_event_properties_count(event_properties)
         bundle = self._replays_service.events_for(
-            [replay_id], event_properties=event_properties
+            [replay_id],
+            event_properties=event_properties,
+            from_date=from_date,
+            to_date=to_date,
         )
         return bundle.get(replay_id, [])
 
@@ -10462,6 +10473,8 @@ class Workspace:
         replay_ids: list[str],
         *,
         event_properties: list[str] | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
     ) -> dict[str, list[ReplayEvent]]:
         """Batched version of :meth:`events_for_replay`. Single round-trip.
 
@@ -10469,6 +10482,12 @@ class Workspace:
             replay_ids: Replays to fetch events for.
             event_properties: Up to 5 additional event properties to include
                 as group keys.
+            from_date: ISO date (YYYY-MM-DD) lower bound for the events scan.
+                When omitted, a 90-day lookback is used (covers the maximum
+                retention window) so events for older-but-retained replays are
+                not silently missed.
+            to_date: ISO date (YYYY-MM-DD) upper bound; paired with
+                ``from_date``.
 
         Returns:
             Dict mapping ``replay_id`` → ordered :class:`ReplayEvent` list.
@@ -10480,7 +10499,10 @@ class Workspace:
         """
         _check_event_properties_count(event_properties)
         return self._replays_service.events_for(
-            replay_ids, event_properties=event_properties
+            replay_ids,
+            event_properties=event_properties,
+            from_date=from_date,
+            to_date=to_date,
         )
 
     def sign_replay(
@@ -10592,14 +10614,26 @@ class Workspace:
                 status_code=404,
             )
 
-        mixpanel_events: list[ReplayEvent] = []
-        if include_mixpanel_events:
-            mixpanel_events = self.events_for_replay(
-                replay_id, event_properties=event_properties
-            )
-
         start_time = int(rrweb_events[0]["timestamp"])
         end_time = int(rrweb_events[-1]["timestamp"])
+
+        mixpanel_events: list[ReplayEvent] = []
+        if include_mixpanel_events:
+            # Scope the events scan to the replay's own day(s): tight, and
+            # correct even for replays older than the default 90-day lookback.
+            win_from = datetime.fromtimestamp(start_time / 1000, timezone.utc).strftime(
+                "%Y-%m-%d"
+            )
+            win_to = datetime.fromtimestamp(end_time / 1000, timezone.utc).strftime(
+                "%Y-%m-%d"
+            )
+            mixpanel_events = self.events_for_replay(
+                replay_id,
+                event_properties=event_properties,
+                from_date=win_from,
+                to_date=win_to,
+            )
+
         # Phase 2 (T056) — run the rrweb analyzer to populate actions.
         from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
 
@@ -10710,6 +10744,7 @@ class Workspace:
         # Use a thread pool so each fetch_replay invocation owns its own
         # async event loop without clashing.
         results: dict[int, Replay] = {}
+        failures: list[tuple[str, Exception]] = []
         with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
             futures = {
                 pool.submit(
@@ -10720,11 +10755,30 @@ class Workspace:
                     include_mixpanel_events=include_mixpanel_events,
                     event_properties=event_properties,
                     cdn_concurrency=cdn_concurrency,
-                ): i
+                ): (i, rid)
                 for i, rid in enumerate(replay_ids)
             }
             for future in as_completed(futures):
-                results[futures[future]] = future.result()
+                idx, rid = futures[future]
+                try:
+                    results[idx] = future.result()
+                except Exception as exc:  # noqa: BLE001 — per-replay isolation
+                    # One replay's CDN stall, 404, or parse error must not sink
+                    # the whole bundle (mirrors the MCP server's
+                    # asyncio.gather(return_exceptions=True) + skip). Log it and
+                    # keep the successful replays; only an all-fail batch raises.
+                    logger.warning(
+                        "fetch_replays: skipping replay %s — %s: %s",
+                        rid,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    failures.append((rid, exc))
+        if not results and failures:
+            # Every replay failed — surface the first underlying error rather
+            # than a generic wrapper, preserving its type (ReplayNotFoundError,
+            # SignedURLExpiredError, ...) for callers that branch on it.
+            raise failures[0][1]
         ordered = [results[i] for i in sorted(results)]
         return ReplayBundle(
             replays=ordered,
@@ -10738,7 +10792,7 @@ class Workspace:
         *,
         from_date: str,
         to_date: str,
-        limit: int = 100,
+        limit: int = 20,
         include_mixpanel_events: bool = True,
         event_properties: list[str] | None = None,
     ) -> ReplayBundle:
@@ -10749,11 +10803,18 @@ class Workspace:
         what this user did" convenience method — having the Mixpanel
         event stream alongside the actions is usually what callers want.
 
+        Each replay materializes its full byte stream, so the default
+        ``limit`` is a conservative 20 (matching the reference MCP server's
+        ``MCP_MAX_REPLAYS_TO_PROCESS``). An active user can have hundreds of
+        replays in a week; fetching them all is byte-heavy and slow. Raise
+        ``limit`` deliberately when you need more, or use
+        :meth:`list_replays` + :meth:`stream_replay` for large sweeps.
+
         Args:
             distinct_id: Mixpanel user identifier.
             from_date: ISO date (YYYY-MM-DD).
             to_date: ISO date (YYYY-MM-DD).
-            limit: Maximum replays. Default 100.
+            limit: Maximum replays to fetch. Default 20 (byte-heavy per replay).
             include_mixpanel_events: Default True for this convenience method.
             event_properties: Up to 5 properties for Mixpanel join.
 

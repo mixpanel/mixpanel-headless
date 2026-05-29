@@ -215,7 +215,11 @@ class DOMTracker:
                 and len(self.nodes) >= self.MAX_NODES
                 and not self.reached_max_nodes
             ):
-                log.warning("DOMTracker reached maximum node limit; skipping new nodes")
+                # Expected on large real sessions (complex SPA full-snapshots
+                # routinely exceed MAX_NODES); the analyzer degrades gracefully
+                # by skipping new nodes. DEBUG, not WARNING — this matches the
+                # upstream analyzer's intent and isn't actionable for callers.
+                log.debug("DOMTracker reached maximum node limit; skipping new nodes")
                 self.reached_max_nodes = True
                 continue
 

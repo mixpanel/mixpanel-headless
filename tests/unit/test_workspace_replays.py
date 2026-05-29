@@ -75,6 +75,18 @@ def _signed(replay_id: str = "r-1") -> SignedReplay:
     )
 
 
+def _replay(replay_id: str) -> Replay:
+    """Build a minimal valid Replay for bundle-assembly tests."""
+    return Replay(
+        replay_id=replay_id,
+        distinct_id=None,
+        project_id=12345,
+        start_time=1716810000000,
+        end_time=1716810005000,
+        retention_days=30,
+    )
+
+
 # =============================================================================
 # list_replays validation
 # =============================================================================
@@ -328,8 +340,13 @@ class TestFetchReplay:
 
         replay = ws.fetch_replay("r-1", retention_days=30, include_mixpanel_events=True)
 
-        # events_for fired exactly once.
+        # events_for fired exactly once, scoped to the replay's own day(s)
+        # (rrweb timestamps 1716810000000–1716810005000 ms == 2024-05-27 UTC)
+        # rather than the windowless default.
         svc.events_for.assert_called_once()
+        _args, kwargs = svc.events_for.call_args
+        assert kwargs["from_date"] == "2024-05-27"
+        assert kwargs["to_date"] == "2024-05-27"
         assert len(replay.mixpanel_events) == 1
         assert replay.mixpanel_events[0].event_name == "Login"
 
@@ -430,6 +447,91 @@ class TestSignReplaysWiring:
         out = ws.sign_replays(["r-1", "r-2"], env="dev")
         assert [s.replay_id for s in out] == ["r-1", "r-2"]
         svc.sign.assert_called_once_with(["r-1", "r-2"], env="dev")
+
+
+# =============================================================================
+# events_for_replays window passthrough (QA finding #2)
+# =============================================================================
+
+
+class TestEventsForReplaysWindow:
+    """events_for_replay(s) forward an optional from/to window to the service."""
+
+    def test_explicit_window_passes_through(self) -> None:
+        """from_date/to_date reach ReplaysService.events_for unchanged."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.events_for.return_value = {}
+        ws.events_for_replays(["r-1"], from_date="2026-05-20", to_date="2026-05-21")
+        _args, kwargs = svc.events_for.call_args
+        assert kwargs["from_date"] == "2026-05-20"
+        assert kwargs["to_date"] == "2026-05-21"
+
+    def test_default_window_is_none(self) -> None:
+        """No explicit window → None forwarded (service applies the 90d lookback)."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.events_for.return_value = {}
+        ws.events_for_replay("r-1")
+        _args, kwargs = svc.events_for.call_args
+        assert kwargs["from_date"] is None
+        assert kwargs["to_date"] is None
+
+
+# =============================================================================
+# fetch_replays resilience (QA finding #3 — mirror the MCP server)
+# =============================================================================
+
+
+class TestFetchReplaysResilience:
+    """fetch_replays skips per-replay failures instead of sinking the bundle."""
+
+    def test_one_failure_does_not_sink_the_bundle(self) -> None:
+        """A single failing replay is skipped; the rest are returned in order."""
+        from mixpanel_headless.exceptions import ReplayNotFoundError
+
+        ws = _make_workspace()
+
+        def fake(replay_id: str, **_kw: Any) -> Replay:
+            """Fail for r-bad, succeed otherwise."""
+            if replay_id == "r-bad":
+                raise ReplayNotFoundError(
+                    "gone", details={"replay_id": replay_id}, status_code=404
+                )
+            return _replay(replay_id)
+
+        ws.fetch_replay = MagicMock(side_effect=fake)  # type: ignore[method-assign]
+        bundle = ws.fetch_replays(["r-1", "r-bad", "r-2"])
+        assert {r.replay_id for r in bundle.replays} == {"r-1", "r-2"}
+
+    def test_all_failures_raise_first_underlying_error(self) -> None:
+        """When every replay fails, the first error propagates with its type."""
+        from mixpanel_headless.exceptions import ReplayNotFoundError
+
+        ws = _make_workspace()
+        ws.fetch_replay = MagicMock(  # type: ignore[method-assign]
+            side_effect=ReplayNotFoundError("gone", details={}, status_code=404)
+        )
+        with pytest.raises(ReplayNotFoundError):
+            ws.fetch_replays(["r-1", "r-2"])
+
+
+# =============================================================================
+# replays_for_user default limit (QA finding #3)
+# =============================================================================
+
+
+class TestReplaysForUserLimit:
+    """replays_for_user defaults to a conservative fetch bound."""
+
+    def test_default_limit_is_20(self) -> None:
+        """The default limit (20) reaches discover, bounding the byte fetch."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.discover.return_value = []  # short-circuit before any fetch
+        ws.replays_for_user("u-42", from_date="2026-05-20", to_date="2026-05-27")
+        _args, kwargs = svc.discover.call_args
+        assert kwargs["limit"] == 20
 
 
 # Touch Any to keep the import meaningful for type-stubs scenarios.

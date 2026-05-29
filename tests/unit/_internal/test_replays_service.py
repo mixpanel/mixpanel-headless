@@ -605,6 +605,32 @@ class TestEventsForParsing:
         service = ReplaysService(api, query_fn=query_fn)
         assert service.events_for(["rid-bab"]) == {}
 
+    def test_default_window_is_90_day_lookback(self) -> None:
+        """Without an explicit window, the query uses last=90 (max retention).
+
+        The underlying Workspace.query default is last=30, which would silently
+        miss events for replays 31–90 days old.
+        """
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result({}))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.events_for(["rid-bab"])
+        _args, kwargs = query_fn.call_args
+        assert kwargs.get("last") == 90
+        assert "from_date" not in kwargs
+        assert "to_date" not in kwargs
+
+    def test_explicit_window_overrides_lookback(self) -> None:
+        """An explicit from/to is passed through; last is not sent."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result({}))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.events_for(["rid-bab"], from_date="2026-05-20", to_date="2026-05-21")
+        _args, kwargs = query_fn.call_args
+        assert kwargs.get("from_date") == "2026-05-20"
+        assert kwargs.get("to_date") == "2026-05-21"
+        assert "last" not in kwargs
+
 
 # Ensure the module is importable as a package for pytest collection.
 _ = json
