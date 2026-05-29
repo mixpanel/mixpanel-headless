@@ -3,15 +3,15 @@
 **Branch**: `044-session-replay` (proposed) | **Date**: 2026-05-27 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification from `/specs/044-session-replay/spec.md`
 **Source design**: [`context/session-replay-plan.md`](../../context/session-replay-plan.md) — the original detailed design draft. This plan distills it into spec-kit shape; the source remains authoritative for fine-grained file layout, vendoring decisions, and PR-shape rationale.
-**PR strategy**: Phased. Phase 1 (discovery + signed CDN access + `Replay`) ships as one PR. Phase 2 (vendored rrweb analyzer + `ReplayBundle`) ships as a second PR. Phase 3 (pm4py + tslearn optional extras) ships as a third PR, gated on user demand. Each phase is independently shippable and adds value on its own.
+**PR strategy**: Phased. Phase 1 (discovery + signed CDN access + `Replay`) ships as one PR. Phase 2 (vendored rrweb analyzer + `ReplayBundle`) ships as a second PR. Each phase is independently shippable and adds value on its own.
 
 ## Summary
 
-Add a first-class session replay surface to `mixpanel-headless` covering discovery via the existing Insights query path, signed CDN access to raw rrweb recording files via Mixpanel's `/app/projects/<id>/replays/sign[/bulk]` endpoints (used today by Mixpanel's own MCP server), a vendored rrweb analyzer that converts raw event streams into normalized user-action timelines, two typed result classes (`Replay` for single sessions, `ReplayBundle` for collections) that mirror the existing `FlowQueryResult` idiom with long-format pandas DataFrames keyed by `replay_id`, lazy `networkx` page / element graphs, lazy `anytree` path trees, and a lazy pm4py event log for process mining. A new `mp replays` CLI group exposes `list`, `events`, `sign`, `fetch`, `analyze`, and `for-user` commands.
+Add a first-class session replay surface to `mixpanel-headless` covering discovery via the existing Insights query path, signed CDN access to raw rrweb recording files via Mixpanel's `/app/projects/<id>/replays/sign[/bulk]` endpoints (used today by Mixpanel's own MCP server), a vendored rrweb analyzer that converts raw event streams into normalized user-action timelines, two typed result classes (`Replay` for single sessions, `ReplayBundle` for collections) that mirror the existing `FlowQueryResult` idiom with long-format pandas DataFrames keyed by `replay_id`, lazy `networkx` page / element graphs, and lazy `anytree` path trees. A new `mp replays` CLI group exposes `list`, `events`, `sign`, `fetch`, `analyze`, and `for-user` commands.
 
-The technical approach treats a replay as an event log (timestamped activities keyed by a case ID) so the data shape aligns with every PyData library that touches sequential data (`pandas`, `pm4py`, `prefixspan`, `tslearn`, `duckdb`). `ReplayBundle` is the high-leverage type; a `Replay` is conceptually a bundle of size 1, and the API treats them that way.
+The technical approach treats a replay as an event log (timestamped activities keyed by a case ID) so the data shape aligns with every PyData library that touches sequential data (`pandas`, `duckdb`). `ReplayBundle` is the high-leverage type; a `Replay` is conceptually a bundle of size 1, and the API treats them that way.
 
-Estimated scope: ~3,000 LoC across ~25 new or modified files. Three phases. Total ~3–4 weeks of focused work.
+Estimated scope: ~2,700 LoC across ~23 new or modified files. Two phases. Total ~3 weeks of focused work.
 
 ## Technical Context
 
@@ -20,7 +20,7 @@ Estimated scope: ~3,000 LoC across ~25 new or modified files. Three phases. Tota
 **Primary Dependencies**:
 - Reused: `httpx` (HTTP client and CDN fetcher), Pydantic v2 (validation), pandas (DataFrames), Typer (CLI), Rich (output), Hypothesis (PBT), mutmut (mutation testing).
 - New (vendored, no third-party install): rrweb analyzer ported from `analytics/backend/replays/rrweb_analyzer.py` (~600 LoC, pure stdlib).
-- New optional: `pm4py>=2.7` behind `[replay-mining]`, `tslearn>=0.6` behind `[replay-ml]`. `networkx` and `anytree` reused from existing flow-query optional extras under a new `[replay-all]` aggregate.
+- Reused (core deps): `networkx` and `anytree` power the lazy page / element graphs and path trees.
 
 **Storage**: None. Signed URLs are time-bounded bearer credentials; the library does not persist them. No new disk artifacts beyond what `httpx` already handles in-process.
 
@@ -45,12 +45,10 @@ Estimated scope: ~3,000 LoC across ~25 new or modified files. Three phases. Tota
 - 80% mutation score on `_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`.
 - Signed-URL `query_string` MUST NOT appear in any log line at any level. `__repr__` of `SignedReplay` MUST mask the field. Reviewer audit: grep transcript for any leak.
 - Vendored analyzer MUST remain pure-Python (no native deps) so it works in every environment `mixpanel-headless` already supports.
-- Optional extras (`replay-mining`, `replay-ml`) MUST NOT be required for any core surface to import; lazy imports inside property bodies and method bodies only.
 
 **Scale/Scope**:
 - Phase 1: ~5 new files + 4 modified, ~1,200 LoC including tests.
 - Phase 2: ~4 new files (vendored analyzer, labels, aggregators, ReplayBundle expansion), ~1,500 LoC.
-- Phase 3: ~2 new files (pm4py adapter, tslearn adapter), ~500 LoC.
 
 ## Constitution Check
 
@@ -107,15 +105,13 @@ src/mixpanel_headless/
 │   │   └── replays.py                          # NEW (Phase 1) — ReplaysService: orchestrates sign + fetch + discovery
 │   ├── api_client.py                           # MODIFIED (Phase 1) — add sign_replays() method;
 │   │                                           # wire the SESSION_RECORDING_SENSITIVE_DATA 403 mapping
-│   └── replays/                                # NEW SUBPACKAGE (Phase 2 + Phase 3)
+│   └── replays/                                # NEW SUBPACKAGE (Phase 2)
 │       ├── __init__.py
 │       ├── rrweb_analyzer.py                   # NEW (Phase 2) — VENDORED from analytics/backend/replays/rrweb_analyzer.py
 │       │                                       # DOMTracker + EventAnalyzer + MarkdownReporter, pure stdlib
 │       ├── labels.py                           # NEW (Phase 2) — default_label_fn, selector_label_fn, url_normalizer
-│       ├── aggregators.py                      # NEW (Phase 2) — top_paths, top_clicks, top_pages,
-│       │                                       # dead_clicks, rage_clicks, long_pauses, error_sessions
-│       ├── pm4py_adapter.py                    # NEW (Phase 3) — event_log() pm4py wrapping
-│       └── ml_adapter.py                       # NEW (Phase 3) — cluster() using tslearn DTW
+│       └── aggregators.py                      # NEW (Phase 2) — top_paths, top_clicks, top_pages,
+│                                               # dead_clicks, rage_clicks, long_pauses, error_sessions
 └── cli/
     ├── main.py                                 # MODIFIED (Phase 1) — register replays_app in _register_commands()
     └── commands/
@@ -130,9 +126,7 @@ tests/
 │   ├── test_rrweb_analyzer.py                  # PORTED (Phase 2) from analytics/backend/replays/test_rrweb_analyzer.py
 │   ├── test_replay_labels.py                   # NEW (Phase 2) — default + selector label stability
 │   ├── test_types_replay.py                    # NEW (Phase 2) — Replay DataFrame projections, mode-aware df
-│   ├── test_types_replay_bundle.py             # NEW (Phase 2) — ReplayBundle aggregations, filters, lazy props
-│   ├── test_pm4py_adapter.py                   # NEW (Phase 3) — gated on pm4py install marker
-│   └── test_ml_adapter.py                      # NEW (Phase 3) — gated on tslearn install marker
+│   └── test_types_replay_bundle.py             # NEW (Phase 2) — ReplayBundle aggregations, filters, lazy props
 ├── pbt/
 │   ├── test_cdn_walker_pbt.py                  # NEW (Phase 1) — file-numbering walker invariants
 │   ├── test_replay_labels_pbt.py               # NEW (Phase 2) — label_fn stability across DOM perturbations
@@ -147,7 +141,7 @@ tests/
         └── sample-bundle-fixture.py            # NEW (Phase 2) — builds a deterministic 10-replay ReplayBundle
 ```
 
-**Structure Decision**: Single-project Python library layout (Option 1). The feature extends three existing surfaces (`workspace.py` Python facade, `types.py` result classes, `cli/commands/` Typer commands) and adds one new internal subpackage (`_internal/replays/`) for the vendored analyzer, label functions, aggregators, and optional adapters. No new top-level layout; all changes nest under existing module roots.
+**Structure Decision**: Single-project Python library layout (Option 1). The feature extends three existing surfaces (`workspace.py` Python facade, `types.py` result classes, `cli/commands/` Typer commands) and adds one new internal subpackage (`_internal/replays/`) for the vendored analyzer, label functions, and aggregators. No new top-level layout; all changes nest under existing module roots.
 
 ## Complexity Tracking
 

@@ -13020,9 +13020,9 @@ class ReplayBundle(ResultWithDataFrame):
 
     All DataFrame and graph / tree projections are lazy: computed on first
     access, cached via ``object.__setattr__`` since the dataclass is
-    frozen. The graph and tree projections lazily import their third-party
-    libraries (``networkx``, ``anytree``) inside the property body so the
-    ``[replay-all]`` extra stays optional.
+    frozen. The graph and tree projections import their libraries
+    (``networkx``, ``anytree`` — both core dependencies) lazily inside the
+    property body to avoid the load-time cost when they are never accessed.
 
     Filters (``filter``, ``where``, ``find_pattern``, ``error_sessions``,
     ``head``, ``sample``) return a NEW bundle that is a proper subset of
@@ -13344,20 +13344,13 @@ class ReplayBundle(ResultWithDataFrame):
         """Directed page-transition graph as a :class:`networkx.DiGraph`.
 
         Nodes are URL strings; edges carry ``count`` and ``n_unique_replays``.
-        Requires the ``[replay-all]`` extra (``networkx``).
-
-        Raises:
-            ImportError: ``networkx`` is not importable.
+        Uses ``networkx`` (a core dependency), imported lazily here to avoid
+        the load-time cost when the graph is never accessed.
         """
         if self._page_graph_cache is not None:
             return self._page_graph_cache
-        try:
-            import networkx as nx
-        except ImportError as exc:
-            raise ImportError(
-                "ReplayBundle.page_graph requires networkx. "
-                "Install with: pip install 'mixpanel-headless[replay-all]'"
-            ) from exc
+        import networkx as nx
+
         graph = nx.DiGraph()
         for _, row in self.transitions_df.iterrows():
             graph.add_edge(
@@ -13374,20 +13367,12 @@ class ReplayBundle(ResultWithDataFrame):
         """Directed click-sequence graph as a :class:`networkx.DiGraph`.
 
         Nodes are ``target_desc`` strings; edges count adjacent click pairs.
-        Requires ``networkx`` (``[replay-all]``).
-
-        Raises:
-            ImportError: ``networkx`` is not importable.
+        Uses ``networkx`` (a core dependency), imported lazily here.
         """
         if self._element_graph_cache is not None:
             return self._element_graph_cache
-        try:
-            import networkx as nx
-        except ImportError as exc:
-            raise ImportError(
-                "ReplayBundle.element_graph requires networkx. "
-                "Install with: pip install 'mixpanel-headless[replay-all]'"
-            ) from exc
+        import networkx as nx
+
         graph = nx.DiGraph()
         for r in self.replays:
             clicks = [a for a in r.actions if a.action == "click"]
@@ -13404,20 +13389,12 @@ class ReplayBundle(ResultWithDataFrame):
         """Prefix tree of action sequences rooted at a synthetic ``Start`` node.
 
         Each node carries a ``count`` attribute (how many replays followed
-        the prefix). Requires the ``[replay-all]`` extra (``anytree``).
-
-        Raises:
-            ImportError: ``anytree`` is not importable.
+        the prefix). Uses ``anytree`` (a core dependency), imported lazily here.
         """
         if self._path_tree_cache is not None:
             return self._path_tree_cache
-        try:
-            from anytree import AnyNode
-        except ImportError as exc:
-            raise ImportError(
-                "ReplayBundle.path_tree requires anytree. "
-                "Install with: pip install 'mixpanel-headless[replay-all]'"
-            ) from exc
+        from anytree import AnyNode
+
         root = AnyNode(name="Start", count=len(self.replays))
         for r in self.replays:
             cursor = root
@@ -13430,68 +13407,6 @@ class ReplayBundle(ResultWithDataFrame):
                 cursor = child
         object.__setattr__(self, "_path_tree_cache", root)
         return root
-
-    def event_log(
-        self,
-        *,
-        label_fn: Callable[[UserAction], str] | None = None,
-    ) -> Any:
-        """Event log suitable for pm4py process mining.
-
-        Returns a pm4py-compatible event log: a pandas DataFrame with the XES
-        columns ``case:concept:name``, ``concept:name``, ``time:timestamp``.
-        When pm4py is installed the frame is run through
-        ``pm4py.format_dataframe`` so it carries pm4py's standard event-log
-        metadata and is accepted directly by the mining functions
-        (``discover_petri_net_inductive``, ``discover_bpmn_inductive``, …);
-        without pm4py the bare DataFrame is returned (no ImportError).
-
-        pm4py 2.7+ treats a formatted DataFrame as a first-class event log, so
-        no separate ``pm4py.objects.log.obj.EventLog`` object is constructed —
-        call ``pm4py.convert_to_event_log(result)`` if you specifically need
-        the legacy object form.
-
-        Args:
-            label_fn: Optional label-fn override. Defaults to
-                :func:`default_label_fn`.
-
-        Returns:
-            A pandas ``DataFrame`` — pm4py-formatted when pm4py is installed,
-            otherwise the bare XES-column frame.
-        """
-        # Local import to avoid a hard dependency on the analyzer at module
-        # import time (and to dodge the types ↔ labels circular).
-        from mixpanel_headless._internal.replays.labels import default_label_fn
-
-        fn = label_fn or default_label_fn
-        rows: list[dict[str, Any]] = []
-        for r in self.replays:
-            for action in r.actions:
-                rows.append(
-                    {
-                        "case:concept:name": r.replay_id,
-                        "concept:name": fn(action),
-                        "time:timestamp": pd.to_datetime(
-                            action.timestamp, unit="ms", utc=True
-                        ),
-                    }
-                )
-        df = pd.DataFrame(
-            rows, columns=["case:concept:name", "concept:name", "time:timestamp"]
-        )
-        # pm4py wrapping ships in Phase 3 (US4) via the
-        # _internal/replays/pm4py_adapter module. Use importlib so mypy
-        # doesn't flag the not-yet-shipped module as a missing attribute;
-        # the import is guarded with the documented DataFrame fallback.
-        import importlib
-
-        try:
-            adapter = importlib.import_module(
-                "mixpanel_headless._internal.replays.pm4py_adapter"
-            )
-            return adapter.wrap_event_log_dataframe(df)
-        except (ImportError, ModuleNotFoundError):
-            return df
 
     # =========================================================================
     # Aggregations
@@ -13753,51 +13668,6 @@ class ReplayBundle(ResultWithDataFrame):
         return pd.DataFrame(
             rows, columns=["action", "self_count", "other_count", "delta"]
         )
-
-    def cluster(
-        self,
-        n: int = 5,
-        *,
-        features: Literal["actions", "pages"] = "actions",
-        seed: int | None = None,
-    ) -> ReplayBundle:
-        """Cluster replays via tslearn DTW (Phase 3 / US4, requires ``[replay-ml]``).
-
-        Delegates to :func:`mixpanel_headless._internal.replays.ml_adapter.cluster_bundle`.
-        The ml_adapter import happens here; when ``tslearn`` is missing it
-        raises :class:`ImportError` with the canonical install message.
-
-        Args:
-            n: Number of clusters.
-            features: ``"actions"`` clusters on action sequences,
-                ``"pages"`` on page sequences.
-            seed: Optional reproducibility seed.
-
-        Returns:
-            A new :class:`ReplayBundle` whose replays carry a
-            ``cluster_label`` attribute in ``{0, …, n-1}``.
-
-        Raises:
-            ImportError: ``tslearn`` (or its dependencies) is not installed.
-        """
-        try:
-            import importlib
-
-            adapter = importlib.import_module(
-                "mixpanel_headless._internal.replays.ml_adapter"
-            )
-        except (ImportError, ModuleNotFoundError) as exc:
-            raise ImportError(
-                "ReplayBundle.cluster requires tslearn. "
-                "Install with: pip install 'mixpanel-headless[replay-ml]'"
-            ) from exc
-        try:
-            return adapter.cluster_bundle(self, n, features=features, seed=seed)  # type: ignore[no-any-return]
-        except ImportError as exc:
-            raise ImportError(
-                "ReplayBundle.cluster requires tslearn. "
-                "Install with: pip install 'mixpanel-headless[replay-ml]'"
-            ) from exc
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serializable representation of the bundle (lossy on DataFrames)."""

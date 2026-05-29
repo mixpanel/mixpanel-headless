@@ -150,32 +150,16 @@ raise ValueError(
 
 ---
 
-## 6. `ImportError` on missing optional extras
+## 6. Optional-extra `ImportError` — not applicable
 
-**When raised**: A property or method that depends on an optional extra is accessed without the extra installed.
+The replay feature has **no optional-extra-gated surface**, so it raises no
+install-time `ImportError`. `networkx` and `anytree` (used by
+`ReplayBundle.page_graph` / `element_graph` / `path_tree`) are declared in the
+base `dependencies`, so those projections always work; there are no
+`[replay-mining]` / `[replay-ml]` / `[replay-all]` extras.
 
-**Pattern**:
-```python
-try:
-    import {package}
-except ImportError as e:
-    raise ImportError(
-        f"{class}.{property} requires {package}. "
-        f"Install with: pip install 'mixpanel-headless[{extra}]'"
-    ) from e
-```
-
-**Specific messages**:
-
-| Symbol | Required package | Extras name | Error message |
-|--------|------------------|-------------|---------------|
-| `ReplayBundle.page_graph` | `networkx` | `replay-all` | `"ReplayBundle.page_graph requires networkx. Install with: pip install 'mixpanel-headless[replay-all]'"` |
-| `ReplayBundle.element_graph` | `networkx` | `replay-all` | (same shape) |
-| `ReplayBundle.path_tree` | `anytree` | `replay-all` | `"ReplayBundle.path_tree requires anytree. Install with: pip install 'mixpanel-headless[replay-all]'"` |
-| `ReplayBundle.event_log()` (pm4py path) | `pm4py` | `replay-mining` | falls back to DataFrame; no ImportError on the absent path |
-| `ReplayBundle.cluster()` | `tslearn` | `replay-ml` | `"ReplayBundle.cluster requires tslearn. Install with: pip install 'mixpanel-headless[replay-ml]'"` |
-
-**Exit code** (when surfaced via CLI): 1 (generic error)
+(Section retained, not renumbered, so §7–§11 — and the code references to §9 /
+§10 — keep their numbers.)
 
 ---
 

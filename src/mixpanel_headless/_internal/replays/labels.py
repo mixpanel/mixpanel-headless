@@ -120,13 +120,13 @@ def selector_label_fn(attr: str = "data-testid") -> Callable[[UserAction], str]:
         attr: The metadata key to consult. Default ``"data-testid"``.
 
     Returns:
-        A callable ``(UserAction) -> str`` suitable for
-        :meth:`ReplayBundle.event_log` / aggregation overrides.
+        A callable ``(UserAction) -> str`` suitable as a ``label_fn`` override
+        for :meth:`ReplayBundle.top_paths` / :meth:`ReplayBundle.find_pattern`.
 
     Example:
         ```python
         label_fn = selector_label_fn("data-testid")
-        bundle.event_log(label_fn=label_fn)
+        bundle.top_paths(label_fn=label_fn)
         ```
     """
 

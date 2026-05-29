@@ -55,8 +55,7 @@ may include API changes.
   (`sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`,
   `elements_df`, `transitions_df`); two graph projections
   (`page_graph`, `element_graph` — `networkx.DiGraph`); one tree
-  projection (`path_tree` — `anytree.AnyNode`); a `event_log()` method
-  with pm4py wrapping when available; seven aggregations
+  projection (`path_tree` — `anytree.AnyNode`); seven aggregations
   (`top_paths`, `top_pages`, `top_clicks`, `dead_clicks`, `rage_clicks`,
   `long_pauses`, `error_sessions`); six chainable filters
   (`filter`, `where`, `find_pattern`, `error_sessions`, `head`,
@@ -70,19 +69,6 @@ may include API changes.
 - New CLI commands: `mp replays analyze` (markdown timeline /
   `--format json` for action list) and `mp replays for-user
   --include analyze --include events --out-dir DIR`.
-
-### Added (PR 3 — Phase 3: pm4py + tslearn extras)
-
-- New optional extras: `replay-mining` (`pm4py>=2.7`),
-  `replay-ml` (`tslearn>=0.6`), `replay-all`
-  (`mixpanel-headless[replay-mining,replay-ml]`).
-- `ReplayBundle.event_log()` returns a pm4py-formatted DataFrame (via
-  `pm4py.format_dataframe`) when pm4py is installed — pm4py 2.7+ consumes a
-  formatted DataFrame directly; otherwise the bare DataFrame fallback per
-  data-model §2.6.
-- `ReplayBundle.cluster(n, features, seed)` — DTW k-means clustering
-  via the `_internal/replays/ml_adapter` module; raises `ImportError`
-  with the canonical install message when `tslearn` is missing.
 
 ### Security
 

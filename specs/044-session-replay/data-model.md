@@ -280,13 +280,6 @@ class ReplayBundle(ResultWithDataFrame):
     @property
     def path_tree(self) -> "anytree.AnyNode": ...
 
-    # Event log (lazy pm4py fork)
-    def event_log(
-        self,
-        *,
-        label_fn: Callable[[UserAction], str] | None = None,
-    ) -> pd.DataFrame: ...  # pm4py-formatted when pm4py is installed
-
     # Aggregations (return DataFrames)
     def top_paths(self, n: int = 10, *, label_fn: ...) -> pd.DataFrame: ...
     def top_pages(self, n: int = 10) -> pd.DataFrame: ...
@@ -311,10 +304,6 @@ class ReplayBundle(ResultWithDataFrame):
     @property
     def summary_markdown(self) -> str: ...
     def compare(self, other: "ReplayBundle") -> pd.DataFrame: ...
-
-    # Phase 3 (optional)
-    def cluster(self, n: int = 5, *, features: Literal["actions", "pages"] = "actions") -> "ReplayBundle":
-        """Add cluster_label to each Replay. Requires [replay-ml] extra."""
 ```
 
 **DataFrame column contracts** (full schemas in `quickstart.md`):
@@ -334,11 +323,6 @@ class ReplayBundle(ResultWithDataFrame):
 - `page_graph` (`networkx.DiGraph`): nodes are URL strings with `n_visits`, `n_unique_replays`, `is_entry`, `is_exit`. Edges are transitions with `count`, `n_unique_replays`, `mean_dwell_s`. Compatible with `nx.pagerank`, `nx.betweenness_centrality`, `nx.simple_cycles`, `nx.shortest_path`.
 - `element_graph` (`networkx.DiGraph`): nodes are `(target_desc, url)` tuples with `n_clicks`, `n_unique_users`. Edges are directed click sequences with `count`, `mean_gap_s`.
 - `path_tree` (`anytree.AnyNode`): root is synthetic "Start"; children are action sequences with frequency counts.
-
-**Event log (for process mining)**:
-
-- pm4py absent: returns a `pd.DataFrame` with columns `case:concept:name` (= `replay_id`), `concept:name` (= `label_fn(action)` or default), `time:timestamp` (= `t`).
-- pm4py present: returns the DataFrame run through `pm4py.format_dataframe()` — pm4py 2.7+ treats a formatted DataFrame as a first-class event log, so the mining functions accept it directly. Same shape, pm4py-standard metadata; no `EventLog` object is built.
 
 ---
 
@@ -430,8 +414,7 @@ ReplayBundle(replays=..., computed_at=now, project_id=...)
     ├─ transitions_df (aggregated by from_url+to_url)
     ├─ page_graph   (networkx, lazy import)
     ├─ element_graph (networkx, lazy import)
-    ├─ path_tree    (anytree, lazy import)
-    └─ event_log()  (pm4py if installed, else DataFrame)
+    └─ path_tree    (anytree, lazy import)
 ```
 
 ### 4.3 `ReplayBundle` filter chain

@@ -123,47 +123,11 @@ The source design (`context/session-replay-plan.md`) already settled the load-be
 - **Use the full CSS selector path**: rejected — fragile under DOM drift (a parent div rename invalidates every descendant's label).
 - **Hash the entire element subtree**: rejected — opaque to humans reading the labels; debugging becomes guesswork.
 
-**Escape valve**: every process-mining-bound method accepts `label_fn=` for caller-controlled labeling. The default is a sensible starting point, not a forced choice.
+**Escape valve**: every method that emits activity labels (`top_paths`, `find_pattern`) accepts `label_fn=` for caller-controlled labeling. The default is a sensible starting point, not a forced choice.
 
 ---
 
-## R-8. `ReplayBundle.event_log()` forks on pm4py presence
-
-**Decision**: `bundle.event_log(label_fn=None)` returns a pandas DataFrame with `case:concept:name`, `concept:name`, `time:timestamp` columns when pm4py is absent. When pm4py 2.7+ is installed, the same DataFrame is also wrapped in a `pm4py.objects.log.obj.EventLog` via `pm4py.format_dataframe()` before being returned.
-
-**Rationale**:
-- pm4py 2.7+ uses DataFrames as primary citizens (per their docs): every discovery function (`discover_petri_net_inductive`, `discover_dfg`, `discover_bpmn_inductive`) accepts a DataFrame directly.
-- The XES-canonical column names (`case:concept:name`, `concept:name`, `time:timestamp`) are pm4py's contract.
-- Returning a DataFrame when pm4py is absent lets the user inspect / persist the event log without forcing the install.
-- Returning an `EventLog` when pm4py is installed keeps the type-level expectation aligned with pm4py's documentation.
-
-**Alternatives considered**:
-- **Always return a DataFrame**: rejected — pm4py users would constantly call `pm4py.format_dataframe()` themselves.
-- **Always require pm4py**: rejected — promotes a heavy optional dep to mandatory.
-- **Two methods (`event_log_df()` and `event_log_obj()`)**: rejected — splits a single conceptual operation into two surfaces.
-
----
-
-## R-9. Optional extras: `replay-mining`, `replay-ml`, `replay-all`
-
-**Decision**: Three install extras in `pyproject.toml`:
-- `replay-mining`: `pm4py>=2.7`
-- `replay-ml`: `tslearn>=0.6`
-- `replay-all`: union of the above plus `networkx>=3` and `anytree>=2` (already optional via existing extras, re-listed here for the all-encompassing aggregate)
-
-**Rationale**:
-- Process mining and ML clustering serve different audiences and have different install weights. Forcing them together (or into core) penalizes everyone.
-- `tslearn` pulls in `numpy`, `scipy`, `scikit-learn`, `joblib`. That's a ~200 MB install footprint. Strictly opt-in.
-- `networkx` and `anytree` are already optional in `[flows]` (or equivalent); the `[replay-all]` aggregate makes the "install everything for replays" path one command rather than three.
-
-**Alternatives considered**:
-- **Single `replay` extra**: rejected — couples pm4py and tslearn install decisions.
-- **Five separate extras (split networkx and anytree)**: rejected — over-fragmentation; users do not want to track which graph algorithm comes from which package.
-- **Bundle everything into core**: rejected — install weight + dependency-conflict surface for users who do not need clustering.
-
----
-
-## R-10. Insights group-by limit (5 properties) enforced client-side
+## R-8. Insights group-by limit (5 properties) enforced client-side
 
 **Decision**: `events_for_replay(replay_id, event_properties=[...])` validates `len(event_properties) <= 5` before constructing the query. Raises `ValueError` with a clear message naming the limit.
 
@@ -179,7 +143,7 @@ The source design (`context/session-replay-plan.md`) already settled the load-be
 
 ---
 
-## R-11. Bundle memory budget documented, not enforced
+## R-9. Bundle memory budget documented, not enforced
 
 **Decision**: Documentation states that `ReplayBundle` targets hundreds of replays (memory ~2 MB per replay in `actions_df`). No runtime enforcement of bundle size. Callers exceeding the budget are directed to `stream_replay` per replay + incremental aggregation.
 
@@ -195,17 +159,16 @@ The source design (`context/session-replay-plan.md`) already settled the load-be
 
 ---
 
-## R-12. Phase boundaries match shippable PRs, not feature completeness
+## R-10. Phase boundaries match shippable PRs, not feature completeness
 
-**Decision**: Phase 1 ships discovery + signed access + per-replay fetch with empty `Replay.actions` (analyzer not yet shipped). Phase 2 ships the analyzer, populating `Replay.actions` and adding `ReplayBundle`. Phase 3 ships pm4py + tslearn adapters, gated on user demand.
+**Decision**: Phase 1 ships discovery + signed access + per-replay fetch with empty `Replay.actions` (analyzer not yet shipped). Phase 2 ships the analyzer, populating `Replay.actions` and adding `ReplayBundle`.
 
 **Rationale**:
-- Each phase delivers caller-visible value independently. Phase 1 alone lets users pull raw bytes for the rrweb JS player. Phase 2 adds structured behavioral data. Phase 3 adds specialized analysis.
+- Each phase delivers caller-visible value independently. Phase 1 alone lets users pull raw bytes for the rrweb JS player. Phase 2 adds structured behavioral data.
 - Phase 1 is the most uncertain (new endpoints, new error mapping, new bearer-credential handling). Shipping it alone lets reviewers focus on that surface without the analyzer's 1,500-LoC noise.
 - Phase 2 builds on Phase 1's foundations; reviewers can assume the discovery / signing / fetching layer is already approved.
-- Phase 3 is opt-in optional. If no user pulls for pm4py/tslearn, Phase 3 never ships. Saves 500 LoC of maintenance burden.
 
 **Alternatives considered**:
-- **Single mega-PR (3,000 LoC)**: rejected — review burden, regression risk.
+- **Single mega-PR (~2,700 LoC)**: rejected — review burden, regression risk.
 - **One PR per file**: rejected — review thrash, no logical breakpoints.
 - **Phase 2 splits analyzer and bundle**: rejected (see Complexity Tracking in plan.md) — the analyzer is the bundle's data source; shipping separately creates dead code or incorrect API.

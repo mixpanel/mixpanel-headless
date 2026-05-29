@@ -60,23 +60,6 @@ A support engineer pasting context into a chat does not want to write Python. Th
 
 ---
 
-### User Story 4 — Process mining and ML clustering on action streams (Priority: P3)
-
-A behavioral scientist wants to discover the implicit process model in user behavior (the BPMN of how people actually use the product) or cluster sessions by sequence similarity using time-series ML. They install an optional extras group and use the existing bundle without restructuring their analysis pipeline.
-
-**Why this priority**: Specialist. Adds heavy dependencies (`pm4py`, `scipy`, `scikit-learn` via `tslearn`). The plan gates Phase 3 on actual user demand — ship only if pull materializes.
-
-**Independent Test**: With `mixpanel-headless[replay-mining]` installed, `ReplayBundle.event_log()` returns a pm4py-formatted DataFrame (via `pm4py.format_dataframe`) directly usable in `pm4py.discover_petri_net_inductive`. Without it, the same call returns the bare pm4py-compatible DataFrame (with `case:concept:name`, `concept:name`, `time:timestamp` columns) that any pm4py 2.7+ install can consume. With `mixpanel-headless[replay-ml]` installed, `bundle.cluster(n=5)` returns a new bundle whose replays each carry a `cluster_label`.
-
-**Acceptance Scenarios**:
-
-1. **Given** pm4py is NOT installed, **When** the caller invokes `bundle.event_log()`, **Then** a pandas DataFrame is returned with the three XES-canonical columns.
-2. **Given** pm4py IS installed, **When** the caller invokes `bundle.event_log()`, **Then** a pm4py-formatted DataFrame is returned (pm4py 2.7+ treats a formatted DataFrame as a first-class event log), ready for downstream pm4py functions.
-3. **Given** a custom `label_fn`, **When** `event_log(label_fn=label_fn)` is called, **Then** every activity label in the output is produced exclusively by that function (no fallback to the default).
-4. **Given** `tslearn` is installed AND a bundle of ≥10 replays, **When** `bundle.cluster(n=3, features="actions")` is called, **Then** a new bundle is returned and every replay has a `cluster_label` in `{0, 1, 2}`.
-
----
-
 ### Edge Cases
 
 - **Empty discovery**: `list_replays` returns an empty list, never raises. Caller decides how to surface "no replays found".
@@ -132,7 +115,6 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - **FR-022**: System MUST provide a `ReplayBundle` collection type exposing long-format DataFrame projections: `sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`, `elements_df`, `transitions_df`.
 - **FR-023**: `ReplayBundle.df` MUST default to `sessions_df` (one row per replay).
 - **FR-024**: `ReplayBundle` MUST expose graph projections `page_graph` and `element_graph` (using `networkx`) and `path_tree` (using `anytree`), lazily imported inside the property body — never at module import time.
-- **FR-025**: `ReplayBundle` MUST expose a pm4py-compatible event log via `event_log(label_fn=None)`: a DataFrame with `case:concept:name`, `concept:name`, `time:timestamp` columns when pm4py is absent; the same DataFrame run through `pm4py.format_dataframe` when present (pm4py 2.7+ consumes a formatted DataFrame directly — no separate `EventLog` object is constructed).
 - **FR-026**: `ReplayBundle` MUST expose convenience aggregations following the existing `FlowQueryResult` idiom: `top_paths(n)`, `top_pages(n)`, `top_clicks(n)`, `dead_clicks(window_ms)`, `rage_clicks(threshold, window_ms)`, `long_pauses(threshold_s)`, `error_sessions()`.
 - **FR-027**: `ReplayBundle` MUST expose chainable filter operations that return new bundles (immutable semantics): `filter(predicate)`, `where(distinct_id=..., contains_url=..., has_event=..., min_duration_s=..., max_duration_s=...)`, `find_pattern(action_sequence)`, `head(n)`, `sample(n, seed)`.
 - **FR-028**: `ReplayBundle` MUST expose lazy enrichment via `join_mixpanel_events(properties=None)` returning a new bundle with `mixpanel_df` populated on first access.
@@ -141,7 +123,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 
 #### Action labeling (Phase 2)
 
-- **FR-031**: All process-mining-bound methods (`event_log`, `top_paths`, `find_pattern`, and any future method that emits activity labels) MUST accept an optional `label_fn: Callable[[UserAction], str]` parameter.
+- **FR-031**: All methods that emit activity labels (`top_paths`, `find_pattern`, and any future such method) MUST accept an optional `label_fn: Callable[[UserAction], str]` parameter.
 - **FR-032**: The default label function MUST produce stable labels of shape `f"{action}:{tag_name}@{normalized_url}"`. URL normalization MUST strip query strings AND replace numeric path segments with `:id` (e.g. `/users/12345/profile` → `/users/:id/profile`).
 - **FR-033**: A built-in `selector_label_fn(attr="data-testid")` MUST be provided. When the named attribute is present on the target, the label MUST use it; when absent, it MUST fall back to the default label.
 
@@ -154,12 +136,6 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - **FR-038**: `mp replays fetch <id> -o file.json` MUST write a JSON array of rrweb events directly compatible with the rrweb JS player.
 - **FR-039**: `mp replays analyze <id>` MUST print a markdown timeline to stdout by default. `--format json` MUST emit the structured action list.
 - **FR-040**: `mp replays for-user <id> --include analyze --out-dir DIR` MUST write per-replay markdown timelines to `DIR` AND print a one-line summary to stdout.
-
-#### Optional extras (Phase 3)
-
-- **FR-041**: `pyproject.toml` MUST add three install extras: `replay-mining` (`pm4py>=2.7`), `replay-ml` (`tslearn>=0.6`), `replay-all` (union plus `networkx>=3` and `anytree>=2`).
-- **FR-042**: Importing the library AND instantiating `Workspace` MUST succeed with NONE of the optional extras installed.
-- **FR-043**: When an optional dependency is missing and the corresponding property or method is accessed, the error MUST be a clear `ImportError` whose message names the exact `pip install` command required, e.g. `pip install 'mixpanel-headless[replay-mining]'`.
 
 #### Security
 
@@ -175,7 +151,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - **UserAction**: normalized action extracted from rrweb events by the vendored analyzer (`timestamp`, `action`, `target_node_id?`, `target_desc`, `url?`, `metadata`). The atomic unit the bundle aggregates over.
 - **ReplayEvent**: a Mixpanel event that occurred during a replay's time window (`replay_id`, `event_name`, `event_time`, `properties?`). Optional enrichment on `Replay` / `ReplayBundle`.
 - **Replay**: single fully-materialized session — raw rrweb events plus normalized actions plus optional Mixpanel events plus four lazy DataFrame projections plus convenience accessors.
-- **ReplayBundle**: collection of `Replay` objects with seven cross-session DataFrame projections, two graph projections (`page_graph`, `element_graph`), one tree projection (`path_tree`), one event log for process mining, plus chainable filter / sample operations.
+- **ReplayBundle**: collection of `Replay` objects with seven cross-session DataFrame projections, two graph projections (`page_graph`, `element_graph`), one tree projection (`path_tree`), plus chainable filter / sample operations.
 - **Exception hierarchy**: `SessionReplayError` (base) → `SessionReplayAccessError` (sensitive-data 403), `SignedURLExpiredError` (5-minute TTL expired), `ReplayNotFoundError` (no CDN files for the given replay_id).
 
 ## Success Criteria *(mandatory)*
@@ -186,10 +162,8 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - **SC-002**: A user can fetch a 30 MB replay's raw bytes in under 5 seconds (concurrent batched CDN fetch) AND can see the first event from `stream_replay` within 1 second of calling it.
 - **SC-003**: A `ReplayBundle` of 100 typical replays materializes `actions_df` end-to-end (fetch + parse + project) in under 10 seconds on a typical broadband connection.
 - **SC-004**: Bearer credentials NEVER appear in default library logging, default `repr`, default CLI output, default `str`, or default error messages. The library passes a manual "grep the transcript for the signed query string" audit against every public surface.
-- **SC-005**: A user without `networkx`, `anytree`, `pm4py`, or `tslearn` installed can import the library, instantiate `Workspace`, list replays, sign replays, fetch a single replay, and call all `Replay` accessors that do not require those packages — with zero `ImportError`s on the core paths.
-- **SC-006**: Every optional-extra-bound property and method raises an `ImportError` whose message names the exact `pip install` command required. Verified for every gated property in unit tests.
 - **SC-007**: The vendored rrweb analyzer reaches at least 80% mutation score (`just mutate-check`) AND the new pure modules (services, analyzer, labels, aggregators) reach at least 90% line coverage (`just test-cov`).
-- **SC-008**: The Phase 1 PR ships independently and delivers value (raw bytes + signed URLs + per-replay fetch) even if Phase 2 and Phase 3 never ship.
+- **SC-008**: The Phase 1 PR ships independently and delivers value (raw bytes + signed URLs + per-replay fetch) even if Phase 2 never ships.
 - **SC-009**: A new contributor can read the spec, plan, and module docstrings, then add a new bundle aggregation (e.g. `time_to_first_click()`) without needing to touch the analyzer or the CDN fetcher.
 - **SC-010**: An analyst can produce a markdown summary of a known user's last week of behavior with a single command: `mp replays for-user USER --from D --to D --include analyze`.
 - **SC-011**: A 403 from the sensitive-data flag never appears to the caller as a raw HTTP status — it always arrives as `SessionReplayAccessError` with structured `details` and an actionable message. Verified against a fixture project carrying the flag.
@@ -202,9 +176,7 @@ A behavioral scientist wants to discover the implicit process model in user beha
 - Mixpanel's CDN concurrency tolerance matches what the MCP server already uses (batch size 50). The library adopts the same default and exposes a `cdn_concurrency` parameter for tuning.
 - `mixpanel-headless` is now considered an official second client to mixpanel.com and is already at near-parity on undocumented API usage; no special gating is required beyond the existing pre-release version warning.
 - The existing `Workspace.query()` typed Insights surface (Phase 029) supports the grouping required for discovery; no Insights API changes are needed.
-- `networkx` and `anytree` are reused from existing optional extras (already in `pyproject.toml` for flow-query usage), not introduced fresh by this feature.
-- pm4py 2.7+ uses DataFrames as primary citizens, so `event_log()` returns a DataFrame either way — pm4py-present just runs it through `pm4py.format_dataframe` to attach pm4py's standard metadata. No `EventLog` object is built (callers needing the legacy form call `pm4py.convert_to_event_log`).
+- `networkx` and `anytree` are core dependencies (used by flow-query and by the replay graph / tree projections), not optional extras.
 - The vendored rrweb analyzer (ported from `analytics/backend/replays/rrweb_analyzer.py` in the analytics monorepo) is pure-stdlib Python and adds no install weight to the core package.
-- The optional `replay-ml` extra carries heavy dependencies (`scipy`, `scikit-learn`, `joblib` via `tslearn`); users who opt in accept the install weight.
 - Cohort-driven replay enumeration, real-time replay streaming, replay deletion / retention management, LLM-based replay summarization, replay bookmarking, and direct GCS access via internal service accounts are explicitly out of scope.
-- The phased PR strategy (Phase 1 → Phase 2 → Phase 3) is enforced by reviewer convention, not tooling. Phase 3 ships only if user demand materializes after Phase 2 lands.
+- The phased PR strategy (Phase 1 → Phase 2) is enforced by reviewer convention, not tooling.

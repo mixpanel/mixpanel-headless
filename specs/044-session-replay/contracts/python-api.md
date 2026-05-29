@@ -333,7 +333,7 @@ def selector_label_fn(attr: str = "data-testid") -> Callable[[UserAction], str]:
     present, falling back to default_label_fn otherwise.
 
     Example:
-        bundle.event_log(label_fn=selector_label_fn("data-testid"))
+        bundle.top_paths(label_fn=selector_label_fn("data-testid"))
     """
 
 def url_normalizer(url: str) -> str:
@@ -374,5 +374,3 @@ def url_normalizer(url: str) -> str:
 | `fetch_replays` | 2 | Requires `ReplayBundle` |
 | `replays_for_user` | 2 | Sugar over `list_replays` + `fetch_replays` |
 | `analyze_replay` | 2 | Requires vendored analyzer |
-| `ReplayBundle.cluster` | 3 | Requires `[replay-ml]` extra |
-| `ReplayBundle.event_log` (pm4py path) | 3 | Falls back to DataFrame when pm4py absent |

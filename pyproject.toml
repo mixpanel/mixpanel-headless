@@ -61,16 +61,6 @@ docs = [
 ]
 notebook = ["ipykernel>=6.0"]
 
-# Session-replay optional extras (044, Phase 3 / US4).
-# replay-mining wraps the bundle event log in a pm4py EventLog; replay-ml
-# clusters session sequences via tslearn's DTW; replay-all is the
-# everything-on bundle that pulls in both. networkx + anytree (used by
-# ReplayBundle.page_graph / element_graph / path_tree) are already core
-# dependencies, so they don't appear here.
-replay-mining = ["pm4py>=2.7"]
-replay-ml = ["tslearn>=0.6"]
-replay-all = ["mixpanel-headless[replay-mining,replay-ml]"]
-
 [tool.hatch.version]
 path = "src/mixpanel_headless/__init__.py"
 
@@ -138,18 +128,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "anytree.*"
-ignore_missing_imports = true
-
-# Optional replay extras ([replay-mining] / [replay-ml]). Neither ships type
-# stubs, so ignore_missing_imports keeps mypy clean whether or not the extras
-# are installed (absent => "module not found"; present => "no py.typed").
-# Same pattern as networkx / anytree above.
-[[tool.mypy.overrides]]
-module = "pm4py.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "tslearn.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

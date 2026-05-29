@@ -144,7 +144,7 @@ for r in sample.replays:
 ### 2.4 Graph and tree projections
 
 ```python
-import networkx as nx   # requires pip install 'mixpanel-headless[replay-all]'
+import networkx as nx   # networkx is a core dependency
 
 g = bundle.page_graph
 print(f"Page graph: {g.number_of_nodes()} nodes, {g.number_of_edges()} edges")
@@ -220,61 +220,6 @@ mp replays sign r-19221397401184 --reveal-signed-urls 2>/tmp/warning.txt
 cat /tmp/warning.txt
 # warning: signed URLs are bearer credentials valid for ~5 minutes. Treat them
 # like session tokens — do not paste into chat, logs, or version control.
-```
-
----
-
-## Story 4 (P3) — Process mining and ML clustering
-
-### 4.1 Process discovery (requires `[replay-mining]` extra)
-
-```bash
-pip install 'mixpanel-headless[replay-mining]'
-```
-
-```python
-import pm4py
-
-# event_log returns a DataFrame either way; with pm4py installed it's run
-# through pm4py.format_dataframe so the mining functions accept it directly.
-log = bundle.event_log()
-
-# Inductive miner produces a Petri net
-net, im, fm = pm4py.discover_petri_net_inductive(log)
-pm4py.view_petri_net(net, im, fm, format="png")
-
-# Or a BPMN diagram
-bpmn = pm4py.discover_bpmn_inductive(log)
-pm4py.view_bpmn(bpmn)
-
-# Or directly-follows graph
-dfg, sa, ea = pm4py.discover_dfg(log)
-pm4py.view_dfg(dfg, sa, ea)
-```
-
-### 4.2 Custom labeling for stable activities
-
-```python
-from mixpanel_headless.types import selector_label_fn
-
-# Use data-testid attributes from your SDK markup
-log = bundle.event_log(label_fn=selector_label_fn("data-testid"))
-```
-
-### 4.3 Session clustering (requires `[replay-ml]` extra)
-
-```bash
-pip install 'mixpanel-headless[replay-ml]'
-```
-
-```python
-clustered = bundle.cluster(n=5, features="actions")
-for r in clustered.replays:
-    print(f"{r.replay_id}  cluster={r.cluster_label}")
-
-# Then drill into one cluster
-cluster_0 = clustered.filter(lambda r: r.cluster_label == 0)
-print(cluster_0.summary_markdown)
 ```
 
 ---

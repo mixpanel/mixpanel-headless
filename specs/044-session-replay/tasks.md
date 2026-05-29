@@ -1,5 +1,5 @@
 ---
-description: "Task list for 044-session-replay — phased rollout across 3 PRs (P1 → P2 → P3 of the source design)"
+description: "Task list for 044-session-replay — phased rollout across 2 PRs (P1 → P2 of the source design)"
 ---
 
 # Tasks: Session Replay for `mixpanel-headless`
@@ -9,13 +9,12 @@ description: "Task list for 044-session-replay — phased rollout across 3 PRs (
 
 **Tests**: REQUIRED. The project CLAUDE.md mandates strict TDD ("write tests FIRST, before any implementation code"), 90% coverage minimum, and ≥80% mutation score on the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`). Test tasks land before their corresponding implementation tasks within each phase.
 
-**Organization**: Tasks are grouped by user story. The plan ships three independent PRs:
+**Organization**: Tasks are grouped by user story. The plan ships two independent PRs:
 
 | PR | Source-plan phase | User stories shipped | Task ranges |
 |----|-------------------|----------------------|-------------|
-| PR 1 | Phase 1 | US1 (discovery + fetch) + US3 basic CLI (list/events/sign/fetch) | T001–T042, T080–T088 |
-| PR 2 | Phase 2 | US2 (analyzer + bundle) + US3 analyze/for-user CLI | T043–T079, T089–T093 |
-| PR 3 | Phase 3 | US4 (pm4py + tslearn extras) | T094–T108 |
+| PR 1 | Phase 1 | US1 (discovery + fetch) + US3 basic CLI (list/events/sign/fetch) | T001–T042 |
+| PR 2 | Phase 2 | US2 (analyzer + bundle) + US3 analyze/for-user CLI | T043–T073, T087–T094 |
 
 Each PR is independently shippable and adds caller-visible value. US3 (CLI) straddles PR 1 and PR 2 because the CLI commands `analyze` and `for-user` depend on the analyzer that ships in PR 2.
 
@@ -23,12 +22,11 @@ Each PR is independently shippable and adds caller-visible value. US3 (CLI) stra
 - US1 depends only on Foundational.
 - US2 depends on US1 (analyzer needs the raw rrweb event stream; `ReplayBundle` is a collection of `Replay` objects from US1).
 - US3's basic commands (list/events/sign/fetch) depend on US1. US3's analyze/for-user commands depend on US2.
-- US4 depends on US2 (`event_log()` and `cluster()` operate on the bundle).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies on incomplete tasks)
-- **[Story]**: User story this task belongs to (US1 / US2 / US3 / US4) — omitted for Setup, Foundational, and Polish phases
+- **[Story]**: User story this task belongs to (US1 / US2 / US3) — omitted for Setup, Foundational, and Polish phases
 - All file paths are project-relative
 
 ## Path Conventions
@@ -123,7 +121,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T041 [US1] Run `just check` end-to-end. All gates pass: 6580 tests / 0 failed / ≥90% coverage / mypy clean / ruff clean / build OK.
 - [X] T042 [US1] Security audit per [quickstart.md §"Security verification"](quickstart.md#security-verification): grep verbose stderr output for `Signature=`, `URLPrefix=`, `Expires=`. Result: zero literal credential markers in src/; `query_string` only appears in intentional contexts (SignedReplay storage, masking, validation, to_dict escape hatch, doc examples). No print/logger call references the field.
 
-**Checkpoint**: PR 1 ready to merge. Discovery + signed access + per-replay fetch work end-to-end. Phase 1 CLI shipped. `Replay.actions` empty (analyzer is US2). Memo for the PR: "Phase 1 of 3 of the source design."
+**Checkpoint**: PR 1 ready to merge. Discovery + signed access + per-replay fetch work end-to-end. Phase 1 CLI shipped. `Replay.actions` empty (analyzer is US2). Memo for the PR: "Phase 1 of 2 of the source design."
 
 ---
 
@@ -143,7 +141,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T048 [P] [US2] Aggregator functions tested in `tests/unit/test_us2_replay_bundle.py::TestAggregatorFunctions` plus the bundle-method equivalents in `TestReplayBundleAggregations`.
 - [X] T049 [P] [US2] Replay-with-analyzer behavior covered: `tests/unit/test_us2_replay_bundle.py::TestRrwebAnalyzer` exercises the analyzer; `tests/unit/test_types_replay.py::TestReplayAnalyzerAccessorsEmptyActions` locks the empty-actions fallback path.
 - [X] T050 [P] [US2] ReplayBundle projections + aggregations + filters covered in `tests/unit/test_us2_replay_bundle.py::TestReplayBundleProjections`, `TestReplayBundleAggregations`, `TestReplayBundleFilters`.
-- [X] T051 [P] [US2] Optional-extras import errors covered in `tests/unit/test_us2_replay_bundle.py::TestReplayBundleImports` (cluster path). networkx/anytree are core dependencies in this repo so their ImportError paths are not exercised in tests.
+- [X] T051 [P] [US2] No optional-extras ImportError paths to test: `networkx` and `anytree` are core dependencies in this repo, so the graph/tree projections import unconditionally and have no missing-extra fallback.
 - [ ] T052 [P] [US2] PBT for bundle invariants. (DEFERRED — example-based coverage in T050 + the deterministic sample / head / filter tests verify the documented invariants; PBT is a pre-merge nice-to-have.)
 - [X] T053 [US2] Hybrid TDD across US2: implementations and tests interleaved per component (analyzer + tests, bundle + tests, etc.). Final suite all green.
 
@@ -154,7 +152,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T056 [US2] Modified `Workspace.fetch_replay` to call `RrwebAnalyzer.analyze(rrweb_events)` and populate `actions`. Replaced the Phase 1 `NotImplementedError` raises on `summary_markdown` / `errors` / `clicks_on` with real implementations that derive from the action stream.
 - [X] T057 [P] [US2] Created `src/mixpanel_headless/_internal/replays/labels.py` with `default_label_fn`, `selector_label_fn`, `url_normalizer`. Re-exported from `mixpanel_headless.__init__` and added to `__all__`.
 - [X] T058 [P] [US2] Created `src/mixpanel_headless/_internal/replays/aggregators.py` with the seven documented module-level functions (`top_paths`, `top_clicks`, `top_pages`, `dead_clicks`, `rage_clicks`, `long_pauses`, `error_sessions`).
-- [X] T059 [US2] Added `ReplayBundle` to `types.py`: seven DataFrame projections + graph/tree projections + `event_log()` + seven aggregations + six chainable filters + `join_mixpanel_events` + `summary_markdown` + `compare` + `cluster` (raises `ImportError` until tslearn is installed). `df` returns `sessions_df`. Lazy `networkx` / `anytree` imports inside property bodies.
+- [X] T059 [US2] Added `ReplayBundle` to `types.py`: seven DataFrame projections + graph/tree projections + seven aggregations + six chainable filters + `join_mixpanel_events` + `summary_markdown` + `compare`. `df` returns `sessions_df`. Lazy `networkx` / `anytree` imports inside property bodies.
 - [X] T060 [US2] Re-exported `ReplayBundle`, `default_label_fn`, `selector_label_fn`, `url_normalizer` from `mixpanel_headless.__init__` and added to `__all__`.
 - [X] T061 [US2] Added `Workspace.fetch_replays(replay_ids, *, env="prod", max_files=500, include_mixpanel_events=False, event_properties=None, concurrency=4, cdn_concurrency=50) -> ReplayBundle`. Outer concurrency via `ThreadPoolExecutor`; inner concurrency passes through to the CDN walker.
 - [X] T062 [US2] Replaced the Phase 1 `replays_for_user` stub with the real `list_replays` + `fetch_replays` composition. Defaults `include_mixpanel_events=True`. Empty discovery returns an empty bundle (not raise).
@@ -177,41 +175,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T072 [US2] `just check` end-to-end — passes.
 - [X] T073 [US2] Security audit (re-run T042 in PR 2 context). Result: zero literal credential markers; all `query_string` references in src/ are intentional (validation, masking, doc examples).
 
-**Checkpoint**: PR 2 ready to merge. Vendored analyzer live, `ReplayBundle` complete with all projections / aggregations / filters, `analyze` and `for-user` CLI commands shipped. Memo for the PR: "Phase 2 of 3 of the source design. PR 1 (T001–T042) is a prerequisite."
-
----
-
-## Phase 5: User Story 4 — Process mining and ML clustering (Priority: P3, gated on demand)
-
-**Goal**: pm4py and tslearn adapters ship behind optional extras. `bundle.event_log()` returns a pm4py `EventLog` when pm4py is installed; falls back to DataFrame when absent. `bundle.cluster(n)` works when tslearn is installed; raises `ImportError` with the install command when absent.
-
-**Independent Test**: per spec.md §4 — pm4py-absent path returns the DataFrame; pm4py-present path returns an `EventLog`; custom `label_fn` produces every label; `tslearn`-present `cluster()` returns a bundle whose replays have `cluster_label`.
-
-**⚠️ DECISION GATE**: Ship Phase 5 only if user demand materializes after PR 2 lands. If no pull, defer indefinitely. (Per [research.md §R-12](research.md).)
-
-### Tests for User Story 4 (write FIRST, ensure they FAIL before implementation)
-
-- [ ] T074 [P] [US4] Skipif-pm4py test file. (DEFERRED — pm4py-absent fallback path covered by `test_us2_replay_bundle.py` via the lazy importlib pattern in `ReplayBundle.event_log()`. The skipif-pm4py-present test runs only when the extra is installed and is best added pre-merge after a one-off `uv pip install pm4py` in CI.)
-- [ ] T075 [P] [US4] Skipif-tslearn test file. (DEFERRED — analogous reasoning; the tslearn-absent ImportError path is locked by `TestReplayBundleImports::test_cluster_raises_import_error`.)
-- [X] T076 [P] [US4] Optional-extras import errors covered: pm4py-absent → `event_log()` returns a DataFrame (exercised by `test_us2_replay_bundle.py` running without pm4py); tslearn-absent → `cluster()` raises `ImportError` with the documented message (`TestReplayBundleImports::test_cluster_raises_import_error`).
-- [X] T077 [US4] Verified: in the test env (no extras), the documented fallback / ImportError paths fire correctly.
-
-### Implementation for User Story 4
-
-- [X] T078 [P] [US4] Added the three optional extras to `pyproject.toml`: `replay-mining = ["pm4py>=2.7"]`, `replay-ml = ["tslearn>=0.6"]`, `replay-all = ["mixpanel-headless[replay-mining,replay-ml]"]`. networkx + anytree are already core deps so they aren't re-listed.
-- [X] T079 [P] [US4] Created `src/mixpanel_headless/_internal/replays/pm4py_adapter.py` with `wrap_event_log_dataframe(df) -> pm4py.objects.log.obj.EventLog`. Lazy-imports pm4py inside the function body. Module docstring documents the call contract.
-- [X] T080 [P] [US4] Created `src/mixpanel_headless/_internal/replays/ml_adapter.py` with `cluster_bundle(bundle, n, features, seed) -> ReplayBundle`. Uses `tslearn.clustering.TimeSeriesKMeans` with the DTW metric. Lazy-imports tslearn inside the function body. Returns a new bundle whose replays carry a `cluster_label` attribute attached via `object.__setattr__`.
-- [X] T081 [US4] `ReplayBundle.event_log()` calls `pm4py_adapter.wrap_event_log_dataframe(df)` via `importlib.import_module` when pm4py is importable; otherwise returns the DataFrame unchanged.
-- [X] T082 [US4] `ReplayBundle.cluster()` calls `ml_adapter.cluster_bundle()` via `importlib.import_module`; missing tslearn surfaces as the canonical `ImportError("ReplayBundle.cluster requires tslearn. ...")` message.
-- [ ] T083 [US4] Install the extras locally and run the pm4py / tslearn skipif tests. (DEFERRED — pre-merge check; extras not installed in the test env.)
-
-### Verify User Story 4
-
-- [ ] T084 [US4] Run the full test matrix across all extras combinations. (DEFERRED — same reason.)
-- [ ] T085 [US4] Manual smoke-test quickstart §4.1–§4.3. (DEFERRED — needs live fixture project + extras.)
-- [X] T086 [US4] `just check` end-to-end — passes (6614 tests, 0 failed, ≥90% coverage).
-
-**Checkpoint**: PR 3 ready to merge. Optional extras live; pm4py and tslearn integrations work. Memo for the PR: "Phase 3 of 3 of the source design. PRs 1 and 2 are prerequisites."
+**Checkpoint**: PR 2 ready to merge. Vendored analyzer live, `ReplayBundle` complete with all projections / aggregations / filters, `analyze` and `for-user` CLI commands shipped. Memo for the PR: "Phase 2 of 2 of the source design. PR 1 (T001–T042) is a prerequisite."
 
 ---
 
@@ -221,9 +185,9 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 
 - [ ] T087 [P] Update `mixpanel-plugin/help.py` so `python help.py Replay`, `python help.py ReplayBundle`, etc. return the documented signature + docstring + related types. (DEFERRED — plugin lives outside the main package; pre-launch polish.)
 - [ ] T088 [P] Update `mixpanel-plugin/.claude/skills/mixpanelyst/SKILL.md` to add a "Session Replay" section with example queries. (DEFERRED — same reason.)
-- [X] T089 [P] Added `CHANGELOG.md` with entries for PRs 1, 2, and 3 under an `Unreleased — Session Replay (044, PRs 1–3)` heading. Documents every new public method, type, exception, CLI command, optional extra, and security invariant.
+- [X] T089 [P] Added `CHANGELOG.md` with entries for PRs 1 and 2 under an `Unreleased — Session Replay (044, PRs 1–2)` heading. Documents every new public method, type, exception, CLI command, and security invariant.
 - [ ] T090 [P] Add a versioning bump per PR. (DEFERRED — release decision, not implementation. Each PR's bump happens at merge time.)
-- [X] T091 [P] Verified `pyproject.toml` `[project.optional-dependencies]` includes `replay-mining`, `replay-ml`, and `replay-all` after T078.
+- [X] T091 [P] Verified `pyproject.toml` declares no replay-specific optional extras — `networkx` and `anytree` are core dependencies, so the replay surface installs with the base package and needs no extra.
 - [X] T092 Reframed the analyzer as a fork (no ongoing tracking relationship). Module docstring documents the public-surface contract and the structured-action mapping. No re-diff cadence to maintain.
 - [X] T093 `CLAUDE.md`'s "Active Technologies" section already lists the session-replay row (added during `/speckit-plan`); the SPECKIT marker points at this plan.
 - [X] T094 Final security review: re-ran the `grep` audit for `Signature=` / `URLPrefix=` / `Expires=` against `src/`. Zero literal credential markers; `query_string` only appears in validation, masking, doc examples, and the documented escape-hatch `to_dict()`. CLI `mp replays sign` masks by default; `--reveal-signed-urls` emits the stderr warning on every invocation.
@@ -239,7 +203,6 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - **US1 (Phase 3)**: depends on Foundational.
 - **US2 (Phase 4)**: depends on US1 (analyzer modifies `Replay` from US1; bundle is a collection of US1's `Replay` instances).
 - **US3 CLI**: basic commands (list/events/sign/fetch) depend on US1; analyze/for-user commands depend on US2.
-- **US4 (Phase 5)**: depends on US2 (`event_log()` and `cluster()` operate on the bundle).
 - **Polish (Phase 6)**: ongoing across PRs.
 
 ### Within each user story
@@ -255,14 +218,12 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - All Foundational tasks marked [P] (T004, T006, T008, T009) can run in parallel.
 - Within US1: all unit-test tasks T011–T017 are [P]; the implementation tasks T020–T028 mostly sequential (types → service → workspace methods); the CLI bridge tasks T033–T038 are sequential within themselves but the test-writing T033 is [P] with implementation work happening in parallel by a CLI developer once the Phase 1 Workspace methods (T024–T028) land.
 - Within US2: fixture and label test tasks T043–T048 are [P]; T049–T052 are [P]; implementation T054–T058 are mostly [P] (different files); T059–T063 sequential (bundle type → workspace methods that return bundles).
-- Within US4: T074–T076 [P]; T078–T080 [P]; T081–T082 sequential (both modify `types.py`).
-- PR 1 and PR 3 cannot run in parallel because PR 3 depends on PR 2 which depends on PR 1. PR 1 and the Phase 6 polish for PR 1 can run in parallel by separate developers.
+- PR 1 and PR 2 cannot run in parallel because PR 2 depends on PR 1. PR 1 and the Phase 6 polish for PR 1 can run in parallel by separate developers.
 
 ### Cross-PR sequencing
 
 - PR 1 (T001–T042) ships first.
 - PR 2 (T043–T073) ships after PR 1 merges.
-- PR 3 (T074–T086) ships after PR 2 merges AND user demand materializes.
 - Phase 6 polish runs alongside each PR.
 
 ---
@@ -311,7 +272,6 @@ This MVP gives users raw rrweb bytes for the rrweb JS player and the basic CLI. 
 
 - PR 1 → users can pull raw bytes, sign URLs, list replays.
 - PR 2 → users get normalized actions, bundle analysis, `analyze` and `for-user` CLI commands.
-- PR 3 (gated) → users get pm4py process mining and tslearn clustering.
 
 ### Parallel team strategy
 
@@ -319,7 +279,6 @@ With multiple developers per PR:
 
 - PR 1: Developer A handles types + service + workspace methods (T020–T028); Developer B handles CLI bridge (T033–T038) once Workspace methods are merged; Developer C handles security audit and quickstart smoke-test (T040, T042).
 - PR 2: Developer A handles analyzer port and labels (T055, T057); Developer B handles `ReplayBundle` and aggregators (T058, T059); Developer C handles CLI analyze/for-user (T069) and fixtures (T043, T044).
-- PR 3: One developer end-to-end is sufficient (small surface area).
 
 ---
 
@@ -330,6 +289,5 @@ With multiple developers per PR:
 - Bearer-credential audit is non-negotiable: every PR runs the grep audit before merge.
 - Mutation score gate (80%) applies only to the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`). The workspace methods and CLI commands are coverage-gated (90%) but not mutation-gated.
 - The analyzer (T055) is a fork that evolves on its own cadence inside this repo. No external-source tracking.
-- `Workspace.cluster()` and `event_log()` pm4py path do NOT require US4 to ship — US2 lands them with the fallback path (DataFrame return, ImportError on cluster). US4 only wires the present-pm4py / present-tslearn upgrade paths.
-- Stop at any checkpoint (after T042, T073, T086) to validate a PR independently.
+- Stop at any checkpoint (after T042, T073) to validate a PR independently.
 - Avoid: cross-PR file conflicts (US2 modifies `Replay` from US1 — coordinate via T056 only after T020 has merged), same-file parallel work (e.g. `types.py` edits in T020 vs T059), bypassing tests-first (every implementation task lists the test task it MUST follow).

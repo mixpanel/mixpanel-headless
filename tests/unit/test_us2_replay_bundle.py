@@ -8,11 +8,8 @@ contracts documented in data-model.md §2.6 and contracts/python-api.md §4.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from mixpanel_headless._internal.replays.aggregators import (
     dead_clicks,
@@ -384,44 +381,6 @@ class TestReplayBundleFilters:
         c = [r.replay_id for r in b.sample(2, seed=42).replays]
         assert a == c
         assert len(a) == 2
-
-
-class TestReplayBundleImports:
-    """Optional-extra ABSENT behavior (ImportError message + DataFrame fallback).
-
-    CI installs the extras (``uv sync --all-extras``), so a plain skipif would
-    never exercise these paths there. Instead each test hides the dependency
-    from ``sys.modules`` so the absent behavior is verified regardless of
-    install state — this is what keeps SC-006 (the ``pip install`` hint) and
-    the pm4py-absent fallback covered in CI. Present-path counterparts live in
-    ``tests/unit/_internal/test_pm4py_adapter.py`` and ``test_ml_adapter.py``.
-    """
-
-    def test_cluster_raises_import_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Without tslearn, cluster() raises ImportError pointing at [replay-ml]."""
-        # Force the in-body `from tslearn... import` to fail even when the
-        # [replay-ml] extra is installed.
-        monkeypatch.setitem(sys.modules, "tslearn", None)
-        monkeypatch.setitem(sys.modules, "tslearn.clustering", None)
-        with pytest.raises(ImportError, match="replay-ml"):
-            _sample_bundle().cluster()
-
-    def test_event_log_dataframe_fallback(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Without pm4py, event_log() returns the bare XES-column DataFrame."""
-        import pandas as pd
-
-        # Hide pm4py so the adapter's in-body import fails and event_log falls
-        # back to the bare frame (no pm4py.format_dataframe metadata columns).
-        monkeypatch.setitem(sys.modules, "pm4py", None)
-        df = _sample_bundle().event_log()
-        assert isinstance(df, pd.DataFrame)
-        assert list(df.columns) == [
-            "case:concept:name",
-            "concept:name",
-            "time:timestamp",
-        ]
 
 
 # =============================================================================
