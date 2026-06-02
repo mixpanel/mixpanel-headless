@@ -125,6 +125,33 @@ ENDPOINTS: dict[str, dict[str, str]] = {
 }
 
 
+def _parse_feed_date(value: str, field: str) -> datetime:
+    """Parse a ``YYYY-MM-DD`` activity-feed date, raising QueryError on bad input.
+
+    Args:
+        value: The date string to parse.
+        field: The parameter name (``from_date`` / ``to_date``) for the message.
+
+    Returns:
+        The parsed ``datetime``.
+
+    Raises:
+        QueryError: When ``value`` is not a valid ``YYYY-MM-DD`` date. Kept
+            consistent with the rest of the client, which surfaces bad input as
+            ``QueryError`` rather than a bare ``ValueError``.
+
+    Example:
+        ```python
+        _parse_feed_date("2026-06-01", "to_date")
+        # datetime.datetime(2026, 6, 1, 0, 0)
+        ```
+    """
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise QueryError(f"Invalid {field} {value!r}; expected YYYY-MM-DD") from exc
+
+
 def _build_activity_feed_date_range(
     from_date: str | None, to_date: str | None
 ) -> dict[str, Any]:
@@ -133,7 +160,9 @@ def _build_activity_feed_date_range(
     The stream/bookmark endpoint ignores top-level ``from_date``/``to_date`` and
     reads the query window from ``bookmark.dateRange`` instead. This maps the
     activity feed's optional date strings onto the endpoint's date-range
-    vocabulary, defaulting to a recent window when dates are omitted.
+    vocabulary, defaulting to a recent window when dates are omitted. Both dates
+    are validated up front so a malformed value fails the same way regardless of
+    which arm it lands in.
 
     Args:
         from_date: Optional inclusive start date (``YYYY-MM-DD``).
@@ -146,9 +175,7 @@ def _build_activity_feed_date_range(
         relative last-30-days window when neither is given.
 
     Raises:
-        QueryError: When ``to_date`` is supplied alone but is not a valid
-            ``YYYY-MM-DD`` date (kept consistent with the rest of the client,
-            which surfaces bad dates as ``QueryError`` rather than ``ValueError``).
+        QueryError: When either supplied date is not a valid ``YYYY-MM-DD`` date.
 
     Example:
         ```python
@@ -156,18 +183,21 @@ def _build_activity_feed_date_range(
         # {"type": "between", "from": "2026-05-01", "to": "2026-06-01"}
         ```
     """
+    if from_date:
+        _parse_feed_date(from_date, "from_date")
+    parsed_to = _parse_feed_date(to_date, "to_date") if to_date else None
+
     if from_date and to_date:
         return {"type": "between", "from": from_date, "to": to_date}
     if from_date:
         return {"type": "since", "from": from_date}
-    if to_date:
+    if to_date and parsed_to is not None:
         try:
-            parsed = datetime.strptime(to_date, "%Y-%m-%d")
-        except ValueError as exc:
+            window_start = (parsed_to - timedelta(days=30)).strftime("%Y-%m-%d")
+        except OverflowError as exc:
             raise QueryError(
-                f"Invalid to_date {to_date!r}; expected YYYY-MM-DD"
+                f"to_date {to_date!r} is too early to compute a 30-day window"
             ) from exc
-        window_start = (parsed - timedelta(days=30)).strftime("%Y-%m-%d")
         return {"type": "between", "from": window_start, "to": to_date}
     return {"type": "relative_after", "window": {"unit": "day", "value": 30}}
 
@@ -2467,7 +2497,9 @@ class MixpanelAPIClient:
 
         Raises:
             QueryError: When both ``include_events`` and ``exclude_events`` are
-                supplied, or the API rejects the parameters.
+                supplied, when ``search_properties`` is given without ``search``,
+                when a supplied date is malformed, or the API rejects the
+                parameters.
             AuthenticationError: Invalid credentials.
             RateLimitError: Rate limit exceeded.
 
@@ -2480,7 +2512,18 @@ class MixpanelAPIClient:
             ```
         """
         if include_events and exclude_events:
-            raise QueryError("include_events and exclude_events are mutually exclusive")
+            raise QueryError(
+                "include_events and exclude_events are mutually exclusive",
+                request_params={
+                    "include_events": include_events,
+                    "exclude_events": exclude_events,
+                },
+            )
+        if search_properties is not None and search is None:
+            raise QueryError(
+                "search_properties requires a search string",
+                request_params={"search_properties": search_properties},
+            )
         url = self._build_url("query", "/stream/bookmark")
         body: dict[str, Any] = {
             "project_id": self._session.project.id,

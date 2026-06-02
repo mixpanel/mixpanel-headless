@@ -674,7 +674,9 @@ def query_activity_feed(
           "sentinel_event": {...}
         }
 
-    Events are returned in chronological (oldest-first) order.
+    Events are returned in chronological (oldest-first) order. "sentinel_event"
+    is always present: a JSON object while more pages remain, or null on the
+    final page.
 
     **Examples:**
 
@@ -693,6 +695,12 @@ def query_activity_feed(
     """
     # Parse users
     user_list = [u.strip() for u in users.split(",")]
+    if include_event and exclude_event:
+        err_console.print(
+            "[red]Error:[/red] --include-event and --exclude-event "
+            "are mutually exclusive."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
     parsed_sentinel = (
         validate_json_object(sentinel_event, "--sentinel-event")
         if sentinel_event is not None

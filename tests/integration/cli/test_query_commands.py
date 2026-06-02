@@ -955,6 +955,62 @@ class TestQueryActivityFeed:
         assert kwargs["search"] == "san francisco"
         assert kwargs["use_custom_events"] is True
 
+    def test_activity_feed_forwards_exclude_event(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """--exclude-event (repeatable) should be forwarded to activity_feed."""
+        mock_workspace.activity_feed.return_value = ActivityFeedResult(
+            distinct_ids=["user1"], from_date=None, to_date=None, events=[]
+        )
+
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--exclude-event",
+                    "Heartbeat",
+                    "--exclude-event",
+                    "Ping",
+                ],
+            )
+
+        assert result.exit_code == 0
+        _, kwargs = mock_workspace.activity_feed.call_args
+        assert kwargs["exclude_events"] == ["Heartbeat", "Ping"]
+
+    def test_activity_feed_include_exclude_mutex_exits(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """--include-event with --exclude-event should fail fast at the CLI."""
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--include-event",
+                    "A",
+                    "--exclude-event",
+                    "B",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        # Fail-fast: the workspace call should never be reached.
+        mock_workspace.activity_feed.assert_not_called()
+
     def test_activity_feed_forwards_sentinel_event(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
     ) -> None:

@@ -118,7 +118,7 @@ def validate_json_object(value: str, param_name: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         err_console.print(f"[red]Error:[/red] {param_name} must be a JSON object.")
         raise typer.Exit(ExitCode.INVALID_ARGS)
-    return cast("dict[str, Any]", parsed)
+    return parsed
 
 
 def validate_entity_type(value: str, param_name: str = "--type") -> EntityType:

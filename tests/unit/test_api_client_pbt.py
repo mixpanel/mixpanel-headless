@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterator
+from datetime import date, datetime, timedelta
 
 import httpx
 from httpx._types import SyncByteStream
@@ -23,6 +24,7 @@ from hypothesis import strategies as st
 from mixpanel_headless._internal.api_client import (
     ENDPOINTS,
     MixpanelAPIClient,
+    _build_activity_feed_date_range,
     _iter_jsonl_lines,
 )
 from tests.conftest import make_session
@@ -653,3 +655,51 @@ class TestIterJsonlLinesProperties:
         assert output_lines == lines, (
             f"Byte-by-byte chunking failed!\nInput: {lines}\nOutput: {output_lines}"
         )
+
+
+# =============================================================================
+# Activity Feed Date Range
+# =============================================================================
+
+# Valid YYYY-MM-DD strings across the realistic analytics date domain. (Dates
+# within ~30 days of datetime.min are out of contract — the to_date-only window
+# would underflow — and are covered separately by an example-based test.)
+feed_dates = st.dates(min_value=date(2000, 1, 1), max_value=date(2100, 12, 31)).map(
+    lambda d: d.isoformat()
+)
+optional_feed_dates = st.none() | feed_dates
+
+
+class TestActivityFeedDateRange:
+    """Property-based tests for _build_activity_feed_date_range."""
+
+    @given(from_date=optional_feed_dates, to_date=optional_feed_dates)
+    @settings(max_examples=200)
+    def test_returns_known_type_and_correct_arm(
+        self, from_date: str | None, to_date: str | None
+    ) -> None:
+        """Result is always a dateRange dict matching the arm for its inputs.
+
+        Args:
+            from_date: Optional valid start date or None.
+            to_date: Optional valid end date or None.
+        """
+        result = _build_activity_feed_date_range(from_date, to_date)
+
+        assert result["type"] in {"between", "since", "relative_after"}
+
+        if from_date and to_date:
+            assert result == {"type": "between", "from": from_date, "to": to_date}
+        elif from_date:
+            assert result == {"type": "since", "from": from_date}
+        elif to_date:
+            assert result["type"] == "between"
+            assert result["to"] == to_date
+            start = datetime.strptime(result["from"], "%Y-%m-%d")
+            end = datetime.strptime(result["to"], "%Y-%m-%d")
+            assert end - start == timedelta(days=30)
+        else:
+            assert result == {
+                "type": "relative_after",
+                "window": {"unit": "day", "value": 30},
+            }

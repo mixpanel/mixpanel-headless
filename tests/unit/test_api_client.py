@@ -3533,3 +3533,58 @@ class TestActivityFeed:
             client.set_workspace_id(99999)
             with pytest.raises(QueryError):
                 client.activity_feed(["user_1"], to_date="06/01/2026")
+
+    def test_extremely_early_to_date_raises_query_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A to_date too close to datetime.min should raise QueryError, not crash."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError):
+                client.activity_feed(["user_1"], to_date="0001-01-10")
+
+    def test_invalid_from_date_raises_query_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A malformed from_date should raise QueryError (symmetric with to_date)."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError):
+                client.activity_feed(
+                    ["user_1"], from_date="06/01/2026", to_date="2026-06-30"
+                )
+
+    def test_mutex_error_carries_request_params(
+        self, test_credentials: Session
+    ) -> None:
+        """The include/exclude mutex error should carry structured request_params."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError) as exc:
+                client.activity_feed(
+                    ["user_1"], include_events=["A"], exclude_events=["B"]
+                )
+        assert exc.value.request_params == {
+            "include_events": ["A"],
+            "exclude_events": ["B"],
+        }
+
+    def test_search_properties_without_search_raises(
+        self, test_credentials: Session
+    ) -> None:
+        """search_properties without a search string should raise QueryError."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError):
+                client.activity_feed(
+                    ["user_1"],
+                    search_properties=[{"value": "$city", "resourceType": "event"}],
+                )
