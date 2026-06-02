@@ -6,6 +6,7 @@ passing to Workspace methods, providing early error feedback.
 
 from __future__ import annotations
 
+import json
 from typing import Any, TypeVar, cast, get_args
 
 import typer
@@ -90,6 +91,34 @@ def validate_count_type(value: str, param_name: str = "--type") -> CountType:
     """
     validate_literal(value, CountType, param_name)
     return cast(CountType, value)
+
+
+def validate_json_object(value: str, param_name: str) -> dict[str, Any]:
+    """Parse a CLI string as a JSON object.
+
+    Used for opaque structured inputs supplied on the command line, such as the
+    activity-feed pagination cursor (``--sentinel-event``).
+
+    Args:
+        value: Raw JSON string from the CLI.
+        param_name: Parameter name for error messages.
+
+    Returns:
+        The parsed JSON object as a dict.
+
+    Raises:
+        typer.Exit: With code 3 (INVALID_ARGS) if the value is not valid JSON,
+            or parses to something other than a JSON object.
+    """
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        err_console.print(f"[red]Error:[/red] Invalid JSON for {param_name}: {exc}")
+        raise typer.Exit(ExitCode.INVALID_ARGS) from exc
+    if not isinstance(parsed, dict):
+        err_console.print(f"[red]Error:[/red] {param_name} must be a JSON object.")
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    return cast("dict[str, Any]", parsed)
 
 
 def validate_entity_type(value: str, param_name: str = "--type") -> EntityType:

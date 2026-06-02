@@ -36,6 +36,7 @@ from mixpanel_headless.cli.utils import (
 from mixpanel_headless.cli.validators import (
     validate_count_type,
     validate_hour_day_unit,
+    validate_json_object,
     validate_time_unit,
 )
 
@@ -625,6 +626,13 @@ def query_activity_feed(
         int | None,
         typer.Option("--paging-window", help="Days (<=30) bounding each page."),
     ] = None,
+    sentinel_event: Annotated[
+        str | None,
+        typer.Option(
+            "--sentinel-event",
+            help="JSON pagination cursor from a prior result's sentinel_event.",
+        ),
+    ] = None,
     search: Annotated[
         str | None,
         typer.Option("--search", help="Full-text search within events."),
@@ -644,6 +652,10 @@ def query_activity_feed(
     Optionally filter by date range with --from and --to. Without date
     filters, defaults to the last 30 days. Narrow events with --include-event /
     --exclude-event (repeatable) or --search, and cap results with --limit.
+
+    For large feeds, paginate: when a response includes a non-null
+    "sentinel_event", pass that JSON object back via --sentinel-event to fetch
+    the next page (repeat until "sentinel_event" is null).
 
     **Output Structure (JSON):**
 
@@ -670,16 +682,22 @@ def query_activity_feed(
         mp query activity-feed --users "user123,user456" --from 2025-01-01 --to 2025-01-31
         mp query activity-feed --users "user123" --include-event Login --limit 50
         mp query activity-feed --users "user123" --search "san francisco"
+        mp query activity-feed --users "user123" --sentinel-event "$(... prior .sentinel_event ...)"
 
     **jq Examples:**
 
         --jq '.event_count'                  # Total number of events
         --jq '.events | length'              # Same as above
         --jq '.events[].event'               # List all event names
-        --jq '.events | group_by(.event) | map({event: .[0].event, count: length})'
+        --jq '.sentinel_event'               # Cursor to pass to --sentinel-event
     """
     # Parse users
     user_list = [u.strip() for u in users.split(",")]
+    parsed_sentinel = (
+        validate_json_object(sentinel_event, "--sentinel-event")
+        if sentinel_event is not None
+        else None
+    )
 
     workspace = get_workspace(ctx)
 
@@ -692,6 +710,7 @@ def query_activity_feed(
             include_events=include_event,
             exclude_events=exclude_event,
             paging_window=paging_window,
+            sentinel_event=parsed_sentinel,
             search=search,
             use_custom_events=use_custom_events,
         )

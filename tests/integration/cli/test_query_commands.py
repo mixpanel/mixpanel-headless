@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from mixpanel_headless.cli.main import app
+from mixpanel_headless.cli.utils import ExitCode
 from mixpanel_headless.types import (
     ActivityFeedResult,
     CohortInfo,
@@ -953,6 +954,79 @@ class TestQueryActivityFeed:
         assert kwargs["paging_window"] == 7
         assert kwargs["search"] == "san francisco"
         assert kwargs["use_custom_events"] is True
+
+    def test_activity_feed_forwards_sentinel_event(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """--sentinel-event JSON should be parsed and forwarded as the cursor."""
+        mock_workspace.activity_feed.return_value = ActivityFeedResult(
+            distinct_ids=["user1"], from_date=None, to_date=None, events=[]
+        )
+        cursor = {"event": "X", "properties": {"time": 1, "$insert_id": "i"}}
+
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--sentinel-event",
+                    json.dumps(cursor),
+                ],
+            )
+
+        assert result.exit_code == 0
+        _, kwargs = mock_workspace.activity_feed.call_args
+        assert kwargs["sentinel_event"] == cursor
+
+    def test_activity_feed_invalid_sentinel_event_exits(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """Malformed --sentinel-event JSON should exit with the invalid-args code."""
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--sentinel-event",
+                    "not-json",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.INVALID_ARGS
+
+    def test_activity_feed_sentinel_event_must_be_object(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A non-object --sentinel-event (valid JSON array) should exit invalid-args."""
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--sentinel-event",
+                    "[1, 2, 3]",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.INVALID_ARGS
 
 
 class TestQuerySavedReport:
