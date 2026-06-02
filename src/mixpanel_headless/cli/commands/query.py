@@ -34,7 +34,6 @@ from mixpanel_headless.cli.utils import (
     status_spinner,
 )
 from mixpanel_headless.cli.validators import (
-    validate_activity_feed_mode,
     validate_count_type,
     validate_hour_day_unit,
     validate_time_unit,
@@ -626,10 +625,6 @@ def query_activity_feed(
         int | None,
         typer.Option("--paging-window", help="Days (<=30) bounding each page."),
     ] = None,
-    mode: Annotated[
-        str,
-        typer.Option("--mode", help="Result mode: 'raw' (events) or 'count'."),
-    ] = "raw",
     search: Annotated[
         str | None,
         typer.Option("--search", help="Full-text search within events."),
@@ -648,10 +643,9 @@ def query_activity_feed(
 
     Optionally filter by date range with --from and --to. Without date
     filters, defaults to the last 30 days. Narrow events with --include-event /
-    --exclude-event (repeatable) or --search, cap results with --limit, and use
-    --mode count to return just an integer count instead of events.
+    --exclude-event (repeatable) or --search, and cap results with --limit.
 
-    **Output Structure (JSON, raw mode):**
+    **Output Structure (JSON):**
 
         {
           "distinct_ids": ["user123", "user456"],
@@ -665,30 +659,27 @@ def query_activity_feed(
               "properties": {"$browser": "Chrome", "$city": "San Francisco", ...}
             }
           ],
-          "sentinel_event": {...},
-          "count": null
+          "sentinel_event": {...}
         }
 
-    In count mode ("--mode count"), "events" is empty and "count" is an integer.
+    Events are returned in chronological (oldest-first) order.
 
     **Examples:**
 
         mp query activity-feed --users "user123"
         mp query activity-feed --users "user123,user456" --from 2025-01-01 --to 2025-01-31
         mp query activity-feed --users "user123" --include-event Login --limit 50
-        mp query activity-feed --users "user123" --mode count
         mp query activity-feed --users "user123" --search "san francisco"
 
     **jq Examples:**
 
         --jq '.event_count'                  # Total number of events
-        --jq '.count'                        # Integer total (count mode)
+        --jq '.events | length'              # Same as above
         --jq '.events[].event'               # List all event names
         --jq '.events | group_by(.event) | map({event: .[0].event, count: length})'
     """
     # Parse users
     user_list = [u.strip() for u in users.split(",")]
-    validated_mode = validate_activity_feed_mode(mode)
 
     workspace = get_workspace(ctx)
 
@@ -701,7 +692,6 @@ def query_activity_feed(
             include_events=include_event,
             exclude_events=exclude_event,
             paging_window=paging_window,
-            mode=validated_mode,
             search=search,
             use_custom_events=use_custom_events,
         )

@@ -1139,13 +1139,6 @@ class ActivityFeedResult(ResultWithDataFrame):
     :class:`UserEvent` would lose.
     """
 
-    count: int | None = None
-    """Event count when queried with ``mode="count"``; ``None`` in raw mode.
-
-    In count mode the endpoint returns only an integer total (no event records),
-    so :attr:`events` is empty and this carries the count.
-    """
-
     @property
     def df(self) -> pd.DataFrame:
         """Convert to DataFrame with columns: event, time, distinct_id, + properties.
@@ -1187,7 +1180,6 @@ class ActivityFeedResult(ResultWithDataFrame):
             "event_count": len(self.events),
             "events": [e.to_dict() for e in self.events],
             "sentinel_event": self.sentinel_event,
-            "count": self.count,
         }
 
 

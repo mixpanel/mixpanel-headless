@@ -3485,23 +3485,6 @@ class TestActivityFeed:
                     exclude_events=["B"],
                 )
 
-    def test_mode_count_sent_in_body(self, test_credentials: Session) -> None:
-        """mode='count' should be reflected in the request body."""
-        captured: dict[str, Any] = {}
-
-        with create_mock_client(
-            test_credentials, self._capturing_handler(captured)
-        ) as client:
-            client.set_workspace_id(99999)
-            client.activity_feed(
-                ["user_1"],
-                from_date="2026-05-01",
-                to_date="2026-06-01",
-                mode="count",
-            )
-
-        assert captured["body"]["mode"] == "count"
-
     def test_search_params_pass_through(self, test_credentials: Session) -> None:
         """search and search_properties should pass into the body when supplied."""
         captured: dict[str, Any] = {}
@@ -3540,19 +3523,13 @@ class TestActivityFeed:
 
         assert captured["body"]["use_custom_events"] is True
 
-    def test_count_mode_with_paging_window_raises(
+    def test_invalid_to_date_only_raises_query_error(
         self, test_credentials: Session
     ) -> None:
-        """count mode does not support paging_window and should raise QueryError."""
+        """A malformed to_date-only window should raise QueryError, not ValueError."""
         with create_mock_client(
             test_credentials, self._capturing_handler({})
         ) as client:
             client.set_workspace_id(99999)
             with pytest.raises(QueryError):
-                client.activity_feed(
-                    ["user_1"],
-                    from_date="2026-05-01",
-                    to_date="2026-06-01",
-                    mode="count",
-                    paging_window=7,
-                )
+                client.activity_feed(["user_1"], to_date="06/01/2026")

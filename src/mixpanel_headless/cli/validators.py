@@ -10,12 +10,7 @@ from typing import Any, TypeVar, cast, get_args
 
 import typer
 
-from mixpanel_headless._literal_types import (
-    ActivityFeedMode,
-    CountType,
-    HourDayUnit,
-    TimeUnit,
-)
+from mixpanel_headless._literal_types import CountType, HourDayUnit, TimeUnit
 from mixpanel_headless.cli.utils import ExitCode, err_console
 from mixpanel_headless.types import EntityType
 
@@ -95,25 +90,6 @@ def validate_count_type(value: str, param_name: str = "--type") -> CountType:
     """
     validate_literal(value, CountType, param_name)
     return cast(CountType, value)
-
-
-def validate_activity_feed_mode(
-    value: str, param_name: str = "--mode"
-) -> ActivityFeedMode:
-    """Validate the activity-feed result mode.
-
-    Args:
-        value: String value from CLI (should be "raw" or "count").
-        param_name: Parameter name for error message. Default: "--mode".
-
-    Returns:
-        Validated value as ActivityFeedMode literal type.
-
-    Raises:
-        typer.Exit: With code 3 (INVALID_ARGS) if value is invalid.
-    """
-    validate_literal(value, ActivityFeedMode, param_name)
-    return cast(ActivityFeedMode, value)
 
 
 def validate_entity_type(value: str, param_name: str = "--type") -> EntityType:

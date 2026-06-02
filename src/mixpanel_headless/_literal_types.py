@@ -39,9 +39,6 @@ CountType = Literal["general", "unique", "average"]
 # Counting methods for flows analysis
 FlowCountType = Literal["unique", "total", "session"]
 
-# Result mode for the activity feed (stream/bookmark): raw events or a count
-ActivityFeedMode = Literal["raw", "count"]
-
 # =============================================================================
 # Insights Math Types
 # =============================================================================

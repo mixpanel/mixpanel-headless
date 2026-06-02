@@ -270,24 +270,6 @@ class TestActivityFeedService:
 
         assert result.sentinel_event is None
 
-    def test_activity_feed_count_mode(
-        self,
-        live_query_factory: Callable[
-            [Callable[[httpx.Request], httpx.Response]], LiveQueryService
-        ],
-    ) -> None:
-        """count mode should expose an integer count instead of events."""
-
-        def handler(_request: httpx.Request) -> httpx.Response:
-            """Return a count-mode response where results is a bare integer."""
-            return httpx.Response(200, json={"status": "ok", "results": 42})
-
-        live_query = live_query_factory(handler)
-        result = live_query.activity_feed(distinct_ids=["user_123"], mode="count")
-
-        assert result.count == 42
-        assert result.events == []
-
 
 # =============================================================================
 # US2: Numeric Sum Tests

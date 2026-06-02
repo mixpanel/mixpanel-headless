@@ -106,7 +106,6 @@ from mixpanel_headless._internal.validation import (
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
-    ActivityFeedMode,
     ConversionWindowUnit,
     FlowChartType,
     FlowConversionWindowUnit,
@@ -1638,17 +1637,16 @@ class Workspace:
         exclude_events: list[str] | None = None,
         sentinel_event: dict[str, Any] | None = None,
         paging_window: int | None = None,
-        mode: ActivityFeedMode = "raw",
         search: str | None = None,
         search_properties: list[dict[str, Any]] | None = None,
         use_custom_events: bool = False,
     ) -> ActivityFeedResult:
         """Get activity feed for specific users.
 
-        Returns a user's recent events, newest first. Backed by the
-        stream/bookmark endpoint, so large feeds can be paginated with the
-        ``sentinel_event`` cursor carried on the result, filtered by event name
-        or full-text search, and reduced to a count.
+        Returns a user's events in chronological (oldest-first) order. Backed by
+        the stream/bookmark endpoint, so large feeds can be paginated with the
+        ``sentinel_event`` cursor carried on the result and filtered by event
+        name or full-text search.
 
         Args:
             distinct_ids: List of user identifiers.
@@ -1663,8 +1661,6 @@ class Workspace:
             sentinel_event: Optional pagination cursor from a prior result's
                 ``sentinel_event``; pass it back to fetch the next page.
             paging_window: Optional days (<= 30) bounding each page's scan window.
-            mode: ``"raw"`` (default) returns events; ``"count"`` returns only an
-                integer event count via ``ActivityFeedResult.count``.
             search: Optional full-text search string applied to events.
             search_properties: Optional property descriptors to restrict the
                 ``search`` to (each a ``{"value", "resourceType"}`` dict).
@@ -1672,14 +1668,13 @@ class Workspace:
                 raw results.
 
         Returns:
-            ActivityFeedResult with user events (raw mode) or ``count`` (count
-            mode), plus a ``sentinel_event`` cursor (``None`` when there are no
-            further pages).
+            ActivityFeedResult with user events plus a ``sentinel_event`` cursor
+            (``None`` when there are no further pages).
 
         Raises:
             ConfigError: If API credentials not available.
             QueryError: If both ``include_events`` and ``exclude_events`` are
-                given, or ``paging_window`` is combined with ``count`` mode.
+                given.
 
         Example:
             ```python
@@ -1693,8 +1688,6 @@ class Workspace:
                     to_date="2026-06-01",
                     sentinel_event=page.sentinel_event,
                 )
-
-            total = ws.activity_feed(["u1"], mode="count").count
             ```
         """
         return self._live_query_service.activity_feed(
@@ -1706,7 +1699,6 @@ class Workspace:
             exclude_events=exclude_events,
             sentinel_event=sentinel_event,
             paging_window=paging_window,
-            mode=mode,
             search=search,
             search_properties=search_properties,
             use_custom_events=use_custom_events,

@@ -42,7 +42,6 @@ from mixpanel_headless._internal.client_metadata import (
     QUERY_ORIGIN,
     get_user_agent,
 )
-from mixpanel_headless._literal_types import ActivityFeedMode
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     JQLSyntaxError,
@@ -146,6 +145,11 @@ def _build_activity_feed_date_range(
         window ending at ``to_date`` when only ``to_date`` is given, and a
         relative last-30-days window when neither is given.
 
+    Raises:
+        QueryError: When ``to_date`` is supplied alone but is not a valid
+            ``YYYY-MM-DD`` date (kept consistent with the rest of the client,
+            which surfaces bad dates as ``QueryError`` rather than ``ValueError``).
+
     Example:
         ```python
         _build_activity_feed_date_range("2026-05-01", "2026-06-01")
@@ -157,9 +161,13 @@ def _build_activity_feed_date_range(
     if from_date:
         return {"type": "since", "from": from_date}
     if to_date:
-        window_start = (
-            datetime.strptime(to_date, "%Y-%m-%d") - timedelta(days=30)
-        ).strftime("%Y-%m-%d")
+        try:
+            parsed = datetime.strptime(to_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise QueryError(
+                f"Invalid to_date {to_date!r}; expected YYYY-MM-DD"
+            ) from exc
+        window_start = (parsed - timedelta(days=30)).strftime("%Y-%m-%d")
         return {"type": "between", "from": window_start, "to": to_date}
     return {"type": "relative_after", "window": {"unit": "day", "value": 30}}
 
@@ -2418,7 +2426,6 @@ class MixpanelAPIClient:
         exclude_events: list[str] | None = None,
         sentinel_event: dict[str, Any] | None = None,
         paging_window: int | None = None,
-        mode: ActivityFeedMode = "raw",
         search: str | None = None,
         search_properties: list[dict[str, Any]] | None = None,
         use_custom_events: bool = False,
@@ -2437,7 +2444,7 @@ class MixpanelAPIClient:
             from_date: Optional inclusive start date (``YYYY-MM-DD``).
             to_date: Optional inclusive end date (``YYYY-MM-DD``).
             limit: Optional max events to return (server enforces a ceiling of
-                15000). When ``None``, the server default applies. Raw mode only.
+                15000). When ``None``, the server default applies.
             include_events: Optional event names to include; mutually exclusive
                 with ``exclude_events``.
             exclude_events: Optional event names to exclude; mutually exclusive
@@ -2446,10 +2453,7 @@ class MixpanelAPIClient:
                 (``results.sentinel_event``); passed back verbatim to fetch the
                 next page.
             paging_window: Optional number of days (<= 30) to bound each page's
-                scan window, paired with cursor pagination. Not supported in
-                ``count`` mode.
-            mode: ``"raw"`` (default) returns events under ``results.events``;
-                ``"count"`` returns an integer event count under ``results``.
+                scan window, paired with cursor pagination.
             search: Optional full-text search string applied to events.
             search_properties: Optional list of property descriptors (each a
                 ``{"value": ..., "resourceType": "event" | "user"}`` dict) to
@@ -2458,14 +2462,12 @@ class MixpanelAPIClient:
                 definition are labelled with the custom event in results.
 
         Returns:
-            Raw API response. In ``raw`` mode, events are under
-            ``results.events`` with a cursor under ``results.sentinel_event``.
-            In ``count`` mode, ``results`` is an integer count.
+            Raw API response with events under ``results.events`` and a
+            pagination cursor under ``results.sentinel_event``.
 
         Raises:
             QueryError: When both ``include_events`` and ``exclude_events`` are
-                supplied, when ``paging_window`` is combined with ``count`` mode,
-                or the API rejects the parameters.
+                supplied, or the API rejects the parameters.
             AuthenticationError: Invalid credentials.
             RateLimitError: Rate limit exceeded.
 
@@ -2479,8 +2481,6 @@ class MixpanelAPIClient:
         """
         if include_events and exclude_events:
             raise QueryError("include_events and exclude_events are mutually exclusive")
-        if mode == "count" and paging_window is not None:
-            raise QueryError("paging_window is not supported in 'count' mode")
         url = self._build_url("query", "/stream/bookmark")
         body: dict[str, Any] = {
             "project_id": self._session.project.id,
@@ -2490,7 +2490,7 @@ class MixpanelAPIClient:
                 "entries": [],
             },
             "distinct_ids": distinct_ids,
-            "mode": mode,
+            "mode": "raw",
         }
         if limit is not None:
             body["limit"] = limit
