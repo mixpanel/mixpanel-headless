@@ -5,6 +5,7 @@ Tests the new Query Service Enhancement API methods using httpx.MockTransport.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -49,11 +50,13 @@ class TestActivityFeed:
     """Tests for MixpanelAPIClient.activity_feed()."""
 
     def test_activity_feed_basic(self, test_credentials: Session) -> None:
-        """activity_feed() should return events for given users."""
+        """activity_feed() should POST to stream/bookmark and return events."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            assert "/stream/query" in str(request.url)
-            assert "distinct_ids" in str(request.url)
+            assert request.method == "POST"
+            assert request.url.path.endswith("/stream/bookmark")
+            body = json.loads(request.content)
+            assert body["distinct_ids"] == ["user_123"]
             return httpx.Response(
                 200,
                 json={
@@ -73,6 +76,7 @@ class TestActivityFeed:
             )
 
         with create_mock_client(test_credentials, handler) as client:
+            client.set_workspace_id(99999)
             result = client.activity_feed(distinct_ids=["user_123"])
 
         assert result["status"] == "ok"
@@ -80,15 +84,19 @@ class TestActivityFeed:
         assert result["results"]["events"][0]["event"] == "Sign Up"
 
     def test_activity_feed_with_date_range(self, test_credentials: Session) -> None:
-        """activity_feed() should pass date parameters."""
+        """activity_feed() should encode the date range in the bookmark body."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            url_str = str(request.url)
-            assert "from_date=2024-01-01" in url_str
-            assert "to_date=2024-01-31" in url_str
+            body = json.loads(request.content)
+            assert body["bookmark"]["dateRange"] == {
+                "type": "between",
+                "from": "2024-01-01",
+                "to": "2024-01-31",
+            }
             return httpx.Response(200, json={"status": "ok", "results": {"events": []}})
 
         with create_mock_client(test_credentials, handler) as client:
+            client.set_workspace_id(99999)
             result = client.activity_feed(
                 distinct_ids=["user_123"],
                 from_date="2024-01-01",
@@ -98,16 +106,15 @@ class TestActivityFeed:
         assert result["status"] == "ok"
 
     def test_activity_feed_multiple_users(self, test_credentials: Session) -> None:
-        """activity_feed() should accept multiple user IDs."""
+        """activity_feed() should accept multiple user IDs in the body."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            url_str = str(request.url)
-            # JSON-encoded list should be in the URL
-            assert "user_123" in url_str
-            assert "user_456" in url_str
+            body = json.loads(request.content)
+            assert body["distinct_ids"] == ["user_123", "user_456"]
             return httpx.Response(200, json={"status": "ok", "results": {"events": []}})
 
         with create_mock_client(test_credentials, handler) as client:
+            client.set_workspace_id(99999)
             result = client.activity_feed(distinct_ids=["user_123", "user_456"])
 
         assert result["status"] == "ok"
@@ -405,6 +412,7 @@ class TestPhase008ErrorHandling:
             create_mock_client(test_credentials, handler) as client,
             pytest.raises(AuthenticationError) as exc_info,
         ):
+            client.set_workspace_id(99999)
             client.activity_feed(distinct_ids=["user_123"])
 
         assert "credentials" in str(exc_info.value).lower()
@@ -419,6 +427,7 @@ class TestPhase008ErrorHandling:
             create_mock_client(test_credentials, handler) as client,
             pytest.raises(QueryError) as exc_info,
         ):
+            client.set_workspace_id(99999)
             client.activity_feed(distinct_ids=["user_123"])
 
         assert "Invalid query" in str(exc_info.value)
@@ -435,6 +444,7 @@ class TestPhase008ErrorHandling:
         )
 
         with client, pytest.raises(RateLimitError) as exc_info:
+            client.set_workspace_id(99999)
             client.activity_feed(distinct_ids=["user_123"])
 
         assert exc_info.value.retry_after == 0

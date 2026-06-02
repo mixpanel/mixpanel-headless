@@ -42,6 +42,7 @@ from mixpanel_headless._internal.client_metadata import (
     QUERY_ORIGIN,
     get_user_agent,
 )
+from mixpanel_headless._literal_types import ActivityFeedMode
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     JQLSyntaxError,
@@ -123,6 +124,44 @@ ENDPOINTS: dict[str, dict[str, str]] = {
         "app": "https://in.mixpanel.com/api/app",
     },
 }
+
+
+def _build_activity_feed_date_range(
+    from_date: str | None, to_date: str | None
+) -> dict[str, Any]:
+    """Build a stream/bookmark ``dateRange`` object from optional date strings.
+
+    The stream/bookmark endpoint ignores top-level ``from_date``/``to_date`` and
+    reads the query window from ``bookmark.dateRange`` instead. This maps the
+    activity feed's optional date strings onto the endpoint's date-range
+    vocabulary, defaulting to a recent window when dates are omitted.
+
+    Args:
+        from_date: Optional inclusive start date (``YYYY-MM-DD``).
+        to_date: Optional inclusive end date (``YYYY-MM-DD``).
+
+    Returns:
+        A ``dateRange`` dict: a ``between`` range when both dates are given, a
+        ``since`` range when only ``from_date`` is given, a 30-day ``between``
+        window ending at ``to_date`` when only ``to_date`` is given, and a
+        relative last-30-days window when neither is given.
+
+    Example:
+        ```python
+        _build_activity_feed_date_range("2026-05-01", "2026-06-01")
+        # {"type": "between", "from": "2026-05-01", "to": "2026-06-01"}
+        ```
+    """
+    if from_date and to_date:
+        return {"type": "between", "from": from_date, "to": to_date}
+    if from_date:
+        return {"type": "since", "from": from_date}
+    if to_date:
+        window_start = (
+            datetime.strptime(to_date, "%Y-%m-%d") - timedelta(days=30)
+        ).strftime("%Y-%m-%d")
+        return {"type": "between", "from": window_start, "to": to_date}
+    return {"type": "relative_after", "window": {"unit": "day", "value": 30}}
 
 
 class MixpanelAPIClient:
@@ -2374,31 +2413,104 @@ class MixpanelAPIClient:
         *,
         from_date: str | None = None,
         to_date: str | None = None,
+        limit: int | None = None,
+        include_events: list[str] | None = None,
+        exclude_events: list[str] | None = None,
+        sentinel_event: dict[str, Any] | None = None,
+        paging_window: int | None = None,
+        mode: ActivityFeedMode = "raw",
+        search: str | None = None,
+        search_properties: list[dict[str, Any]] | None = None,
+        use_custom_events: bool = False,
     ) -> dict[str, Any]:
-        """Query activity feed for specific users.
+        """Query the activity feed for specific users via stream/bookmark.
+
+        Posts to the ``stream/bookmark`` endpoint (the successor to the
+        deprecated ``stream/query``). An empty ``bookmark.entries`` list selects
+        all of the users' events; ``distinct_ids`` scopes the result to those
+        users. The endpoint reads its window from ``bookmark.dateRange`` (it
+        ignores top-level dates), so dates are mapped via
+        :func:`_build_activity_feed_date_range`.
 
         Args:
-            distinct_ids: List of user identifiers to query.
-            from_date: Optional start date (YYYY-MM-DD).
-            to_date: Optional end date (YYYY-MM-DD).
+            distinct_ids: User identifiers to query.
+            from_date: Optional inclusive start date (``YYYY-MM-DD``).
+            to_date: Optional inclusive end date (``YYYY-MM-DD``).
+            limit: Optional max events to return (server enforces a ceiling of
+                15000). When ``None``, the server default applies. Raw mode only.
+            include_events: Optional event names to include; mutually exclusive
+                with ``exclude_events``.
+            exclude_events: Optional event names to exclude; mutually exclusive
+                with ``include_events``.
+            sentinel_event: Optional pagination cursor returned by a prior call
+                (``results.sentinel_event``); passed back verbatim to fetch the
+                next page.
+            paging_window: Optional number of days (<= 30) to bound each page's
+                scan window, paired with cursor pagination. Not supported in
+                ``count`` mode.
+            mode: ``"raw"`` (default) returns events under ``results.events``;
+                ``"count"`` returns an integer event count under ``results``.
+            search: Optional full-text search string applied to events.
+            search_properties: Optional list of property descriptors (each a
+                ``{"value": ..., "resourceType": "event" | "user"}`` dict) to
+                restrict the ``search`` to.
+            use_custom_events: When ``True``, raw events matching a custom-event
+                definition are labelled with the custom event in results.
 
         Returns:
-            Raw API response with events under results.events.
+            Raw API response. In ``raw`` mode, events are under
+            ``results.events`` with a cursor under ``results.sentinel_event``.
+            In ``count`` mode, ``results`` is an integer count.
 
         Raises:
+            QueryError: When both ``include_events`` and ``exclude_events`` are
+                supplied, when ``paging_window`` is combined with ``count`` mode,
+                or the API rejects the parameters.
             AuthenticationError: Invalid credentials.
-            QueryError: Invalid parameters.
             RateLimitError: Rate limit exceeded.
+
+        Example:
+            ```python
+            raw = client.activity_feed(
+                ["user_123"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+            events = raw["results"]["events"]
+            ```
         """
-        url = self._build_url("query", "/stream/query")
-        params: dict[str, Any] = {
-            "distinct_ids": json.dumps(distinct_ids),
+        if include_events and exclude_events:
+            raise QueryError("include_events and exclude_events are mutually exclusive")
+        if mode == "count" and paging_window is not None:
+            raise QueryError("paging_window is not supported in 'count' mode")
+        url = self._build_url("query", "/stream/bookmark")
+        body: dict[str, Any] = {
+            "project_id": self._session.project.id,
+            "workspace_id": self.resolve_workspace_id(),
+            "bookmark": {
+                "dateRange": _build_activity_feed_date_range(from_date, to_date),
+                "entries": [],
+            },
+            "distinct_ids": distinct_ids,
+            "mode": mode,
         }
-        if from_date:
-            params["from_date"] = from_date
-        if to_date:
-            params["to_date"] = to_date
-        result: dict[str, Any] = self._request("GET", url, params=params)
+        if limit is not None:
+            body["limit"] = limit
+        if include_events:
+            body["include_events"] = include_events
+        if exclude_events:
+            body["exclude_events"] = exclude_events
+        if sentinel_event is not None:
+            body["sentinel_event"] = sentinel_event
+        if paging_window is not None:
+            body["paging_window"] = paging_window
+        if search is not None:
+            body["search"] = search
+        if search_properties is not None:
+            body["search_properties"] = search_properties
+        if use_custom_events:
+            body["use_custom_events"] = use_custom_events
+        result: dict[str, Any] = self._request(
+            "POST", url, data=body, inject_project_id=False
+        )
         return result
 
     def query_saved_report(

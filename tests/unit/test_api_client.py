@@ -6,7 +6,7 @@ Tests use httpx.MockTransport for deterministic HTTP mocking.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date, timedelta
 from typing import Any
 
@@ -3247,3 +3247,312 @@ class TestClientIdentificationHeaders:
             )
 
         assert captured_headers["user-agent"] == "caller-ua/3.0"
+
+
+# =============================================================================
+# Activity Feed — stream/bookmark migration
+# =============================================================================
+
+
+class TestActivityFeed:
+    """Tests for MixpanelAPIClient.activity_feed() on the stream/bookmark endpoint.
+
+    The activity feed was migrated off the deprecated stream/query endpoint
+    (GET, query params) onto stream/bookmark (POST, JSON body). These tests lock
+    the request contract: POST verb, endpoint path, the empty-``entries`` "all
+    events" trick, the dateRange mapping, and the optional pass-through params.
+    """
+
+    @staticmethod
+    def _capturing_handler(
+        captured: dict[str, Any],
+    ) -> Callable[[httpx.Request], httpx.Response]:
+        """Build a mock handler that records the request into ``captured``.
+
+        Args:
+            captured: Dict populated with the request ``method``, ``path``, and
+                (when present) the parsed JSON ``body``.
+
+        Returns:
+            An httpx mock handler returning an empty raw-mode bookmark response.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record method/path/body, then return an OK raw-mode response."""
+            captured["method"] = request.method
+            captured["path"] = request.url.path
+            if request.content:
+                captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": {"events": [], "sentinel_event": None},
+                },
+            )
+
+        return handler
+
+    def test_posts_to_stream_bookmark_endpoint(self, test_credentials: Session) -> None:
+        """activity_feed() should POST to the /stream/bookmark path."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+
+        assert captured["method"] == "POST"
+        assert captured["path"].endswith("/stream/bookmark")
+
+    def test_body_uses_empty_entries_and_raw_mode(
+        self, test_credentials: Session
+    ) -> None:
+        """The JSON body should request all events (empty entries) in raw mode."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+
+        body = captured["body"]
+        assert body["bookmark"]["entries"] == []
+        assert body["mode"] == "raw"
+        assert body["distinct_ids"] == ["user_1"]
+        assert body["project_id"] == "12345"
+        assert body["workspace_id"] == 99999
+
+    def test_between_date_range_when_both_dates(
+        self, test_credentials: Session
+    ) -> None:
+        """Both dates should map to a 'between' dateRange."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+
+        assert captured["body"]["bookmark"]["dateRange"] == {
+            "type": "between",
+            "from": "2026-05-01",
+            "to": "2026-06-01",
+        }
+
+    def test_since_date_range_when_only_from_date(
+        self, test_credentials: Session
+    ) -> None:
+        """A lone from_date should map to a 'since' dateRange."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(["user_1"], from_date="2026-05-01")
+
+        assert captured["body"]["bookmark"]["dateRange"] == {
+            "type": "since",
+            "from": "2026-05-01",
+        }
+
+    def test_defaults_to_last_30_days_when_no_dates(
+        self, test_credentials: Session
+    ) -> None:
+        """No dates should default to a relative last-30-days window."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(["user_1"])
+
+        assert captured["body"]["bookmark"]["dateRange"] == {
+            "type": "relative_after",
+            "window": {"unit": "day", "value": 30},
+        }
+
+    def test_only_to_date_builds_30_day_between_window(
+        self, test_credentials: Session
+    ) -> None:
+        """A lone to_date should produce a 30-day 'between' window ending at it."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(["user_1"], to_date="2026-06-01")
+
+        date_range = captured["body"]["bookmark"]["dateRange"]
+        assert date_range["type"] == "between"
+        assert date_range["to"] == "2026-06-01"
+        assert date_range["from"] == "2026-05-02"
+
+    def test_optional_params_absent_by_default(self, test_credentials: Session) -> None:
+        """Optional knobs should be omitted from the body unless supplied."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+
+        body = captured["body"]
+        assert body["mode"] == "raw"
+        for key in (
+            "limit",
+            "include_events",
+            "exclude_events",
+            "sentinel_event",
+            "paging_window",
+            "search",
+            "search_properties",
+            "use_custom_events",
+        ):
+            assert key not in body
+
+    def test_passes_through_optional_params(self, test_credentials: Session) -> None:
+        """limit, include_events, sentinel_event, paging_window pass into the body."""
+        captured: dict[str, Any] = {}
+        sentinel = {"event": "X", "properties": {"time": 1, "$insert_id": "i"}}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"],
+                from_date="2026-05-01",
+                to_date="2026-06-01",
+                limit=500,
+                include_events=["Sign Up", "Purchase"],
+                sentinel_event=sentinel,
+                paging_window=7,
+            )
+
+        body = captured["body"]
+        assert body["limit"] == 500
+        assert body["include_events"] == ["Sign Up", "Purchase"]
+        assert body["sentinel_event"] == sentinel
+        assert body["paging_window"] == 7
+
+    def test_exclude_events_passes_through(self, test_credentials: Session) -> None:
+        """exclude_events should appear in the body when supplied alone."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"],
+                from_date="2026-05-01",
+                to_date="2026-06-01",
+                exclude_events=["Heartbeat"],
+            )
+
+        assert captured["body"]["exclude_events"] == ["Heartbeat"]
+
+    def test_include_and_exclude_events_together_raises(
+        self, test_credentials: Session
+    ) -> None:
+        """Passing both include_events and exclude_events should raise QueryError."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError):
+                client.activity_feed(
+                    ["user_1"],
+                    from_date="2026-05-01",
+                    to_date="2026-06-01",
+                    include_events=["A"],
+                    exclude_events=["B"],
+                )
+
+    def test_mode_count_sent_in_body(self, test_credentials: Session) -> None:
+        """mode='count' should be reflected in the request body."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"],
+                from_date="2026-05-01",
+                to_date="2026-06-01",
+                mode="count",
+            )
+
+        assert captured["body"]["mode"] == "count"
+
+    def test_search_params_pass_through(self, test_credentials: Session) -> None:
+        """search and search_properties should pass into the body when supplied."""
+        captured: dict[str, Any] = {}
+        search_props = [{"value": "$city", "resourceType": "event"}]
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"],
+                from_date="2026-05-01",
+                to_date="2026-06-01",
+                search="san francisco",
+                search_properties=search_props,
+            )
+
+        body = captured["body"]
+        assert body["search"] == "san francisco"
+        assert body["search_properties"] == search_props
+
+    def test_use_custom_events_in_body(self, test_credentials: Session) -> None:
+        """use_custom_events=True should appear in the body."""
+        captured: dict[str, Any] = {}
+
+        with create_mock_client(
+            test_credentials, self._capturing_handler(captured)
+        ) as client:
+            client.set_workspace_id(99999)
+            client.activity_feed(
+                ["user_1"],
+                from_date="2026-05-01",
+                to_date="2026-06-01",
+                use_custom_events=True,
+            )
+
+        assert captured["body"]["use_custom_events"] is True
+
+    def test_count_mode_with_paging_window_raises(
+        self, test_credentials: Session
+    ) -> None:
+        """count mode does not support paging_window and should raise QueryError."""
+        with create_mock_client(
+            test_credentials, self._capturing_handler({})
+        ) as client:
+            client.set_workspace_id(99999)
+            with pytest.raises(QueryError):
+                client.activity_feed(
+                    ["user_1"],
+                    from_date="2026-05-01",
+                    to_date="2026-06-01",
+                    mode="count",
+                    paging_window=7,
+                )

@@ -8,6 +8,7 @@ run live analytics, stream data, and manage entities via the App API.
 from mixpanel_headless import accounts, session, targets
 from mixpanel_headless._internal.validation import validate_bookmark
 from mixpanel_headless._literal_types import (
+    ActivityFeedMode,
     CohortAggregationType,
     ConversionWindowUnit,
     CountType,
@@ -333,6 +334,7 @@ __all__ = [
     "RetentionMathType",
     # Type aliases — flow types
     "FlowCountType",
+    "ActivityFeedMode",
     "FlowChartType",
     "FlowConversionWindowUnit",
     "FlowNodeType",

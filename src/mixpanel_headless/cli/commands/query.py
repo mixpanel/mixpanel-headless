@@ -34,6 +34,7 @@ from mixpanel_headless.cli.utils import (
     status_spinner,
 )
 from mixpanel_headless.cli.validators import (
+    validate_activity_feed_mode,
     validate_count_type,
     validate_hour_day_unit,
     validate_time_unit,
@@ -606,6 +607,37 @@ def query_activity_feed(
         str | None,
         typer.Option("--to", help="End date (YYYY-MM-DD)."),
     ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="Max events to return (raw mode; ceiling 15000)."),
+    ] = None,
+    include_event: Annotated[
+        list[str] | None,
+        typer.Option("--include-event", help="Only include this event (repeatable)."),
+    ] = None,
+    exclude_event: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-event",
+            help="Exclude this event (repeatable; not with --include-event).",
+        ),
+    ] = None,
+    paging_window: Annotated[
+        int | None,
+        typer.Option("--paging-window", help="Days (<=30) bounding each page."),
+    ] = None,
+    mode: Annotated[
+        str,
+        typer.Option("--mode", help="Result mode: 'raw' (events) or 'count'."),
+    ] = "raw",
+    search: Annotated[
+        str | None,
+        typer.Option("--search", help="Full-text search within events."),
+    ] = None,
+    use_custom_events: Annotated[
+        bool,
+        typer.Option("--use-custom-events", help="Label matching custom events."),
+    ] = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -615,9 +647,11 @@ def query_activity_feed(
     distinct_id. Pass comma-separated IDs to --users.
 
     Optionally filter by date range with --from and --to. Without date
-    filters, returns recent activity (API default).
+    filters, defaults to the last 30 days. Narrow events with --include-event /
+    --exclude-event (repeatable) or --search, cap results with --limit, and use
+    --mode count to return just an integer count instead of events.
 
-    **Output Structure (JSON):**
+    **Output Structure (JSON, raw mode):**
 
         {
           "distinct_ids": ["user123", "user456"],
@@ -629,30 +663,32 @@ def query_activity_feed(
               "event": "Login",
               "time": "2025-01-15T10:30:00+00:00",
               "properties": {"$browser": "Chrome", "$city": "San Francisco", ...}
-            },
-            {
-              "event": "Purchase",
-              "time": "2025-01-15T11:45:00+00:00",
-              "properties": {"product_id": "SKU123", "amount": 99.99, ...}
             }
-          ]
+          ],
+          "sentinel_event": {...},
+          "count": null
         }
+
+    In count mode ("--mode count"), "events" is empty and "count" is an integer.
 
     **Examples:**
 
         mp query activity-feed --users "user123"
         mp query activity-feed --users "user123,user456" --from 2025-01-01 --to 2025-01-31
-        mp query activity-feed --users "user123" --format table
+        mp query activity-feed --users "user123" --include-event Login --limit 50
+        mp query activity-feed --users "user123" --mode count
+        mp query activity-feed --users "user123" --search "san francisco"
 
     **jq Examples:**
 
         --jq '.event_count'                  # Total number of events
-        --jq '.events | length'              # Same as above
+        --jq '.count'                        # Integer total (count mode)
         --jq '.events[].event'               # List all event names
         --jq '.events | group_by(.event) | map({event: .[0].event, count: length})'
     """
     # Parse users
     user_list = [u.strip() for u in users.split(",")]
+    validated_mode = validate_activity_feed_mode(mode)
 
     workspace = get_workspace(ctx)
 
@@ -661,6 +697,13 @@ def query_activity_feed(
             distinct_ids=user_list,
             from_date=from_date,
             to_date=to_date,
+            limit=limit,
+            include_events=include_event,
+            exclude_events=exclude_event,
+            paging_window=paging_window,
+            mode=validated_mode,
+            search=search,
+            use_custom_events=use_custom_events,
         )
 
     present_result(ctx, result, format, jq_filter=jq_filter)

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 
 from mixpanel_headless.cli.main import app
+from mixpanel_headless.cli.utils import ExitCode
 from mixpanel_headless.types import (
     ActivityFeedResult,
     CohortInfo,
@@ -912,6 +913,98 @@ class TestQueryActivityFeed:
         assert "DISTINCT_ID" in result.stdout or "DISTINCT ID" in result.stdout
         # Should NOT contain the nested events JSON structure
         assert '"events"' not in result.stdout.lower()
+
+    def test_activity_feed_forwards_new_flags(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """New capability flags should be forwarded to Workspace.activity_feed."""
+        mock_workspace.activity_feed.return_value = ActivityFeedResult(
+            distinct_ids=["user1"], from_date=None, to_date=None, events=[]
+        )
+
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--limit",
+                    "50",
+                    "--include-event",
+                    "Login",
+                    "--include-event",
+                    "Purchase",
+                    "--paging-window",
+                    "7",
+                    "--search",
+                    "san francisco",
+                    "--use-custom-events",
+                ],
+            )
+
+        assert result.exit_code == 0
+        _, kwargs = mock_workspace.activity_feed.call_args
+        assert kwargs["limit"] == 50
+        assert kwargs["include_events"] == ["Login", "Purchase"]
+        assert kwargs["paging_window"] == 7
+        assert kwargs["search"] == "san francisco"
+        assert kwargs["use_custom_events"] is True
+
+    def test_activity_feed_count_mode(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """--mode count should request count mode and surface the integer."""
+        mock_workspace.activity_feed.return_value = ActivityFeedResult(
+            distinct_ids=["user1"],
+            from_date=None,
+            to_date=None,
+            events=[],
+            count=42,
+        )
+
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                [
+                    "query",
+                    "activity-feed",
+                    "--users",
+                    "user1",
+                    "--mode",
+                    "count",
+                    "--format",
+                    "json",
+                ],
+            )
+
+        assert result.exit_code == 0
+        _, kwargs = mock_workspace.activity_feed.call_args
+        assert kwargs["mode"] == "count"
+        data = json.loads(result.stdout)
+        assert data["count"] == 42
+
+    def test_activity_feed_invalid_mode_exits(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """An invalid --mode value should exit with the invalid-args code."""
+        with patch(
+            "mixpanel_headless.cli.commands.query.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                ["query", "activity-feed", "--users", "user1", "--mode", "bogus"],
+            )
+
+        assert result.exit_code == ExitCode.INVALID_ARGS
 
 
 class TestQuerySavedReport:

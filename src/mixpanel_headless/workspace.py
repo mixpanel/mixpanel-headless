@@ -106,6 +106,7 @@ from mixpanel_headless._internal.validation import (
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
+    ActivityFeedMode,
     ConversionWindowUnit,
     FlowChartType,
     FlowConversionWindowUnit,
@@ -1632,24 +1633,83 @@ class Workspace:
         *,
         from_date: str | None = None,
         to_date: str | None = None,
+        limit: int | None = None,
+        include_events: list[str] | None = None,
+        exclude_events: list[str] | None = None,
+        sentinel_event: dict[str, Any] | None = None,
+        paging_window: int | None = None,
+        mode: ActivityFeedMode = "raw",
+        search: str | None = None,
+        search_properties: list[dict[str, Any]] | None = None,
+        use_custom_events: bool = False,
     ) -> ActivityFeedResult:
         """Get activity feed for specific users.
 
+        Returns a user's recent events, newest first. Backed by the
+        stream/bookmark endpoint, so large feeds can be paginated with the
+        ``sentinel_event`` cursor carried on the result, filtered by event name
+        or full-text search, and reduced to a count.
+
         Args:
             distinct_ids: List of user identifiers.
-            from_date: Optional start date filter.
-            to_date: Optional end date filter.
+            from_date: Optional start date filter (``YYYY-MM-DD``). When both
+                dates are omitted, defaults to the last 30 days.
+            to_date: Optional end date filter (``YYYY-MM-DD``).
+            limit: Optional max events to return (server ceiling 15000).
+            include_events: Optional event names to include; mutually exclusive
+                with ``exclude_events``.
+            exclude_events: Optional event names to exclude; mutually exclusive
+                with ``include_events``.
+            sentinel_event: Optional pagination cursor from a prior result's
+                ``sentinel_event``; pass it back to fetch the next page.
+            paging_window: Optional days (<= 30) bounding each page's scan window.
+            mode: ``"raw"`` (default) returns events; ``"count"`` returns only an
+                integer event count via ``ActivityFeedResult.count``.
+            search: Optional full-text search string applied to events.
+            search_properties: Optional property descriptors to restrict the
+                ``search`` to (each a ``{"value", "resourceType"}`` dict).
+            use_custom_events: When ``True``, label matching custom events in
+                raw results.
 
         Returns:
-            ActivityFeedResult with user events.
+            ActivityFeedResult with user events (raw mode) or ``count`` (count
+            mode), plus a ``sentinel_event`` cursor (``None`` when there are no
+            further pages).
 
         Raises:
             ConfigError: If API credentials not available.
+            QueryError: If both ``include_events`` and ``exclude_events`` are
+                given, or ``paging_window`` is combined with ``count`` mode.
+
+        Example:
+            ```python
+            page = ws.activity_feed(
+                ["u1"], from_date="2026-05-01", to_date="2026-06-01"
+            )
+            while page.sentinel_event:
+                page = ws.activity_feed(
+                    ["u1"],
+                    from_date="2026-05-01",
+                    to_date="2026-06-01",
+                    sentinel_event=page.sentinel_event,
+                )
+
+            total = ws.activity_feed(["u1"], mode="count").count
+            ```
         """
         return self._live_query_service.activity_feed(
             distinct_ids=distinct_ids,
             from_date=from_date,
             to_date=to_date,
+            limit=limit,
+            include_events=include_events,
+            exclude_events=exclude_events,
+            sentinel_event=sentinel_event,
+            paging_window=paging_window,
+            mode=mode,
+            search=search,
+            search_properties=search_properties,
+            use_custom_events=use_custom_events,
         )
 
     def query_saved_report(
