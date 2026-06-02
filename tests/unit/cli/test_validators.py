@@ -9,6 +9,7 @@ from mixpanel_headless._literal_types import CountType, HourDayUnit, TimeUnit
 from mixpanel_headless.cli.validators import (
     validate_count_type,
     validate_hour_day_unit,
+    validate_json_object,
     validate_literal,
     validate_time_unit,
 )
@@ -125,3 +126,24 @@ class TestValidateCountType:
         """Test that typos are caught."""
         with pytest.raises(Exit):
             validate_count_type("genral")  # typo
+
+
+class TestValidateJsonObject:
+    """Tests for validate_json_object."""
+
+    def test_valid_object_returns_dict(self) -> None:
+        """A JSON object string should parse to the equivalent dict."""
+        result = validate_json_object('{"event": "X", "n": 1}', "--sentinel-event")
+        assert result == {"event": "X", "n": 1}
+
+    def test_invalid_json_raises_exit_code_3(self) -> None:
+        """Malformed JSON should raise typer.Exit with code 3."""
+        with pytest.raises(Exit) as exc:
+            validate_json_object("not-json", "--sentinel-event")
+        assert exc.value.exit_code == 3
+
+    def test_non_object_json_raises_exit_code_3(self) -> None:
+        """Valid JSON that is not an object (e.g. an array) should be rejected."""
+        with pytest.raises(Exit) as exc:
+            validate_json_object("[1, 2, 3]", "--sentinel-event")
+        assert exc.value.exit_code == 3

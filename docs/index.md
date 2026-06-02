@@ -194,7 +194,7 @@ mp query segmentation "Purchase" \
 mp query funnel 12345 --from 2025-01-01 --to 2025-01-31
 mp query retention \
     --born-event Signup --return-event Purchase --from 2025-01-01
-mp query activity-feed user@example.com --from 2025-01-01
+mp query activity-feed --users user@example.com --from 2025-01-01
 mp query saved-report 67890
 mp query frequency "Login" --from 2025-01-01
 

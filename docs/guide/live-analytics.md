@@ -268,7 +268,10 @@ Break down an event by property values:
 
 ## Activity Feed
 
-Get a user's event history:
+Get a user's events, sorted chronologically (oldest-first within a page). When
+you set a `limit`, you get the most recent events first; use `sentinel_event`
+to page backward to older events (see [Pagination](#pagination) below). With no
+date filters it defaults to the last 30 days.
 
 === "Python"
 
@@ -276,7 +279,7 @@ Get a user's event history:
     result = ws.activity_feed(
         distinct_ids=["user_123", "user_456"],
         from_date="2025-01-01",
-        to_date="2025-01-31"
+        to_date="2025-01-31",
     )
 
     for event in result.events:
@@ -288,9 +291,63 @@ Get a user's event history:
 
     ```bash
     mp query activity-feed \
-        --distinct-id user_123 \
+        --users user_123 \
         --from 2025-01-01 --to 2025-01-31 \
         --format json
+    ```
+
+### Filtering and search
+
+Narrow the feed to specific events (`include_events`/`exclude_events` are
+mutually exclusive), full-text search across event properties, and cap the
+result with `limit`:
+
+=== "Python"
+
+    ```python
+    result = ws.activity_feed(
+        distinct_ids=["user_123"],
+        from_date="2025-01-01",
+        to_date="2025-01-31",
+        include_events=["Login", "Purchase"],
+        search="san francisco",
+        limit=50,
+    )
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp query activity-feed --users user_123 \
+        --include-event Login --include-event Purchase \
+        --search "san francisco" --limit 50
+    ```
+
+### Pagination
+
+Large feeds page with a cursor. Each result carries `sentinel_event` — a JSON
+object while more pages remain, or `None`/`null` on the final page. Pass it back
+to fetch the next (older) page:
+
+=== "Python"
+
+    ```python
+    page = ws.activity_feed(["user_123"], from_date="2025-01-01", to_date="2025-01-31")
+    while page.sentinel_event:
+        page = ws.activity_feed(
+            ["user_123"],
+            from_date="2025-01-01",
+            to_date="2025-01-31",
+            sentinel_event=page.sentinel_event,
+        )
+    ```
+
+=== "CLI"
+
+    ```bash
+    # Capture the cursor from one page and feed it to the next
+    cursor=$(mp query activity-feed --users user_123 --jq '.sentinel_event')
+    mp query activity-feed --users user_123 --sentinel-event "$cursor"
     ```
 
 ## Saved Reports

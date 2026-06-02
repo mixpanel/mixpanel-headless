@@ -46,6 +46,9 @@ def live_query_factory(
     ) -> LiveQueryService:
         client = mock_client_factory(handler)
         client.__enter__()
+        # Pin a workspace so workspace-scoped calls (e.g. activity_feed via
+        # stream/bookmark) resolve without issuing an unmocked HTTP fetch.
+        client.set_workspace_id(12345)
         clients.append(client)
         return LiveQueryService(client)
 
@@ -207,6 +210,65 @@ class TestActivityFeedService:
         assert len(df) == 2
         assert "event" in df.columns
         assert "time" in df.columns
+
+    def test_activity_feed_exposes_sentinel_cursor(
+        self,
+        live_query_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], LiveQueryService
+        ],
+    ) -> None:
+        """activity_feed() should surface results.sentinel_event for pagination."""
+        sentinel = {
+            "event": "Purchase",
+            "properties": {"time": 1704153600, "$insert_id": "abc"},
+        }
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return a raw-mode response carrying a pagination cursor."""
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": {
+                        "events": [
+                            {"event": "Purchase", "properties": {"time": 1704153600}}
+                        ],
+                        "sentinel_event": sentinel,
+                    },
+                },
+            )
+
+        live_query = live_query_factory(handler)
+        result = live_query.activity_feed(distinct_ids=["user_123"])
+
+        assert result.sentinel_event == sentinel
+
+    def test_activity_feed_sentinel_none_when_absent(
+        self,
+        live_query_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], LiveQueryService
+        ],
+    ) -> None:
+        """sentinel_event should be None when the response omits a cursor."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return a raw-mode response with no pagination cursor."""
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": {
+                        "events": [
+                            {"event": "Sign Up", "properties": {"time": 1704067200}}
+                        ]
+                    },
+                },
+            )
+
+        live_query = live_query_factory(handler)
+        result = live_query.activity_feed(distinct_ids=["user_123"])
+
+        assert result.sentinel_event is None
 
 
 # =============================================================================

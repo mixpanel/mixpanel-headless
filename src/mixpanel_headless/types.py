@@ -948,6 +948,16 @@ class ActivityFeedResult(ResultWithDataFrame):
     events: list[UserEvent] = field(default_factory=list)
     """Event history (chronological order)."""
 
+    sentinel_event: dict[str, Any] | None = None
+    """Opaque pagination cursor from ``results.sentinel_event``.
+
+    Returned verbatim by the stream/bookmark endpoint; ``None`` when there are no
+    further pages. Pass it back unchanged as ``activity_feed(..., sentinel_event=)``
+    to fetch the next page. Kept as a raw dict (server-defined token) because it
+    carries the exact ``time``/``$insert_id`` the server needs, which a converted
+    :class:`UserEvent` would lose.
+    """
+
     @property
     def df(self) -> pd.DataFrame:
         """Convert to DataFrame with columns: event, time, distinct_id, + properties.
@@ -988,6 +998,7 @@ class ActivityFeedResult(ResultWithDataFrame):
             "to_date": self.to_date,
             "event_count": len(self.events),
             "events": [e.to_dict() for e in self.events],
+            "sentinel_event": self.sentinel_event,
         }
 
 

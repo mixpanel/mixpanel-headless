@@ -23,6 +23,8 @@ import typer
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    ExitCode,
+    err_console,
     get_workspace,
     handle_errors,
     output_result,
@@ -32,6 +34,7 @@ from mixpanel_headless.cli.utils import (
 from mixpanel_headless.cli.validators import (
     validate_count_type,
     validate_hour_day_unit,
+    validate_json_object,
     validate_time_unit,
 )
 
@@ -510,6 +513,40 @@ def query_activity_feed(
         str | None,
         typer.Option("--to", help="End date (YYYY-MM-DD)."),
     ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="Max events to return (raw mode; ceiling 15000)."),
+    ] = None,
+    include_event: Annotated[
+        list[str] | None,
+        typer.Option("--include-event", help="Only include this event (repeatable)."),
+    ] = None,
+    exclude_event: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-event",
+            help="Exclude this event (repeatable; not with --include-event).",
+        ),
+    ] = None,
+    paging_window: Annotated[
+        int | None,
+        typer.Option("--paging-window", help="Days (<=30) bounding each page."),
+    ] = None,
+    sentinel_event: Annotated[
+        str | None,
+        typer.Option(
+            "--sentinel-event",
+            help="JSON pagination cursor from a prior result's sentinel_event.",
+        ),
+    ] = None,
+    search: Annotated[
+        str | None,
+        typer.Option("--search", help="Full-text search within events."),
+    ] = None,
+    use_custom_events: Annotated[
+        bool,
+        typer.Option("--use-custom-events", help="Label matching custom events."),
+    ] = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -519,7 +556,12 @@ def query_activity_feed(
     distinct_id. Pass comma-separated IDs to --users.
 
     Optionally filter by date range with --from and --to. Without date
-    filters, returns recent activity (API default).
+    filters, defaults to the last 30 days. Narrow events with --include-event /
+    --exclude-event (repeatable) or --search, and cap results with --limit.
+
+    For large feeds, paginate: when a response includes a non-null
+    "sentinel_event", pass that JSON object back via --sentinel-event to fetch
+    the next page (repeat until "sentinel_event" is null).
 
     **Output Structure (JSON):**
 
@@ -533,30 +575,43 @@ def query_activity_feed(
               "event": "Login",
               "time": "2025-01-15T10:30:00+00:00",
               "properties": {"$browser": "Chrome", "$city": "San Francisco", ...}
-            },
-            {
-              "event": "Purchase",
-              "time": "2025-01-15T11:45:00+00:00",
-              "properties": {"product_id": "SKU123", "amount": 99.99, ...}
             }
-          ]
+          ],
+          "sentinel_event": {...}
         }
+
+    Events are returned in chronological (oldest-first) order. "sentinel_event"
+    is always present: a JSON object while more pages remain, or null on the
+    final page.
 
     **Examples:**
 
         mp query activity-feed --users "user123"
         mp query activity-feed --users "user123,user456" --from 2025-01-01 --to 2025-01-31
-        mp query activity-feed --users "user123" --format table
+        mp query activity-feed --users "user123" --include-event Login --limit 50
+        mp query activity-feed --users "user123" --search "san francisco"
+        mp query activity-feed --users "user123" --sentinel-event "$(... prior .sentinel_event ...)"
 
     **jq Examples:**
 
         --jq '.event_count'                  # Total number of events
         --jq '.events | length'              # Same as above
         --jq '.events[].event'               # List all event names
-        --jq '.events | group_by(.event) | map({event: .[0].event, count: length})'
+        --jq '.sentinel_event'               # Cursor to pass to --sentinel-event
     """
     # Parse users
     user_list = [u.strip() for u in users.split(",")]
+    if include_event and exclude_event:
+        err_console.print(
+            "[red]Error:[/red] --include-event and --exclude-event "
+            "are mutually exclusive."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    parsed_sentinel = (
+        validate_json_object(sentinel_event, "--sentinel-event")
+        if sentinel_event is not None
+        else None
+    )
 
     workspace = get_workspace(ctx)
 
@@ -565,6 +620,13 @@ def query_activity_feed(
             distinct_ids=user_list,
             from_date=from_date,
             to_date=to_date,
+            limit=limit,
+            include_events=include_event,
+            exclude_events=exclude_event,
+            paging_window=paging_window,
+            sentinel_event=parsed_sentinel,
+            search=search,
+            use_custom_events=use_custom_events,
         )
 
     present_result(ctx, result, format, jq_filter=jq_filter)

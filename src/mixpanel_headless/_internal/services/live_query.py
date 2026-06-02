@@ -1006,23 +1006,48 @@ class LiveQueryService:
         *,
         from_date: str | None = None,
         to_date: str | None = None,
+        limit: int | None = None,
+        include_events: list[str] | None = None,
+        exclude_events: list[str] | None = None,
+        sentinel_event: dict[str, Any] | None = None,
+        paging_window: int | None = None,
+        search: str | None = None,
+        search_properties: list[dict[str, Any]] | None = None,
+        use_custom_events: bool = False,
     ) -> ActivityFeedResult:
         """Query activity feed for specific users.
 
-        Retrieves chronological event history for one or more users,
-        returning a typed result with lazy DataFrame conversion.
+        Retrieves a user's events sorted chronologically (oldest-first within a
+        page); when ``limit`` is set the most recent events come first, and
+        ``sentinel_event`` pages backward to older events. Returns a typed
+        result with lazy DataFrame conversion. Backed by the stream/bookmark
+        endpoint.
 
         Args:
             distinct_ids: User identifiers to query.
             from_date: Optional start date (YYYY-MM-DD).
             to_date: Optional end date (YYYY-MM-DD).
+            limit: Optional max events to return (server ceiling 15000).
+            include_events: Optional event names to include; mutually exclusive
+                with ``exclude_events``.
+            exclude_events: Optional event names to exclude; mutually exclusive
+                with ``include_events``.
+            sentinel_event: Optional pagination cursor from a prior result's
+                ``sentinel_event``; passed back verbatim for the next page.
+            paging_window: Optional days (<= 30) bounding each page's scan window.
+            search: Optional full-text search string applied to events.
+            search_properties: Optional property descriptors to restrict the
+                ``search`` to (each a ``{"value", "resourceType"}`` dict).
+            use_custom_events: When ``True``, label matching custom events in
+                raw results.
 
         Returns:
-            ActivityFeedResult with user events and lazy DataFrame.
+            ActivityFeedResult with user events, a pagination cursor, and lazy
+            DataFrame.
 
         Raises:
             AuthenticationError: Invalid credentials.
-            QueryError: Invalid parameters.
+            QueryError: Invalid parameters (e.g. both include and exclude given).
             RateLimitError: Rate limit exceeded.
 
         Example:
@@ -1040,6 +1065,14 @@ class LiveQueryService:
             distinct_ids=distinct_ids,
             from_date=from_date,
             to_date=to_date,
+            limit=limit,
+            include_events=include_events,
+            exclude_events=exclude_events,
+            sentinel_event=sentinel_event,
+            paging_window=paging_window,
+            search=search,
+            search_properties=search_properties,
+            use_custom_events=use_custom_events,
         )
         return _transform_activity_feed(raw, distinct_ids, from_date, to_date)
 
@@ -1548,10 +1581,12 @@ def _transform_activity_feed(
         to_date: Query end date.
 
     Returns:
-        Typed ActivityFeedResult with chronological events.
+        Typed ActivityFeedResult with chronological events and, when present, the
+        stream/bookmark pagination cursor.
     """
     results = raw.get("results", {})
     raw_events = results.get("events", [])
+    sentinel_event = results.get("sentinel_event")
 
     events: list[UserEvent] = []
     for event_data in raw_events:
@@ -1581,6 +1616,7 @@ def _transform_activity_feed(
         from_date=from_date,
         to_date=to_date,
         events=events,
+        sentinel_event=sentinel_event,
     )
 
 
