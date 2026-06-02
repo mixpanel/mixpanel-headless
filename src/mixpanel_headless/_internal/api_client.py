@@ -44,7 +44,6 @@ from mixpanel_headless._internal.client_metadata import (
 )
 from mixpanel_headless.exceptions import (
     AuthenticationError,
-    JQLSyntaxError,
     MixpanelHeadlessError,
     QueryError,
     RateLimitError,
@@ -386,7 +385,6 @@ class MixpanelAPIClient:
         request_url: str | None = None,
         request_params: dict[str, Any] | None = None,
         request_body: dict[str, Any] | None = None,
-        script: str | None = None,
     ) -> Any:
         """Handle API response, raising appropriate exceptions with full context.
 
@@ -399,7 +397,7 @@ class MixpanelAPIClient:
             - 401: AuthenticationError (invalid credentials)
             - 403: QueryError (permission denied)
             - 404: QueryError (resource not found)
-            - 412: JQLSyntaxError (JQL script errors with parsed details)
+            - 4xx (other): QueryError with status code and response body
             - 5xx: ServerError with status code and error details
 
         Note: 429 (rate limit) is handled separately in _request() with retry logic.
@@ -410,7 +408,6 @@ class MixpanelAPIClient:
             request_url: Full request URL.
             request_params: Query parameters sent.
             request_body: Request body sent (for POST).
-            script: Optional JQL script for error context (used for 412 errors).
 
         Returns:
             Parsed JSON response for successful requests.
@@ -418,7 +415,6 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: On 401 response.
             QueryError: On 400 response.
-            JQLSyntaxError: On 412 response (JQL script errors).
             ServerError: On 5xx response.
         """
         # Parse response body for error details
@@ -482,25 +478,24 @@ class MixpanelAPIClient:
                 request_params=request_params,
                 request_body=request_body,
             )
-        if response.status_code == 412:
-            # JQL script errors return 412 Precondition Failed
+        if 400 <= response.status_code < 500:
+            # Any other 4xx (e.g., 412 Precondition Failed) — preserve the
+            # response body and status as a QueryError instead of letting it
+            # fall through to a generic HTTP error in _execute_with_retry().
+            error_msg = "Request failed"
             if isinstance(response_body, dict):
-                raw_error = response_body.get("error", "Unknown JQL error")
-                request_path = response_body.get("request")
-                raise JQLSyntaxError(
-                    raw_error=raw_error,
-                    script=script,
-                    request_path=request_path,
-                )
-            else:
-                raise QueryError(
-                    f"JQL failed: {response_body[:200] if response_body else 'Unknown error'}",
-                    status_code=response.status_code,
-                    response_body=response_body,
-                    request_method=request_method,
-                    request_url=request_url,
-                    request_body=request_body,
-                )
+                error_msg = response_body.get("error", "Request failed")
+            elif isinstance(response_body, str):
+                error_msg = response_body[:200] or "Request failed"
+            raise QueryError(
+                error_msg,
+                status_code=response.status_code,
+                response_body=response_body,
+                request_method=request_method,
+                request_url=request_url,
+                request_params=request_params,
+                request_body=request_body,
+            )
         if response.status_code >= 500:
             # Extract error message from response body if available
             error_msg = f"Server error: {response.status_code}"
@@ -561,7 +556,6 @@ class MixpanelAPIClient:
         form_data: dict[str, Any] | None = None,
         headers: dict[str, str],
         timeout: float | None = None,
-        script: str | None = None,
     ) -> Any:
         """Execute HTTP request with retry logic for rate limiting.
 
@@ -577,7 +571,6 @@ class MixpanelAPIClient:
             form_data: Optional form-encoded request body.
             headers: Request headers (must include Authorization).
             timeout: Optional request timeout in seconds.
-            script: Optional JQL script for error context.
 
         Returns:
             Parsed JSON response.
@@ -586,7 +579,6 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             RateLimitError: Rate limit exceeded after max retries (429).
             QueryError: Invalid parameters (400).
-            JQLSyntaxError: JQL script syntax/runtime error (412).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
         """
@@ -648,7 +640,6 @@ class MixpanelAPIClient:
                     request_url=url,
                     request_params=params,
                     request_body=request_body,
-                    script=script,
                 )
 
             except httpx.HTTPError as e:
@@ -680,7 +671,6 @@ class MixpanelAPIClient:
         data: dict[str, Any] | None = None,
         form_data: dict[str, Any] | None = None,
         timeout: float | None = None,
-        script: str | None = None,
         inject_project_id: bool = True,
     ) -> Any:
         """Make an authenticated request with optional project_id injection.
@@ -695,7 +685,6 @@ class MixpanelAPIClient:
             data: Request body as JSON (for POST).
             form_data: Request body as form-encoded (for POST).
             timeout: Override default timeout (uses self._timeout if not specified).
-            script: Optional JQL script for error context.
             inject_project_id: If True (default), automatically adds project_id
                 to query params. Set to False for APIs where project_id is
                 already in the URL path (e.g., Lexicon Schemas API).
@@ -707,7 +696,6 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             RateLimitError: Rate limit exceeded after max retries (429).
             QueryError: Invalid parameters (400).
-            JQLSyntaxError: JQL script syntax/runtime error (412).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
         """
@@ -731,7 +719,6 @@ class MixpanelAPIClient:
             form_data=form_data,
             headers={"Authorization": self._get_auth_header()},
             timeout=timeout,
-            script=script,
         )
 
     def request(
@@ -2409,37 +2396,6 @@ class MixpanelAPIClient:
             params["where"] = where
         result: dict[str, Any] = self._request("GET", url, params=params)
         return result
-
-    def jql(
-        self,
-        script: str,
-        *,
-        params: dict[str, Any] | None = None,
-    ) -> list[Any]:
-        """Execute a JQL (JavaScript Query Language) script.
-
-        Args:
-            script: JQL script code.
-            params: Optional parameters to pass to the script.
-
-        Returns:
-            List of results from script execution.
-
-        Raises:
-            AuthenticationError: Invalid credentials.
-            JQLSyntaxError: Script syntax or runtime error.
-            RateLimitError: Rate limit exceeded.
-        """
-        url = self._build_url("query", "/jql")
-        # JQL API expects form-encoded data with params as JSON string
-        form: dict[str, Any] = {"script": script}
-        if params:
-            form["params"] = json.dumps(params)
-        # Pass script for error context in case of JQL syntax errors
-        response = self._request("POST", url, form_data=form, script=script)
-        if isinstance(response, list):
-            return response
-        return []
 
     # =========================================================================
     # Phase 008: Query Service Enhancements

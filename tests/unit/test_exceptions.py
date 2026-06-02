@@ -14,7 +14,6 @@ from mixpanel_headless.exceptions import (
     ConfigError,
     DateRangeTooLargeError,
     EventNotFoundError,
-    JQLSyntaxError,
     MixpanelHeadlessError,
     QueryError,
     RateLimitError,
@@ -292,7 +291,6 @@ class TestExceptionHierarchy:
             AuthenticationError("test"),
             RateLimitError("test"),
             QueryError("test"),
-            JQLSyntaxError(raw_error="test"),
             EventNotFoundError("test"),
             DateRangeTooLargeError("2024-01-01", "2024-06-30", 182),
         ]
@@ -351,147 +349,6 @@ class TestExceptionHierarchy:
             assert exc.code == expected_code, (
                 f"{exc_class.__name__} should have code {expected_code}, got {exc.code}"
             )
-
-
-class TestJQLSyntaxError:
-    """Tests for JQL syntax error exception."""
-
-    # Sample error from Mixpanel API
-    SAMPLE_RAW_ERROR = (
-        "UserVisiblePreconditionFailedError: Uncaught exception TypeError: "
-        "Events(...).groupBy(...).limit is not a function\n"
-        "  .limit(10);\n"
-        "   ^\n"
-        "\n"
-        "Stack trace:\n"
-        "TypeError: Events(...).groupBy(...).limit is not a function\n"
-        "    at main (<anonymous>:7:4)\n"
-    )
-
-    SAMPLE_SCRIPT = """function main() {
-  return Events({from_date: "2024-01-01", to_date: "2024-01-31"})
-    .groupBy(["name"], mixpanel.reducer.count())
-    .limit(10);
-}"""
-
-    def test_basic_creation(self) -> None:
-        """JQLSyntaxError should parse error details from raw error."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert exc.code == "JQL_SYNTAX_ERROR"
-        assert isinstance(exc, QueryError)
-        assert isinstance(exc, MixpanelHeadlessError)
-
-    def test_extracts_error_type(self) -> None:
-        """Should extract JavaScript error type."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert exc.error_type == "TypeError"
-
-    def test_extracts_error_message(self) -> None:
-        """Should extract error message."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert "limit is not a function" in exc.error_message
-
-    def test_extracts_line_info(self) -> None:
-        """Should extract code snippet with caret."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert exc.line_info is not None
-        assert ".limit(10);" in exc.line_info
-        assert "^" in exc.line_info
-
-    def test_extracts_stack_trace(self) -> None:
-        """Should extract stack trace."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert exc.stack_trace is not None
-        assert "at main" in exc.stack_trace
-        assert "<anonymous>:7:4" in exc.stack_trace
-
-    def test_includes_script(self) -> None:
-        """Should include original script when provided."""
-        exc = JQLSyntaxError(
-            raw_error=self.SAMPLE_RAW_ERROR,
-            script=self.SAMPLE_SCRIPT,
-        )
-
-        assert exc.script == self.SAMPLE_SCRIPT
-
-    def test_includes_request_path(self) -> None:
-        """Should include request path when provided."""
-        exc = JQLSyntaxError(
-            raw_error=self.SAMPLE_RAW_ERROR,
-            request_path="/api/query/jql?project_id=12345",
-        )
-
-        assert exc.details["request_path"] == "/api/query/jql?project_id=12345"
-
-    def test_raw_error_preserved(self) -> None:
-        """Should preserve complete raw error string."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        assert exc.raw_error == self.SAMPLE_RAW_ERROR
-
-    def test_message_includes_error_type_and_message(self) -> None:
-        """String representation should include error type and message."""
-        exc = JQLSyntaxError(raw_error=self.SAMPLE_RAW_ERROR)
-
-        message = str(exc)
-        assert "JQL" in message
-        assert "TypeError" in message
-
-    def test_to_dict_includes_all_fields(self) -> None:
-        """to_dict should include all parsed fields."""
-        exc = JQLSyntaxError(
-            raw_error=self.SAMPLE_RAW_ERROR,
-            script=self.SAMPLE_SCRIPT,
-            request_path="/api/query/jql",
-        )
-
-        result = exc.to_dict()
-
-        assert result["code"] == "JQL_SYNTAX_ERROR"
-        assert result["details"]["error_type"] == "TypeError"
-        assert result["details"]["script"] == self.SAMPLE_SCRIPT
-        assert result["details"]["request_path"] == "/api/query/jql"
-        assert result["details"]["raw_error"] == self.SAMPLE_RAW_ERROR
-
-        # Verify JSON serializable
-        json_str = json.dumps(result)
-        assert "TypeError" in json_str
-
-    def test_handles_simple_error(self) -> None:
-        """Should handle simple error without stack trace."""
-        simple_error = "SyntaxError: Unexpected token }"
-
-        exc = JQLSyntaxError(raw_error=simple_error)
-
-        assert exc.error_type == "SyntaxError"
-        assert "Unexpected token" in exc.error_message
-
-    def test_handles_unknown_error_format(self) -> None:
-        """Should gracefully handle unknown error format."""
-        unknown_error = "Something went wrong"
-
-        exc = JQLSyntaxError(raw_error=unknown_error)
-
-        assert exc.error_type == "Error"  # Default
-        assert exc.error_message == "Something went wrong"
-        assert exc.raw_error == unknown_error
-
-    def test_inherits_from_query_error(self) -> None:
-        """JQLSyntaxError should be catchable as QueryError."""
-        exc = JQLSyntaxError(raw_error="Test error")
-
-        # Should be catchable with QueryError
-        with pytest.raises(QueryError):
-            raise exc
-
-        # Should be catchable with MixpanelHeadlessError
-        with pytest.raises(MixpanelHeadlessError):
-            raise JQLSyntaxError(raw_error="Test error")
 
 
 class TestAPIError:
@@ -644,14 +501,6 @@ class TestAPIErrorHierarchy:
         assert exc.status_code == 400
         assert exc.response_body == {"error": "syntax error"}
 
-    def test_jql_syntax_error_inherits_from_api_error(self) -> None:
-        """JQLSyntaxError should inherit from APIError via QueryError."""
-        exc = JQLSyntaxError(raw_error="TypeError: x is not defined")
-
-        assert isinstance(exc, QueryError)
-        assert isinstance(exc, APIError)
-        assert exc.status_code == 412
-
     def test_server_error_inherits_from_api_error(self) -> None:
         """ServerError should inherit from APIError."""
         exc = ServerError("Internal error", status_code=500)
@@ -666,7 +515,6 @@ class TestAPIErrorHierarchy:
             RateLimitError("test"),
             QueryError("test"),
             ServerError("test", status_code=500),
-            JQLSyntaxError(raw_error="test"),
         ]
 
         for error in errors:

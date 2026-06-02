@@ -1215,61 +1215,6 @@ class TestFunnelAndRetention:
             )
 
 
-# =============================================================================
-# User Story 8: JQL
-# =============================================================================
-
-
-class TestJQL:
-    """Test JQL queries (US8)."""
-
-    def test_jql_basic(self, test_credentials: Session) -> None:
-        """Should execute JQL script with form-encoded data."""
-        captured_body: dict[str, str] = {}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.content:
-                nonlocal captured_body
-                # Parse form-encoded data
-                from urllib.parse import parse_qs
-
-                parsed = parse_qs(request.content.decode())
-                captured_body = {k: v[0] for k, v in parsed.items()}
-            return httpx.Response(200, json=[{"key": "value"}])
-
-        with create_mock_client(test_credentials, handler) as client:
-            result = client.jql("function main() { return []; }")
-
-        assert "script" in captured_body
-        assert result == [{"key": "value"}]
-
-    def test_jql_with_params(self, test_credentials: Session) -> None:
-        """Should pass params as JSON string in form data."""
-        captured_body: dict[str, str] = {}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.content:
-                nonlocal captured_body
-                # Parse form-encoded data
-                from urllib.parse import parse_qs
-
-                parsed = parse_qs(request.content.decode())
-                captured_body = {k: v[0] for k, v in parsed.items()}
-            return httpx.Response(200, json=[])
-
-        with create_mock_client(test_credentials, handler) as client:
-            client.jql("function main() { return []; }", params={"from": "2024-01-01"})
-
-        assert "params" in captured_body
-        # params should be a JSON-encoded string
-        assert json.loads(captured_body["params"]) == {"from": "2024-01-01"}
-
-
-# =============================================================================
-# Error Handling
-# =============================================================================
-
-
 class TestErrorHandling:
     """Test error handling."""
 
@@ -1287,99 +1232,6 @@ class TestErrorHandling:
 
         assert "Invalid query" in str(exc_info.value)
 
-    def test_jql_syntax_error_on_412(self, test_credentials: Session) -> None:
-        """Should raise JQLSyntaxError on 412 with parsed error details."""
-        from mixpanel_headless.exceptions import JQLSyntaxError
-
-        raw_error = (
-            "UserVisiblePreconditionFailedError: Uncaught exception TypeError: "
-            "Events(...).groupBy(...).limit is not a function\n"
-            "  .limit(10);\n"
-            "   ^\n"
-            "\n"
-            "Stack trace:\n"
-            "TypeError: Events(...).groupBy(...).limit is not a function\n"
-            "    at main (<anonymous>:7:4)\n"
-        )
-
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                412,
-                json={
-                    "request": "/api/query/jql?project_id=12345",
-                    "error": raw_error,
-                },
-            )
-
-        script = "function main() { return Events({}).groupBy().limit(10); }"
-
-        with (
-            create_mock_client(test_credentials, handler) as client,
-            pytest.raises(JQLSyntaxError) as exc_info,
-        ):
-            client.jql(script)
-
-        exc = exc_info.value
-        assert exc.error_type == "TypeError"
-        assert "limit is not a function" in exc.error_message
-        assert exc.script == script
-        assert exc.raw_error == raw_error
-        assert exc.code == "JQL_SYNTAX_ERROR"
-
-    def test_jql_syntax_error_includes_line_info(
-        self, test_credentials: Session
-    ) -> None:
-        """JQLSyntaxError should include code snippet with caret."""
-        from mixpanel_headless.exceptions import JQLSyntaxError
-
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                412,
-                json={
-                    "error": "TypeError: bad\n  .badMethod();\n   ^\n",
-                },
-            )
-
-        with (
-            create_mock_client(test_credentials, handler) as client,
-            pytest.raises(JQLSyntaxError) as exc_info,
-        ):
-            client.jql("test script")
-
-        assert exc_info.value.line_info is not None
-        assert ".badMethod();" in exc_info.value.line_info
-        assert "^" in exc_info.value.line_info
-
-    def test_jql_syntax_error_catchable_as_query_error(
-        self, test_credentials: Session
-    ) -> None:
-        """JQLSyntaxError should be catchable as QueryError for backwards compat."""
-
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(412, json={"error": "SyntaxError: test"})
-
-        with (
-            create_mock_client(test_credentials, handler) as client,
-            pytest.raises(QueryError),  # Should catch JQLSyntaxError
-        ):
-            client.jql("bad script")
-
-    def test_412_without_json_falls_back_to_query_error(
-        self, test_credentials: Session
-    ) -> None:
-        """412 without valid JSON should raise QueryError."""
-
-        def handler(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(412, text="Not JSON")
-
-        with (
-            create_mock_client(test_credentials, handler) as client,
-            pytest.raises(QueryError) as exc_info,
-        ):
-            client.jql("test")
-
-        assert "JQL failed" in str(exc_info.value)
-
     def test_query_error_on_400_with_plain_text(
         self, test_credentials: Session
     ) -> None:
@@ -1395,6 +1247,28 @@ class TestErrorHandling:
             client.get_events()
 
         assert "Bad request: missing required field" in str(exc_info.value)
+
+    def test_query_error_on_412_preserves_body(self, test_credentials: Session) -> None:
+        """A 412 (or other unhandled 4xx) maps to QueryError with body preserved.
+
+        Regression: removing the JQL-specific 412 branch must not let 4xx
+        responses fall through to a generic HTTP error that drops status code
+        and response body.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(412, json={"error": "Precondition failed"})
+
+        with (
+            create_mock_client(test_credentials, handler) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.get_events()
+
+        exc = exc_info.value
+        assert exc.status_code == 412
+        assert "Precondition failed" in str(exc)
+        assert exc.response_body == {"error": "Precondition failed"}
 
 
 class TestServerErrors:
@@ -1459,65 +1333,6 @@ class TestRequestEncodingRegression:
     These tests verify that request bodies are encoded correctly and would
     catch issues like double-serialization of JSON data.
     """
-
-    def test_jql_params_not_double_serialized(self, test_credentials: Session) -> None:
-        """JQL params should be a JSON string, not double-serialized.
-
-        Regression: params were being json.dumps'd then sent via json=data,
-        causing double-serialization. API would receive escaped JSON strings.
-        """
-        from urllib.parse import parse_qs
-
-        captured_content: bytes = b""
-        captured_content_type: str = ""
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal captured_content, captured_content_type
-            captured_content = request.content
-            captured_content_type = request.headers.get("content-type", "")
-            return httpx.Response(200, json=[])
-
-        with create_mock_client(test_credentials, handler) as client:
-            client.jql(
-                "function main() { return []; }",
-                params={"key": "value", "nested": {"a": 1}},
-            )
-
-        # Verify form-encoded content type
-        assert "application/x-www-form-urlencoded" in captured_content_type
-
-        # Parse the form data
-        parsed = parse_qs(captured_content.decode())
-        params_value = parsed["params"][0]
-
-        # Parse the JSON string - should decode cleanly to original dict
-        parsed_params = json.loads(params_value)
-        assert parsed_params == {"key": "value", "nested": {"a": 1}}
-
-        # Verify it's not double-serialized (would be a string if double-serialized)
-        assert isinstance(parsed_params["nested"], dict)
-        assert not isinstance(parsed_params["nested"], str)
-
-    def test_jql_uses_form_encoding_not_json_body(
-        self, test_credentials: Session
-    ) -> None:
-        """JQL should use form-encoded body, not JSON body.
-
-        Regression: Using json= parameter instead of data= for form encoding.
-        """
-        captured_content_type: str = ""
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal captured_content_type
-            captured_content_type = request.headers.get("content-type", "")
-            return httpx.Response(200, json=[])
-
-        with create_mock_client(test_credentials, handler) as client:
-            client.jql("function main() { return []; }")
-
-        # Must be form-encoded, not JSON
-        assert "application/x-www-form-urlencoded" in captured_content_type
-        assert "application/json" not in captured_content_type
 
     def test_profile_export_uses_json_body(self, test_credentials: Session) -> None:
         """Profile export should use JSON body (not form-encoded).

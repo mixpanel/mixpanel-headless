@@ -9,7 +9,7 @@ Tests:
 - Construction modes (standard, context manager)
 - Discovery methods (events, properties, funnels, cohorts, top_events)
 - Streaming methods (stream_events, stream_profiles)
-- Live query methods (segmentation, funnel, retention, jql, etc.)
+- Live query methods (segmentation, funnel, retention, etc.)
 - Escape hatches (api)
 - Error handling (ConfigError, AccountNotFoundError)
 
@@ -38,7 +38,6 @@ if TYPE_CHECKING:
         FunnelInfo,
         FunnelResult,
         InsightsResult,
-        JQLResult,
         NumericAverageResult,
         NumericBucketResult,
         NumericSumResult,
@@ -165,7 +164,6 @@ def main() -> int:
     property_counts_result: PropertyCountsResult | None = None
     funnel_result: FunnelResult | None = None
     retention_result: RetentionResult | None = None
-    jql_result: JQLResult | None = None
     activity_result: ActivityFeedResult | None = None
     insights_result: InsightsResult | None = None
     frequency_result: FrequencyResult | None = None
@@ -200,7 +198,6 @@ def main() -> int:
             FunnelInfo,  # noqa: F401
             FunnelResult,  # noqa: F401
             InsightsResult,  # noqa: F401
-            JQLResult,  # noqa: F401
             NumericAverageResult,  # noqa: F401
             NumericBucketResult,  # noqa: F401
             NumericSumResult,  # noqa: F401
@@ -542,32 +539,6 @@ def main() -> int:
 
     runner.run_test("4.5 retention()", test_retention)
 
-    # Test 4.6: jql()
-    def test_jql() -> dict[str, Any]:
-        nonlocal jql_result
-        from mixpanel_headless.types import JQLResult
-
-        assert ws is not None
-        script = f"""
-        function main() {{
-            return Events({{
-                from_date: "{FROM_DATE}",
-                to_date: "{TO_DATE}"
-            }})
-            .groupBy(["name"], mixpanel.reducer.count())
-            .filter(function(r) {{ return r.value > 0; }});
-        }}
-        """
-        jql_result = ws.jql(script=script)
-        if not isinstance(jql_result, JQLResult):
-            raise TypeError(f"Expected JQLResult, got {type(jql_result)}")
-        return {
-            "raw_count": len(jql_result.raw),
-            "sample": jql_result.raw[:3] if jql_result.raw else [],
-        }
-
-    runner.run_test("4.6 jql()", test_jql)
-
     # Test 4.7: activity_feed()
     def test_activity_feed() -> dict[str, Any]:
         nonlocal activity_result
@@ -785,18 +756,6 @@ def main() -> int:
 
     runner.run_test("5.5 RetentionResult.df", test_retention_df)
 
-    # Test 5.6: JQLResult.df
-    def test_jql_df() -> dict[str, Any]:
-        if jql_result is None:
-            return {"skipped": "No JQL result"}
-        df = jql_result.df
-        df2 = jql_result.df
-        if df is not df2:
-            raise ValueError("DataFrame not cached")
-        return {"columns": list(df.columns), "rows": len(df), "cached": True}
-
-    runner.run_test("5.6 JQLResult.df", test_jql_df)
-
     # Test 5.7: ActivityFeedResult.df
     def test_activity_feed_df() -> dict[str, Any]:
         if activity_result is None:
@@ -899,7 +858,6 @@ def main() -> int:
             ("PropertyCountsResult", property_counts_result),
             ("FunnelResult", funnel_result),
             ("RetentionResult", retention_result),
-            ("JQLResult", jql_result),
             ("ActivityFeedResult", activity_result),
             ("InsightsResult", insights_result),
             ("FrequencyResult", frequency_result),

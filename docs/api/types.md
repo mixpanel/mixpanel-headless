@@ -229,11 +229,6 @@ Types for `Workspace.query_flow()` — typed flow path analysis with step defini
       show_root_heading: true
       show_root_toc_entry: true
 
-::: mixpanel_headless.JQLResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
 ## Discovery Types
 
 ::: mixpanel_headless.FunnelInfo
@@ -339,53 +334,6 @@ Types for `Workspace.subproperties()` — schema discovery for list-of-object ev
       show_root_toc_entry: true
 
 ::: mixpanel_headless.FlowsResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-## JQL Discovery Types
-
-::: mixpanel_headless.PropertyDistributionResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.PropertyValueCount
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.NumericPropertySummaryResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.DailyCountsResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.DailyCount
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.EngagementDistributionResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.EngagementBucket
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.PropertyCoverageResult
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.PropertyCoverage
     options:
       show_root_heading: true
       show_root_toc_entry: true

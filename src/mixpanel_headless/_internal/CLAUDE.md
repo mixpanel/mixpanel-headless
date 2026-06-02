@@ -25,7 +25,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/token.py` | `OAuthTokens`, `OAuthClientInfo` |
 | `auth/bridge.py` | `BridgeFile` v2 schema + `load_bridge` / `export_bridge` / `remove_bridge` (Cowork credential courier) |
 | `query/` | Query engine builders and validators (`user_builders.py`, `user_validators.py`) |
-| `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention, JQL) |
+| `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention) |
 
 ## Auth Resolution
 

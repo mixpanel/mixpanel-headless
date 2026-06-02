@@ -16,7 +16,7 @@ A complete programmable interface to Mixpanel analytics—available as both a Py
 
 Mixpanel's web UI is built for interactive exploration. But many workflows need something different: scripts that run unattended, notebooks that combine Mixpanel data with other sources, agents that query analytics programmatically, or pipelines that move data between systems.
 
-`mixpanel_headless` provides direct programmatic access to Mixpanel's analytics platform. Core analytics—typed insights queries, typed funnel queries, typed retention queries, typed flow queries, typed user profile queries, segmentation, saved reports—plus capabilities like raw JQL execution and streaming data extraction are available as Python methods or shell commands.
+`mixpanel_headless` provides direct programmatic access to Mixpanel's analytics platform. Core analytics—typed insights queries, typed funnel queries, typed retention queries, typed flow queries, typed user profile queries, segmentation, saved reports—plus capabilities like streaming data extraction are available as Python methods or shell commands.
 
 ## Two Interfaces, One Capability Set
 
@@ -213,8 +213,7 @@ mp query segmentation "Purchase" --from 2025-01-01 --format json --jq '.total'
 - List all events, drill into properties, sample actual values
 - Browse saved funnels, cohorts, and reports (bookmarks)
 - Access Lexicon definitions from your data dictionary
-- Analyze property distributions, coverage, and numeric statistics
-- Inspect top events by volume, daily trends, user engagement patterns
+- Inspect top events by volume
 
 Discovery commands let you survey what exists before writing queries—no guessing at event names or property values.
 
@@ -244,7 +243,6 @@ Discovery commands let you survey what exists before writing queries—no guessi
 - User activity feeds
 - Frequency and engagement analysis
 - Numeric aggregations (sum, average, bucket)
-- Raw JQL execution for custom analysis
 
 **Entity Management** — Create, update, and delete Mixpanel entities:
 

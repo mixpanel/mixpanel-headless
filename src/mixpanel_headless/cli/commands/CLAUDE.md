@@ -16,7 +16,7 @@ flags.
 | `workspace.py` | `mp workspace` | Workspace axis (`list`, `use ID`, `show`) |
 | `target.py` | `mp target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
 | `session.py` | `mp session` | Resolved active-session viewer (`mp session [--bridge]`) |
-| `query.py` | `mp query` | Live Mixpanel API queries (segmentation, funnel, retention, JQL, …) |
+| `query.py` | `mp query` | Live Mixpanel API queries (segmentation, funnel, retention, …) |
 | `inspect.py` | `mp inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards.py` | `mp dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints, RCA) |
 | `reports.py` | `mp reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk operations, history) |

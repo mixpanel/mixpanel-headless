@@ -119,7 +119,6 @@ Execute live analytics queries against the Mixpanel API.
 | `mp query segmentation` | Time-series event counts |
 | `mp query funnel` | Funnel conversion analysis |
 | `mp query retention` | Cohort retention analysis |
-| `mp query jql` | Execute JQL scripts |
 | `mp query event-counts` | Multi-event time series |
 | `mp query property-counts` | Property breakdown time series |
 | `mp query activity-feed` | User event history |
@@ -148,11 +147,6 @@ Explore your Mixpanel project schema.
 | `mp inspect top-events` | List today's top events |
 | `mp inspect lexicon-schemas` | List Lexicon schemas from data dictionary |
 | `mp inspect lexicon-schema` | Get a single Lexicon schema |
-| `mp inspect distribution` | Property value distribution (JQL) |
-| `mp inspect numeric` | Numeric property statistics (JQL) |
-| `mp inspect daily` | Daily event counts (JQL) |
-| `mp inspect engagement` | User engagement distribution (JQL) |
-| `mp inspect coverage` | Property coverage analysis (JQL) |
 
 ### dashboards — Dashboard Management
 

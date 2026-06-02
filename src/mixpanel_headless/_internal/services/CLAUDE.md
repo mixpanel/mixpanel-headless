@@ -7,7 +7,7 @@ Domain services implementing core business logic. These are internal implementat
 | File | Purpose |
 |------|---------|
 | `discovery.py` | Schema exploration (events, properties, funnels, cohorts) with caching |
-| `live_query.py` | Real-time API queries (segmentation, funnels, retention, JQL) |
+| `live_query.py` | Real-time API queries (segmentation, funnels, retention) |
 
 ## Design Patterns
 
@@ -27,7 +27,7 @@ Domain services implementing core business logic. These are internal implementat
 
 ### LiveQueryService
 - Executes real-time queries against Mixpanel API
-- Segmentation, funnels, retention, JQL
+- Segmentation, funnels, retention
 - Event counts, property counts, insights, activity feed
 - Frequency analysis, numeric aggregations
 - Flows, saved reports, bookmarks, lexicon schemas

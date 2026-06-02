@@ -34,7 +34,6 @@ from mixpanel_headless.exceptions import (
     DateRangeTooLargeError,
     EventNotFoundError,
     InvalidArgumentError,
-    JQLSyntaxError,
     MixpanelHeadlessError,
     OAuthError,
     ProjectNotFoundError,
@@ -183,32 +182,6 @@ def handle_errors(func: F) -> F:
                 f"  --from <midpoint+1> --to {rich_escape(str(e.to_date))}"
             )
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
-        except JQLSyntaxError as e:
-            # JQLSyntaxError must be caught before QueryError (it's a subclass)
-            err_console.print(
-                f"[red]JQL error:[/red] {rich_escape(e.error_type)}: "
-                f"{rich_escape(e.error_message)}"
-            )
-            # Show line info if available (code snippet with caret)
-            if e.line_info:
-                err_console.print(f"[dim]{rich_escape(e.line_info)}[/dim]")
-            # Show stack trace if available
-            if e.stack_trace:
-                err_console.print(
-                    f"  [dim]Location:[/dim] {rich_escape(e.stack_trace)}"
-                )
-            # Show the script that failed (truncated for readability)
-            if e.script:
-                script_preview = e.script.strip()
-                if len(script_preview) > 200:
-                    script_preview = script_preview[:200] + "..."
-                err_console.print(
-                    f"  [dim]Script:[/dim]\n{rich_escape(script_preview)}"
-                )
-            # Show raw error for debugging if it has more info
-            if e.raw_error and e.raw_error != e.error_message:
-                err_console.print(f"  [dim]Raw error:[/dim] {rich_escape(e.raw_error)}")
-            raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except QueryError as e:
             err_console.print(f"[red]Query error:[/red] {rich_escape(e.message)}")
             # Show response body - often contains the actual API error message
@@ -245,14 +218,12 @@ def handle_errors(func: F) -> F:
             # Show request body if present (e.g., for POST requests)
             if e.request_body:
                 for key, value in e.request_body.items():
-                    if key not in ("script",):  # Don't duplicate JQL script
-                        val_str = str(value)
-                        if len(val_str) > 100:
-                            val_str = val_str[:100] + "..."
-                        err_console.print(
-                            f"  [dim]{rich_escape(str(key))}:[/dim] "
-                            f"{rich_escape(val_str)}"
-                        )
+                    val_str = str(value)
+                    if len(val_str) > 100:
+                        val_str = val_str[:100] + "..."
+                    err_console.print(
+                        f"  [dim]{rich_escape(str(key))}:[/dim] {rich_escape(val_str)}"
+                    )
             # Provide contextual hints
             if e.status_code == 403:
                 err_console.print(

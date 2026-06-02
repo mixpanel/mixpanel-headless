@@ -16,7 +16,7 @@ state-change verb.
 | `workspace` | Workspace axis (`list` from `/me`, `use ID`, `show`) |
 | `target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
 | `session` | Resolved active session viewer (`mp session [--bridge]`) |
-| `query` | Live Mixpanel API queries (segmentation, funnels, retention, JQL) |
+| `query` | Live Mixpanel API queries (segmentation, funnels, retention) |
 | `inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints) |
 | `reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk ops, history) |

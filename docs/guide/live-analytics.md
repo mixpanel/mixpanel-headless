@@ -8,7 +8,7 @@ Query Mixpanel's analytics APIs directly for real-time data.
 !!! tip "Explore on DeepWiki"
     🤖 **[Querying Data Guide →](https://deepwiki.com/mixpanel/mixpanel-headless/3.2.4-querying-data)**
 
-    Ask questions about segmentation, funnels, retention, JQL, or other live query methods.
+    Ask questions about segmentation, funnels, retention, or other live query methods.
 
 !!! tip "Looking for entity management?"
     To create, update, or delete dashboards, reports, or cohorts, see the [Entity Management guide](entity-management.md).
@@ -209,45 +209,6 @@ cohort.date            # "2025-01-01"
 cohort.size            # 1000
 cohort.retention_rates # [1.0, 0.45, 0.32, 0.28, ...]
 ```
-
-## JQL (JavaScript Query Language)
-
-Run custom JQL scripts for advanced analysis:
-
-=== "Python"
-
-    ```python
-    script = """
-    function main() {
-        return Events({
-            from_date: params.from_date,
-            to_date: params.to_date,
-            event_selectors: [{event: "Purchase"}]
-        })
-        .groupBy(["properties.country"], mixpanel.reducer.count())
-        .sortDesc("value")
-        .take(10);
-    }
-    """
-
-    result = ws.jql(
-        script=script,
-        params={"from_date": "2025-01-01", "to_date": "2025-01-31"}
-    )
-
-    print(result.data)  # Raw JQL result
-    print(result.df)    # As DataFrame
-    ```
-
-=== "CLI"
-
-    ```bash
-    # From file
-    mp query jql --script ./query.js --param from_date=2025-01-01 --param to_date=2025-01-31
-
-    # Inline
-    mp query jql --script 'function main() { return Events({...}).count(); }'
-    ```
 
 ## Event Counts
 

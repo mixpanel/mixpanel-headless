@@ -2,8 +2,7 @@
 
 This module provides functions to normalize user input into valid
 Mixpanel filter expression syntax. Filter expressions use property
-accessor syntax (properties["name"], user["name"], event["name"])
-and are distinct from JQL (JavaScript Query Language).
+accessor syntax (properties["name"], user["name"], event["name"]).
 """
 
 from __future__ import annotations

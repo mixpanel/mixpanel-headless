@@ -19,7 +19,6 @@ from mixpanel_headless.types import (
     FrequencyResult,
     FunnelInfo,
     FunnelResult,
-    JQLResult,
     LexiconDefinition,
     LexiconSchema,
     NumericAverageResult,
@@ -203,24 +202,6 @@ class TestLiveQueries:
 
             assert result.born_event == "Sign Up"
             mock_live_query.retention.assert_called_once()
-        finally:
-            ws.close()
-
-    def test_jql_delegation(
-        self,
-        workspace_factory: Callable[..., Workspace],
-    ) -> None:
-        """T046: Test jql() delegation."""
-        ws = workspace_factory()
-        try:
-            mock_live_query = MagicMock()
-            mock_live_query.jql.return_value = JQLResult(_raw=[{"count": 42}])
-            ws._live_query = mock_live_query
-
-            result = ws.jql("function main() { return 42; }")
-
-            assert result.raw == [{"count": 42}]
-            mock_live_query.jql.assert_called_once()
         finally:
             ws.close()
 

@@ -2,6 +2,6 @@
 
 Command groups:
 - auth: Authentication and account management
-- query: Live API queries (segmentation, funnel, retention, JQL)
+- query: Live API queries (segmentation, funnel, retention)
 - inspect: Schema discovery (events, properties, funnels, cohorts, bookmarks)
 """

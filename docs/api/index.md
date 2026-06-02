@@ -103,7 +103,7 @@ The main entry point for all operations:
 - **Retention Queries** — Typed retention analysis with event pairs (`query_retention()`)
 - **Flow Queries** — Typed flow path analysis (`query_flow()`)
 - **User Profile Queries** — Typed user profile queries with filtering, sorting, and aggregation (`query_user()`)
-- **Live Queries** — Legacy analytics endpoints (segmentation, funnels, retention, JQL)
+- **Live Queries** — Legacy analytics endpoints (segmentation, funnels, retention)
 - **Streaming** — Stream events and profiles directly from Mixpanel (ETL, pipelines)
 - **Entity CRUD & Data Governance** — Create, read, update, delete dashboards, reports, cohorts, feature flags, experiments, plus Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, schema enforcement, data auditing, volume anomalies, and event deletion requests
 

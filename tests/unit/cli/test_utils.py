@@ -25,7 +25,6 @@ from mixpanel_headless.exceptions import (
     ConfigError,
     DateRangeTooLargeError,
     EventNotFoundError,
-    JQLSyntaxError,
     MixpanelHeadlessError,
     QueryError,
     RateLimitError,
@@ -164,41 +163,6 @@ class TestHandleErrors:
 
         assert documented_func.__name__ == "documented_func"
         assert "documented function" in (documented_func.__doc__ or "")
-
-    def test_jql_syntax_error_exits_with_code_3(self) -> None:
-        """Test JQLSyntaxError maps to exit code 3 (INVALID_ARGS)."""
-
-        @handle_errors
-        def jql_fail() -> None:
-            raise JQLSyntaxError(
-                raw_error="TypeError: undefined is not a function",
-                script="function main() { return Events().foo(); }",
-            )
-
-        with pytest.raises(click.exceptions.Exit) as exc:
-            jql_fail()
-        assert exc.value.exit_code == ExitCode.INVALID_ARGS
-
-    def test_jql_syntax_error_shows_error_details(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Test JQLSyntaxError displays rich error context."""
-
-        @handle_errors
-        def jql_fail() -> None:
-            raise JQLSyntaxError(
-                raw_error="Uncaught exception TypeError: foo is not a function\n  .foo()\n  ^",
-                script="function main() { return Events().foo(); }",
-            )
-
-        with pytest.raises(click.exceptions.Exit):
-            jql_fail()
-
-        captured = capsys.readouterr()
-        # Should show error type and message
-        assert "TypeError" in captured.err
-        # Should show the script (truncated if long)
-        assert "Events()" in captured.err
 
     def test_server_error_exits_with_code_1(self) -> None:
         """Test ServerError maps to exit code 1 (GENERAL_ERROR)."""

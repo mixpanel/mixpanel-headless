@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from mixpanel_headless._internal.services.live_query import LiveQueryService
     from mixpanel_headless.types import (
         FunnelResult,
-        JQLResult,
         RetentionResult,
         SegmentationResult,
     )
@@ -133,7 +132,6 @@ def main() -> int:
     segmentation_result: SegmentationResult | None = None
     funnel_result: FunnelResult | None = None
     retention_result: RetentionResult | None = None
-    jql_result: JQLResult | None = None
 
     # =========================================================================
     # Phase 1: Prerequisites
@@ -666,167 +664,6 @@ def main() -> int:
         print("  [SKIPPED] Retention tests - API not available for this data")
 
     # =========================================================================
-    # Phase 7: JQL Query Tests
-    # =========================================================================
-    print("\n[Phase 7] JQL Query Tests")
-    print("-" * 40)
-
-    # Test 7.0: Raw JQL HTTP request for debugging
-    jql_raw_response: dict[str, Any] | None = None
-
-    def test_jql_raw_http() -> dict[str, Any]:
-        """Make raw HTTP request to JQL endpoint to capture full response."""
-        nonlocal jql_raw_response
-        assert api_client is not None
-
-        # Note: .limit() is not valid after .groupBy() in JQL
-        script = f"""function main() {{
-  return Events({{
-    from_date: "{FROM_DATE}",
-    to_date: "{TO_DATE}"
-  }})
-  .groupBy(["name"], mixpanel.reducer.count());
-}}"""
-
-        url = f"https://mixpanel.com/api/query/jql?project_id={api_client._credentials.project_id}"
-        headers = {
-            "Authorization": api_client._get_auth_header(),
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        data = {"script": script}
-
-        response = api_client._client.post(  # type: ignore[union-attr]
-            url,
-            data=data,
-            headers=headers,
-            timeout=api_client._timeout,
-        )
-
-        jql_raw_response = {
-            "status_code": response.status_code,
-            "headers": dict(response.headers),
-        }
-
-        try:
-            body = response.json()
-            jql_raw_response["body"] = body
-        except Exception:
-            jql_raw_response["body_text"] = response.text[:500]
-
-        return {
-            "status_code": response.status_code,
-            "body": jql_raw_response.get("body", jql_raw_response.get("body_text", ""))[
-                :200
-            ]
-            if isinstance(
-                jql_raw_response.get("body", jql_raw_response.get("body_text", "")), str
-            )
-            else jql_raw_response.get("body"),
-        }
-
-    runner.run_test("7.0 jql() raw HTTP debug", test_jql_raw_http)
-
-    # Test 7.1: Simple JQL query
-    jql_available = True
-
-    def test_jql_basic() -> dict[str, Any]:
-        nonlocal jql_result, jql_available
-        from mixpanel_headless.types import JQLResult
-
-        assert live_query is not None
-        # Note: .limit() is not valid after .groupBy() in JQL
-        script = f"""
-        function main() {{
-            return Events({{
-                from_date: "{FROM_DATE}",
-                to_date: "{TO_DATE}"
-            }})
-            .groupBy(["name"], mixpanel.reducer.count());
-        }}
-        """
-        try:
-            jql_result = live_query.jql(script=script)
-            if not isinstance(jql_result, JQLResult):
-                raise TypeError(f"Expected JQLResult, got {type(jql_result)}")
-            return {
-                "row_count": len(jql_result.raw),
-                "sample": jql_result.raw[:3] if jql_result.raw else [],
-            }
-        except Exception as e:
-            # JQL may not be available (412 Precondition Failed = JQL not enabled)
-            jql_available = False
-            return {
-                "error": type(e).__name__,
-                "message": str(e)[:100],
-                "note": "JQL may not be enabled for this project",
-            }
-
-    runner.run_test("7.1 jql() basic", test_jql_basic)
-
-    # Test 7.2-7.3: Additional JQL tests (only if JQL is available)
-    if jql_available and jql_result is not None:
-
-        def test_jql_with_params() -> dict[str, Any]:
-            assert live_query is not None
-            # Note: .limit() is not valid after .groupBy() in JQL
-            script = """
-            function main() {
-                return Events({
-                    from_date: params.from,
-                    to_date: params.to
-                })
-                .groupBy(["name"], mixpanel.reducer.count());
-            }
-            """
-            result = live_query.jql(
-                script=script, params={"from": FROM_DATE, "to": TO_DATE}
-            )
-            return {
-                "row_count": len(result.raw),
-                "has_params": True,
-            }
-
-        runner.run_test("7.2 jql() with params", test_jql_with_params)
-
-        def test_jql_empty() -> dict[str, Any]:
-            assert live_query is not None
-            # Filter for non-existent event to get empty result
-            script = """
-            function main() {
-                return Events({
-                    from_date: "2020-01-01",
-                    to_date: "2020-01-01"
-                })
-                .filter(function(e) { return e.name === "__nonexistent_xyz__"; });
-            }
-            """
-            result = live_query.jql(script=script)
-            return {
-                "row_count": len(result.raw),
-                "is_empty": len(result.raw) == 0,
-            }
-
-        runner.run_test("7.3 jql() empty result", test_jql_empty)
-    else:
-        print("  [SKIPPED] Additional JQL tests - JQL not available for this project")
-
-    # Test 7.4: Invalid JQL script
-    def test_jql_invalid() -> dict[str, Any]:
-        from mixpanel_headless.exceptions import QueryError
-
-        assert live_query is not None
-        try:
-            live_query.jql(script="this is invalid javascript {{{{")
-            return {"error_raised": False, "note": "No error for invalid JQL"}
-        except QueryError as e:
-            return {"error_raised": True, "error_code": e.code}
-        except Exception as e:
-            return {"error_type": type(e).__name__, "message": str(e)[:50]}
-
-    runner.run_test("7.4 jql() invalid script", test_jql_invalid)
-
-    # =========================================================================
     # Phase 8: DataFrame Conversion Tests
     # =========================================================================
     print("\n[Phase 8] DataFrame Conversion Tests")
@@ -890,24 +727,6 @@ def main() -> int:
         runner.run_test("8.3 RetentionResult.df", test_retention_df)
     else:
         print("  [SKIPPED] RetentionResult.df - no retention data available")
-
-    # Test 8.4: JQLResult.df
-    if jql_available and jql_result is not None:
-
-        def test_jql_df() -> dict[str, Any]:
-            assert jql_result is not None
-            df = jql_result.df
-            return {
-                "columns": list(df.columns),
-                "rows": len(df),
-                "dtypes": {col: str(df[col].dtype) for col in df.columns}
-                if len(df) > 0
-                else {},
-            }
-
-        runner.run_test("8.4 JQLResult.df", test_jql_df)
-    else:
-        print("  [SKIPPED] JQLResult.df - no JQL data available")
 
     # Test 8.5: DataFrame caching
     def test_df_caching() -> dict[str, Any]:
@@ -986,21 +805,6 @@ def main() -> int:
         runner.run_test("9.3 RetentionResult.to_dict()", test_retention_to_dict)
     else:
         print("  [SKIPPED] RetentionResult.to_dict() - no retention data")
-
-    # Test 9.4: JQLResult.to_dict()
-    if jql_available and jql_result is not None:
-
-        def test_jql_to_dict() -> dict[str, Any]:
-            assert jql_result is not None
-            d = jql_result.to_dict()
-            if "raw" not in d:
-                raise ValueError("Missing 'raw' key in JQLResult.to_dict()")
-            _ = json.dumps(d)
-            return {"keys": list(d.keys()), "json_serializable": True}
-
-        runner.run_test("9.4 JQLResult.to_dict()", test_jql_to_dict)
-    else:
-        print("  [SKIPPED] JQLResult.to_dict() - no JQL data")
 
     # =========================================================================
     # Phase 10: Error Handling Tests

@@ -140,7 +140,7 @@ All development MUST follow this phased approach:
 
 1. **Foundation**: ConfigManager, MixpanelAPIClient, StorageEngine, exceptions, result types
 2. **Core**: FetcherService, DiscoveryService, Workspace orchestration, auth module
-3. **Live Queries**: LiveQueryService, segmentation/funnel/retention methods, JQL support
+3. **Live Queries**: LiveQueryService, segmentation/funnel/retention methods
 4. **CLI**: Typer application, all command groups, formatters, progress bars
 5. **Polish**: SKILL.md, documentation, integration tests, PyPI release
 

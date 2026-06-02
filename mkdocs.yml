@@ -126,7 +126,7 @@ plugins:
         mixpanel_headless is a complete programmable interface to Mixpanel analytics.
         Python library and CLI for discovery, querying, streaming, and entity management.
         Discover your schema, run live analytics (segmentation, funnels, retention, flows),
-        execute JQL, and stream data for processing.
+        and stream data for processing.
       sections:
         Getting Started:
           - index.md: "Project overview and key concepts"
@@ -141,7 +141,7 @@ plugins:
           - guide/query-retention.md: "Typed retention queries — event pairs, custom buckets, alignment modes"
           - guide/query-flows.md: "Typed flow queries — path analysis, direction controls, visualization modes"
           - guide/query-users.md: "Typed user profile queries — filtering, sorting, parallel fetching, aggregate counts"
-          - guide/live-analytics.md: "Segmentation, funnels, retention, JQL"
+          - guide/live-analytics.md: "Segmentation, funnels, retention"
           - guide/streaming.md: "Stream events and profiles for ETL"
           - guide/entity-management.md: "Create, update, delete dashboards, reports, and cohorts"
           - guide/data-governance.md: "Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, enforcement, auditing, anomalies, and event deletion requests"

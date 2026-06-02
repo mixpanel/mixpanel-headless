@@ -4,7 +4,6 @@ This module provides commands for querying data:
 - segmentation: Live segmentation query
 - funnel: Live funnel analysis
 - retention: Live retention analysis
-- jql: Execute custom JQL scripts
 - event-counts: Multi-event time series
 - property-counts: Property breakdown
 - activity-feed: User activity history
@@ -18,7 +17,6 @@ This module provides commands for querying data:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -44,7 +42,7 @@ query_app = typer.Typer(
     name="query",
     help="Query Mixpanel data.",
     epilog="""Live (calls Mixpanel API):
-  segmentation, funnel, retention, jql, event-counts,
+  segmentation, funnel, retention, event-counts,
   property-counts, activity-feed, saved-report, flows, frequency,
   segmentation-numeric, segmentation-sum, segmentation-average""",
     no_args_is_help=True,
@@ -314,98 +312,6 @@ def query_retention(
             interval=actual_interval,
             interval_count=actual_interval_count,
             unit=validated_unit,
-        )
-
-    present_result(ctx, result, format, jq_filter=jq_filter)
-
-
-@query_app.command("jql")
-@handle_errors
-def query_jql(
-    ctx: typer.Context,
-    file: Annotated[
-        Path | None,
-        typer.Argument(help="JQL script file."),
-    ] = None,
-    script: Annotated[
-        str | None,
-        typer.Option("--script", "-c", help="Inline JQL script."),
-    ] = None,
-    param: Annotated[
-        list[str] | None,
-        typer.Option("--param", "-P", help="Parameter (key=value)."),
-    ] = None,
-    format: FormatOption = "json",
-    jq_filter: JqOption = None,
-) -> None:
-    """Execute JQL script against Mixpanel API.
-
-    Script can be provided as a file argument or inline with --script.
-    Parameters can be passed with --param key=value (repeatable).
-
-    **Output Structure (JSON):**
-
-    The output structure depends on your JQL script. Common patterns:
-
-    groupBy result:
-
-        {
-          "raw": [
-            {"key": ["Login"], "value": 5234},
-            {"key": ["Sign Up"], "value": 1892}
-          ],
-          "row_count": 2
-        }
-
-    Aggregation result:
-
-        {
-          "raw": [{"count": 15234, "unique_users": 3421}],
-          "row_count": 1
-        }
-
-    **Examples:**
-
-        mp query jql analysis.js
-        mp query jql --script "function main() { return Events({...}).groupBy(['event'], mixpanel.reducer.count()) }"
-        mp query jql analysis.js --param start_date=2025-01-01 --param event_name=Login
-
-    **jq Examples:**
-
-        --jq '.raw'                          # Get raw result array
-        --jq '.raw[0]'                       # First result row
-        --jq '.raw[] | {event: .key[0], count: .value}'
-        --jq '.row_count'                    # Number of result rows
-    """
-    # Get script from file or inline
-    if file is not None:
-        if not file.exists():
-            err_console.print(f"[red]Error:[/red] File not found: {file}")
-            raise typer.Exit(ExitCode.NOT_FOUND)
-        jql_script = file.read_text()
-    elif script is not None:
-        jql_script = script
-    else:
-        err_console.print("[red]Error:[/red] Provide a file or use --script")
-        raise typer.Exit(3)
-
-    # Parse parameters
-    params: dict[str, str] = {}
-    if param:
-        for p in param:
-            if "=" not in p:
-                err_console.print(f"[red]Error:[/red] Invalid parameter format: {p}")
-                err_console.print("Use --param key=value")
-                raise typer.Exit(3)
-            key, value = p.split("=", 1)
-            params[key] = value
-
-    workspace = get_workspace(ctx)
-
-    with status_spinner(ctx, "Running JQL query..."):
-        result = workspace.jql(
-            script=jql_script,
-            params=params if params else None,
         )
 
     present_result(ctx, result, format, jq_filter=jq_filter)

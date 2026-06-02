@@ -21,8 +21,7 @@ MixpanelHeadlessError
 │   ├── AuthenticationError
 │   ├── RateLimitError
 │   ├── QueryError
-│   ├── ServerError
-│   └── JQLSyntaxError
+│   └── ServerError
 ├── OAuthError
 │   └── RegionProbeError
 │       └── RegionProbeNetworkError
@@ -82,11 +81,6 @@ except mp.MixpanelHeadlessError as e:
       show_root_toc_entry: true
 
 ::: mixpanel_headless.ServerError
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.JQLSyntaxError
     options:
       show_root_heading: true
       show_root_toc_entry: true

@@ -64,7 +64,7 @@ Schema introspection with session-scoped caching:
 
 Executes live analytics queries against Mixpanel Query API:
 
-- Segmentation, funnels, retention, JQL
+- Segmentation, funnels, retention
 - Event counts, property counts
 - Activity feed, saved reports, flows, frequency
 - Numeric aggregations (bucket, sum, average)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-`mixpanel_headless` is a complete programmable interface to Mixpanel analytics—Python library and CLI for discovery, querying, streaming, and entity management. Discover your schema, run live analytics (segmentation, funnels, retention), execute JQL, and manage entities via the Mixpanel App API.
+`mixpanel_headless` is a complete programmable interface to Mixpanel analytics—Python library and CLI for discovery, querying, streaming, and entity management. Discover your schema, run live analytics (segmentation, funnels, retention), and manage entities via the Mixpanel App API.
 
 | Context | Name | Example |
 |---------|------|---------|
@@ -28,7 +28,7 @@ Infrastructure           → ConfigManager, MixpanelAPIClient
 
 **Three capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks)
-- **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles, JQL), stream events and profiles
+- **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
 - **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
 
 ## Package Structure

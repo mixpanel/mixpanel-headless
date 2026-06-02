@@ -27,7 +27,6 @@ Use the legacy methods when:
 
 - You need to query a saved funnel by ID → `funnel()`
 - You need cohort retention curves → `query_retention()` ([Retention Queries](query-retention.md))
-- You need raw JQL execution → `jql()`
 - You need to query a saved Flows report → `query_saved_flows()`
 
 For ad-hoc funnel conversion analysis with typed step definitions, see **[Funnel Queries](query-funnels.md)**.
