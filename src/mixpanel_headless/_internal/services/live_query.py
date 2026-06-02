@@ -1017,10 +1017,11 @@ class LiveQueryService:
     ) -> ActivityFeedResult:
         """Query activity feed for specific users.
 
-        Retrieves chronological event history for one or more users,
-        returning a typed result with lazy DataFrame conversion. Backed by the
-        stream/bookmark endpoint, which supports cursor pagination via
-        ``sentinel_event``.
+        Retrieves a user's events sorted chronologically (oldest-first within a
+        page); when ``limit`` is set the most recent events come first, and
+        ``sentinel_event`` pages backward to older events. Returns a typed
+        result with lazy DataFrame conversion. Backed by the stream/bookmark
+        endpoint.
 
         Args:
             distinct_ids: User identifiers to query.

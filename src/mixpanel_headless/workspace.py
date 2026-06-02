@@ -1621,10 +1621,11 @@ class Workspace:
     ) -> ActivityFeedResult:
         """Get activity feed for specific users.
 
-        Returns a user's events in chronological (oldest-first) order. Backed by
-        the stream/bookmark endpoint, so large feeds can be paginated with the
-        ``sentinel_event`` cursor carried on the result and filtered by event
-        name or full-text search.
+        Returns a user's events sorted chronologically (oldest-first within a
+        page). When ``limit`` is set, the most recent events come first; use the
+        ``sentinel_event`` cursor (carried on the result) to page backward to
+        older events. Backed by the stream/bookmark endpoint; also filterable by
+        event name or full-text search.
 
         Args:
             distinct_ids: List of user identifiers.

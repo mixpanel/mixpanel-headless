@@ -268,7 +268,9 @@ Break down an event by property values:
 
 ## Activity Feed
 
-Get a user's event history, in chronological (oldest-first) order. With no
+Get a user's events, sorted chronologically (oldest-first within a page). When
+you set a `limit`, you get the most recent events first; use `sentinel_event`
+to page backward to older events (see [Pagination](#pagination) below). With no
 date filters it defaults to the last 30 days.
 
 === "Python"
