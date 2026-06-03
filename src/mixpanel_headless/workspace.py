@@ -6928,7 +6928,7 @@ class Workspace:
         Args:
             event_name: Name of the event to update.
             params: Fields to update (hidden, dropped, merged,
-                verified, tags, description).
+                verified, tags, display_name, description).
 
         Returns:
             The updated ``EventDefinition``.
@@ -6949,7 +6949,7 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        body = params.model_dump(exclude_none=True)
+        body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_event_definition(event_name, body)
         return EventDefinition.model_validate(raw)
 
@@ -7004,7 +7004,7 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        body = params.model_dump(exclude_none=True)
+        body = params.model_dump(exclude_none=True, by_alias=True)
         raw_list = client.bulk_update_event_definitions(body)
         return [EventDefinition.model_validate(x) for x in raw_list]
 
@@ -7055,8 +7055,8 @@ class Workspace:
 
         Args:
             property_name: Name of the property to update.
-            params: Fields to update (hidden, dropped, merged,
-                sensitive, description).
+            params: Fields to update (hidden, dropped, merged, sensitive,
+                display_name, description, example_value, resource_type).
 
         Returns:
             The updated ``PropertyDefinition``.
@@ -7077,7 +7077,7 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        body = params.model_dump(exclude_none=True)
+        body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_property_definition(property_name, body)
         return PropertyDefinition.model_validate(raw)
 
@@ -8077,7 +8077,7 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        body = params.model_dump(exclude_none=True)
+        body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_custom_event(custom_event_id, body)
         return EventDefinition.model_validate(raw)
 

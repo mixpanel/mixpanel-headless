@@ -4700,8 +4700,12 @@ class PropertyDefinition(BaseModel):
     Attributes:
         id: Server-assigned property ID.
         name: Property name.
-        resource_type: Property resource type (event, user, groupprofile).
+        resource_type: Property resource type as the API returns it, e.g.
+            ``Event`` / ``User`` (capitalized, matching the write contract on
+            :class:`UpdatePropertyDefinitionParams`).
+        display_name: Human-readable name.
         description: Property description.
+        example_value: Example value shown in the Lexicon.
         hidden: Whether hidden from UI.
         dropped: Whether data is dropped.
         merged: Whether merged into another property.
@@ -4725,10 +4729,17 @@ class PropertyDefinition(BaseModel):
     """Property name."""
 
     resource_type: str | None = None
-    """Property resource type (event, user, groupprofile)."""
+    """Property resource type as the API returns it, e.g. ``Event`` / ``User``
+    (capitalized, matching the write contract)."""
+
+    display_name: str | None = None
+    """Human-readable name (Lexicon ``displayName``)."""
 
     description: str | None = None
     """Property description."""
+
+    example_value: str | None = None
+    """Example value shown in the Lexicon (``exampleValue``)."""
 
     hidden: bool | None = None
     """Whether hidden from UI."""
@@ -4757,15 +4768,20 @@ class UpdateEventDefinitionParams(BaseModel):
         merged: Whether merged.
         verified: Whether verified.
         tags: Tag names to assign.
+        display_name: Human-readable name (sent as ``displayName``).
         description: Event description.
 
     Example:
         ```python
         params = UpdateEventDefinitionParams(
-            description="User completed a purchase", verified=True
+            display_name="Purchase",
+            description="User completed a purchase",
+            verified=True,
         )
         ```
     """
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     hidden: bool | None = None
     """Whether hidden from UI."""
@@ -4781,6 +4797,9 @@ class UpdateEventDefinitionParams(BaseModel):
 
     tags: list[str] | None = None
     """Tag names to assign."""
+
+    display_name: str | None = None
+    """Human-readable name (sent as ``displayName``)."""
 
     description: str | None = None
     """Event description."""
@@ -4921,13 +4940,25 @@ class UpdatePropertyDefinitionParams(BaseModel):
         dropped: Whether data is dropped.
         merged: Whether merged.
         sensitive: PII flag.
+        display_name: Human-readable name (sent as ``displayName``).
         description: Property description.
+        example_value: Example value (sent as ``exampleValue``).
+        resource_type: Resource type (``Event`` / ``User``); sent verbatim as
+            ``resourceType`` to disambiguate a user property from an event
+            property of the same name. The value mirrors what the API returns
+            on reads, so use the capitalized form.
 
     Example:
         ```python
-        params = UpdatePropertyDefinitionParams(sensitive=True)
+        params = UpdatePropertyDefinitionParams(
+            display_name="Plan Type",
+            example_value="free, pro, enterprise",
+            resource_type="User",
+        )
         ```
     """
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     hidden: bool | None = None
     """Whether hidden from UI."""
@@ -4941,8 +4972,18 @@ class UpdatePropertyDefinitionParams(BaseModel):
     sensitive: bool | None = None
     """PII flag."""
 
+    display_name: str | None = None
+    """Human-readable name (sent as ``displayName``)."""
+
     description: str | None = None
     """Property description."""
+
+    example_value: str | None = None
+    """Example value (sent as ``exampleValue``)."""
+
+    resource_type: str | None = None
+    """Resource type (``Event`` / ``User``); sent verbatim as ``resourceType``
+    to disambiguate a user property from an event property of the same name."""
 
 
 class BulkEventUpdate(BaseModel):
@@ -4956,12 +4997,13 @@ class BulkEventUpdate(BaseModel):
         merged: Whether merged.
         verified: Whether verified.
         tags: Tag names.
+        display_name: Human-readable name (sent as ``displayName``).
         contacts: Contact emails.
         team_contacts: Team contact emails.
 
     Example:
         ```python
-        entry = BulkEventUpdate(name="OldEvent", hidden=True)
+        entry = BulkEventUpdate(name="OldEvent", display_name="Old Event")
         ```
     """
 
@@ -4985,6 +5027,11 @@ class BulkEventUpdate(BaseModel):
 
     tags: list[str] | None = None
     """Tag names."""
+
+    display_name: str | None = Field(default=None, serialization_alias="displayName")
+    """Human-readable name. Serialized as ``displayName`` via an explicit alias
+    (rather than a model-wide ``alias_generator``) so the established
+    ``team_contacts`` wire shape stays snake_case."""
 
     contacts: list[str] | None = None
     """Contact emails."""
@@ -5023,11 +5070,15 @@ class BulkPropertyUpdate(BaseModel):
         hidden: Whether hidden from UI.
         dropped: Whether data is dropped.
         sensitive: PII flag.
+        display_name: Human-readable name (sent as ``displayName``).
+        example_value: Example value (sent as ``exampleValue``).
         data_group_id: Data group identifier.
 
     Example:
         ```python
-        entry = BulkPropertyUpdate(name="$browser", resource_type="event")
+        entry = BulkPropertyUpdate(
+            name="$browser", resource_type="event", display_name="Browser"
+        )
         ```
     """
 
@@ -5050,6 +5101,12 @@ class BulkPropertyUpdate(BaseModel):
 
     sensitive: bool | None = None
     """PII flag."""
+
+    display_name: str | None = None
+    """Human-readable name (sent as ``displayName``)."""
+
+    example_value: str | None = None
+    """Example value (sent as ``exampleValue``)."""
 
     data_group_id: str | None = None
     """Data group identifier."""
