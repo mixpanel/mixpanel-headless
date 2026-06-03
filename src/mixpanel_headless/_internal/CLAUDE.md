@@ -39,6 +39,8 @@ A single function — `auth/resolver.py::resolve_session(...)` — returns a `Se
 
 Service-account env vars win over `MP_OAUTH_TOKEN` when both sets are complete (preserves PR #125 behavior). The resolver is pure-functional: no network I/O, no `os.environ` mutation, deterministic on repeat invocations with identical inputs.
 
+When the workspace axis resolves to `None`, the workspace is auto-discovered lazily on the first workspace-scoped call (`MixpanelAPIClient.resolve_workspace_id`). Discovery order: the cached `/me` response (via a resolver the `Workspace` facade injects with `set_workspace_resolver`, preferring the global "All Project Data" view) → `GET /projects/{pid}/workspaces/public` → `GET /projects/metadata/index` (service-account fallback). Reusing the per-account `/me` cache avoids a redundant, uncached `/workspaces/public` round-trip; `data-definitions`/Lexicon calls already degrade to project-scoped paths when no workspace is set, so they never force discovery.
+
 ## Error Handling
 
 `MixpanelAPIClient` maps HTTP errors to exceptions:
