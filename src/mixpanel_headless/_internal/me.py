@@ -14,6 +14,7 @@ import logging
 import os
 import stat
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -221,6 +222,76 @@ class MeResponse(BaseModel):
 
 # Default cache TTL: 24 hours
 _DEFAULT_TTL_SECONDS = 86400
+
+# The global "see everything" data view Mixpanel provisions for every
+# workspace-enabled project. Preferred during auto-resolution because it is the
+# only view guaranteed to see all of the project's data.
+_GLOBAL_WORKSPACE_NAME = "All Project Data"
+
+
+@dataclass(frozen=True)
+class WorkspaceView:
+    """The workspace fields used to pick a project's default data view.
+
+    A normalized view over the differently-shaped sources a workspace can be
+    resolved from (the cached ``/me`` response, ``/workspaces/public``, and the
+    projects metadata index) so they all share one selection rule
+    (:func:`select_workspace_id`).
+
+    Attributes:
+        id: Workspace ID.
+        name: Workspace display name.
+        is_global: Whether this is a global ("see everything") view.
+        is_default: Whether this is the project's default view.
+        is_visible: Whether the view is visible.
+    """
+
+    id: int
+    """Workspace ID."""
+
+    name: str | None
+    """Workspace display name."""
+
+    is_global: bool | None
+    """Whether this is a global ("see everything") view."""
+
+    is_default: bool | None
+    """Whether this is the project's default view."""
+
+    is_visible: bool | None
+    """Whether the view is visible."""
+
+
+def select_workspace_id(views: list[WorkspaceView]) -> int | None:
+    """Pick the best workspace id for auto-resolution from a project's views.
+
+    Preference order mirrors the power-tools ``auth()`` heuristic: the global
+    view wins, then the conventionally-named "All Project Data" view, then the
+    project default, then the first visible view, then the first view. Shared by
+    every resolution path so a project resolves to the same view regardless of
+    which source answered.
+
+    Args:
+        views: Candidate views, already filtered to one project.
+
+    Returns:
+        The selected workspace id, or ``None`` when ``views`` is empty.
+    """
+    if not views:
+        return None
+    for v in views:
+        if v.is_global is True:
+            return v.id
+    for v in views:
+        if v.name == _GLOBAL_WORKSPACE_NAME:
+            return v.id
+    for v in views:
+        if v.is_default is True:
+            return v.id
+    for v in views:
+        if v.is_visible is not False:
+            return v.id
+    return views[0].id
 
 
 class MeCache:
@@ -685,3 +756,50 @@ class MeService:
             if ws.is_default is True:
                 return ws
         return None
+
+    def resolve_workspace(self, project_id: str) -> int | None:
+        """Resolve the best workspace id for a project from the cached /me data.
+
+        Reads the already-warm ``/me`` cache (in-memory, then on-disk) via
+        :meth:`peek` and never triggers a network call or writes the cache. When
+        the cache is cold, this returns ``None`` so the caller can fall back to
+        the ``/workspaces/public`` endpoint. The point is to reuse the
+        per-account ``/me`` response headless already maintains (24h TTL), not to
+        add a new round-trip.
+
+        The chosen workspace prefers the global "All Project Data" view over a
+        merely-default view, since the global view is the one guaranteed to see
+        all of the project's data (see :func:`select_workspace_id`).
+
+        Args:
+            project_id: The project ID to resolve a workspace for.
+
+        Returns:
+            The chosen workspace id, or ``None`` when the cache is cold, the
+            project id is non-numeric, or no view could be selected.
+
+        Example:
+            ```python
+            svc = MeService(api_client, cache, "us")
+            svc.resolve_workspace("4025120")  # 4521297
+            ```
+        """
+        me = self.peek()
+        if me is None:
+            return None
+        try:
+            pid_int = int(project_id)
+        except (TypeError, ValueError):
+            return None
+        views = [
+            WorkspaceView(
+                id=ws.id,
+                name=ws.name,
+                is_global=ws.is_global,
+                is_default=ws.is_default,
+                is_visible=ws.is_visible,
+            )
+            for ws in me.workspaces.values()
+            if ws.project_id == pid_int
+        ]
+        return select_workspace_id(views)
