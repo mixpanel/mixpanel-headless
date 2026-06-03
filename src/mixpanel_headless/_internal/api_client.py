@@ -6115,6 +6115,37 @@ class MixpanelAPIClient:
             )
         return result
 
+    def list_event_definitions(self) -> list[dict[str, Any]]:
+        """List all event definitions in the Lexicon.
+
+        Calls ``GET .../data-definitions/events`` without a name filter, so the
+        whole project's event definitions come back in one request. Used by the
+        schema-graph gather to enumerate events.
+
+        Returns:
+            List of event definition dictionaries.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/404).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session) as client:
+                events = client.list_event_definitions()
+            ```
+        """
+        path = self.maybe_scoped_path("data-definitions/events/")
+        result = self.app_request("GET", path)
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from list_event_definitions: "
+                f"expected list, got {type(result).__name__}",
+            )
+        return result
+
     def update_event_definition(
         self, name: str, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -6257,6 +6288,67 @@ class MixpanelAPIClient:
         if not isinstance(result, list):
             raise MixpanelHeadlessError(
                 f"Unexpected response from get_property_definitions: "
+                f"expected list, got {type(result).__name__}",
+            )
+        return result
+
+    def list_property_definitions(
+        self,
+        *,
+        resource_type: str = "Event",
+        include_events: bool = False,
+        include_density: bool = False,
+        include_custom: bool = True,
+        include_zero_counts: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List all property definitions for a resource type.
+
+        Calls ``GET .../data-definitions/properties`` without a name filter, so
+        the whole project's properties come back in one request. With
+        ``include_events`` each returned event property carries an ``events``
+        list of ``{"name": ...}`` entries — the bulk call that powers the
+        event<->property relationship graph (one request for the project, rather
+        than a schema lookup per entity).
+
+        Args:
+            resource_type: Property family — ``"Event"`` or ``"User"``.
+            include_events: Attach the events each property appears on.
+            include_density: Request the property-level density (``densityLocal``)
+                each row carries. Only populated when the API has computed it.
+            include_custom: Include custom (computed) properties.
+            include_zero_counts: Include properties with no recorded data points.
+
+        Returns:
+            List of property definition dictionaries. When ``include_events`` is
+            set, event properties carry an ``events`` list.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/404).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session) as client:
+                rows = client.list_property_definitions(include_events=True)
+                rows[0]["events"]  # [{"name": "Purchase"}, ...]
+            ```
+        """
+        path = self.maybe_scoped_path("data-definitions/properties/")
+        params: dict[str, str] = {
+            "resourceType": resource_type,
+            "includeCustom": "true" if include_custom else "false",
+            "includeZeroCounts": "true" if include_zero_counts else "false",
+        }
+        if include_events:
+            params["includeEvents"] = "true"
+        if include_density:
+            params["includeDensity"] = "true"
+        result = self.app_request("GET", path, params=params)
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from list_property_definitions: "
                 f"expected list, got {type(result).__name__}",
             )
         return result
