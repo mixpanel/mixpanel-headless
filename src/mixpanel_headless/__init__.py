@@ -237,6 +237,7 @@ from mixpanel_headless.types import (
     SavedReportType,
     SchemaEnforcementConfig,
     SchemaEntry,
+    SchemaGraphResult,
     SegmentationResult,
     ServingMethod,
     SetTestUsersParams,
@@ -388,6 +389,7 @@ __all__ = [
     "BookmarkType",
     "SavedReportResult",
     "SavedReportType",
+    "SchemaGraphResult",
     "FlowsResult",
     # Phase 008: Query Service Enhancement types
     "UserEvent",

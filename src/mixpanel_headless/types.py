@@ -11203,6 +11203,318 @@ class FlowQueryResult(ResultWithDataFrame):
 
 
 # =============================================================================
+# Schema Graph (full lexicon + event<->property relationships)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class SchemaGraphResult(ResultWithDataFrame):
+    """Full Lexicon schema plus the event<->property relationship graph.
+
+    Adapts the power-tools ``getSchema`` view to headless: it gathers event
+    definitions, event properties, and user properties from the Lexicon, and
+    records which properties appear on which events (and the inverse) from a
+    single bulk ``data-definitions/properties?includeEvents=true`` call, so for
+    any event you can list the properties that travel with it.
+
+    Group properties are out of scope for now (headless has no data-groups
+    listing to enumerate them); only event and user properties are gathered.
+
+    Attributes:
+        computed_at: ISO-8601 timestamp when the schema was gathered.
+        events: Event definition dicts (Lexicon shape, camelCase keys).
+        properties: Event property dicts; each carries an ``events`` list of
+            ``{"name": ...}`` entries describing the events it appears on, and a
+            top-level ``densityLocal`` when ``include_density`` was requested.
+        user_properties: User property dicts.
+        event_to_properties: Map of event name to the property names on it.
+        property_to_events: Map of property name to the events it appears on.
+        include_density: Whether per-property density was requested.
+        meta: Free-form metadata about the gather (counts, flags).
+        params: The parameters that produced this result.
+
+    Example:
+        ```python
+        schema = ws.schema_graph()
+        schema.properties_for_event("Purchase")
+        # ["amount", "currency", "item_id", ...]
+        schema.relationships_df.head()
+        g = schema.to_graph()  # networkx.DiGraph, events -> properties
+        ```
+    """
+
+    computed_at: str
+    events: list[dict[str, Any]] = field(default_factory=list)
+    properties: list[dict[str, Any]] = field(default_factory=list)
+    user_properties: list[dict[str, Any]] = field(default_factory=list)
+    event_to_properties: dict[str, list[str]] = field(default_factory=dict)
+    property_to_events: dict[str, list[str]] = field(default_factory=dict)
+    include_density: bool = False
+    meta: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
+    _events_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _properties_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _relationships_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _graph_cache: nx.DiGraph[str] | None = field(default=None, repr=False, kw_only=True)
+    """Internal cache for the networkx graph (optional dependency)."""
+
+    @property
+    def events_df(self) -> pd.DataFrame:
+        """Flat DataFrame of event definitions.
+
+        Returns:
+            DataFrame with columns ``name``, ``display_name``, ``description``,
+            ``hidden``, ``dropped``, ``verified``, ``count``. Empty (with those
+            columns) when there are no events.
+        """
+        cols = [
+            "name",
+            "display_name",
+            "description",
+            "hidden",
+            "dropped",
+            "verified",
+            "count",
+        ]
+        if self._events_df_cache is not None:
+            return self._events_df_cache
+        rows = [
+            {
+                "name": e.get("name"),
+                "display_name": e.get("displayName"),
+                "description": e.get("description"),
+                "hidden": e.get("hidden"),
+                "dropped": e.get("dropped"),
+                "verified": e.get("verified"),
+                "count": e.get("count"),
+            }
+            for e in self.events
+        ]
+        result_df = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_events_df_cache", result_df)
+        return result_df
+
+    @property
+    def properties_df(self) -> pd.DataFrame:
+        """Flat DataFrame of event and user properties.
+
+        Each row carries a ``resource_type`` discriminator (``event`` or
+        ``user``).
+
+        Returns:
+            DataFrame with columns ``name``, ``resource_type``,
+            ``display_name``, ``description``, ``example_value``, ``type``,
+            ``hidden``, ``count``. Empty (with those columns) when there are
+            no properties.
+        """
+        cols = [
+            "name",
+            "resource_type",
+            "display_name",
+            "description",
+            "example_value",
+            "type",
+            "hidden",
+            "count",
+        ]
+        if self._properties_df_cache is not None:
+            return self._properties_df_cache
+        rows: list[dict[str, Any]] = []
+        for prop in self.properties:
+            rows.append(self._property_row(prop, "event"))
+        for prop in self.user_properties:
+            rows.append(self._property_row(prop, "user"))
+        result_df = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_properties_df_cache", result_df)
+        return result_df
+
+    @staticmethod
+    def _property_row(prop: dict[str, Any], default_resource: str) -> dict[str, Any]:
+        """Project a raw property dict into a flat row.
+
+        Args:
+            prop: Raw property definition dict (camelCase keys).
+            default_resource: Resource type to use when the row omits one.
+
+        Returns:
+            A flat dict keyed by the ``properties_df`` columns.
+        """
+        resource = prop.get("resourceType")
+        resource_type = str(resource).lower() if resource else default_resource
+        return {
+            "name": prop.get("name"),
+            "resource_type": resource_type,
+            "display_name": prop.get("displayName"),
+            "description": prop.get("description"),
+            "example_value": prop.get("exampleValue"),
+            "type": prop.get("type"),
+            "hidden": prop.get("hidden"),
+            "count": prop.get("count"),
+        }
+
+    @property
+    def relationships_df(self) -> pd.DataFrame:
+        """Edge-list DataFrame of event<->property relationships.
+
+        One row per (event, property) pair. ``density_local`` is the property's
+        ``densityLocal`` (the share of the property's records, returned at the
+        property level by the bulk call) repeated on each of its edges; it is
+        ``None`` unless ``include_density`` was requested.
+
+        Returns:
+            DataFrame with columns ``event``, ``property``, ``density_local``.
+            Empty (with those columns) when no relationships exist.
+        """
+        cols = ["event", "property", "density_local"]
+        if self._relationships_df_cache is not None:
+            return self._relationships_df_cache
+        rows: list[dict[str, Any]] = []
+        for prop in self.properties:
+            name = prop.get("name")
+            if not name:
+                continue
+            density = prop.get("densityLocal")
+            for entry in prop.get("events") or []:
+                event_name = entry.get("name") if isinstance(entry, dict) else None
+                if not event_name:
+                    continue
+                # str()-cast names so the edge list, the adjacency maps, and the
+                # graph all key relationships the same way.
+                rows.append(
+                    {
+                        "event": str(event_name),
+                        "property": str(name),
+                        "density_local": density,
+                    }
+                )
+        result_df = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_relationships_df_cache", result_df)
+        return result_df
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Headline DataFrame — the event<->property relationship edge list.
+
+        Returns:
+            The :attr:`relationships_df` edge list.
+        """
+        return self.relationships_df
+
+    def properties_for_event(self, event: str) -> list[str]:
+        """Return the property names that appear on an event.
+
+        Args:
+            event: Event name.
+
+        Returns:
+            Property names on the event (empty when unknown or none).
+        """
+        return list(self.event_to_properties.get(event, []))
+
+    def events_for_property(self, prop: str) -> list[str]:
+        """Return the events a property appears on.
+
+        Args:
+            prop: Property name.
+
+        Returns:
+            Event names carrying the property (empty when unknown or none).
+        """
+        return list(self.property_to_events.get(prop, []))
+
+    def orphan_properties(self) -> list[str]:
+        """Return event properties that appear on no events.
+
+        Returns:
+            Property names with no event relationships. Properties without a
+            name are skipped (matching ``relationships_df`` / ``to_graph``).
+        """
+        return [
+            str(name)
+            for p in self.properties
+            if (name := p.get("name")) and not self.property_to_events.get(str(name))
+        ]
+
+    def to_graph(self) -> nx.DiGraph:
+        """Build a directed event->property relationship graph.
+
+        Event names become nodes with ``kind="event"`` and property names nodes
+        with ``kind="property"``; a directed edge runs from each event to every
+        property that appears on it, carrying the property's ``density_local``
+        (``None`` unless ``include_density`` was requested).
+        The graph is bipartite (no event->event or property->property edges)
+        provided event and property names are disjoint; nodes are keyed by bare
+        name, so an event and a property that share a name collapse to one node.
+        Built lazily and cached.
+
+        Returns:
+            A ``networkx.DiGraph``. Empty when there are no events or
+            properties.
+
+        Example:
+            ```python
+            g = ws.schema_graph().to_graph()
+            g.nodes["Purchase"]["kind"]  # "event"
+            list(g.successors("Purchase"))  # properties on Purchase
+            ```
+        """
+        import networkx as nx  # lazy — only paid when the graph is accessed
+
+        if self._graph_cache is not None:
+            return self._graph_cache
+        graph: nx.DiGraph = nx.DiGraph()
+        # str()-cast every node name so the graph keys nodes the same way the
+        # adjacency maps and the edge-list DataFrame do (one node per name).
+        for event_name in self.event_to_properties:
+            graph.add_node(str(event_name), kind="event")
+        for event in self.events:
+            name = event.get("name")
+            if name:
+                graph.add_node(str(name), kind="event")
+        for prop in self.properties:
+            prop_name = prop.get("name")
+            if not prop_name:
+                continue
+            graph.add_node(str(prop_name), kind="property")
+            density = prop.get("densityLocal")
+            for entry in prop.get("events") or []:
+                if not isinstance(entry, dict) or not entry.get("name"):
+                    continue
+                graph.add_node(str(entry["name"]), kind="event")
+                graph.add_edge(
+                    str(entry["name"]),
+                    str(prop_name),
+                    density_local=density,
+                )
+        object.__setattr__(self, "_graph_cache", graph)
+        return graph
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the schema graph for JSON output.
+
+        Returns:
+            Dictionary with all fields suitable for JSON serialization.
+        """
+        return {
+            "computed_at": self.computed_at,
+            "events": self.events,
+            "properties": self.properties,
+            "user_properties": self.user_properties,
+            "event_to_properties": self.event_to_properties,
+            "property_to_events": self.property_to_events,
+            "include_density": self.include_density,
+            "meta": self.meta,
+            "params": self.params,
+        }
+
+
+# =============================================================================
 # User / Engage Query Result (Phase 039)
 # =============================================================================
 
