@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from mixpanel_headless._literal_types import CustomPropertyType
@@ -24,6 +24,7 @@ from mixpanel_headless.types import (
     LexiconProperty,
     LexiconSchema,
     SavedCohort,
+    SchemaGraphResult,
     SubPropertyInfo,
     TopEvent,
 )
@@ -398,6 +399,8 @@ class DiscoveryService:
         self._api_client = api_client
         # Internal cache: tuple keys map to cached results
         self._cache: dict[tuple[str | int | None, ...], list[Any]] = {}
+        # Separate cache for schema-graph results (not list-shaped).
+        self._schema_graph_cache: dict[tuple[Any, ...], SchemaGraphResult] = {}
 
     def list_events(
         self,
@@ -749,9 +752,11 @@ class DiscoveryService:
         """Clear all cached discovery results.
 
         After calling this method, the next discovery request will
-        fetch fresh data from the Mixpanel API.
+        fetch fresh data from the Mixpanel API. Clears both the list-shaped
+        discovery cache and the schema-graph cache.
         """
         self._cache = {}
+        self._schema_graph_cache = {}
 
     # =========================================================================
     # Lexicon Schemas API
@@ -824,3 +829,92 @@ class DiscoveryService:
         schema = _parse_lexicon_schema(raw)
         self._cache[cache_key] = [schema]
         return schema
+
+    def get_schema_graph(
+        self,
+        *,
+        include_density: bool = False,
+        include_user_properties: bool = True,
+        force_refresh: bool = False,
+    ) -> SchemaGraphResult:
+        """Gather the full Lexicon schema and the event<->property graph.
+
+        Issues three bulk Lexicon calls (event definitions, event properties
+        with their attached events, and optionally user properties) and folds
+        them into a :class:`SchemaGraphResult`. The event<->property adjacency
+        maps are built from the ``events`` lists the API returns on each event
+        property.
+
+        Args:
+            include_density: Request the property-level density (``densityLocal``)
+                the bulk call returns, repeated onto each of a property's
+                relationship edges. Only populated when the API has computed it.
+            include_user_properties: Also gather user properties (they carry no
+                event relationships).
+            force_refresh: Bypass the per-instance cache and re-fetch.
+
+        Returns:
+            A :class:`SchemaGraphResult` with events, properties, optional user
+            properties, and the event<->property adjacency maps.
+
+        Raises:
+            AuthenticationError: Invalid credentials.
+            QueryError: API error.
+
+        Note:
+            Results are cached for the lifetime of this service instance, keyed
+            by ``(include_density, include_user_properties)``.
+        """
+        cache_key = ("schema_graph", include_density, include_user_properties)
+        if not force_refresh and cache_key in self._schema_graph_cache:
+            return self._schema_graph_cache[cache_key]
+
+        events = self._api_client.list_event_definitions()
+        properties = self._api_client.list_property_definitions(
+            resource_type="Event",
+            include_events=True,
+            include_density=include_density,
+        )
+        user_properties: list[dict[str, Any]] = []
+        if include_user_properties:
+            user_properties = self._api_client.list_property_definitions(
+                resource_type="User",
+            )
+
+        event_to_properties: dict[str, list[str]] = {
+            str(e["name"]): [] for e in events if e.get("name")
+        }
+        property_to_events: dict[str, list[str]] = {}
+        for prop in properties:
+            prop_name = prop.get("name")
+            if not prop_name:
+                continue
+            attached = [
+                str(entry["name"])
+                for entry in prop.get("events") or []
+                if isinstance(entry, dict) and entry.get("name")
+            ]
+            property_to_events[str(prop_name)] = attached
+            for event_name in attached:
+                event_to_properties.setdefault(event_name, []).append(str(prop_name))
+
+        result = SchemaGraphResult(
+            computed_at=datetime.now(timezone.utc).isoformat(),
+            events=events,
+            properties=properties,
+            user_properties=user_properties,
+            event_to_properties=event_to_properties,
+            property_to_events=property_to_events,
+            include_density=include_density,
+            meta={
+                "event_count": len(events),
+                "event_property_count": len(properties),
+                "user_property_count": len(user_properties),
+            },
+            params={
+                "include_density": include_density,
+                "include_user_properties": include_user_properties,
+            },
+        )
+        self._schema_graph_cache[cache_key] = result
+        return result

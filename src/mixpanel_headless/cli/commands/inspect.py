@@ -26,6 +26,7 @@ from mixpanel_headless.cli.utils import (
     get_workspace,
     handle_errors,
     output_result,
+    present_result,
     status_spinner,
 )
 from mixpanel_headless.cli.validators import (
@@ -38,7 +39,7 @@ inspect_app = typer.Typer(
     help="Inspect Mixpanel project schema.",
     epilog="""Live (calls Mixpanel API):
   events, properties, values, subproperties, funnels, cohorts, top-events,
-  bookmarks, lexicon-schemas, lexicon-schema""",
+  bookmarks, lexicon-schemas, lexicon-schema, schema-graph""",
     no_args_is_help=True,
     rich_markup_mode="markdown",
 )
@@ -570,3 +571,51 @@ def inspect_lexicon_schema(
     with status_spinner(ctx, "Fetching schema..."):
         schema = workspace.lexicon_schema(validated_type, name)
     output_result(ctx, schema.to_dict(), format=format, jq_filter=jq_filter)
+
+
+@inspect_app.command("schema-graph")
+@handle_errors
+def inspect_schema_graph(
+    ctx: typer.Context,
+    density: Annotated[
+        bool,
+        typer.Option(
+            "--density/--no-density",
+            help="Request property density (densityLocal) on relationship edges.",
+        ),
+    ] = False,
+    user_properties: Annotated[
+        bool,
+        typer.Option(
+            "--user-properties/--no-user-properties",
+            help="Include user properties in the gather.",
+        ),
+    ] = True,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Gather the full Lexicon schema and event<->property relationships.
+
+    One call returns event definitions, event properties, and user properties
+    plus which properties appear on which events. ``--format table`` shows the
+    relationship edge list; other formats return the full structure.
+
+    Output Structure (table):
+
+        EVENT      PROPERTY        DENSITY_LOCAL
+        Purchase   amount
+        Purchase   currency
+
+    Examples:
+
+        mp inspect schema-graph
+        mp inspect schema-graph --format table
+        mp inspect schema-graph --no-user-properties --jq '.event_to_properties'
+    """
+    workspace = get_workspace(ctx)
+    with status_spinner(ctx, "Gathering schema graph..."):
+        schema = workspace.schema_graph(
+            include_density=density,
+            include_user_properties=user_properties,
+        )
+    present_result(ctx, schema, format, jq_filter=jq_filter)

@@ -99,7 +99,7 @@ with mp.Workspace() as ws:
 
 ## Workspace Methods
 
-**Discovery** (self-documenting API): `events()`, `properties()`, `property_values()`, `funnels()`, `cohorts()`, `list_bookmarks()`, `top_events()`, `lexicon_schemas()`, `lexicon_schema()`, `clear_discovery_cache()`
+**Discovery** (self-documenting API): `events()`, `properties()`, `property_values()`, `funnels()`, `cohorts()`, `list_bookmarks()`, `top_events()`, `lexicon_schemas()`, `lexicon_schema()`, `schema_graph()`, `clear_discovery_cache()`
 
 **Streaming**: `stream_events()`, `stream_profiles()`
 
@@ -166,7 +166,7 @@ All frozen dataclasses with:
 - `.df` property: Lazy DataFrame conversion (cached)
 - `.to_dict()`: JSON-serializable output
 
-Key types: `SegmentationResult`, `FunnelResult`, `RetentionResult`, `SavedReportResult`, `FlowsResult`, `UserQueryResult`, `BookmarkInfo`, `Dashboard`, `CreateDashboardParams`, `UpdateDashboardParams`, `Bookmark`, `CreateBookmarkParams`, `UpdateBookmarkParams`, `Cohort`, `CreateCohortParams`, `UpdateCohortParams`, `BlueprintTemplate`, `BlueprintConfig`, `BookmarkHistoryResponse`
+Key types: `SegmentationResult`, `FunnelResult`, `RetentionResult`, `SavedReportResult`, `FlowsResult`, `UserQueryResult`, `SchemaGraphResult`, `BookmarkInfo`, `Dashboard`, `CreateDashboardParams`, `UpdateDashboardParams`, `Bookmark`, `CreateBookmarkParams`, `UpdateBookmarkParams`, `Cohort`, `CreateCohortParams`, `UpdateCohortParams`, `BlueprintTemplate`, `BlueprintConfig`, `BookmarkHistoryResponse`
 
 ## Type Aliases
 

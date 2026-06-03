@@ -242,6 +242,7 @@ from mixpanel_headless.types import (
     SavedReportResult,
     SchemaEnforcementConfig,
     SchemaEntry,
+    SchemaGraphResult,
     SegmentationResult,
     SetTestUsersParams,
     SubPropertyInfo,
@@ -1232,6 +1233,56 @@ class Workspace:
             only when fresh data is needed.
         """
         return self._discovery_service.get_schema(entity_type, name)
+
+    def schema_graph(
+        self,
+        *,
+        include_density: bool = False,
+        include_user_properties: bool = True,
+        force_refresh: bool = False,
+    ) -> SchemaGraphResult:
+        """Gather the full Lexicon schema and event<->property relationships.
+
+        Adapts the power-tools ``getSchema`` view: one call returns the project's
+        event definitions, event properties, and user properties, plus the
+        adjacency between events and the properties that appear on them. The
+        result is a typed :class:`SchemaGraphResult` with DataFrame views
+        (``events_df``, ``properties_df``, ``relationships_df``) and a
+        ``to_graph()`` networkx export.
+
+        Group properties are not gathered yet (headless has no data-groups
+        listing to enumerate them).
+
+        Results are cached for the lifetime of the Workspace.
+
+        Args:
+            include_density: Request the property-level density (``densityLocal``)
+                the bulk call returns; it repeats onto each of a property's
+                relationship edges and is ``None`` otherwise.
+            include_user_properties: Also gather user properties.
+            force_refresh: Bypass the cache and re-fetch.
+
+        Returns:
+            A :class:`SchemaGraphResult`.
+
+        Raises:
+            ConfigError: If API credentials are not available.
+            AuthenticationError: If credentials are invalid.
+
+        Example:
+            ```python
+            ws = Workspace()
+            schema = ws.schema_graph()
+            schema.properties_for_event("Purchase")
+            schema.relationships_df.head()
+            graph = schema.to_graph()
+            ```
+        """
+        return self._discovery_service.get_schema_graph(
+            include_density=include_density,
+            include_user_properties=include_user_properties,
+            force_refresh=force_refresh,
+        )
 
     # =========================================================================
     # STREAMING METHODS
