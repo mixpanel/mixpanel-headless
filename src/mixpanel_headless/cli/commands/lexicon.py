@@ -154,6 +154,10 @@ def events_update(
             "--verified/--no-verified", help="Mark event as verified or unverified."
         ),
     ] = None,
+    display_name: Annotated[
+        str | None,
+        typer.Option("--display-name", help="New human-readable display name."),
+    ] = None,
     description: Annotated[
         str | None,
         typer.Option("--description", help="New event description."),
@@ -176,6 +180,7 @@ def events_update(
         hidden: Whether to hide the event.
         dropped: Whether to drop event data at ingestion.
         verified: Whether to mark the event as verified.
+        display_name: New human-readable display name.
         description: New description text.
         tags: Comma-separated tag names to assign.
         format: Output format.
@@ -190,6 +195,8 @@ def events_update(
         kwargs["dropped"] = dropped
     if verified is not None:
         kwargs["verified"] = verified
+    if display_name is not None:
+        kwargs["display_name"] = display_name
     if description is not None:
         kwargs["description"] = description
     if tags is not None:
@@ -345,9 +352,27 @@ def properties_update(
             "--sensitive/--no-sensitive", help="Mark property as PII sensitive."
         ),
     ] = None,
+    display_name: Annotated[
+        str | None,
+        typer.Option("--display-name", help="New human-readable display name."),
+    ] = None,
     description: Annotated[
         str | None,
         typer.Option("--description", help="New property description."),
+    ] = None,
+    example_value: Annotated[
+        str | None,
+        typer.Option("--example-value", help="Example value shown in the Lexicon."),
+    ] = None,
+    resource_type: Annotated[
+        str | None,
+        typer.Option(
+            "--resource-type",
+            help="Resource type (Event or User). Pass this to disambiguate a "
+            "user property from an event property of the same name. Sent "
+            "verbatim, so match the API's casing (the value reads back as "
+            "'Event' / 'User').",
+        ),
     ] = None,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
@@ -355,7 +380,10 @@ def properties_update(
     """Update a property definition (PATCH semantics).
 
     Only fields provided will be updated. Use boolean flags like
-    ``--hidden/--no-hidden`` to toggle visibility.
+    ``--hidden/--no-hidden`` to toggle visibility. ``--resource-type`` is sent
+    only when given; pass it to target a user property that shares a name with
+    an event property. The value is forwarded verbatim, so match the API's
+    casing (``Event`` / ``User``).
 
     Args:
         ctx: Typer context with global options.
@@ -363,21 +391,31 @@ def properties_update(
         hidden: Whether to hide the property.
         dropped: Whether to drop property data.
         sensitive: Whether to mark the property as PII sensitive.
+        display_name: New human-readable display name.
         description: New description text.
+        example_value: New example value shown in the Lexicon.
+        resource_type: Resource type (``Event`` / ``User``); sent only when
+            provided.
         format: Output format.
         jq_filter: Optional jq filter expression.
     """
     from mixpanel_headless.types import UpdatePropertyDefinitionParams
 
     kwargs: dict[str, Any] = {}
+    if resource_type is not None:
+        kwargs["resource_type"] = resource_type
     if hidden is not None:
         kwargs["hidden"] = hidden
     if dropped is not None:
         kwargs["dropped"] = dropped
     if sensitive is not None:
         kwargs["sensitive"] = sensitive
+    if display_name is not None:
+        kwargs["display_name"] = display_name
     if description is not None:
         kwargs["description"] = description
+    if example_value is not None:
+        kwargs["example_value"] = example_value
 
     params = UpdatePropertyDefinitionParams(**kwargs)
     workspace = get_workspace(ctx)

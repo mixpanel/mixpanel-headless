@@ -493,8 +493,8 @@ class TestBulkUpdatePropertyDefinitions:
         ws = _make_workspace(temp_dir, handler)
         params = BulkUpdatePropertiesParams(
             properties=[
-                BulkPropertyUpdate(name="$browser", resource_type="event", hidden=True),
-                BulkPropertyUpdate(name="$city", resource_type="event", sensitive=True),
+                BulkPropertyUpdate(name="$browser", resource_type="Event", hidden=True),
+                BulkPropertyUpdate(name="$city", resource_type="Event", sensitive=True),
             ]
         )
         result = ws.bulk_update_property_definitions(params)
