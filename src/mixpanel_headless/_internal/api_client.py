@@ -619,6 +619,7 @@ class MixpanelAPIClient:
                             request_method=method,
                             request_url=url,
                             request_params=params,
+                            project_id=self.project_id,
                         )
                     retry_after = self._parse_retry_after(response)
                     if retry_after is not None:
@@ -660,6 +661,7 @@ class MixpanelAPIClient:
             request_method=method,
             request_url=url,
             request_params=params,
+            project_id=self.project_id,
         )
 
     def _request(
@@ -1097,6 +1099,7 @@ class MixpanelAPIClient:
                             response_body=response_body,
                             request_method=method,
                             request_url=url,
+                            project_id=self.project_id,
                         )
                     retry_after = self._parse_retry_after(response)
                     if retry_after is not None:
@@ -1161,6 +1164,7 @@ class MixpanelAPIClient:
             "Rate limit exceeded after max retries",
             request_method=method,
             request_url=url,
+            project_id=self.project_id,
         )
 
     @property
@@ -1496,6 +1500,7 @@ class MixpanelAPIClient:
                                 request_method="GET",
                                 request_url=url,
                                 request_params=params,
+                                project_id=self.project_id,
                             )
                         retry_after = self._parse_retry_after(response)
                         if retry_after is not None:

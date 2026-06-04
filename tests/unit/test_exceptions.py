@@ -146,6 +146,36 @@ class TestOperationExceptions:
         assert exc.retry_after is None
         assert "retry_after" not in exc.details
 
+    def test_rate_limit_error_carries_project_id(self) -> None:
+        """RateLimitError should expose project_id and record it in details."""
+        exc = RateLimitError("Too many requests", project_id="3018488")
+
+        assert exc.project_id == "3018488"
+        assert exc.details["project_id"] == "3018488"
+
+    def test_rate_limit_error_no_project_id(self) -> None:
+        """RateLimitError without project_id omits it from details."""
+        exc = RateLimitError("Too many requests")
+
+        assert exc.project_id is None
+        assert "project_id" not in exc.details
+
+    def test_rate_limit_form_url_prefilled_with_project_id(self) -> None:
+        """rate_limit_form_url prefills the project_id into the long form URL."""
+        exc = RateLimitError("Too many requests", project_id="3018488")
+
+        url = exc.rate_limit_form_url
+        assert url.startswith("https://docs.google.com/forms/d/e/")
+        assert "viewform" in url
+        assert "usp=pp_url" in url
+        assert "entry.1636741534=3018488" in url
+
+    def test_rate_limit_form_url_short_without_project_id(self) -> None:
+        """rate_limit_form_url falls back to the short link without a project_id."""
+        exc = RateLimitError("Too many requests")
+
+        assert exc.rate_limit_form_url == "https://forms.gle/7Y9UcUHe69bh8EgC7"
+
     def test_query_error(self) -> None:
         """QueryError should have QUERY_FAILED code and inherit from APIError."""
         exc = QueryError(
