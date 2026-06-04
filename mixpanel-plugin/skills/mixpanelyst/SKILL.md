@@ -115,6 +115,11 @@ def list_bookmarks(self, bookmark_type: BookmarkType | None = None) -> list[Book
 def lexicon_schemas(self, *, entity_type: EntityType | None = None) -> list[LexiconSchema]: ...
     # List Lexicon schemas (event/property definitions).
 
+def schema_graph(self, *, include_density: bool = False, include_user_properties: bool = True, force_refresh: bool = False) -> SchemaGraphResult: ...
+    # Whole-project Lexicon + event<->property graph in one call. SchemaGraphResult has
+    # .relationships_df (event|property|density_local), .properties_for_event(e),
+    # .events_for_property(p), .orphan_properties(), .to_graph() (networkx DiGraph).
+
 def clear_discovery_cache(self) -> None: ...
     # Clear cached discovery results.
 # User Guide: WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/discovery/index.md")

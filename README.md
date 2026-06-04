@@ -293,7 +293,7 @@ for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
 
 **`mp query`** — Run analytics: `segmentation`, `funnel`, `retention`, `saved-report`, `flows`, `event-counts`, `property-counts`, `activity-feed`, `frequency`, `segmentation-numeric`, `segmentation-sum`, `segmentation-average`
 
-**`mp inspect`** — Schema discovery: `events`, `properties`, `values`, `funnels`, `cohorts`, `top-events`, `bookmarks`, `lexicon-schemas`, `lexicon-schema`
+**`mp inspect`** — Schema discovery: `events`, `properties`, `values`, `funnels`, `cohorts`, `top-events`, `bookmarks`, `lexicon-schemas`, `lexicon-schema`, `schema-graph`
 
 **`mp dashboards`** — Dashboard management: `list`, `create`, `get`, `update`, `delete`, `bulk-delete`, `favorite`, `unfavorite`, `pin`, `unpin`, `add-report`, `remove-report`, `update-report-link`, `update-text-card`, `blueprints`, `blueprint-create`, `rca`, `erf`
 
@@ -367,7 +367,7 @@ Key design features:
 
 - **Typed Query Engines**: `query()`, `query_funnel()`, `query_retention()`, `query_flow()`, and `query_user()` provide five composable engines — Insights analytics, funnel conversion, retention cohorts, flow path analysis, and user profile queries — with period-over-period comparison (`TimeComparison`), frequency analysis (`FrequencyBreakdown`/`FrequencyFilter`), 21 math types, and 27+ filter methods, all sharing the same `Filter` vocabulary, `CohortDefinition` builders, and DataFrame output
 - **Entity CRUD & Data Governance**: Full lifecycle management of dashboards, reports, cohorts, feature flags, experiments, alerts, annotations, webhooks, plus Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via Mixpanel App API
-- **Discoverable schema**: `events()`, `properties()`, `funnels()`, `cohorts()`, `bookmarks()` reveal what's in your project before you query
+- **Discoverable schema**: `events()`, `properties()`, `funnels()`, `cohorts()`, `bookmarks()`, `schema_graph()` reveal what's in your project before you query
 - **Consistent interfaces**: Same operations available as Python methods and CLI commands
 - **Structured output**: All CLI commands support `--format json` for machine-readable responses, plus `--jq` for inline filtering
 - **Streaming data extraction**: Memory-efficient iterators for events and profiles

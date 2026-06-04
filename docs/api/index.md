@@ -43,6 +43,9 @@ from mixpanel_headless import FlowStep, FlowTreeNode, FlowQueryResult
 # User Profile Query types
 from mixpanel_headless import UserQueryResult
 
+# Schema graph (discovery)
+from mixpanel_headless import SchemaGraphResult
+
 # Auth surface — recommended top-level imports
 from mixpanel_headless import (
     Account, ServiceAccount, OAuthBrowserAccount, OAuthTokenAccount,
@@ -150,6 +153,7 @@ Typed results for all operations:
 - **RetentionQueryResult**, **RetentionEvent**, **RetentionAlignment**, **RetentionMode**, **RetentionMathType** — Typed retention results
 - **FlowQueryResult**, **FlowStep**, **FlowTreeNode** — Typed flow analysis results
 - **UserQueryResult** — Typed user profile query results
+- **SchemaGraphResult** — Full Lexicon schema + event↔property relationship graph (from `schema_graph()`)
 - **SegmentationResult** — Time-series data (legacy)
 - **FunnelResult** — Funnel conversion data (legacy)
 - **RetentionResult** — Retention cohort data (legacy)
