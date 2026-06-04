@@ -17,7 +17,7 @@ end to end:
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -85,13 +85,14 @@ class TestParamSerialization:
         }
 
     def test_resource_type_passes_through_verbatim(self) -> None:
-        """``resource_type`` reaches the body as ``resourceType`` unchanged.
+        """Each accepted ``resource_type`` reaches the body as ``resourceType``.
 
-        We do not enforce an enum: the data-definitions API mirrors the value it
-        returns on reads (``"Event"`` / ``"User"``), which is also what
-        mixpanel-power-tools sends. Pass-through fidelity is the contract.
+        The field is constrained to the capitalized ``"Event"`` / ``"User"`` the
+        data-definitions API accepts (also what mixpanel-power-tools sends); the
+        chosen value is forwarded to the wire key unchanged.
         """
-        for value in ("Event", "User"):
+        values: tuple[Literal["Event", "User"], ...] = ("Event", "User")
+        for value in values:
             body = UpdatePropertyDefinitionParams(resource_type=value).model_dump(
                 exclude_none=True, by_alias=True
             )
@@ -127,6 +128,33 @@ class TestParamSerialization:
         assert UpdatePropertyDefinitionParams(display_name="x").display_name == "x"
         assert UpdateEventDefinitionParams(display_name="y").display_name == "y"
 
+    def test_camel_input_validates(self) -> None:
+        """camelCase input also validates for the single-update models.
+
+        Guards the ``alias_generator``: a camelCase payload (the shape the API
+        and reads use) populates the snake_case attribute.
+        """
+        prop = UpdatePropertyDefinitionParams.model_validate({"displayName": "x"})
+        assert prop.display_name == "x"
+        event = UpdateEventDefinitionParams.model_validate({"displayName": "y"})
+        assert event.display_name == "y"
+
+    def test_bulk_event_update_accepts_camel_input(self) -> None:
+        """camelCase ``displayName`` input round-trips (the events bulk-update path).
+
+        ``mp lexicon events bulk-update --data`` feeds camelCase JSON (the shape
+        the API and ``events get`` return). Before the validation alias was added
+        this was silently dropped, sending an empty update.
+        """
+        parsed: dict[str, Any] = json.loads(
+            '{"events": [{"name": "purchase", "displayName": "Purchase"}]}'
+        )
+        params = BulkUpdateEventsParams(**parsed)
+        assert params.events[0].display_name == "Purchase"
+        # dump (camelCase) -> revalidate preserves the field
+        redumped: dict[str, Any] = params.model_dump(exclude_none=True, by_alias=True)
+        assert BulkUpdateEventsParams(**redumped).events[0].display_name == "Purchase"
+
 
 class TestReadModelParsing:
     """The read model parses the camelCase metadata fields."""
@@ -143,6 +171,14 @@ class TestReadModelParsing:
         )
         assert prop.display_name == "City"
         assert prop.example_value == "San Francisco"
+        assert prop.resource_type == "Event"
+
+    def test_event_definition_parses_camel_display_name(self) -> None:
+        """``EventDefinition`` reads back camelCase ``displayName`` from the API."""
+        ev = EventDefinition.model_validate(
+            {"id": 1, "name": "purchase", "displayName": "Purchase"}
+        )
+        assert ev.display_name == "Purchase"
 
 
 def _capture_workspace(captured: dict[str, Any], response: Any) -> Workspace:
@@ -174,12 +210,12 @@ class TestFacadeSendsCamelCase:
         assert captured["body"]["name"] == "purchase"
 
     def test_update_property_definition_body(self) -> None:
-        """Property update sends displayName/exampleValue/resourceType."""
+        """Property update sends displayName/exampleValue/resourceType and reads it back."""
         captured: dict[str, Any] = {}
         ws = _capture_workspace(
-            captured, {"results": {"id": 1, "name": "plan", "resourceType": "user"}}
+            captured, {"results": {"id": 1, "name": "plan", "resourceType": "User"}}
         )
-        ws.update_property_definition(
+        result = ws.update_property_definition(
             "plan",
             UpdatePropertyDefinitionParams(
                 display_name="Plan", example_value="free, pro", resource_type="User"
@@ -190,6 +226,8 @@ class TestFacadeSendsCamelCase:
         assert body["exampleValue"] == "free, pro"
         assert body["resourceType"] == "User"
         assert body["name"] == "plan"
+        # read-back: the API echoes the capitalized form into the parsed model
+        assert result.resource_type == "User"
 
     def test_update_property_definition_user_scoped_body(self) -> None:
         """A user-property update sends resourceType=User to disambiguate.

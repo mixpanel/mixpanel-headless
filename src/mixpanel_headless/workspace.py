@@ -7104,8 +7104,16 @@ class Workspace:
             ws = Workspace()
             defs = ws.bulk_update_property_definitions(
                 BulkUpdatePropertiesParams(properties=[
-                    {"name": "plan_type", "description": "User plan tier"},
-                    {"name": "country", "hidden": True},
+                    BulkPropertyUpdate(
+                        name="plan_type",
+                        resource_type="User",
+                        display_name="Plan Type",
+                    ),
+                    BulkPropertyUpdate(
+                        name="$city",
+                        resource_type="Event",
+                        example_value="San Francisco",
+                    ),
                 ])
             )
             ```

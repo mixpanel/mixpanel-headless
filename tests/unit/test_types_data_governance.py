@@ -617,9 +617,9 @@ class TestBulkPropertyUpdateModel:
 
     def test_required_fields(self) -> None:
         """BulkPropertyUpdate requires name and resource_type."""
-        update = BulkPropertyUpdate(name="$browser", resource_type="event")
+        update = BulkPropertyUpdate(name="$browser", resource_type="Event")
         assert update.name == "$browser"
-        assert update.resource_type == "event"
+        assert update.resource_type == "Event"
         assert update.id is None
         assert update.hidden is None
         assert update.dropped is None
@@ -630,7 +630,7 @@ class TestBulkPropertyUpdateModel:
         """BulkPropertyUpdate with all fields stores correctly."""
         update = BulkPropertyUpdate(
             name="$browser",
-            resource_type="event",
+            resource_type="Event",
             id=99,
             hidden=False,
             dropped=False,
@@ -659,7 +659,7 @@ class TestBulkUpdatePropertiesParams:
         """BulkUpdatePropertiesParams requires properties list."""
         params = BulkUpdatePropertiesParams(
             properties=[
-                BulkPropertyUpdate(name="$browser", resource_type="event", hidden=True)
+                BulkPropertyUpdate(name="$browser", resource_type="Event", hidden=True)
             ]
         )
         assert len(params.properties) == 1
@@ -1465,7 +1465,7 @@ class TestByAliasSerialization:
         """Verify BulkPropertyUpdate serializes to camelCase with by_alias=True."""
         update = BulkPropertyUpdate(
             name="test_prop",
-            resource_type="event",
+            resource_type="Event",
             data_group_id="group-1",
             description="test",
         )
@@ -1474,7 +1474,7 @@ class TestByAliasSerialization:
         assert "dataGroupId" in dumped
         assert "resource_type" not in dumped
         assert "data_group_id" not in dumped
-        assert dumped["resourceType"] == "event"
+        assert dumped["resourceType"] == "Event"
         assert dumped["dataGroupId"] == "group-1"
         assert dumped["name"] == "test_prop"
 
@@ -1482,7 +1482,7 @@ class TestByAliasSerialization:
         """Verify BulkPropertyUpdate uses snake_case keys without by_alias."""
         update = BulkPropertyUpdate(
             name="test_prop",
-            resource_type="event",
+            resource_type="Event",
         )
         dumped = update.model_dump(exclude_none=True)
         assert "resource_type" in dumped

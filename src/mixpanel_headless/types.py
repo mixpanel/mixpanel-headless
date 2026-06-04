@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     import networkx as nx
 import pandas as pd
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -4757,6 +4758,14 @@ class PropertyDefinition(BaseModel):
     """Data group identifier."""
 
 
+# Lexicon write-param alias convention:
+#   ``UpdateEventDefinitionParams``, ``UpdatePropertyDefinitionParams`` and
+#   ``BulkPropertyUpdate`` camelCase their wire keys via a model-wide
+#   ``alias_generator=to_camel``. ``BulkEventUpdate`` deliberately does NOT —
+#   it uses a per-field alias on ``display_name`` because a model-wide generator
+#   would re-case its ``team_contacts`` field to ``teamContacts`` and break that
+#   established snake_case wire shape. When adding a two-word field, follow the
+#   strategy already on the model you are editing.
 class UpdateEventDefinitionParams(BaseModel):
     """Parameters for updating an event definition (PATCH semantics).
 
@@ -4981,9 +4990,10 @@ class UpdatePropertyDefinitionParams(BaseModel):
     example_value: str | None = None
     """Example value (sent as ``exampleValue``)."""
 
-    resource_type: str | None = None
-    """Resource type (``Event`` / ``User``); sent verbatim as ``resourceType``
-    to disambiguate a user property from an event property of the same name."""
+    resource_type: Literal["Event", "User"] | None = None
+    """Resource type, constrained to the capitalized forms the data-definitions
+    API accepts. Sent verbatim as ``resourceType`` to disambiguate a user
+    property from an event property of the same name."""
 
 
 class BulkEventUpdate(BaseModel):
@@ -5028,10 +5038,18 @@ class BulkEventUpdate(BaseModel):
     tags: list[str] | None = None
     """Tag names."""
 
-    display_name: str | None = Field(default=None, serialization_alias="displayName")
-    """Human-readable name. Serialized as ``displayName`` via an explicit alias
-    (rather than a model-wide ``alias_generator``) so the established
-    ``team_contacts`` wire shape stays snake_case."""
+    display_name: str | None = Field(
+        default=None,
+        serialization_alias="displayName",
+        validation_alias=AliasChoices("display_name", "displayName"),
+    )
+    """Human-readable name. Always emitted as ``displayName`` via an explicit
+    serialization alias (rather than a model-wide ``alias_generator``) so the
+    established ``team_contacts`` wire shape stays snake_case. Accepts either
+    ``display_name`` or ``displayName`` on input, so a camelCase payload echoed
+    by ``lexicon events get`` round-trips instead of silently dropping the
+    field. (``contacts`` / ``team_contacts`` remain snake_case on input and the
+    wire by design.)"""
 
     contacts: list[str] | None = None
     """Contact emails."""
@@ -5077,7 +5095,7 @@ class BulkPropertyUpdate(BaseModel):
     Example:
         ```python
         entry = BulkPropertyUpdate(
-            name="$browser", resource_type="event", display_name="Browser"
+            name="$browser", resource_type="Event", display_name="Browser"
         )
         ```
     """
@@ -5087,8 +5105,10 @@ class BulkPropertyUpdate(BaseModel):
     name: str
     """Property name."""
 
-    resource_type: str
-    """Resource type (event, user, groupprofile)."""
+    resource_type: Literal["Event", "User"]
+    """Resource type (``Event`` / ``User``); sent verbatim as ``resourceType``
+    to disambiguate a user property from an event property of the same name.
+    Constrained to the capitalized forms the data-definitions API accepts."""
 
     id: int | None = None
     """Property ID."""
@@ -5121,7 +5141,7 @@ class BulkUpdatePropertiesParams(BaseModel):
     Example:
         ```python
         params = BulkUpdatePropertiesParams(
-            properties=[BulkPropertyUpdate(name="$browser", resource_type="event")]
+            properties=[BulkPropertyUpdate(name="$browser", resource_type="Event")]
         )
         ```
     """
