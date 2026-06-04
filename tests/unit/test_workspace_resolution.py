@@ -26,6 +26,7 @@ from pydantic import SecretStr
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless._internal.config import ConfigManager
 from mixpanel_headless._internal.me import (
     MeCache,
     MeService,
@@ -34,7 +35,9 @@ from mixpanel_headless._internal.me import (
 )
 from mixpanel_headless.exceptions import (
     AuthenticationError,
+    QueryError,
     RateLimitError,
+    ServerError,
     WorkspaceScopeError,
 )
 from mixpanel_headless.workspace import Workspace
@@ -138,6 +141,15 @@ class TestSelectWorkspaceId:
             == 9
         )
 
+    def test_unset_visibility_beats_later_explicit_visible(self) -> None:
+        """is_visible=None counts as visible and wins over a later is_visible=True.
+
+        Guards the ``is_visible is not False`` rung: a mutation to ``is True``
+        would skip the unflagged first view and wrongly pick the second.
+        """
+        views = [self._v(id=1, is_visible=None), self._v(id=2, is_visible=True)]
+        assert select_workspace_id(views) == 1
+
 
 class TestMeServiceResolveWorkspace:
     """``MeService.resolve_workspace`` reads the warm cache and selects."""
@@ -216,8 +228,13 @@ def _session_no_ws(project_id: str = "4025120") -> Session:
 class TestResolveWorkspaceIdWithResolver:
     """``MixpanelAPIClient.resolve_workspace_id`` resolution chain."""
 
-    def test_resolver_hit_skips_public_endpoint(self) -> None:
-        """When the /me resolver yields an id, /workspaces/public is never called."""
+    def test_resolver_hit_skips_public_endpoint_and_caches(self) -> None:
+        """A /me resolver hit skips /workspaces/public and is memoized.
+
+        Resolving twice yields the same id but invokes the resolver only once
+        (the second call returns the cached id), and /workspaces/public is never
+        touched.
+        """
         calls: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -227,8 +244,11 @@ class TestResolveWorkspaceIdWithResolver:
         client = MixpanelAPIClient(
             session=_session_no_ws(), _transport=httpx.MockTransport(handler)
         )
-        client.set_workspace_resolver(lambda _pid: 4521297)
+        resolver = MagicMock(return_value=4521297)
+        client.set_workspace_resolver(resolver)
         assert client.resolve_workspace_id() == 4521297
+        assert client.resolve_workspace_id() == 4521297
+        resolver.assert_called_once()
         assert not any("workspaces/public" in p for p in calls)
 
     def test_explicit_workspace_skips_resolver(self) -> None:
@@ -252,21 +272,23 @@ class TestResolveWorkspaceIdWithResolver:
             if "workspaces/public" in request.url.path:
                 return httpx.Response(
                     200,
-                    json=[
-                        {
-                            "id": 10,
-                            "name": "Console",
-                            "project_id": 4025120,
-                            "is_default": True,
-                        },
-                        {
-                            "id": 11,
-                            "name": "All Project Data",
-                            "project_id": 4025120,
-                            "is_default": False,
-                            "is_global": True,
-                        },
-                    ],
+                    json={
+                        "results": [
+                            {
+                                "id": 10,
+                                "name": "Console",
+                                "project_id": 4025120,
+                                "is_default": True,
+                            },
+                            {
+                                "id": 11,
+                                "name": "All Project Data",
+                                "project_id": 4025120,
+                                "is_default": False,
+                                "is_global": True,
+                            },
+                        ]
+                    },
                 )
             return httpx.Response(200, json={"results": []})
 
@@ -281,7 +303,7 @@ class TestResolveWorkspaceIdWithResolver:
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "workspaces/public" in request.url.path:
-                return httpx.Response(200, json=[])
+                return httpx.Response(200, json={"results": []})
             if "metadata/index" in request.url.path:
                 return httpx.Response(
                     200,
@@ -313,7 +335,7 @@ class TestResolveWorkspaceIdWithResolver:
         def handler(request: httpx.Request) -> httpx.Response:
             if "metadata/index" in request.url.path:
                 return httpx.Response(200, json={"results": {}})
-            return httpx.Response(200, json=[])
+            return httpx.Response(200, json={"results": []})
 
         client = MixpanelAPIClient(
             session=_session_no_ws(), _transport=httpx.MockTransport(handler)
@@ -327,20 +349,104 @@ class TestResolveWorkspaceIdWithResolver:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
-                json=[
-                    {
-                        "id": 55,
-                        "name": "Default",
-                        "project_id": 4025120,
-                        "is_default": True,
-                    }
-                ],
+                json={
+                    "results": [
+                        {
+                            "id": 55,
+                            "name": "Default",
+                            "project_id": 4025120,
+                            "is_default": True,
+                        }
+                    ]
+                },
             )
 
         client = MixpanelAPIClient(
             session=_session_no_ws(), _transport=httpx.MockTransport(handler)
         )
         assert client.resolve_workspace_id() == 55
+
+    def test_public_403_falls_through_to_metadata(self) -> None:
+        """A 403 on /workspaces/public falls through to the metadata index.
+
+        A service account that can't read /workspaces/public but can read the
+        metadata index must still resolve a workspace, rather than aborting on
+        the public 403.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "workspaces/public" in request.url.path:
+                return httpx.Response(403, json={"error": "forbidden"})
+            if "metadata/index" in request.url.path:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": {
+                            "4025120": {
+                                "workspaces": {
+                                    "4521297": {
+                                        "id": 4521297,
+                                        "name": "All Project Data",
+                                        "is_global": True,
+                                    }
+                                }
+                            }
+                        }
+                    },
+                )
+            return httpx.Response(200, json={"results": []})
+
+        client = MixpanelAPIClient(
+            session=_session_no_ws(), _transport=httpx.MockTransport(handler)
+        )
+        assert client.resolve_workspace_id() == 4521297
+
+    def test_public_server_error_propagates(self) -> None:
+        """A 5xx on /workspaces/public propagates; metadata is never reached."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if "workspaces/public" in request.url.path:
+                return httpx.Response(503, json={"error": "down"})
+            return httpx.Response(200, json={"results": []})
+
+        client = MixpanelAPIClient(
+            session=_session_no_ws(),
+            _transport=httpx.MockTransport(handler),
+            max_retries=0,
+        )
+        with pytest.raises(ServerError):
+            client.resolve_workspace_id()
+        assert not any("metadata/index" in p for p in calls)
+
+    def test_metadata_result_is_cached(self) -> None:
+        """A metadata-resolved id is memoized; the index is fetched only once."""
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if "metadata/index" in request.url.path:
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": {
+                            "4025120": {
+                                "workspaces": {
+                                    "7": {"id": 7, "name": "Main", "is_default": True}
+                                }
+                            }
+                        }
+                    },
+                )
+            return httpx.Response(200, json={"results": []})
+
+        client = MixpanelAPIClient(
+            session=_session_no_ws(), _transport=httpx.MockTransport(handler)
+        )
+        assert client.resolve_workspace_id() == 7
+        assert client.resolve_workspace_id() == 7
+        assert sum("metadata/index" in p for p in calls) == 1
 
     def test_maybe_scoped_path_stays_project_scoped_without_workspace(self) -> None:
         """Lexicon-style endpoints stay project-scoped when no workspace is set."""
@@ -374,14 +480,16 @@ class TestProjectsMetadataIndex:
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "workspaces/public" in request.url.path:
-                return httpx.Response(200, json=[])
+                return httpx.Response(200, json={"results": []})
             return httpx.Response(
                 200,
                 json={
-                    "4025120": {
-                        "workspaces": {
-                            "1": {"id": 1, "name": "Console", "is_default": False},
-                            "2": {"id": 2, "name": "Main", "is_default": True},
+                    "results": {
+                        "4025120": {
+                            "workspaces": {
+                                "1": {"id": 1, "name": "Console", "is_default": False},
+                                "2": {"id": 2, "name": "Main", "is_default": True},
+                            }
                         }
                     }
                 },
@@ -393,7 +501,7 @@ class TestProjectsMetadataIndex:
         """A metadata index lacking the project yields no fallback id."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"9999": {"workspaces": {}}})
+            return httpx.Response(200, json={"results": {"9999": {"workspaces": {}}}})
 
         assert self._client(handler)._resolve_workspace_from_metadata() is None
 
@@ -401,7 +509,7 @@ class TestProjectsMetadataIndex:
         """A project entry without a ``workspaces`` block yields no fallback id."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"4025120": {"name": "demo"}})
+            return httpx.Response(200, json={"results": {"4025120": {"name": "demo"}}})
 
         assert self._client(handler)._resolve_workspace_from_metadata() is None
 
@@ -412,10 +520,12 @@ class TestProjectsMetadataIndex:
             return httpx.Response(
                 200,
                 json={
-                    "4025120": {
-                        "workspaces": {
-                            "bad": {"id": "not-an-int", "name": "x"},
-                            "good": {"id": 42, "name": "y", "is_default": True},
+                    "results": {
+                        "4025120": {
+                            "workspaces": {
+                                "bad": {"id": "not-an-int", "name": "x"},
+                                "good": {"id": 42, "name": "y", "is_default": True},
+                            }
                         }
                     }
                 },
@@ -423,13 +533,36 @@ class TestProjectsMetadataIndex:
 
         assert self._client(handler)._resolve_workspace_from_metadata() == 42
 
-    def test_resolver_swallows_shape_errors(self) -> None:
-        """A server error on the metadata index resolves to None (best-effort)."""
+    def test_resolver_propagates_server_error(self) -> None:
+        """A 5xx on the metadata index is surfaced, not masked as no-workspaces.
+
+        A transient server failure is a different (recoverable) condition from
+        "this project has no workspaces", so it must propagate rather than
+        resolve to ``None``.
+        """
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(500, json={"error": "boom"})
 
+        with pytest.raises(ServerError):
+            self._client(handler)._resolve_workspace_from_metadata()
+
+    def test_resolver_returns_none_on_404(self) -> None:
+        """A 404 (index unavailable for this credential) falls through to None."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"error": "not found"})
+
         assert self._client(handler)._resolve_workspace_from_metadata() is None
+
+    def test_resolver_propagates_unexpected_query_error(self) -> None:
+        """A non-403/404 client error (e.g. 400) is surfaced, not swallowed."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "bad request"})
+
+        with pytest.raises(QueryError):
+            self._client(handler)._resolve_workspace_from_metadata()
 
     def test_resolver_none_when_all_ids_invalid(self) -> None:
         """A workspaces block where every entry is unusable yields no fallback id."""
@@ -438,10 +571,12 @@ class TestProjectsMetadataIndex:
             return httpx.Response(
                 200,
                 json={
-                    "4025120": {
-                        "workspaces": {
-                            "a": "not-a-dict",
-                            "b": {"id": "nope", "name": "x"},
+                    "results": {
+                        "4025120": {
+                            "workspaces": {
+                                "a": "not-a-dict",
+                                "b": {"id": "nope", "name": "x"},
+                            }
                         }
                     }
                 },
@@ -556,6 +691,84 @@ class TestFacadeResolverWiring:
         assert ws.api.resolve_workspace_id() == 2
         ws.use(project="777")
         assert ws.api.resolve_workspace_id() == 3
+        ws.close()
+
+    def test_resolver_follows_account_swap(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """After use(account=...), the resolver reads the NEW account's /me cache.
+
+        Account A's /me is warmed (so it resolves from cache); after swapping to
+        account B — whose /me cache is cold — resolution must fall through to
+        B's /workspaces/public rather than reusing A's warm cache. This proves
+        the injected resolver re-reads ``self._me_svc`` (rebuilt per account)
+        instead of binding to one account's MeService.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("MP_CONFIG_PATH", str(tmp_path / ".mp" / "config.toml"))
+        monkeypatch.delenv("MP_PROJECT_ID", raising=False)
+        monkeypatch.delenv("MP_WORKSPACE_ID", raising=False)
+        cm = ConfigManager()
+        cm.add_account(
+            "acct_a",
+            type="service_account",
+            region="us",
+            default_project="100",
+            username="ua",
+            secret=SecretStr("sa"),
+        )
+        cm.add_account(
+            "acct_b",
+            type="service_account",
+            region="us",
+            default_project="200",
+            username="ub",
+            secret=SecretStr("sb"),
+        )
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path.endswith("/me"):
+                # Account A's /me: a global workspace (11) for project 100.
+                return httpx.Response(
+                    200,
+                    json=_me_dict(
+                        workspaces={"11": _ws(11, project_id=100, is_global=True)},
+                        projects={"100": {"name": "a", "organization_id": 1}},
+                    ),
+                )
+            if "workspaces/public" in path:
+                # Account B's project (200) public workspace.
+                return httpx.Response(
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "id": 22,
+                                "name": "B default",
+                                "project_id": 200,
+                                "is_default": True,
+                            }
+                        ]
+                    },
+                )
+            return httpx.Response(200, json={"results": []})
+
+        session = Session(
+            account=ServiceAccount(
+                name="acct_a", region="us", username="ua", secret=SecretStr("sa")
+            ),
+            project=Project(id="100"),
+            workspace=None,
+        )
+        client = MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(handler)
+        )
+        ws = Workspace(session=session, _api_client=client)
+        ws.me()  # warm acct_a's /me cache
+        assert ws.api.resolve_workspace_id() == 11
+        ws.use(account="acct_b")  # acct_b's /me cache is cold
+        assert ws.api.resolve_workspace_id() == 22
         ws.close()
 
     def test_injected_client_resolver_not_overwritten(

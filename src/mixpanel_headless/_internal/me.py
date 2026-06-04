@@ -16,7 +16,7 @@ import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import pydantic
 from pydantic import BaseModel, ConfigDict
@@ -32,6 +32,7 @@ from mixpanel_headless.exceptions import AuthenticationError, ConfigError, Query
 if TYPE_CHECKING:
     from mixpanel_headless._internal.api_client import MixpanelAPIClient
     from mixpanel_headless._internal.auth.account import AccountType
+    from mixpanel_headless.types import PublicWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -261,21 +262,105 @@ class WorkspaceView:
     is_visible: bool | None
     """Whether the view is visible."""
 
+    @classmethod
+    def from_me_workspace(cls, ws: MeWorkspaceInfo) -> WorkspaceView:
+        """Build a view from a cached ``/me`` workspace entry.
+
+        Args:
+            ws: A workspace from the per-account ``/me`` response.
+
+        Returns:
+            The normalized :class:`WorkspaceView`.
+        """
+        return cls(
+            id=ws.id,
+            name=ws.name,
+            is_global=ws.is_global,
+            is_default=ws.is_default,
+            is_visible=ws.is_visible,
+        )
+
+    @classmethod
+    def from_public(cls, ws: PublicWorkspace) -> WorkspaceView:
+        """Build a view from a ``/workspaces/public`` workspace.
+
+        Args:
+            ws: A workspace returned by
+                ``GET /projects/{pid}/workspaces/public``.
+
+        Returns:
+            The normalized :class:`WorkspaceView`.
+        """
+        return cls(
+            id=ws.id,
+            name=ws.name,
+            is_global=ws.is_global,
+            is_default=ws.is_default,
+            is_visible=ws.is_visible,
+        )
+
+    @classmethod
+    def from_metadata_entry(cls, raw: object) -> WorkspaceView | None:
+        """Build a view from a projects-metadata-index workspace entry.
+
+        The metadata index is a raw, loosely-typed payload, so this is the one
+        construction path that defends against shape: a non-mapping entry, or an
+        id that is neither an ``int`` nor an ``int``-coercible ``str``, yields
+        ``None`` (the caller skips it). Folding the coercion in here keeps the
+        ``int``-typed :attr:`id` honest at the only boundary where the source
+        delivers ``int | str``.
+
+        Args:
+            raw: A single workspace value from a metadata-index ``workspaces``
+                block (expected to be a mapping, but not trusted to be one).
+
+        Returns:
+            The normalized :class:`WorkspaceView`, or ``None`` when ``raw`` is
+            not a mapping or carries no usable integer id.
+        """
+        if not isinstance(raw, dict):
+            return None
+        wid = raw.get("id")
+        if not isinstance(wid, (int, str)):
+            return None
+        try:
+            wid_int = int(wid)
+        except (TypeError, ValueError):
+            return None
+        return cls(
+            id=wid_int,
+            name=raw.get("name"),
+            is_global=raw.get("is_global"),
+            is_default=raw.get("is_default"),
+            is_visible=raw.get("is_visible"),
+        )
+
 
 def select_workspace_id(views: list[WorkspaceView]) -> int | None:
     """Pick the best workspace id for auto-resolution from a project's views.
 
-    Preference order mirrors the power-tools ``auth()`` heuristic: the global
-    view wins, then the conventionally-named "All Project Data" view, then the
-    project default, then the first visible view, then the first view. Shared by
-    every resolution path so a project resolves to the same view regardless of
-    which source answered.
+    Preference order: the global "see everything" view wins, then the
+    conventionally-named "All Project Data" view, then the project default, then
+    the first non-hidden view, then the first view. Shared by every resolution
+    path so a project resolves to the same view regardless of which source
+    answered.
 
     Args:
         views: Candidate views, already filtered to one project.
 
     Returns:
         The selected workspace id, or ``None`` when ``views`` is empty.
+
+    Example:
+        ```python
+        views = [
+            WorkspaceView(id=1, name="Console", is_global=None,
+                          is_default=True, is_visible=None),
+            WorkspaceView(id=2, name="All Project Data", is_global=True,
+                          is_default=None, is_visible=None),
+        ]
+        select_workspace_id(views)  # 2 — the global view beats the default
+        ```
     """
     if not views:
         return None
@@ -289,9 +374,40 @@ def select_workspace_id(views: list[WorkspaceView]) -> int | None:
         if v.is_default is True:
             return v.id
     for v in views:
+        # ``is not False`` is deliberate: an unknown (``None``) visibility
+        # counts as visible. Do not "simplify" to ``is True`` — that would skip
+        # views the source simply didn't flag and fall through to ``views[0]``.
         if v.is_visible is not False:
             return v.id
     return views[0].id
+
+
+class WorkspaceResolver(Protocol):
+    """Resolve a project's best workspace id from a warm, in-process cache.
+
+    The contract
+    :class:`~mixpanel_headless._internal.api_client.MixpanelAPIClient` relies on:
+    the input is a project id as a numeric string; the return is a workspace id,
+    or ``None`` meaning "can't answer right now" (for example, a cold cache) —
+    **not** an error. Implementations must be cheap and side-effect-free (no
+    network I/O); a returned ``None`` is what makes the client fall back to
+    ``/workspaces/public``.
+
+    Mirrors the injected-strategy pattern of
+    :class:`~mixpanel_headless._internal.auth.account.TokenResolver`.
+    """
+
+    def __call__(self, project_id: str) -> int | None:
+        """Return the chosen workspace id for ``project_id``, or ``None``.
+
+        Args:
+            project_id: The project ID (numeric string) to resolve.
+
+        Returns:
+            The workspace id, or ``None`` when the resolver can't answer (e.g. a
+            cold cache) — a fall-back signal, not an error.
+        """
+        ...
 
 
 class MeCache:
@@ -792,13 +908,7 @@ class MeService:
         except (TypeError, ValueError):
             return None
         views = [
-            WorkspaceView(
-                id=ws.id,
-                name=ws.name,
-                is_global=ws.is_global,
-                is_default=ws.is_default,
-                is_visible=ws.is_visible,
-            )
+            WorkspaceView.from_me_workspace(ws)
             for ws in me.workspaces.values()
             if ws.project_id == pid_int
         ]

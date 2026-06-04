@@ -766,16 +766,21 @@ class Workspace:
            ``MP_WORKSPACE_ID``, saved targets, bridge pins, or persisted
            ``[active].workspace`` state)
         2. Cached auto-discovered workspace ID
-        3. Auto-discover from the cached ``/me`` view (preferring the global
-           "All Project Data" view), then ``GET /workspaces/public``, then the
-           projects metadata index
+        3. Auto-discover across the cached ``/me`` view, then
+           ``GET /projects/{pid}/workspaces/public``, then the projects metadata
+           index — each applying the shared preference of
+           :func:`~mixpanel_headless._internal.me.select_workspace_id` (global
+           view, then "All Project Data", then default, then first visible, then
+           first). See :meth:`MixpanelAPIClient.resolve_workspace_id` for the
+           full source-by-source rules and error behavior.
 
         Returns:
             The resolved workspace ID.
 
         Raises:
             ConfigError: If credentials are not available.
-            WorkspaceScopeError: If no workspaces are found for the project.
+            WorkspaceScopeError: If no workspace could be resolved for the
+                project from any source.
 
         Example:
             ```python

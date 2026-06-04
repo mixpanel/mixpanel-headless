@@ -42,7 +42,11 @@ from mixpanel_headless._internal.client_metadata import (
     QUERY_ORIGIN,
     get_user_agent,
 )
-from mixpanel_headless._internal.me import WorkspaceView, select_workspace_id
+from mixpanel_headless._internal.me import (
+    WorkspaceResolver,
+    WorkspaceView,
+    select_workspace_id,
+)
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
@@ -57,6 +61,12 @@ if TYPE_CHECKING:
     from types import TracebackType
 
 logger = logging.getLogger(__name__)
+
+# HTTP statuses on a workspace-discovery source that mean "this source can't
+# answer for this credential" (permission denied / endpoint absent) rather than
+# a transient failure. They let auto-resolution fall through to the next source
+# instead of aborting; 5xx / 401 / 429 / network errors still propagate.
+_FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 
 
 def _iter_jsonl_lines(response: httpx.Response) -> Iterator[str]:
@@ -265,11 +275,9 @@ class MixpanelAPIClient:
         # Optional /me-backed resolver, injected by the Workspace facade (which
         # owns the per-account /me cache). When set, workspace auto-resolution
         # consults it before the uncached /workspaces/public endpoint.
-        self._me_resolver: Callable[[str], int | None] | None = None
+        self._me_resolver: WorkspaceResolver | None = None
 
-    def set_workspace_resolver(
-        self, me_resolver: Callable[[str], int | None] | None
-    ) -> None:
+    def set_workspace_resolver(self, me_resolver: WorkspaceResolver | None) -> None:
         """Install a /me-backed workspace resolver for auto-discovery.
 
         The Workspace facade owns the per-account ``/me`` cache, so it injects a
@@ -279,8 +287,9 @@ class MixpanelAPIClient:
         yields no workspace id.
 
         Args:
-            me_resolver: A callable mapping a project ID to a workspace id (or
-                ``None`` when the cache can't answer), or ``None`` to clear a
+            me_resolver: A :class:`~mixpanel_headless._internal.me.WorkspaceResolver`
+                — a callable mapping a project ID to a workspace id (or ``None``
+                when the cache can't answer) — or ``None`` to clear a
                 previously-installed resolver.
 
         Example:
@@ -949,42 +958,43 @@ class MixpanelAPIClient:
     def resolve_workspace(self) -> WorkspaceRef:
         """Return the workspace for the current session, lazy-resolving once.
 
-        When ``Session.workspace`` is None, this calls the App API's
-        ``/projects/{pid}/workspaces/public`` endpoint and picks the
-        ``is_default=True`` workspace. The result is cached for the
-        session's lifetime; subsequent calls return the cached value
-        until ``use(account=...)`` or ``use(project=...)`` invalidates.
+        When ``Session.workspace`` is None, this lists the project's workspaces
+        (``GET /projects/{pid}/workspaces/public``) and picks one with the shared
+        :func:`~mixpanel_headless._internal.me.select_workspace_id` ladder (the
+        global view first, then "All Project Data", then the default). The result
+        is cached for the session's lifetime; subsequent calls return the cached
+        value until ``use(account=...)`` or ``use(project=...)`` invalidates.
 
-        The resolved id is also written to the int-id cache used by
-        :meth:`resolve_workspace_id` so the two discovery paths share
-        a single network call.
+        The resolved id is also written to the int-id cache
+        (``_cached_workspace_id``) that :meth:`resolve_workspace_id` reads, so the
+        two discovery paths share a single network call *and* one selection rule
+        — they can no longer disagree on which view they pick.
 
         Returns:
             A :class:`WorkspaceRef` for the current session's project.
 
         Raises:
-            WorkspaceScopeError: If the project has no workspaces.
+            WorkspaceScopeError: If the project has no accessible workspaces.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/403/404).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
         """
         if self._resolved_workspace is not None:
             return self._resolved_workspace
-        path = f"/projects/{self.project_id}/workspaces/public"
-        payload = self.app_request("GET", path)
-        items: list[dict[str, Any]]
-        if isinstance(payload, list):
-            items = payload
-        elif isinstance(payload, dict) and isinstance(payload.get("results"), list):
-            items = payload["results"]
-        else:
-            items = []
-        if not items:
+        workspaces = self.list_workspaces()
+        chosen_id = select_workspace_id(
+            [WorkspaceView.from_public(w) for w in workspaces]
+        )
+        if chosen_id is None:
             raise WorkspaceScopeError(
                 f"Project {self.project_id} has no accessible workspaces."
             )
-        default = next((w for w in items if w.get("is_default")), items[0])
+        chosen = next(w for w in workspaces if w.id == chosen_id)
         ref = WorkspaceRef(
-            id=int(default["id"]),
-            name=default.get("name"),
-            is_default=bool(default.get("is_default")),
+            id=chosen.id,
+            name=chosen.name,
+            is_default=bool(chosen.is_default),
         )
         self._resolved_workspace = ref
         self._cached_workspace_id = ref.id
@@ -1246,19 +1256,28 @@ class MixpanelAPIClient:
         1. Explicit workspace ID (set via ``set_workspace_id()``)
         2. Cached auto-discovered workspace ID
         3. The injected ``/me`` resolver (cached, no extra round-trip)
-        4. ``list_workspaces()`` (``GET /workspaces/public``)
+        4. ``list_workspaces()`` (``GET /projects/{pid}/workspaces/public``)
         5. The projects metadata index (service-account fallback)
 
         Steps 3 through 5 share one selection rule
         (:func:`mixpanel_headless._internal.me.select_workspace_id`): prefer the
         global view, then "All Project Data", then the default, then the first
-        visible view, then the first.
+        visible view, then the first. A 403/404 from step 4 is treated as "this
+        source can't answer" and falls through to step 5; auth, rate-limit,
+        server (5xx), and network errors from steps 4-5 propagate rather than
+        being masked as a missing workspace.
 
         Returns:
             The resolved workspace ID.
 
         Raises:
-            WorkspaceScopeError: If no workspaces are found for the project.
+            WorkspaceScopeError: If no workspace could be resolved for the
+                project from any source.
+            AuthenticationError: Invalid credentials (401) during discovery.
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx) during discovery.
+            QueryError: A non-403/404 client error during discovery.
+            MixpanelHeadlessError: Network/connection errors during discovery.
 
         Example:
             ```python
@@ -1286,17 +1305,24 @@ class MixpanelAPIClient:
                 self._cached_workspace_id = resolved
                 return resolved
 
-        public_id = select_workspace_id(
-            [
-                WorkspaceView(
-                    id=ws.id,
-                    name=ws.name,
-                    is_global=ws.is_global,
-                    is_default=ws.is_default,
-                    is_visible=ws.is_visible,
+        try:
+            public_workspaces = self.list_workspaces()
+        except QueryError as exc:
+            # A 403/404 means this credential can't read /workspaces/public --
+            # fall through to the metadata index (the service-account path).
+            # 5xx / 401 / 429 / network errors still propagate.
+            if exc.status_code in _FALLBACK_HTTP_STATUSES:
+                logger.debug(
+                    "/workspaces/public unavailable (HTTP %d) for project %s; "
+                    "trying the projects metadata index.",
+                    exc.status_code,
+                    pid,
                 )
-                for ws in self.list_workspaces()
-            ]
+                public_workspaces = []
+            else:
+                raise
+        public_id = select_workspace_id(
+            [WorkspaceView.from_public(ws) for ws in public_workspaces]
         )
         if public_id is not None:
             self._cached_workspace_id = public_id
@@ -1307,10 +1333,19 @@ class MixpanelAPIClient:
             self._cached_workspace_id = metadata_id
             return metadata_id
 
+        logger.debug(
+            "Workspace auto-resolution exhausted for project %s "
+            "(me_resolver=%s, public_count=%d).",
+            pid,
+            self._me_resolver is not None,
+            len(public_workspaces),
+        )
         raise WorkspaceScopeError(
-            "No workspaces found for project "
-            f"'{self._session.project.id}'. "
-            "Ensure you have access to at least one workspace.",
+            f"Could not resolve a workspace for project "
+            f"'{self._session.project.id}'. No workspace is pinned and none was "
+            "discoverable via /me, /workspaces/public, or the projects metadata "
+            "index. If the project has workspaces, pass one explicitly "
+            "(MP_WORKSPACE_ID or Workspace(workspace=...)).",
             code="NO_WORKSPACES",
             details={"project_id": self._session.project.id},
         )
@@ -1327,11 +1362,12 @@ class MixpanelAPIClient:
 
         Returns:
             The metadata-index payload keyed by project ID, or ``{}`` if the
-            response is not a dict.
+            response is not a dict (logged at warning level).
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            QueryError: API error (400/404).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            QueryError: API error (400/403/404).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
 
@@ -1342,55 +1378,85 @@ class MixpanelAPIClient:
             ```
         """
         payload = self.app_request("GET", "/projects/metadata/index")
-        return payload if isinstance(payload, dict) else {}
+        if not isinstance(payload, dict):
+            logger.warning(
+                "projects_metadata_index: expected dict, got %s; treating as empty.",
+                type(payload).__name__,
+            )
+            return {}
+        return payload
 
     def _resolve_workspace_from_metadata(self) -> int | None:
         """Resolve a workspace ID from the projects metadata index.
 
-        Best-effort on shape only: a missing project, a non-dict ``workspaces``
-        block, or non-numeric ids resolve to ``None`` so the caller surfaces a
-        clean :class:`WorkspaceScopeError`. A real transport failure is left to
-        propagate: a 401 (``AuthenticationError``) or a 429
-        (``RateLimitError``) means the probe never ran, which is a different
-        problem from "this project has no workspaces".
+        Best-effort *on shape*: when the index responds successfully but the
+        project is absent, its ``workspaces`` block isn't a mapping, or no entry
+        carries a usable id, this returns ``None`` so the caller surfaces a clean
+        :class:`WorkspaceScopeError`. Transport and server failures are *not*
+        masked: a 403/404 (the index is unavailable for this credential) returns
+        ``None`` to fall through, but auth (401), rate-limit (429), server (5xx),
+        and network errors propagate — the probe never produced an answer, which
+        is a different (often recoverable) condition from "this project has no
+        workspaces".
 
         Returns:
             The chosen workspace ID (same preference ladder as the other
-            resolution paths), or ``None`` when none could be resolved.
+            resolution paths), or ``None`` when the index can't answer for this
+            project.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            QueryError: A non-403/404 client error from the metadata index.
+            MixpanelHeadlessError: Network/connection errors.
         """
         pid = str(self._session.project.id)
         try:
             index = self.projects_metadata_index()
-        except (AuthenticationError, RateLimitError):
+        except QueryError as exc:
+            # 403/404 = index genuinely unavailable for this credential -> a
+            # clean "this source can't answer", fall through to the caller's
+            # raise. Auth / rate-limit / server / network errors propagate.
+            if exc.status_code in _FALLBACK_HTTP_STATUSES:
+                logger.debug(
+                    "Metadata index unavailable for project %s (HTTP %d); "
+                    "no workspace from metadata.",
+                    pid,
+                    exc.status_code,
+                )
+                return None
             raise
-        except MixpanelHeadlessError:
-            return None
         entry = index.get(pid)
         if not isinstance(entry, dict):
+            logger.debug(
+                "Metadata index has no dict entry for project %s; "
+                "no workspace from metadata.",
+                pid,
+            )
             return None
         raw_workspaces = entry.get("workspaces")
         if not isinstance(raw_workspaces, dict):
-            return None
-        views: list[WorkspaceView] = []
-        for w in raw_workspaces.values():
-            if not isinstance(w, dict):
-                continue
-            wid = w.get("id")
-            if not isinstance(wid, (int, str)):
-                continue
-            try:
-                wid_int = int(wid)
-            except (TypeError, ValueError):
-                continue
-            views.append(
-                WorkspaceView(
-                    id=wid_int,
-                    name=w.get("name"),
-                    is_global=w.get("is_global"),
-                    is_default=w.get("is_default"),
-                    is_visible=w.get("is_visible"),
-                )
+            logger.debug(
+                "Metadata entry for project %s has no dict 'workspaces' block "
+                "(got %s); no workspace from metadata.",
+                pid,
+                type(raw_workspaces).__name__,
             )
+            return None
+        views: list[WorkspaceView] = [
+            view
+            for w in raw_workspaces.values()
+            if (view := WorkspaceView.from_metadata_entry(w)) is not None
+        ]
+        if not views:
+            logger.debug(
+                "Metadata 'workspaces' block for project %s had %d entries but "
+                "none carried a usable id; no workspace from metadata.",
+                pid,
+                len(raw_workspaces),
+            )
+            return None
         return select_workspace_id(views)
 
     def maybe_scoped_path(self, domain_path: str) -> str:
