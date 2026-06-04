@@ -653,6 +653,32 @@ _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
         "guide/entity-management/index.md",
         "bookmark params, entity management",
     ),
+    (
+        frozenset(
+            {
+                "schema_graph",
+                "SchemaGraphResult",
+                "events",
+                "properties",
+                "property_values",
+                "subproperties",
+                "SubPropertyInfo",
+                "lexicon_schemas",
+                "lexicon_schema",
+                "LexiconSchema",
+                "top_events",
+                "TopEvent",
+                "funnels",
+                "FunnelInfo",
+                "cohorts",
+                "SavedCohort",
+                "clear_discovery_cache",
+            }
+        ),
+        "guide/discovery/index.md",
+        "schema_graph (event<->property map + coverage), events, properties, "
+        "values, lexicon schemas",
+    ),
 ]
 
 # Dashboard hints point to the dashboard-expert skill (sibling skill directory),

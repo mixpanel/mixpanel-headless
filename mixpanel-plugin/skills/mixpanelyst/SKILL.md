@@ -41,6 +41,13 @@ import mixpanel_headless as mp
 from mixpanel_headless import Filter, GroupBy, Metric
 ws = mp.Workspace()
 
+# 0. (Best first move) Map the WHOLE schema in one call — which properties are on
+#    which events, plus per-property coverage. Ground yourself here so you never
+#    filter or group by a property an event doesn't actually have.
+schema = ws.schema_graph(include_density=True)
+print(schema.properties_for_event("Login"))   # exact property names on this event
+print(schema.relationships_df.head())           # event | property | density_local
+
 # 1. Find real event names
 events = ws.events()
 top = ws.top_events(limit=10)
@@ -131,22 +138,39 @@ When exploring an unfamiliar dataset or asked to "find insights," follow this sy
 
 ### Step 1: Orient — Map the Event Schema
 
+Start with `schema_graph()`. One call returns the whole event↔property map plus
+per-property coverage (`density_local`), so you learn which properties actually
+travel with which events — and how well-populated each is — before querying. This
+is the single most useful grounding step: it stops you filtering or grouping by a
+property an event doesn't carry.
+
 ```python
 import mixpanel_headless as mp
 ws = mp.Workspace()
 
-events = ws.events()
-top = ws.top_events(limit=15)
-print("Events:", events)
-print("Top events:", [(e.event, e.count) for e in top])
+schema = ws.schema_graph(include_density=True)
+print("events:", schema.meta["event_count"],
+      "| event properties:", schema.meta["event_property_count"])
 
-# Profile the top 3-5 events by volume
-for event in [e.event for e in top[:5]]:
-    props = ws.properties(event)
-    print(f"\n{event} ({len(props)} properties):")
-    for p in props[:15]:
-        vals = ws.property_values(p, event=event, limit=10)
-        print(f"  {p}: {vals}")
+# Headline view: one row per (event, property), with coverage.
+print(schema.relationships_df.head(20))   # event | property | density_local
+
+# Exact properties on each top event — use these names verbatim in queries.
+for event_name in list(schema.event_to_properties)[:5]:
+    print(f"\n{event_name}: {schema.properties_for_event(event_name)}")
+
+# Properties attached to no events — usually noise; skip them.
+print("\nOrphans:", schema.orphan_properties()[:20])
+
+top = ws.top_events(limit=15)
+print("\nTop by volume:", [(e.event, e.count) for e in top])
+```
+
+Then sample values for the properties you'll actually group or filter by:
+
+```python
+for p in schema.properties_for_event("Purchase")[:15]:
+    print(p, ws.property_values(p, event="Purchase", limit=10))
 ```
 
 ### Step 2: Classify Properties
