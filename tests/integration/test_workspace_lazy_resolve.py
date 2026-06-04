@@ -60,7 +60,14 @@ class TestLazyResolveUnit:
             return httpx.Response(
                 200,
                 json={
-                    "results": [{"id": 9999, "name": "Default", "is_default": True}],
+                    "results": [
+                        {
+                            "id": 9999,
+                            "name": "Default",
+                            "project_id": 3713224,
+                            "is_default": True,
+                        }
+                    ],
                     "status": "ok",
                 },
             )
@@ -81,7 +88,14 @@ class TestLazyResolveUnit:
             return httpx.Response(
                 200,
                 json={
-                    "results": [{"id": 9999, "name": "Default", "is_default": True}],
+                    "results": [
+                        {
+                            "id": 9999,
+                            "name": "Default",
+                            "project_id": 3713224,
+                            "is_default": True,
+                        }
+                    ],
                     "status": "ok",
                 },
             )

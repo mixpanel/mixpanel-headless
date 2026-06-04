@@ -22,6 +22,7 @@ from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
     QueryError,
+    RateLimitError,
     ServerError,
     WorkspaceScopeError,
 )
@@ -117,6 +118,45 @@ class TestAppRequest:
 
         expected_base = ENDPOINTS["us"]["app"]
         assert captured_urls[0].startswith(f"{expected_base}/projects/12345/dashboards")
+
+    def test_rate_limit_error_carries_project_id(
+        self, oauth_credentials: Session
+    ) -> None:
+        """app_request() RateLimitError should carry the active project_id."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=oauth_credentials, max_retries=1, _transport=transport
+        )
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/dashboards")
+
+        assert exc_info.value.project_id == "12345"
+
+    def test_rate_limit_fallthrough_carries_project_id(
+        self, oauth_credentials: Session
+    ) -> None:
+        """The defensive app_request fallthrough carries project_id.
+
+        That raise is reached only when the retry loop is empty (max_retries
+        below zero); the test locks the project_id wiring on the
+        type-checker-satisfying site so it can't silently regress.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=oauth_credentials, max_retries=-1, _transport=transport
+        )
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/dashboards")
+
+        assert exc_info.value.project_id == "12345"
 
     def test_unwraps_results_field(self, oauth_credentials: Session) -> None:
         """app_request() should unwrap 'results' field from response."""

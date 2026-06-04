@@ -264,7 +264,7 @@ class TestLexiconPropertiesBulkUpdate:
         payload = json.dumps(
             {
                 "properties": [
-                    {"name": "email", "resource_type": "event", "hidden": False}
+                    {"name": "email", "resource_type": "Event", "hidden": False}
                 ]
             }
         )

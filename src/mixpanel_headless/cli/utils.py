@@ -153,8 +153,16 @@ def handle_errors(func: F) -> F:
             if e.request_url:
                 endpoint = e.request_url.split("/")[-1].split("?")[0]
                 err_console.print(f"[dim]Endpoint: {rich_escape(endpoint)}[/dim]")
+            # Lead-collection nudge: invite a rate-limit-increase request,
+            # prefilling the project_id into the form URL when known. The URL is
+            # fully controlled (constants + digit project_id), so no escaping is
+            # needed; soft_wrap keeps the long URL on one unbroken line.
+            form_url = e.rate_limit_form_url
+            err_console.print("")
+            err_console.print("[yellow]Want a higher rate limit?[/yellow]")
             err_console.print(
-                "[yellow]Tip:[/yellow] Wait and retry, or reduce your date range."
+                f"Let us know: [link={form_url}]{form_url}[/link]",
+                soft_wrap=True,
             )
             raise typer.Exit(ExitCode.RATE_LIMIT) from None
         except EventNotFoundError as e:
