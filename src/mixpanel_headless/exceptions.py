@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.auth.account import Region
@@ -530,6 +531,44 @@ class AuthenticationError(APIError):
 
 # Rate Limit Exceptions
 
+# Rate-limit lead-collection form. Short forms.gle links can't carry prefill
+# query params, so the long-form URL is used whenever the project_id is known.
+_RATE_LIMIT_FORM_SHORT_URL = "https://forms.gle/7Y9UcUHe69bh8EgC7"
+_RATE_LIMIT_FORM_PREFILL_BASE = (
+    "https://docs.google.com/forms/d/e/"
+    "1FAIpQLSe8h0ZpB-V3zoK9qeUnUeh7vCs2lvP1IJ6IYMAiayHJ4g5LQA/viewform"
+)
+_RATE_LIMIT_FORM_PROJECT_FIELD = "entry.1636741534"
+
+
+def _build_rate_limit_form_url(project_id: str | None) -> str:
+    """Build the URL to the rate-limit-increase request form.
+
+    When ``project_id`` is known, returns the long-form Google Form URL with
+    the project id prefilled, so inbound leads arrive attributed to a project.
+    Short ``forms.gle`` links cannot carry prefill query params, so the short
+    link is used only as the no-project fallback.
+
+    Args:
+        project_id: Active Mixpanel project id, or ``None``/empty when unknown.
+
+    Returns:
+        The project-prefilled long-form URL when ``project_id`` is truthy,
+        otherwise the short form link.
+
+    Example:
+        ```python
+        _build_rate_limit_form_url("3018488")
+        # ".../viewform?usp=pp_url&entry.1636741534=3018488"
+        _build_rate_limit_form_url(None)
+        # "https://forms.gle/7Y9UcUHe69bh8EgC7"
+        ```
+    """
+    if not project_id:
+        return _RATE_LIMIT_FORM_SHORT_URL
+    query = urlencode({"usp": "pp_url", _RATE_LIMIT_FORM_PROJECT_FIELD: project_id})
+    return f"{_RATE_LIMIT_FORM_PREFILL_BASE}?{query}"
+
 
 class RateLimitError(APIError):
     """Mixpanel API rate limit exceeded (HTTP 429).
@@ -560,6 +599,7 @@ class RateLimitError(APIError):
         request_method: str | None = None,
         request_url: str | None = None,
         request_params: dict[str, Any] | None = None,
+        project_id: str | None = None,
     ) -> None:
         """Initialize RateLimitError.
 
@@ -571,8 +611,12 @@ class RateLimitError(APIError):
             request_method: HTTP method used.
             request_url: Full request URL.
             request_params: Query parameters sent.
+            project_id: Mixpanel project id active when the limit was hit, used
+                to prefill the rate-limit-increase request form. ``None`` when
+                unknown.
         """
         self._retry_after = retry_after
+        self._project_id = project_id
         if retry_after is not None:
             message = f"{message}. Retry after {retry_after} seconds."
 
@@ -588,11 +632,33 @@ class RateLimitError(APIError):
         # Add retry_after to details
         if retry_after is not None:
             self._details["retry_after"] = retry_after
+        # Add project_id to details so JSON consumers (to_dict) can attribute it.
+        if project_id is not None:
+            self._details["project_id"] = project_id
 
     @property
     def retry_after(self) -> int | None:
         """Seconds until retry is allowed, or None if unknown."""
         return self._retry_after
+
+    @property
+    def project_id(self) -> str | None:
+        """Mixpanel project id active when the rate limit was hit, if known."""
+        return self._project_id
+
+    @property
+    def rate_limit_form_url(self) -> str:
+        """URL to request a rate-limit increase.
+
+        Returns the project-prefilled Google Form URL when the project id is
+        known (so the lead is attributed to a project), otherwise the short
+        form link. Handy for surfacing in scripts or notebooks that catch this
+        error.
+
+        Returns:
+            The rate-limit-increase request form URL.
+        """
+        return _build_rate_limit_form_url(self._project_id)
 
 
 # Query Exceptions

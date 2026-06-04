@@ -497,6 +497,8 @@ class TestRateLimiting:
             client.get_events()
 
         assert exc_info.value.retry_after == 0
+        # Carries the active project_id for the rate-limit lead-collection form.
+        assert exc_info.value.project_id == "12345"
 
     def test_successful_response_after_retry(self, test_credentials: Session) -> None:
         """Should return successful response after retry."""
@@ -1519,6 +1521,24 @@ class TestRetryStateResetRegression:
 
         # Should have exactly 5 events (not accumulated across attempts)
         assert len(events) == 5
+
+    def test_stream_rate_limit_error_carries_project_id(
+        self, test_credentials: Session
+    ) -> None:
+        """Stream export RateLimitError should carry the active project_id."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=1, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            list(client.export_events("2024-01-01", "2024-01-31"))
+
+        assert exc_info.value.project_id == "12345"
 
 
 # =============================================================================

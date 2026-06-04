@@ -297,6 +297,41 @@ class TestHandleErrors:
         # Should show endpoint
         assert "segmentation" in captured.err
 
+    def test_rate_limit_error_shows_prefilled_form_url(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """429 handler shows the project-prefilled rate-limit request form."""
+
+        @handle_errors
+        def rate_limited() -> None:
+            raise RateLimitError(
+                "Rate limit exceeded",
+                retry_after=60,
+                project_id="3018488",
+            )
+
+        with pytest.raises(click.exceptions.Exit):
+            rate_limited()
+
+        captured = capsys.readouterr()
+        assert "429: RATE LIMITED" in captured.err
+        assert "entry.1636741534=3018488" in captured.err
+
+    def test_rate_limit_error_shows_short_form_url_without_project(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """429 handler falls back to the short form link without a project_id."""
+
+        @handle_errors
+        def rate_limited() -> None:
+            raise RateLimitError("Rate limit exceeded")
+
+        with pytest.raises(click.exceptions.Exit):
+            rate_limited()
+
+        captured = capsys.readouterr()
+        assert "forms.gle/7Y9UcUHe69bh8EgC7" in captured.err
+
     def test_query_error_with_403_hint(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
