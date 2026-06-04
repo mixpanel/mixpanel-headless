@@ -314,7 +314,7 @@ class TestHandleErrors:
             rate_limited()
 
         captured = capsys.readouterr()
-        assert "429: RATE LIMITED" in captured.err
+        assert "Want a higher rate limit?" in captured.err
         assert "entry.1636741534=3018488" in captured.err
 
     def test_rate_limit_error_shows_short_form_url_without_project(

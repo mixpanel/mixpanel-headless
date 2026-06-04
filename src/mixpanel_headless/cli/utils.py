@@ -158,9 +158,8 @@ def handle_errors(func: F) -> F:
             # fully controlled (constants + digit project_id), so no escaping is
             # needed; soft_wrap keeps the long URL on one unbroken line.
             form_url = e.rate_limit_form_url
-            err_console.print(
-                "\n[yellow]429: RATE LIMITED[/yellow] — want a higher rate limit?"
-            )
+            err_console.print("")
+            err_console.print("[yellow]Want a higher rate limit?[/yellow]")
             err_console.print(
                 f"Let us know: [link={form_url}]{form_url}[/link]",
                 soft_wrap=True,

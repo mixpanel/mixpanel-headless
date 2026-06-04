@@ -585,6 +585,7 @@ class RateLimitError(APIError):
         except RateLimitError as e:
             print(f"Rate limited! Retry after {e.retry_after}s")
             print(f"Request: {e.request_method} {e.request_url}")
+            print(f"Request a higher limit: {e.rate_limit_form_url}")
             time.sleep(e.retry_after or 60)
         ```
     """

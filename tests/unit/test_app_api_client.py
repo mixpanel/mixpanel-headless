@@ -136,6 +136,28 @@ class TestAppRequest:
 
         assert exc_info.value.project_id == "12345"
 
+    def test_rate_limit_fallthrough_carries_project_id(
+        self, oauth_credentials: Session
+    ) -> None:
+        """The defensive app_request fallthrough carries project_id.
+
+        That raise is reached only when the retry loop is empty (max_retries
+        below zero); the test locks the project_id wiring on the
+        type-checker-satisfying site so it can't silently regress.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=oauth_credentials, max_retries=-1, _transport=transport
+        )
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/dashboards")
+
+        assert exc_info.value.project_id == "12345"
+
     def test_unwraps_results_field(self, oauth_credentials: Session) -> None:
         """app_request() should unwrap 'results' field from response."""
 

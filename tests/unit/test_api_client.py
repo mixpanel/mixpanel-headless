@@ -500,6 +500,29 @@ class TestRateLimiting:
         # Carries the active project_id for the rate-limit lead-collection form.
         assert exc_info.value.project_id == "12345"
 
+    def test_execute_with_retry_fallthrough_carries_project_id(
+        self, test_credentials: Session
+    ) -> None:
+        """The defensive _execute_with_retry fallthrough carries project_id.
+
+        That raise is reached only when the retry loop is empty (max_retries
+        below zero); the test locks the project_id wiring on the
+        type-checker-satisfying site so it can't silently regress.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200)
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=-1, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.get_events()
+
+        assert exc_info.value.project_id == "12345"
+
     def test_successful_response_after_retry(self, test_credentials: Session) -> None:
         """Should return successful response after retry."""
         call_count = 0
