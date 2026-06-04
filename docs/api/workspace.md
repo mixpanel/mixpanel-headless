@@ -195,6 +195,7 @@ See [Auth → Workspace.use()](auth.md#workspaceuse-in-session-switching) for th
         - top_events
         - lexicon_schemas
         - lexicon_schema
+        - schema_graph
         - clear_discovery_cache
         - stream_events
         - stream_profiles

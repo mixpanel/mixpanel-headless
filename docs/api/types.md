@@ -246,6 +246,11 @@ Types for `Workspace.query_flow()` — typed flow path analysis with step defini
       show_root_heading: true
       show_root_toc_entry: true
 
+::: mixpanel_headless.SchemaGraphResult
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ## Subproperty Discovery Types
 
 Types for `Workspace.subproperties()` — schema discovery for list-of-object event properties. See [Subproperties](../guide/discovery.md#subproperties) for usage.

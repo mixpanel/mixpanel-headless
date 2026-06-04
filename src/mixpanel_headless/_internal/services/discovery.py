@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from mixpanel_headless._literal_types import CustomPropertyType
@@ -24,6 +24,7 @@ from mixpanel_headless.types import (
     LexiconProperty,
     LexiconSchema,
     SavedCohort,
+    SchemaGraphResult,
     SubPropertyInfo,
     TopEvent,
 )
@@ -398,6 +399,8 @@ class DiscoveryService:
         self._api_client = api_client
         # Internal cache: tuple keys map to cached results
         self._cache: dict[tuple[str | int | None, ...], list[Any]] = {}
+        # Separate cache for schema-graph results (not list-shaped).
+        self._schema_graph_cache: dict[tuple[Any, ...], SchemaGraphResult] = {}
 
     def list_events(
         self,
@@ -749,9 +752,11 @@ class DiscoveryService:
         """Clear all cached discovery results.
 
         After calling this method, the next discovery request will
-        fetch fresh data from the Mixpanel API.
+        fetch fresh data from the Mixpanel API. Clears both the list-shaped
+        discovery cache and the schema-graph cache.
         """
         self._cache = {}
+        self._schema_graph_cache = {}
 
     # =========================================================================
     # Lexicon Schemas API
@@ -824,3 +829,92 @@ class DiscoveryService:
         schema = _parse_lexicon_schema(raw)
         self._cache[cache_key] = [schema]
         return schema
+
+    def get_schema_graph(
+        self,
+        *,
+        include_density: bool = False,
+        include_user_properties: bool = True,
+        force_refresh: bool = False,
+    ) -> SchemaGraphResult:
+        """Gather the full Lexicon schema and the event<->property graph.
+
+        Issues two or three bulk Lexicon calls — event definitions and event
+        properties (with their attached events) always, plus user properties when
+        ``include_user_properties`` is set (the default) — and folds them into a
+        :class:`SchemaGraphResult`, which derives the event<->property adjacency
+        maps from the ``events`` lists the API returns on each event property.
+
+        Args:
+            include_density: Request the property-level density (``densityLocal``)
+                the bulk call returns, repeated onto each of a property's
+                relationship edges. Only populated when the API has computed it.
+            include_user_properties: Also gather user properties (they carry no
+                event relationships).
+            force_refresh: Bypass the per-instance cache and re-fetch.
+
+        Returns:
+            A :class:`SchemaGraphResult` with events, properties, optional user
+            properties, and the event<->property adjacency maps.
+
+        Raises:
+            AuthenticationError: Invalid credentials.
+            QueryError: API error.
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
+
+        Note:
+            Results are cached for the lifetime of this service instance, keyed
+            by ``(include_density, include_user_properties)``.
+        """
+        cache_key = ("schema_graph", include_density, include_user_properties)
+        if not force_refresh and cache_key in self._schema_graph_cache:
+            return self._schema_graph_cache[cache_key]
+
+        events = self._api_client.list_event_definitions()
+        properties = self._api_client.list_property_definitions(
+            resource_type="Event",
+            include_events=True,
+            include_density=include_density,
+        )
+        user_properties: list[dict[str, Any]] = []
+        if include_user_properties:
+            user_properties = self._api_client.list_property_definitions(
+                resource_type="User",
+            )
+
+        # SchemaGraphResult derives the adjacency maps + meta (incl. drop counts)
+        # from ``properties`` in __post_init__ — ``properties`` is the single source.
+        result = SchemaGraphResult(
+            computed_at=datetime.now(timezone.utc).isoformat(),
+            events=events,
+            properties=properties,
+            user_properties=user_properties,
+            include_density=include_density,
+            params={
+                "include_density": include_density,
+                "include_user_properties": include_user_properties,
+            },
+        )
+        # A nonzero drop count means rows were skipped for a missing name or a
+        # malformed events entry — surface it at debug level (matching the
+        # _iter_dict_rows convention) so an empty/odd graph can be diagnosed.
+        if any(
+            result.meta[key]
+            for key in (
+                "events_without_name",
+                "properties_without_name",
+                "property_event_entries_dropped",
+            )
+        ):
+            _logger.debug(
+                "schema_graph dropped %d nameless event(s), %d nameless "
+                "propert(y/ies), %d malformed property->event entr(y/ies); "
+                "%d relationship edge(s) survived (possible Lexicon contract change)",
+                result.meta["events_without_name"],
+                result.meta["properties_without_name"],
+                result.meta["property_event_entries_dropped"],
+                result.meta["relationship_edges"],
+            )
+        self._schema_graph_cache[cache_key] = result
+        return result

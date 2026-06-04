@@ -251,6 +251,55 @@ meta.team_contacts      # ["Analytics Team"]
 !!! tip "Write Operations"
     The Lexicon schemas shown here are **read-only discovery** methods. For full CRUD operations on Lexicon definitions (update, delete events/properties, manage tags, bulk updates), see the [Data Governance guide](data-governance.md).
 
+## Schema Graph
+
+`schema_graph()` gathers the whole project's Lexicon in one pass — event definitions, event properties, and user properties — plus the event↔property relationship graph (which properties appear on which events). It returns a typed `SchemaGraphResult` with DataFrame views and a networkx export, so you can map the schema without a per-entity lookup.
+
+=== "Python"
+
+    ```python
+    schema = ws.schema_graph()
+
+    schema.events_df          # event definitions (name, display_name, count, ...)
+    schema.properties_df      # event + user properties, with a resource_type column
+    schema.relationships_df   # one row per (event, property) edge — the headline view
+
+    schema.properties_for_event("Purchase")   # ['amount', 'currency', ...]
+    schema.events_for_property("utm_source")   # events carrying the property
+    schema.orphan_properties()                 # event properties that appear on no events
+
+    graph = schema.to_graph()  # networkx.DiGraph, events -> properties
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp inspect schema-graph                    # full structure (JSON)
+    mp inspect schema-graph --format table     # the relationship edge list
+    mp inspect schema-graph --no-user-properties --jq '.event_to_properties'
+
+    # Per-property density (densityLocal), repeated onto each edge
+    mp inspect schema-graph --density --format table
+    ```
+
+The relationships come from one bulk `data-definitions/properties?includeEvents=true` request — a single call for the whole project rather than a schema lookup per entity. Group properties are not gathered (Headless has no data-groups listing to enumerate them).
+
+### SchemaGraphResult
+
+```python
+schema.events                # list[dict] — raw event definitions
+schema.properties            # list[dict] — event properties (each carries an `events` list)
+schema.user_properties       # list[dict] — user properties
+schema.event_to_properties   # {event_name: [property_name, ...]}
+schema.property_to_events    # {property_name: [event_name, ...]}
+schema.relationships_df      # DataFrame: event | property | density_local
+schema.to_graph()            # networkx.DiGraph (events -> properties; bipartite when names are disjoint)
+schema.to_dict()             # JSON-serializable
+```
+
+!!! note "Caching"
+    Like other discovery methods, `schema_graph()` is cached for the lifetime of the Workspace. Pass `force_refresh=True` to re-fetch, or call `clear_discovery_cache()`.
+
 ## Top Events
 
 Get today's most active events:

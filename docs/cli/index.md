@@ -147,6 +147,7 @@ Explore your Mixpanel project schema.
 | `mp inspect top-events` | List today's top events |
 | `mp inspect lexicon-schemas` | List Lexicon schemas from data dictionary |
 | `mp inspect lexicon-schema` | Get a single Lexicon schema |
+| `mp inspect schema-graph` | Full Lexicon + event↔property relationship graph |
 
 ### dashboards — Dashboard Management
 
