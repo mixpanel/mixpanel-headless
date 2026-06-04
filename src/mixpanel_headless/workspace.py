@@ -470,6 +470,7 @@ class Workspace:
             self._api_client: MixpanelAPIClient | None = _api_client
         else:
             self._api_client = MixpanelAPIClient(session=sess)
+        self._install_workspace_resolver()
 
     # ---- v3 read-only properties --------------------------------------
 
@@ -697,7 +698,26 @@ class Workspace:
             self._api_client = MixpanelAPIClient(session=self._session)
             if self._initial_workspace_id is not None:
                 self._api_client.set_workspace_id(self._initial_workspace_id)
+            self._install_workspace_resolver()
         return self._api_client
+
+    def _install_workspace_resolver(self) -> None:
+        """Wire the facade's /me cache into the client's workspace auto-resolver.
+
+        The API client owns no ``/me`` cache — that lives on the Workspace, per
+        account. This hands it a small callable so
+        :meth:`MixpanelAPIClient.resolve_workspace_id` can prefer the cached
+        ``/me`` view (and the global "All Project Data" data view) before the
+        uncached ``/workspaces/public`` endpoint.
+
+        A resolver already installed on an injected client is left in place, so
+        a caller who wired their own ``set_workspace_resolver`` on a client and
+        passed it via ``_api_client`` is not silently overridden.
+        """
+        client = self._api_client
+        if client is None or client.has_workspace_resolver:
+            return
+        client.set_workspace_resolver(lambda pid: self._me_svc.resolve_workspace(pid))
 
     def _require_api_client(self) -> MixpanelAPIClient:
         """Get API client (always available — created in ``__init__``).
@@ -746,14 +766,21 @@ class Workspace:
            ``MP_WORKSPACE_ID``, saved targets, bridge pins, or persisted
            ``[active].workspace`` state)
         2. Cached auto-discovered workspace ID
-        3. Auto-discover by listing workspaces and finding the default
+        3. Auto-discover across the cached ``/me`` view, then
+           ``GET /projects/{pid}/workspaces/public``, then the projects metadata
+           index — each applying the shared preference of
+           :func:`~mixpanel_headless._internal.me.select_workspace_id` (global
+           view, then "All Project Data", then default, then first visible, then
+           first). See :meth:`MixpanelAPIClient.resolve_workspace_id` for the
+           full source-by-source rules and error behavior.
 
         Returns:
             The resolved workspace ID.
 
         Raises:
             ConfigError: If credentials are not available.
-            WorkspaceScopeError: If no workspaces are found for the project.
+            WorkspaceScopeError: If no workspace could be resolved for the
+                project from any source.
 
         Example:
             ```python
