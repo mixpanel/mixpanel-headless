@@ -602,7 +602,7 @@ def inspect_schema_graph(
 
     Output Structure (table):
 
-        EVENT      PROPERTY        DENSITY_LOCAL
+        EVENT      PROPERTY        DENSITY LOCAL
         Purchase   amount
         Purchase   currency
 

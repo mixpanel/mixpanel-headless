@@ -839,11 +839,11 @@ class DiscoveryService:
     ) -> SchemaGraphResult:
         """Gather the full Lexicon schema and the event<->property graph.
 
-        Issues three bulk Lexicon calls (event definitions, event properties
-        with their attached events, and optionally user properties) and folds
-        them into a :class:`SchemaGraphResult`. The event<->property adjacency
-        maps are built from the ``events`` lists the API returns on each event
-        property.
+        Issues two or three bulk Lexicon calls — event definitions and event
+        properties (with their attached events) always, plus user properties when
+        ``include_user_properties`` is set (the default) — and folds them into a
+        :class:`SchemaGraphResult`, which derives the event<->property adjacency
+        maps from the ``events`` lists the API returns on each event property.
 
         Args:
             include_density: Request the property-level density (``densityLocal``)
@@ -860,6 +860,8 @@ class DiscoveryService:
         Raises:
             AuthenticationError: Invalid credentials.
             QueryError: API error.
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
 
         Note:
             Results are cached for the lifetime of this service instance, keyed
@@ -881,40 +883,38 @@ class DiscoveryService:
                 resource_type="User",
             )
 
-        event_to_properties: dict[str, list[str]] = {
-            str(e["name"]): [] for e in events if e.get("name")
-        }
-        property_to_events: dict[str, list[str]] = {}
-        for prop in properties:
-            prop_name = prop.get("name")
-            if not prop_name:
-                continue
-            attached = [
-                str(entry["name"])
-                for entry in prop.get("events") or []
-                if isinstance(entry, dict) and entry.get("name")
-            ]
-            property_to_events[str(prop_name)] = attached
-            for event_name in attached:
-                event_to_properties.setdefault(event_name, []).append(str(prop_name))
-
+        # SchemaGraphResult derives the adjacency maps + meta (incl. drop counts)
+        # from ``properties`` in __post_init__ — ``properties`` is the single source.
         result = SchemaGraphResult(
             computed_at=datetime.now(timezone.utc).isoformat(),
             events=events,
             properties=properties,
             user_properties=user_properties,
-            event_to_properties=event_to_properties,
-            property_to_events=property_to_events,
             include_density=include_density,
-            meta={
-                "event_count": len(events),
-                "event_property_count": len(properties),
-                "user_property_count": len(user_properties),
-            },
             params={
                 "include_density": include_density,
                 "include_user_properties": include_user_properties,
             },
         )
+        # A nonzero drop count means rows were skipped for a missing name or a
+        # malformed events entry — surface it at debug level (matching the
+        # _iter_dict_rows convention) so an empty/odd graph can be diagnosed.
+        if any(
+            result.meta[key]
+            for key in (
+                "events_without_name",
+                "properties_without_name",
+                "property_event_entries_dropped",
+            )
+        ):
+            _logger.debug(
+                "schema_graph dropped %d nameless event(s), %d nameless "
+                "propert(y/ies), %d malformed property->event entr(y/ies); "
+                "%d relationship edge(s) survived (possible Lexicon contract change)",
+                result.meta["events_without_name"],
+                result.meta["properties_without_name"],
+                result.meta["property_event_entries_dropped"],
+                result.meta["relationship_edges"],
+            )
         self._schema_graph_cache[cache_key] = result
         return result

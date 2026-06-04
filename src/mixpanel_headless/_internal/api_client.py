@@ -201,6 +201,41 @@ def _build_activity_feed_date_range(
     return {"type": "relative_after", "window": {"unit": "day", "value": 30}}
 
 
+# Map the resource-type spellings callers pass (lowercase / plural / snake-era) to the
+# App API's canonical Lexicon values. The data-definitions endpoints accept only the
+# camelCase ``resourceType`` query param with a capitalized value ("Event"/"User"); a
+# lowercase value 400s ("Invalid resource type") and the snake_case ``resource_type``
+# param is silently ignored (both verified live). Unknown spellings pass through.
+_RESOURCE_TYPE_CANONICAL = {
+    "event": "Event",
+    "events": "Event",
+    "user": "User",
+    "users": "User",
+    "people": "User",
+}
+
+
+def _canonical_resource_type(resource_type: str) -> str:
+    """Normalize a caller's resource-type spelling to the App API's canonical value.
+
+    Args:
+        resource_type: A resource-type filter as a caller might supply it
+            (e.g. ``"event"``, ``"User"``, ``"people"``).
+
+    Returns:
+        The canonical value the ``data-definitions`` endpoints accept
+        (``"Event"`` / ``"User"``). Unrecognized spellings are returned unchanged
+        so callers can pass values this map does not know about.
+
+    Example:
+        ```python
+        _canonical_resource_type("event")  # "Event"
+        _canonical_resource_type("User")   # "User"
+        ```
+    """
+    return _RESOURCE_TYPE_CANONICAL.get(resource_type.lower(), resource_type)
+
+
 class MixpanelAPIClient:
     """Low-level HTTP client for Mixpanel APIs.
 
@@ -6081,6 +6116,41 @@ class MixpanelAPIClient:
     # Data Governance — Data Definitions / Lexicon (Phase 027)
     # =========================================================================
 
+    def _event_definitions(
+        self, *, names: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch event definitions from the Lexicon (shared core).
+
+        Single implementation behind ``get_event_definitions`` (by-name lookup)
+        and ``list_event_definitions`` (bulk enumerate): it owns the endpoint
+        path and the bare-list shape validation so the two public methods cannot
+        drift apart.
+
+        Args:
+            names: Event names to look up; when ``None`` the whole project's
+                event definitions are returned (no ``name[]`` filter).
+
+        Returns:
+            List of event definition dictionaries.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/404).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors, or a non-list response.
+        """
+        path = self.maybe_scoped_path("data-definitions/events/")
+        params: dict[str, str | list[str]] = {}
+        if names is not None:
+            params["name[]"] = names
+        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from event definitions: "
+                f"expected list, got {type(result).__name__}",
+            )
+        return result
+
     def get_event_definitions(self, names: list[str]) -> list[dict[str, Any]]:
         """Get event definitions by name from the Lexicon.
 
@@ -6105,15 +6175,7 @@ class MixpanelAPIClient:
                 defs = client.get_event_definitions(["Signup", "Login"])
             ```
         """
-        path = self.maybe_scoped_path("data-definitions/events/")
-        params: dict[str, str | list[str]] = {"name[]": names}
-        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from get_event_definitions: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        return self._event_definitions(names=names)
 
     def list_event_definitions(self) -> list[dict[str, Any]]:
         """List all event definitions in the Lexicon.
@@ -6137,14 +6199,7 @@ class MixpanelAPIClient:
                 events = client.list_event_definitions()
             ```
         """
-        path = self.maybe_scoped_path("data-definitions/events/")
-        result = self.app_request("GET", path)
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from list_event_definitions: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        return self._event_definitions()
 
     def update_event_definition(
         self, name: str, body: dict[str, Any]
@@ -6250,6 +6305,75 @@ class MixpanelAPIClient:
             )
         return result
 
+    def _property_definitions(
+        self,
+        *,
+        names: list[str] | None = None,
+        resource_type: str | None = None,
+        include_events: bool = False,
+        include_density: bool = False,
+        include_custom: bool | None = None,
+        include_zero_counts: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch property definitions from the Lexicon (shared core).
+
+        Single implementation behind ``get_property_definitions`` (by-name
+        lookup) and ``list_property_definitions`` (bulk enumerate). It owns the
+        endpoint path, the ``resourceType`` contract, and the bare-list shape
+        validation, so the two public methods encode the wire format in exactly
+        one place.
+
+        The App API accepts only the camelCase ``resourceType`` query param with
+        a capitalized value (``"Event"`` / ``"User"``); a lowercase value is
+        rejected and the snake_case ``resource_type`` param is silently ignored
+        (both verified live), so caller-supplied spellings are normalized via
+        :func:`_canonical_resource_type`. The boolean ``include_*`` toggles are
+        sent only when not ``None``, preserving each public method's wire format.
+
+        Args:
+            names: Property names to look up; ``None`` omits the ``name[]`` filter
+                (whole-project enumerate).
+            resource_type: Resource family filter, normalized to the canonical
+                value. ``None`` omits the param (the API then defaults to events).
+            include_events: Attach the events each property appears on
+                (``includeEvents``).
+            include_density: Request the property-level density (``includeDensity``).
+            include_custom: Include custom (computed) properties (``includeCustom``);
+                omitted when ``None``.
+            include_zero_counts: Include properties with no recorded data points
+                (``includeZeroCounts``); omitted when ``None``.
+
+        Returns:
+            List of property definition dictionaries.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/404), including an invalid resource type.
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors, or a non-list response.
+        """
+        path = self.maybe_scoped_path("data-definitions/properties/")
+        params: dict[str, str | list[str]] = {}
+        if names is not None:
+            params["name[]"] = names
+        if resource_type is not None:
+            params["resourceType"] = _canonical_resource_type(resource_type)
+        if include_events:
+            params["includeEvents"] = "true"
+        if include_density:
+            params["includeDensity"] = "true"
+        if include_custom is not None:
+            params["includeCustom"] = "true" if include_custom else "false"
+        if include_zero_counts is not None:
+            params["includeZeroCounts"] = "true" if include_zero_counts else "false"
+        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from property definitions: "
+                f"expected list, got {type(result).__name__}",
+            )
+        return result
+
     def get_property_definitions(
         self,
         names: list[str],
@@ -6262,8 +6386,8 @@ class MixpanelAPIClient:
 
         Args:
             names: List of property names to look up.
-            resource_type: Optional resource type filter
-                (e.g., ``"event"``, ``"user"``, ``"groupprofile"``).
+            resource_type: Optional resource type filter (e.g. ``"event"`` /
+                ``"user"``); normalized to the App API's canonical value.
 
         Returns:
             List of property definition dictionaries.
@@ -6280,17 +6404,7 @@ class MixpanelAPIClient:
                 props = client.get_property_definitions(["plan", "country"])
             ```
         """
-        path = self.maybe_scoped_path("data-definitions/properties/")
-        params: dict[str, str | list[str]] = {"name[]": names}
-        if resource_type is not None:
-            params["resource_type"] = resource_type
-        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from get_property_definitions: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        return self._property_definitions(names=names, resource_type=resource_type)
 
     def list_property_definitions(
         self,
@@ -6335,23 +6449,13 @@ class MixpanelAPIClient:
                 rows[0]["events"]  # [{"name": "Purchase"}, ...]
             ```
         """
-        path = self.maybe_scoped_path("data-definitions/properties/")
-        params: dict[str, str] = {
-            "resourceType": resource_type,
-            "includeCustom": "true" if include_custom else "false",
-            "includeZeroCounts": "true" if include_zero_counts else "false",
-        }
-        if include_events:
-            params["includeEvents"] = "true"
-        if include_density:
-            params["includeDensity"] = "true"
-        result = self.app_request("GET", path, params=params)
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from list_property_definitions: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        return self._property_definitions(
+            resource_type=resource_type,
+            include_events=include_events,
+            include_density=include_density,
+            include_custom=include_custom,
+            include_zero_counts=include_zero_counts,
+        )
 
     def update_property_definition(
         self, name: str, body: dict[str, Any]

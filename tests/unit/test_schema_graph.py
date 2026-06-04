@@ -12,6 +12,7 @@ Five layers:
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -20,7 +21,10 @@ import pytest
 import typer.testing
 from pydantic import SecretStr
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import (
+    MixpanelAPIClient,
+    _canonical_resource_type,
+)
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.services.discovery import DiscoveryService
@@ -56,8 +60,8 @@ def _sample_result() -> SchemaGraphResult:
         user_properties=[
             {"name": "plan", "resourceType": "User", "displayName": "Plan"}
         ],
-        event_to_properties={"Purchase": ["amount"]},
-        property_to_events={"amount": ["Purchase"], "orphan": []},
+        # event_to_properties / property_to_events are derived from ``properties``
+        # in __post_init__ (init=False), so they are no longer passed here.
         include_density=True,
     )
 
@@ -161,6 +165,106 @@ class TestSchemaGraphResult:
         assert result.properties_df is result.properties_df
         assert result.relationships_df is result.relationships_df
 
+    def test_density_local_none_when_density_not_requested(self) -> None:
+        """Without include_density, density_local is None on each edge + graph edge."""
+        result = SchemaGraphResult(
+            computed_at="t",
+            events=[{"name": "Purchase"}],
+            properties=[{"name": "amount", "events": [{"name": "Purchase"}]}],
+        )
+        assert result.include_density is False
+        assert result.relationships_df.iloc[0]["density_local"] is None
+        assert result.to_graph().edges["Purchase", "amount"]["density_local"] is None
+
+    def test_non_dict_event_entry_is_filtered(self) -> None:
+        """Non-dict / nameless entries in a property's events list are dropped."""
+        result = SchemaGraphResult(
+            computed_at="t",
+            properties=[
+                {
+                    "name": "amount",
+                    "events": ["NotADict", {"no": "name"}, {"name": "Purchase"}],
+                }
+            ],
+        )
+        # Only the well-formed {"name": "Purchase"} entry survives.
+        assert list(result.relationships_df["event"]) == ["Purchase"]
+        assert result.property_to_events["amount"] == ["Purchase"]
+        assert list(result.to_graph().successors("Purchase")) == ["amount"]
+
+    def test_relationships_df_skips_nameless_property(self) -> None:
+        """A property without a name is skipped by the relationships edge list."""
+        result = SchemaGraphResult(
+            computed_at="t",
+            properties=[
+                {"events": [{"name": "Purchase"}]},  # no name -> skipped
+                {"name": "amount", "events": [{"name": "Purchase"}]},
+            ],
+        )
+        assert list(result.relationships_df["property"]) == ["amount"]
+
+    def test_events_for_property_unknown_returns_empty(self) -> None:
+        """events_for_property on an unknown property name returns []."""
+        assert _sample_result().events_for_property("missing") == []
+
+    def test_property_without_events_key(self) -> None:
+        """A property dict lacking an ``events`` key contributes no edges."""
+        result = SchemaGraphResult(computed_at="t", properties=[{"name": "amount"}])
+        assert result.relationships_df.empty
+        assert result.property_to_events == {"amount": []}
+        assert result.orphan_properties() == ["amount"]
+
+    def test_maps_derived_from_properties(self) -> None:
+        """event_to_properties / property_to_events are derived, not passed in.
+
+        Events with no properties are still seeded (so the event is a known key
+        and a graph node); the inverse map is built from each property's events.
+        """
+        result = SchemaGraphResult(
+            computed_at="t",
+            events=[{"name": "Purchase"}, {"name": "Login"}],
+            properties=[{"name": "amount", "events": [{"name": "Purchase"}]}],
+        )
+        assert result.event_to_properties == {"Purchase": ["amount"], "Login": []}
+        assert result.property_to_events == {"amount": ["Purchase"]}
+        assert result.properties_for_event("Login") == []
+        assert result.to_graph().nodes["Login"]["kind"] == "event"
+
+    def test_meta_records_drop_counts(self) -> None:
+        """meta carries entity counts and per-row drop counts."""
+        result = SchemaGraphResult(
+            computed_at="t",
+            events=[{"name": "Purchase"}, {"count": 5}],  # one nameless event
+            properties=[
+                {"name": "amount", "events": [{"name": "Purchase"}, "bad"]},
+                {"events": []},  # nameless property
+            ],
+            user_properties=[{"name": "plan"}],
+        )
+        assert result.meta["event_count"] == 2
+        assert result.meta["event_property_count"] == 2
+        assert result.meta["user_property_count"] == 1
+        assert result.meta["events_without_name"] == 1
+        assert result.meta["properties_without_name"] == 1
+        assert result.meta["property_event_entries_dropped"] == 1
+        assert result.meta["relationship_edges"] == 1
+
+    def test_to_dict_contains_all_fields(self) -> None:
+        """to_dict exposes every public field."""
+        d = _sample_result().to_dict()
+        for key in (
+            "computed_at",
+            "events",
+            "properties",
+            "user_properties",
+            "event_to_properties",
+            "property_to_events",
+            "include_density",
+            "meta",
+            "params",
+        ):
+            assert key in d
+
 
 def _client(handler: Any) -> MixpanelAPIClient:
     """Build a client wired to a MockTransport handler."""
@@ -224,6 +328,71 @@ class TestApiClientBulkLexicon:
 
         with pytest.raises(MixpanelHeadlessError, match="expected list"):
             _client(handler).list_property_definitions()
+
+    def test_list_property_definitions_default_params(self) -> None:
+        """A default bulk call pins the canonical params and omits the toggles.
+
+        ``resourceType=Event`` + ``includeCustom`` / ``includeZeroCounts`` are
+        sent; ``includeEvents`` / ``includeDensity`` are absent unless requested.
+        """
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json=[])
+
+        _client(handler).list_property_definitions()
+        assert seen["params"]["resourceType"] == "Event"
+        assert seen["params"]["includeCustom"] == "true"
+        assert seen["params"]["includeZeroCounts"] == "true"
+        assert "includeEvents" not in seen["params"]
+        assert "includeDensity" not in seen["params"]
+
+    def test_get_property_definitions_normalizes_resource_type(self) -> None:
+        """get_* sends the name filter and the normalized camelCase resourceType."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json=[])
+
+        _client(handler).get_property_definitions(["amount"], resource_type="user")
+        assert seen["params"]["name[]"] == "amount"
+        assert seen["params"]["resourceType"] == "User"
+        # get_* must not send the bulk-only include toggles.
+        assert "includeCustom" not in seen["params"]
+        assert "includeZeroCounts" not in seen["params"]
+
+    def test_get_event_definitions_sends_name_filter(self) -> None:
+        """get_event_definitions sends a name[] filter (the bulk list does not)."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json=[])
+
+        _client(handler).get_event_definitions(["Purchase"])
+        assert seen["params"]["name[]"] == "Purchase"
+
+
+class TestCanonicalResourceType:
+    """The resource-type value normalizer."""
+
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [
+            ("event", "Event"),
+            ("events", "Event"),
+            ("Event", "Event"),
+            ("user", "User"),
+            ("people", "User"),
+            ("User", "User"),
+            ("groupprofile", "groupprofile"),  # unknown spelling passes through
+        ],
+    )
+    def test_normalizes(self, given: str, expected: str) -> None:
+        """Known spellings map to canonical values; unknowns pass through."""
+        assert _canonical_resource_type(given) == expected
 
 
 class TestDiscoveryGetSchemaGraph:
@@ -305,6 +474,31 @@ class TestDiscoveryGetSchemaGraph:
         assert result.include_density is True
         assert result.relationships_df.iloc[0]["density_local"] == 0.75
         assert result.to_graph().edges["Purchase", "amount"]["density_local"] == 0.75
+
+    def test_debug_log_on_dropped_rows(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Dropped (nameless / malformed) rows emit a debug summary."""
+        api = MagicMock()
+        api.list_event_definitions.return_value = [{"name": "Purchase"}, {"count": 1}]
+        api.list_property_definitions.return_value = [
+            {"name": "amount", "events": ["bad", {"name": "Purchase"}]},
+            {"events": []},
+        ]
+        logger_name = "mixpanel_headless._internal.services.discovery"
+        with caplog.at_level(logging.DEBUG, logger=logger_name):
+            DiscoveryService(api).get_schema_graph(include_user_properties=False)
+        assert any("schema_graph dropped" in r.message for r in caplog.records)
+
+    def test_no_debug_log_when_no_drops(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A clean gather emits no drop summary."""
+        api = MagicMock()
+        api.list_event_definitions.return_value = [{"name": "Purchase"}]
+        api.list_property_definitions.return_value = [
+            {"name": "amount", "events": [{"name": "Purchase"}]}
+        ]
+        logger_name = "mixpanel_headless._internal.services.discovery"
+        with caplog.at_level(logging.DEBUG, logger=logger_name):
+            DiscoveryService(api).get_schema_graph(include_user_properties=False)
+        assert not any("schema_graph dropped" in r.message for r in caplog.records)
 
 
 class TestFacadeAndCli:

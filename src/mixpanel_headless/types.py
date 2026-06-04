@@ -11227,10 +11227,14 @@ class SchemaGraphResult(ResultWithDataFrame):
             ``{"name": ...}`` entries describing the events it appears on, and a
             top-level ``densityLocal`` when ``include_density`` was requested.
         user_properties: User property dicts.
-        event_to_properties: Map of event name to the property names on it.
-        property_to_events: Map of property name to the events it appears on.
+        event_to_properties: Map of event name to the property names on it
+            (derived from ``properties`` in __post_init__).
+        property_to_events: Map of property name to the events it appears on
+            (derived from ``properties`` in __post_init__).
         include_density: Whether per-property density was requested.
-        meta: Free-form metadata about the gather (counts, flags).
+        meta: Derived gather metadata — entity counts plus per-row drop counts
+            (``events_without_name``, ``properties_without_name``,
+            ``property_event_entries_dropped``, ``relationship_edges``).
         params: The parameters that produced this result.
 
     Example:
@@ -11247,10 +11251,15 @@ class SchemaGraphResult(ResultWithDataFrame):
     events: list[dict[str, Any]] = field(default_factory=list)
     properties: list[dict[str, Any]] = field(default_factory=list)
     user_properties: list[dict[str, Any]] = field(default_factory=list)
-    event_to_properties: dict[str, list[str]] = field(default_factory=dict)
-    property_to_events: dict[str, list[str]] = field(default_factory=dict)
+    # event_to_properties / property_to_events / meta are DERIVED from ``properties``
+    # (+ ``events``) in __post_init__, so they are init=False and cannot be passed in —
+    # ``properties`` is the single source of truth. ``params`` stays an init field
+    # because it records the fetch flags (e.g. include_user_properties), which are not
+    # reconstructible from the result.
+    event_to_properties: dict[str, list[str]] = field(init=False, default_factory=dict)
+    property_to_events: dict[str, list[str]] = field(init=False, default_factory=dict)
     include_density: bool = False
-    meta: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(init=False, default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
     _events_df_cache: pd.DataFrame | None = field(
         default=None, repr=False, kw_only=True
@@ -11263,6 +11272,58 @@ class SchemaGraphResult(ResultWithDataFrame):
     )
     _graph_cache: nx.DiGraph[str] | None = field(default=None, repr=False, kw_only=True)
     """Internal cache for the networkx graph (optional dependency)."""
+
+    def __post_init__(self) -> None:
+        """Derive the adjacency maps and ``meta`` from ``properties``.
+
+        ``properties`` (each entry carrying an inner ``events`` list) is the single
+        source of truth: ``event_to_properties`` / ``property_to_events`` are built
+        here — events seeded from ``events`` so an event with no properties still
+        appears — rather than being passed in, so the maps can never disagree with
+        ``properties``. The same pass records ``meta`` counts, including the rows
+        dropped for a missing/empty ``name`` or a malformed ``events`` entry; a
+        nonzero drop count signals the Lexicon response shape may have changed.
+        """
+        event_to_properties: dict[str, list[str]] = {
+            str(e["name"]): [] for e in self.events if e.get("name")
+        }
+        events_without_name = sum(1 for e in self.events if not e.get("name"))
+        property_to_events: dict[str, list[str]] = {}
+        properties_without_name = 0
+        property_event_entries_dropped = 0
+        relationship_edges = 0
+        for prop in self.properties:
+            prop_name = prop.get("name")
+            if not prop_name:
+                properties_without_name += 1
+                continue
+            raw_entries = prop.get("events") or []
+            attached = [
+                str(entry["name"])
+                for entry in raw_entries
+                if isinstance(entry, dict) and entry.get("name")
+            ]
+            property_event_entries_dropped += len(raw_entries) - len(attached)
+            property_to_events[str(prop_name)] = attached
+            relationship_edges += len(attached)
+            for event_name in attached:
+                event_to_properties.setdefault(event_name, []).append(str(prop_name))
+
+        object.__setattr__(self, "event_to_properties", event_to_properties)
+        object.__setattr__(self, "property_to_events", property_to_events)
+        object.__setattr__(
+            self,
+            "meta",
+            {
+                "event_count": len(self.events),
+                "event_property_count": len(self.properties),
+                "user_property_count": len(self.user_properties),
+                "events_without_name": events_without_name,
+                "properties_without_name": properties_without_name,
+                "property_event_entries_dropped": property_event_entries_dropped,
+                "relationship_edges": relationship_edges,
+            },
+        )
 
     @property
     def events_df(self) -> pd.DataFrame:
@@ -11363,9 +11424,9 @@ class SchemaGraphResult(ResultWithDataFrame):
         """Edge-list DataFrame of event<->property relationships.
 
         One row per (event, property) pair. ``density_local`` is the property's
-        ``densityLocal`` (the share of the property's records, returned at the
-        property level by the bulk call) repeated on each of its edges; it is
-        ``None`` unless ``include_density`` was requested.
+        top-level ``densityLocal`` (returned at the property level by the bulk
+        call) repeated on each of its edges; it is ``None`` unless
+        ``include_density`` was requested.
 
         Returns:
             DataFrame with columns ``event``, ``property``, ``density_local``.

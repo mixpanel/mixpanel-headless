@@ -77,3 +77,41 @@ def test_graph_counts(events: list[str], props: list[str], data: st.DataObject) 
     # property nodes have no outgoing edges
     for p in props:
         assert g.out_degree(p) == 0
+
+
+@given(events=_events, props=_props, data=st.data())
+def test_orphan_properties_matches_empty_adjacency(
+    events: list[str], props: list[str], data: st.DataObject
+) -> None:
+    """orphan_properties() is exactly the properties whose events list is empty."""
+    edges = {
+        p: data.draw(st.lists(st.sampled_from(events), max_size=3, unique=True))
+        for p in props
+    }
+    result = _build(events, props, edges)
+    expected = {p for p in props if not edges[p]}
+    assert set(result.orphan_properties()) == expected
+
+
+@given(events=_events, props=_props, data=st.data())
+def test_graph_edges_when_relationships_exist(
+    events: list[str], props: list[str], data: st.DataObject
+) -> None:
+    """Forcing one property to carry an edge exercises the non-empty graph path.
+
+    The first property always gets >=1 event, so this never passes vacuously on
+    an all-empty draw; the graph edge count must match the adjacency total.
+    """
+    edges = {
+        props[0]: data.draw(
+            st.lists(st.sampled_from(events), min_size=1, max_size=3, unique=True)
+        )
+    }
+    for p in props[1:]:
+        edges[p] = data.draw(st.lists(st.sampled_from(events), max_size=3, unique=True))
+    result = _build(events, props, edges)
+    g = result.to_graph()
+    assert g.number_of_edges() >= 1
+    assert g.number_of_edges() == sum(
+        len(v) for v in result.property_to_events.values()
+    )

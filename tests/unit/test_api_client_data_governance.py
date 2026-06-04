@@ -300,7 +300,12 @@ class TestGetPropertyDefinitions:
         assert "/data-definitions/properties/" in captured_urls[0]
 
     def test_resource_type_param(self, oauth_credentials: Session) -> None:
-        """get_property_definitions() passes resource_type query param."""
+        """get_property_definitions() normalizes resource_type to the camelCase param.
+
+        The App API honors only ``resourceType`` with a capitalized value; the
+        lowercase ``"event"`` a caller passes is normalized to ``"Event"`` (the
+        legacy snake_case ``resource_type`` param was silently ignored server-side).
+        """
         captured_urls: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -312,7 +317,8 @@ class TestGetPropertyDefinitions:
         with client:
             client.get_property_definitions(["plan_type"], resource_type="event")
 
-        assert "resource_type=event" in captured_urls[0]
+        assert "resourceType=Event" in captured_urls[0]
+        assert "resource_type=event" not in captured_urls[0]
 
 
 class TestUpdatePropertyDefinition:
