@@ -11,7 +11,9 @@ on:
 jobs:
   claude-review:
     # Only run when the "claude-review" label is applied by someone with write access
-    if: github.event.label.name == 'claude-review'
+    if: |
+      github.event.label.name == 'claude-review' &&
+      github.event.pull_request.head.repo.fork == false
 
     runs-on: ubuntu-latest
     permissions:
@@ -65,4 +67,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(uv sync:*),Bash(uv run:*),Bash(uv build:*)"'
-
