@@ -42,12 +42,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
-    from mixpanel_headless.query_models import (
-        FlowQuery,
-        FunnelQuery,
-        InsightsQuery,
-        RetentionQuery,
-    )
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
@@ -2379,6 +2373,35 @@ class Workspace:
             )
             ```
         """
+        from mixpanel_headless.query_models import InsightsQuery
+
+        if isinstance(events, InsightsQuery):
+            query = events
+            params = self._resolve_and_build_params(
+                events=query.events,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                math=query.math,
+                math_property=query.math_property,
+                per_user=query.per_user,
+                percentile_value=query.percentile_value,
+                group_by=query.group_by,  # type: ignore[arg-type]
+                where=query.where,
+                formula=query.formula,
+                formula_label=query.formula_label,
+                rolling=query.rolling,
+                cumulative=query.cumulative,
+                mode=query.mode,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+            return self._live_query_service.query(
+                bookmark_params=params,
+                project_id=int(self._session.project.id),
+            )
+
         params = self._resolve_and_build_params(
             events=events,
             from_date=from_date,
@@ -2499,6 +2522,31 @@ class Workspace:
             ))
             ```
         """
+        from mixpanel_headless.query_models import InsightsQuery
+
+        if isinstance(events, InsightsQuery):
+            query = events
+            return self._resolve_and_build_params(
+                events=query.events,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                math=query.math,
+                math_property=query.math_property,
+                per_user=query.per_user,
+                percentile_value=query.percentile_value,
+                group_by=query.group_by,  # type: ignore[arg-type]
+                where=query.where,
+                formula=query.formula,
+                formula_label=query.formula_label,
+                rolling=query.rolling,
+                cumulative=query.cumulative,
+                mode=query.mode,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+
         return self._resolve_and_build_params(
             events=events,
             from_date=from_date,
@@ -2518,92 +2566,6 @@ class Workspace:
             mode=mode,
             time_comparison=time_comparison,
             data_group_id=data_group_id,
-        )
-
-    def build_insights_params(
-        self,
-        query: InsightsQuery,
-    ) -> dict[str, Any]:
-        """Build validated insights bookmark params from a query model.
-
-        Accepts an ``InsightsQuery`` model and delegates to
-        ``_resolve_and_build_params``.
-
-        Args:
-            query: An ``InsightsQuery`` model with all query parameters.
-
-        Returns:
-            Bookmark params dict with ``sections`` and ``displayOptions``
-            keys.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-
-        Example:
-            ```python
-            from mixpanel_headless import InsightsQuery, Metric
-
-            ws = Workspace()
-            q = InsightsQuery(events=[Metric("Login", math="unique")], last=7)
-            params = ws.build_insights_params(q)
-            ```
-        """
-        return self._resolve_and_build_params(
-            events=query.events,
-            from_date=query.from_date,
-            to_date=query.to_date,
-            last=query.last,
-            unit=query.unit,
-            math=query.math,
-            math_property=query.math_property,
-            per_user=query.per_user,
-            percentile_value=query.percentile_value,
-            group_by=query.group_by,  # type: ignore[arg-type]
-            where=query.where,
-            formula=query.formula,
-            formula_label=query.formula_label,
-            rolling=query.rolling,
-            cumulative=query.cumulative,
-            mode=query.mode,
-            time_comparison=query.time_comparison,
-            data_group_id=query.data_group_id,
-        )
-
-    def query_insights(
-        self,
-        query: InsightsQuery,
-    ) -> QueryResult:
-        """Run a typed insights query from a query model.
-
-        Accepts an ``InsightsQuery`` model, generates bookmark params,
-        POSTs them to ``/api/query/insights``, and returns a structured
-        ``QueryResult``.
-
-        Args:
-            query: An ``InsightsQuery`` model with all query parameters.
-
-        Returns:
-            QueryResult with series data, DataFrame, and metadata.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-            AuthenticationError: Invalid credentials.
-            QueryError: Invalid query parameters.
-
-        Example:
-            ```python
-            from mixpanel_headless import InsightsQuery, Metric
-
-            ws = Workspace()
-            q = InsightsQuery(events=[Metric("Login", math="unique")], last=7)
-            result = ws.query_insights(q)
-            print(result.df.head())
-            ```
-        """
-        params = self.build_insights_params(query)
-        return self._live_query_service.query(
-            bookmark_params=params,
-            project_id=int(self._session.project.id),
         )
 
     def _resolve_and_build_params(
@@ -3236,6 +3198,35 @@ class Workspace:
             print(result.df)
             ```
         """
+        from mixpanel_headless.query_models import FunnelQuery
+
+        if isinstance(steps, FunnelQuery):
+            query = steps
+            params = self._resolve_and_build_funnel_params(
+                steps=query.steps,
+                conversion_window=query.conversion_window,
+                conversion_window_unit=query.conversion_window_unit,
+                order=query.order,
+                math=query.math,
+                math_property=query.math_property,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                group_by=query.group_by,
+                where=query.where,
+                exclusions=query.exclusions,
+                holding_constant=query.holding_constant,
+                mode=query.mode,
+                reentry_mode=query.reentry_mode,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+            return self._live_query_service.query_funnel(
+                bookmark_params=params,
+                project_id=int(self._session.project.id),
+            )
+
         params = self._resolve_and_build_funnel_params(
             steps=steps,
             conversion_window=conversion_window,
@@ -3356,6 +3347,31 @@ class Workspace:
             ))
             ```
         """
+        from mixpanel_headless.query_models import FunnelQuery
+
+        if isinstance(steps, FunnelQuery):
+            query = steps
+            return self._resolve_and_build_funnel_params(
+                steps=query.steps,
+                conversion_window=query.conversion_window,
+                conversion_window_unit=query.conversion_window_unit,
+                order=query.order,
+                math=query.math,
+                math_property=query.math_property,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                group_by=query.group_by,
+                where=query.where,
+                exclusions=query.exclusions,
+                holding_constant=query.holding_constant,
+                mode=query.mode,
+                reentry_mode=query.reentry_mode,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+
         return self._resolve_and_build_funnel_params(
             steps=steps,
             conversion_window=conversion_window,
@@ -3375,81 +3391,6 @@ class Workspace:
             reentry_mode=reentry_mode,
             time_comparison=time_comparison,
             data_group_id=data_group_id,
-        )
-
-    def build_funnel_params_from_model(
-        self,
-        query: FunnelQuery,
-    ) -> dict[str, Any]:
-        """Build validated funnel bookmark params from a query model.
-
-        Args:
-            query: A ``FunnelQuery`` model with all query parameters.
-
-        Returns:
-            Bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-
-        Example:
-            ```python
-            from mixpanel_headless import FunnelQuery
-
-            q = FunnelQuery(steps=["Signup", "Purchase"])
-            params = ws.build_funnel_params_from_model(q)
-            ```
-        """
-        return self._resolve_and_build_funnel_params(
-            steps=query.steps,
-            conversion_window=query.conversion_window,
-            conversion_window_unit=query.conversion_window_unit,
-            order=query.order,
-            from_date=query.from_date,
-            to_date=query.to_date,
-            last=query.last,
-            unit=query.unit,
-            math=query.math,
-            math_property=query.math_property,
-            group_by=query.group_by,  # type: ignore[arg-type]
-            where=query.where,
-            exclusions=query.exclusions,
-            holding_constant=query.holding_constant,
-            mode=query.mode,
-            reentry_mode=query.reentry_mode,
-            time_comparison=query.time_comparison,
-            data_group_id=query.data_group_id,
-        )
-
-    def query_funnel_from_model(
-        self,
-        query: FunnelQuery,
-    ) -> FunnelQueryResult:
-        """Run a typed funnel query from a query model.
-
-        Args:
-            query: A ``FunnelQuery`` model with all query parameters.
-
-        Returns:
-            FunnelQueryResult with funnel data and DataFrame.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-            AuthenticationError: Invalid credentials.
-            QueryError: Invalid query parameters.
-
-        Example:
-            ```python
-            from mixpanel_headless import FunnelQuery
-
-            q = FunnelQuery(steps=["Signup", "Purchase"])
-            result = ws.query_funnel_from_model(q)
-            ```
-        """
-        params = self.build_funnel_params_from_model(query)
-        return self._live_query_service.query_funnel(
-            bookmark_params=params,
-            project_id=int(self._session.project.id),
         )
 
     # =========================================================================
@@ -4097,6 +4038,35 @@ class Workspace:
             )
             ```
         """
+        from mixpanel_headless.query_models import FlowQuery
+
+        if isinstance(event, FlowQuery):
+            query = event
+            params = self._resolve_and_build_flow_params(
+                event=query.event,
+                forward=query.forward,
+                reverse=query.reverse,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                conversion_window=query.conversion_window,
+                conversion_window_unit=query.conversion_window_unit,
+                count_type=query.count_type,
+                cardinality=query.cardinality,
+                collapse_repeated=query.collapse_repeated,
+                hidden_events=query.hidden_events,
+                mode=query.mode,
+                where=query.where,
+                data_group_id=query.data_group_id,
+                segments=query.segments,
+                exclusions=query.exclusions,
+            )
+            return self._live_query_service.query_flow(
+                bookmark_params=params,
+                project_id=int(self._session.project.id),
+                mode=query.mode,
+            )
+
         params = self._resolve_and_build_flow_params(
             event=event,
             forward=forward,
@@ -4211,6 +4181,30 @@ class Workspace:
             )
             ```
         """
+        from mixpanel_headless.query_models import FlowQuery
+
+        if isinstance(event, FlowQuery):
+            query = event
+            return self._resolve_and_build_flow_params(
+                event=query.event,
+                forward=query.forward,
+                reverse=query.reverse,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                conversion_window=query.conversion_window,
+                conversion_window_unit=query.conversion_window_unit,
+                count_type=query.count_type,
+                cardinality=query.cardinality,
+                collapse_repeated=query.collapse_repeated,
+                hidden_events=query.hidden_events,
+                mode=query.mode,
+                where=query.where,
+                data_group_id=query.data_group_id,
+                segments=query.segments,
+                exclusions=query.exclusions,
+            )
+
         return self._resolve_and_build_flow_params(
             event=event,
             forward=forward,
@@ -4229,80 +4223,6 @@ class Workspace:
             data_group_id=data_group_id,
             segments=segments,
             exclusions=exclusions,
-        )
-
-    def build_flow_params_from_model(
-        self,
-        query: FlowQuery,
-    ) -> dict[str, Any]:
-        """Build validated flow bookmark params from a query model.
-
-        Args:
-            query: A ``FlowQuery`` model with all query parameters.
-
-        Returns:
-            Bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-
-        Example:
-            ```python
-            from mixpanel_headless import FlowQuery
-
-            q = FlowQuery(event="Login", forward=5)
-            params = ws.build_flow_params_from_model(q)
-            ```
-        """
-        return self._resolve_and_build_flow_params(
-            event=query.event,
-            forward=query.forward,
-            reverse=query.reverse,
-            from_date=query.from_date,
-            to_date=query.to_date,
-            last=query.last,
-            conversion_window=query.conversion_window,
-            conversion_window_unit=query.conversion_window_unit,
-            count_type=query.count_type,
-            cardinality=query.cardinality,
-            collapse_repeated=query.collapse_repeated,
-            hidden_events=query.hidden_events,
-            mode=query.mode,
-            where=query.where,
-            data_group_id=query.data_group_id,
-            segments=query.segments,  # type: ignore[arg-type]
-            exclusions=query.exclusions,
-        )
-
-    def query_flow_from_model(
-        self,
-        query: FlowQuery,
-    ) -> FlowQueryResult:
-        """Run a typed flow query from a query model.
-
-        Args:
-            query: A ``FlowQuery`` model with all query parameters.
-
-        Returns:
-            FlowQueryResult with flow data and DataFrame.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-            AuthenticationError: Invalid credentials.
-            QueryError: Invalid query parameters.
-
-        Example:
-            ```python
-            from mixpanel_headless import FlowQuery
-
-            q = FlowQuery(event="Login", forward=5)
-            result = ws.query_flow_from_model(q)
-            ```
-        """
-        params = self.build_flow_params_from_model(query)
-        return self._live_query_service.query_flow(
-            bookmark_params=params,
-            project_id=int(self._session.project.id),
         )
 
     # =========================================================================
@@ -4533,6 +4453,34 @@ class Workspace:
             print(result.df)
             ```
         """
+        from mixpanel_headless.query_models import RetentionQuery
+
+        if isinstance(born_event, RetentionQuery):
+            query = born_event
+            params = self._resolve_and_build_retention_params(
+                born_event=query.born_event,
+                return_event=query.return_event,
+                retention_unit=query.retention_unit,
+                alignment=query.alignment,
+                bucket_sizes=query.bucket_sizes,
+                math=query.math,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                group_by=query.group_by,  # type: ignore[arg-type]
+                where=query.where,
+                mode=query.mode,
+                unbounded_mode=query.unbounded_mode,
+                retention_cumulative=query.retention_cumulative,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+            return self._live_query_service.query_retention(
+                bookmark_params=params,
+                project_id=int(self._session.project.id),
+            )
+
         params = self._resolve_and_build_retention_params(
             born_event=born_event,
             return_event=return_event,
@@ -4649,6 +4597,30 @@ class Workspace:
             ))
             ```
         """
+        from mixpanel_headless.query_models import RetentionQuery
+
+        if isinstance(born_event, RetentionQuery):
+            query = born_event
+            return self._resolve_and_build_retention_params(
+                born_event=query.born_event,
+                return_event=query.return_event,
+                retention_unit=query.retention_unit,
+                alignment=query.alignment,
+                bucket_sizes=query.bucket_sizes,
+                math=query.math,
+                from_date=query.from_date,
+                to_date=query.to_date,
+                last=query.last,
+                unit=query.unit,
+                group_by=query.group_by,  # type: ignore[arg-type]
+                where=query.where,
+                mode=query.mode,
+                unbounded_mode=query.unbounded_mode,
+                retention_cumulative=query.retention_cumulative,
+                time_comparison=query.time_comparison,
+                data_group_id=query.data_group_id,
+            )
+
         return self._resolve_and_build_retention_params(
             born_event=born_event,
             return_event=return_event,
@@ -4667,80 +4639,6 @@ class Workspace:
             retention_cumulative=retention_cumulative,
             time_comparison=time_comparison,
             data_group_id=data_group_id,
-        )
-
-    def build_retention_params_from_model(
-        self,
-        query: RetentionQuery,
-    ) -> dict[str, Any]:
-        """Build validated retention bookmark params from a query model.
-
-        Args:
-            query: A ``RetentionQuery`` model with all query parameters.
-
-        Returns:
-            Bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-
-        Example:
-            ```python
-            from mixpanel_headless import RetentionQuery
-
-            q = RetentionQuery(born_event="Signup", return_event="Login")
-            params = ws.build_retention_params_from_model(q)
-            ```
-        """
-        return self._resolve_and_build_retention_params(
-            born_event=query.born_event,
-            return_event=query.return_event,
-            retention_unit=query.retention_unit,
-            alignment=query.alignment,
-            bucket_sizes=query.bucket_sizes,
-            from_date=query.from_date,
-            to_date=query.to_date,
-            last=query.last,
-            unit=query.unit,
-            math=query.math,
-            group_by=query.group_by,  # type: ignore[arg-type]
-            where=query.where,
-            mode=query.mode,
-            unbounded_mode=query.unbounded_mode,
-            retention_cumulative=query.retention_cumulative,
-            time_comparison=query.time_comparison,
-            data_group_id=query.data_group_id,
-        )
-
-    def query_retention_from_model(
-        self,
-        query: RetentionQuery,
-    ) -> RetentionQueryResult:
-        """Run a typed retention query from a query model.
-
-        Args:
-            query: A ``RetentionQuery`` model with all query parameters.
-
-        Returns:
-            RetentionQueryResult with retention data and DataFrame.
-
-        Raises:
-            BookmarkValidationError: If arguments violate validation rules.
-            AuthenticationError: Invalid credentials.
-            QueryError: Invalid query parameters.
-
-        Example:
-            ```python
-            from mixpanel_headless import RetentionQuery
-
-            q = RetentionQuery(born_event="Signup", return_event="Login")
-            result = ws.query_retention_from_model(q)
-            ```
-        """
-        params = self.build_retention_params_from_model(query)
-        return self._live_query_service.query_retention(
-            bookmark_params=params,
-            project_id=int(self._session.project.id),
         )
 
     # =========================================================================
