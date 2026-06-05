@@ -91,8 +91,26 @@ class TestReplayConvenience:
         assert timestamps == sorted(timestamps)
 
     def test_page_path(self) -> None:
-        """page_path returns the URL sequence from Meta events."""
-        r = _build()
+        """page_path returns the URL sequence from navigate actions."""
+        actions = [
+            UserAction(
+                timestamp=1716810000000,
+                action="navigate",
+                target_node_id=None,
+                target_desc="Navigated to https://app.example.com/login",
+                url="https://app.example.com/login",
+                metadata={},
+            ),
+            UserAction(
+                timestamp=1716810005000,
+                action="navigate",
+                target_node_id=None,
+                target_desc="Navigated to https://app.example.com/dashboard",
+                url="https://app.example.com/dashboard",
+                metadata={},
+            ),
+        ]
+        r = _build(actions=actions)
         path = r.page_path()
         assert path == [
             "https://app.example.com/login",
@@ -124,27 +142,6 @@ class TestReplayEventsDataFrame:
         assert len(r.events_df) == len(r.rrweb_events)
 
 
-class TestReplayPagesDataFrame:
-    """pages_df derives from Meta events with dwell time."""
-
-    def test_pages_from_meta_events(self) -> None:
-        """pages_df has one row per Meta event."""
-        r = _build()
-        df = r.pages_df
-        # Two meta events in the default fixture → two pages.
-        assert len(df) == 2
-        for col in ("t", "url", "dwell_ms"):
-            assert col in df.columns
-
-    def test_dwell_between_meta_events(self) -> None:
-        """First-page dwell_ms is the gap to the next Meta (or end_time)."""
-        r = _build()
-        df = r.pages_df
-        # Meta at t=1716810000000, next Meta at t=1716810005000 → 5000ms dwell.
-        first_dwell = int(df.iloc[0]["dwell_ms"])
-        assert first_dwell == 5000
-
-
 class TestReplayPhase1Empty:
     """Phase 1: actions is always empty; actions_df keeps the documented schema."""
 
@@ -156,7 +153,15 @@ class TestReplayPhase1Empty:
         """actions_df is empty but carries the documented columns."""
         df = _build().actions_df
         assert len(df) == 0
-        for col in ("t", "action", "target_node_id", "target_desc", "url", "metadata"):
+        for col in (
+            "t",
+            "action",
+            "target_node_id",
+            "target_desc",
+            "description",
+            "url",
+            "metadata",
+        ):
             assert col in df.columns
 
     def test_df_default_is_actions_df(self) -> None:

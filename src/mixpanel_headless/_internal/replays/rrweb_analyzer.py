@@ -447,7 +447,7 @@ _MOUSE_INTERACTION_NAMES: dict[int, str] = {
 
 # Maps the human-readable verb to the public UserAction.action literal.
 # All click-family interactions collapse to "click" so ReplayBundle
-# aggregations (top_clicks, dead_clicks, rage_clicks) work uniformly;
+# aggregations (top_clicks, rage_clicks) work uniformly;
 # the original interaction is preserved in metadata["interaction"].
 _INTERACTION_TO_ACTION: dict[str, str] = {
     "clicked": "click",
@@ -519,6 +519,7 @@ class EventAnalyzer:
                 target_desc=target_desc or description,
                 url=url if url is not None else self.current_url,
                 metadata=metadata or {},
+                description=description,
             )
         )
 
@@ -748,6 +749,35 @@ class EventAnalyzer:
 # =============================================================================
 
 
+def _collapse_timeline(lines: list[tuple[int, str]]) -> str:
+    """Render ``{ts_seconds}: {description}`` lines, collapsing runs.
+
+    Consecutive entries with an identical description are coalesced into a
+    single line with a ``(×N)`` suffix — e.g. a data grid that re-renders the
+    same cell 67 times becomes one line, not 67. The timestamp shown is the
+    first in the run.
+
+    Args:
+        lines: ``(timestamp_ms, description)`` pairs in timeline order.
+
+    Returns:
+        Newline-joined markdown; ``""`` for empty input.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        ts, desc = lines[i]
+        j = i + 1
+        while j < n and lines[j][1] == desc:
+            j += 1
+        run = j - i
+        suffix = f" (×{run})" if run > 1 else ""
+        out.append(f"{ts // 1000}: {desc}{suffix}")
+        i = j
+    return "\n".join(out)
+
+
 class MarkdownReporter:
     """Render ``{ts_seconds}: {description}`` lines from a description list."""
 
@@ -756,15 +786,16 @@ class MarkdownReporter:
         self.descriptions = descriptions
 
     def generate(self) -> str:
-        """Produce the markdown string.
+        """Produce the markdown string, collapsing consecutive duplicates.
 
         Returns:
             ``"No user actions recorded."`` for an empty list; otherwise
-            one line per (timestamp, description) pair in input order.
+            one line per (timestamp, description) run via
+            :func:`_collapse_timeline`.
         """
         if not self.descriptions:
             return "No user actions recorded."
-        return "\n".join(f"{ts // 1000}: {desc}" for ts, desc in self.descriptions)
+        return _collapse_timeline(self.descriptions)
 
 
 # =============================================================================
@@ -846,17 +877,18 @@ def analyze_events(rrweb_events: list[dict[str, Any]]) -> str:
     return RrwebAnalyzer().analyze(rrweb_events).markdown_summary
 
 
-# Backward-compat alias used by Replay.summary_markdown — renders a
-# minimal markdown for a Replay built without going through the analyzer
-# (e.g. test fixtures hand-constructing Replay with actions=[]).
+# Used by Replay.summary_markdown to render a timeline from the structured
+# action list. Each UserAction carries a full ``description`` (e.g.
+# 'Clicked button "Sign in"'); ``target_desc`` is the fallback for actions
+# built without the analyzer (hand-constructed fixtures).
 def _render_markdown(
     actions: list[UserAction], pages: list[PageVisit] | None = None
 ) -> str:
-    """Render a minimal markdown summary from a structured action list.
+    """Render a markdown timeline from a structured action list.
 
-    Used by :meth:`Replay.summary_markdown` for the no-analyzer-output
-    path (where the Replay was built without going through the analyzer
-    — e.g. test fixtures with an empty actions list).
+    Renders each action's full ``description`` (falling back to
+    ``target_desc`` when empty) and collapses consecutive duplicates via
+    :func:`_collapse_timeline`, matching the analyzer's ``markdown_summary``.
 
     Args:
         actions: Structured action list (may be empty).
@@ -869,4 +901,6 @@ def _render_markdown(
     _ = pages
     if not actions:
         return ""
-    return "\n".join(f"{a.timestamp // 1000}: {a.target_desc}" for a in actions)
+    return _collapse_timeline(
+        [(a.timestamp, a.description or a.target_desc) for a in actions]
+    )

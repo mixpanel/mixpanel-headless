@@ -178,6 +178,18 @@ class TestAnalyzeEventsWrapper:
         out = analyze_events(events)
         assert "Navigated to /x" in out
 
+    def test_actions_carry_description(self) -> None:
+        """analyze() stamps the full phrase on UserAction.description.
+
+        This is the field Replay.summary_markdown renders; the regression
+        it guards against is the action carrying only the bare target_desc.
+        """
+        result = RrwebAnalyzer().analyze([_meta(1000, "/x")])
+        assert result.actions
+        assert result.actions[0].description == "Navigated to /x"
+        # The structured description and the rendered markdown agree.
+        assert result.actions[0].description in result.markdown_summary
+
 
 # =============================================================================
 # Console errors (the bug the previous from-scratch impl had)
@@ -684,3 +696,18 @@ class TestMarkdownReporter:
         """Multiple (ts, desc) pairs join with newline."""
         out = MarkdownReporter([(1_000, "a"), (2_000, "b")]).generate()
         assert out == "1: a\n2: b"
+
+    def test_collapses_consecutive_duplicates(self) -> None:
+        """Consecutive identical descriptions coalesce into a (×N) suffix."""
+        out = MarkdownReporter(
+            [(1_000, "Clicked X"), (1_200, "Clicked X"), (1_400, "Clicked X")]
+        ).generate()
+        # First timestamp of the run is shown; the run length is the suffix.
+        assert out == "1: Clicked X (×3)"
+
+    def test_non_adjacent_duplicates_not_collapsed(self) -> None:
+        """Identical descriptions split by a different line stay separate."""
+        out = MarkdownReporter(
+            [(1_000, "Clicked X"), (2_000, "Scrolled"), (3_000, "Clicked X")]
+        ).generate()
+        assert out == "1: Clicked X\n2: Scrolled\n3: Clicked X"

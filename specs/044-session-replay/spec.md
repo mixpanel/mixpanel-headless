@@ -31,15 +31,14 @@ A product manager wants to know where users get stuck in a flow. They pull all r
 
 **Why this priority**: This is the high-leverage type — converting raw recordings into structured behavioral data. Phase 2 of the plan ships exactly this and is independently shippable on top of Phase 1.
 
-**Independent Test**: A `ReplayBundle` built from 10 fixture rrweb streams exposes seven long-format DataFrame projections (sessions, actions, events, mixpanel, pages, elements, transitions). The aggregations (`top_clicks`, `dead_clicks`, `rage_clicks`, `long_pauses`, `error_sessions`) return non-empty results for the appropriate fixtures. The chainable filters (`filter`, `where`, `find_pattern`, `head`, `sample`) return new bundles that are proper subsets of the original, with no shared mutable state.
+**Independent Test**: A `ReplayBundle` built from 10 fixture rrweb streams exposes five long-format DataFrame projections (sessions, actions, events, mixpanel, elements). The aggregations (`top_clicks`, `rage_clicks`, `long_pauses`, `error_sessions`) return non-empty results for the appropriate fixtures. The chainable filters (`filter`, `where`, `find_pattern`, `head`, `sample`) return new bundles that are proper subsets of the original, with no shared mutable state.
 
 **Acceptance Scenarios**:
 
 1. **Given** a bundle of 10 replays where one fixture has 5 consecutive clicks on the same button in <1 second, **When** `rage_clicks(threshold=3, window_ms=1000)` is called, **Then** exactly that replay's rage-click rows appear in the result.
 2. **Given** a bundle and a user-defined predicate, **When** `filter(predicate)` is called, **Then** a new bundle is returned containing exactly the subset matching the predicate; the original is unchanged.
-3. **Given** a bundle with mixed pages, **When** `top_paths(n=5)` is called, **Then** a 5-row DataFrame is returned in frequency order, with stable activity labels following the default labeling convention.
-4. **Given** a bundle whose `path_tree`, `page_graph`, or `element_graph` property is accessed without `networkx` / `anytree` installed, **When** the property is touched, **Then** an `ImportError` is raised whose message names the exact `pip install` command required.
-5. **Given** two bundles (e.g. converters vs non-converters), **When** `bundle_a.compare(bundle_b)` is called, **Then** a DataFrame is returned showing action-frequency differences across the two bundles.
+3. **Given** a bundle where a user's click fires both a focus and a click interaction, **When** `top_clicks(n=5)` is called, **Then** a frequency-ordered DataFrame of click targets is returned that counts each user click once (focus-only interactions excluded).
+4. **Given** two bundles (e.g. converters vs non-converters), **When** `bundle_a.compare(bundle_b)` is called, **Then** a DataFrame is returned showing action-frequency differences across the two bundles.
 
 ---
 
@@ -112,10 +111,9 @@ A support engineer pasting context into a chat does not want to write Python. Th
 
 #### Cross-session analysis (Phase 2)
 
-- **FR-022**: System MUST provide a `ReplayBundle` collection type exposing long-format DataFrame projections: `sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`, `elements_df`, `transitions_df`.
+- **FR-022**: System MUST provide a `ReplayBundle` collection type exposing long-format DataFrame projections: `sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `elements_df`.
 - **FR-023**: `ReplayBundle.df` MUST default to `sessions_df` (one row per replay).
-- **FR-024**: `ReplayBundle` MUST expose graph projections `page_graph` and `element_graph` (using `networkx`) and `path_tree` (using `anytree`), lazily imported inside the property body — never at module import time.
-- **FR-026**: `ReplayBundle` MUST expose convenience aggregations following the existing `FlowQueryResult` idiom: `top_paths(n)`, `top_pages(n)`, `top_clicks(n)`, `dead_clicks(window_ms)`, `rage_clicks(threshold, window_ms)`, `long_pauses(threshold_s)`, `error_sessions()`.
+- **FR-026**: `ReplayBundle` MUST expose convenience aggregations following the existing `FlowQueryResult` idiom: `top_clicks(n)`, `rage_clicks(threshold, window_ms)`, `long_pauses(threshold_s)`, `error_sessions()`. `top_clicks` and `elements_df` MUST count genuine clicks only — focus-only interactions (`metadata['interaction'] == 'focused'`) are excluded so each user click counts once.
 - **FR-027**: `ReplayBundle` MUST expose chainable filter operations that return new bundles (immutable semantics): `filter(predicate)`, `where(distinct_id=..., contains_url=..., has_event=..., min_duration_s=..., max_duration_s=...)`, `find_pattern(action_sequence)`, `head(n)`, `sample(n, seed)`.
 - **FR-028**: `ReplayBundle` MUST expose lazy enrichment via `join_mixpanel_events(properties=None)` returning a new bundle with `mixpanel_df` populated on first access.
 - **FR-029**: `ReplayBundle` MUST expose `summary_markdown` (multi-session overview suitable for LLM consumption) AND `compare(other)` (action-frequency diff against another bundle).
@@ -123,7 +121,7 @@ A support engineer pasting context into a chat does not want to write Python. Th
 
 #### Action labeling (Phase 2)
 
-- **FR-031**: All methods that emit activity labels (`top_paths`, `find_pattern`, and any future such method) MUST accept an optional `label_fn: Callable[[UserAction], str]` parameter.
+- **FR-031**: All methods that emit activity labels (`find_pattern` and any future such method) MUST accept an optional `label_fn: Callable[[UserAction], str]` parameter.
 - **FR-032**: The default label function MUST produce stable labels of shape `f"{action}:{tag_name}@{normalized_url}"`. URL normalization MUST strip query strings AND replace numeric path segments with `:id` (e.g. `/users/12345/profile` → `/users/:id/profile`).
 - **FR-033**: A built-in `selector_label_fn(attr="data-testid")` MUST be provided. When the named attribute is present on the target, the label MUST use it; when absent, it MUST fall back to the default label.
 
@@ -151,7 +149,7 @@ A support engineer pasting context into a chat does not want to write Python. Th
 - **UserAction**: normalized action extracted from rrweb events by the vendored analyzer (`timestamp`, `action`, `target_node_id?`, `target_desc`, `url?`, `metadata`). The atomic unit the bundle aggregates over.
 - **ReplayEvent**: a Mixpanel event that occurred during a replay's time window (`replay_id`, `event_name`, `event_time`, `properties?`). Optional enrichment on `Replay` / `ReplayBundle`.
 - **Replay**: single fully-materialized session — raw rrweb events plus normalized actions plus optional Mixpanel events plus four lazy DataFrame projections plus convenience accessors.
-- **ReplayBundle**: collection of `Replay` objects with seven cross-session DataFrame projections, two graph projections (`page_graph`, `element_graph`), one tree projection (`path_tree`), plus chainable filter / sample operations.
+- **ReplayBundle**: collection of `Replay` objects with five cross-session DataFrame projections plus chainable filter / sample operations.
 - **Exception hierarchy**: `SessionReplayError` (base) → `SessionReplayAccessError` (sensitive-data 403), `SignedURLExpiredError` (5-minute TTL expired), `ReplayNotFoundError` (no CDN files for the given replay_id).
 
 ## Success Criteria *(mandatory)*

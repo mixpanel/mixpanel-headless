@@ -123,7 +123,7 @@ The source design (`context/session-replay-plan.md`) already settled the load-be
 - **Use the full CSS selector path**: rejected — fragile under DOM drift (a parent div rename invalidates every descendant's label).
 - **Hash the entire element subtree**: rejected — opaque to humans reading the labels; debugging becomes guesswork.
 
-**Escape valve**: every method that emits activity labels (`top_paths`, `find_pattern`) accepts `label_fn=` for caller-controlled labeling. The default is a sensible starting point, not a forced choice.
+**Escape valve**: every method that emits activity labels (`find_pattern`) accepts `label_fn=` for caller-controlled labeling. The default is a sensible starting point, not a forced choice.
 
 ---
 

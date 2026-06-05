@@ -12529,6 +12529,10 @@ class UserAction:
             ``'button "Sign in"'``); non-empty.
         url: Active page URL when the action happened, if known.
         metadata: Action-specific extras (text_length, is_checked, …).
+        description: Full human-readable phrase for the markdown timeline
+            (e.g. ``'Clicked button "Sign in"'``, ``'Scrolled'``,
+            ``'Console error: …'``). The analyzer populates it; renderers
+            fall back to ``target_desc`` when it is empty.
     """
 
     timestamp: int
@@ -12537,6 +12541,7 @@ class UserAction:
     target_desc: str
     url: str | None
     metadata: dict[str, Any] = field(default_factory=dict)
+    description: str = ""
 
     def __post_init__(self) -> None:
         """Validate per data-model §2.3.
@@ -12556,7 +12561,7 @@ class UserAction:
         """JSON-serializable representation.
 
         Returns:
-            Dict with the six visible fields.
+            Dict with the seven visible fields.
         """
         return {
             "timestamp": self.timestamp,
@@ -12565,6 +12570,7 @@ class UserAction:
             "target_desc": self.target_desc,
             "url": self.url,
             "metadata": dict(self.metadata),
+            "description": self.description,
         }
 
 
@@ -12740,7 +12746,6 @@ class Replay(ResultWithDataFrame):
     _mixpanel_df_cache: pd.DataFrame | None = field(
         default=None, repr=False, kw_only=True
     )
-    _pages_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate per data-model §2.5.
@@ -12769,6 +12774,29 @@ class Replay(ResultWithDataFrame):
             raise ValueError(
                 f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
             )
+
+    def __repr__(self) -> str:
+        """Concise repr that never serializes the rrweb event payload.
+
+        The default dataclass repr would dump every dict in
+        ``rrweb_events`` (tens of MB for a real recording, e.g. full DOM
+        snapshots). This emits counts only so logging, REPL echo, and
+        tracebacks stay bounded.
+
+        Returns:
+            A one-line summary: id, user, stream sizes, and duration.
+        """
+        return (
+            f"Replay(replay_id={self.replay_id!r}, "
+            f"distinct_id={self.distinct_id!r}, project_id={self.project_id}, "
+            f"events={len(self.rrweb_events)}, actions={len(self.actions)}, "
+            f"mixpanel_events={len(self.mixpanel_events)}, "
+            f"duration_s={self.duration_seconds:.1f})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so ``print()`` stays bounded."""
+        return self.__repr__()
 
     @property
     def duration_seconds(self) -> float:
@@ -12800,24 +12828,30 @@ class Replay(ResultWithDataFrame):
     def actions_df(self) -> pd.DataFrame:
         """Long-format projection of normalized actions (data-model §2.5).
 
-        Phase 1: ``actions`` is empty, so this returns an empty DataFrame
-        with the documented columns. Phase 2 populates it via the
-        analyzer.
-
         Returns:
             DataFrame with columns ``t``, ``action``, ``target_node_id``,
-            ``target_desc``, ``url``, ``metadata`` — one row per action.
-            Cached after first access.
+            ``target_desc``, ``description``, ``url``, ``metadata`` — one row
+            per action. ``description`` is the analyzer's full phrase (e.g.
+            ``'Clicked button "Sign in"'``). Cached after first access.
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
-        cols = ["t", "action", "target_node_id", "target_desc", "url", "metadata"]
+        cols = [
+            "t",
+            "action",
+            "target_node_id",
+            "target_desc",
+            "description",
+            "url",
+            "metadata",
+        ]
         rows = [
             {
                 "t": a.timestamp,
                 "action": a.action,
                 "target_node_id": a.target_node_id,
                 "target_desc": a.target_desc,
+                "description": a.description,
                 "url": a.url,
                 "metadata": dict(a.metadata),
             }
@@ -12854,44 +12888,6 @@ class Replay(ResultWithDataFrame):
         return result
 
     @property
-    def pages_df(self) -> pd.DataFrame:
-        """Long-format projection of Meta navigations (data-model §2.5).
-
-        Derived from rrweb events of type 4 (Meta). ``dwell_ms`` for each
-        page is the gap to the next Meta event, or ``end_time - t`` for
-        the final page.
-
-        Returns:
-            DataFrame with columns ``t``, ``url``, ``dwell_ms`` — one row
-            per page visit. Cached after first access.
-        """
-        if self._pages_df_cache is not None:
-            return self._pages_df_cache
-        meta_events: list[dict[str, Any]] = []
-        for e in self.rrweb_events:
-            if e.get("type") == _RRWEB_TYPE_META:
-                raw_data = e.get("data")
-                data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
-                meta_events.append(
-                    {"t": int(e.get("timestamp", 0)), "url": data.get("href")}
-                )
-        rows: list[dict[str, Any]] = []
-        for i, page in enumerate(meta_events):
-            next_t = (
-                meta_events[i + 1]["t"] if i + 1 < len(meta_events) else self.end_time
-            )
-            rows.append(
-                {
-                    "t": page["t"],
-                    "url": page["url"],
-                    "dwell_ms": max(0, next_t - page["t"]),
-                }
-            )
-        result = pd.DataFrame(rows, columns=["t", "url", "dwell_ms"])
-        object.__setattr__(self, "_pages_df_cache", result)
-        return result
-
-    @property
     def df(self) -> pd.DataFrame:
         """Default projection per FR-018: returns ``actions_df``.
 
@@ -12904,9 +12900,13 @@ class Replay(ResultWithDataFrame):
         """URL sequence visited during the replay.
 
         Returns:
-            List of unique-in-sequence URLs from the Meta events.
+            URLs from the replay's ``navigate`` actions, in timestamp order.
         """
-        return [str(url) for url in self.pages_df["url"].tolist() if url is not None]
+        return [
+            str(a.url)
+            for a in self.actions
+            if a.action == "navigate" and a.url is not None
+        ]
 
     def to_rrweb_player_json(self) -> list[dict[str, Any]]:
         """Timestamp-sorted rrweb events ready for the rrweb JS player.
@@ -13018,11 +13018,8 @@ class ReplayBundle(ResultWithDataFrame):
     Inherits :class:`ResultWithDataFrame`; ``df`` returns ``sessions_df``
     (the most useful default — one row per replay with derived counts).
 
-    All DataFrame and graph / tree projections are lazy: computed on first
-    access, cached via ``object.__setattr__`` since the dataclass is
-    frozen. The graph and tree projections import their libraries
-    (``networkx``, ``anytree`` — both core dependencies) lazily inside the
-    property body to avoid the load-time cost when they are never accessed.
+    All DataFrame projections are lazy: computed on first access, cached via
+    ``object.__setattr__`` since the dataclass is frozen.
 
     Filters (``filter``, ``where``, ``find_pattern``, ``error_sessions``,
     ``head``, ``sample``) return a NEW bundle that is a proper subset of
@@ -13052,16 +13049,9 @@ class ReplayBundle(ResultWithDataFrame):
     _mixpanel_df_cache: pd.DataFrame | None = field(
         default=None, repr=False, kw_only=True
     )
-    _pages_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _elements_df_cache: pd.DataFrame | None = field(
         default=None, repr=False, kw_only=True
     )
-    _transitions_df_cache: pd.DataFrame | None = field(
-        default=None, repr=False, kw_only=True
-    )
-    _page_graph_cache: object | None = field(default=None, repr=False, kw_only=True)
-    _element_graph_cache: object | None = field(default=None, repr=False, kw_only=True)
-    _path_tree_cache: object | None = field(default=None, repr=False, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate that every replay in the bundle shares ``project_id``.
@@ -13080,6 +13070,25 @@ class ReplayBundle(ResultWithDataFrame):
                 f"ReplayBundle.project_id={self.project_id} but the following "
                 f"replays carry a different project_id: {mismatches}"
             )
+
+    def __repr__(self) -> str:
+        """Concise repr that never serializes the contained replays.
+
+        Each :class:`Replay` carries its full rrweb event stream, so the
+        default dataclass repr would dump tens of MB per replay. This emits
+        the replay count only, keeping logging and tracebacks bounded.
+
+        Returns:
+            A one-line summary: replay count, project, and computed_at.
+        """
+        return (
+            f"ReplayBundle(replays={len(self.replays)}, "
+            f"project_id={self.project_id}, computed_at={self.computed_at!r})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so ``print()`` stays bounded."""
+        return self.__repr__()
 
     # =========================================================================
     # DataFrame projections
@@ -13149,7 +13158,7 @@ class ReplayBundle(ResultWithDataFrame):
         """Long-format actions across all replays.
 
         Columns: ``replay_id``, ``t``, ``action``, ``target_node_id``,
-        ``target_desc``, ``url``, ``metadata``.
+        ``target_desc``, ``description``, ``url``, ``metadata``.
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
@@ -13159,6 +13168,7 @@ class ReplayBundle(ResultWithDataFrame):
             "action",
             "target_node_id",
             "target_desc",
+            "description",
             "url",
             "metadata",
         ]
@@ -13169,6 +13179,7 @@ class ReplayBundle(ResultWithDataFrame):
                 "action": a.action,
                 "target_node_id": a.target_node_id,
                 "target_desc": a.target_desc,
+                "description": a.description,
                 "url": a.url,
                 "metadata": dict(a.metadata),
             }
@@ -13234,100 +13245,40 @@ class ReplayBundle(ResultWithDataFrame):
         return result
 
     @property
-    def pages_df(self) -> pd.DataFrame:
-        """Long-format page navigations across all replays.
-
-        Columns: ``replay_id``, ``t``, ``url``, ``dwell_ms``.
-        """
-        if self._pages_df_cache is not None:
-            return self._pages_df_cache
-        rows: list[dict[str, Any]] = []
-        for r in self.replays:
-            per_replay = r.pages_df
-            for _, row in per_replay.iterrows():
-                rows.append(
-                    {
-                        "replay_id": r.replay_id,
-                        "t": row["t"],
-                        "url": row["url"],
-                        "dwell_ms": row["dwell_ms"],
-                    }
-                )
-        result = pd.DataFrame(rows, columns=["replay_id", "t", "url", "dwell_ms"])
-        object.__setattr__(self, "_pages_df_cache", result)
-        return result
-
-    @property
     def elements_df(self) -> pd.DataFrame:
-        """One row per ``(target_desc, url)`` with click-pattern counts.
+        """One row per ``(target_desc, normalized_url)`` with click counts.
 
-        Columns: ``target_desc``, ``url``, ``n_clicks``, ``n_unique_replays``.
+        Counts exclude focus-only interactions (a real click fires both a
+        ``focused`` and a ``clicked`` action; counting both double-counts every
+        click). URLs are normalized via :func:`url_normalizer` so the same
+        element on parameterized pages (``/boards#id=1`` vs ``#id=2``)
+        aggregates into one row instead of fragmenting per URL variant.
+
+        Columns: ``target_desc``, ``url`` (normalized), ``n_clicks``,
+        ``n_unique_replays``.
         """
         if self._elements_df_cache is not None:
             return self._elements_df_cache
-        df = self.actions_df
-        if df.empty:
-            result = pd.DataFrame(
-                columns=["target_desc", "url", "n_clicks", "n_unique_replays"]
-            )
-        else:
-            clicks = df[df["action"] == "click"]
-            if clicks.empty:
-                result = pd.DataFrame(
-                    columns=[
-                        "target_desc",
-                        "url",
-                        "n_clicks",
-                        "n_unique_replays",
-                    ]
-                )
-            else:
-                grouped = (
-                    clicks.groupby(["target_desc", "url"], dropna=False)
-                    .agg(
-                        n_clicks=("replay_id", "size"),
-                        n_unique_replays=("replay_id", "nunique"),
-                    )
-                    .reset_index()
-                )
-                result = grouped
-        object.__setattr__(self, "_elements_df_cache", result)
-        return result
+        from mixpanel_headless._internal.replays.aggregators import real_clicks
+        from mixpanel_headless._internal.replays.labels import url_normalizer
 
-    @property
-    def transitions_df(self) -> pd.DataFrame:
-        """One row per ``(from_url, to_url)`` page transition.
-
-        Columns: ``from_url``, ``to_url``, ``count``, ``n_unique_replays``.
-        """
-        if self._transitions_df_cache is not None:
-            return self._transitions_df_cache
-        rows: list[dict[str, Any]] = []
-        for r in self.replays:
-            urls = [a.url for a in r.actions if a.action == "navigate" and a.url]
-            for prev, curr in zip(urls, urls[1:], strict=False):
-                rows.append(
-                    {
-                        "replay_id": r.replay_id,
-                        "from_url": prev,
-                        "to_url": curr,
-                    }
-                )
-        if not rows:
-            result = pd.DataFrame(
-                columns=["from_url", "to_url", "count", "n_unique_replays"]
-            )
+        cols = ["target_desc", "url", "n_clicks", "n_unique_replays"]
+        clicks = real_clicks(self.actions_df)
+        if clicks.empty:
+            result = pd.DataFrame(columns=cols)
         else:
-            df = pd.DataFrame(rows)
+            normalized = clicks.assign(
+                url=clicks["url"].map(lambda u: url_normalizer(u) if u else u)
+            )
             result = (
-                df.groupby(["from_url", "to_url"])
+                normalized.groupby(["target_desc", "url"], dropna=False)
                 .agg(
-                    count=("replay_id", "size"),
+                    n_clicks=("replay_id", "size"),
                     n_unique_replays=("replay_id", "nunique"),
                 )
                 .reset_index()
             )
-        object.__setattr__(self, "_transitions_df_cache", result)
+        object.__setattr__(self, "_elements_df_cache", result)
         return result
 
     @property
@@ -13336,110 +13287,14 @@ class ReplayBundle(ResultWithDataFrame):
         return self.sessions_df
 
     # =========================================================================
-    # Graph / tree / event-log projections (lazy imports)
-    # =========================================================================
-
-    @property
-    def page_graph(self) -> Any:
-        """Directed page-transition graph as a :class:`networkx.DiGraph`.
-
-        Nodes are URL strings; edges carry ``count`` and ``n_unique_replays``.
-        Uses ``networkx`` (a core dependency), imported lazily here to avoid
-        the load-time cost when the graph is never accessed.
-        """
-        if self._page_graph_cache is not None:
-            return self._page_graph_cache
-        import networkx as nx
-
-        graph = nx.DiGraph()
-        for _, row in self.transitions_df.iterrows():
-            graph.add_edge(
-                row["from_url"],
-                row["to_url"],
-                count=int(row["count"]),
-                n_unique_replays=int(row["n_unique_replays"]),
-            )
-        object.__setattr__(self, "_page_graph_cache", graph)
-        return graph
-
-    @property
-    def element_graph(self) -> Any:
-        """Directed click-sequence graph as a :class:`networkx.DiGraph`.
-
-        Nodes are ``target_desc`` strings; edges count adjacent click pairs.
-        Uses ``networkx`` (a core dependency), imported lazily here.
-        """
-        if self._element_graph_cache is not None:
-            return self._element_graph_cache
-        import networkx as nx
-
-        graph = nx.DiGraph()
-        for r in self.replays:
-            clicks = [a for a in r.actions if a.action == "click"]
-            for prev, curr in zip(clicks, clicks[1:], strict=False):
-                if graph.has_edge(prev.target_desc, curr.target_desc):
-                    graph[prev.target_desc][curr.target_desc]["count"] += 1
-                else:
-                    graph.add_edge(prev.target_desc, curr.target_desc, count=1)
-        object.__setattr__(self, "_element_graph_cache", graph)
-        return graph
-
-    @property
-    def path_tree(self) -> Any:
-        """Prefix tree of action sequences rooted at a synthetic ``Start`` node.
-
-        Each node carries a ``count`` attribute (how many replays followed
-        the prefix). Uses ``anytree`` (a core dependency), imported lazily here.
-        """
-        if self._path_tree_cache is not None:
-            return self._path_tree_cache
-        from anytree import AnyNode
-
-        root = AnyNode(name="Start", count=len(self.replays))
-        for r in self.replays:
-            cursor = root
-            for action in r.actions:
-                label = action.action
-                child = next((c for c in cursor.children if c.name == label), None)
-                if child is None:
-                    child = AnyNode(name=label, parent=cursor, count=0)
-                child.count += 1
-                cursor = child
-        object.__setattr__(self, "_path_tree_cache", root)
-        return root
-
-    # =========================================================================
     # Aggregations
     # =========================================================================
-
-    def top_paths(
-        self,
-        n: int = 10,
-        *,
-        label_fn: Callable[[UserAction], str] | None = None,
-    ) -> pd.DataFrame:
-        """Top-N most-common action paths. See aggregators.top_paths."""
-        from mixpanel_headless._internal.replays.aggregators import top_paths
-
-        return top_paths(self, n, label_fn=label_fn)
-
-    def top_pages(self, n: int = 10) -> pd.DataFrame:
-        """Top-N most-visited pages."""
-        from mixpanel_headless._internal.replays.aggregators import top_pages
-
-        return top_pages(self, n)
 
     def top_clicks(self, n: int = 10) -> pd.DataFrame:
         """Top-N click targets."""
         from mixpanel_headless._internal.replays.aggregators import top_clicks
 
         return top_clicks(self, n)
-
-    def dead_clicks(self, window_ms: int = 200) -> pd.DataFrame:
-        """Clicks with no follow-up activity within ``window_ms``."""
-        from mixpanel_headless._internal.replays.aggregators import dead_clicks
-
-        return dead_clicks(self, window_ms=window_ms)
 
     def rage_clicks(self, threshold: int = 3, window_ms: int = 1000) -> pd.DataFrame:
         """Bursts of ≥ ``threshold`` clicks on the same target within ``window_ms``."""
@@ -13478,7 +13333,7 @@ class ReplayBundle(ResultWithDataFrame):
 
         Args:
             distinct_id: Keep replays whose ``distinct_id`` matches.
-            contains_url: Keep replays whose ``pages_df`` includes the
+            contains_url: Keep replays where any navigation URL includes the
                 substring.
             has_event: Keep replays whose ``mixpanel_events`` include
                 an event named exactly.

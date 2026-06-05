@@ -332,7 +332,7 @@ python help.py Filter                  # type fields + construction patterns + r
 - N/A — query parameter types only, no persistence (040-query-engine-completeness)
 - Python 3.10+ (mypy --strict) + httpx, Pydantic v2, Typer, Rich, Hypothesis, mutmut (043-frictionless-auth)
 - TOML config (`~/.mp/config.toml`) + per-account state at `~/.mp/accounts/{name}/{tokens,client,me}.json` — schema unchanged from 042 (043-frictionless-auth)
-- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib); networkx + anytree (core deps) for replay graph/tree projections (044-session-replay)
+- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib) for session replay (044-session-replay)
 - N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
 
 <!-- SPECKIT START -->

@@ -133,11 +133,14 @@ class UserAction:
     target_desc: str         # e.g. 'button "Sign in"', 'input[type=email]'
     url: str | None          # active page URL at the time of the action
     metadata: dict[str, Any] # action-specific extras (text_length, is_checked, etc.)
+    description: str = ""    # full phrase for the markdown timeline,
+                             # e.g. 'Clicked button "Sign in"', 'Scrolled'
 ```
 
 **Validation**:
 - `timestamp` MUST be a valid unix ms timestamp.
 - `target_desc` MUST be non-empty (analyzer always produces a description, even if generic).
+- `description` is the analyzer's full human-readable phrase; renderers fall back to `target_desc` when it is empty (hand-built fixtures).
 - `metadata` keys depend on `action`; documented in the analyzer module docstring.
 
 ---
@@ -187,7 +190,6 @@ class Replay(ResultWithDataFrame):
     _events_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _actions_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _mixpanel_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
-    _pages_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
 
     # DataFrame projections
     @property
@@ -196,8 +198,6 @@ class Replay(ResultWithDataFrame):
     def actions_df(self) -> pd.DataFrame: ...
     @property
     def mixpanel_df(self) -> pd.DataFrame: ...
-    @property
-    def pages_df(self) -> pd.DataFrame: ...
     @property
     def df(self) -> pd.DataFrame:
         """Default projection: actions_df."""
@@ -218,17 +218,16 @@ class Replay(ResultWithDataFrame):
 **DataFrame column contracts** (see `quickstart.md` for full schemas):
 
 - `events_df`: `t`, `type`, `source`, `mouse_type`, `target_node_id`, `url`, `raw`
-- `actions_df`: `t`, `action`, `target_node_id`, `target_desc`, `url`, `metadata`
+- `actions_df`: `t`, `action`, `target_node_id`, `target_desc`, `description`, `url`, `metadata`
 - `mixpanel_df`: empty unless `include_mixpanel_events=True`; columns match `ReplayBundle.mixpanel_df`
-- `pages_df`: `t`, `url`, `dwell_ms`
 
-**Phase 1 → Phase 2 transition**: in Phase 1, `actions` is always empty (analyzer not yet shipped). `actions_df` returns an empty DataFrame with the documented column schema. Analyzer-dependent accessors (`summary_markdown`, `errors`, `clicks_on`) MAY raise `NotImplementedError("analyzer ships in Phase 2")` in Phase 1.
+**Analyzer output**: the analyzer populates `actions`; `summary_markdown` renders each action's full `description`, collapsing consecutive duplicates into a `(×N)` suffix. `page_path()` derives the navigation URL sequence from the `navigate` actions.
 
 ---
 
 ### 2.6 `ReplayBundle`
 
-Collection of `Replay` objects with cross-session DataFrame, graph, and tree projections. The high-leverage type.
+Collection of `Replay` objects with cross-session DataFrame projections. The high-leverage type.
 
 ```python
 @dataclass(frozen=True)
@@ -243,14 +242,7 @@ class ReplayBundle(ResultWithDataFrame):
     _actions_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _events_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _mixpanel_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
-    _pages_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
     _elements_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
-    _transitions_df_cache: pd.DataFrame | None = field(default=None, repr=False, kw_only=True)
-
-    # Cached graph/tree projections (lazy networkx/anytree)
-    _page_graph_cache: object | None = field(default=None, repr=False, kw_only=True)
-    _element_graph_cache: object | None = field(default=None, repr=False, kw_only=True)
-    _path_tree_cache: object | None = field(default=None, repr=False, kw_only=True)
 
     # DataFrame projections
     @property
@@ -262,29 +254,14 @@ class ReplayBundle(ResultWithDataFrame):
     @property
     def mixpanel_df(self) -> pd.DataFrame: ...
     @property
-    def pages_df(self) -> pd.DataFrame: ...
-    @property
     def elements_df(self) -> pd.DataFrame: ...
-    @property
-    def transitions_df(self) -> pd.DataFrame: ...
     @property
     def df(self) -> pd.DataFrame:
         """Default projection: sessions_df."""
         return self.sessions_df
 
-    # Graph/tree projections (lazy import in property body)
-    @property
-    def page_graph(self) -> "networkx.DiGraph": ...
-    @property
-    def element_graph(self) -> "networkx.DiGraph": ...
-    @property
-    def path_tree(self) -> "anytree.AnyNode": ...
-
-    # Aggregations (return DataFrames)
-    def top_paths(self, n: int = 10, *, label_fn: ...) -> pd.DataFrame: ...
-    def top_pages(self, n: int = 10) -> pd.DataFrame: ...
+    # Aggregations (return DataFrames; top_clicks/elements_df exclude focus)
     def top_clicks(self, n: int = 10) -> pd.DataFrame: ...
-    def dead_clicks(self, window_ms: int = 200) -> pd.DataFrame: ...
     def rage_clicks(self, threshold: int = 3, window_ms: int = 1000) -> pd.DataFrame: ...
     def long_pauses(self, threshold_s: float = 10) -> pd.DataFrame: ...
 
@@ -310,19 +287,11 @@ class ReplayBundle(ResultWithDataFrame):
 
 | Projection | Grain | Key columns |
 |------------|-------|-------------|
-| `sessions_df` | one row per replay | `replay_id`, `distinct_id`, `start_time`, `end_time`, `duration_s`, `retention_days`, `n_events`, `n_actions`, `n_clicks`, `n_inputs`, `n_pages`, `n_errors`, `n_mp_events`, `entry_url`, `exit_url`, `dead_click_count`, `rage_click_count`, `longest_pause_s` |
-| `actions_df` | long format, all replays | `replay_id`, `t`, `action`, `target_node_id`, `target_desc`, `url`, `metadata` |
+| `sessions_df` | one row per replay | `replay_id`, `distinct_id`, `start_time`, `end_time`, `duration_s`, `retention_days`, `n_events`, `n_actions`, `n_clicks`, `n_inputs`, `n_pages`, `n_errors`, `n_mp_events`, `entry_url`, `exit_url` |
+| `actions_df` | long format, all replays | `replay_id`, `t`, `action`, `target_node_id`, `target_desc`, `description`, `url`, `metadata` |
 | `events_df` | long format, raw rrweb | `replay_id`, `t`, `type`, `source`, `mouse_type`, `target_node_id`, `url`, `raw` |
 | `mixpanel_df` | long format, Mixpanel events | `replay_id`, `t`, `event_name`, `properties` |
-| `pages_df` | long format, navigations | `replay_id`, `t`, `url`, `dwell_ms` |
-| `elements_df` | per element across all replays | `target_desc`, `url`, `n_clicks`, `n_unique_users`, `n_unique_replays`, `n_dead_clicks`, `n_rage_clicks`, `mean_dwell_after_ms` |
-| `transitions_df` | page→page across all replays | `from_url`, `to_url`, `count`, `n_unique_replays`, `mean_dwell_s` |
-
-**Graph projections**:
-
-- `page_graph` (`networkx.DiGraph`): nodes are URL strings with `n_visits`, `n_unique_replays`, `is_entry`, `is_exit`. Edges are transitions with `count`, `n_unique_replays`, `mean_dwell_s`. Compatible with `nx.pagerank`, `nx.betweenness_centrality`, `nx.simple_cycles`, `nx.shortest_path`.
-- `element_graph` (`networkx.DiGraph`): nodes are `(target_desc, url)` tuples with `n_clicks`, `n_unique_users`. Edges are directed click sequences with `count`, `mean_gap_s`.
-- `path_tree` (`anytree.AnyNode`): root is synthetic "Start"; children are action sequences with frequency counts.
+| `elements_df` | per element across all replays | `target_desc`, `url` (normalized), `n_clicks`, `n_unique_replays` |
 
 ---
 
@@ -409,12 +378,7 @@ ReplayBundle(replays=..., computed_at=now, project_id=...)
     ├─ actions_df   (long format)
     ├─ events_df    (long format)
     ├─ mixpanel_df  (empty unless join_mixpanel_events was called)
-    ├─ pages_df     (long format)
-    ├─ elements_df  (aggregated by target_desc+url)
-    ├─ transitions_df (aggregated by from_url+to_url)
-    ├─ page_graph   (networkx, lazy import)
-    ├─ element_graph (networkx, lazy import)
-    └─ path_tree    (anytree, lazy import)
+    └─ elements_df  (aggregated by target_desc + normalized url, focus excluded)
 ```
 
 ### 4.3 `ReplayBundle` filter chain

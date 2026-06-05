@@ -1,10 +1,10 @@
 """Activity labels for the rrweb action stream (044-session-replay, US2/T057).
 
-A label is the string used as the ``concept:name`` axis of process-mining
-event logs and as the grouping key for path/click/transition aggregations.
-Stable labels are the precondition for any cross-session analysis — two
-``click on button "Sign in"`` events from different replays must produce
-the same label string or downstream aggregations fragment.
+A label is the grouping key for the path / click / transition
+aggregations on :class:`ReplayBundle`. Stable labels are the precondition
+for any cross-session analysis: two ``click on button "Sign in"`` events
+from different replays must produce the same label string, or the
+downstream aggregations fragment.
 
 This module ships three policies:
 
@@ -121,12 +121,12 @@ def selector_label_fn(attr: str = "data-testid") -> Callable[[UserAction], str]:
 
     Returns:
         A callable ``(UserAction) -> str`` suitable as a ``label_fn`` override
-        for :meth:`ReplayBundle.top_paths` / :meth:`ReplayBundle.find_pattern`.
+        for :meth:`ReplayBundle.find_pattern`.
 
     Example:
         ```python
         label_fn = selector_label_fn("data-testid")
-        bundle.top_paths(label_fn=label_fn)
+        bundle.find_pattern(["click:button@/", ...], label_fn=label_fn)
         ```
     """
 

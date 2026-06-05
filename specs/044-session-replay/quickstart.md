@@ -117,9 +117,6 @@ print(bundle.top_clicks(n=5))
 print("\nRage-click sessions:")
 print(bundle.rage_clicks(threshold=3, window_ms=1000))
 
-print("\nDead clicks (no DOM response within 200ms):")
-print(bundle.dead_clicks(window_ms=200))
-
 print("\nSessions with console errors:")
 print(bundle.error_sessions().sessions_df[["replay_id", "n_errors"]])
 ```
@@ -141,28 +138,7 @@ for r in sample.replays:
     print(r.summary_markdown[:200], "...")
 ```
 
-### 2.4 Graph and tree projections
-
-```python
-import networkx as nx   # networkx is a core dependency
-
-g = bundle.page_graph
-print(f"Page graph: {g.number_of_nodes()} nodes, {g.number_of_edges()} edges")
-
-# Most-visited pages, weighted by transitions
-pr = nx.pagerank(g, weight="count")
-for url, score in sorted(pr.items(), key=lambda kv: -kv[1])[:5]:
-    print(f"  {score:.3f}  {url}")
-```
-
-```python
-from anytree import RenderTree
-
-tree = bundle.path_tree
-print(RenderTree(tree))   # ASCII rendering of action sequences
-```
-
-### 2.5 Two-bundle comparison
+### 2.4 Two-bundle comparison
 
 ```python
 # Build a second bundle for users who converted

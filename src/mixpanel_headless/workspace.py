@@ -10553,6 +10553,7 @@ class Workspace:
         self,
         replay_id: str,
         *,
+        distinct_id: str | None = None,
         env: Literal["prod", "dev"] = "prod",
         retention_days: int | None = None,
         max_files: int = 500,
@@ -10562,13 +10563,15 @@ class Workspace:
     ) -> Replay:
         """Sign, fetch, and assemble a single :class:`Replay`.
 
-        Phase 1: ``Replay.actions`` is always empty — the vendored rrweb
-        analyzer that populates it ships in Phase 2 (US2). The raw
-        ``rrweb_events`` list is populated and exposed for downstream tools
-        (e.g. the rrweb JS player).
+        Runs the vendored rrweb analyzer to populate ``Replay.actions``.
+        The raw ``rrweb_events`` list is also populated and exposed for
+        downstream tools (e.g. the rrweb JS player).
 
         Args:
             replay_id: The replay to fetch.
+            distinct_id: Optional user id to stamp on the returned
+                :class:`Replay`. Threaded through by callers that know it
+                (e.g. :meth:`replays_for_user`); ``None`` leaves it unset.
             env: ``"prod"`` (default) or ``"dev"``.
             retention_days: 1, 7, 30, or 90. Auto-discovered when ``None``
                 via a single ``list_replays`` round-trip.
@@ -10641,7 +10644,7 @@ class Workspace:
         analyzer_result = RrwebAnalyzer().analyze(rrweb_events)
         return Replay(
             replay_id=replay_id,
-            distinct_id=None,
+            distinct_id=distinct_id,
             project_id=int(self._session.project.id),
             start_time=start_time,
             end_time=end_time,
@@ -10720,6 +10723,7 @@ class Workspace:
         concurrency: int = 4,
         cdn_concurrency: int = 50,
         retention_by_id: dict[str, int] | None = None,
+        distinct_id_by_id: dict[str, str] | None = None,
     ) -> ReplayBundle:
         """Fetch N replays in parallel; return a :class:`ReplayBundle`.
 
@@ -10755,6 +10759,9 @@ class Workspace:
             cdn_concurrency: Per-replay CDN parallelism.
             retention_by_id: Optional ``{replay_id: retention_days}`` map that
                 lets each fetch skip its retention-discovery round-trip.
+            distinct_id_by_id: Optional ``{replay_id: distinct_id}`` map so each
+                fetched :class:`Replay` is stamped with its user (e.g.
+                :meth:`replays_for_user` passes this from ``list_replays``).
 
         Returns:
             A :class:`ReplayBundle` with ``replays`` populated in input order
@@ -10766,6 +10773,7 @@ class Workspace:
         """
         _check_event_properties_count(event_properties)
         retention_map = retention_by_id or {}
+        distinct_map = distinct_id_by_id or {}
         # Use a thread pool so each fetch_replay invocation owns its own async
         # event loop without clashing. Events are joined once after assembly
         # (below), not per replay — so each fetch runs with
@@ -10777,6 +10785,7 @@ class Workspace:
                 pool.submit(
                     self.fetch_replay,
                     rid,
+                    distinct_id=distinct_map.get(rid),
                     env=env,
                     retention_days=retention_map.get(rid),
                     max_files=max_files,
@@ -10896,6 +10905,9 @@ class Workspace:
             # call above — pass it through so fetch_replay skips re-discovering
             # it per replay (one fewer Insights query each).
             retention_by_id={s.replay_id: s.retention_days for s in summaries},
+            # Every replay was discovered for this user — stamp it so
+            # sessions_df / Replay.distinct_id identify who the session belongs to.
+            distinct_id_by_id={s.replay_id: distinct_id for s in summaries},
         )
 
     def analyze_replay(self, replay_id: str) -> str:

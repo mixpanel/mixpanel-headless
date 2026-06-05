@@ -7,7 +7,7 @@
 
 ## Summary
 
-Add a first-class session replay surface to `mixpanel-headless` covering discovery via the existing Insights query path, signed CDN access to raw rrweb recording files via Mixpanel's `/app/projects/<id>/replays/sign[/bulk]` endpoints (used today by Mixpanel's own MCP server), a vendored rrweb analyzer that converts raw event streams into normalized user-action timelines, two typed result classes (`Replay` for single sessions, `ReplayBundle` for collections) that mirror the existing `FlowQueryResult` idiom with long-format pandas DataFrames keyed by `replay_id`, lazy `networkx` page / element graphs, and lazy `anytree` path trees. A new `mp replays` CLI group exposes `list`, `events`, `sign`, `fetch`, `analyze`, and `for-user` commands.
+Add a first-class session replay surface to `mixpanel-headless` covering discovery via the existing Insights query path, signed CDN access to raw rrweb recording files via Mixpanel's `/app/projects/<id>/replays/sign[/bulk]` endpoints (used today by Mixpanel's own MCP server), a vendored rrweb analyzer that converts raw event streams into normalized user-action timelines, and two typed result classes (`Replay` for single sessions, `ReplayBundle` for collections) that mirror the existing `FlowQueryResult` idiom with long-format pandas DataFrames keyed by `replay_id`. A new `mp replays` CLI group exposes `list`, `events`, `sign`, `fetch`, `analyze`, and `for-user` commands. (The graph/tree/path-mining projections from the original draft were cut after live QA showed they produce empty or degenerate output on real SPA sessions.)
 
 The technical approach treats a replay as an event log (timestamped activities keyed by a case ID) so the data shape aligns with every PyData library that touches sequential data (`pandas`, `duckdb`). `ReplayBundle` is the high-leverage type; a `Replay` is conceptually a bundle of size 1, and the API treats them that way.
 
@@ -20,7 +20,6 @@ Estimated scope: ~2,700 LoC across ~23 new or modified files. Two phases. Total 
 **Primary Dependencies**:
 - Reused: `httpx` (HTTP client and CDN fetcher), Pydantic v2 (validation), pandas (DataFrames), Typer (CLI), Rich (output), Hypothesis (PBT), mutmut (mutation testing).
 - New (vendored, no third-party install): rrweb analyzer ported from `analytics/backend/replays/rrweb_analyzer.py` (~600 LoC, pure stdlib).
-- Reused (core deps): `networkx` and `anytree` power the lazy page / element graphs and path trees.
 
 **Storage**: None. Signed URLs are time-bounded bearer credentials; the library does not persist them. No new disk artifacts beyond what `httpx` already handles in-process.
 
@@ -58,7 +57,7 @@ Estimated scope: ~2,700 LoC across ~23 new or modified files. Two phases. Total 
 |-----------|--------|----------|
 | I. Library-First | PASS | Every `mp replays` command delegates to a public `Workspace` method (`list_replays`, `sign_replays`, `fetch_replay`, `stream_replay`, `fetch_replays`, `replays_for_user`, `analyze_replay`, `events_for_replay`, `events_for_replays`). CLI does I/O formatting only. All public methods have type hints and docstrings. |
 | II. Agent-Native | PASS | No interactive prompts on any default path. All output is structured (JSON / JSONL / table) and pipe-composable. The vendored analyzer produces deterministic markdown; no LLM-call required. The `--reveal-signed-urls` flag is the only opt-in, never required. |
-| III. Context Window Efficiency | PASS | `ReplaySummary` is a lightweight discovery handle (no bytes). `stream_replay` keeps memory bounded for large recordings. `Replay.summary_markdown` is the LLM-context-friendly projection; full DataFrames are opt-in. The bundle-level convenience aggregations (`top_clicks`, `top_paths`, ...) return precise answers rather than raw streams. |
+| III. Context Window Efficiency | PASS | `ReplaySummary` is a lightweight discovery handle (no bytes). `stream_replay` keeps memory bounded for large recordings. `Replay.summary_markdown` is the LLM-context-friendly projection; full DataFrames are opt-in. The bundle-level convenience aggregations (`top_clicks`, `rage_clicks`, ...) return precise answers rather than raw streams. |
 | IV. Two Data Paths | PASS | Live query path: `Workspace.query()` for discovery + signed-URL fetch. Local analysis path: `Replay`/`ReplayBundle` DataFrames feed directly into DuckDB via `duckdb.from_df(bundle.actions_df)`. Both paths share the authenticated `Workspace`. |
 | V. Explicit Over Implicit | PASS | `re_sign_on_expiry` defaults to True but is overridable. `max_files` defaults to 500 but is configurable. `retention_days=None` triggers discovery; explicit value bypasses it. `include_mixpanel_events=False` by default — opt-in to the extra round trip. No silent retries on 404 (end-of-recording sentinel). |
 | VI. Unix Philosophy | PASS | `mp replays fetch -o file.json` writes raw rrweb JSON suitable for piping into the rrweb JS player or jq. `mp replays analyze --format json` emits structured action lists for downstream tools. `--reveal-signed-urls` emits the credential to stdout AND a warning to stderr. Exit codes follow the existing `ExitCode` enum. |
@@ -110,8 +109,8 @@ src/mixpanel_headless/
 │       ├── rrweb_analyzer.py                   # NEW (Phase 2) — VENDORED from analytics/backend/replays/rrweb_analyzer.py
 │       │                                       # DOMTracker + EventAnalyzer + MarkdownReporter, pure stdlib
 │       ├── labels.py                           # NEW (Phase 2) — default_label_fn, selector_label_fn, url_normalizer
-│       └── aggregators.py                      # NEW (Phase 2) — top_paths, top_clicks, top_pages,
-│                                               # dead_clicks, rage_clicks, long_pauses, error_sessions
+│       └── aggregators.py                      # NEW (Phase 2) — top_clicks, rage_clicks,
+│                                               # long_pauses, error_sessions, real_clicks
 └── cli/
     ├── main.py                                 # MODIFIED (Phase 1) — register replays_app in _register_commands()
     └── commands/

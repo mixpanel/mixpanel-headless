@@ -15,50 +15,45 @@ Conventions:
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from mixpanel_headless._internal.replays.labels import default_label_fn
-
 if TYPE_CHECKING:
-    from mixpanel_headless.types import ReplayBundle, UserAction
+    from mixpanel_headless.types import ReplayBundle
 
 
-def top_paths(
-    bundle: ReplayBundle,
-    n: int = 10,
-    *,
-    label_fn: Callable[[UserAction], str] | None = None,
-) -> pd.DataFrame:
-    """Top-N most-common action paths (sequences of labels per replay).
+def real_clicks(actions_df: pd.DataFrame) -> pd.DataFrame:
+    """Genuine clicks from an ``actions_df`` — drops focus-only interactions.
+
+    A real user click fires BOTH a ``focused`` and a ``clicked`` rrweb
+    interaction, and the analyzer maps both to the ``click`` action literal.
+    Counting both double-counts every click and inflates element rankings, so
+    this keeps the ``clicked`` / ``double-clicked`` / ``right-clicked`` rows and
+    drops the paired ``focused`` ones (``metadata['interaction'] == 'focused'``).
 
     Args:
-        bundle: The :class:`ReplayBundle` to aggregate over.
-        n: How many distinct paths to return.
-        label_fn: Optional label function; defaults to
-            :func:`default_label_fn`.
+        actions_df: A bundle or replay ``actions_df`` projection.
 
     Returns:
-        DataFrame with columns ``path``, ``count``, sorted descending by
-        count. Empty when the bundle has no replays.
+        The subset of click rows excluding focus-only interactions. Rows with
+        no ``interaction`` metadata are kept (treated as genuine clicks).
     """
-    fn = label_fn or default_label_fn
-    counts: dict[tuple[str, ...], int] = {}
-    for replay in bundle.replays:
-        path = tuple(fn(a) for a in replay.actions)
-        if not path:
-            continue
-        counts[path] = counts.get(path, 0) + 1
-    if not counts:
-        return pd.DataFrame(columns=["path", "count"])
-    rows = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:n]
-    return pd.DataFrame([{"path": " → ".join(p), "count": c} for p, c in rows])
+    if actions_df.empty:
+        return actions_df
+    clicks: pd.DataFrame = actions_df[actions_df["action"] == "click"]
+    if clicks.empty:
+        return clicks
+    keep = clicks["metadata"].map(lambda m: (m or {}).get("interaction") != "focused")
+    filtered: pd.DataFrame = clicks[keep]
+    return filtered
 
 
 def top_clicks(bundle: ReplayBundle, n: int = 10) -> pd.DataFrame:
     """Top-N click targets across the bundle.
+
+    Counts genuine clicks only: focus-only interactions are excluded via
+    :func:`real_clicks` so each user click counts once.
 
     Args:
         bundle: The bundle to aggregate.
@@ -68,10 +63,7 @@ def top_clicks(bundle: ReplayBundle, n: int = 10) -> pd.DataFrame:
         DataFrame with columns ``target_desc``, ``count``, sorted
         descending by count.
     """
-    df = bundle.actions_df
-    if df.empty:
-        return pd.DataFrame(columns=["target_desc", "count"])
-    clicks = df[df["action"] == "click"]
+    clicks = real_clicks(bundle.actions_df)
     if clicks.empty:
         return pd.DataFrame(columns=["target_desc", "count"])
     grouped: pd.DataFrame = (
@@ -83,68 +75,6 @@ def top_clicks(bundle: ReplayBundle, n: int = 10) -> pd.DataFrame:
         .reset_index(drop=True)
     )
     return grouped
-
-
-def top_pages(bundle: ReplayBundle, n: int = 10) -> pd.DataFrame:
-    """Top-N most-visited pages.
-
-    Args:
-        bundle: The bundle to aggregate.
-        n: How many pages to return.
-
-    Returns:
-        DataFrame with columns ``url``, ``visits``, sorted descending by
-        visits.
-    """
-    df = bundle.pages_df
-    if df.empty:
-        return pd.DataFrame(columns=["url", "visits"])
-    grouped: pd.DataFrame = (
-        df.groupby("url", dropna=False)
-        .size()
-        .reset_index(name="visits")
-        .sort_values("visits", ascending=False)
-        .head(n)
-        .reset_index(drop=True)
-    )
-    return grouped
-
-
-def dead_clicks(bundle: ReplayBundle, window_ms: int = 200) -> pd.DataFrame:
-    """Clicks with no follow-up DOM activity within ``window_ms``.
-
-    Heuristic: a click that's followed by NO other action (input, scroll,
-    navigate, viewport_resize, …) within ``window_ms`` is "dead" — the
-    target presumably wasn't interactive.
-
-    Args:
-        bundle: The bundle to scan.
-        window_ms: Look-ahead window in milliseconds. Default 200.
-
-    Returns:
-        DataFrame with columns ``replay_id``, ``t``, ``target_desc`` —
-        one row per dead click.
-    """
-    rows: list[dict[str, object]] = []
-    for replay in bundle.replays:
-        for i, action in enumerate(replay.actions):
-            if action.action != "click":
-                continue
-            # Look forward at subsequent actions within window_ms.
-            has_follow_up = any(
-                later.timestamp - action.timestamp <= window_ms
-                and later.timestamp > action.timestamp
-                for later in replay.actions[i + 1 :]
-            )
-            if not has_follow_up:
-                rows.append(
-                    {
-                        "replay_id": replay.replay_id,
-                        "t": action.timestamp,
-                        "target_desc": action.target_desc,
-                    }
-                )
-    return pd.DataFrame(rows, columns=["replay_id", "t", "target_desc"])
 
 
 def rage_clicks(

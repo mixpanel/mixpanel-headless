@@ -153,10 +153,9 @@ raise ValueError(
 ## 6. Optional-extra `ImportError` — not applicable
 
 The replay feature has **no optional-extra-gated surface**, so it raises no
-install-time `ImportError`. `networkx` and `anytree` (used by
-`ReplayBundle.page_graph` / `element_graph` / `path_tree`) are declared in the
-base `dependencies`, so those projections always work; there are no
-`[replay-mining]` / `[replay-ml]` / `[replay-all]` extras.
+install-time `ImportError`. All projections and aggregations rely only on the
+base `dependencies` (pandas); there are no `[replay-mining]` / `[replay-ml]` /
+`[replay-all]` extras.
 
 (Section retained, not renumbered, so §7–§11 — and the code references to §9 /
 §10 — keep their numbers.)

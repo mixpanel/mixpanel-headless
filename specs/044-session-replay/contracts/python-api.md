@@ -298,7 +298,7 @@ Documented in detail in [data-model.md](../data-model.md). Quick reference:
 | `UserAction` | `Replay.actions[i]` | Normalized action from analyzer |
 | `ReplayEvent` | `events_for_replay(s)`, `Replay.mixpanel_events[i]` | Mixpanel event in window |
 | `Replay` | `fetch_replay` | Single materialized session |
-| `ReplayBundle` | `fetch_replays`, `replays_for_user` | Collection with DataFrame / graph / tree projections |
+| `ReplayBundle` | `fetch_replays`, `replays_for_user` | Collection with cross-session DataFrame projections |
 
 ---
 
@@ -333,7 +333,7 @@ def selector_label_fn(attr: str = "data-testid") -> Callable[[UserAction], str]:
     present, falling back to default_label_fn otherwise.
 
     Example:
-        bundle.top_paths(label_fn=selector_label_fn("data-testid"))
+        bundle.find_pattern(["click:button@/"], label_fn=selector_label_fn("data-testid"))
     """
 
 def url_normalizer(url: str) -> str:

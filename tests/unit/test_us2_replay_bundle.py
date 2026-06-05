@@ -12,12 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from mixpanel_headless._internal.replays.aggregators import (
-    dead_clicks,
     long_pauses,
     rage_clicks,
     top_clicks,
-    top_pages,
-    top_paths,
 )
 from mixpanel_headless._internal.replays.labels import (
     default_label_fn,
@@ -282,14 +279,6 @@ class TestReplayBundleProjections:
         # Total actions = 3 + 5 + 2 = 10
         assert len(df) == 10
 
-    def test_pages_df_per_navigation(self) -> None:
-        """pages_df has one row per Meta event."""
-        b = _sample_bundle()
-        df = b.pages_df
-        # r1 + r2 + r3 each have meta events; counts depend on fixtures.
-        assert "replay_id" in df.columns
-        assert len(df) >= 3
-
     def test_elements_df(self) -> None:
         """elements_df aggregates clicks per (target_desc, url)."""
         b = _sample_bundle()
@@ -299,6 +288,31 @@ class TestReplayBundleProjections:
             row = df[df["target_desc"] == "button.signin"].iloc[0]
             # 1 click from r1 + 3 from r2 = 4
             assert int(row["n_clicks"]) == 4
+
+    def test_elements_df_normalizes_urls(self) -> None:
+        """The same element on parameterized URLs collapses to one row."""
+        r = _make_replay(
+            "r-n",
+            [
+                _build_action(
+                    timestamp=10,
+                    action="click",
+                    target_desc="row",
+                    url="/users/1/profile",
+                ),
+                _build_action(
+                    timestamp=20,
+                    action="click",
+                    target_desc="row",
+                    url="/users/2/profile",
+                ),
+            ],
+        )
+        b = ReplayBundle(replays=[r], computed_at="t", project_id=12345)
+        rows = b.elements_df[b.elements_df["target_desc"] == "row"]
+        assert len(rows) == 1
+        assert rows.iloc[0]["url"] == "/users/:id/profile"
+        assert int(rows.iloc[0]["n_clicks"]) == 2
 
     def test_default_df_is_sessions(self) -> None:
         """ReplayBundle.df returns sessions_df."""
@@ -316,12 +330,30 @@ class TestReplayBundleAggregations:
         assert out.iloc[0]["target_desc"] == "button.signin"
         assert int(out.iloc[0]["count"]) == 4
 
-    def test_top_pages(self) -> None:
-        """top_pages returns /login first (3 visits)."""
-        b = _sample_bundle()
-        out = b.top_pages()
-        assert out.iloc[0]["url"] == "/login"
-        assert int(out.iloc[0]["visits"]) == 3
+    def test_top_clicks_excludes_focus(self) -> None:
+        """A focus+click pair on one target counts as a single click."""
+        r = _make_replay(
+            "r-f",
+            [
+                _build_action(
+                    timestamp=10,
+                    action="click",
+                    target_desc="btn",
+                    url="/x",
+                    metadata={"interaction": "focused"},
+                ),
+                _build_action(
+                    timestamp=20,
+                    action="click",
+                    target_desc="btn",
+                    url="/x",
+                    metadata={"interaction": "clicked"},
+                ),
+            ],
+        )
+        b = ReplayBundle(replays=[r], computed_at="t", project_id=12345)
+        out = b.top_clicks()
+        assert int(out[out["target_desc"] == "btn"].iloc[0]["count"]) == 1
 
     def test_rage_clicks(self) -> None:
         """rage_clicks catches r-2's 3-burst on button.signin (50ms span)."""
@@ -336,12 +368,6 @@ class TestReplayBundleAggregations:
         b = _sample_bundle()
         out = b.long_pauses(threshold_s=10)
         assert any(row["replay_id"] == "r-2" for _, row in out.iterrows())
-
-    def test_top_paths(self) -> None:
-        """top_paths returns at least one path."""
-        b = _sample_bundle()
-        out = b.top_paths(n=5)
-        assert len(out) >= 1
 
 
 class TestReplayBundleFilters:
@@ -391,21 +417,6 @@ class TestReplayBundleFilters:
 class TestAggregatorFunctions:
     """Module-level aggregators are accessible without going through Bundle."""
 
-    def test_top_paths_module(self) -> None:
-        """top_paths(bundle) module-level matches Bundle.top_paths."""
-        b = _sample_bundle()
-        out = top_paths(b, n=5)
-        assert len(out) >= 1
-
-    def test_dead_clicks_module(self) -> None:
-        """dead_clicks module-level returns the documented shape."""
-        b = _sample_bundle()
-        # r-1's click at t=100 has navigate at t=200 (100ms gap > 200ms? no, exact 100)
-        # so window_ms=50 → click at 100 has no follow-up within 50ms → dead
-        out = dead_clicks(b, window_ms=50)
-        assert "replay_id" in out.columns
-        assert "t" in out.columns
-
     def test_rage_clicks_module(self) -> None:
         """rage_clicks module-level catches the same burst."""
         b = _sample_bundle()
@@ -422,8 +433,3 @@ class TestAggregatorFunctions:
         """top_clicks module-level matches Bundle.top_clicks."""
         b = _sample_bundle()
         assert top_clicks(b).iloc[0]["target_desc"] == "button.signin"
-
-    def test_top_pages_module(self) -> None:
-        """top_pages module-level matches Bundle.top_pages."""
-        b = _sample_bundle()
-        assert top_pages(b).iloc[0]["url"] == "/login"

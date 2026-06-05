@@ -386,6 +386,20 @@ class TestFetchReplay:
         assert kwargs["retention_days"] == 7
         assert replay.retention_days == 7
 
+    def test_distinct_id_is_threaded(self) -> None:
+        """fetch_replay stamps the caller-supplied distinct_id on the Replay."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.sign.return_value = [_signed()]
+        svc.fetch_files.return_value = [
+            {"type": 4, "data": {}, "timestamp": 1716810000000},
+            {"type": 3, "data": {}, "timestamp": 1716810015000},
+        ]
+
+        replay = ws.fetch_replay("r-1", distinct_id="u-42", retention_days=30)
+
+        assert replay.distinct_id == "u-42"
+
 
 # =============================================================================
 # replays_for_user stub
@@ -612,6 +626,8 @@ class TestReplaysForUserThreadsRetention:
         ws.replays_for_user("u-42", from_date="2026-05-20", to_date="2026-05-27")
         _args, kwargs = ws.fetch_replays.call_args
         assert kwargs["retention_by_id"] == {"r-1": 7, "r-2": 90}
+        # Every replay is stamped with the user it was discovered for.
+        assert kwargs["distinct_id_by_id"] == {"r-1": "u-42", "r-2": "u-42"}
 
 
 # Touch Any to keep the import meaningful for type-stubs scenarios.
