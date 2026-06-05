@@ -7,7 +7,7 @@ description: "Task list for 044-session-replay — phased rollout across 2 PRs (
 **Input**: Design documents from `/specs/044-session-replay/`
 **Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md), [data-model.md](data-model.md), [contracts/](contracts/), [quickstart.md](quickstart.md)
 
-**Tests**: REQUIRED. The project CLAUDE.md mandates strict TDD ("write tests FIRST, before any implementation code"), 90% coverage minimum, and ≥80% mutation score on the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`). Test tasks land before their corresponding implementation tasks within each phase.
+**Tests**: REQUIRED. The project CLAUDE.md mandates strict TDD ("write tests FIRST, before any implementation code"), 90% coverage minimum, and ≥80% mutation score on the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `replay_labels.py`, `_internal/replays/aggregators.py`). Test tasks land before their corresponding implementation tasks within each phase.
 
 **Organization**: Tasks are grouped by user story. The plan ships two independent PRs:
 
@@ -150,7 +150,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 - [X] T054 [P] [US2] Created `src/mixpanel_headless/_internal/replays/__init__.py` plus the directory.
 - [X] T055 [US2] Created `src/mixpanel_headless/_internal/replays/rrweb_analyzer.py`. Pure stdlib. Public surface matches the spec: `RrwebAnalyzer.analyze(events) -> AnalyzerResult` with `actions / markdown_summary / pages / errors`. Module is a fork — initial cut took its DOM tracker, debouncing thresholds, and console-plugin filtering from a similar internal analyzer, then evolved independently. No ongoing tracking relationship with any external source.
 - [X] T056 [US2] Modified `Workspace.fetch_replay` to call `RrwebAnalyzer.analyze(rrweb_events)` and populate `actions`. Replaced the Phase 1 `NotImplementedError` raises on `summary_markdown` / `errors` / `clicks_on` with real implementations that derive from the action stream.
-- [X] T057 [P] [US2] Created `src/mixpanel_headless/_internal/replays/labels.py` with `default_label_fn`, `selector_label_fn`, `url_normalizer`. Re-exported from `mixpanel_headless.__init__` and added to `__all__`.
+- [X] T057 [P] [US2] Created the label helpers `default_label_fn`, `selector_label_fn`, `url_normalizer`, exported from `mixpanel_headless.__init__` and added to `__all__`. (PR-3 review relocated them from `_internal/replays/labels.py` to the public `src/mixpanel_headless/replay_labels.py` module so the public surface no longer leaks `_internal`.)
 - [X] T058 [P] [US2] Created `src/mixpanel_headless/_internal/replays/aggregators.py`. (Post-QA hardening pass cut `top_paths`, `top_pages`, `dead_clicks`; surviving functions: `top_clicks`, `rage_clicks`, `long_pauses`, `error_sessions`, plus the `real_clicks` focus-exclusion helper.)
 - [X] T059 [US2] Added `ReplayBundle` to `types.py`: DataFrame projections + aggregations + six chainable filters + `join_mixpanel_events` + `summary_markdown` + `compare`. `df` returns `sessions_df`. (Post-QA hardening pass cut the `pages_df` / `transitions_df` projections and the `page_graph` / `element_graph` / `path_tree` graph/tree projections.)
 - [X] T060 [US2] Re-exported `ReplayBundle`, `default_label_fn`, `selector_label_fn`, `url_normalizer` from `mixpanel_headless.__init__` and added to `__all__`.
@@ -287,7 +287,7 @@ With multiple developers per PR:
 - [P] tasks = different files, no dependencies.
 - [Story] label maps task to user story for traceability.
 - Bearer-credential audit is non-negotiable: every PR runs the grep audit before merge.
-- Mutation score gate (80%) applies only to the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`). The workspace methods and CLI commands are coverage-gated (90%) but not mutation-gated.
+- Mutation score gate (80%) applies only to the new pure modules (`_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `replay_labels.py`, `_internal/replays/aggregators.py`). The workspace methods and CLI commands are coverage-gated (90%) but not mutation-gated.
 - The analyzer (T055) is a fork that evolves on its own cadence inside this repo. No external-source tracking.
 - Stop at any checkpoint (after T042, T073) to validate a PR independently.
 - Avoid: cross-PR file conflicts (US2 modifies `Replay` from US1 — coordinate via T056 only after T020 has merged), same-file parallel work (e.g. `types.py` edits in T020 vs T059), bypassing tests-first (every implementation task lists the test task it MUST follow).

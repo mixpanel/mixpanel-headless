@@ -41,7 +41,7 @@ Estimated scope: ~2,700 LoC across ~23 new or modified files. Two phases. Total 
 - mypy --strict, zero `Any` lacking explicit justification.
 - ruff format / check passes with zero violations.
 - 90% test coverage minimum (CI fails below).
-- 80% mutation score on `_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `_internal/replays/labels.py`, `_internal/replays/aggregators.py`.
+- 80% mutation score on `_internal/services/replays.py`, `_internal/replays/rrweb_analyzer.py`, `replay_labels.py`, `_internal/replays/aggregators.py`.
 - Signed-URL `query_string` MUST NOT appear in any log line at any level. `__repr__` of `SignedReplay` MUST mask the field. Reviewer audit: grep transcript for any leak.
 - Vendored analyzer MUST remain pure-Python (no native deps) so it works in every environment `mixpanel-headless` already supports.
 

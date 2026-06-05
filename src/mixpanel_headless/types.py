@@ -13258,7 +13258,7 @@ class ReplayBundle(ResultWithDataFrame):
         if self._elements_df_cache is not None:
             return self._elements_df_cache
         from mixpanel_headless._internal.replays.aggregators import real_clicks
-        from mixpanel_headless._internal.replays.labels import url_normalizer
+        from mixpanel_headless.replay_labels import url_normalizer
 
         cols = ["target_desc", "url", "n_clicks", "n_unique_replays"]
         clicks = real_clicks(self.actions_df)
@@ -13281,7 +13281,12 @@ class ReplayBundle(ResultWithDataFrame):
 
     @property
     def df(self) -> pd.DataFrame:
-        """Default projection per data-model §2.6 — returns ``sessions_df``."""
+        """Default DataFrame projection for the bundle (data-model §2.6).
+
+        Returns:
+            The :attr:`sessions_df` projection — one row per replay with
+            derived per-session counts. Lazily computed and cached.
+        """
         return self.sessions_df
 
     # =========================================================================
@@ -13289,19 +13294,78 @@ class ReplayBundle(ResultWithDataFrame):
     # =========================================================================
 
     def top_clicks(self, n: int = 10) -> pd.DataFrame:
-        """Top-N click targets."""
+        """Rank the most-clicked targets across every replay in the bundle.
+
+        Thin wrapper over the bundle-level ``top_clicks`` aggregator, which
+        counts genuine clicks only — focus-only interactions are excluded so
+        each user click is counted once.
+
+        Args:
+            n: Maximum number of click targets to return. Default 10.
+
+        Returns:
+            A DataFrame with columns ``target_desc`` and ``count``, sorted
+            descending by ``count``. Empty (with those columns) when the
+            bundle has no clicks.
+
+        Example:
+            ```python
+            bundle.top_clicks(5)
+            #          target_desc  count
+            # 0   button "Sign in"     42
+            # 1     link "Pricing"     18
+            ```
+        """
         from mixpanel_headless._internal.replays.aggregators import top_clicks
 
         return top_clicks(self, n)
 
     def rage_clicks(self, threshold: int = 3, window_ms: int = 1000) -> pd.DataFrame:
-        """Bursts of ≥ ``threshold`` clicks on the same target within ``window_ms``."""
+        """Find rage-click bursts: repeated clicks on one target in a tight window.
+
+        Thin wrapper over the bundle-level ``rage_clicks`` aggregator. A burst
+        is ``threshold`` or more clicks on the same ``target_desc`` whose
+        timestamps span no more than ``window_ms``. Focus-only interactions
+        are excluded so burst sizes reflect real clicks.
+
+        Args:
+            threshold: Minimum clicks for a burst to count. Default 3.
+            window_ms: Maximum span of the burst, in milliseconds. Default 1000.
+
+        Returns:
+            A DataFrame with columns ``replay_id``, ``t_start``,
+            ``target_desc``, and ``count`` — one row per detected burst.
+            Empty (with those columns) when no burst meets the threshold.
+
+        Example:
+            ```python
+            bundle.rage_clicks(threshold=4, window_ms=750)
+            ```
+        """
         from mixpanel_headless._internal.replays.aggregators import rage_clicks
 
         return rage_clicks(self, threshold=threshold, window_ms=window_ms)
 
     def long_pauses(self, threshold_s: float = 10) -> pd.DataFrame:
-        """Idle stretches longer than ``threshold_s`` seconds."""
+        """Find idle stretches between consecutive actions longer than a threshold.
+
+        Thin wrapper over the bundle-level ``long_pauses`` aggregator. Each
+        gap between two consecutive actions in a replay that is at least
+        ``threshold_s`` seconds becomes one row.
+
+        Args:
+            threshold_s: Minimum pause length, in seconds. Default 10.
+
+        Returns:
+            A DataFrame with columns ``replay_id``, ``t_start`` (the timestamp
+            of the action preceding the pause), and ``duration_s``. Empty
+            (with those columns) when no pause meets the threshold.
+
+        Example:
+            ```python
+            bundle.long_pauses(threshold_s=30)
+            ```
+        """
         from mixpanel_headless._internal.replays.aggregators import long_pauses
 
         return long_pauses(self, threshold_s=threshold_s)
@@ -13311,7 +13375,27 @@ class ReplayBundle(ResultWithDataFrame):
     # =========================================================================
 
     def filter(self, predicate: Callable[[Replay], bool]) -> ReplayBundle:
-        """Return a new bundle containing only replays matching ``predicate``."""
+        """Return a new bundle containing only the replays matching ``predicate``.
+
+        The base filter primitive behind :meth:`where`, :meth:`find_pattern`,
+        and :meth:`error_sessions`. The result is a proper subset; DataFrame
+        caches are NOT propagated, so the new bundle recomputes its
+        projections from the filtered slice (immutable semantics — ``self``
+        is left unchanged).
+
+        Args:
+            predicate: A callable invoked once per replay; replays for which
+                it returns ``True`` are kept.
+
+        Returns:
+            A new :class:`ReplayBundle` carrying the kept replays and the same
+            ``computed_at`` / ``project_id``.
+
+        Example:
+            ```python
+            long_ones = bundle.filter(lambda r: r.duration_seconds > 60)
+            ```
+        """
         return ReplayBundle(
             replays=[r for r in self.replays if predicate(r)],
             computed_at=self.computed_at,
@@ -13381,7 +13465,7 @@ class ReplayBundle(ResultWithDataFrame):
         Returns:
             A new :class:`ReplayBundle`.
         """
-        from mixpanel_headless._internal.replays.labels import default_label_fn
+        from mixpanel_headless.replay_labels import default_label_fn
 
         fn = label_fn or default_label_fn
         target = tuple(action_sequence)
@@ -13403,7 +13487,23 @@ class ReplayBundle(ResultWithDataFrame):
         return self.filter(_matches)
 
     def error_sessions(self) -> ReplayBundle:
-        """Return a new bundle of only the replays that emitted a console error."""
+        """Return a new bundle of only the replays that emitted a console error.
+
+        Delegates to the ``error_sessions`` aggregator to collect the IDs of
+        replays with at least one ``console_error`` action, then filters down
+        to them. The result is a proper subset (immutable semantics — ``self``
+        is left unchanged).
+
+        Returns:
+            A new :class:`ReplayBundle` containing only error-bearing replays;
+            empty when the bundle has no console errors.
+
+        Example:
+            ```python
+            for replay in bundle.error_sessions().replays:
+                print(replay.replay_id)
+            ```
+        """
         from mixpanel_headless._internal.replays.aggregators import (
             error_sessions as _ids,
         )
@@ -13412,7 +13512,24 @@ class ReplayBundle(ResultWithDataFrame):
         return self.filter(lambda r: r.replay_id in ids)
 
     def head(self, n: int = 5) -> ReplayBundle:
-        """Return a new bundle containing the first ``n`` replays."""
+        """Return a new bundle containing the first ``n`` replays, in order.
+
+        Order-preserving counterpart to :meth:`sample`. The result is a proper
+        subset (immutable semantics — ``self`` is left unchanged).
+
+        Args:
+            n: How many leading replays to keep. Values larger than the bundle
+                size keep every replay. Default 5.
+
+        Returns:
+            A new :class:`ReplayBundle` with at most ``n`` replays and the same
+            ``computed_at`` / ``project_id``.
+
+        Example:
+            ```python
+            preview = bundle.head(3)
+            ```
+        """
         return ReplayBundle(
             replays=list(self.replays[:n]),
             computed_at=self.computed_at,
@@ -13470,7 +13587,18 @@ class ReplayBundle(ResultWithDataFrame):
 
     @property
     def summary_markdown(self) -> str:
-        """Markdown rollup: per-session timelines joined with horizontal rules."""
+        """Markdown rollup of the bundle: header totals plus per-session timelines.
+
+        Builds a ``# Bundle summary`` header with replay / event / action /
+        error totals, then appends each replay's own
+        :attr:`Replay.summary_markdown` separated by horizontal rules. A
+        replay whose per-replay summary is unavailable degrades to a bare
+        ``## Replay <id>`` heading rather than failing the whole rollup.
+
+        Returns:
+            A markdown string. When the bundle is empty, returns
+            ``"# No replays in bundle\\n"``.
+        """
         if not self.replays:
             return "# No replays in bundle\n"
         sections = ["# Bundle summary", "", f"- replays: {len(self.replays)}"]
@@ -13523,7 +13651,17 @@ class ReplayBundle(ResultWithDataFrame):
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON-serializable representation of the bundle (lossy on DataFrames)."""
+        """Serialize the bundle to a JSON-friendly dict (lossy on DataFrames).
+
+        The DataFrame projections (``sessions_df``, ``actions_df``, …) are
+        derived views and are NOT included; only the source replays plus
+        bundle metadata are serialized. Consumers rebuild the projections on
+        demand rather than persisting them.
+
+        Returns:
+            A dict with keys ``computed_at``, ``project_id``, and ``replays``
+            (each replay serialized via :meth:`Replay.to_dict`).
+        """
         return {
             "computed_at": self.computed_at,
             "project_id": self.project_id,

@@ -318,7 +318,7 @@ See [error-messages.md](error-messages.md) for stable error messages.
 
 ## 4. Label functions
 
-Defined in `mixpanel_headless._internal.replays.labels`. Re-exported from the top-level `mixpanel_headless` package.
+Defined in the public `mixpanel_headless.replay_labels` module. Re-exported from the top-level `mixpanel_headless` package.
 
 ```python
 def default_label_fn(action: UserAction) -> str:

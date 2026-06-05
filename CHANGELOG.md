@@ -58,9 +58,9 @@ may include API changes.
   `find_pattern`, `error_sessions`, `head`, `sample`);
   `join_mixpanel_events`, `summary_markdown`, `compare`.
 - Label functions: `default_label_fn`, `selector_label_fn`,
-  `url_normalizer` (`_internal/replays/labels.py`). The URL
-  normalizer collapses numeric / hex path segments to `:id` so
-  parameterized URLs aggregate cleanly across users.
+  `url_normalizer` (public `replay_labels.py`, re-exported from the
+  top-level package). The URL normalizer collapses numeric / hex path
+  segments to `:id` so parameterized URLs aggregate cleanly across users.
 - Module-level aggregators (`_internal/replays/aggregators.py`)
   re-exposed via `ReplayBundle` methods.
 - New CLI commands: `mp replays analyze` (markdown timeline /

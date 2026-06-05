@@ -16,12 +16,12 @@ from mixpanel_headless._internal.replays.aggregators import (
     rage_clicks,
     top_clicks,
 )
-from mixpanel_headless._internal.replays.labels import (
+from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
+from mixpanel_headless.replay_labels import (
     default_label_fn,
     selector_label_fn,
     url_normalizer,
 )
-from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
 from mixpanel_headless.types import (
     Replay,
     ReplayBundle,

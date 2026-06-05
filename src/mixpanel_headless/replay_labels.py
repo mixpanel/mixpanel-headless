@@ -17,6 +17,10 @@ This module ships three policies:
   when the attribute is absent.
 - :func:`url_normalizer` — exposed as a standalone helper for callers
   who want to apply the same normalization outside the label-fn path.
+
+These helpers are part of the public API. Import them from the top-level
+package (``from mixpanel_headless import default_label_fn``) or from this
+module directly; do not reach into ``mixpanel_headless._internal``.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 import typer
 
@@ -38,6 +38,12 @@ _BEARER_WARNING = (
     "Treat them like session tokens — do not paste into chat, logs, "
     "or version control."
 )
+
+
+# Supported values for `mp replays for-user --include`. Anything outside this
+# set is a usage error (rejected via typer.BadParameter) rather than silently
+# ignored, so a typo like `--include analyse` fails loudly.
+_VALID_INCLUDES = frozenset({"analyze"})
 
 
 # =============================================================================
@@ -214,10 +220,13 @@ def replays_sign(
     """
     if env not in ("prod", "dev"):
         raise typer.BadParameter(f"env must be 'prod' or 'dev'; got {env!r}")
+    # The guard above narrows env at runtime; cast tells mypy the same so the
+    # declared Literal["prod", "dev"] contract holds without a blanket ignore.
+    env_literal = cast(Literal["prod", "dev"], env)
 
     workspace = get_workspace(ctx)
     with status_spinner(ctx, "Signing replays..."):
-        signed = workspace.sign_replays(replay_ids, env=env)  # type: ignore[arg-type]
+        signed = workspace.sign_replays(replay_ids, env=env_literal)
 
     if reveal_signed_urls:
         # Emit the warning EVERY invocation — even when stdout is piped to a
@@ -301,12 +310,15 @@ def replays_fetch(
     """
     if env not in ("prod", "dev"):
         raise typer.BadParameter(f"env must be 'prod' or 'dev'; got {env!r}")
+    # The guard above narrows env at runtime; cast tells mypy the same so the
+    # declared Literal["prod", "dev"] contract holds without a blanket ignore.
+    env_literal = cast(Literal["prod", "dev"], env)
 
     workspace = get_workspace(ctx)
     with status_spinner(ctx, "Fetching replay..."):
         replay = workspace.fetch_replay(
             replay_id,
-            env=env,  # type: ignore[arg-type]
+            env=env_literal,
             max_files=max_files,
             include_mixpanel_events=include_events,
         )
@@ -391,7 +403,7 @@ def replays_for_user(
         list[str] | None,
         typer.Option(
             "--include",
-            help="Extras to fetch; repeatable. Accepts 'analyze'.",
+            help="Extras to fetch; repeatable. Only 'analyze' is supported.",
         ),
     ] = None,
     mixpanel_events: Annotated[
@@ -424,12 +436,23 @@ def replays_for_user(
         from_date: ISO date window start.
         to_date: ISO date window end.
         include: Repeatable 'analyze' opt-in (emit per-replay markdown).
+            Only 'analyze' is supported; any other value is rejected.
         mixpanel_events: Include the Mixpanel event stream alongside actions.
             Defaults to True, matching Workspace.replays_for_user.
         out_dir: Directory to write per-replay outputs (+ index.json).
         limit: Maximum replays.
+
+    Raises:
+        typer.BadParameter: ``--include`` was given a value other than
+            'analyze'.
     """
     include_set = set(include or [])
+    unsupported = include_set - _VALID_INCLUDES
+    if unsupported:
+        raise typer.BadParameter(
+            f"--include accepts only {sorted(_VALID_INCLUDES)}; "
+            f"got unsupported value(s): {sorted(unsupported)}"
+        )
     workspace = get_workspace(ctx)
     with status_spinner(ctx, "Fetching replay bundle..."):
         bundle = workspace.replays_for_user(

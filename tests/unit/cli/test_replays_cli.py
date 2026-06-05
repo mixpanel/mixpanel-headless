@@ -473,3 +473,75 @@ class TestExitCodeMapping:
         assert result.exit_code == 4
         assert "not found" in result.stderr
         assert "r-19221" in result.stderr
+
+
+# =============================================================================
+# mp replays for-user — --include validation
+# =============================================================================
+
+
+class TestForUserIncludeValidation:
+    """`--include` rejects unsupported values instead of silently ignoring them."""
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_unsupported_include_value_is_rejected(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """A typo like `--include analyse` fails fast with a usage error.
+
+        Regression guard: unknown ``--include`` values used to be dropped
+        silently, so the command appeared to succeed while doing something
+        other than what was asked. It now raises ``typer.BadParameter``
+        (exit 2) and never reaches workspace resolution.
+        """
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "for-user",
+                "user-42",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+                "--include",
+                "analyse",  # typo for "analyze"
+            ],
+        )
+        # typer.BadParameter is a Click UsageError → exit code 2.
+        assert result.exit_code == 2
+        # The offending value is echoed back so the user can spot the typo.
+        assert "analyse" in result.stderr
+        # Validation happens before any workspace work (fail fast).
+        mock_get_ws.assert_not_called()
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_supported_include_value_is_accepted(self, mock_get_ws: MagicMock) -> None:
+        """The one supported value, 'analyze', passes validation as before."""
+        from mixpanel_headless.types import ReplayBundle
+
+        bundle = ReplayBundle(
+            replays=[_replay("r-1")],
+            computed_at="2026-05-27T00:00:00Z",
+            project_id=12345,
+        )
+        mock_ws = MagicMock()
+        mock_ws.replays_for_user.return_value = bundle
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "for-user",
+                "user-42",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+                "--include",
+                "analyze",
+            ],
+        )
+        assert result.exit_code == 0
+        mock_get_ws.assert_called_once()

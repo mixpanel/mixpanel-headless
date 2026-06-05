@@ -44,6 +44,7 @@ src/mixpanel_headless/
 ├── targets.py               # `mp.targets` — saved (account, project, workspace?) cursors
 ├── exceptions.py            # Exception hierarchy (incl. AccountInUseError, WorkspaceScopeError)
 ├── types.py                 # Result types (SegmentationResult, AccountSummary, …)
+├── replay_labels.py         # Public replay label helpers (default_label_fn, selector_label_fn, url_normalizer)
 ├── _internal/               # Private implementation (do not import directly)
 │   ├── config.py            # ConfigManager (TOML-backed)
 │   ├── api_client.py        # MixpanelAPIClient (Session-bound; per-request OAuth bearer)
@@ -62,7 +63,7 @@ src/mixpanel_headless/
 │   │   ├── callback_server.py # Local HTTP callback server
 │   │   └── client_registration.py # Dynamic Client Registration (RFC 7591)
 │   ├── query/               # Query engine builders and validators
-│   ├── replays/             # Session-replay analyzer, labels, aggregators (vendored rrweb)
+│   ├── replays/             # Session-replay analyzer + aggregators (vendored rrweb); public label helpers live in replay_labels.py
 │   └── services/            # Discovery, LiveQuery, Replays services
 └── cli/
     ├── main.py              # Typer entry point + global flags (-a / -p / -w / -t)
