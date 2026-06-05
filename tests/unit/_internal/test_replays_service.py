@@ -19,6 +19,7 @@ import pytest
 
 from mixpanel_headless._internal.services.replays import ReplaysService
 from mixpanel_headless.exceptions import (
+    MixpanelHeadlessError,
     ReplayNotFoundError,
     SignedURLExpiredError,
 )
@@ -331,6 +332,31 @@ class TestFetchFiles403Retry:
         assert api.sign_replays.call_count == 0
 
 
+class TestFetchFilesCredentialRedaction:
+    """Transport errors must never leak the signed query_string credential."""
+
+    def test_transport_error_redacts_signed_credential(self) -> None:
+        """An httpx error whose str() embeds the URL is scrubbed before raising."""
+        signed = _signed()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Raise a transport error whose message embeds the credentialed URL."""
+            raise httpx.ConnectError(f"connection failed for {request.url}")
+
+        api = _mock_api_client()
+        transport = httpx.MockTransport(handler)
+        service = ReplaysService(api, _async_transport=transport)
+
+        with pytest.raises(MixpanelHeadlessError) as exc_info:
+            service.fetch_files(
+                signed, retention_days=30, max_files=500, concurrency=50
+            )
+
+        message = str(exc_info.value)
+        assert signed.query_string not in message
+        assert "<redacted>" in message
+
+
 # =============================================================================
 # Mobile-replay detection (forward-compat marker)
 # =============================================================================
@@ -564,6 +590,54 @@ class TestDiscoverParsing:
             distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27", limit=1
         )
         assert len(out) == 1
+
+    def test_default_window_is_90_day_lookback(self) -> None:
+        """Dateless replay_ids discovery uses last=90 (covers max retention).
+
+        The _resolve_retention path hydrates explicit IDs with no window;
+        Workspace.query's last=30 default would silently miss replays 31–90
+        days old, defaulting their retention to 30 and breaking the CDN walk.
+        """
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result({}))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.discover(replay_ids=["rid-aaa"])
+        _args, kwargs = query_fn.call_args
+        assert kwargs.get("last") == 90
+        assert "from_date" not in kwargs
+        assert "to_date" not in kwargs
+
+    def test_explicit_window_overrides_lookback(self) -> None:
+        """An explicit from/to is passed through; last is not sent."""
+        api = _mock_api_client()
+        query_fn = MagicMock(return_value=_series_result(_DISCOVERY_SERIES))
+        service = ReplaysService(api, query_fn=query_fn)
+        service.discover(
+            distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+        )
+        _args, kwargs = query_fn.call_args
+        assert kwargs.get("from_date") == "2026-05-20"
+        assert kwargs.get("to_date") == "2026-05-27"
+        assert "last" not in kwargs
+
+    def test_missing_retention_warning_has_no_doubled_prefix(self) -> None:
+        """The warning text must not carry a literal 'UserWarning:' prefix.
+
+        warnings.warn(..., UserWarning) prepends the category name itself;
+        embedding it in the message too renders 'UserWarning: UserWarning: …'.
+        """
+        api = _mock_api_client()
+        query_fn = MagicMock(
+            return_value=_series_result(_DISCOVERY_SERIES_NO_RETENTION)
+        )
+        service = ReplaysService(api, query_fn=query_fn)
+        with pytest.warns(UserWarning) as record:
+            service.discover(
+                distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
+            )
+        message = str(record[0].message)
+        assert not message.startswith("UserWarning:")
+        assert message.startswith("replay ")
 
 
 class TestEventsForParsing:

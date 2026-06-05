@@ -12272,10 +12272,10 @@ class OAuthLoginResult(BaseModel):
 # Session Replay Types (044-session-replay)
 # =============================================================================
 #
-# Six in-memory dataclasses backing the session-replay surface. The Phase 1
-# types ship now (``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``,
-# ``UserAction`` placeholder, ``Replay``); ``ReplayBundle`` lands in Phase 2
-# alongside the rrweb analyzer that populates ``Replay.actions``.
+# Six in-memory dataclasses backing the session-replay surface:
+# ``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``, ``UserAction``,
+# ``Replay``, and ``ReplayBundle``. The rrweb analyzer populates
+# ``Replay.actions`` (and the ``UserAction`` records) on fetch.
 # See ``specs/044-session-replay/data-model.md`` for the full schema and
 # state-transition diagram, and ``contracts/python-api.md`` for the
 # canonical method signatures these types appear in.
@@ -12514,10 +12514,8 @@ class SignedReplay:
 class UserAction:
     """Normalized user action extracted from rrweb events (data-model §2.3).
 
-    Produced by the rrweb analyzer (Phase 2). The atomic unit
-    :class:`ReplayBundle` aggregations operate over. In Phase 1 this
-    class ships as a placeholder so callers can type-annotate against it,
-    but no instances are produced until the analyzer wires in via T056.
+    Produced by the rrweb analyzer and exposed via :attr:`Replay.actions` —
+    the atomic unit the :class:`ReplayBundle` aggregations operate over.
 
     Attributes:
         timestamp: Unix ms timestamp of the action.
@@ -12653,14 +12651,14 @@ class ReplayEvent(ResultWithDataFrame):
 
 
 # rrweb event-type discriminators — exposed as named constants so the
-# Replay projection code stays self-documenting. The analyzer (Phase 2)
-# carries the full set; Phase 1 only needs the four below.
+# Replay projection code stays self-documenting. The rrweb analyzer carries
+# the full set; the projection layer only needs the four below.
 _RRWEB_TYPE_FULL_SNAPSHOT = 2
 _RRWEB_TYPE_INCREMENTAL_SNAPSHOT = 3
 _RRWEB_TYPE_META = 4
 
-# IncrementalSnapshot.data.source discriminators relevant to Phase 1
-# projections. The Phase 2 analyzer adds the rest.
+# IncrementalSnapshot.data.source discriminators relevant to the projection
+# layer. The rrweb analyzer handles the rest.
 _RRWEB_SOURCE_MOUSE_INTERACTION = 2
 
 
@@ -12709,8 +12707,8 @@ class Replay(ResultWithDataFrame):
 
     Returned by :meth:`Workspace.fetch_replay`. Conceptually a
     :class:`ReplayBundle` of size 1; the same DataFrame projections are
-    available on both. In Phase 1 ``actions`` is always empty — the
-    analyzer that populates it ships in Phase 2 (US2 / T056).
+    available on both. ``fetch_replay`` runs the rrweb analyzer, so
+    ``actions`` is populated (empty only when the stream yields none).
 
     Attributes:
         replay_id: Mixpanel replay identifier.
@@ -12722,7 +12720,7 @@ class Replay(ResultWithDataFrame):
         retention_days: One of ``{1, 7, 30, 90}``.
         rrweb_events: Raw rrweb event dicts, timestamp-sorted.
         actions: Normalized :class:`UserAction` records produced by the
-            analyzer. ALWAYS empty in Phase 1.
+            rrweb analyzer; empty only when extraction yields no actions.
         mixpanel_events: Mixpanel events that occurred in the replay
             window. Populated only when the caller passed
             ``include_mixpanel_events=True`` to ``fetch_replay``.
@@ -13451,9 +13449,9 @@ class ReplayBundle(ResultWithDataFrame):
     def join_mixpanel_events(self, properties: list[str] | None = None) -> ReplayBundle:
         """Return a new bundle whose ``mixpanel_df`` is populated.
 
-        Phase 2 placeholder: in this implementation the join requires
-        callers to have fetched replays with ``include_mixpanel_events=True``;
-        the bundle simply re-exposes the already-attached events.
+        In this implementation the join requires callers to have fetched
+        replays with ``include_mixpanel_events=True``; the bundle simply
+        re-exposes the already-attached events.
 
         Args:
             properties: Reserved for the future on-demand-join variant.

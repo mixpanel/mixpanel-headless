@@ -95,7 +95,15 @@ def rage_clicks(
     """
     rows: list[dict[str, object]] = []
     for replay in bundle.replays:
-        clicks = [a for a in replay.actions if a.action == "click"]
+        # Drop focus-only interactions: the analyzer maps both a real click and
+        # its paired focus event to action="click", so counting the focus row
+        # inflates burst sizes. Same predicate real_clicks() uses.
+        clicks = [
+            a
+            for a in replay.actions
+            if a.action == "click"
+            and (a.metadata or {}).get("interaction") != "focused"
+        ]
         i = 0
         while i < len(clicks):
             j = i + 1

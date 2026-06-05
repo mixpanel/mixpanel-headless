@@ -205,6 +205,27 @@ class TestListReplaysQueryCall:
         assert kwargs.get("from_date") == "2026-05-20"
         assert kwargs.get("to_date") == "2026-05-27"
 
+    def test_replay_ids_path_uses_90_day_lookback(self) -> None:
+        """Dateless replay_ids hydration reaches Workspace.query with last=90.
+
+        Locks the full _resolve_retention path: a replay older than 30 days
+        with a 90-day retention window must still be discoverable, so the query
+        widens from the last=30 default to a 90-day lookback. Otherwise the CDN
+        walk requests the wrong retention file and a real replay 404s.
+        """
+        from mixpanel_headless._internal.services.replays import ReplaysService
+
+        query_mock = MagicMock(return_value=MagicMock(series={}))
+        ws = _make_workspace()
+        ws._replays_svc = ReplaysService(ws._require_api_client(), query_fn=query_mock)
+
+        ws.list_replays(replay_ids=["r-1"])
+
+        _args, kwargs = query_mock.call_args
+        assert kwargs.get("last") == 90
+        assert "from_date" not in kwargs
+        assert "to_date" not in kwargs
+
 
 # =============================================================================
 # Retention default + UserWarning

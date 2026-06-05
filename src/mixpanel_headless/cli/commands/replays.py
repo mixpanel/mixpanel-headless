@@ -391,9 +391,16 @@ def replays_for_user(
         list[str] | None,
         typer.Option(
             "--include",
-            help="Extras to fetch; repeatable. Accepts 'analyze' and 'events'.",
+            help="Extras to fetch; repeatable. Accepts 'analyze'.",
         ),
     ] = None,
+    mixpanel_events: Annotated[
+        bool,
+        typer.Option(
+            "--mixpanel-events/--no-mixpanel-events",
+            help="Include the Mixpanel event stream alongside actions. Default on.",
+        ),
+    ] = True,
     out_dir: Annotated[
         Path | None,
         typer.Option(
@@ -416,7 +423,9 @@ def replays_for_user(
         user: Mixpanel distinct_id.
         from_date: ISO date window start.
         to_date: ISO date window end.
-        include: Repeatable 'analyze' / 'events' opt-ins.
+        include: Repeatable 'analyze' opt-in (emit per-replay markdown).
+        mixpanel_events: Include the Mixpanel event stream alongside actions.
+            Defaults to True, matching Workspace.replays_for_user.
         out_dir: Directory to write per-replay outputs (+ index.json).
         limit: Maximum replays.
     """
@@ -428,7 +437,7 @@ def replays_for_user(
             from_date=from_date,
             to_date=to_date,
             limit=limit,
-            include_mixpanel_events="events" in include_set,
+            include_mixpanel_events=mixpanel_events,
         )
     if not bundle.replays:
         print(f"no replays found for {user} in {from_date}..{to_date}")

@@ -363,6 +363,46 @@ class TestReplayBundleAggregations:
         assert out.iloc[0]["replay_id"] == "r-2"
         assert int(out.iloc[0]["count"]) == 3
 
+    def test_rage_clicks_excludes_focus(self) -> None:
+        """Focus-only rows don't pad a burst (analyzer maps focus→click too)."""
+        base = 1716810000000
+        # Three genuine clicks within the window = one real 3-burst.
+        real = _make_replay(
+            "r-real",
+            [
+                _build_action(
+                    timestamp=base + ts,
+                    action="click",
+                    target_desc="button.go",
+                    url="/x",
+                    metadata={"interaction": "clicked"},
+                )
+                for ts in (0, 10, 20)
+            ],
+        )
+        # Two genuine clicks padded with focus rows must NOT reach threshold 3.
+        padded = _make_replay(
+            "r-padded",
+            [
+                _build_action(
+                    timestamp=base + ts,
+                    action="click",
+                    target_desc="button.go",
+                    url="/x",
+                    metadata={"interaction": interaction},
+                )
+                for ts, interaction in (
+                    (0, "focused"),
+                    (10, "clicked"),
+                    (20, "focused"),
+                    (30, "clicked"),
+                )
+            ],
+        )
+        b = ReplayBundle(replays=[real, padded], computed_at="t", project_id=12345)
+        out = b.rage_clicks(threshold=3, window_ms=100)
+        assert set(out["replay_id"]) == {"r-real"}
+
     def test_long_pauses(self) -> None:
         """long_pauses catches r-2's near-1s gap between actions."""
         b = _sample_bundle()

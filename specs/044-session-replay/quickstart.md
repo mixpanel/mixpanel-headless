@@ -174,7 +174,7 @@ mp replays analyze r-19221397401184
 
 ```bash
 mp replays for-user user-42 --from 2026-05-20 --to 2026-05-27 \
-    --include analyze --include events \
+    --include analyze \
     --out-dir ./replays/
 
 ls ./replays/

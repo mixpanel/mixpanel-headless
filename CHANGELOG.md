@@ -51,15 +51,12 @@ may include API changes.
   (scroll / input / selection at 1s each), plus a DOM tracker with
   ancestor traversal and descriptive-attrs extraction for
   human-readable target descriptions. Pure stdlib.
-- `ReplayBundle` (`types.py`): seven DataFrame projections
-  (`sessions_df`, `actions_df`, `events_df`, `mixpanel_df`, `pages_df`,
-  `elements_df`, `transitions_df`); two graph projections
-  (`page_graph`, `element_graph` — `networkx.DiGraph`); one tree
-  projection (`path_tree` — `anytree.AnyNode`); seven aggregations
-  (`top_paths`, `top_pages`, `top_clicks`, `dead_clicks`, `rage_clicks`,
-  `long_pauses`, `error_sessions`); six chainable filters
-  (`filter`, `where`, `find_pattern`, `error_sessions`, `head`,
-  `sample`); `join_mixpanel_events`, `summary_markdown`, `compare`.
+- `ReplayBundle` (`types.py`): five DataFrame projections
+  (`sessions_df`, `actions_df`, `events_df`, `mixpanel_df`,
+  `elements_df`); three aggregations (`top_clicks`, `rage_clicks`,
+  `long_pauses`); six chainable filters (`filter`, `where`,
+  `find_pattern`, `error_sessions`, `head`, `sample`);
+  `join_mixpanel_events`, `summary_markdown`, `compare`.
 - Label functions: `default_label_fn`, `selector_label_fn`,
   `url_normalizer` (`_internal/replays/labels.py`). The URL
   normalizer collapses numeric / hex path segments to `:id` so
@@ -68,7 +65,8 @@ may include API changes.
   re-exposed via `ReplayBundle` methods.
 - New CLI commands: `mp replays analyze` (markdown timeline /
   `--format json` for action list) and `mp replays for-user
-  --include analyze --include events --out-dir DIR`.
+  --include analyze --out-dir DIR` (the Mixpanel-events join is on by
+  default; opt out with `--no-mixpanel-events`).
 
 ### Security
 

@@ -392,6 +392,69 @@ class TestExitCodeMapping:
         assert "wrote 2 replays" in result.stdout
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_for_user_includes_mixpanel_events_by_default(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """Bare `for-user` mirrors the Python API default: events ON."""
+        from mixpanel_headless.types import ReplayBundle
+
+        bundle = ReplayBundle(
+            replays=[_replay("r-1")],
+            computed_at="2026-05-27T00:00:00Z",
+            project_id=12345,
+        )
+        mock_ws = MagicMock()
+        mock_ws.replays_for_user.return_value = bundle
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "for-user",
+                "user-42",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+            ],
+        )
+        assert result.exit_code == 0
+        kwargs = mock_ws.replays_for_user.call_args.kwargs
+        assert kwargs["include_mixpanel_events"] is True
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_for_user_no_mixpanel_events_opts_out(self, mock_get_ws: MagicMock) -> None:
+        """`--no-mixpanel-events` turns the Mixpanel-events join off."""
+        from mixpanel_headless.types import ReplayBundle
+
+        bundle = ReplayBundle(
+            replays=[_replay("r-1")],
+            computed_at="2026-05-27T00:00:00Z",
+            project_id=12345,
+        )
+        mock_ws = MagicMock()
+        mock_ws.replays_for_user.return_value = bundle
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "for-user",
+                "user-42",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+                "--no-mixpanel-events",
+            ],
+        )
+        assert result.exit_code == 0
+        kwargs = mock_ws.replays_for_user.call_args.kwargs
+        assert kwargs["include_mixpanel_events"] is False
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_replay_not_found_exits_4(self, mock_get_ws: MagicMock) -> None:
         """ReplayNotFoundError maps to exit code 4 (NOT_FOUND)."""
         mock_ws = MagicMock()

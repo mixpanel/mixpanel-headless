@@ -409,8 +409,14 @@ class ReplaysService:
         try:
             response = await client.get(url)
         except httpx.HTTPError as exc:
+            # str(exc) can embed the request URL (e.g. UnsupportedProtocol /
+            # InvalidURL subclasses), and our URL carries the signed
+            # query_string bearer credential. Scrub it before it lands in an
+            # exception message or log. (The chained __cause__ is kept for
+            # debugging; transport errors rarely stringify the URL.)
+            safe = str(exc).replace(signed.query_string, "<redacted>")
             raise MixpanelHeadlessError(
-                f"CDN fetch failed for file {file_num:04d}: {exc}",
+                f"CDN fetch failed for file {file_num:04d}: {safe}",
                 code="CDN_FETCH_ERROR",
             ) from exc
 
@@ -483,8 +489,15 @@ class ReplaysService:
                 ``replay_ids``. Validated by :meth:`Workspace.list_replays`.
             replay_ids: Hydrate explicit IDs; mutually exclusive with
                 ``distinct_id``.
-            from_date: ISO date (YYYY-MM-DD).
-            to_date: ISO date (YYYY-MM-DD).
+            from_date: ISO date (YYYY-MM-DD) lower bound. When omitted (the
+                ``replay_ids`` hydration path used by ``_resolve_retention``),
+                the query falls back to a 90-day lookback (``last=90``) so
+                replays anywhere in the maximum retention window are
+                discoverable — the underlying ``Workspace.query`` default of
+                ``last=30`` would silently miss replays 31–90 days old,
+                defaulting their retention to 30 and breaking the CDN walk.
+            to_date: ISO date (YYYY-MM-DD) upper bound. Paired with
+                ``from_date``; ignored unless ``from_date`` is also set.
             limit: Maximum summaries to return (default 100).
 
         Returns:
@@ -506,6 +519,18 @@ class ReplaysService:
         else:
             return []
 
+        # Scope the discovery scan. With an explicit window the query is tight
+        # and precise; without one (the replay_ids hydration path), fall back to
+        # a 90-day lookback so replays anywhere in the maximum retention window
+        # are discoverable. The underlying Workspace.query default (last=30)
+        # would silently miss replays 31–90 days old, defaulting their retention
+        # to 30 and breaking the CDN walk — same fix as events_for.
+        date_kwargs: dict[str, Any]
+        if from_date is not None and to_date is not None:
+            date_kwargs = {"from_date": from_date, "to_date": to_date}
+        else:
+            date_kwargs = {"last": _EVENTS_DEFAULT_LOOKBACK_DAYS}
+
         # math="min" on the event $time property returns the earliest event
         # timestamp per (replay, retention) segment as a single compact leaf —
         # one value per replay, no per-second time buckets and no result-cap
@@ -514,13 +539,12 @@ class ReplaysService:
         # silently returns an empty series.
         result = self._query_fn(
             "$mp_session_record",
-            from_date=from_date,
-            to_date=to_date,
             group_by=["$mp_replay_id", "$mp_replay_retention_period"],
             where=where,
             math="min",
             math_property="$time",
             mode="table",
+            **date_kwargs,
         )
 
         project_id = int(self._api.project_id)
@@ -793,7 +817,7 @@ def _extract_retention_and_time(
 
     warnings.warn(
         (
-            f"UserWarning: replay {replay_id} is missing "
+            f"replay {replay_id} is missing "
             f"$mp_replay_retention_period; defaulting to 30 days. Upgrade your "
             f"Mixpanel SDK to stamp this property on new recordings."
         ),

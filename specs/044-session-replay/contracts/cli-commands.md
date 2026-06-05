@@ -34,7 +34,7 @@ mp replays list --replay-id ID [--replay-id ID ...] [--format FMT]
 - `--from TEXT`: ISO date (YYYY-MM-DD). Required with `--user`.
 - `--to TEXT`: ISO date (YYYY-MM-DD). Required with `--user`.
 - `--limit INT`: default 100.
-- `--format [table|json|jsonl|csv|plain]`: default `table`.
+- `--format [table|json|jsonl|csv|plain]`: default `json`.
 
 **Default columns** (table format): `replay_id`, `distinct_id`, `started`, `retention_days`.
 
@@ -188,14 +188,15 @@ mp replays analyze REPLAY_ID [--format FMT]
 
 ```bash
 mp replays for-user USER --from DATE --to DATE \
-    [--include analyze] [--include events] \
+    [--include analyze] [--mixpanel-events | --no-mixpanel-events] \
     [--out-dir DIR] [--limit N]
 ```
 
 **Options**:
 - `USER`: positional distinct_id, required.
 - `--from TEXT`, `--to TEXT`: ISO date window, required.
-- `--include [analyze|events]` (repeatable): which extras to fetch.
+- `--include analyze` (repeatable): emit per-replay markdown summaries.
+- `--mixpanel-events / --no-mixpanel-events`: include the Mixpanel event stream alongside actions. Default on (matches `Workspace.replays_for_user`).
 - `--out-dir PATH`: directory to write per-replay output. When omitted, writes to stdout (markdown summaries concatenated).
 - `--limit INT`: default 100.
 
