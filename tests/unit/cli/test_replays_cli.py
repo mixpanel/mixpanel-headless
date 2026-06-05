@@ -189,6 +189,30 @@ class TestReplaysEvents:
         assert data[0]["event_name"] == "Login"
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_events_passes_date_window(self, mock_get_ws: MagicMock) -> None:
+        """`--from` / `--to` are threaded into events_for_replay's window."""
+        mock_ws = MagicMock()
+        mock_ws.events_for_replay.return_value = [_replay_event()]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "replays",
+                "events",
+                "r-19221",
+                "--from",
+                "2026-05-20",
+                "--to",
+                "2026-05-27",
+            ],
+        )
+        assert result.exit_code == 0
+        kwargs = mock_ws.events_for_replay.call_args.kwargs
+        assert kwargs["from_date"] == "2026-05-20"
+        assert kwargs["to_date"] == "2026-05-27"
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_too_many_properties_exits_3(self, mock_get_ws: MagicMock) -> None:
         """Passing >5 properties raises ValueError → exit code 3."""
         # The real workspace would raise on its own; bypass discovery by
@@ -343,15 +367,32 @@ class TestExitCodeMapping:
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_analyze_prints_markdown(self, mock_get_ws: MagicMock) -> None:
-        """`mp replays analyze` prints summary_markdown by default."""
-        replay = _replay()
+        """`mp replays analyze` (default) routes through Workspace.analyze_replay."""
         mock_ws = MagicMock()
-        mock_ws.fetch_replay.return_value = replay
+        mock_ws.analyze_replay.return_value = _replay().summary_markdown
         mock_get_ws.return_value = mock_ws
 
         result = runner.invoke(app, ["replays", "analyze", "r-19221"])
         assert result.exit_code == 0
         assert "no actions extracted" in result.stdout
+        # The default path uses the analyze_replay sugar, not a bare fetch.
+        mock_ws.analyze_replay.assert_called_once_with("r-19221")
+        mock_ws.fetch_replay.assert_not_called()
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_analyze_json_uses_fetch_replay(self, mock_get_ws: MagicMock) -> None:
+        """`--format json` needs the structured actions, so it fetches the Replay."""
+        mock_ws = MagicMock()
+        mock_ws.fetch_replay.return_value = _replay()
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app, ["replays", "analyze", "r-19221", "--format", "json"]
+        )
+        assert result.exit_code == 0
+        assert isinstance(json.loads(result.stdout), list)
+        mock_ws.fetch_replay.assert_called_once()
+        mock_ws.analyze_replay.assert_not_called()
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_for_user_writes_to_out_dir(
@@ -545,3 +586,22 @@ class TestForUserIncludeValidation:
         )
         assert result.exit_code == 0
         mock_get_ws.assert_called_once()
+
+
+# =============================================================================
+# mp replays sign / fetch — --env Literal validation
+# =============================================================================
+
+
+class TestEnvValidation:
+    """`--env` is a Literal choice validated by Typer, not a manual guard."""
+
+    def test_sign_rejects_unknown_env(self) -> None:
+        """`sign --env staging` is rejected by Typer's choice validation (exit 2)."""
+        result = runner.invoke(app, ["replays", "sign", "r-1", "--env", "staging"])
+        assert result.exit_code == 2
+
+    def test_fetch_rejects_unknown_env(self) -> None:
+        """`fetch --env staging` is likewise rejected before any workspace work."""
+        result = runner.invoke(app, ["replays", "fetch", "r-1", "--env", "staging"])
+        assert result.exit_code == 2

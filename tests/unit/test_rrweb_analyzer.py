@@ -397,10 +397,11 @@ class TestMouseInteractions:
         assert not any(a.action in ("click", "touch_start") for a in result.actions)
 
     def test_click_on_unknown_node_describes_as_element(self) -> None:
-        """Click with a non-zero but unknown node id emits 'Clicked element'.
+        """Click with a present but unknown node id emits 'Clicked element'.
 
         DOMTracker.get_node_description returns 'element' for unknown ids.
-        Only `node_id == 0/None` triggers the "unknown element" drop path.
+        Only a missing node id (``None``) triggers the "unknown element"
+        drop path; a present id — including ``0`` — is looked up.
         """
         events = [
             _meta(1000, "/x"),
@@ -423,6 +424,59 @@ class TestMouseInteractions:
         ]
         result = RrwebAnalyzer().analyze(events)
         assert not any(a.action == "click" for a in result.actions)
+
+    def test_data_selectors_propagated_to_click_metadata(self) -> None:
+        """A clicked element's ``data-*`` selectors land in UserAction.metadata.
+
+        Regression for the originally-broken ``selector_label_fn``: before
+        this fix, click metadata only ever carried ``{"interaction": verb}``,
+        so the analyzer never surfaced ``data-testid`` and the public helper
+        always fell through to the URL. The metadata must now expose every
+        ``data-*`` attribute on the clicked node.
+        """
+        root = _document_root(
+            _element_node(
+                40,
+                "button",
+                attributes={
+                    "id": "go",
+                    "data-testid": "signin-button",
+                    "data-cy": "signin",
+                },
+                text="Sign in",
+            )
+        )
+        events = [_full_snapshot(1500, root), _click(2000, 40, click_type=2)]
+        result = RrwebAnalyzer().analyze(events)
+        clicks = [a for a in result.actions if a.action == "click"]
+        assert len(clicks) == 1
+        assert clicks[0].metadata.get("data-testid") == "signin-button"
+        assert clicks[0].metadata.get("data-cy") == "signin"
+        # Non-data attributes stay out of metadata (they feed target_desc only).
+        assert "id" not in clicks[0].metadata
+
+    def test_selector_label_fn_uses_propagated_testid(self) -> None:
+        """End-to-end: selector_label_fn groups by the analyzer-populated id.
+
+        Without the propagation fix this label would be the default
+        ``click:button "Checkout"@/cart``; with it, the helper reads the
+        ``data-testid`` off metadata and produces the stable selector label.
+        """
+        from mixpanel_headless.replay_labels import selector_label_fn
+
+        root = _document_root(
+            _element_node(
+                41, "button", attributes={"data-testid": "checkout"}, text="Checkout"
+            )
+        )
+        events = [
+            _meta(1000, "/cart"),
+            _full_snapshot(1500, root),
+            _click(2000, 41, click_type=2),
+        ]
+        result = RrwebAnalyzer().analyze(events)
+        click = next(a for a in result.actions if a.action == "click")
+        assert selector_label_fn("data-testid")(click) == "click:checkout@/cart"
 
 
 # =============================================================================

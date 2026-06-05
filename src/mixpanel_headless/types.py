@@ -12936,7 +12936,7 @@ class Replay(ResultWithDataFrame):
 
         if not self.actions:
             return f"# Replay {self.replay_id} — no actions extracted\n"
-        return _render_markdown(self.actions, [])
+        return _render_markdown(self.actions)
 
     @property
     def errors(self) -> pd.DataFrame:
@@ -13458,9 +13458,11 @@ class ReplayBundle(ResultWithDataFrame):
         include ``action_sequence`` as a contiguous subsequence.
 
         Args:
-            action_sequence: Labels to look for, in order.
+            action_sequence: Labels to look for, in order. An empty list
+                matches every replay (returns a full clone of the bundle).
             label_fn: Optional label-fn override (defaults to
-                :func:`default_label_fn`).
+                :func:`default_label_fn`). To group by a stable element
+                selector, pass :func:`mixpanel_headless.selector_label_fn`.
 
         Returns:
             A new :class:`ReplayBundle`.

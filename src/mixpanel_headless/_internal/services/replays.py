@@ -85,6 +85,40 @@ def _looks_like_rrweb(event: object) -> bool:
     return "type" in event and "data" in event and "timestamp" in event
 
 
+def replay_not_found_error(
+    replay_id: str, *, retention_days: int, cdn_url_prefix: str
+) -> ReplayNotFoundError:
+    """Build the canonical ``ReplayNotFoundError`` for an absent replay.
+
+    Two call sites surface the same "no replay on the CDN" condition — the
+    walker's first-file 404 here, and ``Workspace.fetch_replay`` when the walk
+    yields zero events. Sharing one constructor keeps their message and
+    ``details`` shape from drifting.
+
+    Args:
+        replay_id: The replay that could not be found.
+        retention_days: The retention window searched (1, 7, 30, or 90).
+        cdn_url_prefix: The signed CDN URL prefix that was walked.
+
+    Returns:
+        A :class:`ReplayNotFoundError` with status 404 and structured details
+        (``replay_id`` / ``retention_days`` / ``cdn_url_prefix``).
+    """
+    return ReplayNotFoundError(
+        (
+            f"Replay {replay_id} not found on CDN. The replay may have aged "
+            f"out of its retention window ({retention_days} days), never been "
+            f"recorded, or been deleted."
+        ),
+        details={
+            "replay_id": replay_id,
+            "retention_days": retention_days,
+            "cdn_url_prefix": cdn_url_prefix,
+        },
+        status_code=404,
+    )
+
+
 class ReplaysService:
     """Phase 1 orchestrator for the session-replay pipeline.
 
@@ -259,6 +293,12 @@ class ReplaysService:
         4. Within each surviving file, yield events sorted by ``timestamp``.
         5. Continue until termination, exhaustion, or ``max_files``.
 
+        Ordering note: events are yielded in ``(file-number, then in-file
+        timestamp)`` order — there is no global merge across files. CDN files
+        are chronologically partitioned in practice, so the stream is
+        effectively timestamp-ordered, but callers that need a hard global
+        sort should not rely on it.
+
         Mobile-replay detection runs once on the very first event of the
         walk: if it lacks rrweb's ``type``/``data``/``timestamp`` keys,
         raises ``NotImplementedError`` per error-messages.md §9.
@@ -271,7 +311,8 @@ class ReplaysService:
             re_sign_on_expiry: Re-sign once on 403; raise otherwise.
 
         Yields:
-            Raw rrweb event dicts in timestamp order.
+            Raw rrweb event dicts in ``(file-number, then in-file timestamp)``
+            order (see the ordering note above).
 
         Raises:
             ReplayNotFoundError: First CDN file 404.
@@ -316,19 +357,10 @@ class ReplaysService:
                 for i, (status, _events) in enumerate(results):
                     if status == 404:
                         if file_num + i == 0:
-                            raise ReplayNotFoundError(
-                                (
-                                    f"Replay {signed.replay_id} not found on CDN. "
-                                    f"The replay may have aged out of its "
-                                    f"retention window ({retention_days} days), "
-                                    f"never been recorded, or been deleted."
-                                ),
-                                details={
-                                    "replay_id": signed.replay_id,
-                                    "retention_days": retention_days,
-                                    "cdn_url_prefix": signed.url,
-                                },
-                                status_code=404,
+                            raise replay_not_found_error(
+                                signed.replay_id,
+                                retention_days=retention_days,
+                                cdn_url_prefix=signed.url,
                             )
                         terminate_at = i
                         break

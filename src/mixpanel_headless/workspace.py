@@ -96,7 +96,10 @@ from mixpanel_headless._internal.query.user_validators import (
 from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.services.discovery import DiscoveryService
 from mixpanel_headless._internal.services.live_query import LiveQueryService
-from mixpanel_headless._internal.services.replays import ReplaysService
+from mixpanel_headless._internal.services.replays import (
+    ReplaysService,
+    replay_not_found_error,
+)
 from mixpanel_headless._internal.transforms import transform_event, transform_profile
 from mixpanel_headless._internal.validation import (
     _scan_custom_properties,
@@ -130,7 +133,6 @@ from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     QueryError,
     RateLimitError,
-    ReplayNotFoundError,
     ServerError,
     ValidationError,
     WorkspaceScopeError,
@@ -10567,6 +10569,13 @@ class Workspace:
         The raw ``rrweb_events`` list is also populated and exposed for
         downstream tools (e.g. the rrweb JS player).
 
+        This is a synchronous method that drives the async CDN walk via
+        ``asyncio.run``. It therefore cannot be called from inside a running
+        event loop (Jupyter, a FastAPI handler, etc.) — that raises
+        ``RuntimeError: asyncio.run() cannot be called from a running event
+        loop``. From async code, drive
+        :meth:`ReplaysService.walk_cdn_async` directly instead.
+
         Args:
             replay_id: The replay to fetch.
             distinct_id: Optional user id to stamp on the returned
@@ -10604,22 +10613,18 @@ class Workspace:
             concurrency=cdn_concurrency,
         )
         if not rrweb_events:
-            raise ReplayNotFoundError(
-                (
-                    f"Replay {replay_id} not found on CDN. The replay may have "
-                    f"aged out of its retention window ({resolved_retention} "
-                    f"days), never been recorded, or been deleted."
-                ),
-                details={
-                    "replay_id": replay_id,
-                    "retention_days": resolved_retention,
-                    "cdn_url_prefix": signed.url,
-                },
-                status_code=404,
+            raise replay_not_found_error(
+                replay_id,
+                retention_days=resolved_retention,
+                cdn_url_prefix=signed.url,
             )
 
-        start_time = int(rrweb_events[0]["timestamp"])
-        end_time = int(rrweb_events[-1]["timestamp"])
+        # Derive the window from min/max rather than first/last: walk_cdn_async
+        # yields in (file-number, in-file timestamp) order with no global merge,
+        # so indexing [0]/[-1] would drift if CDN files ever overlap in time.
+        event_timestamps = [int(ev["timestamp"]) for ev in rrweb_events]
+        start_time = min(event_timestamps)
+        end_time = max(event_timestamps)
 
         mixpanel_events: list[ReplayEvent] = []
         if include_mixpanel_events:
@@ -10669,6 +10674,10 @@ class Workspace:
         Drives :meth:`ReplaysService.walk_cdn_async` via a private event
         loop so callers consume from a normal sync iterator. The underlying
         AsyncClient closes when the generator is exhausted or closed.
+
+        Like :meth:`fetch_replay`, this manages its own event loop and so
+        cannot be called from inside a running one (Jupyter, async handlers);
+        consume :meth:`ReplaysService.walk_cdn_async` directly in that case.
 
         Args:
             replay_id: The replay to stream.
@@ -10748,6 +10757,10 @@ class Workspace:
         to parse is logged and skipped; only an all-fail batch raises (the
         first underlying error, preserving its type).
 
+        Like :meth:`fetch_replay`, each worker drives ``asyncio.run`` in its
+        own thread, so this is not safe to call from inside a running event
+        loop.
+
         Args:
             replay_ids: Replays to fetch.
             env: ``"prod"`` (default) or ``"dev"``.
@@ -10755,7 +10768,11 @@ class Workspace:
             include_mixpanel_events: Join Mixpanel events (one batched query
                 across all replays).
             event_properties: Up to 5 properties for the join.
-            concurrency: Replay-level parallelism.
+            concurrency: Replay-level parallelism (thread count). Note the
+                connection floor multiplies: up to ``concurrency``
+                ✕ ``cdn_concurrency`` open CDN connections (default 4 ✕ 50 =
+                200) plus one event loop per worker thread. Raise both knobs
+                with that product in mind.
             cdn_concurrency: Per-replay CDN parallelism.
             retention_by_id: Optional ``{replay_id: retention_days}`` map that
                 lets each fetch skip its retention-discovery round-trip.
@@ -10911,16 +10928,26 @@ class Workspace:
         )
 
     def analyze_replay(self, replay_id: str) -> str:
-        """Sign + fetch + run the analyzer; return the markdown timeline.
+        """Sign + fetch + analyze a replay, returning only the markdown timeline.
 
-        Sugar for ``self.fetch_replay(replay_id).summary_markdown`` —
-        skips the analyzer for callers that only need the rendered output.
+        Sugar for ``self.fetch_replay(replay_id).summary_markdown`` for callers
+        (and the ``mp replays analyze`` CLI) that want the rendered timeline and
+        not the full :class:`Replay`. The analyzer always runs as part of
+        :meth:`fetch_replay`; this just discards everything but the markdown.
+
+        Inherits :meth:`fetch_replay`'s event-loop constraint — not callable
+        from inside a running event loop.
 
         Args:
             replay_id: The replay to analyze.
 
         Returns:
-            Markdown timeline string.
+            The markdown timeline string (the replay's
+            :attr:`Replay.summary_markdown`).
+
+        Raises:
+            ReplayNotFoundError: First CDN file returned 404.
+            SessionReplayAccessError: Sensitive-data flag set.
         """
         return self.fetch_replay(replay_id).summary_markdown
 

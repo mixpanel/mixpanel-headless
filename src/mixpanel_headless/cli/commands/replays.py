@@ -11,14 +11,15 @@ invocation per contracts/cli-commands.md §4.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 import typer
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    console,
+    err_console,
     get_workspace,
     handle_errors,
     output_result,
@@ -138,6 +139,17 @@ def replays_events(
             help="Comma-separated event properties as group keys. Max 5.",
         ),
     ] = None,
+    from_date: Annotated[
+        str | None,
+        typer.Option(
+            "--from",
+            help="ISO date (YYYY-MM-DD). Overrides the default 90-day lookback.",
+        ),
+    ] = None,
+    to_date: Annotated[
+        str | None,
+        typer.Option("--to", help="ISO date (YYYY-MM-DD). Pairs with --from."),
+    ] = None,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -145,12 +157,16 @@ def replays_events(
 
     The optional ``--properties`` flag accepts up to 5 event-property names
     that become group keys; more than 5 exits with code 3 per the Insights
-    API cap.
+    API cap. ``--from`` / ``--to`` narrow the scan window; when omitted the
+    workspace default (a 90-day lookback) applies, which can be expensive on
+    high-volume projects.
 
     Args:
         ctx: Typer context with global options.
         replay_id: The replay to query.
         properties: Comma-separated property names (up to 5).
+        from_date: ISO window start; overrides the 90-day default lookback.
+        to_date: ISO window end; pairs with ``from_date``.
         format: Output format.
         jq_filter: Optional jq expression.
     """
@@ -159,7 +175,12 @@ def replays_events(
         [p.strip() for p in properties.split(",") if p.strip()] if properties else None
     )
     with status_spinner(ctx, "Fetching replay events..."):
-        events = workspace.events_for_replay(replay_id, event_properties=prop_list)
+        events = workspace.events_for_replay(
+            replay_id,
+            event_properties=prop_list,
+            from_date=from_date,
+            to_date=to_date,
+        )
     output_result(
         ctx,
         [e.to_dict() for e in events],
@@ -182,7 +203,7 @@ def replays_sign(
         typer.Argument(help="One or more replay IDs to sign."),
     ],
     env: Annotated[
-        str,
+        Literal["prod", "dev"],
         typer.Option(
             "--env",
             help="Replay environment ('prod' or 'dev'). Default 'prod'.",
@@ -218,20 +239,16 @@ def replays_sign(
         format: Output format.
         jq_filter: Optional jq expression.
     """
-    if env not in ("prod", "dev"):
-        raise typer.BadParameter(f"env must be 'prod' or 'dev'; got {env!r}")
-    # The guard above narrows env at runtime; cast tells mypy the same so the
-    # declared Literal["prod", "dev"] contract holds without a blanket ignore.
-    env_literal = cast(Literal["prod", "dev"], env)
-
     workspace = get_workspace(ctx)
     with status_spinner(ctx, "Signing replays..."):
-        signed = workspace.sign_replays(replay_ids, env=env_literal)
+        signed = workspace.sign_replays(replay_ids, env=env)
 
     if reveal_signed_urls:
         # Emit the warning EVERY invocation — even when stdout is piped to a
         # file; the credential is sensitive regardless of pipeline shape.
-        print(_BEARER_WARNING, file=sys.stderr)
+        err_console.print(
+            _BEARER_WARNING, markup=False, highlight=False, soft_wrap=True
+        )
         # to_dict() includes the full credential plus the documented _warning
         # key so downstream serializers can surface the risk.
         payload = [s.to_dict() for s in signed]
@@ -278,7 +295,7 @@ def replays_fetch(
         ),
     ] = None,
     env: Annotated[
-        str,
+        Literal["prod", "dev"],
         typer.Option("--env", help="Replay environment ('prod' or 'dev')."),
     ] = "prod",
     include_events: Annotated[
@@ -308,17 +325,11 @@ def replays_fetch(
         include_events: Whether to fire the Mixpanel-events join.
         max_files: Upper bound on the CDN walk.
     """
-    if env not in ("prod", "dev"):
-        raise typer.BadParameter(f"env must be 'prod' or 'dev'; got {env!r}")
-    # The guard above narrows env at runtime; cast tells mypy the same so the
-    # declared Literal["prod", "dev"] contract holds without a blanket ignore.
-    env_literal = cast(Literal["prod", "dev"], env)
-
     workspace = get_workspace(ctx)
     with status_spinner(ctx, "Fetching replay..."):
         replay = workspace.fetch_replay(
             replay_id,
-            env=env_literal,
+            env=env,
             max_files=max_files,
             include_mixpanel_events=include_events,
         )
@@ -330,10 +341,13 @@ def replays_fetch(
 
     duration_minutes = int(replay.duration_seconds // 60)
     duration_seconds = int(replay.duration_seconds % 60)
-    print(
+    console.print(
         f"fetched {replay.replay_id} — {len(replay.rrweb_events)} events, "
         f"{duration_minutes}m {duration_seconds:02d}s, "
-        f"{replay.retention_days}-day retention"
+        f"{replay.retention_days}-day retention",
+        markup=False,
+        highlight=False,
+        soft_wrap=True,
     )
 
 
@@ -370,12 +384,21 @@ def replays_analyze(
         format: 'plain' (default markdown) or 'json' (action list).
     """
     workspace = get_workspace(ctx)
-    with status_spinner(ctx, "Analyzing replay..."):
-        replay = workspace.fetch_replay(replay_id)
     if format == "json":
-        print(json.dumps([a.to_dict() for a in replay.actions], indent=2))
+        # The JSON path needs the structured action list, so fetch the full
+        # Replay; analyze_replay only returns the rendered markdown.
+        with status_spinner(ctx, "Analyzing replay..."):
+            replay = workspace.fetch_replay(replay_id)
+        console.print(
+            json.dumps([a.to_dict() for a in replay.actions], indent=2),
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
     else:
-        print(replay.summary_markdown)
+        with status_spinner(ctx, "Analyzing replay..."):
+            markdown = workspace.analyze_replay(replay_id)
+        console.print(markdown, markup=False, highlight=False, soft_wrap=True)
 
 
 # =============================================================================
@@ -463,7 +486,12 @@ def replays_for_user(
             include_mixpanel_events=mixpanel_events,
         )
     if not bundle.replays:
-        print(f"no replays found for {user} in {from_date}..{to_date}")
+        console.print(
+            f"no replays found for {user} in {from_date}..{to_date}",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
         return
 
     if out_dir is not None:
@@ -480,17 +508,27 @@ def replays_for_user(
         total_actions = int(df["n_actions"].sum()) if not df.empty else 0
         total_clicks = int(df["n_clicks"].sum()) if not df.empty else 0
         total_errors = int(df["n_errors"].sum()) if not df.empty else 0
-        print(
+        console.print(
             f"wrote {len(bundle.replays)} replays to {out_dir}/\n"
             f"total: {total_actions} actions, {total_clicks} clicks, "
-            f"{total_errors} errors"
+            f"{total_errors} errors",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
         )
         return
 
     # Stdout fall-through: concatenated markdown summaries.
     if "analyze" in include_set:
         for replay in bundle.replays:
-            print(replay.summary_markdown)
-            print("\n---\n")
+            console.print(
+                replay.summary_markdown,
+                markup=False,
+                highlight=False,
+                soft_wrap=True,
+            )
+            console.print("\n---\n", markup=False, highlight=False, soft_wrap=True)
     else:
-        print(bundle.summary_markdown)
+        console.print(
+            bundle.summary_markdown, markup=False, highlight=False, soft_wrap=True
+        )

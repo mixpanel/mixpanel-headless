@@ -142,6 +142,29 @@ class AnalyzerResult:
 # =============================================================================
 
 
+def _selector_attrs(sanitized_attrs: dict[str, Any]) -> dict[str, str]:
+    """Pick the stable ``data-*`` selector attributes from a node's attrs.
+
+    These are the test-id-style hooks (``data-testid``, ``data-cy``,
+    ``data-qa``, …) that :func:`mixpanel_headless.selector_label_fn` reads off
+    ``UserAction.metadata``. Capturing every ``data-*`` attribute keeps the
+    public helper working for whatever convention a project actually uses,
+    rather than a hard-coded allowlist.
+
+    Args:
+        sanitized_attrs: A node's already-sanitized ``{attr: value}`` map.
+
+    Returns:
+        The subset whose keys start with ``data-`` and whose values are
+        non-empty strings. Empty when the node carries no such attribute.
+    """
+    return {
+        k: v
+        for k, v in sanitized_attrs.items()
+        if k.startswith("data-") and isinstance(v, str) and v
+    }
+
+
 class DOMTracker:
     """Lightweight DOM state tracker.
 
@@ -207,7 +230,7 @@ class DOMTracker:
             current_node, current_parent_id = queue.pop(0)
 
             node_id = current_node.get("id")
-            if not node_id:
+            if node_id is None:
                 continue
 
             if (
@@ -245,6 +268,10 @@ class DOMTracker:
 
                 if descriptive_attrs:
                     self.nodes[node_id]["attributes"] = descriptive_attrs
+
+                selector_attrs = _selector_attrs(sanitized_attrs)
+                if selector_attrs:
+                    self.nodes[node_id]["selectors"] = selector_attrs
 
                 if tag_name in self.INTERACTIVE_TAGS:
                     self.nodes[node_id]["text"] = self._extract_text(current_node)
@@ -310,7 +337,33 @@ class DOMTracker:
             if "attributes" not in self.nodes[node_id]:
                 self.nodes[node_id]["attributes"] = {}
             self.nodes[node_id]["attributes"].update(descriptive_attrs)
+            selector_attrs = _selector_attrs(sanitized_attrs)
+            if selector_attrs:
+                self.nodes[node_id].setdefault("selectors", {}).update(selector_attrs)
             self._description_cache.pop(node_id, None)
+
+    def get_node_selectors(self, node_id: int) -> dict[str, str]:
+        """Return the node's captured ``data-*`` selector attributes.
+
+        These are the stable identifiers (``data-testid``, ``data-cy``, …)
+        that :func:`mixpanel_headless.selector_label_fn` consults on
+        ``UserAction.metadata``. Empty when the node was never recorded or
+        carried no ``data-*`` attribute.
+
+        Args:
+            node_id: The rrweb node id.
+
+        Returns:
+            A ``{attr: value}`` dict of the node's ``data-*`` attributes (a
+            fresh copy; safe for the caller to merge into action metadata).
+        """
+        node = self.nodes.get(node_id)
+        if not node:
+            return {}
+        selectors = node.get("selectors")
+        if not selectors:
+            return {}
+        return {str(k): str(v) for k, v in selectors.items()}
 
     def get_node_description(self, node_id: int) -> str:
         """Best-effort human-readable description of a node.
@@ -612,20 +665,25 @@ class EventAnalyzer:
 
         node_desc = (
             self.dom_tracker.get_node_description(node_id)
-            if node_id
+            if node_id is not None
             else "unknown element"
         )
         if node_desc == "unknown element":
             return
 
         action_literal = _INTERACTION_TO_ACTION.get(verb, "click")
+        metadata: dict[str, Any] = {"interaction": verb}
+        if isinstance(node_id, int):
+            # Surface the element's data-* selectors so selector_label_fn can
+            # group by a stable test id instead of falling through to the URL.
+            metadata.update(self.dom_tracker.get_node_selectors(node_id))
         self._emit(
             timestamp,
             action_literal,
             f"{verb.capitalize()} {node_desc}",
             target_node_id=node_id if isinstance(node_id, int) else None,
             target_desc=node_desc,
-            metadata={"interaction": verb},
+            metadata=metadata,
         )
 
     def _process_scroll(self, timestamp: int, data: dict[str, Any]) -> None:
@@ -641,14 +699,16 @@ class EventAnalyzer:
         text = data.get("text", "")
         is_checked = data.get("isChecked")
 
-        if node_id:
+        if node_id is not None:
             last_time = self.last_input_time.get(node_id, 0)
             if timestamp - last_time <= self.INPUT_DEBOUNCE_MS:
                 return
             self.last_input_time[node_id] = timestamp
 
         node_desc = (
-            self.dom_tracker.get_node_description(node_id) if node_id else "input"
+            self.dom_tracker.get_node_description(node_id)
+            if node_id is not None
+            else "input"
         )
 
         if is_checked is not None:
@@ -659,16 +719,19 @@ class EventAnalyzer:
         else:
             description = f"Modified {node_desc}"
 
+        metadata: dict[str, Any] = {
+            "text_length": len(text) if isinstance(text, str) else 0,
+            "is_checked": is_checked,
+        }
+        if isinstance(node_id, int):
+            metadata.update(self.dom_tracker.get_node_selectors(node_id))
         self._emit(
             timestamp,
             "input",
             description,
             target_node_id=node_id if isinstance(node_id, int) else None,
             target_desc=node_desc,
-            metadata={
-                "text_length": len(text) if isinstance(text, str) else 0,
-                "is_checked": is_checked,
-            },
+            metadata=metadata,
         )
 
     def _process_selection(self, timestamp: int, data: dict[str, Any]) -> None:
@@ -881,9 +944,7 @@ def analyze_events(rrweb_events: list[dict[str, Any]]) -> str:
 # action list. Each UserAction carries a full ``description`` (e.g.
 # 'Clicked button "Sign in"'); ``target_desc`` is the fallback for actions
 # built without the analyzer (hand-constructed fixtures).
-def _render_markdown(
-    actions: list[UserAction], pages: list[PageVisit] | None = None
-) -> str:
+def _render_markdown(actions: list[UserAction]) -> str:
     """Render a markdown timeline from a structured action list.
 
     Renders each action's full ``description`` (falling back to
@@ -892,13 +953,10 @@ def _render_markdown(
 
     Args:
         actions: Structured action list (may be empty).
-        pages: Optional page list (currently unused; reserved for the
-            future "Pages visited" preamble).
 
     Returns:
         Multi-line markdown string. Empty when ``actions`` is empty.
     """
-    _ = pages
     if not actions:
         return ""
     return _collapse_timeline(

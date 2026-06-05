@@ -190,6 +190,17 @@ signed = ws.sign_replay("0190ebde-d50d-71b1-804c-ec1b4a533ef9")
 print(signed)   # SignedReplay(replay_id='…', url='…', query_string='<redacted N chars>', …)
 ```
 
+!!! warning "DOM text can carry PII"
+    The analyzer's `target_desc` and `description` fields surface text that
+    rrweb captured from the page — `aria-label`, `title`, `alt`, and visible
+    element text. If a recorded page rendered personal data (e.g. a
+    `"Welcome, Jane Doe"` heading), that text lands in `actions_df`, the
+    markdown timelines, and anything you build from them (logs, files, LLM
+    context). The library faithfully reflects what rrweb recorded — it does
+    not scrub content — so treat analyzer output with the same care as the
+    underlying recording, and rely on Mixpanel's recording-side masking to
+    keep sensitive fields out of the capture in the first place.
+
 ## CLI
 
 The `mp replays` command group mirrors the Python surface:
