@@ -53,6 +53,7 @@ from mixpanel_headless.exceptions import (
     QueryError,
     RateLimitError,
     ServerError,
+    SessionReplayAccessError,
     WorkspaceScopeError,
 )
 from mixpanel_headless.types import ProfilePageResult, PublicWorkspace
@@ -520,6 +521,36 @@ class MixpanelAPIClient:
                 request_params=request_params,
             )
         if response.status_code == 403:
+            # 044-session-replay: a 403 mentioning SESSION_RECORDING_SENSITIVE_DATA
+            # means the project's sensitive-data flag is set and the caller lacks
+            # the `sensitive_data_replay` permission. Map to SessionReplayAccessError
+            # so callers can branch on it instead of pattern-matching the message.
+            body_text = (
+                json.dumps(response_body)
+                if isinstance(response_body, dict)
+                else (response_body or "")
+            )
+            if "SESSION_RECORDING_SENSITIVE_DATA" in body_text:
+                project_id_int = int(self._session.project.id)
+                raise SessionReplayAccessError(
+                    (
+                        f"Project {project_id_int} has SESSION_RECORDING_SENSITIVE_DATA"
+                        f" enabled. Your account lacks sensitive-data access. Contact"
+                        f" the project owner to grant the 'sensitive_data_replay'"
+                        f" permission, or use a service account that has it."
+                    ),
+                    details={
+                        "project_id": project_id_int,
+                        "flag": "SESSION_RECORDING_SENSITIVE_DATA",
+                        "permission_required": "sensitive_data_replay",
+                    },
+                    status_code=response.status_code,
+                    response_body=response_body,
+                    request_method=request_method,
+                    request_url=request_url,
+                    request_params=request_params,
+                    request_body=request_body,
+                )
             error_msg = "Permission denied"
             if isinstance(response_body, dict):
                 error_msg = response_body.get("error", "Permission denied")
@@ -8682,5 +8713,68 @@ class MixpanelAPIClient:
             raise MixpanelHeadlessError(
                 f"Unexpected response from get_business_context_chain: "
                 f"expected dict, got {type(result).__name__}",
+            )
+        return result
+
+    # =========================================================================
+    # Session Replay (044-session-replay)
+    # =========================================================================
+
+    def sign_replays(
+        self,
+        replay_ids: list[str],
+        env: Literal["prod", "dev"] = "prod",
+    ) -> list[dict[str, Any]]:
+        """Bulk-sign replay IDs for CDN access.
+
+        Hits ``POST /app/projects/<project_id>/replays/sign/bulk`` with the
+        body shape ``{"replays": [{"replay_id": "...", "replay_env": "prod"}, ...]}``
+        and returns the server's ``results`` array verbatim — a list of dicts
+        with ``replay_id``, ``url`` (CDN prefix, trailing slash), and
+        ``query_string`` (signed bearer credential, ~5-minute TTL).
+
+        Conversion to the public :class:`SignedReplay` dataclass — which
+        attaches ``signed_at`` and provides ``__repr__`` masking — happens
+        one layer up in ``ReplaysService.sign``; this method intentionally
+        stays raw so callers that want only the underlying CDN access
+        (e.g. the Cowork bridge, integration smoke tests) don't pay the
+        dataclass overhead.
+
+        Args:
+            replay_ids: Replay IDs to sign. The endpoint has no documented
+                maximum; the Mixpanel MCP server caps at 20 for LLM-context
+                reasons, but the bulk endpoint comfortably handles 100+.
+            env: ``"prod"`` (default) or ``"dev"``. Applied uniformly to
+                every replay entry in the request body.
+
+        Returns:
+            List of dicts in the input order, each shaped
+            ``{"replay_id": str, "url": str, "query_string": str}``.
+
+        Raises:
+            SessionReplayAccessError: The project has
+                ``SESSION_RECORDING_SENSITIVE_DATA`` enabled and the calling
+                account lacks the ``sensitive_data_replay`` permission.
+                Mapped by :meth:`_handle_response` based on the 403 body.
+            APIError: Other 4xx (other than the sensitive-data 403) or
+                ``ServerError`` on 5xx.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                signed = client.sign_replays(["r-1", "r-2"], env="prod")
+                for s in signed:
+                    print(s["url"] + "0000-30.json?" + s["query_string"])
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/replays/sign/bulk"
+        body: dict[str, Any] = {
+            "replays": [{"replay_id": rid, "replay_env": env} for rid in replay_ids]
+        }
+        result = self.app_request("POST", path, json_body=body)
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from sign_replays: "
+                f"expected list, got {type(result).__name__}",
             )
         return result

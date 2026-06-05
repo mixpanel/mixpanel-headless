@@ -41,7 +41,11 @@ from mixpanel_headless.exceptions import (
     RateLimitError,
     RegionProbeError,
     RegionProbeNetworkError,
+    ReplayNotFoundError,
     ServerError,
+    SessionReplayAccessError,
+    SignedURLExpiredError,
+    UnsupportedReplayFormatError,
     WorkspaceScopeError,
 )
 
@@ -350,6 +354,54 @@ def handle_errors(func: F) -> F:
                 f"[red]Business context too long:[/red] {rich_escape(e.message)}"
             )
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
+        except SessionReplayAccessError as e:
+            # 044 — sensitive-data 403 maps to AUTH_ERROR (2) per
+            # contracts/cli-commands.md §8. Catch BEFORE the generic
+            # MixpanelHeadlessError so the exit code lands on 2 instead of 1.
+            project_id = e.details.get("project_id")
+            err_console.print(
+                f"[red]error:[/red] sensitive replay data — project "
+                f"{rich_escape(str(project_id))} has SESSION_RECORDING_SENSITIVE_DATA"
+                f" enabled and your account lacks access. Contact the project"
+                f" owner to grant the 'sensitive_data_replay' permission, or"
+                f" use a service account that has it."
+            )
+            raise typer.Exit(ExitCode.AUTH_ERROR) from None
+        except ReplayNotFoundError as e:
+            # 044 — first-file 404 on the CDN walk maps to NOT_FOUND (4)
+            # per contracts/cli-commands.md §8.
+            replay_id = e.details.get("replay_id")
+            retention_days = e.details.get("retention_days", 30)
+            err_console.print(
+                f"[red]error:[/red] replay {rich_escape(str(replay_id))} not"
+                f" found — may have aged out of retention ({retention_days}"
+                f" days), never been recorded, or been deleted."
+            )
+            raise typer.Exit(ExitCode.NOT_FOUND) from None
+        except SignedURLExpiredError:
+            # 044 — signed-URL 5-minute TTL elapsed and re-signing was
+            # disabled. Emit the stable wording from
+            # contracts/error-messages.md §2 and exit GENERAL_ERROR (1).
+            # Caught BEFORE the generic MixpanelHeadlessError so the canonical
+            # CLI message is shown instead of the longer Python message.
+            err_console.print(
+                "[red]error:[/red] signed URL expired (5-minute TTL)"
+                " — re-run the command"
+            )
+            raise typer.Exit(ExitCode.GENERAL_ERROR) from None
+        except UnsupportedReplayFormatError as e:
+            # 044 — replay bytes aren't rrweb (mobile / non-web format). Maps to
+            # GENERAL_ERROR (1) per contracts/error-messages.md §9. Caught BEFORE
+            # the generic MixpanelHeadlessError so the curated one-liner is shown
+            # instead of a leaked traceback (it used to be a builtin
+            # NotImplementedError that no handler caught).
+            replay_id = e.details.get("replay_id")
+            err_console.print(
+                f"[red]error:[/red] replay {rich_escape(str(replay_id))} appears"
+                f" to be a mobile session (non-rrweb format) — not yet supported"
+                f" by mixpanel-headless."
+            )
+            raise typer.Exit(ExitCode.GENERAL_ERROR) from None
         except MixpanelHeadlessError as e:
             err_console.print(f"[red]Error:[/red] {rich_escape(e.message)}")
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None

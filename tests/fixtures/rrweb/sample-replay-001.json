@@ -1,0 +1,299 @@
+[
+  {
+    "type": 0,
+    "data": {},
+    "timestamp": 1716810000000
+  },
+  {
+    "type": 1,
+    "data": {},
+    "timestamp": 1716810000010
+  },
+  {
+    "type": 4,
+    "data": {
+      "href": "https://app.example.com/login",
+      "width": 1280,
+      "height": 800
+    },
+    "timestamp": 1716810000020
+  },
+  {
+    "type": 2,
+    "data": {
+      "node": {
+        "id": 1,
+        "type": 0,
+        "childNodes": [
+          {
+            "id": 2,
+            "type": 2,
+            "tagName": "html",
+            "attributes": {"lang": "en"},
+            "childNodes": [
+              {
+                "id": 3,
+                "type": 2,
+                "tagName": "body",
+                "attributes": {},
+                "childNodes": [
+                  {
+                    "id": 10,
+                    "type": 2,
+                    "tagName": "form",
+                    "attributes": {"id": "login-form"},
+                    "childNodes": [
+                      {
+                        "id": 11,
+                        "type": 2,
+                        "tagName": "input",
+                        "attributes": {"type": "email", "name": "email", "id": "email"},
+                        "childNodes": []
+                      },
+                      {
+                        "id": 12,
+                        "type": 2,
+                        "tagName": "input",
+                        "attributes": {"type": "password", "name": "password", "id": "password"},
+                        "childNodes": []
+                      },
+                      {
+                        "id": 13,
+                        "type": 2,
+                        "tagName": "button",
+                        "attributes": {"type": "submit", "data-testid": "signin-button"},
+                        "childNodes": [
+                          {"id": 14, "type": 3, "textContent": "Sign in"}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "initialOffset": {"left": 0, "top": 0}
+    },
+    "timestamp": 1716810000030
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 1,
+      "positions": [
+        {"x": 100, "y": 100, "id": 11, "timeOffset": 0},
+        {"x": 200, "y": 150, "id": 11, "timeOffset": 50}
+      ]
+    },
+    "timestamp": 1716810001000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 5,
+      "id": 11,
+      "text": "user@example.com",
+      "isChecked": false
+    },
+    "timestamp": 1716810002000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 5,
+      "id": 12,
+      "text": "********",
+      "isChecked": false
+    },
+    "timestamp": 1716810003000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 1,
+      "id": 13,
+      "x": 300,
+      "y": 400
+    },
+    "timestamp": 1716810003500
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 0,
+      "id": 13,
+      "x": 300,
+      "y": 400
+    },
+    "timestamp": 1716810003520
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 13,
+      "x": 300,
+      "y": 400
+    },
+    "timestamp": 1716810003540
+  },
+  {
+    "type": 4,
+    "data": {
+      "href": "https://app.example.com/dashboard",
+      "width": 1280,
+      "height": 800
+    },
+    "timestamp": 1716810004000
+  },
+  {
+    "type": 2,
+    "data": {
+      "node": {
+        "id": 100,
+        "type": 0,
+        "childNodes": [
+          {
+            "id": 101,
+            "type": 2,
+            "tagName": "html",
+            "attributes": {"lang": "en"},
+            "childNodes": [
+              {
+                "id": 102,
+                "type": 2,
+                "tagName": "body",
+                "attributes": {},
+                "childNodes": [
+                  {
+                    "id": 110,
+                    "type": 2,
+                    "tagName": "a",
+                    "attributes": {"href": "/dashboard/users/12345/profile"},
+                    "childNodes": [
+                      {"id": 111, "type": 3, "textContent": "View user 12345"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "initialOffset": {"left": 0, "top": 0}
+    },
+    "timestamp": 1716810004500
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 3,
+      "id": 102,
+      "x": 0,
+      "y": 200
+    },
+    "timestamp": 1716810006000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 110,
+      "x": 150,
+      "y": 250
+    },
+    "timestamp": 1716810008000
+  },
+  {
+    "type": 4,
+    "data": {
+      "href": "https://app.example.com/dashboard/users/12345/profile",
+      "width": 1280,
+      "height": 800
+    },
+    "timestamp": 1716810009000
+  },
+  {
+    "type": 2,
+    "data": {
+      "node": {
+        "id": 200,
+        "type": 0,
+        "childNodes": [
+          {
+            "id": 201,
+            "type": 2,
+            "tagName": "html",
+            "attributes": {"lang": "en"},
+            "childNodes": [
+              {
+                "id": 202,
+                "type": 2,
+                "tagName": "body",
+                "attributes": {},
+                "childNodes": [
+                  {
+                    "id": 210,
+                    "type": 2,
+                    "tagName": "button",
+                    "attributes": {"data-testid": "edit-profile"},
+                    "childNodes": [
+                      {"id": 211, "type": 3, "textContent": "Edit profile"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "initialOffset": {"left": 0, "top": 0}
+    },
+    "timestamp": 1716810009500
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 1,
+      "positions": [
+        {"x": 400, "y": 300, "id": 210, "timeOffset": 0}
+      ]
+    },
+    "timestamp": 1716810011000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 210,
+      "x": 400,
+      "y": 300
+    },
+    "timestamp": 1716810012000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 4,
+      "width": 1024,
+      "height": 768
+    },
+    "timestamp": 1716810013000
+  },
+  {
+    "type": 4,
+    "data": {
+      "href": "https://app.example.com/dashboard/users/12345/edit",
+      "width": 1024,
+      "height": 768
+    },
+    "timestamp": 1716810015000
+  }
+]

@@ -20,7 +20,9 @@ import copy
 import json
 import math
 import re
+import time
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date as dt_date
 from datetime import datetime
@@ -12264,3 +12266,1406 @@ class OAuthLoginResult(BaseModel):
 
     client_path: Path
     """Where the DCR client info was persisted (``~/.mp/accounts/{name}/client.json``)."""
+
+
+# =============================================================================
+# Session Replay Types (044-session-replay)
+# =============================================================================
+#
+# Six in-memory dataclasses backing the session-replay surface:
+# ``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``, ``UserAction``,
+# ``Replay``, and ``ReplayBundle``. The rrweb analyzer populates
+# ``Replay.actions`` (and the ``UserAction`` records) on fetch.
+# See ``specs/044-session-replay/data-model.md`` for the full schema and
+# state-transition diagram, and ``contracts/python-api.md`` for the
+# canonical method signatures these types appear in.
+
+
+_REPLAY_ACTION_LITERAL = Literal[
+    "click",
+    "input",
+    "scroll",
+    "navigate",
+    "select",
+    "console_error",
+    "viewport_resize",
+    "touch_start",
+    "media_interaction",
+]
+"""Closed set of normalized action labels emitted by the rrweb analyzer.
+
+Locked here so callers can write exhaustive ``match`` statements and so
+mypy --strict catches typos in label-fn implementations. New action types
+require a minor version bump and a CHANGELOG entry.
+"""
+
+
+_ALLOWED_RETENTION_DAYS = frozenset({1, 7, 30, 90})
+"""Allowed Mixpanel session-replay retention windows.
+
+Mixpanel only stores recordings at one of these four retention windows;
+``ReplaySummary`` and ``Replay`` reject any other value at construction.
+"""
+
+
+@dataclass(frozen=True)
+class ReplaySummary(ResultWithDataFrame):
+    """Discovery handle for a single replay (data-model §2.1).
+
+    Returned by :meth:`Workspace.list_replays`. Holds the minimum info
+    needed to decide whether to materialize the full recording: replay
+    ID, distinct ID, project, start time, retention window. Use
+    :meth:`Workspace.fetch_replay` to upgrade a summary into a full
+    :class:`Replay` with the rrweb bytes pulled and parsed.
+
+    Attributes:
+        replay_id: Mixpanel replay identifier; non-empty.
+        distinct_id: Mixpanel user identifier; ``None`` for anonymous sessions.
+        project_id: Owning project; positive int.
+        start_time: Unix ms timestamp from the ``$mp_session_record`` event.
+        retention_days: Days of CDN retention; one of ``{1, 7, 30, 90}``.
+
+    Example:
+        ```python
+        for s in ws.list_replays(distinct_id="u-42", from_date="2026-05-20",
+                                 to_date="2026-05-27"):
+            replay = ws.fetch_replay(s.replay_id, retention_days=s.retention_days)
+            print(replay.duration_seconds)
+        ```
+    """
+
+    replay_id: str
+    distinct_id: str | None
+    project_id: int
+    start_time: int
+    retention_days: int
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.1.
+
+        Raises:
+            ValueError: ``replay_id`` is empty, ``project_id`` is non-positive,
+                ``start_time`` is non-positive, or ``retention_days`` is
+                outside ``{1, 7, 30, 90}``.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if self.project_id <= 0:
+            raise ValueError(f"project_id must be positive; got {self.project_id}")
+        if self.start_time <= 0:
+            raise ValueError(
+                f"start_time must be a positive unix ms timestamp; got "
+                f"{self.start_time}"
+            )
+        if self.retention_days not in _ALLOWED_RETENTION_DAYS:
+            raise ValueError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            )
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Single-row DataFrame projection of this summary.
+
+        Returns:
+            DataFrame with columns ``replay_id``, ``distinct_id``,
+            ``project_id``, ``start_time``, ``retention_days`` — one row.
+            Cached on first access.
+        """
+        if self._df_cache is not None:
+            return self._df_cache
+        result = pd.DataFrame(
+            [
+                {
+                    "replay_id": self.replay_id,
+                    "distinct_id": self.distinct_id,
+                    "project_id": self.project_id,
+                    "start_time": self.start_time,
+                    "retention_days": self.retention_days,
+                }
+            ]
+        )
+        object.__setattr__(self, "_df_cache", result)
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the five summary fields.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "distinct_id": self.distinct_id,
+            "project_id": self.project_id,
+            "start_time": self.start_time,
+            "retention_days": self.retention_days,
+        }
+
+
+@dataclass(frozen=True)
+class SignedReplay:
+    """Signed CDN access handle (data-model §2.2).
+
+    SECURITY: ``query_string`` is a bearer credential valid for ~5 minutes.
+    :meth:`__repr__` and :meth:`__str__` mask it so default Python logging
+    cannot leak the signature. :meth:`to_dict` IS the documented escape
+    hatch — callers that need the raw credential opt in explicitly and
+    receive an extra ``_warning`` key as a reminder.
+
+    Attributes:
+        replay_id: Mixpanel replay identifier.
+        url: CDN URL prefix with trailing slash; CDN files live at
+            ``f"{url}{N:04d}-{retention_days}.json?{query_string}"``.
+        query_string: The signed bearer credential (NOT logged by default).
+        env: Replay environment, ``"prod"`` or ``"dev"``.
+        signed_at: Unix seconds when the URL was signed; ``expires_at``
+            arithmetic uses ``signed_at + 300``.
+
+    Example:
+        ```python
+        signed = ws.sign_replay("r-19221")
+        if not signed.is_expired:
+            url = f"{signed.url}0000-30.json?{signed.query_string}"
+        ```
+    """
+
+    replay_id: str
+    url: str
+    query_string: str
+    env: Literal["prod", "dev"]
+    signed_at: float
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.2.
+
+        Raises:
+            ValueError: ``url`` lacks a trailing slash, ``query_string``
+                is empty, ``env`` is not ``"prod"`` or ``"dev"``, or
+                ``signed_at`` is negative.
+        """
+        if not self.url.endswith("/"):
+            raise ValueError(
+                f"url must end with '/' for CDN-path concatenation; got {self.url!r}"
+            )
+        if not self.query_string:
+            raise ValueError("query_string must be non-empty")
+        if self.env not in ("prod", "dev"):
+            raise ValueError(f"env must be 'prod' or 'dev'; got {self.env!r}")
+        if self.signed_at < 0:
+            raise ValueError(f"signed_at must be non-negative; got {self.signed_at}")
+
+    @property
+    def expires_at(self) -> float:
+        """Approximate expiration timestamp (``signed_at + 300`` seconds).
+
+        Returns:
+            Unix seconds at which the signed URL is considered expired.
+        """
+        return self.signed_at + 300
+
+    @property
+    def is_expired(self) -> bool:
+        """Whether the URL has crossed the 5-minute TTL boundary.
+
+        Returns:
+            True when ``time.time() >= expires_at``.
+        """
+        return time.time() >= self.expires_at
+
+    def to_dict(self) -> dict[str, Any]:
+        """Full serialization including the bearer credential.
+
+        WARNING: includes the full ``query_string``. The returned dict
+        carries a top-level ``_warning`` key noting the bearer nature so
+        downstream serializers can surface the risk.
+
+        Returns:
+            Dict with ``_warning`` plus the five visible fields.
+        """
+        return {
+            "_warning": ("query_string is a bearer credential valid for ~5 minutes"),
+            "replay_id": self.replay_id,
+            "url": self.url,
+            "query_string": self.query_string,
+            "env": self.env,
+            "signed_at": self.signed_at,
+        }
+
+    def __repr__(self) -> str:
+        """Masked representation — never leaks ``query_string``.
+
+        Returns:
+            String of the form
+            ``SignedReplay(replay_id='r-19221', url='...', query_string='<redacted N chars>', env='prod', signed_at=...)``.
+        """
+        masked = f"<redacted {len(self.query_string)} chars>"
+        return (
+            f"SignedReplay(replay_id={self.replay_id!r}, url={self.url!r}, "
+            f"query_string={masked!r}, env={self.env!r}, "
+            f"signed_at={self.signed_at!r})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so f-strings and ``print()`` stay safe."""
+        return self.__repr__()
+
+
+@dataclass(frozen=True)
+class UserAction:
+    """Normalized user action extracted from rrweb events (data-model §2.3).
+
+    Produced by the rrweb analyzer and exposed via :attr:`Replay.actions` —
+    the atomic unit the :class:`ReplayBundle` aggregations operate over.
+
+    Attributes:
+        timestamp: Unix ms timestamp of the action.
+        action: One of the closed-set action labels (``click``, ``input``,
+            ``scroll``, ``navigate``, ``select``, ``console_error``,
+            ``viewport_resize``, ``touch_start``, ``media_interaction``).
+        target_node_id: rrweb DOM node ID of the action target, if any.
+        target_desc: Human-readable target description (e.g.
+            ``'button "Sign in"'``); non-empty.
+        url: Active page URL when the action happened, if known.
+        metadata: Action-specific extras (text_length, is_checked, …).
+        description: Full human-readable phrase for the markdown timeline
+            (e.g. ``'Clicked button "Sign in"'``, ``'Scrolled'``,
+            ``'Console error: …'``). The analyzer populates it; renderers
+            fall back to ``target_desc`` when it is empty.
+    """
+
+    timestamp: int
+    action: _REPLAY_ACTION_LITERAL
+    target_node_id: int | None
+    target_desc: str
+    url: str | None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.3.
+
+        Raises:
+            ValueError: ``timestamp`` is non-positive or ``target_desc``
+                is empty.
+        """
+        if self.timestamp <= 0:
+            raise ValueError(
+                f"timestamp must be a positive unix ms timestamp; got {self.timestamp}"
+            )
+        if not self.target_desc:
+            raise ValueError("target_desc must be non-empty")
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the seven visible fields.
+        """
+        return {
+            "timestamp": self.timestamp,
+            "action": self.action,
+            "target_node_id": self.target_node_id,
+            "target_desc": self.target_desc,
+            "url": self.url,
+            "metadata": dict(self.metadata),
+            "description": self.description,
+        }
+
+
+@dataclass(frozen=True)
+class ReplayEvent(ResultWithDataFrame):
+    """Mixpanel event that occurred during a replay's time window
+    (data-model §2.4).
+
+    Optional enrichment on :class:`Replay` (via
+    ``fetch_replay(include_mixpanel_events=True)``) and the primary return
+    type of :meth:`Workspace.events_for_replay`.
+
+    Attributes:
+        replay_id: Owning replay ID; non-empty.
+        event_name: Mixpanel event name; non-empty.
+        event_time: Unix SECONDS timestamp (Mixpanel native), not ms.
+        properties: Selected event properties; ``None`` when the caller
+            skipped enrichment via ``event_properties=None``.
+    """
+
+    replay_id: str
+    event_name: str
+    event_time: int
+    properties: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.4.
+
+        Raises:
+            ValueError: ``replay_id`` or ``event_name`` is empty, or
+                ``event_time`` is non-positive.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if not self.event_name:
+            raise ValueError("event_name must be non-empty")
+        if self.event_time <= 0:
+            raise ValueError(
+                f"event_time must be a positive unix seconds timestamp; got "
+                f"{self.event_time}"
+            )
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Single-row DataFrame projection of this event.
+
+        Returns:
+            DataFrame with columns ``replay_id``, ``event_name``,
+            ``event_time``, ``properties`` — one row. Cached on first access.
+        """
+        if self._df_cache is not None:
+            return self._df_cache
+        result = pd.DataFrame(
+            [
+                {
+                    "replay_id": self.replay_id,
+                    "event_name": self.event_name,
+                    "event_time": self.event_time,
+                    "properties": self.properties,
+                }
+            ]
+        )
+        object.__setattr__(self, "_df_cache", result)
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the four visible fields.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "event_name": self.event_name,
+            "event_time": self.event_time,
+            "properties": (
+                copy.deepcopy(self.properties) if self.properties is not None else None
+            ),
+        }
+
+
+# rrweb event-type discriminators — exposed as named constants so the
+# Replay projection code stays self-documenting. The rrweb analyzer carries
+# the full set; the projection layer only needs the four below.
+_RRWEB_TYPE_FULL_SNAPSHOT = 2
+_RRWEB_TYPE_INCREMENTAL_SNAPSHOT = 3
+_RRWEB_TYPE_META = 4
+
+# IncrementalSnapshot.data.source discriminators relevant to the projection
+# layer. The rrweb analyzer handles the rest.
+_RRWEB_SOURCE_MOUSE_INTERACTION = 2
+
+
+def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
+    """Project one rrweb event into the ``events_df`` row shape.
+
+    Pulls the discriminators the analyzer would care about — ``source``
+    for IncrementalSnapshot events, ``type`` of MouseInteraction events
+    (mapped to a friendly string under ``mouse_type``), DOM node ID under
+    ``target_node_id``, and the page ``url`` for Meta events.
+
+    Args:
+        event: Raw rrweb event dict (``type``, ``data``, ``timestamp``).
+
+    Returns:
+        Dict with the seven ``events_df`` columns populated; missing
+        attributes are ``None``. ``raw`` always points at the original
+        event so callers can fall back to it for any analyzer-specific
+        introspection.
+    """
+    type_ = event.get("type")
+    raw_data = event.get("data")
+    data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+    source = data.get("source") if type_ == _RRWEB_TYPE_INCREMENTAL_SNAPSHOT else None
+    mouse_type: int | None = None
+    if source == _RRWEB_SOURCE_MOUSE_INTERACTION:
+        raw_mouse_type = data.get("type")
+        if isinstance(raw_mouse_type, int):
+            mouse_type = raw_mouse_type
+    target_node_id = data.get("id") if isinstance(data.get("id"), int) else None
+    url = data.get("href") if type_ == _RRWEB_TYPE_META else None
+    return {
+        "t": int(event.get("timestamp", 0)),
+        "type": type_,
+        "source": source,
+        "mouse_type": mouse_type,
+        "target_node_id": target_node_id,
+        "url": url,
+        "raw": event,
+    }
+
+
+@dataclass(frozen=True)
+class Replay(ResultWithDataFrame):
+    """Single fully-materialized session replay (data-model §2.5).
+
+    Returned by :meth:`Workspace.fetch_replay`. Conceptually a
+    :class:`ReplayBundle` of size 1; the same DataFrame projections are
+    available on both. ``fetch_replay`` runs the rrweb analyzer, so
+    ``actions`` is populated (empty only when the stream yields none).
+
+    Attributes:
+        replay_id: Mixpanel replay identifier.
+        distinct_id: Mixpanel user identifier; may be ``None`` for
+            anonymous sessions.
+        project_id: Owning project.
+        start_time: Unix ms timestamp of the first event.
+        end_time: Unix ms timestamp of the last event.
+        retention_days: One of ``{1, 7, 30, 90}``.
+        rrweb_events: Raw rrweb event dicts, timestamp-sorted.
+        actions: Normalized :class:`UserAction` records produced by the
+            rrweb analyzer; empty only when extraction yields no actions.
+        mixpanel_events: Mixpanel events that occurred in the replay
+            window. Populated only when the caller passed
+            ``include_mixpanel_events=True`` to ``fetch_replay``.
+    """
+
+    replay_id: str
+    distinct_id: str | None
+    project_id: int
+    start_time: int
+    end_time: int
+    retention_days: int
+    rrweb_events: list[dict[str, Any]] = field(default_factory=list)
+    actions: list[UserAction] = field(default_factory=list)
+    mixpanel_events: list[ReplayEvent] = field(default_factory=list)
+    _events_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _actions_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _mixpanel_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+
+    def __post_init__(self) -> None:
+        """Validate per data-model §2.5.
+
+        Raises:
+            ValueError: ``replay_id`` is empty, ``project_id`` is
+                non-positive, ``start_time`` is non-positive,
+                ``end_time < start_time``, or ``retention_days`` is
+                outside ``{1, 7, 30, 90}``.
+        """
+        if not self.replay_id:
+            raise ValueError("replay_id must be non-empty")
+        if self.project_id <= 0:
+            raise ValueError(f"project_id must be positive; got {self.project_id}")
+        if self.start_time <= 0:
+            raise ValueError(
+                f"start_time must be a positive unix ms timestamp; got "
+                f"{self.start_time}"
+            )
+        if self.end_time < self.start_time:
+            raise ValueError(
+                f"end_time must be >= start_time; got start={self.start_time}, "
+                f"end={self.end_time}"
+            )
+        if self.retention_days not in _ALLOWED_RETENTION_DAYS:
+            raise ValueError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            )
+
+    def __repr__(self) -> str:
+        """Concise repr that never serializes the rrweb event payload.
+
+        The default dataclass repr would dump every dict in
+        ``rrweb_events`` (tens of MB for a real recording, e.g. full DOM
+        snapshots). This emits counts only so logging, REPL echo, and
+        tracebacks stay bounded.
+
+        Returns:
+            A one-line summary: id, user, stream sizes, and duration.
+        """
+        return (
+            f"Replay(replay_id={self.replay_id!r}, "
+            f"distinct_id={self.distinct_id!r}, project_id={self.project_id}, "
+            f"events={len(self.rrweb_events)}, actions={len(self.actions)}, "
+            f"mixpanel_events={len(self.mixpanel_events)}, "
+            f"duration_s={self.duration_seconds:.1f})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so ``print()`` stays bounded."""
+        return self.__repr__()
+
+    @property
+    def duration_seconds(self) -> float:
+        """Replay duration in seconds.
+
+        Returns:
+            ``(end_time - start_time) / 1000`` — converts ms to seconds.
+        """
+        return (self.end_time - self.start_time) / 1000
+
+    @property
+    def events_df(self) -> pd.DataFrame:
+        """Long-format projection of raw rrweb events (data-model §2.5).
+
+        Returns:
+            DataFrame with columns ``t``, ``type``, ``source``,
+            ``mouse_type``, ``target_node_id``, ``url``, ``raw`` — one
+            row per rrweb event in input order. Cached after first access.
+        """
+        if self._events_df_cache is not None:
+            return self._events_df_cache
+        cols = ["t", "type", "source", "mouse_type", "target_node_id", "url", "raw"]
+        rows = [_rrweb_event_row(e) for e in self.rrweb_events]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_events_df_cache", result)
+        return result
+
+    @property
+    def actions_df(self) -> pd.DataFrame:
+        """Long-format projection of normalized actions (data-model §2.5).
+
+        Returns:
+            DataFrame with columns ``t``, ``action``, ``target_node_id``,
+            ``target_desc``, ``description``, ``url``, ``metadata`` — one row
+            per action. ``description`` is the analyzer's full phrase (e.g.
+            ``'Clicked button "Sign in"'``). Cached after first access.
+        """
+        if self._actions_df_cache is not None:
+            return self._actions_df_cache
+        cols = [
+            "t",
+            "action",
+            "target_node_id",
+            "target_desc",
+            "description",
+            "url",
+            "metadata",
+        ]
+        rows = [
+            {
+                "t": a.timestamp,
+                "action": a.action,
+                "target_node_id": a.target_node_id,
+                "target_desc": a.target_desc,
+                "description": a.description,
+                "url": a.url,
+                "metadata": dict(a.metadata),
+            }
+            for a in self.actions
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_actions_df_cache", result)
+        return result
+
+    @property
+    def mixpanel_df(self) -> pd.DataFrame:
+        """Long-format projection of associated Mixpanel events
+        (data-model §2.5).
+
+        Returns:
+            DataFrame with columns ``t``, ``event_name``, ``properties``
+            — empty when the caller did not pass
+            ``include_mixpanel_events=True`` to ``fetch_replay``.
+            Cached after first access.
+        """
+        if self._mixpanel_df_cache is not None:
+            return self._mixpanel_df_cache
+        cols = ["t", "event_name", "properties"]
+        rows = [
+            {
+                "t": e.event_time,
+                "event_name": e.event_name,
+                "properties": e.properties,
+            }
+            for e in self.mixpanel_events
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_mixpanel_df_cache", result)
+        return result
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Default projection per FR-018: returns ``actions_df``.
+
+        Returns:
+            The same DataFrame as ``actions_df``.
+        """
+        return self.actions_df
+
+    def page_path(self) -> list[str]:
+        """URL sequence visited during the replay.
+
+        Returns:
+            URLs from the replay's ``navigate`` actions, in timestamp order.
+        """
+        return [
+            str(a.url)
+            for a in self.actions
+            if a.action == "navigate" and a.url is not None
+        ]
+
+    def to_rrweb_player_json(self) -> list[dict[str, Any]]:
+        """Timestamp-sorted rrweb events ready for the rrweb JS player.
+
+        Returns:
+            A new list of the raw rrweb dicts sorted ascending by
+            ``timestamp``. The originals are not mutated.
+        """
+        return sorted(
+            self.rrweb_events,
+            key=lambda e: int(e.get("timestamp", 0)),
+        )
+
+    @property
+    def summary_markdown(self) -> str:
+        """Analyzer-produced markdown timeline rendered from ``actions``.
+
+        :meth:`Workspace.fetch_replay` runs the rrweb analyzer; when
+        ``actions`` is non-empty this returns the markdown timeline. When
+        ``actions`` is empty (test fixture, no-events fetch) it returns a
+        one-line placeholder.
+
+        Returns:
+            Multi-line markdown string suitable for stdout / LLM consumption.
+        """
+        from mixpanel_headless._internal.replays.rrweb_analyzer import (
+            _render_markdown,
+        )
+
+        if not self.actions:
+            return f"# Replay {self.replay_id} — no actions extracted\n"
+        return _render_markdown(self.actions)
+
+    @property
+    def errors(self) -> pd.DataFrame:
+        """Console errors captured during the replay.
+
+        Filters the action stream for ``action == "console_error"`` and
+        projects the ``actions_df`` columns so callers can slice it like
+        any other action subset.
+
+        Returns:
+            DataFrame with the ``actions_df`` columns; empty when the
+            replay had no console errors.
+        """
+        df = self.actions_df
+        if df.empty:
+            return df
+        filtered: pd.DataFrame = df[df["action"] == "console_error"].reset_index(
+            drop=True
+        )
+        return filtered
+
+    def clicks_on(self, predicate: Callable[[UserAction], bool]) -> pd.DataFrame:
+        """Filter click actions by an arbitrary predicate.
+
+        Args:
+            predicate: Callable taking a :class:`UserAction` and returning
+                ``True`` to include the action.
+
+        Returns:
+            DataFrame projection (``actions_df``-shaped) of the click
+            actions for which ``predicate`` returned True.
+        """
+        cols = ["t", "action", "target_node_id", "target_desc", "url", "metadata"]
+        if not self.actions:
+            return pd.DataFrame(columns=cols)
+        keep = [a for a in self.actions if a.action == "click" and predicate(a)]
+        rows = [
+            {
+                "t": a.timestamp,
+                "action": a.action,
+                "target_node_id": a.target_node_id,
+                "target_desc": a.target_desc,
+                "url": a.url,
+                "metadata": dict(a.metadata),
+            }
+            for a in keep
+        ]
+        return pd.DataFrame(rows, columns=cols)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable representation.
+
+        Returns:
+            Dict with the eight visible fields. ``rrweb_events`` is
+            included so the dict can re-hydrate a full :class:`Replay`
+            via :meth:`Workspace.fetch_replay` follow-ups.
+        """
+        return {
+            "replay_id": self.replay_id,
+            "distinct_id": self.distinct_id,
+            "project_id": self.project_id,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "retention_days": self.retention_days,
+            "rrweb_events": list(self.rrweb_events),
+            "actions": [a.to_dict() for a in self.actions],
+            "mixpanel_events": [e.to_dict() for e in self.mixpanel_events],
+        }
+
+
+@dataclass(frozen=True)
+class ReplayBundle(ResultWithDataFrame):
+    """Collection of replays with cross-session projections (data-model §2.6).
+
+    Materialized by
+    :meth:`Workspace.fetch_replays` and :meth:`Workspace.replays_for_user`.
+    Inherits :class:`ResultWithDataFrame`; ``df`` returns ``sessions_df``
+    (the most useful default — one row per replay with derived counts).
+
+    All DataFrame projections are lazy: computed on first access, cached via
+    ``object.__setattr__`` since the dataclass is frozen.
+
+    Filters (``filter``, ``where``, ``find_pattern``, ``error_sessions``,
+    ``head``, ``sample``) return a NEW bundle that is a proper subset of
+    the original; caches do NOT propagate, so the new bundle re-computes
+    its projections from its filtered ``replays`` slice. This keeps
+    chained filters memory-efficient at the cost of one re-compute per
+    chained step.
+
+    Attributes:
+        replays: The replays contained in this bundle.
+        computed_at: ISO-8601 UTC timestamp when this bundle was built.
+        project_id: Owning Mixpanel project (constant across replays).
+    """
+
+    replays: list[Replay] = field(default_factory=list)
+    computed_at: str = ""
+    project_id: int = 0
+    _sessions_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _actions_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _events_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _mixpanel_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _elements_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+
+    def __post_init__(self) -> None:
+        """Validate that every replay in the bundle shares ``project_id``.
+
+        Raises:
+            ValueError: A replay's ``project_id`` differs from the
+                bundle's ``project_id``.
+        """
+        if self.project_id and any(
+            r.project_id != self.project_id for r in self.replays
+        ):
+            mismatches = [
+                r.replay_id for r in self.replays if r.project_id != self.project_id
+            ]
+            raise ValueError(
+                f"ReplayBundle.project_id={self.project_id} but the following "
+                f"replays carry a different project_id: {mismatches}"
+            )
+
+    def __repr__(self) -> str:
+        """Concise repr that never serializes the contained replays.
+
+        Each :class:`Replay` carries its full rrweb event stream, so the
+        default dataclass repr would dump tens of MB per replay. This emits
+        the replay count only, keeping logging and tracebacks bounded.
+
+        Returns:
+            A one-line summary: replay count, project, and computed_at.
+        """
+        return (
+            f"ReplayBundle(replays={len(self.replays)}, "
+            f"project_id={self.project_id}, computed_at={self.computed_at!r})"
+        )
+
+    def __str__(self) -> str:
+        """Delegate to :meth:`__repr__` so ``print()`` stays bounded."""
+        return self.__repr__()
+
+    # =========================================================================
+    # DataFrame projections
+    # =========================================================================
+
+    @property
+    def sessions_df(self) -> pd.DataFrame:
+        """One row per replay with derived per-session counts.
+
+        Columns: ``replay_id``, ``distinct_id``, ``start_time``,
+        ``end_time``, ``duration_s``, ``retention_days``, ``n_events``,
+        ``n_actions``, ``n_clicks``, ``n_inputs``, ``n_pages``,
+        ``n_errors``, ``n_mp_events``, ``entry_url``, ``exit_url``.
+        """
+        if self._sessions_df_cache is not None:
+            return self._sessions_df_cache
+        cols = [
+            "replay_id",
+            "distinct_id",
+            "start_time",
+            "end_time",
+            "duration_s",
+            "retention_days",
+            "n_events",
+            "n_actions",
+            "n_clicks",
+            "n_inputs",
+            "n_pages",
+            "n_errors",
+            "n_mp_events",
+            "entry_url",
+            "exit_url",
+        ]
+        rows: list[dict[str, Any]] = []
+        for r in self.replays:
+            n_clicks = sum(1 for a in r.actions if a.action == "click")
+            n_inputs = sum(1 for a in r.actions if a.action == "input")
+            n_errors = sum(1 for a in r.actions if a.action == "console_error")
+            navigations = [a for a in r.actions if a.action == "navigate"]
+            entry_url = navigations[0].url if navigations else None
+            exit_url = navigations[-1].url if navigations else None
+            rows.append(
+                {
+                    "replay_id": r.replay_id,
+                    "distinct_id": r.distinct_id,
+                    "start_time": r.start_time,
+                    "end_time": r.end_time,
+                    "duration_s": r.duration_seconds,
+                    "retention_days": r.retention_days,
+                    "n_events": len(r.rrweb_events),
+                    "n_actions": len(r.actions),
+                    "n_clicks": n_clicks,
+                    "n_inputs": n_inputs,
+                    "n_pages": len(navigations),
+                    "n_errors": n_errors,
+                    "n_mp_events": len(r.mixpanel_events),
+                    "entry_url": entry_url,
+                    "exit_url": exit_url,
+                }
+            )
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_sessions_df_cache", result)
+        return result
+
+    @property
+    def actions_df(self) -> pd.DataFrame:
+        """Long-format actions across all replays.
+
+        Columns: ``replay_id``, ``t``, ``action``, ``target_node_id``,
+        ``target_desc``, ``description``, ``url``, ``metadata``.
+        """
+        if self._actions_df_cache is not None:
+            return self._actions_df_cache
+        cols = [
+            "replay_id",
+            "t",
+            "action",
+            "target_node_id",
+            "target_desc",
+            "description",
+            "url",
+            "metadata",
+        ]
+        rows = [
+            {
+                "replay_id": r.replay_id,
+                "t": a.timestamp,
+                "action": a.action,
+                "target_node_id": a.target_node_id,
+                "target_desc": a.target_desc,
+                "description": a.description,
+                "url": a.url,
+                "metadata": dict(a.metadata),
+            }
+            for r in self.replays
+            for a in r.actions
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_actions_df_cache", result)
+        return result
+
+    @property
+    def events_df(self) -> pd.DataFrame:
+        """Long-format raw rrweb events across all replays.
+
+        Columns: ``replay_id``, ``t``, ``type``, ``source``, ``mouse_type``,
+        ``target_node_id``, ``url``, ``raw``.
+        """
+        if self._events_df_cache is not None:
+            return self._events_df_cache
+        cols = [
+            "replay_id",
+            "t",
+            "type",
+            "source",
+            "mouse_type",
+            "target_node_id",
+            "url",
+            "raw",
+        ]
+        rows: list[dict[str, Any]] = []
+        for r in self.replays:
+            for event in r.rrweb_events:
+                row = _rrweb_event_row(event)
+                row["replay_id"] = r.replay_id
+                rows.append(row)
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_events_df_cache", result)
+        return result
+
+    @property
+    def mixpanel_df(self) -> pd.DataFrame:
+        """Long-format Mixpanel events across all replays.
+
+        Columns: ``replay_id``, ``t``, ``event_name``, ``properties``.
+        Empty when no replay was fetched with ``include_mixpanel_events=True``
+        and :meth:`join_mixpanel_events` was not called.
+        """
+        if self._mixpanel_df_cache is not None:
+            return self._mixpanel_df_cache
+        cols = ["replay_id", "t", "event_name", "properties"]
+        rows = [
+            {
+                "replay_id": r.replay_id,
+                "t": e.event_time,
+                "event_name": e.event_name,
+                "properties": e.properties,
+            }
+            for r in self.replays
+            for e in r.mixpanel_events
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_mixpanel_df_cache", result)
+        return result
+
+    @property
+    def elements_df(self) -> pd.DataFrame:
+        """One row per ``(target_desc, normalized_url)`` with click counts.
+
+        Counts exclude focus-only interactions (a real click fires both a
+        ``focused`` and a ``clicked`` action; counting both double-counts every
+        click). URLs are normalized via :func:`url_normalizer` so the same
+        element on parameterized pages (``/boards#id=1`` vs ``#id=2``)
+        aggregates into one row instead of fragmenting per URL variant.
+
+        Columns: ``target_desc``, ``url`` (normalized), ``n_clicks``,
+        ``n_unique_replays``.
+        """
+        if self._elements_df_cache is not None:
+            return self._elements_df_cache
+        from mixpanel_headless._internal.replays.aggregators import real_clicks
+        from mixpanel_headless.replay_labels import url_normalizer
+
+        cols = ["target_desc", "url", "n_clicks", "n_unique_replays"]
+        clicks = real_clicks(self.actions_df)
+        if clicks.empty:
+            result = pd.DataFrame(columns=cols)
+        else:
+            normalized = clicks.assign(
+                url=clicks["url"].map(lambda u: url_normalizer(u) if u else u)
+            )
+            result = (
+                normalized.groupby(["target_desc", "url"], dropna=False)
+                .agg(
+                    n_clicks=("replay_id", "size"),
+                    n_unique_replays=("replay_id", "nunique"),
+                )
+                .reset_index()
+            )
+        object.__setattr__(self, "_elements_df_cache", result)
+        return result
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Default DataFrame projection for the bundle (data-model §2.6).
+
+        Returns:
+            The :attr:`sessions_df` projection — one row per replay with
+            derived per-session counts. Lazily computed and cached.
+        """
+        return self.sessions_df
+
+    # =========================================================================
+    # Aggregations
+    # =========================================================================
+
+    def top_clicks(self, n: int = 10) -> pd.DataFrame:
+        """Rank the most-clicked targets across every replay in the bundle.
+
+        Thin wrapper over the bundle-level ``top_clicks`` aggregator, which
+        counts genuine clicks only — focus-only interactions are excluded so
+        each user click is counted once.
+
+        Args:
+            n: Maximum number of click targets to return. Default 10.
+
+        Returns:
+            A DataFrame with columns ``target_desc`` and ``count``, sorted
+            descending by ``count``. Empty (with those columns) when the
+            bundle has no clicks.
+
+        Example:
+            ```python
+            bundle.top_clicks(5)
+            #          target_desc  count
+            # 0   button "Sign in"     42
+            # 1     link "Pricing"     18
+            ```
+        """
+        from mixpanel_headless._internal.replays.aggregators import top_clicks
+
+        return top_clicks(self, n)
+
+    def rage_clicks(self, threshold: int = 3, window_ms: int = 1000) -> pd.DataFrame:
+        """Find rage-click bursts: repeated clicks on one target in a tight window.
+
+        Thin wrapper over the bundle-level ``rage_clicks`` aggregator. A burst
+        is ``threshold`` or more clicks on the same ``target_desc`` whose
+        timestamps span no more than ``window_ms``. Focus-only interactions
+        are excluded so burst sizes reflect real clicks.
+
+        Args:
+            threshold: Minimum clicks for a burst to count. Default 3.
+            window_ms: Maximum span of the burst, in milliseconds. Default 1000.
+
+        Returns:
+            A DataFrame with columns ``replay_id``, ``t_start``,
+            ``target_desc``, and ``count`` — one row per detected burst.
+            Empty (with those columns) when no burst meets the threshold.
+
+        Example:
+            ```python
+            bundle.rage_clicks(threshold=4, window_ms=750)
+            ```
+        """
+        from mixpanel_headless._internal.replays.aggregators import rage_clicks
+
+        return rage_clicks(self, threshold=threshold, window_ms=window_ms)
+
+    def long_pauses(self, threshold_s: float = 10) -> pd.DataFrame:
+        """Find idle stretches between consecutive actions longer than a threshold.
+
+        Thin wrapper over the bundle-level ``long_pauses`` aggregator. Each
+        gap between two consecutive actions in a replay that is at least
+        ``threshold_s`` seconds becomes one row.
+
+        Args:
+            threshold_s: Minimum pause length, in seconds. Default 10.
+
+        Returns:
+            A DataFrame with columns ``replay_id``, ``t_start`` (the timestamp
+            of the action preceding the pause), and ``duration_s``. Empty
+            (with those columns) when no pause meets the threshold.
+
+        Example:
+            ```python
+            bundle.long_pauses(threshold_s=30)
+            ```
+        """
+        from mixpanel_headless._internal.replays.aggregators import long_pauses
+
+        return long_pauses(self, threshold_s=threshold_s)
+
+    # =========================================================================
+    # Filters (return new bundles — immutable semantics)
+    # =========================================================================
+
+    def filter(self, predicate: Callable[[Replay], bool]) -> ReplayBundle:
+        """Return a new bundle containing only the replays matching ``predicate``.
+
+        The base filter primitive behind :meth:`where`, :meth:`find_pattern`,
+        and :meth:`error_sessions`. The result is a proper subset; DataFrame
+        caches are NOT propagated, so the new bundle recomputes its
+        projections from the filtered slice (immutable semantics — ``self``
+        is left unchanged).
+
+        Args:
+            predicate: A callable invoked once per replay; replays for which
+                it returns ``True`` are kept.
+
+        Returns:
+            A new :class:`ReplayBundle` carrying the kept replays and the same
+            ``computed_at`` / ``project_id``.
+
+        Example:
+            ```python
+            long_ones = bundle.filter(lambda r: r.duration_seconds > 60)
+            ```
+        """
+        return ReplayBundle(
+            replays=[r for r in self.replays if predicate(r)],
+            computed_at=self.computed_at,
+            project_id=self.project_id,
+        )
+
+    def where(
+        self,
+        *,
+        distinct_id: str | None = None,
+        contains_url: str | None = None,
+        has_event: str | None = None,
+        min_duration_s: float | None = None,
+        max_duration_s: float | None = None,
+    ) -> ReplayBundle:
+        """Convenience predicate filter; equivalent to a chained ``filter`` call.
+
+        Args:
+            distinct_id: Keep replays whose ``distinct_id`` matches.
+            contains_url: Keep replays where any navigation URL includes the
+                substring.
+            has_event: Keep replays whose ``mixpanel_events`` include
+                an event named exactly.
+            min_duration_s: Keep replays with ``duration_seconds >= min``.
+            max_duration_s: Keep replays with ``duration_seconds <= max``.
+
+        Returns:
+            A new :class:`ReplayBundle` (proper subset).
+        """
+
+        def _ok(r: Replay) -> bool:
+            """Apply every supplied predicate; AND-combine the results."""
+            if distinct_id is not None and r.distinct_id != distinct_id:
+                return False
+            if contains_url is not None and not any(
+                contains_url in (a.url or "")
+                for a in r.actions
+                if a.action == "navigate"
+            ):
+                return False
+            if has_event is not None and not any(
+                e.event_name == has_event for e in r.mixpanel_events
+            ):
+                return False
+            if min_duration_s is not None and r.duration_seconds < min_duration_s:
+                return False
+            return not (
+                max_duration_s is not None and r.duration_seconds > max_duration_s
+            )
+
+        return self.filter(_ok)
+
+    def find_pattern(
+        self,
+        action_sequence: list[str],
+        *,
+        label_fn: Callable[[UserAction], str] | None = None,
+    ) -> ReplayBundle:
+        """Return a new bundle containing replays whose action labels
+        include ``action_sequence`` as a contiguous subsequence.
+
+        Args:
+            action_sequence: Labels to look for, in order. An empty list
+                matches every replay (returns a full clone of the bundle).
+            label_fn: Optional label-fn override (defaults to
+                :func:`default_label_fn`). To group by a stable element
+                selector, pass :func:`mixpanel_headless.selector_label_fn`.
+
+        Returns:
+            A new :class:`ReplayBundle`.
+        """
+        from mixpanel_headless.replay_labels import default_label_fn
+
+        fn = label_fn or default_label_fn
+        target = tuple(action_sequence)
+        if not target:
+            return ReplayBundle(
+                replays=list(self.replays),
+                computed_at=self.computed_at,
+                project_id=self.project_id,
+            )
+
+        def _matches(r: Replay) -> bool:
+            """True when r's label sequence contains target as a contiguous run."""
+            labels = [fn(a) for a in r.actions]
+            for i in range(len(labels) - len(target) + 1):
+                if tuple(labels[i : i + len(target)]) == target:
+                    return True
+            return False
+
+        return self.filter(_matches)
+
+    def error_sessions(self) -> ReplayBundle:
+        """Return a new bundle of only the replays that emitted a console error.
+
+        Delegates to the ``error_sessions`` aggregator to collect the IDs of
+        replays with at least one ``console_error`` action, then filters down
+        to them. The result is a proper subset (immutable semantics — ``self``
+        is left unchanged).
+
+        Returns:
+            A new :class:`ReplayBundle` containing only error-bearing replays;
+            empty when the bundle has no console errors.
+
+        Example:
+            ```python
+            for replay in bundle.error_sessions().replays:
+                print(replay.replay_id)
+            ```
+        """
+        from mixpanel_headless._internal.replays.aggregators import (
+            error_sessions as _ids,
+        )
+
+        ids = set(_ids(self))
+        return self.filter(lambda r: r.replay_id in ids)
+
+    def head(self, n: int = 5) -> ReplayBundle:
+        """Return a new bundle containing the first ``n`` replays, in order.
+
+        Order-preserving counterpart to :meth:`sample`. The result is a proper
+        subset (immutable semantics — ``self`` is left unchanged).
+
+        Args:
+            n: How many leading replays to keep. Values larger than the bundle
+                size keep every replay. Default 5.
+
+        Returns:
+            A new :class:`ReplayBundle` with at most ``n`` replays and the same
+            ``computed_at`` / ``project_id``.
+
+        Example:
+            ```python
+            preview = bundle.head(3)
+            ```
+        """
+        return ReplayBundle(
+            replays=list(self.replays[:n]),
+            computed_at=self.computed_at,
+            project_id=self.project_id,
+        )
+
+    def sample(self, n: int = 5, seed: int | None = None) -> ReplayBundle:
+        """Return a new bundle with up to ``n`` replays, deterministic per ``seed``.
+
+        Args:
+            n: How many replays to sample.
+            seed: Optional seed for reproducible sampling.
+
+        Returns:
+            A new :class:`ReplayBundle` whose ``replays`` list has length
+            ``min(n, len(self.replays))``.
+        """
+        import random
+
+        rng = random.Random(seed)
+        # rng.sample raises when k > population; clamp first.
+        k = min(n, len(self.replays))
+        chosen = rng.sample(list(self.replays), k=k)
+        return ReplayBundle(
+            replays=chosen,
+            computed_at=self.computed_at,
+            project_id=self.project_id,
+        )
+
+    # =========================================================================
+    # Enrichment / summary / comparison
+    # =========================================================================
+
+    def join_mixpanel_events(self, properties: list[str] | None = None) -> ReplayBundle:
+        """Return a new bundle whose ``mixpanel_df`` is populated.
+
+        In this implementation the join requires callers to have fetched
+        replays with ``include_mixpanel_events=True``; the bundle simply
+        re-exposes the already-attached events.
+
+        Args:
+            properties: Reserved for the future on-demand-join variant.
+
+        Returns:
+            A new :class:`ReplayBundle` with the same replays — kept as a
+            distinct object so callers can rely on the immutable-semantics
+            contract.
+        """
+        _ = properties
+        return ReplayBundle(
+            replays=list(self.replays),
+            computed_at=self.computed_at,
+            project_id=self.project_id,
+        )
+
+    @property
+    def summary_markdown(self) -> str:
+        """Markdown rollup of the bundle: header totals plus per-session timelines.
+
+        Builds a ``# Bundle summary`` header with replay / event / action /
+        error totals, then appends each replay's own
+        :attr:`Replay.summary_markdown` separated by horizontal rules. A
+        replay whose per-replay summary is unavailable degrades to a bare
+        ``## Replay <id>`` heading rather than failing the whole rollup.
+
+        Returns:
+            A markdown string. When the bundle is empty, returns
+            ``"# No replays in bundle\\n"``.
+        """
+        if not self.replays:
+            return "# No replays in bundle\n"
+        sections = ["# Bundle summary", "", f"- replays: {len(self.replays)}"]
+        df = self.sessions_df
+        if not df.empty:
+            sections.append(f"- total events: {int(df['n_events'].sum())}")
+            sections.append(f"- total actions: {int(df['n_actions'].sum())}")
+            sections.append(f"- total errors: {int(df['n_errors'].sum())}")
+        sections.append("")
+        for r in self.replays:
+            try:
+                sections.append(r.summary_markdown)
+            except NotImplementedError:
+                sections.append(f"## Replay {r.replay_id}")
+            sections.append("\n---\n")
+        return "\n".join(sections)
+
+    def compare(self, other: ReplayBundle) -> pd.DataFrame:
+        """Compare action frequencies between this bundle and ``other``.
+
+        Args:
+            other: The bundle to diff against.
+
+        Returns:
+            DataFrame with columns ``action``, ``self_count``,
+            ``other_count``, ``delta`` (self - other).
+        """
+        a = (
+            self.actions_df["action"].value_counts()
+            if not self.actions_df.empty
+            else pd.Series(dtype=int)
+        )
+        b = (
+            other.actions_df["action"].value_counts()
+            if not other.actions_df.empty
+            else pd.Series(dtype=int)
+        )
+        keys = sorted(set(a.index) | set(b.index))
+        rows = [
+            {
+                "action": k,
+                "self_count": int(a.get(k, 0)),
+                "other_count": int(b.get(k, 0)),
+                "delta": int(a.get(k, 0)) - int(b.get(k, 0)),
+            }
+            for k in keys
+        ]
+        return pd.DataFrame(
+            rows, columns=["action", "self_count", "other_count", "delta"]
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the bundle to a JSON-friendly dict (lossy on DataFrames).
+
+        The DataFrame projections (``sessions_df``, ``actions_df``, …) are
+        derived views and are NOT included; only the source replays plus
+        bundle metadata are serialized. Consumers rebuild the projections on
+        demand rather than persisting them.
+
+        Returns:
+            A dict with keys ``computed_at``, ``project_id``, and ``replays``
+            (each replay serialized via :meth:`Replay.to_dict`).
+        """
+        return {
+            "computed_at": self.computed_at,
+            "project_id": self.project_id,
+            "replays": [r.to_dict() for r in self.replays],
+        }

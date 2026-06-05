@@ -11,7 +11,7 @@ A complete programmable interface to Mixpanel analytics—Python library and CLI
 
 Mixpanel's web UI is powerful for interactive exploration, but programmatic access requires navigating multiple REST endpoints with different conventions. **mixpanel_headless** provides a unified interface: discover your schema, run analytics queries, stream data, and manage entities—all through consistent Python methods or CLI commands.
 
-Core analytics—typed Insights engine queries (DAU/WAU/MAU, formulas, filters, breakdowns, cohort-scoped queries, period-over-period comparison, frequency analysis), typed funnel queries (ad-hoc steps, exclusions, conversion windows), typed retention queries (event pairs, custom buckets, alignment modes), typed flow queries (path analysis, direction controls, visualization modes), typed user profile queries (property filtering, sorting, parallel fetching, aggregate statistics), segmentation, saved reports—plus entity management (dashboards, reports, cohorts, feature flags, experiments), and streaming data extraction.
+Core analytics—typed Insights engine queries (DAU/WAU/MAU, formulas, filters, breakdowns, cohort-scoped queries, period-over-period comparison, frequency analysis), typed funnel queries (ad-hoc steps, exclusions, conversion windows), typed retention queries (event pairs, custom buckets, alignment modes), typed flow queries (path analysis, direction controls, visualization modes), typed user profile queries (property filtering, sorting, parallel fetching, aggregate statistics), segmentation, saved reports—plus entity management (dashboards, reports, cohorts, feature flags, experiments), streaming data extraction, and session replay (discover, fetch, and analyze rrweb session recordings).
 
 ## Installation
 
@@ -264,6 +264,12 @@ schemas = ws.list_schema_registry()
 enforcement = ws.get_schema_enforcement()
 audit = ws.run_audit()
 
+# Session replay — discover, fetch, and analyze rrweb recordings
+bundle = ws.replays_for_user("user-42", from_date="2025-01-01", to_date="2025-01-31")
+print(bundle.sessions_df)                   # one row per session: duration, clicks, errors
+print(bundle.replays[0].summary_markdown)   # LLM-friendly action timeline
+print(bundle.top_clicks(10))                # most-clicked elements across the bundle
+
 # Stream events for processing
 for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
     process(event)
@@ -323,6 +329,8 @@ for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
 
 **`mp schemas`** — Schema registry management: `list`, `create`, `create-bulk`, `update`, `update-bulk`, `delete`
 
+**`mp replays`** — Session replay: `list` (discover a user's replays or hydrate explicit IDs), `events` (Mixpanel events during a replay window), `sign` (sign replay IDs for CDN access — redacted by default), `fetch` (pull raw rrweb bytes), `analyze` (render the markdown action timeline), `for-user` (discover + fetch + analyze in one call)
+
 All commands support `--format` (`json`, `jsonl`, `table`, `csv`, `plain`) and `--help`.
 
 ### Filtering with --jq
@@ -352,6 +360,7 @@ Full documentation: [mixpanel.github.io/mixpanel-headless](https://mixpanel.gith
 - [Retention Queries](https://mixpanel.github.io/mixpanel-headless/guide/query-retention/) — Typed retention analysis with event pairs, custom buckets, alignment modes
 - [Flow Queries](https://mixpanel.github.io/mixpanel-headless/guide/query-flows/) — Typed flow path analysis with direction controls, visualization modes
 - [User Profile Queries](https://mixpanel.github.io/mixpanel-headless/guide/query-users/) — Profile filtering, sorting, parallel fetching, aggregate statistics
+- [Session Replay](https://mixpanel.github.io/mixpanel-headless/guide/session-replay/) — Discover, fetch, and analyze rrweb session recordings
 - [CLI Reference](https://mixpanel.github.io/mixpanel-headless/cli/)
 - [Python API](https://mixpanel.github.io/mixpanel-headless/api/)
 - [Streaming Guide](https://mixpanel.github.io/mixpanel-headless/guide/streaming/)
@@ -371,6 +380,7 @@ Key design features:
 - **Consistent interfaces**: Same operations available as Python methods and CLI commands
 - **Structured output**: All CLI commands support `--format json` for machine-readable responses, plus `--jq` for inline filtering
 - **Streaming data extraction**: Memory-efficient iterators for events and profiles
+- **Session replay**: Discover a user's rrweb recordings, fetch the raw event stream, and project them into session-level DataFrames plus an LLM-friendly action timeline (`replays_for_user`, `Replay`, `ReplayBundle`); signed CDN URLs are masked by default and never logged
 - **Three first-class account types**: `service_account` (Basic Auth) for unattended automation, `oauth_browser` (PKCE flow with auto-refreshed tokens) for interactive use, `oauth_token` (static bearer) for CI / agents
 - **Typed exceptions**: Error codes and context for programmatic handling
 

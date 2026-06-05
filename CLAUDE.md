@@ -26,10 +26,11 @@ Services                 → DiscoveryService, LiveQueryService
 Infrastructure           → ConfigManager, MixpanelAPIClient
 ```
 
-**Three capability areas:**
+**Capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks, schema graph)
 - **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
 - **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
+- **Session replay**: Discover, sign, fetch, and analyze rrweb session recordings (`Workspace.replays_for_user` / `fetch_replay`, `Replay` / `ReplayBundle`, `mp replays`)
 
 ## Package Structure
 
@@ -43,6 +44,7 @@ src/mixpanel_headless/
 ├── targets.py               # `mp.targets` — saved (account, project, workspace?) cursors
 ├── exceptions.py            # Exception hierarchy (incl. AccountInUseError, WorkspaceScopeError)
 ├── types.py                 # Result types (SegmentationResult, AccountSummary, …)
+├── replay_labels.py         # Public replay label helpers (default_label_fn, selector_label_fn, url_normalizer)
 ├── _internal/               # Private implementation (do not import directly)
 │   ├── config.py            # ConfigManager (TOML-backed)
 │   ├── api_client.py        # MixpanelAPIClient (Session-bound; per-request OAuth bearer)
@@ -61,14 +63,15 @@ src/mixpanel_headless/
 │   │   ├── callback_server.py # Local HTTP callback server
 │   │   └── client_registration.py # Dynamic Client Registration (RFC 7591)
 │   ├── query/               # Query engine builders and validators
-│   └── services/            # Discovery, LiveQuery services
+│   ├── replays/             # Session-replay analyzer + aggregators (vendored rrweb); public label helpers live in replay_labels.py
+│   └── services/            # Discovery, LiveQuery, Replays services
 └── cli/
     ├── main.py              # Typer entry point + global flags (-a / -p / -w / -t)
     ├── commands/            # account / project / workspace / target / session
     │                        # + query, inspect, dashboards, reports, cohorts, flags,
     │                        # experiments, alerts, annotations, webhooks, lexicon,
     │                        # drop-filters, custom-properties, custom-events,
-    │                        # lookup-tables, schemas, business-context
+    │                        # lookup-tables, schemas, business-context, replays
     ├── formatters.py        # JSON, JSONL, Table, CSV, Plain output
     └── utils.py             # Error handling, console helpers
 ```
@@ -332,8 +335,13 @@ python help.py Filter                  # type fields + construction patterns + r
 - N/A — query parameter types only, no persistence (040-query-engine-completeness)
 - Python 3.10+ (mypy --strict) + httpx, Pydantic v2, Typer, Rich, Hypothesis, mutmut (043-frictionless-auth)
 - TOML config (`~/.mp/config.toml`) + per-account state at `~/.mp/accounts/{name}/{tokens,client,me}.json` — schema unchanged from 042 (043-frictionless-auth)
+- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib) for session replay (044-session-replay)
+- N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
 
 <!-- SPECKIT START -->
-**Active plan**: [`specs/043-frictionless-auth/plan.md`](specs/043-frictionless-auth/plan.md) — Frictionless Auth (`mp login` and `/me`-driven discovery). Single PR landing AIE-114/115/116/117 together.
+Current plan: [specs/044-session-replay/plan.md](specs/044-session-replay/plan.md)
+
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan.
 <!-- SPECKIT END -->
 

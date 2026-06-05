@@ -72,9 +72,19 @@ from mixpanel_headless.exceptions import (
     RateLimitError,
     RegionProbeError,
     RegionProbeNetworkError,
+    ReplayNotFoundError,
     ServerError,
+    SessionReplayAccessError,
+    SessionReplayError,
+    SignedURLExpiredError,
+    UnsupportedReplayFormatError,
     ValidationError,
     WorkspaceScopeError,
+)
+from mixpanel_headless.replay_labels import (
+    default_label_fn,
+    selector_label_fn,
+    url_normalizer,
 )
 from mixpanel_headless.types import (
     # Business Context (AIE-147)
@@ -228,6 +238,10 @@ from mixpanel_headless.types import (
     QueryResult,
     RcaSourceData,
     ReplaceSchemaEnforcementParams,
+    Replay,
+    ReplayBundle,
+    ReplayEvent,
+    ReplaySummary,
     RetentionCohortData,
     RetentionEvent,
     RetentionQueryResult,
@@ -241,6 +255,7 @@ from mixpanel_headless.types import (
     SegmentationResult,
     ServingMethod,
     SetTestUsersParams,
+    SignedReplay,
     SubPropertyInfo,
     Target,
     TimeComparison,
@@ -264,6 +279,7 @@ from mixpanel_headless.types import (
     UpdateTextCardParams,
     UpdateWebhookParams,
     UploadLookupTableParams,
+    UserAction,
     UserEvent,
     UserQueryResult,
     ValidateAlertsForBookmarkParams,
@@ -371,6 +387,23 @@ __all__ = [
     "RegionProbeNetworkError",
     "WorkspaceScopeError",
     "BusinessContextValidationError",
+    # Session-replay exceptions (044)
+    "SessionReplayError",
+    "SessionReplayAccessError",
+    "SignedURLExpiredError",
+    "ReplayNotFoundError",
+    "UnsupportedReplayFormatError",
+    # Session-replay types (044)
+    "Replay",
+    "ReplayBundle",
+    "ReplayEvent",
+    "ReplaySummary",
+    "SignedReplay",
+    "UserAction",
+    # Session-replay label functions (044)
+    "default_label_fn",
+    "selector_label_fn",
+    "url_normalizer",
     # Result types
     "SegmentationResult",
     "FunnelResult",

@@ -210,3 +210,33 @@ The `details` dict carries `length` (the actual content length) and `max` (the c
       show_root_heading: true
       show_root_toc_entry: true
 
+## Session Replay Exceptions
+
+Raised by the session-replay surface (`fetch_replay()`, `sign_replay()`, `stream_replay()`). `SessionReplayError` is the base — catch it to handle any replay failure. See the [Session Replay guide](../guide/session-replay.md).
+
+| Exception | Raised When |
+|-----------|-------------|
+| `SessionReplayAccessError` | The project has the `SESSION_RECORDING_SENSITIVE_DATA` flag set and the caller lacks the `sensitive_data_replay` permission (HTTP 403). `details` carries `project_id`, `flag`, and `permission_required`. |
+| `SignedURLExpiredError` | A signed CDN URL expired mid-fetch (~5-minute TTL) and re-signing was disabled or also failed. |
+| `ReplayNotFoundError` | The replay's first CDN file returned 404 — it aged out of its retention window, was never recorded, or was deleted. |
+
+::: mixpanel_headless.SessionReplayError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SessionReplayAccessError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SignedURLExpiredError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReplayNotFoundError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
