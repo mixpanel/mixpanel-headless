@@ -5,7 +5,12 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased — Session Replay (044)
+## 0.2.0 — 2026-06-05
+
+Headline feature: **session replay (044)** — discovery, signing, CDN fetch,
+an rrweb analyzer, and DataFrame-shaped bundle analytics. This release also
+sunsets JQL (breaking) and folds in `schema_graph()`, workspace
+auto-resolution, and Lexicon enrichments merged since 0.1.1.
 
 ### Added
 
@@ -66,6 +71,23 @@ may include API changes.
   `--format json` for action list) and `mp replays for-user
   --include analyze --out-dir DIR` (the Mixpanel-events join is on by
   default; opt out with `--no-mixpanel-events`).
+- `Workspace.schema_graph()` — full Lexicon graph with event↔property
+  relationships (#190).
+
+### Changed
+
+- `activity_feed()` streams via the `stream/bookmark` endpoint instead of
+  `stream/query` (#187).
+- The workspace axis auto-resolves from the cached `/me` response, with a
+  project-metadata fallback, so workspace-scoped calls work without an
+  explicit `MP_WORKSPACE_ID` (#188).
+- Lexicon definitions now persist `display_name` and `example_value` (#189).
+- Hard 429s surface a rate-limit-increase form to collect lead info (#192).
+
+### Removed
+
+- **JQL support removed (breaking).** All JQL query functionality has been
+  sunset (#185).
 
 ### Security
 
