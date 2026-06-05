@@ -728,6 +728,37 @@ class TestDOMTrackerDirect:
         tracker.add_node(_element_node(3, "div"))
         assert tracker.reached_max_nodes
 
+    def test_max_nodes_caps_growth_after_trip(self) -> None:
+        """The cap holds for EVERY new node past the trip, not just the first.
+
+        Regression guard: reached_max_nodes used to be ANDed into the skip
+        condition, so only the first over-limit node was dropped and every
+        subsequent one was still added — the map grew past MAX_NODES. The flag
+        must gate the log only; the skip must fire for all new nodes at the cap.
+        """
+        tracker = DOMTracker()
+        tracker.MAX_NODES = 2
+        for node_id in range(1, 8):  # add 7 distinct nodes, cap is 2
+            tracker.add_node(_element_node(node_id, "div"))
+        assert tracker.reached_max_nodes
+        assert len(tracker.nodes) == 2  # nodes 1 and 2 only; 3-7 all skipped
+
+    def test_max_nodes_still_updates_existing_nodes_at_cap(self) -> None:
+        """At the cap, re-adding an already-tracked node is allowed (no growth).
+
+        The skip only targets NEW nodes (``node_id not in self.nodes``); an
+        update to a known node must still fall through so its metadata refreshes.
+        """
+        tracker = DOMTracker()
+        tracker.MAX_NODES = 2
+        tracker.add_node(_element_node(1, "button", attributes={"id": "first"}))
+        tracker.add_node(_element_node(2, "div"))
+        tracker.add_node(_element_node(3, "div"))  # trips the cap, skipped
+        # Re-add node 1 with new attributes — known id, so it updates in place.
+        tracker.add_node(_element_node(1, "button", attributes={"id": "updated"}))
+        assert len(tracker.nodes) == 2
+        assert tracker.nodes[1]["attributes"]["id"] == "updated"
+
 
 # =============================================================================
 # MarkdownReporter

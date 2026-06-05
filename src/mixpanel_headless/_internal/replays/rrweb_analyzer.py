@@ -233,17 +233,22 @@ class DOMTracker:
             if node_id is None:
                 continue
 
-            if (
-                node_id not in self.nodes
-                and len(self.nodes) >= self.MAX_NODES
-                and not self.reached_max_nodes
-            ):
+            if node_id not in self.nodes and len(self.nodes) >= self.MAX_NODES:
+                # Skip every new node once at the cap — and stop descending into
+                # its subtree (we `continue` before enqueuing children). The
+                # reached_max_nodes flag only de-dupes the log; it must NOT gate
+                # the skip itself, or only the first over-limit node is dropped
+                # and the map grows past MAX_NODES unbounded.
+                #
                 # Expected on large real sessions (complex SPA full-snapshots
-                # routinely exceed MAX_NODES); the analyzer degrades gracefully
-                # by skipping new nodes. DEBUG, not WARNING — this matches the
-                # upstream analyzer's intent and isn't actionable for callers.
-                log.debug("DOMTracker reached maximum node limit; skipping new nodes")
-                self.reached_max_nodes = True
+                # routinely exceed MAX_NODES); the analyzer degrades gracefully.
+                # DEBUG, not WARNING — this matches the upstream analyzer's
+                # intent and isn't actionable for callers.
+                if not self.reached_max_nodes:
+                    log.debug(
+                        "DOMTracker reached maximum node limit; skipping new nodes"
+                    )
+                    self.reached_max_nodes = True
                 continue
 
             node_type = current_node.get("type")
