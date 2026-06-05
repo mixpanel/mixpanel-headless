@@ -1,4 +1,4 @@
-"""Activity labels for the rrweb action stream (044-session-replay, US2/T057).
+"""Activity labels for the rrweb action stream (044-session-replay).
 
 A label is the grouping key for the path / click / transition
 aggregations on :class:`ReplayBundle`. Stable labels are the precondition

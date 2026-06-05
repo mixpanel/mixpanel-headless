@@ -210,10 +210,10 @@ The `mp replays` command group mirrors the Python surface:
 mp replays list --user user-42 --from 2025-01-01 --to 2025-01-31
 
 # Mixpanel events during a replay's window
-mp replays events --replay-id 0190ebde-d50d-71b1-804c-ec1b4a533ef9
+mp replays events 0190ebde-d50d-71b1-804c-ec1b4a533ef9
 
 # Sign for CDN access — redacted by default; --reveal-signed-urls opts in
-mp replays sign --replay-id 0190ebde-d50d-71b1-804c-ec1b4a533ef9
+mp replays sign 0190ebde-d50d-71b1-804c-ec1b4a533ef9
 
 # Write the raw rrweb JSON (rrweb-player compatible)
 mp replays fetch 0190ebde-d50d-71b1-804c-ec1b4a533ef9 -o replay.json

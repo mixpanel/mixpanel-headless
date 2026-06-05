@@ -44,6 +44,7 @@ from mixpanel_headless.exceptions import (
     ReplayNotFoundError,
     ServerError,
     SessionReplayAccessError,
+    SignedURLExpiredError,
     WorkspaceScopeError,
 )
 
@@ -376,6 +377,17 @@ def handle_errors(func: F) -> F:
                 f" days), never been recorded, or been deleted."
             )
             raise typer.Exit(ExitCode.NOT_FOUND) from None
+        except SignedURLExpiredError:
+            # 044 — signed-URL 5-minute TTL elapsed and re-signing was
+            # disabled. Emit the stable wording from
+            # contracts/error-messages.md §2 and exit GENERAL_ERROR (1).
+            # Caught BEFORE the generic MixpanelHeadlessError so the canonical
+            # CLI message is shown instead of the longer Python message.
+            err_console.print(
+                "[red]error:[/red] signed URL expired (5-minute TTL)"
+                " — re-run the command"
+            )
+            raise typer.Exit(ExitCode.GENERAL_ERROR) from None
         except MixpanelHeadlessError as e:
             err_console.print(f"[red]Error:[/red] {rich_escape(e.message)}")
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None

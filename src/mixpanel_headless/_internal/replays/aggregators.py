@@ -1,4 +1,4 @@
-"""Bundle-level aggregations over normalized actions (044/T058).
+"""Bundle-level aggregations over normalized actions (044).
 
 Each function returns a ``pandas.DataFrame`` so callers can chain into
 sort, filter, and join idioms without re-deriving the underlying

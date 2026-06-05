@@ -1,7 +1,8 @@
-"""Session-replay CLI commands (044-session-replay, Phase 1).
+"""Session-replay CLI commands (044-session-replay).
 
-Implements ``mp replays {list,events,sign,fetch}``. Phase 2 adds
-``analyze`` and ``for-user`` once the vendored analyzer ships.
+Implements ``mp replays {list,events,sign,fetch,analyze,for-user}``. The
+``analyze`` and ``for-user`` commands run the vendored rrweb analyzer over
+the fetched rrweb stream.
 
 Security: ``sign`` masks ``query_string`` by default. The
 ``--reveal-signed-urls`` opt-in emits a stderr warning on every
@@ -18,6 +19,7 @@ import typer
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    ExitCode,
     console,
     err_console,
     get_workspace,
@@ -170,10 +172,20 @@ def replays_events(
         format: Output format.
         jq_filter: Optional jq expression.
     """
-    workspace = get_workspace(ctx)
     prop_list = (
         [p.strip() for p in properties.split(",") if p.strip()] if properties else None
     )
+    if prop_list is not None and len(prop_list) > 5:
+        # Contract: contracts/error-messages.md §4 — emit the stable CLI
+        # wording and exit INVALID_ARGS (3) before touching the workspace, so
+        # the cap is reported even when no credentials are configured.
+        err_console.print(
+            f"[red]error:[/red] too many event properties — got "
+            f"{len(prop_list)}, max is 5 (Insights API limit).\n"
+            "Drop some properties or split into multiple queries."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    workspace = get_workspace(ctx)
     with status_spinner(ctx, "Fetching replay events..."):
         events = workspace.events_for_replay(
             replay_id,
@@ -352,7 +364,7 @@ def replays_fetch(
 
 
 # =============================================================================
-# mp replays analyze (Phase 2)
+# mp replays analyze
 # =============================================================================
 
 
@@ -402,7 +414,7 @@ def replays_analyze(
 
 
 # =============================================================================
-# mp replays for-user (Phase 2)
+# mp replays for-user
 # =============================================================================
 
 

@@ -12922,10 +12922,10 @@ class Replay(ResultWithDataFrame):
     def summary_markdown(self) -> str:
         """Analyzer-produced markdown timeline rendered from ``actions``.
 
-        Phase 2 wired the rrweb analyzer through
-        :meth:`Workspace.fetch_replay`; when ``actions`` is non-empty
-        this returns the markdown timeline. When ``actions`` is empty
-        (test fixture, no-events fetch) it returns a one-line placeholder.
+        :meth:`Workspace.fetch_replay` runs the rrweb analyzer; when
+        ``actions`` is non-empty this returns the markdown timeline. When
+        ``actions`` is empty (test fixture, no-events fetch) it returns a
+        one-line placeholder.
 
         Returns:
             Multi-line markdown string suitable for stdout / LLM consumption.
@@ -13011,7 +13011,7 @@ class Replay(ResultWithDataFrame):
 class ReplayBundle(ResultWithDataFrame):
     """Collection of replays with cross-session projections (data-model §2.6).
 
-    The high-leverage type from US2. Materialized by
+    Materialized by
     :meth:`Workspace.fetch_replays` and :meth:`Workspace.replays_for_user`.
     Inherits :class:`ResultWithDataFrame`; ``df`` returns ``sessions_df``
     (the most useful default — one row per replay with derived counts).

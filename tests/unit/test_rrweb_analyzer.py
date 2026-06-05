@@ -1,7 +1,7 @@
 """Targeted coverage for the rrweb analyzer (`_internal/replays/rrweb_analyzer.py`).
 
 Synthetic event streams hit the paths that
-`tests/unit/test_us2_replay_bundle.py::TestRrwebAnalyzer` doesn't exercise:
+`tests/unit/test_replay_bundle.py::TestRrwebAnalyzer` doesn't exercise:
 mutation adds/removes/text/attribute changes, console-error plugin events,
 selection events with text extraction, mouse-interaction subtypes
 (double / right / focus / touch_start), per-source debouncing, and the

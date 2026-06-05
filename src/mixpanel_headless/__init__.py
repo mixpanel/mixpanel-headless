@@ -398,7 +398,7 @@ __all__ = [
     "ReplaySummary",
     "SignedReplay",
     "UserAction",
-    # Session-replay label functions (044, US2)
+    # Session-replay label functions (044)
     "default_label_fn",
     "selector_label_fn",
     "url_normalizer",

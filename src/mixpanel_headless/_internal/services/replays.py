@@ -1,9 +1,9 @@
-"""ReplaysService — Phase 1 implementation of the session-replay surface.
+"""ReplaysService — the session-replay discovery → sign → fetch pipeline.
 
 Orchestrates the discovery → sign → fetch pipeline against the Mixpanel App API
 and the signed CDN. Owned by :class:`Workspace`; not part of the public API.
 
-Phase 1 scope (PR 1):
+The service stays pure-bytes:
 - ``sign`` — wraps :meth:`MixpanelAPIClient.sign_replays`, attaches a
   ``signed_at`` timestamp, hydrates :class:`SignedReplay` instances.
 - ``fetch_files`` / ``walk_cdn_async`` — parallel CDN walker with batched
@@ -13,8 +13,9 @@ Phase 1 scope (PR 1):
   ``$mp_session_record`` events (delegates to a caller-supplied ``query_fn``
   to avoid a circular dependency on :class:`Workspace`).
 
-Phase 2 (PR 2) layers the rrweb analyzer on top via ``Workspace.fetch_replay``
-populating ``Replay.actions``; the service itself stays pure-bytes.
+The rrweb analyzer runs a layer above, in :meth:`Workspace.fetch_replay`,
+which feeds the fetched bytes through the vendored analyzer to populate
+``Replay.actions``.
 """
 
 from __future__ import annotations
@@ -120,13 +121,13 @@ def replay_not_found_error(
 
 
 class ReplaysService:
-    """Phase 1 orchestrator for the session-replay pipeline.
+    """Orchestrator for the session-replay pipeline.
 
     Sits between :class:`Workspace` and :class:`MixpanelAPIClient`; owns the
     async CDN walker that pulls raw rrweb bytes. The service intentionally
-    stays pure-bytes — analyzer integration ships in Phase 2 by having
-    :meth:`Workspace.fetch_replay` feed ``rrweb_events`` through the vendored
-    analyzer when populating :class:`Replay`.
+    stays pure-bytes — the rrweb analyzer runs a layer above, in
+    :meth:`Workspace.fetch_replay`, which feeds ``rrweb_events`` through the
+    vendored analyzer when populating :class:`Replay`.
 
     Construction is dependency-injected: the API client carries auth context,
     the optional ``query_fn`` (typically a bound :meth:`Workspace.query`)

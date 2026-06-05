@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -89,9 +90,15 @@ class TestSignedReplayExpiration:
         assert s.expires_at == 1716810300.0
 
     def test_is_expired_false_just_before_boundary(self) -> None:
-        """A URL signed 299 seconds ago is not yet expired."""
-        s = _build(signed_at=time.time() - 299)
-        assert not s.is_expired
+        """A URL one second short of the 300s TTL is not yet expired.
+
+        Time is frozen so the 1-second margin can't be crossed by a slow
+        runner between constructing the object and reading ``is_expired``.
+        """
+        now = 1_716_810_000.0
+        with patch("mixpanel_headless.types.time.time", return_value=now):
+            s = _build(signed_at=now - 299)
+            assert not s.is_expired
 
     def test_is_expired_true_at_boundary(self) -> None:
         """At exactly +300s the URL is considered expired."""

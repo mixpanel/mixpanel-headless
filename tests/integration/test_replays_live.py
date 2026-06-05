@@ -1,4 +1,4 @@
-"""Live integration tests for session replay (044, T018).
+"""Live integration tests for session replay (044).
 
 Skipped by default — set ``MP_LIVE_TESTS=1`` and point auth at a fixture
 project (e.g. Mixpanel Labs project 3713224) with a known replay-bearing

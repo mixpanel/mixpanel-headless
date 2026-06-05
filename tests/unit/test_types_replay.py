@@ -1,8 +1,9 @@
 """Unit tests for Replay (044-session-replay, data-model §2.5).
 
-Phase 1 contract: actions is always empty, the analyzer ships in Phase 2.
-Analyzer-dependent accessors (summary_markdown, errors, clicks_on) raise
-NotImplementedError until T056 wires the analyzer in US2.
+The analyzer has shipped: ``Workspace.fetch_replay()`` runs ``RrwebAnalyzer``
+and populates ``actions``. For an actionless replay (``actions=[]``, e.g. a
+unit-test fixture), the analyzer-dependent accessors (``summary_markdown``,
+``errors``, ``clicks_on``) return safe defaults rather than raising.
 """
 
 from __future__ import annotations
@@ -142,8 +143,8 @@ class TestReplayEventsDataFrame:
         assert len(r.events_df) == len(r.rrweb_events)
 
 
-class TestReplayPhase1Empty:
-    """Phase 1: actions is always empty; actions_df keeps the documented schema."""
+class TestReplayActionsDefaultEmpty:
+    """With no analyzer output, actions defaults to empty; actions_df keeps its schema."""
 
     def test_actions_default_empty(self) -> None:
         """actions defaults to an empty list."""
@@ -173,10 +174,9 @@ class TestReplayPhase1Empty:
 class TestReplayAnalyzerAccessorsEmptyActions:
     """With actions=[] the analyzer accessors return safe defaults.
 
-    Phase 2 (T056) replaced the Phase 1 NotImplementedError raises with
-    real implementations. When the Replay is hand-constructed with
-    actions=[] (e.g. a unit-test fixture) the accessors should still
-    return sensible empty/placeholder values rather than raise.
+    When the Replay is hand-constructed with actions=[] (e.g. a unit-test
+    fixture) the analyzer-dependent accessors still return sensible
+    empty/placeholder values rather than raise.
     """
 
     def test_summary_markdown_placeholder(self) -> None:

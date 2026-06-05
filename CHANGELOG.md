@@ -5,9 +5,9 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased — Session Replay (044, PRs 1–3)
+## Unreleased — Session Replay (044)
 
-### Added (PR 1 — Phase 1: discovery + signed CDN access)
+### Added
 
 - `Workspace.list_replays(distinct_id|replay_ids, from_date, to_date, limit)`
   — discover replays for a user, or hydrate explicit IDs.
@@ -34,9 +34,6 @@ may include API changes.
   stderr warning on every invocation), `mp replays fetch [-o FILE]`.
 - Depends on the undocumented `/app/projects/<id>/replays/sign[/bulk]`
   endpoint — the same endpoint Mixpanel's own MCP server uses.
-
-### Added (PR 2 — Phase 2: analyzer + ReplayBundle)
-
 - `Workspace.fetch_replays(ids, …)` — parallel multi-replay fetch
   returning a `ReplayBundle`.
 - `Workspace.replays_for_user(distinct_id, from_date, to_date, …)` —

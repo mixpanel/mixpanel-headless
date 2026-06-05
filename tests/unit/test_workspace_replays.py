@@ -4,7 +4,7 @@ These tests verify the Workspace-level wiring and validation:
 - list_replays argument validation (XOR, date window required)
 - events_for_replay's <=5-properties cap
 - fetch_replay's include_mixpanel_events flow
-- replays_for_user stub raises NotImplementedError until US2 lands
+- replays_for_user composes list_replays + fetch_replays into a ReplayBundle
 
 The ReplaysService is replaced with a MagicMock on each constructed
 Workspace so we can assert on the calls without doing real I/O. A separate
@@ -332,7 +332,7 @@ class TestFetchReplay:
         # sign + fetch_files should have fired once each.
         svc.sign.assert_called_once()
         svc.fetch_files.assert_called_once()
-        # Phase 1 invariants on the result.
+        # Invariants on the result.
         assert isinstance(replay, Replay)
         assert replay.replay_id == "r-1"
         assert replay.actions == []
@@ -427,13 +427,12 @@ class TestFetchReplay:
 # =============================================================================
 
 
-class TestReplaysForUserUS2:
-    """Phase 2 / T062 — replays_for_user returns a ReplayBundle.
+class TestReplaysForUser:
+    """replays_for_user returns a ReplayBundle.
 
-    Replaces the Phase 1 stub. The full coverage of bundle internals is
-    in tests/unit/test_types_replay_bundle.py; here we only verify the
-    composition (list_replays + fetch_replays) and the empty-result
-    short-circuit.
+    The full coverage of bundle internals is in
+    tests/unit/test_replay_bundle.py; here we only verify the composition
+    (list_replays + fetch_replays) and the empty-result short-circuit.
     """
 
     def test_method_exists(self) -> None:

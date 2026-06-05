@@ -1,4 +1,4 @@
-"""rrweb event-stream analyzer (044-session-replay, US2/T055).
+"""rrweb event-stream analyzer (044-session-replay).
 
 Walks the raw rrweb event stream, maintains DOM state, and emits two
 parallel outputs from a single pass:

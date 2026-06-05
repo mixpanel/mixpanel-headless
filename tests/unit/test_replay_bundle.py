@@ -1,6 +1,5 @@
-"""Combined US2 verification: analyzer + labels + aggregators + ReplayBundle.
+"""Combined verification: analyzer + labels + aggregators + ReplayBundle.
 
-This is the consolidated equivalent of T045-T052 from the task list.
 Tests are organized by component but stay lean — exercising the public
 contracts documented in data-model.md §2.6 and contracts/python-api.md §4.
 """
@@ -404,7 +403,7 @@ class TestReplayBundleAggregations:
         assert set(out["replay_id"]) == {"r-real"}
 
     def test_long_pauses(self) -> None:
-        """long_pauses catches r-2's near-1s gap between actions."""
+        """long_pauses catches r-2's ~1000s gap (90ms → 1_000_000ms)."""
         b = _sample_bundle()
         out = b.long_pauses(threshold_s=10)
         assert any(row["replay_id"] == "r-2" for _, row in out.iterrows())

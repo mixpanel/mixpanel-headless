@@ -1,5 +1,5 @@
 # ruff: noqa: ARG001, ARG005
-"""Tests for `mp replays` CLI commands (044-session-replay, Phase 1).
+"""Tests for `mp replays` CLI commands (044-session-replay).
 
 Coverage:
 - ``mp replays list`` happy path + empty result + --help
@@ -22,6 +22,7 @@ from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import (
     ReplayNotFoundError,
     SessionReplayAccessError,
+    SignedURLExpiredError,
 )
 from mixpanel_headless.types import Replay, ReplayEvent, ReplaySummary, SignedReplay
 
@@ -91,10 +92,10 @@ class TestReplaysHelp:
     """The replays group and its subcommands are discoverable via --help."""
 
     def test_replays_group_help(self) -> None:
-        """`mp replays --help` lists the four Phase 1 subcommands."""
+        """`mp replays --help` lists the replay subcommands."""
         result = runner.invoke(app, ["replays", "--help"])
         assert result.exit_code == 0
-        for sub in ("list", "events", "sign", "fetch"):
+        for sub in ("list", "events", "sign", "fetch", "analyze", "for-user"):
             assert sub in result.stdout
 
     def test_list_help_documents_flags(self) -> None:
@@ -214,15 +215,11 @@ class TestReplaysEvents:
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_too_many_properties_exits_3(self, mock_get_ws: MagicMock) -> None:
-        """Passing >5 properties raises ValueError → exit code 3."""
-        # The real workspace would raise on its own; bypass discovery by
-        # letting the mock's events_for_replay surface a ValueError as the
-        # Workspace.events_for_replay implementation does.
+        """Passing >5 properties emits the canonical message and exits 3."""
+        # The CLI validates the group-by cap before touching the workspace
+        # (contracts/error-messages.md §4), so events_for_replay is never
+        # reached for an over-cap request.
         mock_ws = MagicMock()
-        mock_ws.events_for_replay.side_effect = ValueError(
-            "events_for_replay accepts at most 5 event_properties "
-            "(Insights group-by limit). Got 6: ['a', 'b', 'c', 'd', 'e', 'f']"
-        )
         mock_get_ws.return_value = mock_ws
 
         result = runner.invoke(
@@ -236,7 +233,9 @@ class TestReplaysEvents:
             ],
         )
         assert result.exit_code == 3
-        assert "at most 5" in result.stderr
+        assert "too many event properties" in result.stderr
+        assert "max is 5" in result.stderr
+        mock_ws.events_for_replay.assert_not_called()
 
 
 # =============================================================================
@@ -344,7 +343,7 @@ class TestReplaysFetch:
 
 
 class TestExitCodeMapping:
-    """SessionReplayAccessError → 2, ReplayNotFoundError → 4."""
+    """Replay exceptions map to stable CLI exit codes (2 / 4 / 1)."""
 
     @patch("mixpanel_headless.cli.commands.replays.get_workspace")
     def test_sensitive_data_access_exits_2(self, mock_get_ws: MagicMock) -> None:
@@ -514,6 +513,25 @@ class TestExitCodeMapping:
         assert result.exit_code == 4
         assert "not found" in result.stderr
         assert "r-19221" in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_signed_url_expired_exits_1(self, mock_get_ws: MagicMock) -> None:
+        """SignedURLExpiredError maps to the canonical message + exit 1."""
+        mock_ws = MagicMock()
+        mock_ws.fetch_replay.side_effect = SignedURLExpiredError(
+            "Signed URL for replay r-19221 expired (5-minute TTL).",
+            details={
+                "replay_id": "r-19221",
+                "signed_at": 1716810000.0,
+                "expired_at": 1716810300.0,
+            },
+            status_code=403,
+        )
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["replays", "fetch", "r-19221"])
+        assert result.exit_code == 1
+        assert "signed URL expired (5-minute TTL)" in result.stderr
 
 
 # =============================================================================

@@ -31,8 +31,8 @@ not realistic recording size or complexity.
 
 Total duration: 15 seconds (`timestamp` field uses unix ms starting at
 `1716810000000` = 2024-05-27 13:00:00 UTC). The stream is timestamp-sorted
-and contains at least one of every rrweb event family the Phase 2 analyzer
-will care about: DOM bootstrap, navigation, mouse input, keyboard input,
+and contains at least one of every rrweb event family the analyzer cares
+about: DOM bootstrap, navigation, mouse input, keyboard input,
 viewport change.
 
 ## rrweb event-shape reference
@@ -54,7 +54,3 @@ viewport change.
 | 3        | Scroll            | `id`, `x`, `y`                            |
 | 4        | ViewportResize    | `width`, `height`                         |
 | 5        | Input             | `id`, `text`, `isChecked`                 |
-
-Phase 2 fixtures (`sample-replay-002.json`, `sample-replay-003.json`,
-`sample_bundle_fixture.py`) land alongside this one in T043 / T044 of the
-session-replay task list.

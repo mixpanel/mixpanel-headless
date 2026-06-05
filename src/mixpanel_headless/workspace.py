@@ -10643,7 +10643,7 @@ class Workspace:
                 to_date=win_to,
             )
 
-        # Phase 2 (T056) — run the rrweb analyzer to populate actions.
+        # Run the rrweb analyzer to populate actions.
         from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
 
         analyzer_result = RrwebAnalyzer().analyze(rrweb_events)
@@ -10872,7 +10872,7 @@ class Workspace:
         include_mixpanel_events: bool = True,
         event_properties: list[str] | None = None,
     ) -> ReplayBundle:
-        """Discovery + fetch in one call (US2/T062).
+        """Discovery + fetch in one call.
 
         Composes :meth:`list_replays` and :meth:`fetch_replays`. Defaults
         ``include_mixpanel_events`` to True since this is the "show me

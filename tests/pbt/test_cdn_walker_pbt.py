@@ -1,4 +1,4 @@
-"""Property-based tests for the session-replay CDN walker (044, T017).
+"""Property-based tests for the session-replay CDN walker (044).
 
 Invariants verified across randomly generated 404 positions and per-file
 event counts:
