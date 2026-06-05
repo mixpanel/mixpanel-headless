@@ -19,6 +19,7 @@ Workspace orchestrates internal services and provides direct App API access:
 - **Operational Tooling** — Manage alerts, annotations, and webhooks via Mixpanel App API (workspace-scoped)
 - **Data Governance** — Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, schema enforcement, data auditing, volume anomalies, and event deletion requests via Mixpanel App API (workspace-scoped)
 - **Business Context** — Read and write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
+- **Session Replay** — Discover, sign, fetch, and analyze rrweb session recordings; project them into session-level DataFrames and an LLM-friendly action timeline
 
 ## Key Features
 
@@ -142,6 +143,28 @@ Project-scope writes require `edit_project_info` permission; org-scope writes re
 
 !!! note "`workspaces()` vs `list_workspaces()`"
     Both methods are exposed. `workspaces()` (recommended) returns `list[WorkspaceRef]` from the cached `/me` response — fast, typed, and consistent with `events()` / `properties()` / `funnels()` / `cohorts()`. `list_workspaces()` is a lower-level escape hatch that calls `GET /api/app/projects/{pid}/workspaces/public` directly and returns `list[PublicWorkspace]`.
+
+### Session Replay
+
+Discover a user's rrweb session recordings, fetch the raw event stream from the signed CDN, and project them into analysis-ready DataFrames. The methods: `list_replays`, `events_for_replay` / `events_for_replays`, `sign_replay` / `sign_replays`, `fetch_replay` / `fetch_replays`, `stream_replay`, `replays_for_user`, and `analyze_replay`.
+
+```python
+import mixpanel_headless as mp
+
+ws = mp.Workspace()
+
+# Discovery + fetch + Mixpanel-event join in one call → a ReplayBundle
+bundle = ws.replays_for_user("user-42", from_date="2025-01-01", to_date="2025-01-31")
+print(bundle.sessions_df)                   # one row per session: duration, n_clicks, n_errors
+print(bundle.top_clicks(10))                # most-clicked elements (focus interactions excluded)
+print(bundle.replays[0].summary_markdown)   # LLM-friendly action timeline
+
+# Single replay, with the raw rrweb stream for the JS player
+replay = ws.fetch_replay("0190ebde-d50d-71b1-804c-ec1b4a533ef9")
+player_json = replay.to_rrweb_player_json()
+```
+
+Signed CDN URLs are bearer credentials: `SignedReplay` masks them in `repr` / `str` and the library never logs them. A `SESSION_RECORDING_SENSITIVE_DATA` 403 raises `SessionReplayAccessError`. See the [Session Replay guide](../guide/session-replay.md) for the full surface, the `mp replays` CLI, and the DataFrame schemas.
 
 ## In-Session Switching
 

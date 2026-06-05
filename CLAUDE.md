@@ -26,10 +26,11 @@ Services                 → DiscoveryService, LiveQueryService
 Infrastructure           → ConfigManager, MixpanelAPIClient
 ```
 
-**Three capability areas:**
+**Capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks, schema graph)
 - **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
 - **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
+- **Session replay**: Discover, sign, fetch, and analyze rrweb session recordings (`Workspace.replays_for_user` / `fetch_replay`, `Replay` / `ReplayBundle`, `mp replays`)
 
 ## Package Structure
 
@@ -61,14 +62,15 @@ src/mixpanel_headless/
 │   │   ├── callback_server.py # Local HTTP callback server
 │   │   └── client_registration.py # Dynamic Client Registration (RFC 7591)
 │   ├── query/               # Query engine builders and validators
-│   └── services/            # Discovery, LiveQuery services
+│   ├── replays/             # Session-replay analyzer, labels, aggregators (vendored rrweb)
+│   └── services/            # Discovery, LiveQuery, Replays services
 └── cli/
     ├── main.py              # Typer entry point + global flags (-a / -p / -w / -t)
     ├── commands/            # account / project / workspace / target / session
     │                        # + query, inspect, dashboards, reports, cohorts, flags,
     │                        # experiments, alerts, annotations, webhooks, lexicon,
     │                        # drop-filters, custom-properties, custom-events,
-    │                        # lookup-tables, schemas, business-context
+    │                        # lookup-tables, schemas, business-context, replays
     ├── formatters.py        # JSON, JSONL, Table, CSV, Plain output
     └── utils.py             # Error handling, console helpers
 ```

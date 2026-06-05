@@ -202,6 +202,55 @@ Types for `Workspace.query_flow()` — typed flow path analysis with step defini
       show_root_heading: true
       show_root_toc_entry: true
 
+## Session Replay Types
+
+Types for the session-replay surface — `Workspace.replays_for_user()`, `fetch_replay()`, `fetch_replays()`, and the `mp replays` CLI. See the [Session Replay guide](../guide/session-replay.md). `Replay` is conceptually a `ReplayBundle` of size one; both expose the same DataFrame projections.
+
+::: mixpanel_headless.ReplaySummary
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SignedReplay
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReplayEvent
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UserAction
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.Replay
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReplayBundle
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.default_label_fn
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.selector_label_fn
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.url_normalizer
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ## Legacy Query Results
 
 ::: mixpanel_headless.SegmentationResult

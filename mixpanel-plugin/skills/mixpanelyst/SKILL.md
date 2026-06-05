@@ -1,6 +1,6 @@
 ---
 name: mixpanelyst
-description: This skill should be used when the user asks about Mixpanel product analytics, event data, funnel analysis, retention curves, cohort analysis, segmentation queries, user behavior, conversion rates, churn, DAU/MAU, ARPU, revenue metrics, feature adoption, A/B test results, user paths, flow analysis, or any request to query, explore, visualize, or analyze Mixpanel data using Python. Also use when the user asks to read, write, or manage Mixpanel "business context" — the markdown documentation that grounds AI assistants in an organization's structure and goals.
+description: This skill should be used when the user asks about Mixpanel product analytics, event data, funnel analysis, retention curves, cohort analysis, segmentation queries, user behavior, conversion rates, churn, DAU/MAU, ARPU, revenue metrics, feature adoption, A/B test results, user paths, flow analysis, session replay or session recordings (what a specific user did on screen, click-by-click — rage clicks, dead clicks, error sessions, action timelines), or any request to query, explore, visualize, or analyze Mixpanel data using Python. Also use when the user asks to read, write, or manage Mixpanel "business context" — the markdown documentation that grounds AI assistants in an organization's structure and goals.
 allowed-tools: Bash Read Write WebFetch
 ---
 
@@ -994,6 +994,41 @@ print(f"{project_ctx.character_count}/{BUSINESS_CONTEXT_MAX_CHARS} chars; "
 
 User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/business-context/index.md")`
 
+## Session Replay
+
+Answers "what did this user actually *do*?" — the click-by-click story behind an analytics number. Fetches rrweb session recordings, runs a vendored analyzer, and projects sessions into DataFrames + an LLM-friendly action timeline.
+
+**When to reach for this:** the user names a specific `distinct_id` and asks what they did, wants clicks / rage-clicks / error sessions across a cohort of sessions, or wants to correlate a tracked event with on-screen behavior.
+
+```python
+import mixpanel_headless as mp
+ws = mp.Workspace()
+
+# Discover + fetch + Mixpanel-event join in one call → a ReplayBundle.
+# Each replay is byte-heavy, so limit defaults to 20 — raise it deliberately.
+bundle = ws.replays_for_user("user-42", from_date="2025-01-01", to_date="2025-01-31")
+
+bundle.sessions_df                     # one row per session: duration_s, n_clicks, n_errors, entry/exit_url
+bundle.replays[0].summary_markdown     # action timeline: "Clicked …", "Scrolled (×3)"
+bundle.top_clicks(10)                  # most-clicked elements (focus interactions excluded)
+bundle.rage_clicks()                   # rapid repeated clicks on one target
+bundle.error_sessions()                # a NEW bundle of only the replays with console errors
+```
+
+`ReplayBundle` projections: `sessions_df`, `actions_df` (includes a `description` column — the full phrase), `events_df` (raw rrweb), `mixpanel_df` (tracked events in the window), `elements_df` (per-element click counts, URL-normalized). Filters return new bundles: `.where(distinct_id=, contains_url=, has_event=, min_duration_s=)`, `.filter(predicate)`, `.find_pattern([...])`, `.head(n)`, `.sample(n, seed)`, `.compare(other)`.
+
+Single replay + raw stream for the rrweb JS player:
+
+```python
+replay = ws.fetch_replay("0190ebde-d50d-71b1-804c-ec1b4a533ef9")
+replay.to_rrweb_player_json()          # timestamp-sorted rrweb events
+```
+
+**Signed CDN URLs are bearer credentials** — `SignedReplay` masks them and the library never logs them. A `SESSION_RECORDING_SENSITIVE_DATA` 403 raises `SessionReplayAccessError`.
+
+Look up the surface: `help.py Workspace.replays_for_user`, `help.py ReplayBundle`, `help.py Replay`.
+User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/session-replay/index.md")`
+
 ## Key Types
 
 Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py types` for the full list of all types. Use `help.py <TypeName>` for fields, constructors, and enum values.
@@ -1019,6 +1054,8 @@ Full reference: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/api/
 | `CohortCriteria` | Atomic condition for cohort membership |
 | `CustomPropertyRef` | Reference to a persisted custom property by ID |
 | `InlineCustomProperty` | Ephemeral computed property defined by formula |
+| `ReplayBundle` / `Replay` | Session replay — DataFrame projections + `summary_markdown` |
+| `ReplaySummary` | Lightweight replay discovery handle from `list_replays` |
 
 **Aggregation enums** (use `help.py <EnumName>` to see all values):
 

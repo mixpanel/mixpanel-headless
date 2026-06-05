@@ -271,6 +271,14 @@ Discovery commands let you survey what exists before writing queries—no guessi
 - One-time processing without local persistence
 - Memory-efficient iteration over large datasets
 
+**Session Replay** — Discover, fetch, and analyze rrweb session recordings:
+
+- Discover a user's replays by date window, or hydrate explicit replay IDs
+- Fetch the raw rrweb stream (rrweb-player compatible) or stream it with bounded memory
+- Project sessions into DataFrames (`sessions_df`, `actions_df`, `elements_df`) plus an LLM-friendly action timeline
+- Correlate the Mixpanel events that fired during each session; rank clicks, find rage-clicks, surface error sessions
+- Signed CDN URLs are masked by default and never logged
+
 ## For Humans and Agents
 
 The structured output and deterministic command interface make `mixpanel_headless` particularly effective for AI coding agents—the same properties that make it scriptable for humans make it reliable for automated workflows.
@@ -302,6 +310,7 @@ For interactive exploration of the codebase itself, see [DeepWiki](https://deepw
 - [Retention Queries](guide/query-retention.md) — Typed retention analysis with event pairs, custom buckets, and alignment modes
 - [Flow Queries](guide/query-flows.md) — Typed flow path analysis with direction controls and visualization modes
 - [User Profile Queries](guide/query-users.md) — Typed user profile queries with filtering, sorting, and aggregation
+- [Session Replay](guide/session-replay.md) — Discover, fetch, and analyze rrweb session recordings
 - [API Reference](api/index.md) — Complete Python API documentation
 - [Entity Management](guide/entity-management.md) — Manage dashboards, reports, cohorts, feature flags, experiments, alerts, annotations, and webhooks
 - [Data Governance](guide/data-governance.md) — Manage Lexicon definitions, drop filters, custom properties, custom events, and lookup tables
