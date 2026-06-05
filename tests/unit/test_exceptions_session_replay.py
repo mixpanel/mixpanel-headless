@@ -12,6 +12,7 @@ from mixpanel_headless.exceptions import (
     SessionReplayAccessError,
     SessionReplayError,
     SignedURLExpiredError,
+    UnsupportedReplayFormatError,
 )
 
 
@@ -20,7 +21,12 @@ class TestSessionReplayHierarchy:
 
     @pytest.mark.parametrize(
         "exc_cls",
-        [SessionReplayAccessError, SignedURLExpiredError, ReplayNotFoundError],
+        [
+            SessionReplayAccessError,
+            SignedURLExpiredError,
+            ReplayNotFoundError,
+            UnsupportedReplayFormatError,
+        ],
     )
     def test_subclass_via_session_replay_error(
         self, exc_cls: type[SessionReplayError]
@@ -169,6 +175,41 @@ class TestReplayNotFoundError:
         json.dumps(d)
 
 
+class TestUnsupportedReplayFormatError:
+    """Non-rrweb (mobile) replay bytes (error-messages.md §9)."""
+
+    def _build(self) -> UnsupportedReplayFormatError:
+        """Construct an instance with the canonical message + details."""
+        replay_id = "r-19221"
+        message = (
+            f"Replay {replay_id} appears to be a mobile session (non-rrweb "
+            f"format). Mobile session replays are not yet supported by "
+            f"mixpanel-headless. Track upstream at SR-230."
+        )
+        return UnsupportedReplayFormatError(
+            message,
+            details={"replay_id": replay_id, "format": "non-rrweb"},
+        )
+
+    def test_canonical_message_verbatim(self) -> None:
+        """Message matches the catalog in error-messages.md §9 verbatim."""
+        exc = self._build()
+        assert "appears to be a mobile session (non-rrweb format)" in str(exc)
+        assert "not yet supported by mixpanel-headless" in str(exc)
+        assert "SR-230" in str(exc)
+
+    def test_status_code_defaults_to_501(self) -> None:
+        """status_code defaults to 501 (Not Implemented) — no HTTP failure occurred."""
+        assert self._build().status_code == 501
+
+    def test_details_round_trip(self) -> None:
+        """details keys survive a to_dict() round-trip and are JSON-serializable."""
+        d = self._build().to_dict()
+        assert d["details"]["replay_id"] == "r-19221"
+        assert d["details"]["format"] == "non-rrweb"
+        json.dumps(d)
+
+
 class TestCatchByBaseClass:
     """Callers can catch any session-replay error with the base class."""
 
@@ -190,6 +231,13 @@ class TestCatchByBaseClass:
         """ReplayNotFoundError raises as SessionReplayError."""
         with pytest.raises(SessionReplayError):
             raise ReplayNotFoundError("msg", status_code=404)
+
+    def test_catch_unsupported_format_as_session_replay_error(self) -> None:
+        """UnsupportedReplayFormatError raises as SessionReplayError."""
+        with pytest.raises(SessionReplayError):
+            raise UnsupportedReplayFormatError(
+                "msg", details={"replay_id": "r-1", "format": "non-rrweb"}
+            )
 
     def test_catch_session_replay_error_as_api_error(self) -> None:
         """SessionReplayError raises as APIError (so existing handlers work)."""

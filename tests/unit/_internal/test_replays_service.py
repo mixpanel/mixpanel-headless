@@ -22,6 +22,7 @@ from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     ReplayNotFoundError,
     SignedURLExpiredError,
+    UnsupportedReplayFormatError,
 )
 from mixpanel_headless.types import SignedReplay
 
@@ -363,10 +364,10 @@ class TestFetchFilesCredentialRedaction:
 
 
 class TestMobileReplayDetection:
-    """First event missing rrweb keys → NotImplementedError per §9."""
+    """First event missing rrweb keys → UnsupportedReplayFormatError per §9."""
 
-    def test_non_rrweb_first_event_raises_not_implemented(self) -> None:
-        """Mobile replays use a different recording format; fail forward-compat."""
+    def test_non_rrweb_first_event_raises_unsupported_format(self) -> None:
+        """Mobile replays use a different recording format; fail with a typed error."""
         # First file's first event lacks 'type', 'data', and 'timestamp'.
         file_contents: dict[int, list[dict[str, Any]] | None] = {
             0: [{"mobile_event": "tap", "ts": 1716810000}],
@@ -376,13 +377,16 @@ class TestMobileReplayDetection:
         transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
         service = ReplaysService(api, _async_transport=transport)
 
-        with pytest.raises(NotImplementedError, match="mobile session"):
+        with pytest.raises(UnsupportedReplayFormatError, match="mobile session") as ei:
             service.fetch_files(
                 _signed(),
                 retention_days=30,
                 max_files=500,
                 concurrency=50,
             )
+        # Typed so the CLI maps it to a clean exit code, and callers can branch.
+        assert ei.value.details["replay_id"] == _signed().replay_id
+        assert ei.value.details["format"] == "non-rrweb"
 
 
 # =============================================================================

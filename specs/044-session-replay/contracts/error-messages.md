@@ -190,14 +190,17 @@ like session tokens — do not paste into chat, logs, or version control.
 
 **When raised**: `fetch_replay` is called against a replay_id whose CDN bytes are not in rrweb format (mobile, future formats).
 
-**Python** (Phase 1 placeholder; Phase 2 may refine):
+**Python**:
 ```python
-raise NotImplementedError(
+raise UnsupportedReplayFormatError(
     f"Replay {replay_id} appears to be a mobile session (non-rrweb format). "
     f"Mobile session replays are not yet supported by mixpanel-headless. "
-    f"Track upstream at SR-230."
+    f"Track upstream at SR-230.",
+    details={"replay_id": replay_id, "format": "non-rrweb"},
 )
 ```
+
+`UnsupportedReplayFormatError` is a `SessionReplayError` (default `status_code` 501, Not Implemented). The batch paths (`fetch_replays` / `replays_for_user`) isolate it per-replay: the mobile session is logged and skipped, and the bundle returns the analyzable web sessions.
 
 **Exit code**: 1 (generic error)
 

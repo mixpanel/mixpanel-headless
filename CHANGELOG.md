@@ -27,8 +27,10 @@ may include API changes.
   `ReplayEvent`, `UserAction`, `Replay`.
 - New exceptions: `SessionReplayError` (base) plus
   `SessionReplayAccessError` (sensitive-data 403),
-  `SignedURLExpiredError`, `ReplayNotFoundError`. CLI exit-code mapping
-  added: sensitive-data → 2, replay-not-found → 4.
+  `SignedURLExpiredError`, `ReplayNotFoundError`, and
+  `UnsupportedReplayFormatError` (mobile / non-rrweb bytes). CLI
+  exit-code mapping added: sensitive-data → 2, replay-not-found → 4,
+  unsupported-format → 1.
 - New CLI commands: `mp replays list`, `mp replays events`,
   `mp replays sign` (with `--reveal-signed-urls` opt-in that emits a
   stderr warning on every invocation), `mp replays fetch [-o FILE]`.
@@ -77,7 +79,9 @@ may include API changes.
 
 - Mobile session replays are detected by the CDN walker (first event
   lacks rrweb's `type`/`data`/`timestamp` keys) and surface as a
-  forward-compat `NotImplementedError` per error-messages.md §9.
+  typed `UnsupportedReplayFormatError` (a `SessionReplayError`) per
+  error-messages.md §9 — the CLI maps it to a clean message + exit 1
+  instead of leaking a traceback.
 - Live integration tests (`tests/integration/test_replays_live.py`) are
   marked `@pytest.mark.live` and deselected by default; set
   `MP_LIVE_TESTS=1` plus `MP_REPLAY_FIXTURE_DISTINCT_ID` to run them

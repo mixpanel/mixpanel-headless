@@ -1447,3 +1447,32 @@ class ReplayNotFoundError(SessionReplayError):
 
     _DEFAULT_CODE = "REPLAY_NOT_FOUND"
     _DEFAULT_STATUS = 404
+
+
+class UnsupportedReplayFormatError(SessionReplayError):
+    """Replay bytes are not in rrweb format (mobile or other non-web recording).
+
+    Raised by the CDN walker when the first event of a recording lacks the
+    standard rrweb keys (``type`` / ``data`` / ``timestamp``). Mobile session
+    replays (iOS / Android) use a different on-disk format that the rrweb
+    analyzer cannot interpret. Discovery still works because
+    ``$mp_session_record`` / ``$mp_replay_id`` are platform-agnostic, but the
+    bytes and analyzer layers are web-only.
+
+    This is a typed :class:`SessionReplayError` (not the builtin
+    ``NotImplementedError`` used in earlier cuts) so callers can branch on it
+    and the CLI ``handle_errors`` decorator maps it to a clean message and exit
+    code instead of surfacing an uncaught traceback.
+
+    Details:
+        replay_id (str): The replay whose bytes were not rrweb-shaped.
+        format (str): The detected shape — always ``"non-rrweb"``.
+
+    The default ``status_code`` is 501 (Not Implemented): no HTTP request
+    failed, the format simply isn't supported yet.
+
+    See error-messages.md §9 for the canonical message wording.
+    """
+
+    _DEFAULT_CODE = "UNSUPPORTED_REPLAY_FORMAT"
+    _DEFAULT_STATUS = 501

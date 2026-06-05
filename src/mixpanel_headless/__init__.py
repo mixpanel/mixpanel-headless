@@ -77,6 +77,7 @@ from mixpanel_headless.exceptions import (
     SessionReplayAccessError,
     SessionReplayError,
     SignedURLExpiredError,
+    UnsupportedReplayFormatError,
     ValidationError,
     WorkspaceScopeError,
 )
@@ -391,6 +392,7 @@ __all__ = [
     "SessionReplayAccessError",
     "SignedURLExpiredError",
     "ReplayNotFoundError",
+    "UnsupportedReplayFormatError",
     # Session-replay types (044)
     "Replay",
     "ReplayBundle",

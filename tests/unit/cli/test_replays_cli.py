@@ -23,6 +23,7 @@ from mixpanel_headless.exceptions import (
     ReplayNotFoundError,
     SessionReplayAccessError,
     SignedURLExpiredError,
+    UnsupportedReplayFormatError,
 )
 from mixpanel_headless.types import Replay, ReplayEvent, ReplaySummary, SignedReplay
 
@@ -532,6 +533,28 @@ class TestExitCodeMapping:
         result = runner.invoke(app, ["replays", "fetch", "r-19221"])
         assert result.exit_code == 1
         assert "signed URL expired (5-minute TTL)" in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.replays.get_workspace")
+    def test_unsupported_format_exits_1_without_traceback(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """A mobile (non-rrweb) replay yields a clean message + exit 1, not a traceback."""
+        mock_ws = MagicMock()
+        mock_ws.fetch_replay.side_effect = UnsupportedReplayFormatError(
+            "Replay r-19221 appears to be a mobile session (non-rrweb format). "
+            "Mobile session replays are not yet supported by mixpanel-headless. "
+            "Track upstream at SR-230.",
+            details={"replay_id": "r-19221", "format": "non-rrweb"},
+        )
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["replays", "fetch", "r-19221"])
+        assert result.exit_code == 1
+        # Curated one-liner on stderr (the handler ran)...
+        assert "mobile session (non-rrweb format)" in result.stderr
+        assert "r-19221" in result.stderr
+        # ...and the exception did NOT leak as an uncaught traceback.
+        assert not isinstance(result.exception, UnsupportedReplayFormatError)
 
 
 # =============================================================================

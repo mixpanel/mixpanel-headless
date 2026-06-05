@@ -33,6 +33,7 @@ from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     ReplayNotFoundError,
     SignedURLExpiredError,
+    UnsupportedReplayFormatError,
 )
 from mixpanel_headless.types import (
     Filter,
@@ -72,7 +73,8 @@ def _looks_like_rrweb(event: object) -> bool:
     rrweb event shape always includes at minimum ``type`` (int discriminator),
     ``data`` (dict), and ``timestamp`` (int ms). Mobile session replays use a
     different recording format that lacks these keys; we treat absence as
-    "not rrweb" and surface a forward-compat ``NotImplementedError``.
+    "not rrweb" and surface a forward-compat
+    :class:`UnsupportedReplayFormatError`.
 
     Args:
         event: A single deserialized CDN-file element.
@@ -252,8 +254,8 @@ class ReplaysService:
             ReplayNotFoundError: First CDN file (``0000-N.json``) was 404.
             SignedURLExpiredError: Re-sign retry also returned 403, or
                 ``re_sign_on_expiry=False``.
-            NotImplementedError: First event in the walk doesn't look like
-                rrweb (mobile replay or unknown format).
+            UnsupportedReplayFormatError: First event in the walk doesn't look
+                like rrweb (mobile replay or unknown format).
             MixpanelHeadlessError: Network errors during CDN fetch.
         """
 
@@ -302,7 +304,7 @@ class ReplaysService:
 
         Mobile-replay detection runs once on the very first event of the
         walk: if it lacks rrweb's ``type``/``data``/``timestamp`` keys,
-        raises ``NotImplementedError`` per error-messages.md §9.
+        raises :class:`UnsupportedReplayFormatError` per error-messages.md §9.
 
         Args:
             signed: Signed CDN access handle.
@@ -318,7 +320,7 @@ class ReplaysService:
         Raises:
             ReplayNotFoundError: First CDN file 404.
             SignedURLExpiredError: Expiry retry exhausted or disabled.
-            NotImplementedError: First event isn't rrweb-shaped.
+            UnsupportedReplayFormatError: First event isn't rrweb-shaped.
             MixpanelHeadlessError: Underlying CDN HTTP error.
         """
         current_signed = signed
@@ -374,11 +376,15 @@ class ReplaysService:
                     if not mobile_checked:
                         mobile_checked = True
                         if not _looks_like_rrweb(events[0]):
-                            raise NotImplementedError(
+                            raise UnsupportedReplayFormatError(
                                 f"Replay {signed.replay_id} appears to be a "
                                 f"mobile session (non-rrweb format). Mobile "
                                 f"session replays are not yet supported by "
-                                f"mixpanel-headless. Track upstream at SR-230."
+                                f"mixpanel-headless. Track upstream at SR-230.",
+                                details={
+                                    "replay_id": signed.replay_id,
+                                    "format": "non-rrweb",
+                                },
                             )
                     for ev in sorted(events, key=lambda e: int(e.get("timestamp", 0))):
                         yield ev
