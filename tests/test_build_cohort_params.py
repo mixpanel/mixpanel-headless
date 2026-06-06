@@ -632,9 +632,11 @@ class TestBuildRetentionParamsCohortBreakdown:
         """CB3: CohortBreakdown mixed with string in retention raises."""
         with pytest.raises(BookmarkValidationError):
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(123, "PU"), "platform"],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+                )
             )
 
 
@@ -888,18 +890,14 @@ class TestBuildParamsCohortMetricMathIgnored:
         assert measurement["math"] == "unique"
 
     def test_mixed_events_still_validate_math(self, ws: Workspace) -> None:
-        """Verify mixed CohortMetric + plain event still validates top-level math.
+        """Verify mixed CohortMetric + plain event still validates math.
 
-        When a plain string event is present, it consumes top-level math,
-        so V1 must still fire for math='average' without math_property.
-        This test uses kwargs because InsightsQuery events must be Metric
-        objects (which validate at construction), so bare strings with
-        top-level math inheritance can only be tested via the old API.
+        Metric("Login", math="average") requires a property, so
+        construction raises ValueError.
         """
-        with pytest.raises(BookmarkValidationError, match="requires math_property"):
-            ws.build_params(
-                [CohortMetric(123, "PU"), "Login"],
-                math="average",
+        with pytest.raises(ValueError, match="requires a property"):
+            InsightsQuery(
+                events=[CohortMetric(123, "PU"), Metric("Login", math="average")],
             )
 
     def test_per_user_does_not_apply(self, ws: Workspace) -> None:

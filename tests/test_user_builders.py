@@ -9,6 +9,8 @@ Task ID: T004
 
 from __future__ import annotations
 
+import pytest
+
 from mixpanel_headless._internal.query.user_builders import (
     extract_cohort_filter,
     filter_to_selector,
@@ -475,20 +477,18 @@ class TestFilterToSelectorBetweenBoundsValidation:
     """Tests for between operator bound type validation."""
 
     def test_string_lower_bound_rejected(self) -> None:
-        """String lower bound raises ValueError."""
-        f = Filter("prop", "is between", ["low", 10])  # type: ignore[arg-type]
-        import pytest
+        """String lower bound is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(ValueError, match="int or float for lower bound"):
-            filter_to_selector(f)
+        with pytest.raises((ValueError, PydanticValidationError)):
+            Filter("prop", "is between", ["low", 10])  # type: ignore[arg-type]
 
     def test_string_upper_bound_rejected(self) -> None:
-        """String upper bound raises ValueError."""
-        f = Filter("prop", "is between", [0, "high"])  # type: ignore[arg-type]
-        import pytest
+        """String upper bound is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(ValueError, match="int or float for upper bound"):
-            filter_to_selector(f)
+        with pytest.raises((ValueError, PydanticValidationError)):
+            Filter("prop", "is between", [0, "high"])  # type: ignore[arg-type]
 
 
 class TestNotEqualsErrorMessage:

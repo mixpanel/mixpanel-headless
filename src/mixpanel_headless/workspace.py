@@ -42,12 +42,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
-    from mixpanel_headless.query_models import (
-        FlowQuery,
-        FunnelQuery,
-        InsightsQuery,
-        RetentionQuery,
-    )
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
@@ -142,6 +136,12 @@ from mixpanel_headless.exceptions import (
     ServerError,
     ValidationError,
     WorkspaceScopeError,
+)
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
 )
 from mixpanel_headless.types import (
     BUSINESS_CONTEXT_MAX_CHARS,
@@ -2261,88 +2261,16 @@ class Workspace:
 
     def query(
         self,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula]
-        | InsightsQuery,
-        *,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: MathType = "total",
-        math_property: str | None = None,
-        per_user: PerUserAggregation | None = None,
-        percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: Literal["timeseries", "total", "table"] = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: InsightsQuery,
     ) -> QueryResult:
         """Run a typed insights query against the Mixpanel API.
 
-        Generates bookmark params from keyword arguments, POSTs them inline
-        to ``/api/query/insights``, and returns a structured QueryResult
-        with lazy DataFrame conversion.
+        Accepts an ``InsightsQuery`` model, builds bookmark params,
+        POSTs them to ``/api/query/insights``, and returns a structured
+        ``QueryResult`` with lazy DataFrame conversion.
 
         Args:
-            events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a Formula
-                object, or a sequence mixing strings, Metrics,
-                CohortMetrics, and Formulas. Formula objects in the
-                list are extracted and appended as formula show clauses.
-                When events includes a CohortMetric, ``math``,
-                ``math_property``, and ``per_user`` are silently
-                ignored for that entry — cohort size is always counted
-                as unique users (CM3).
-            from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-                Ignored if ``from_date`` is set.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function for plain-string events.
-                Default: ``"total"``.
-            math_property: Property name for property-based math
-                (average, sum, percentiles).
-            per_user: Per-user pre-aggregation (average, total, min, max).
-            percentile_value: Custom percentile value (e.g. 95 for p95).
-                Required when ``math="percentile"``. Maps to ``percentile``
-                in bookmark measurement. Ignored for other math types.
-            group_by: Break down results by property or cohort membership.
-                Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
-                list of any mix.
-            where: Filter results by conditions. Accepts a Filter
-                or list of Filters.
-            formula: Formula expression referencing events by position
-                (A, B, C...). Requires 2+ events. Cannot be combined
-                with Formula objects in ``events``.
-            formula_label: Display label for formula result.
-            rolling: Rolling window size in periods.
-                Mutually exclusive with ``cumulative``.
-            cumulative: Enable cumulative analysis mode.
-                Mutually exclusive with ``rolling``.
-            mode: Result shape. ``"timeseries"`` returns per-period data,
-                ``"total"`` returns a single aggregate, ``"table"`` returns
-                tabular data. Default: ``"timeseries"``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, ``TimeComparison.absolute_start("2026-01-01")``
-                for a fixed start date, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured insights query model.
 
         Returns:
             QueryResult with series data, DataFrame, and metadata.
@@ -2356,80 +2284,33 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import InsightsQuery
+
             ws = Workspace()
-
-            # Simple event query
-            result = ws.query("Login")
+            result = ws.query(InsightsQuery(events="Login", math="unique", last=7))
             print(result.df.head())
-
-            # With aggregation and time range
-            result = ws.query("Login", math="unique", last=7, unit="day")
-
-            # Multi-event with formula (top-level parameter)
-            result = ws.query(
-                [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
-                formula="(B / A) * 100",
-                formula_label="Conversion Rate",
-            )
-
-            # Multi-event with formula (Formula in list)
-            result = ws.query(
-                [Metric("Signup", math="unique"),
-                 Metric("Purchase", math="unique"),
-                 Formula("(B / A) * 100", label="Conversion Rate")],
-            )
             ```
         """
-        from mixpanel_headless.query_models import InsightsQuery
-
-        if isinstance(events, InsightsQuery):
-            query = events
-            params = self._resolve_and_build_params(
-                events=query.events,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                math=query.math,
-                math_property=query.math_property,
-                per_user=query.per_user,
-                percentile_value=query.percentile_value,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                formula=query.formula,
-                formula_label=query.formula_label,
-                rolling=query.rolling,
-                cumulative=query.cumulative,
-                mode=query.mode,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-            return self._live_query_service.query(
-                bookmark_params=params,
-                project_id=int(self._session.project.id),
-            )
-
         params = self._resolve_and_build_params(
-            events=events,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            group_by=group_by,
-            where=where,
-            formula=formula,
-            formula_label=formula_label,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            events=query.events,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            formula=query.formula,
+            formula_label=query.formula_label,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            mode=query.mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
-
         return self._live_query_service.query(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -2437,73 +2318,17 @@ class Workspace:
 
     def build_params(
         self,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula]
-        | InsightsQuery,
-        *,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: MathType = "total",
-        math_property: str | None = None,
-        per_user: PerUserAggregation | None = None,
-        percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: Literal["timeseries", "total", "table"] = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: InsightsQuery,
     ) -> dict[str, Any]:
         """Build validated bookmark params without executing the API call.
 
-        Has the same signature as :meth:`query` but returns the generated
-        bookmark params dict instead of querying the Mixpanel API. Useful
-        for debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        Accepts an ``InsightsQuery`` model and returns the generated
+        bookmark params dict instead of querying the Mixpanel API.
+        Useful for debugging, inspecting generated JSON, persisting
+        via :meth:`create_bookmark`, or testing.
 
         Args:
-            events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``Formula``, or a
-                sequence mixing strings, ``Metric``s, ``CohortMetric``s,
-                and ``Formula``s.
-            from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function for plain-string events.
-                Default: ``"total"``.
-            math_property: Property name for property-based math.
-            per_user: Per-user pre-aggregation.
-            percentile_value: Custom percentile value (e.g. 95).
-                Required when ``math="percentile"``.
-            group_by: Break down results by property or cohort membership.
-                Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
-                list of any mix.
-            where: Filter results by conditions.
-            formula: Formula expression referencing events by position.
-            formula_label: Display label for formula result.
-            rolling: Rolling window size in periods.
-            cumulative: Enable cumulative analysis mode.
-            mode: Result shape. Default: ``"timeseries"``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured insights query model.
 
         Returns:
             Bookmark params dict with ``sections`` and ``displayOptions``
@@ -2515,65 +2340,32 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import InsightsQuery
+
             ws = Workspace()
-
-            # Inspect generated bookmark JSON
-            params = ws.build_params("Login", math="unique", last=7)
+            params = ws.build_params(InsightsQuery(events="Login", math="unique", last=7))
             print(json.dumps(params, indent=2))
-
-            # Save as a bookmark (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Daily Unique Logins",
-                bookmark_type="insights",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        from mixpanel_headless.query_models import InsightsQuery
-
-        if isinstance(events, InsightsQuery):
-            query = events
-            return self._resolve_and_build_params(
-                events=query.events,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                math=query.math,
-                math_property=query.math_property,
-                per_user=query.per_user,
-                percentile_value=query.percentile_value,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                formula=query.formula,
-                formula_label=query.formula_label,
-                rolling=query.rolling,
-                cumulative=query.cumulative,
-                mode=query.mode,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-
         return self._resolve_and_build_params(
-            events=events,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            group_by=group_by,
-            where=where,
-            formula=formula,
-            formula_label=formula_label,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            events=query.events,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            formula=query.formula,
+            formula_label=query.formula_label,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            mode=query.mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
 
     def _resolve_and_build_params(
@@ -3096,86 +2888,16 @@ class Workspace:
 
     def query_funnel(
         self,
-        steps: list[str | FunnelStep] | FunnelQuery,
-        *,
-        conversion_window: int = 14,
-        conversion_window_unit: Literal[
-            "second", "minute", "hour", "day", "week", "month", "session"
-        ] = "day",
-        order: Literal["loose", "any"] = "loose",
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: FunnelMathType = "conversion_rate_unique",
-        math_property: str | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        exclusions: list[str | Exclusion] | None = None,
-        holding_constant: (
-            str | HoldingConstant | list[str | HoldingConstant] | None
-        ) = None,
-        mode: Literal["steps", "trends", "table"] = "steps",
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: FunnelQuery,
     ) -> FunnelQueryResult:
         """Run a typed funnel query against the Mixpanel API.
 
-        Generates funnel bookmark params from keyword arguments, POSTs
-        them inline to ``/api/query/insights``, and returns a structured
-        FunnelQueryResult with lazy DataFrame conversion.
+        Accepts a ``FunnelQuery`` model, builds funnel bookmark params,
+        POSTs them to ``/api/query/insights``, and returns a structured
+        ``FunnelQueryResult`` with lazy DataFrame conversion.
 
         Args:
-            steps: Funnel step specifications. At least 2 required.
-                Accepts event name strings or ``FunnelStep`` objects
-                for per-step filters, labels, and ordering.
-            conversion_window: How long users have to complete the
-                funnel. Default: 14.
-            conversion_window_unit: Time unit for conversion window.
-                Default: ``"day"``.
-            order: Step ordering mode. ``"loose"`` requires steps in
-                order but allows other events between. ``"any"`` allows
-                steps in any order. Default: ``"loose"``.
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Funnel aggregation function. Default:
-                ``"conversion_rate_unique"``.
-            math_property: Numeric property name for property-aggregation
-                math types (``"average"``, ``"median"``, ``"min"``,
-                ``"max"``, ``"p25"``, ``"p75"``, ``"p90"``, ``"p99"``).
-                Required when using those math types; must be ``None``
-                for count/rate math types. Default: ``None``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            exclusions: Events to exclude between steps. Accepts
-                event name strings or ``Exclusion`` objects.
-            holding_constant: Properties to hold constant across
-                steps. Accepts strings, ``HoldingConstant`` objects,
-                or a list mixing both.
-            mode: Result display mode. ``"steps"`` shows step-level
-                data, ``"trends"`` shows conversion over time,
-                ``"table"`` shows tabular breakdown. Default:
-                ``"steps"``.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel after conversion. One of
-                ``"default"``, ``"basic"``, ``"aggressive"``, or
-                ``"optimized"``. Default: ``None`` (server default).
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured funnel query model.
 
         Returns:
             FunnelQueryResult with step data, DataFrame, and metadata.
@@ -3190,72 +2912,33 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FunnelQuery
+
             ws = Workspace()
-
-            # Simple two-step funnel
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
             print(result.overall_conversion_rate)
-
-            # Configured funnel
-            result = ws.query_funnel(
-                ["Signup", "Add to Cart", "Checkout", "Purchase"],
-                conversion_window=7,
-                order="loose",
-                last=90,
-            )
-            print(result.df)
             ```
         """
-        from mixpanel_headless.query_models import FunnelQuery
-
-        if isinstance(steps, FunnelQuery):
-            query = steps
-            params = self._resolve_and_build_funnel_params(
-                steps=query.steps,
-                conversion_window=query.conversion_window,
-                conversion_window_unit=query.conversion_window_unit,
-                order=query.order,
-                math=query.math,
-                math_property=query.math_property,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                exclusions=query.exclusions,
-                holding_constant=query.holding_constant,
-                mode=query.mode,
-                reentry_mode=query.reentry_mode,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-            return self._live_query_service.query_funnel(
-                bookmark_params=params,
-                project_id=int(self._session.project.id),
-            )
-
         params = self._resolve_and_build_funnel_params(
-            steps=steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=exclusions,
-            holding_constant=holding_constant,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            steps=query.steps,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            order=query.order,
+            math=query.math,
+            math_property=query.math_property,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            exclusions=query.exclusions,
+            holding_constant=query.holding_constant,
+            mode=query.mode,
+            reentry_mode=query.reentry_mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
-
         return self._live_query_service.query_funnel(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -3263,72 +2946,17 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep] | FunnelQuery,
-        *,
-        conversion_window: int = 14,
-        conversion_window_unit: Literal[
-            "second", "minute", "hour", "day", "week", "month", "session"
-        ] = "day",
-        order: Literal["loose", "any"] = "loose",
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: FunnelMathType = "conversion_rate_unique",
-        math_property: str | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        exclusions: list[str | Exclusion] | None = None,
-        holding_constant: (
-            str | HoldingConstant | list[str | HoldingConstant] | None
-        ) = None,
-        mode: Literal["steps", "trends", "table"] = "steps",
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: FunnelQuery,
     ) -> dict[str, Any]:
         """Build validated funnel bookmark params without executing.
 
-        Has the same signature as :meth:`query_funnel` but returns the
-        generated bookmark params dict instead of querying the API.
-        Useful for debugging, inspecting generated JSON, persisting
-        via :meth:`create_bookmark`, or testing.
+        Accepts a ``FunnelQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
+        debugging, inspecting generated JSON, persisting via
+        :meth:`create_bookmark`, or testing.
 
         Args:
-            steps: Funnel step specifications. At least 2 required.
-            conversion_window: Conversion window size. Default: 14.
-            conversion_window_unit: Time unit. Default: ``"day"``.
-            order: Step ordering mode. Default: ``"loose"``.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function. Default:
-                ``"conversion_rate_unique"``.
-            math_property: Numeric property name for property-aggregation
-                math types. Required for ``"average"``, ``"median"``,
-                etc. Default: ``None``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            exclusions: Events to exclude between steps.
-            holding_constant: Properties to hold constant.
-            mode: Display mode. Default: ``"steps"``.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel after conversion. One of
-                ``"default"``, ``"basic"``, ``"aggressive"``, or
-                ``"optimized"``. Default: ``None`` (server default).
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured funnel query model.
 
         Returns:
             Bookmark params dict with ``sections`` and
@@ -3340,65 +2968,32 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FunnelQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_funnel_params(["Signup", "Purchase"])
+            params = ws.build_funnel_params(FunnelQuery(steps=["Signup", "Purchase"]))
             print(json.dumps(params, indent=2))
-
-            # Save as a report (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Signup → Purchase Funnel",
-                bookmark_type="funnels",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        from mixpanel_headless.query_models import FunnelQuery
-
-        if isinstance(steps, FunnelQuery):
-            query = steps
-            return self._resolve_and_build_funnel_params(
-                steps=query.steps,
-                conversion_window=query.conversion_window,
-                conversion_window_unit=query.conversion_window_unit,
-                order=query.order,
-                math=query.math,
-                math_property=query.math_property,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                exclusions=query.exclusions,
-                holding_constant=query.holding_constant,
-                mode=query.mode,
-                reentry_mode=query.reentry_mode,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-
         return self._resolve_and_build_funnel_params(
-            steps=steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=exclusions,
-            holding_constant=holding_constant,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            steps=query.steps,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            order=query.order,
+            math=query.math,
+            math_property=query.math_property,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            exclusions=query.exclusions,
+            holding_constant=query.holding_constant,
+            mode=query.mode,
+            reentry_mode=query.reentry_mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
 
     # =========================================================================
@@ -3938,76 +3533,16 @@ class Workspace:
 
     def query_flow(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep] | FlowQuery,
-        *,
-        forward: int = 3,
-        reverse: int = 0,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        conversion_window: int = 7,
-        conversion_window_unit: Literal["day", "week", "month", "session"] = "day",
-        count_type: Literal["unique", "total", "session"] = "unique",
-        cardinality: int = 3,
-        collapse_repeated: bool = False,
-        hidden_events: list[str] | None = None,
-        mode: Literal["sankey", "paths", "tree"] = "sankey",
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        exclusions: list[str] | None = None,
+        query: FlowQuery,
     ) -> FlowQueryResult:
         """Run a typed flow query against the Mixpanel API.
 
-        Generates flow bookmark params from keyword arguments, POSTs
-        them inline to ``/arb_funnels``, and returns a structured
+        Accepts a ``FlowQuery`` model, builds flow bookmark params,
+        POSTs them to ``/arb_funnels``, and returns a structured
         ``FlowQueryResult`` with lazy DataFrame conversion.
 
         Args:
-            event: Event specification. Accepts an event name string,
-                a ``FlowStep`` object for per-step configuration, or
-                a list of strings/``FlowStep`` objects for multi-step
-                flows.
-            forward: Default number of forward steps to trace from
-                each anchor event. Overridden by per-step values.
-                Default: ``3``.
-            reverse: Default number of reverse steps to trace from
-                each anchor event. Overridden by per-step values.
-                Default: ``0``.
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            conversion_window: Conversion window size. Default: 7.
-            conversion_window_unit: Conversion window unit.
-                Default: ``"day"``.
-            count_type: Counting method for flow analysis.
-                Default: ``"unique"``.
-            cardinality: Number of top paths to display.
-                Default: ``3``.
-            collapse_repeated: Whether to merge consecutive repeated
-                events. Default: ``False``.
-            hidden_events: Events to hide from the flow visualization.
-                Default: ``None``.
-            mode: Flow visualization mode. Default: ``"sankey"``.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters (``Filter.in_cohort`` /
-                ``Filter.not_in_cohort``) produce ``filter_by_cohort``.
-                Property filters (``Filter.equals``, etc.) produce
-                ``filter_by_event``. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Accepts a string, ``GroupBy``, or list of
-                strings/``GroupBy`` objects. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
+            query: Fully configured flow query model.
 
         Returns:
             FlowQueryResult with steps, flows, breakdowns, and
@@ -4023,146 +3558,51 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FlowQuery
+
             ws = Workspace()
-
-            # Simple flow query
-            result = ws.query_flow("Login")
-            print(result.overall_conversion_rate)
-
-            # With configuration
-            result = ws.query_flow(
-                FlowStep("Login", forward=5, reverse=2),
-                mode="paths",
-                last=90,
-            )
+            result = ws.query_flow(FlowQuery(event="Login", mode="paths", last=90))
             print(result.df)
-
-            # With property filter and segments
-            result = ws.query_flow(
-                "Login",
-                where=Filter.equals("country", "US"),
-                segments=GroupBy("platform"),
-                exclusions=["Error Event"],
-            )
             ```
         """
-        from mixpanel_headless.query_models import FlowQuery
-
-        if isinstance(event, FlowQuery):
-            query = event
-            params = self._resolve_and_build_flow_params(
-                event=query.event,
-                forward=query.forward,
-                reverse=query.reverse,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                conversion_window=query.conversion_window,
-                conversion_window_unit=query.conversion_window_unit,
-                count_type=query.count_type,
-                cardinality=query.cardinality,
-                collapse_repeated=query.collapse_repeated,
-                hidden_events=query.hidden_events,
-                mode=query.mode,
-                where=query.where,
-                data_group_id=query.data_group_id,
-                segments=query.segments,  # type: ignore[arg-type]
-                exclusions=query.exclusions,
-            )
-            return self._live_query_service.query_flow(
-                bookmark_params=params,
-                project_id=int(self._session.project.id),
-                mode=query.mode,
-            )
-
         params = self._resolve_and_build_flow_params(
-            event=event,
-            forward=forward,
-            reverse=reverse,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
+            event=query.event,
+            forward=query.forward,
+            reverse=query.reverse,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            count_type=query.count_type,
+            cardinality=query.cardinality,
+            collapse_repeated=query.collapse_repeated,
+            hidden_events=query.hidden_events,
+            mode=query.mode,
+            where=query.where,
+            data_group_id=query.data_group_id,
+            segments=query.segments,  # type: ignore[arg-type]
+            exclusions=query.exclusions,
         )
-
         return self._live_query_service.query_flow(
             bookmark_params=params,
             project_id=int(self._session.project.id),
-            mode=mode,
+            mode=query.mode,
         )
 
     def build_flow_params(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep] | FlowQuery,
-        *,
-        forward: int = 3,
-        reverse: int = 0,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        conversion_window: int = 7,
-        conversion_window_unit: Literal["day", "week", "month", "session"] = "day",
-        count_type: Literal["unique", "total", "session"] = "unique",
-        cardinality: int = 3,
-        collapse_repeated: bool = False,
-        hidden_events: list[str] | None = None,
-        mode: Literal["sankey", "paths", "tree"] = "sankey",
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        exclusions: list[str] | None = None,
+        query: FlowQuery,
     ) -> dict[str, Any]:
         """Build validated flow bookmark params without executing.
 
-        Accepts the same arguments as :meth:`query_flow` but returns
-        the generated bookmark params ``dict`` instead of querying
-        the API. Useful for debugging, inspecting generated JSON,
-        persisting via :meth:`create_bookmark`, or testing.
+        Accepts a ``FlowQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
+        debugging, inspecting generated JSON, persisting via
+        :meth:`create_bookmark`, or testing.
 
         Args:
-            event: Event specification. Accepts an event name string,
-                a ``FlowStep`` object, or a list of strings/``FlowStep``
-                objects.
-            forward: Default forward step count. Default: ``3``.
-            reverse: Default reverse step count. Default: ``0``.
-            from_date: Start date (YYYY-MM-DD) or ``None``.
-            to_date: End date (YYYY-MM-DD) or ``None``.
-            last: Relative time range in days. Default: 30.
-            conversion_window: Conversion window size. Default: 7.
-            conversion_window_unit: Conversion window unit.
-                Default: ``"day"``.
-            count_type: Counting method. Default: ``"unique"``.
-            cardinality: Number of top paths. Default: ``3``.
-            collapse_repeated: Merge repeated events. Default: ``False``.
-            hidden_events: Events to hide. Default: ``None``.
-            mode: Display mode. Default: ``"sankey"``.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters produce ``filter_by_cohort``,
-                property filters produce ``filter_by_event``.
-                Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Accepts a string, ``GroupBy``, or list of
-                strings/``GroupBy`` objects. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
+            query: Fully configured flow query model.
 
         Returns:
             Flat bookmark params dict with ``steps``, ``date_range``,
@@ -4174,63 +3614,31 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FlowQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             print(json.dumps(params, indent=2))
-
-            # With segments and exclusions
-            params = ws.build_flow_params(
-                "Login",
-                segments=GroupBy("country"),
-                exclusions=["Error Event"],
-                where=Filter.equals("platform", "iOS"),
-            )
             ```
         """
-        from mixpanel_headless.query_models import FlowQuery
-
-        if isinstance(event, FlowQuery):
-            query = event
-            return self._resolve_and_build_flow_params(
-                event=query.event,
-                forward=query.forward,
-                reverse=query.reverse,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                conversion_window=query.conversion_window,
-                conversion_window_unit=query.conversion_window_unit,
-                count_type=query.count_type,
-                cardinality=query.cardinality,
-                collapse_repeated=query.collapse_repeated,
-                hidden_events=query.hidden_events,
-                mode=query.mode,
-                where=query.where,
-                data_group_id=query.data_group_id,
-                segments=query.segments,  # type: ignore[arg-type]
-                exclusions=query.exclusions,
-            )
-
         return self._resolve_and_build_flow_params(
-            event=event,
-            forward=forward,
-            reverse=reverse,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
+            event=query.event,
+            forward=query.forward,
+            reverse=query.reverse,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            count_type=query.count_type,
+            cardinality=query.cardinality,
+            collapse_repeated=query.collapse_repeated,
+            hidden_events=query.hidden_events,
+            mode=query.mode,
+            where=query.where,
+            data_group_id=query.data_group_id,
+            segments=query.segments,  # type: ignore[arg-type]
+            exclusions=query.exclusions,
         )
 
     # =========================================================================
@@ -4364,72 +3772,17 @@ class Workspace:
 
     def query_retention(
         self,
-        born_event: str | RetentionEvent | RetentionQuery,
-        return_event: str | RetentionEvent | None = None,
-        *,
-        retention_unit: TimeUnit = "week",
-        alignment: RetentionAlignment = "birth",
-        bucket_sizes: list[int] | None = None,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: RetentionMathType = "retention_rate",
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        mode: RetentionMode = "curve",
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: RetentionQuery,
     ) -> RetentionQueryResult:
         """Run a typed retention query against the Mixpanel API.
 
-        Generates retention bookmark params from keyword arguments, POSTs
-        them inline to ``/api/query/insights``, and returns a structured
-        RetentionQueryResult with lazy DataFrame conversion.
+        Accepts a ``RetentionQuery`` model, builds retention bookmark
+        params, POSTs them to ``/api/query/insights``, and returns a
+        structured ``RetentionQueryResult`` with lazy DataFrame
+        conversion.
 
         Args:
-            born_event: Event that defines cohort membership. Accepts
-                an event name string or a ``RetentionEvent`` object
-                for per-event filters.
-            return_event: Event that defines return. Accepts an event
-                name string or a ``RetentionEvent`` object.
-            retention_unit: Retention period unit. Default: ``"week"``.
-            alignment: Retention alignment mode. Default: ``"birth"``.
-            bucket_sizes: Custom bucket sizes (positive ints in
-                ascending order). Default: ``None`` (uniform buckets).
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit (``day``, ``week``, or
-                ``month`` — ``hour`` is not supported for retention).
-                Default: ``"day"``.
-            math: Retention aggregation function. Default:
-                ``"retention_rate"``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            mode: Result display mode. Default: ``"curve"``.
-            unbounded_mode: Retention unbounded mode controlling how
-                retention is counted in unbounded periods. One of
-                ``"none"``, ``"carry_back"``, ``"carry_forward"``, or
-                ``"consecutive_forward"``. Default: ``None``
-                (server default).
-            retention_cumulative: Whether to use cumulative retention
-                counting. Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured retention query model.
 
         Returns:
             RetentionQueryResult with cohort data, DataFrame, and
@@ -4445,74 +3798,34 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import RetentionQuery
+
             ws = Workspace()
-
-            # Simple retention query
-            result = ws.query_retention("Signup", "Login")
-            print(result.average)
-
-            # With configuration
             result = ws.query_retention(
-                "Signup", "Login",
-                retention_unit="day",
-                bucket_sizes=[1, 3, 7, 14, 30],
-                last=90,
+                RetentionQuery(born_event="Signup", return_event="Login")
             )
-            print(result.df)
+            print(result.average)
             ```
         """
-        from mixpanel_headless.query_models import RetentionQuery
-
-        if isinstance(born_event, RetentionQuery):
-            query = born_event
-            params = self._resolve_and_build_retention_params(
-                born_event=query.born_event,
-                return_event=query.return_event,
-                retention_unit=query.retention_unit,
-                alignment=query.alignment,
-                bucket_sizes=query.bucket_sizes,
-                math=query.math,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                mode=query.mode,
-                unbounded_mode=query.unbounded_mode,
-                retention_cumulative=query.retention_cumulative,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-            return self._live_query_service.query_retention(
-                bookmark_params=params,
-                project_id=int(self._session.project.id),
-            )
-
-        if return_event is None:
-            msg = "return_event is required when born_event is not a RetentionQuery"
-            raise TypeError(msg)
-
         params = self._resolve_and_build_retention_params(
-            born_event=born_event,
-            return_event=return_event,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            born_event=query.born_event,
+            return_event=query.return_event,
+            retention_unit=query.retention_unit,
+            alignment=query.alignment,
+            bucket_sizes=query.bucket_sizes,
+            math=query.math,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            mode=query.mode,
+            unbounded_mode=query.unbounded_mode,
+            retention_cumulative=query.retention_cumulative,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
-
         return self._live_query_service.query_retention(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -4520,69 +3833,17 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent | RetentionQuery,
-        return_event: str | RetentionEvent | None = None,
-        *,
-        retention_unit: TimeUnit = "week",
-        alignment: RetentionAlignment = "birth",
-        bucket_sizes: list[int] | None = None,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: RetentionMathType = "retention_rate",
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        mode: RetentionMode = "curve",
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: RetentionQuery,
     ) -> dict[str, Any]:
         """Build validated retention bookmark params without executing.
 
-        Accepts the same arguments as :meth:`query_retention` but returns
-        the generated bookmark params ``dict`` (not a
-        ``RetentionQueryResult``) instead of querying the API. Useful for
+        Accepts a ``RetentionQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
         debugging, inspecting generated JSON, persisting via
         :meth:`create_bookmark`, or testing.
 
         Args:
-            born_event: Event that defines cohort membership.
-            return_event: Event that defines return.
-            retention_unit: Retention period unit. Default: ``"week"``.
-            alignment: Retention alignment mode. Default: ``"birth"``.
-            bucket_sizes: Custom bucket sizes. Default: ``None``.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit (``day``, ``week``, or
-                ``month`` — ``hour`` is not supported for retention).
-                Default: ``"day"``.
-            math: Aggregation function. Default:
-                ``"retention_rate"``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            mode: Display mode. Default: ``"curve"``.
-            unbounded_mode: Retention unbounded mode controlling how
-                retention is counted in unbounded periods. One of
-                ``"none"``, ``"carry_back"``, ``"carry_forward"``, or
-                ``"consecutive_forward"``. Default: ``None``
-                (server default).
-            retention_cumulative: Whether to use cumulative retention
-                counting. Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured retention query model.
 
         Returns:
             Bookmark params dict with ``sections`` and
@@ -4594,67 +3855,33 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import RetentionQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_retention_params("Signup", "Login")
+            params = ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             print(json.dumps(params, indent=2))
-
-            # Save as a report (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Signup → Login Retention",
-                bookmark_type="retention",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        from mixpanel_headless.query_models import RetentionQuery
-
-        if isinstance(born_event, RetentionQuery):
-            query = born_event
-            return self._resolve_and_build_retention_params(
-                born_event=query.born_event,
-                return_event=query.return_event,
-                retention_unit=query.retention_unit,
-                alignment=query.alignment,
-                bucket_sizes=query.bucket_sizes,
-                math=query.math,
-                from_date=query.from_date,
-                to_date=query.to_date,
-                last=query.last,
-                unit=query.unit,
-                group_by=query.group_by,  # type: ignore[arg-type]
-                where=query.where,
-                mode=query.mode,
-                unbounded_mode=query.unbounded_mode,
-                retention_cumulative=query.retention_cumulative,
-                time_comparison=query.time_comparison,
-                data_group_id=query.data_group_id,
-            )
-
-        if return_event is None:
-            msg = "return_event is required when born_event is not a RetentionQuery"
-            raise TypeError(msg)
-
         return self._resolve_and_build_retention_params(
-            born_event=born_event,
-            return_event=return_event,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            born_event=query.born_event,
+            return_event=query.return_event,
+            retention_unit=query.retention_unit,
+            alignment=query.alignment,
+            bucket_sizes=query.bucket_sizes,
+            math=query.math,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,  # type: ignore[arg-type]
+            where=query.where,
+            mode=query.mode,
+            unbounded_mode=query.unbounded_mode,
+            retention_cumulative=query.retention_cumulative,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
 
     # =========================================================================

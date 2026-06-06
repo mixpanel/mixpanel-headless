@@ -118,17 +118,11 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-F1: A single-step funnel raises BookmarkValidationError with F1 code."""
-        ws = workspace_factory()
-        try:
-            with pytest.raises(BookmarkValidationError) as exc_info:
-                ws.query_funnel(steps=["A"])
+        """T021-F1: A single-step funnel is rejected by FunnelQuery (min_length=2)."""
+        from pydantic import ValidationError as PydanticValidationError
 
-            error_codes = [e.code for e in exc_info.value.errors]
-            assert "F1_MIN_STEPS" in error_codes
-            mock_api_client.insights_query.assert_not_called()
-        finally:
-            ws.close()
+        with pytest.raises(PydanticValidationError, match="too_short"):
+            FunnelQuery(steps=["A"])
 
     def test_empty_event_name_raises_f2(
         self,
@@ -141,9 +135,7 @@ class TestQueryFunnelValidation:
             with pytest.raises(
                 ValueError, match="FunnelStep.event must be a non-empty"
             ):
-                ws.query_funnel(steps=["Signup", ""])
-
-            mock_api_client.insights_query.assert_not_called()
+                ws.query_funnel(FunnelQuery(steps=["Signup", ""]))
         finally:
             ws.close()
 
@@ -169,35 +161,27 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-math: Invalid math type raises BookmarkValidationError at Layer 2."""
-        ws = workspace_factory()
-        try:
-            with pytest.raises(BookmarkValidationError) as exc_info:
-                ws.query_funnel(
-                    steps=["A", "B"],
-                    math="invalid_math",  # type: ignore[arg-type]
-                )
+        """T021-math: Invalid math type is rejected by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-            error_codes = [e.code for e in exc_info.value.errors]
-            assert "B9_INVALID_MATH" in error_codes
-            mock_api_client.insights_query.assert_not_called()
-        finally:
-            ws.close()
+        with pytest.raises(PydanticValidationError):
+            FunnelQuery(
+                steps=["A", "B"],
+                math="invalid_math",
+            )
 
     def test_empty_event_caught_at_construction(
         self,
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-multi: Empty event name is caught by FunnelStep.__post_init__ before validation."""
+        """T021-multi: Empty event name is caught by FunnelStep.__post_init__."""
         ws = workspace_factory()
         try:
             with pytest.raises(
                 ValueError, match="FunnelStep.event must be a non-empty"
             ):
-                ws.query_funnel(steps=[""], conversion_window=0)
-
-            mock_api_client.insights_query.assert_not_called()
+                ws.query_funnel(FunnelQuery(steps=["", "B"]))
         finally:
             ws.close()
 
@@ -206,21 +190,22 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-multi: Multiple validation errors still collected in single BookmarkValidationError."""
+        """T021-multi: Multiple validation errors collected in single BookmarkValidationError."""
         ws = workspace_factory()
         try:
             with pytest.raises(BookmarkValidationError) as exc_info:
                 ws.query_funnel(
-                    steps=["ValidEvent"],  # passes __post_init__
-                    conversion_window=0,  # F3: must be positive
-                    from_date="bad-date",  # V8: invalid format
+                    FunnelQuery(
+                        steps=["ValidEvent", "AnotherEvent"],
+                        conversion_window=0,
+                        from_date="bad-date",
+                    )
                 )
 
             err = exc_info.value
             error_codes = {e.code for e in err.errors}
-            assert "F1_MIN_STEPS" in error_codes  # only 1 step
             assert "F3_CONVERSION_WINDOW_POSITIVE" in error_codes
-            assert err.error_count >= 2
+            assert err.error_count >= 1
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()
@@ -442,17 +427,11 @@ class TestBuildFunnelParamsVsQueryFunnel:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T023-validation: build_funnel_params() raises BookmarkValidationError."""
-        ws = workspace_factory()
-        try:
-            with pytest.raises(BookmarkValidationError) as exc_info:
-                ws.build_funnel_params(steps=["A"])
+        """T023-validation: Single-step funnel rejected by FunnelQuery."""
+        from pydantic import ValidationError as PydanticValidationError
 
-            error_codes = [e.code for e in exc_info.value.errors]
-            assert "F1_MIN_STEPS" in error_codes
-            mock_api_client.insights_query.assert_not_called()
-        finally:
-            ws.close()
+        with pytest.raises(PydanticValidationError, match="too_short"):
+            FunnelQuery(steps=["A"])
 
     def test_params_has_sections_and_display_options(
         self,

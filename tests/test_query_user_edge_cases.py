@@ -684,20 +684,16 @@ class TestTier2CrashPaths:
     def test_t2_05_filter_to_selector_unsupported_operator(
         self,
     ) -> None:
-        """Unsupported filter operator raises ValueError.
+        """Unsupported filter operator is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        Verifies the catch-all at user_builders.py:142 raises a clear
-        ValueError with the operator name.
-        """
-        f = Filter(
-            _property="fake",
-            _operator="unknown_op",  # type: ignore[arg-type]
-            _value=None,
-            _property_type="string",
-        )
-
-        with pytest.raises(ValueError, match="Unsupported filter operator.*unknown_op"):
-            filter_to_selector(f)
+        with pytest.raises(PydanticValidationError, match="literal_error"):
+            Filter(
+                _property="fake",
+                _operator="unknown_op",  # type: ignore[arg-type]
+                _value=None,
+                _property_type="string",
+            )
 
     def test_t2_06_filter_to_selector_equals_non_list_value(
         self,

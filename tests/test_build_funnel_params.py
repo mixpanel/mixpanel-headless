@@ -17,7 +17,6 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import FunnelQuery
 from mixpanel_headless.types import (
     Exclusion,
@@ -390,14 +389,18 @@ class TestBuildFunnelParamsPublicMethod:
         mock_api_client.request.assert_not_called()
 
     def test_single_step_raises_validation_error(self, ws: Workspace) -> None:
-        """Verify a single-step funnel raises BookmarkValidationError."""
-        with pytest.raises(BookmarkValidationError):
-            ws.build_funnel_params(["OnlyOneStep"])
+        """Verify a single-step funnel is rejected by FunnelQuery (min_length=2)."""
+        from pydantic import ValidationError as PydanticValidationError
+
+        with pytest.raises(PydanticValidationError, match="too_short"):
+            FunnelQuery(steps=["OnlyOneStep"])
 
     def test_empty_steps_raises_validation_error(self, ws: Workspace) -> None:
-        """Verify empty steps list raises BookmarkValidationError."""
-        with pytest.raises(BookmarkValidationError):
-            ws.build_funnel_params([])
+        """Verify empty steps list is rejected by FunnelQuery (min_length=2)."""
+        from pydantic import ValidationError as PydanticValidationError
+
+        with pytest.raises(PydanticValidationError, match="too_short"):
+            FunnelQuery(steps=[])
 
     def test_sections_contains_expected_keys(self, ws: Workspace) -> None:
         """Verify sections dict contains show, time, filter, group, formula."""

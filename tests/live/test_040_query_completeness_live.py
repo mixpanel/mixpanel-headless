@@ -1372,9 +1372,11 @@ class TestValidationErrors:
             real_event: Known event name.
         """
         tc = TimeComparison.relative("month")
-        with pytest.raises(TypeError, match="time_comparison"):
-            ws.build_flow_params(  # type: ignore[call-arg]
-                real_event, last=7, time_comparison=tc
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            FlowQuery(
+                event=real_event,
+                last=7,
+                time_comparison=tc,
             )
 
     def test_v07_frequency_breakdown_empty_event(self) -> None:

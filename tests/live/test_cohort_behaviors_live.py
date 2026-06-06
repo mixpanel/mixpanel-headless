@@ -483,9 +483,11 @@ class TestCohortFilterFlows:
         """Non-cohort filter in flow where= raises ValueError (client-side)."""
         with pytest.raises(ValueError, match="query_flow where= only accepts cohort"):
             ws.query_flow(
-                real_event,
-                where=Filter.equals("$browser", "Chrome"),
-                last=7,
+                FlowQuery(
+                    event=real_event,
+                    where=[Filter.equals("$browser", "Chrome")],
+                    last=7,
+                )
             )
 
 
@@ -716,9 +718,11 @@ class TestCohortBreakdownRetention:
         ):
             ws = Workspace(account="p8")
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(cid, cname), "$browser"],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
+                )
             )
 
 
