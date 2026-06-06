@@ -17,6 +17,7 @@ from mixpanel_headless import Filter, Formula, GroupBy, Metric, Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.bookmark_builders import build_filter_entry
+from mixpanel_headless.query_models import InsightsQuery
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -1201,7 +1202,7 @@ class TestBuildParams:
 
     def test_build_params_returns_dict(self, ws: Workspace) -> None:
         """T054a: build_params() returns a dict with sections and displayOptions."""
-        result = ws.build_params("Login")
+        result = ws.build_params(InsightsQuery(events=[Metric("Login")]))
         assert isinstance(result, dict)
         assert "sections" in result
         assert "displayOptions" in result
@@ -1209,15 +1210,17 @@ class TestBuildParams:
     def test_build_params_accepts_all_query_kwargs(self, ws: Workspace) -> None:
         """T054b: build_params() accepts the full query() signature."""
         result = ws.build_params(
-            [Metric("Login", math="unique"), Metric("Purchase")],
-            from_date="2024-01-01",
-            to_date="2024-01-31",
-            unit="week",
-            group_by=GroupBy("country"),
-            where=Filter.equals("region", "US"),
-            formula="A + B",
-            formula_label="Combined",
-            mode="total",
+            InsightsQuery(
+                events=[Metric("Login", math="unique"), Metric("Purchase")],
+                from_date="2024-01-01",
+                to_date="2024-01-31",
+                unit="week",
+                group_by=[GroupBy("country")],
+                where=[Filter.equals("region", "US")],
+                formula="A + B",
+                formula_label="Combined",
+                mode="total",
+            )
         )
         assert result["sections"]["show"][0]["behavior"]["name"] == "Login"
         assert result["sections"]["show"][0]["measurement"]["math"] == "unique"
@@ -1225,7 +1228,14 @@ class TestBuildParams:
 
     def test_build_params_output_matches_query_params(self, ws: Workspace) -> None:
         """T054c: build_params() output matches _build_query_params() for same input."""
-        build_result = ws.build_params("Login", math="unique", last=7, unit="day")
+        build_result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login", math="unique")],
+                math="unique",
+                last=7,
+                unit="day",
+            )
+        )
         internal_result = ws._build_query_params(
             events=["Login"],
             math="unique",
@@ -1285,8 +1295,10 @@ class TestDateFilterParams:
     def test_date_filter_in_where_clause(self, ws: Workspace) -> None:
         """Date filter works in sections.filter when passed as where=."""
         params = ws.build_params(
-            "Login",
-            where=Filter.in_the_last("created", 7, "day"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_the_last("created", 7, "day")],
+            )
         )
         filt = params["sections"]["filter"][0]
         assert filt["filterDateUnit"] == "day"
@@ -1323,12 +1335,14 @@ class TestMultiFormulaParams:
     def test_two_formulas_produce_two_entries(self, ws: Workspace) -> None:
         """Two Formula objects in events list produce two formula show entries."""
         params = ws.build_params(
-            [
-                Metric("Signup", math="unique"),
-                Metric("Purchase", math="unique"),
-                Formula("B / A", label="Conv Rate"),
-                Formula("A + B", label="Total"),
-            ],
+            InsightsQuery(
+                events=[
+                    Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique"),
+                    Formula("B / A", label="Conv Rate"),
+                    Formula("A + B", label="Total"),
+                ],
+            )
         )
         formulas = [e for e in params["sections"]["show"] if e.get("type") == "formula"]
         assert len(formulas) == 2
@@ -1340,12 +1354,14 @@ class TestMultiFormulaParams:
     def test_metrics_hidden_with_multiple_formulas(self, ws: Workspace) -> None:
         """All metrics get isHidden=True when formulas are present."""
         params = ws.build_params(
-            [
-                Metric("A"),
-                Metric("B"),
-                Formula("A+B"),
-                Formula("A-B"),
-            ],
+            InsightsQuery(
+                events=[
+                    Metric("A"),
+                    Metric("B"),
+                    Formula("A+B"),
+                    Formula("A-B"),
+                ],
+            )
         )
         metrics = [e for e in params["sections"]["show"] if e.get("type") == "metric"]
         assert all(e["isHidden"] is True for e in metrics)
@@ -1353,14 +1369,16 @@ class TestMultiFormulaParams:
     def test_three_formulas_with_three_events(self, ws: Workspace) -> None:
         """Three formulas referencing three events all produce entries."""
         params = ws.build_params(
-            [
-                Metric("A", math="unique"),
-                Metric("B", math="unique"),
-                Metric("C", math="unique"),
-                Formula("A + B", label="AB"),
-                Formula("B + C", label="BC"),
-                Formula("(A + B + C) / 3", label="Avg"),
-            ],
+            InsightsQuery(
+                events=[
+                    Metric("A", math="unique"),
+                    Metric("B", math="unique"),
+                    Metric("C", math="unique"),
+                    Formula("A + B", label="AB"),
+                    Formula("B + C", label="BC"),
+                    Formula("(A + B + C) / 3", label="Avg"),
+                ],
+            )
         )
         show = params["sections"]["show"]
         assert len(show) == 6  # 3 metrics + 3 formulas
@@ -1379,10 +1397,16 @@ class TestPercentileParams:
     def test_maps_to_custom_percentile(self, ws: Workspace) -> None:
         """math='percentile' maps to measurement.math='custom_percentile'."""
         params = ws.build_params(
-            "Login",
-            math="percentile",
-            math_property="duration",
-            percentile_value=95,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Login",
+                        math="percentile",
+                        property="duration",
+                        percentile_value=95,
+                    )
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "custom_percentile"
@@ -1392,12 +1416,16 @@ class TestPercentileParams:
     def test_metric_percentile_maps_correctly(self, ws: Workspace) -> None:
         """Metric(math='percentile') maps to custom_percentile in bookmark."""
         params = ws.build_params(
-            Metric(
-                "Login",
-                math="percentile",
-                property="duration",
-                percentile_value=95,
-            ),
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Login",
+                        math="percentile",
+                        property="duration",
+                        percentile_value=95,
+                    )
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "custom_percentile"
@@ -1406,10 +1434,16 @@ class TestPercentileParams:
     def test_percentile_float_value(self, ws: Workspace) -> None:
         """Percentile value supports float (e.g. 99.9)."""
         params = ws.build_params(
-            "Login",
-            math="percentile",
-            math_property="duration",
-            percentile_value=99.9,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Login",
+                        math="percentile",
+                        property="duration",
+                        percentile_value=99.9,
+                    )
+                ],
+            )
         )
         assert params["sections"]["show"][0]["measurement"]["percentile"] == 99.9
 
@@ -1425,10 +1459,16 @@ class TestHistogramParams:
     def test_histogram_math_in_bookmark(self, ws: Workspace) -> None:
         """math='histogram' maps directly to measurement.math='histogram'."""
         params = ws.build_params(
-            "Purchase",
-            math="histogram",
-            math_property="amount",
-            per_user="total",
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Purchase",
+                        math="histogram",
+                        property="amount",
+                        per_user="total",
+                    )
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "histogram"
@@ -1438,12 +1478,16 @@ class TestHistogramParams:
     def test_histogram_metric_in_bookmark(self, ws: Workspace) -> None:
         """Metric(math='histogram') maps correctly."""
         params = ws.build_params(
-            Metric(
-                "Purchase",
-                math="histogram",
-                property="amount",
-                per_user="total",
-            ),
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Purchase",
+                        math="histogram",
+                        property="amount",
+                        per_user="total",
+                    )
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "histogram"
@@ -1460,13 +1504,17 @@ class TestNewMathTypesInBuildParams:
 
     def test_cumulative_unique_in_build_params(self, ws: Workspace) -> None:
         """build_params with math='cumulative_unique' produces correct measurement."""
-        params = ws.build_params("Login", math="cumulative_unique")
+        params = ws.build_params(
+            InsightsQuery(events=[Metric("Login", math="cumulative_unique")])
+        )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "cumulative_unique"
 
     def test_sessions_in_build_params(self, ws: Workspace) -> None:
         """build_params with math='sessions' produces correct measurement."""
-        params = ws.build_params("Login", math="sessions")
+        params = ws.build_params(
+            InsightsQuery(events=[Metric("Login", math="sessions")])
+        )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "sessions"
 
@@ -1485,9 +1533,9 @@ class TestNewMathTypesInBuildParams:
     ) -> None:
         """build_params with property-requiring math produces correct measurement."""
         params = ws.build_params(
-            "Purchase",
-            math=math_type,  # type: ignore[arg-type]
-            math_property="amount",
+            InsightsQuery(
+                events=[Metric("Purchase", math=math_type, property="amount")],  # type: ignore[arg-type]
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == math_type
@@ -1505,7 +1553,9 @@ class TestSegmentMethodInBuildParams:
     def test_segment_method_first_in_measurement(self, ws: Workspace) -> None:
         """build_params with Metric(event, segment_method='first') produces segmentMethod='first'."""
         params = ws.build_params(
-            Metric("Login", segment_method="first"),
+            InsightsQuery(
+                events=[Metric("Login", segment_method="first")],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["segmentMethod"] == "first"
@@ -1513,20 +1563,22 @@ class TestSegmentMethodInBuildParams:
     def test_segment_method_all_in_measurement(self, ws: Workspace) -> None:
         """build_params with Metric(event, segment_method='all') produces segmentMethod='all'."""
         params = ws.build_params(
-            Metric("Login", segment_method="all"),
+            InsightsQuery(
+                events=[Metric("Login", segment_method="all")],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["segmentMethod"] == "all"
 
     def test_segment_method_none_omits_key(self, ws: Workspace) -> None:
         """build_params with Metric(event) omits segmentMethod (backward compat)."""
-        params = ws.build_params(Metric("Login"))
+        params = ws.build_params(InsightsQuery(events=[Metric("Login")]))
         m = params["sections"]["show"][0]["measurement"]
         assert "segmentMethod" not in m
 
     def test_segment_method_string_event_omits_key(self, ws: Workspace) -> None:
         """build_params with plain string event omits segmentMethod."""
-        params = ws.build_params("Login")
+        params = ws.build_params(InsightsQuery(events=[Metric("Login")]))
         m = params["sections"]["show"][0]["measurement"]
         assert "segmentMethod" not in m
 
@@ -1544,8 +1596,10 @@ class TestFrequencyBreakdownInBuildParams:
         from mixpanel_headless.types import FrequencyBreakdown
 
         params = ws.build_params(
-            "Login",
-            group_by=FrequencyBreakdown("Purchase"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[FrequencyBreakdown("Purchase")],
+            )
         )
         group = params["sections"]["group"]
         assert len(group) == 1
@@ -1561,8 +1615,10 @@ class TestFrequencyBreakdownInBuildParams:
         from mixpanel_headless.types import FrequencyBreakdown
 
         params = ws.build_params(
-            "Login",
-            group_by=FrequencyBreakdown("Purchase", label="Buy Freq"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[FrequencyBreakdown("Purchase", label="Buy Freq")],
+            )
         )
         group = params["sections"]["group"]
         assert group[0]["value"] == "Buy Freq"
@@ -1572,8 +1628,10 @@ class TestFrequencyBreakdownInBuildParams:
         from mixpanel_headless.types import FrequencyBreakdown
 
         params = ws.build_params(
-            "Login",
-            group_by=["country", FrequencyBreakdown("Purchase")],
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[GroupBy("country"), FrequencyBreakdown("Purchase")],
+            )
         )
         group = params["sections"]["group"]
         assert len(group) == 2
@@ -1583,8 +1641,10 @@ class TestFrequencyBreakdownInBuildParams:
     def test_existing_groupby_still_works(self, ws: Workspace) -> None:
         """Backward compat: existing GroupBy usage still works."""
         params = ws.build_params(
-            "Login",
-            group_by=GroupBy("country"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[GroupBy("country")],
+            )
         )
         group = params["sections"]["group"]
         assert len(group) == 1
@@ -1604,8 +1664,10 @@ class TestFrequencyFilterInBuildParams:
         from mixpanel_headless.types import FrequencyFilter
 
         params = ws.build_params(
-            "Login",
-            where=FrequencyFilter("Login", value=5),
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[FrequencyFilter("Login", value=5)],
+            )
         )
         filt = params["sections"]["filter"]
         assert len(filt) == 1
@@ -1617,11 +1679,13 @@ class TestFrequencyFilterInBuildParams:
         from mixpanel_headless.types import FrequencyFilter
 
         params = ws.build_params(
-            "Login",
-            where=[
-                Filter.equals("country", "US"),
-                FrequencyFilter("Login", value=5),
-            ],
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[
+                    Filter.equals("country", "US"),
+                    FrequencyFilter("Login", value=5),
+                ],
+            )
         )
         filt = params["sections"]["filter"]
         assert len(filt) == 2
@@ -1631,8 +1695,10 @@ class TestFrequencyFilterInBuildParams:
     def test_existing_filter_still_works(self, ws: Workspace) -> None:
         """Backward compat: existing Filter usage still works."""
         params = ws.build_params(
-            "Login",
-            where=Filter.equals("country", "US"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.equals("country", "US")],
+            )
         )
         filt = params["sections"]["filter"]
         assert len(filt) == 1
@@ -1649,12 +1715,14 @@ class TestDataGroupIdInsights:
 
     def test_build_params_with_data_group_id(self, ws: Workspace) -> None:
         """build_params with data_group_id=5 includes dataGroupId: 5 in output."""
-        params = ws.build_params("Login", data_group_id=5)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric("Login")], data_group_id=5)
+        )
         assert params["sections"]["dataGroupId"] == 5
 
     def test_build_params_without_data_group_id(self, ws: Workspace) -> None:
         """build_params without data_group_id omits dataGroupId key (backward compat)."""
-        params = ws.build_params("Login")
+        params = ws.build_params(InsightsQuery(events=[Metric("Login")]))
         assert "dataGroupId" not in params["sections"]
 
     def test_build_query_params_with_data_group_id(self, ws: Workspace) -> None:

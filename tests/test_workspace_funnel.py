@@ -19,6 +19,7 @@ import pytest
 
 from mixpanel_headless import Workspace
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import FunnelQuery
 from mixpanel_headless.types import FunnelQueryResult
 from tests.conftest import make_session
 
@@ -155,7 +156,7 @@ class TestQueryFunnelValidation:
         ws = workspace_factory()
         try:
             with pytest.raises(BookmarkValidationError) as exc_info:
-                ws.query_funnel(steps=["A", "B"], conversion_window=-1)
+                ws.query_funnel(FunnelQuery(steps=["A", "B"], conversion_window=-1))
 
             error_codes = [e.code for e in exc_info.value.errors]
             assert "F3_CONVERSION_WINDOW_POSITIVE" in error_codes
@@ -247,7 +248,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            ws.query_funnel(["Signup", "Purchase"])
+            ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             mock_api_client.insights_query.assert_called_once()
             body = mock_api_client.insights_query.call_args[0][0]
@@ -269,7 +270,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            ws.query_funnel(["Signup", "Purchase"])
+            ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             body = mock_api_client.insights_query.call_args[0][0]
             bookmark = body["bookmark"]
@@ -288,7 +289,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert isinstance(result, FunnelQueryResult)
         finally:
@@ -303,7 +304,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert result.computed_at == "2025-01-15T12:00:00"
             assert result.from_date == "2025-01-01"
@@ -321,7 +322,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert len(result.steps_data) == 2
 
@@ -349,7 +350,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert result.overall_conversion_rate == pytest.approx(0.12)
         finally:
@@ -364,7 +365,7 @@ class TestQueryFunnelExecution:
         mock_api_client.insights_query.return_value = MOCK_FUNNEL_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert isinstance(result.params, dict)
             assert "sections" in result.params
@@ -393,7 +394,7 @@ class TestBuildFunnelParamsVsQueryFunnel:
         """T023-type: build_funnel_params() returns a plain dict."""
         ws = workspace_factory()
         try:
-            params = ws.build_funnel_params(["Signup", "Purchase"])
+            params = ws.build_funnel_params(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert isinstance(params, dict)
             assert not isinstance(params, FunnelQueryResult)
@@ -410,9 +411,11 @@ class TestBuildFunnelParamsVsQueryFunnel:
 
         ws = workspace_factory()
         try:
-            built_params = ws.build_funnel_params(["Signup", "Purchase"])
+            built_params = ws.build_funnel_params(
+                FunnelQuery(steps=["Signup", "Purchase"])
+            )
 
-            ws.query_funnel(["Signup", "Purchase"])
+            ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
             body = mock_api_client.insights_query.call_args[0][0]
             query_params = body["bookmark"]
 
@@ -428,7 +431,7 @@ class TestBuildFunnelParamsVsQueryFunnel:
         """T023-no-api: build_funnel_params() does not call the API."""
         ws = workspace_factory()
         try:
-            ws.build_funnel_params(["Signup", "Purchase"])
+            ws.build_funnel_params(FunnelQuery(steps=["Signup", "Purchase"]))
 
             mock_api_client.insights_query.assert_not_called()
         finally:
@@ -458,7 +461,7 @@ class TestBuildFunnelParamsVsQueryFunnel:
         """T023-keys: build_funnel_params() result has sections and displayOptions."""
         ws = workspace_factory()
         try:
-            params = ws.build_funnel_params(["Signup", "Purchase"])
+            params = ws.build_funnel_params(FunnelQuery(steps=["Signup", "Purchase"]))
 
             assert "sections" in params
             assert "displayOptions" in params

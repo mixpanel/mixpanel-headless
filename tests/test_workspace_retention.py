@@ -17,6 +17,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import RetentionQuery
 from mixpanel_headless.types import RetentionQueryResult
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -119,7 +120,9 @@ class TestQueryRetentionIntegration:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            ws.query_retention("Signup", "Login")
+            ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
             mock_api_client.insights_query.assert_called_once()
             body = mock_api_client.insights_query.call_args[0][0]
@@ -140,7 +143,9 @@ class TestQueryRetentionIntegration:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_retention("Signup", "Login")
+            result = ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
             assert isinstance(result, RetentionQueryResult)
         finally:
@@ -155,7 +160,9 @@ class TestQueryRetentionIntegration:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_retention("Signup", "Login")
+            result = ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
             assert "2025-01-01" in result.cohorts
             assert "$average" not in result.cohorts
@@ -175,7 +182,9 @@ class TestQueryRetentionIntegration:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_retention("Signup", "Login")
+            result = ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
             assert result.average is not None
             assert result.average["first"] == 100
@@ -193,7 +202,9 @@ class TestQueryRetentionIntegration:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            result = ws.query_retention("Signup", "Login")
+            result = ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
             assert isinstance(result.params, dict)
             assert len(result.params) > 0
@@ -234,7 +245,7 @@ class TestQueryRetentionWithFilters:
                 "Signup",
                 filters=[Filter.equals("source", "organic")],
             )
-            ws.query_retention(born, "Login")
+            ws.query_retention(RetentionQuery(born_event=born, return_event="Login"))
 
             body = mock_api_client.insights_query.call_args[0][0]
             bookmark = body["bookmark"]
@@ -259,7 +270,9 @@ class TestBuildRetentionParams:
         """build_retention_params must return a dict, not a RetentionQueryResult."""
         ws = workspace_factory()
         try:
-            result = ws.build_retention_params("Signup", "Login")
+            result = ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             assert isinstance(result, dict)
             assert not isinstance(result, RetentionQueryResult)
         finally:
@@ -272,7 +285,9 @@ class TestBuildRetentionParams:
         """Result must have 'sections' and 'displayOptions' keys."""
         ws = workspace_factory()
         try:
-            result = ws.build_retention_params("Signup", "Login")
+            result = ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             assert "sections" in result
             assert "displayOptions" in result
         finally:
@@ -286,7 +301,9 @@ class TestBuildRetentionParams:
         """build_retention_params must not make any API call."""
         ws = workspace_factory()
         try:
-            ws.build_retention_params("Signup", "Login")
+            ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()
@@ -300,9 +317,13 @@ class TestBuildRetentionParams:
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
-            params = ws.build_retention_params("Signup", "Login")
+            params = ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
 
-            ws.query_retention("Signup", "Login")
+            ws.query_retention(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             body = mock_api_client.insights_query.call_args[0][0]
             bookmark = body["bookmark"]
 
@@ -330,7 +351,7 @@ class TestQueryRetentionValidationIntegration:
             with pytest.raises(
                 ValueError, match="RetentionEvent.event must be a non-empty"
             ):
-                ws.query_retention("", "Login")
+                ws.query_retention(RetentionQuery(born_event="", return_event="Login"))
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()

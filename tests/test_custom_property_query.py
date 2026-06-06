@@ -18,6 +18,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import QueryError
+from mixpanel_headless.query_models import FunnelQuery, InsightsQuery, RetentionQuery
 from mixpanel_headless.types import (
     CustomPropertyRef,
     Filter,
@@ -67,8 +68,12 @@ class TestGroupByCustomPropertyE2E:
     ) -> None:
         """build_params with CustomPropertyRef in group_by."""
         params = ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=CustomPropertyRef(42), property_type="number"),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[
+                    GroupBy(property=CustomPropertyRef(42), property_type="number")
+                ],
+            )
         )
 
         group = params["sections"]["group"]
@@ -79,8 +84,10 @@ class TestGroupByCustomPropertyE2E:
         """build_params with InlineCustomProperty in group_by."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="qty")
         params = ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=icp, property_type="number"),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[GroupBy(property=icp, property_type="number")],
+            )
         )
 
         group = params["sections"]["group"]
@@ -93,8 +100,12 @@ class TestGroupByCustomPropertyE2E:
     ) -> None:
         """build_funnel_params with CustomPropertyRef in group_by."""
         params = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            group_by=GroupBy(property=CustomPropertyRef(42), property_type="number"),
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                group_by=[
+                    GroupBy(property=CustomPropertyRef(42), property_type="number")
+                ],
+            )
         )
 
         group = params["sections"]["group"]
@@ -106,9 +117,13 @@ class TestGroupByCustomPropertyE2E:
     ) -> None:
         """build_retention_params with CustomPropertyRef in group_by."""
         params = ws.build_retention_params(
-            "Signup",
-            "Login",
-            group_by=GroupBy(property=CustomPropertyRef(42), property_type="number"),
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                group_by=[
+                    GroupBy(property=CustomPropertyRef(42), property_type="number")
+                ],
+            )
         )
 
         group = params["sections"]["group"]
@@ -127,8 +142,10 @@ class TestFilterCustomPropertyE2E:
     def test_build_params_with_custom_property_ref_filter(self, ws: Workspace) -> None:
         """build_params with CustomPropertyRef in filter."""
         params = ws.build_params(
-            "Purchase",
-            where=Filter.greater_than(property=CustomPropertyRef(42), value=100),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+            )
         )
 
         filters = params["sections"]["filter"]
@@ -140,8 +157,10 @@ class TestFilterCustomPropertyE2E:
         """build_params with InlineCustomProperty in filter."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="qty")
         params = ws.build_params(
-            "Purchase",
-            where=Filter.greater_than(property=icp, value=1000),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                where=[Filter.greater_than(property=icp, value=1000)],
+            )
         )
 
         filters = params["sections"]["filter"]
@@ -163,7 +182,11 @@ class TestMeasurementCustomPropertyE2E:
     ) -> None:
         """T038: build_params with Metric(property=CustomPropertyRef(...))."""
         params = ws.build_params(
-            Metric("Purchase", math="average", property=CustomPropertyRef(42)),
+            InsightsQuery(
+                events=[
+                    Metric("Purchase", math="average", property=CustomPropertyRef(42))
+                ],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -174,7 +197,9 @@ class TestMeasurementCustomPropertyE2E:
         """T039: build_params with Metric(property=InlineCustomProperty.numeric(...))."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="quantity")
         params = ws.build_params(
-            Metric("Purchase", math="average", property=icp),
+            InsightsQuery(
+                events=[Metric("Purchase", math="average", property=icp)],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -192,9 +217,11 @@ class TestMeasurementCustomPropertyE2E:
         # math_property (it's always a string). This test verifies
         # the plain string path still works in funnels.
         params = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            math="average",
-            math_property="amount",
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                math="average",
+                math_property="amount",
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -213,9 +240,13 @@ class TestCombinedPositions:
         """T044: CustomPropertyRef in group_by + InlineCustomProperty in where."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="qty")
         params = ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=CustomPropertyRef(42), property_type="number"),
-            where=Filter.greater_than(property=icp, value=100),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[
+                    GroupBy(property=CustomPropertyRef(42), property_type="number")
+                ],
+                where=[Filter.greater_than(property=icp, value=100)],
+            )
         )
 
         group = params["sections"]["group"]
@@ -227,15 +258,21 @@ class TestCombinedPositions:
         """T045: All three positions simultaneously (Metric + group_by + where)."""
         revenue = InlineCustomProperty.numeric("A * B", A="price", B="qty")
         params = ws.build_params(
-            Metric("Purchase", math="average", property=CustomPropertyRef(99)),
-            group_by=GroupBy(
-                property=revenue,
-                property_type="number",
-                bucket_size=100,
-                bucket_min=0,
-                bucket_max=1000,
-            ),
-            where=Filter.greater_than(property=revenue, value=50),
+            InsightsQuery(
+                events=[
+                    Metric("Purchase", math="average", property=CustomPropertyRef(99))
+                ],
+                group_by=[
+                    GroupBy(
+                        property=revenue,
+                        property_type="number",
+                        bucket_size=100,
+                        bucket_min=0,
+                        bucket_max=1000,
+                    )
+                ],
+                where=[Filter.greater_than(property=revenue, value=50)],
+            )
         )
 
         # Measurement

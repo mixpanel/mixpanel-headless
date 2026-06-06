@@ -16,6 +16,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import RetentionQuery
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -71,44 +72,58 @@ class TestBuildRetentionParamsDefaults:
 
     def test_behavior_type_is_retention(self, ws: Workspace) -> None:
         """Verify sections.show[0].behavior.type is 'retention'."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["type"] == "retention"
 
     def test_behaviors_has_two_entries(self, ws: Workspace) -> None:
         """Verify behaviors list has exactly 2 entries (born + return)."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert len(behaviors) == 2
 
     def test_behavior_names_match_events(self, ws: Workspace) -> None:
         """Verify behavior names match born_event and return_event."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert behaviors[0]["name"] == "Signup"
         assert behaviors[1]["name"] == "Login"
 
     def test_retention_unit_defaults_to_week(self, ws: Workspace) -> None:
         """Verify retentionUnit defaults to 'week'."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionUnit"] == "week"
 
     def test_alignment_defaults_to_birth(self, ws: Workspace) -> None:
         """Verify retentionAlignmentType defaults to 'birth'."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionAlignmentType"] == "birth"
 
     def test_measurement_math_defaults_to_retention_rate(self, ws: Workspace) -> None:
         """Verify measurement.math defaults to 'retention_rate'."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "retention_rate"
 
     def test_chart_type_defaults_to_retention_curve(self, ws: Workspace) -> None:
         """Verify displayOptions.chartType defaults to 'retention-curve' (mode='curve')."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert result["displayOptions"]["chartType"] == "retention-curve"
 
     def test_sorting_object_present(self, ws: Workspace) -> None:
@@ -117,7 +132,9 @@ class TestBuildRetentionParamsDefaults:
         The Mixpanel UI requires a sorting object to render retention
         reports on dashboards without crashing.
         """
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         sorting = result["sorting"]
         assert "bar" in sorting
         assert "line" in sorting
@@ -129,18 +146,24 @@ class TestBuildRetentionParamsDefaults:
 
         Required by the Mixpanel UI for dashboard rendering.
         """
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert result["columnWidths"] == {"bar": {}}
 
     def test_custom_bucket_sizes_defaults_to_empty_list(self, ws: Workspace) -> None:
         """Verify retentionCustomBucketSizes defaults to empty list."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionCustomBucketSizes"] == []
 
     def test_has_sections_with_expected_keys(self, ws: Workspace) -> None:
         """Verify sections dict contains show, time, filter, group, formula."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         sections = result["sections"]
         assert "show" in sections
         assert "time" in sections
@@ -150,7 +173,9 @@ class TestBuildRetentionParamsDefaults:
 
     def test_has_display_options_key(self, ws: Workspace) -> None:
         """Verify result has 'displayOptions' key."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert "displayOptions" in result
 
 
@@ -168,7 +193,9 @@ class TestBuildRetentionParamsTimeSections:
 
     def test_default_time_section_is_in_the_last(self, ws: Workspace) -> None:
         """Verify default time section uses 'in the last' with last=30."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         time_section = result["sections"]["time"]
         assert len(time_section) > 0
         time_entry = time_section[0]
@@ -179,10 +206,12 @@ class TestBuildRetentionParamsTimeSections:
     def test_explicit_dates_produce_between_range(self, ws: Workspace) -> None:
         """Verify from_date/to_date produces a 'between' dateRangeType."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            from_date="2025-01-01",
-            to_date="2025-03-31",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                from_date="2025-01-01",
+                to_date="2025-03-31",
+            )
         )
         time_section = result["sections"]["time"]
         assert len(time_section) > 0
@@ -192,12 +221,16 @@ class TestBuildRetentionParamsTimeSections:
 
     def test_filter_section_is_empty_list_when_no_where(self, ws: Workspace) -> None:
         """Verify sections.filter is empty list when no where filter provided."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert result["sections"]["filter"] == []
 
     def test_group_section_is_empty_list_when_no_group_by(self, ws: Workspace) -> None:
         """Verify sections.group is empty list when no group_by provided."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert result["sections"]["group"] == []
 
 
@@ -214,7 +247,9 @@ class TestBuildRetentionParamsPerEventFilters:
         from mixpanel_headless.types import Filter, RetentionEvent
 
         born = RetentionEvent("Signup", filters=[Filter.equals("source", "organic")])
-        result = ws.build_retention_params(born, RetentionEvent("Login"))
+        result = ws.build_retention_params(
+            RetentionQuery(born_event=born, return_event=RetentionEvent("Login"))
+        )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert isinstance(behaviors[0]["filters"], list)
         assert len(behaviors[0]["filters"]) > 0
@@ -228,7 +263,9 @@ class TestBuildRetentionParamsPerEventFilters:
             filters=[Filter.equals("source", "organic")],
             filters_combinator="any",
         )
-        result = ws.build_retention_params(born, RetentionEvent("Login"))
+        result = ws.build_retention_params(
+            RetentionQuery(born_event=born, return_event=RetentionEvent("Login"))
+        )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert behaviors[0]["filtersDeterminer"] == "any"
 
@@ -237,7 +274,10 @@ class TestBuildRetentionParamsPerEventFilters:
         from mixpanel_headless.types import RetentionEvent
 
         result = ws.build_retention_params(
-            RetentionEvent("Signup"), RetentionEvent("Login")
+            RetentionQuery(
+                born_event=RetentionEvent("Signup"),
+                return_event=RetentionEvent("Login"),
+            )
         )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert behaviors[0]["filters"] == []
@@ -257,18 +297,24 @@ class TestBuildRetentionParamsGlobalFilters:
         from mixpanel_headless.types import Filter
 
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            where=Filter.equals("platform", "iOS"),
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                where=[Filter.equals("platform", "iOS")],
+            )
         )
         assert len(result["sections"]["filter"]) > 0
 
     def test_group_by_string_populates_group_section(self, ws: Workspace) -> None:
-        """Passing group_by='platform' must populate sections.group as non-empty."""
+        """Passing group_by=GroupBy('platform') must populate sections.group as non-empty."""
+        from mixpanel_headless.types import GroupBy
+
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            group_by="platform",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                group_by=[GroupBy("platform")],
+            )
         )
         assert len(result["sections"]["group"]) > 0
 
@@ -284,16 +330,20 @@ class TestBuildRetentionParamsBucketSizes:
     def test_bucket_sizes_populates_custom_field(self, ws: Workspace) -> None:
         """Explicit bucket_sizes must populate retentionCustomBucketSizes."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            bucket_sizes=[1, 3, 7, 14, 30],
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                bucket_sizes=[1, 3, 7, 14, 30],
+            )
         )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionCustomBucketSizes"] == [1, 3, 7, 14, 30]
 
     def test_none_bucket_sizes_produces_empty_list(self, ws: Workspace) -> None:
         """Default (None) bucket_sizes must produce retentionCustomBucketSizes == []."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionCustomBucketSizes"] == []
 
@@ -308,17 +358,23 @@ class TestBuildRetentionParamsMode:
 
     def test_mode_curve_produces_retention_curve_chart(self, ws: Workspace) -> None:
         """mode='curve' must produce chartType 'retention-curve'."""
-        result = ws.build_retention_params("Signup", "Login", mode="curve")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", mode="curve")
+        )
         assert result["displayOptions"]["chartType"] == "retention-curve"
 
     def test_mode_trends_produces_line_chart(self, ws: Workspace) -> None:
         """mode='trends' must produce chartType 'line'."""
-        result = ws.build_retention_params("Signup", "Login", mode="trends")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", mode="trends")
+        )
         assert result["displayOptions"]["chartType"] == "line"
 
     def test_mode_table_produces_table_chart(self, ws: Workspace) -> None:
         """mode='table' must produce chartType 'table'."""
-        result = ws.build_retention_params("Signup", "Login", mode="table")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", mode="table")
+        )
         assert result["displayOptions"]["chartType"] == "table"
 
 
@@ -332,13 +388,17 @@ class TestBuildRetentionParamsNewMathTypes:
 
     def test_math_total_accepted(self, ws: Workspace) -> None:
         """build_retention_params accepts math='total' and sets measurement correctly."""
-        result = ws.build_retention_params("Signup", "Login", math="total")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", math="total")
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "total"
 
     def test_math_average_accepted(self, ws: Workspace) -> None:
         """build_retention_params accepts math='average' and sets measurement correctly."""
-        result = ws.build_retention_params("Signup", "Login", math="average")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", math="average")
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "average"
 
@@ -354,9 +414,11 @@ class TestBuildRetentionParamsUnboundedMode:
     def test_unbounded_mode_carry_forward(self, ws: Workspace) -> None:
         """build_retention_params with unbounded_mode='carry_forward' produces retentionUnboundedMode."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            unbounded_mode="carry_forward",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                unbounded_mode="carry_forward",
+            )
         )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionUnboundedMode"] == "carry_forward"
@@ -364,9 +426,11 @@ class TestBuildRetentionParamsUnboundedMode:
     def test_unbounded_mode_carry_back(self, ws: Workspace) -> None:
         """build_retention_params with unbounded_mode='carry_back' produces retentionUnboundedMode."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            unbounded_mode="carry_back",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                unbounded_mode="carry_back",
+            )
         )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionUnboundedMode"] == "carry_back"
@@ -374,9 +438,11 @@ class TestBuildRetentionParamsUnboundedMode:
     def test_unbounded_mode_none_value(self, ws: Workspace) -> None:
         """build_retention_params with unbounded_mode='none' produces retentionUnboundedMode."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            unbounded_mode="none",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                unbounded_mode="none",
+            )
         )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionUnboundedMode"] == "none"
@@ -384,16 +450,20 @@ class TestBuildRetentionParamsUnboundedMode:
     def test_unbounded_mode_consecutive_forward(self, ws: Workspace) -> None:
         """build_retention_params with unbounded_mode='consecutive_forward' produces retentionUnboundedMode."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            unbounded_mode="consecutive_forward",
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                unbounded_mode="consecutive_forward",
+            )
         )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["retentionUnboundedMode"] == "consecutive_forward"
 
     def test_no_unbounded_mode_omits_key(self, ws: Workspace) -> None:
         """build_retention_params without unbounded_mode omits retentionUnboundedMode (backward compat)."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert "retentionUnboundedMode" not in behavior
 
@@ -404,32 +474,40 @@ class TestBuildRetentionParamsCumulative:
     def test_retention_cumulative_true(self, ws: Workspace) -> None:
         """build_retention_params with retention_cumulative=True produces retentionCumulative."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            retention_cumulative=True,
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                retention_cumulative=True,
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["retentionCumulative"] is True
 
     def test_retention_cumulative_false_omits_key(self, ws: Workspace) -> None:
         """build_retention_params with retention_cumulative=False omits retentionCumulative (backward compat)."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert "retentionCumulative" not in measurement
 
     def test_retention_cumulative_explicit_false_omits_key(self, ws: Workspace) -> None:
         """build_retention_params with explicit retention_cumulative=False omits retentionCumulative."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            retention_cumulative=False,
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                retention_cumulative=False,
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert "retentionCumulative" not in measurement
 
     def test_no_new_params_backward_compat(self, ws: Workspace) -> None:
         """build_retention_params without new params produces NO retentionUnboundedMode or retentionCumulative."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         measurement = result["sections"]["show"][0]["measurement"]
         assert "retentionUnboundedMode" not in behavior
@@ -446,10 +524,14 @@ class TestDataGroupIdRetention:
 
     def test_build_retention_params_with_data_group_id(self, ws: Workspace) -> None:
         """build_retention_params with data_group_id=5 includes dataGroupId: 5 in sections."""
-        result = ws.build_retention_params("Signup", "Login", data_group_id=5)
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", data_group_id=5)
+        )
         assert result["sections"]["dataGroupId"] == 5
 
     def test_build_retention_params_without_data_group_id(self, ws: Workspace) -> None:
         """build_retention_params without data_group_id omits dataGroupId key (backward compat)."""
-        result = ws.build_retention_params("Signup", "Login")
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login")
+        )
         assert "dataGroupId" not in result["sections"]

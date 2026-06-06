@@ -17,6 +17,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import FlowQuery
 from mixpanel_headless.types import (
     Filter,
     FlowQueryResult,
@@ -509,7 +510,7 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow("Login")
+            result = ws.query_flow(FlowQuery(event="Login"))
 
             assert isinstance(result, FlowQueryResult)
             assert result.computed_at == "2025-01-15T10:00:00"
@@ -529,7 +530,7 @@ class TestWorkspaceFlowPublicMethods:
         """build_flow_params() returns a dict without making API calls."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
 
             assert isinstance(params, dict)
             assert "steps" in params
@@ -562,7 +563,9 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow(FlowStep("Login", forward=5, reverse=2))
+            result = ws.query_flow(
+                FlowQuery(event=FlowStep("Login", forward=5, reverse=2))
+            )
 
             assert isinstance(result, FlowQueryResult)
             mock_live_query.query_flow.assert_called_once()
@@ -588,7 +591,7 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow(["Login", "Purchase"], mode="paths")
+            result = ws.query_flow(FlowQuery(event=["Login", "Purchase"], mode="paths"))
 
             assert isinstance(result, FlowQueryResult)
             call_kwargs = mock_live_query.query_flow.call_args
@@ -617,7 +620,7 @@ class TestMultiStepNormalization:
         """List of strings produces N steps with correct defaults applied."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["A", "B"])
+            params = ws.build_flow_params(FlowQuery(event=["A", "B"]))
 
             assert len(params["steps"]) == 2
             assert params["steps"][0]["event"] == "A"
@@ -638,7 +641,7 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                [FlowStep("A", forward=3), FlowStep("B", reverse=2)]
+                FlowQuery(event=[FlowStep("A", forward=3), FlowStep("B", reverse=2)])
             )
 
             assert len(params["steps"]) == 2
@@ -656,7 +659,9 @@ class TestMultiStepNormalization:
         """Mixed list of strings and FlowStep objects works correctly."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["A", FlowStep("B", forward=1)])
+            params = ws.build_flow_params(
+                FlowQuery(event=["A", FlowStep("B", forward=1)])
+            )
 
             assert len(params["steps"]) == 2
             assert params["steps"][0]["event"] == "A"
@@ -676,7 +681,7 @@ class TestMultiStepNormalization:
         """Single string 'Purchase' produces a single-element step list."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Purchase")
+            params = ws.build_flow_params(FlowQuery(event="Purchase"))
 
             assert len(params["steps"]) == 1
             assert params["steps"][0]["event"] == "Purchase"
@@ -690,7 +695,7 @@ class TestMultiStepNormalization:
         """Single FlowStep produces a single-element step list."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(FlowStep("A", forward=3))
+            params = ws.build_flow_params(FlowQuery(event=FlowStep("A", forward=3)))
 
             assert len(params["steps"]) == 1
             assert params["steps"][0]["event"] == "A"
@@ -705,7 +710,9 @@ class TestMultiStepNormalization:
         """String steps inherit top-level forward/reverse defaults."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["X", "Y"], forward=5, reverse=2)
+            params = ws.build_flow_params(
+                FlowQuery(event=["X", "Y"], forward=5, reverse=2)
+            )
 
             # Both string steps should get forward=5, reverse=2
             for step in params["steps"]:
@@ -722,9 +729,9 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("A", forward=5, reverse=4),
-                forward=3,
-                reverse=0,
+                FlowQuery(
+                    event=FlowStep("A", forward=5, reverse=4), forward=3, reverse=0
+                )
             )
 
             assert params["steps"][0]["forward"] == 5
@@ -740,9 +747,9 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("A"),  # forward=None, reverse=None
-                forward=5,
-                reverse=2,
+                FlowQuery(
+                    event=FlowStep("A"), forward=5, reverse=2
+                )  # FlowStep forward=None, reverse=None
             )
 
             assert params["steps"][0]["forward"] == 5
@@ -766,7 +773,7 @@ class TestMultiStepAnchorPosition:
         """anchor_position is set to 1 in built params."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
 
             assert params["anchor_position"] == 1
         finally:
@@ -789,9 +796,7 @@ class TestPerStepDirectionValidation:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("Login", forward=3),
-                forward=0,
-                reverse=0,
+                FlowQuery(event=FlowStep("Login", forward=3), forward=0, reverse=0)
             )
 
             assert params["steps"][0]["forward"] == 3
@@ -810,9 +815,9 @@ class TestPerStepDirectionValidation:
                 BookmarkValidationError, match="forward or reverse must be > 0"
             ):
                 ws.build_flow_params(
-                    FlowStep("Login"),  # forward=None, reverse=None → 0, 0
-                    forward=0,
-                    reverse=0,
+                    FlowQuery(
+                        event=FlowStep("Login"), forward=0, reverse=0
+                    )  # forward=None, reverse=None → 0, 0
                 )
         finally:
             ws.close()
@@ -825,9 +830,11 @@ class TestPerStepDirectionValidation:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                [FlowStep("A", forward=3), FlowStep("B", reverse=2)],
-                forward=0,
-                reverse=0,
+                FlowQuery(
+                    event=[FlowStep("A", forward=3), FlowStep("B", reverse=2)],
+                    forward=0,
+                    reverse=0,
+                )
             )
 
             assert params["steps"][0]["forward"] == 3
@@ -854,10 +861,12 @@ class TestFlowStepDatetimeFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(
-                    "Login",
-                    filters=[Filter.before("$time", "2026-01-15")],
-                ),
+                FlowQuery(
+                    event=FlowStep(
+                        "Login",
+                        filters=[Filter.before("$time", "2026-01-15")],
+                    )
+                )
             )
 
             segfilter = params["steps"][0]["property_filter_params_list"][0]
@@ -874,10 +883,12 @@ class TestFlowStepDatetimeFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(
-                    "Login",
-                    filters=[Filter.in_the_last("$time", 7, "day")],
-                ),
+                FlowQuery(
+                    event=FlowStep(
+                        "Login",
+                        filters=[Filter.in_the_last("$time", 7, "day")],
+                    )
+                )
             )
 
             segfilter = params["steps"][0]["property_filter_params_list"][0]
@@ -946,7 +957,7 @@ class TestQueryFlowTreeIntegration:
         mock_api_client.arb_funnels_query.return_value = _sample_tree_api_response()
         ws = workspace_factory()
         try:
-            result = ws.query_flow("Login", mode="tree")
+            result = ws.query_flow(FlowQuery(event="Login", mode="tree"))
 
             assert isinstance(result, FlowQueryResult)
             assert result.mode == "tree"
@@ -997,7 +1008,7 @@ class TestDataGroupIdFlow:
     ) -> None:
         """build_flow_params with data_group_id=5 includes data_group_id: 5 (snake_case for flows)."""
         ws = workspace_factory()
-        result = ws.build_flow_params("Login", data_group_id=5)
+        result = ws.build_flow_params(FlowQuery(event="Login", data_group_id=5))
         assert result["data_group_id"] == 5
 
     def test_build_flow_params_without_data_group_id(
@@ -1006,7 +1017,7 @@ class TestDataGroupIdFlow:
     ) -> None:
         """build_flow_params without data_group_id omits the key entirely."""
         ws = workspace_factory()
-        result = ws.build_flow_params("Login")
+        result = ws.build_flow_params(FlowQuery(event="Login"))
         assert "data_group_id" not in result
 
 
@@ -1026,7 +1037,7 @@ class TestFlowSessionEvent:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(event="$session_start", session_event="start"),
+                FlowQuery(event=FlowStep(event="$session_start", session_event="start"))
             )
             step = params["steps"][0]
             assert step["session_event"] == "start"
@@ -1041,7 +1052,7 @@ class TestFlowSessionEvent:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(event="$session_end", session_event="end"),
+                FlowQuery(event=FlowStep(event="$session_end", session_event="end"))
             )
             step = params["steps"][0]
             assert step["session_event"] == "end"
@@ -1055,7 +1066,7 @@ class TestFlowSessionEvent:
         """Regular FlowStep does not include session_event key in step dict."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             step = params["steps"][0]
             assert "session_event" not in step
         finally:
@@ -1073,8 +1084,7 @@ class TestFlowSegments:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments=GroupBy("country"),
+                FlowQuery(event="Login", segments=[GroupBy("country")])
             )
             assert "segments" in params
             assert isinstance(params["segments"], list)
@@ -1091,8 +1101,7 @@ class TestFlowSegments:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments="country",
+                FlowQuery(event="Login", segments=[GroupBy("country")])
             )
             assert "segments" in params
             assert len(params["segments"]) == 1
@@ -1107,8 +1116,9 @@ class TestFlowSegments:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments=[GroupBy("country"), GroupBy("platform")],
+                FlowQuery(
+                    event="Login", segments=[GroupBy("country"), GroupBy("platform")]
+                )
             )
             assert len(params["segments"]) == 2
         finally:
@@ -1121,7 +1131,7 @@ class TestFlowSegments:
         """build_flow_params without segments does not include segments key."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             assert "segments" not in params
         finally:
             ws.close()
@@ -1138,8 +1148,7 @@ class TestFlowExclusions:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                exclusions=["Error Event"],
+                FlowQuery(event="Login", exclusions=["Error Event"])
             )
             assert params["exclusions"] == ["Error Event"]
         finally:
@@ -1153,8 +1162,7 @@ class TestFlowExclusions:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                exclusions=["Error", "Debug", "Test"],
+                FlowQuery(event="Login", exclusions=["Error", "Debug", "Test"])
             )
             assert params["exclusions"] == ["Error", "Debug", "Test"]
         finally:
@@ -1167,7 +1175,7 @@ class TestFlowExclusions:
         """build_flow_params without exclusions produces empty exclusions list (default)."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             assert params["exclusions"] == []
         finally:
             ws.close()
@@ -1184,8 +1192,7 @@ class TestFlowPropertyFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=Filter.equals("country", "US"),
+                FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
             assert "filter_by_event" in params
             fbe = params["filter_by_event"]
@@ -1206,11 +1213,13 @@ class TestFlowPropertyFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=[
-                    Filter.equals("country", "US"),
-                    Filter.greater_than("age", 18),
-                ],
+                FlowQuery(
+                    event="Login",
+                    where=[
+                        Filter.equals("country", "US"),
+                        Filter.greater_than("age", 18),
+                    ],
+                )
             )
             fbe = params["filter_by_event"]
             assert len(fbe["children"]) == 2
@@ -1225,8 +1234,7 @@ class TestFlowPropertyFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=Filter.in_cohort(123, "Power Users"),
+                FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
             )
             assert "filter_by_cohort" in params
             assert "filter_by_event" not in params
@@ -1240,7 +1248,7 @@ class TestFlowPropertyFilters:
         """build_flow_params without where has no filter_by_event or filter_by_cohort."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             assert "filter_by_event" not in params
             assert "filter_by_cohort" not in params
         finally:

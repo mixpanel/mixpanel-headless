@@ -17,6 +17,7 @@ from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import QueryError
+from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import QueryResult
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -114,7 +115,7 @@ class TestQueryTimeseries:
     ) -> None:
         """query("Login") returns a QueryResult."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert isinstance(result, QueryResult)
 
     def test_basic_query_computed_at(
@@ -122,7 +123,7 @@ class TestQueryTimeseries:
     ) -> None:
         """QueryResult has computed_at from response."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert result.computed_at == "2024-01-31T12:00:00+00:00"
 
     def test_basic_query_date_range(
@@ -130,7 +131,7 @@ class TestQueryTimeseries:
     ) -> None:
         """QueryResult extracts nested date_range fields."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert "2024-01-01" in result.from_date
         assert "2024-01-31" in result.to_date
 
@@ -139,7 +140,7 @@ class TestQueryTimeseries:
     ) -> None:
         """QueryResult contains the series data."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert "Login [Total Events]" in result.series
 
     def test_basic_query_df_shape(
@@ -147,7 +148,7 @@ class TestQueryTimeseries:
     ) -> None:
         """Timeseries DataFrame has 3 rows and date/event/count columns."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         df = result.df
         assert len(df) == 3
         assert list(df.columns) == ["date", "event", "count"]
@@ -157,7 +158,7 @@ class TestQueryTimeseries:
     ) -> None:
         """insights_query is called with correct body structure."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        ws.query("Login")
+        ws.query(InsightsQuery(events=[Metric("Login")]))
         call_args = mock_api_client.insights_query.call_args
         body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
         assert "bookmark" in body
@@ -170,7 +171,7 @@ class TestQueryTimeseries:
     ) -> None:
         """QueryResult.params contains the bookmark dict."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert isinstance(result.params, dict)
         assert "sections" in result.params
 
@@ -179,7 +180,7 @@ class TestQueryTimeseries:
     ) -> None:
         """QueryResult.meta contains response metadata."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert "min_sampling_factor" in result.meta
 
 
@@ -196,7 +197,7 @@ class TestQueryNonExistentEvent:
     ) -> None:
         """Query with non-existent event returns empty DataFrame, no exception."""
         mock_api_client.insights_query.return_value = EMPTY_RESPONSE
-        result = ws.query("NonExistentEvent")
+        result = ws.query(InsightsQuery(events=[Metric("NonExistentEvent")]))
         assert isinstance(result, QueryResult)
         assert len(result.df) == 0
 
@@ -205,7 +206,7 @@ class TestQueryNonExistentEvent:
     ) -> None:
         """Empty result still has computed_at and date range."""
         mock_api_client.insights_query.return_value = EMPTY_RESPONSE
-        result = ws.query("NonExistentEvent")
+        result = ws.query(InsightsQuery(events=[Metric("NonExistentEvent")]))
         assert result.computed_at == "2024-01-31T12:00:00+00:00"
 
 
@@ -238,7 +239,15 @@ class TestMultiEventIntegration:
     ) -> None:
         """Multi-event query returns DataFrame with all metrics."""
         mock_api_client.insights_query.return_value = MULTI_EVENT_RESPONSE
-        result = ws.query(["Signup", "Login", "Purchase"], math="unique")
+        result = ws.query(
+            InsightsQuery(
+                events=[
+                    Metric("Signup", math="unique"),
+                    Metric("Login", math="unique"),
+                    Metric("Purchase", math="unique"),
+                ]
+            )
+        )
         assert len(result.df) == 3
         events = set(result.df["event"])
         assert len(events) == 3
@@ -274,9 +283,14 @@ class TestFormulaIntegration:
 
         mock_api_client.insights_query.return_value = FORMULA_RESPONSE
         result = ws.query(
-            [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
-            formula="(B / A) * 100",
-            formula_label="Conversion Rate",
+            InsightsQuery(
+                events=[
+                    Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique"),
+                ],
+                formula="(B / A) * 100",
+                formula_label="Conversion Rate",
+            )
         )
         assert "Conversion Rate" in result.series
         assert len(result.df) == 2
@@ -295,7 +309,9 @@ class TestTotalModeIntegration:
     ) -> None:
         """Total mode returns single row per metric."""
         mock_api_client.insights_query.return_value = TOTAL_RESPONSE
-        result = ws.query("Login", math="unique", mode="total")
+        result = ws.query(
+            InsightsQuery(events=[Metric("Login", math="unique")], mode="total")
+        )
         df = result.df
         assert len(df) == 1
         assert list(df.columns) == ["event", "count"]
@@ -315,7 +331,9 @@ class TestQueryPersistence:
     ) -> None:
         """result.params contains the bookmark dict suitable for create_bookmark."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login", math="unique", last=7)
+        result = ws.query(
+            InsightsQuery(events=[Metric("Login", math="unique")], last=7)
+        )
         # Params should have sections and displayOptions
         assert "sections" in result.params
         assert "displayOptions" in result.params
@@ -340,7 +358,7 @@ class TestTransformQueryResultValidation:
         }
         mock_api_client.insights_query.return_value = error_response
         with pytest.raises(QueryError, match="Insights query failed: invalid query"):
-            ws.query("Login")
+            ws.query(InsightsQuery(events=[Metric("Login")]))
 
     def test_missing_series_raises_query_error(
         self, ws: Workspace, mock_api_client: MagicMock
@@ -354,14 +372,14 @@ class TestTransformQueryResultValidation:
         }
         mock_api_client.insights_query.return_value = malformed_response
         with pytest.raises(QueryError, match="missing 'series' key"):
-            ws.query("Login")
+            ws.query(InsightsQuery(events=[Metric("Login")]))
 
     def test_valid_response_no_error(
         self, ws: Workspace, mock_api_client: MagicMock
     ) -> None:
         """Valid response with series key succeeds."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
-        result = ws.query("Login")
+        result = ws.query(InsightsQuery(events=[Metric("Login")]))
         assert isinstance(result, QueryResult)
         assert "Login [Total Events]" in result.series
 
@@ -380,11 +398,13 @@ class TestFormulaInListIntegration:
         """Formula in events list produces formula show clause."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
         result = ws.query(
-            [
-                Metric("Signup", math="unique"),
-                Metric("Purchase", math="unique"),
-                Formula("(B / A) * 100", label="Conversion %"),
-            ],
+            InsightsQuery(
+                events=[
+                    Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique"),
+                    Formula("(B / A) * 100", label="Conversion %"),
+                ],
+            )
         )
         show = result.params["sections"]["show"]
         assert len(show) == 3
@@ -400,7 +420,13 @@ class TestFormulaInListIntegration:
         """Metrics are hidden when Formula is in the list."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
         result = ws.query(
-            [Metric("A", math="unique"), Metric("B", math="unique"), Formula("A / B")],
+            InsightsQuery(
+                events=[
+                    Metric("A", math="unique"),
+                    Metric("B", math="unique"),
+                    Formula("A / B"),
+                ],
+            )
         )
         show = result.params["sections"]["show"]
         assert show[0]["isHidden"] is True
@@ -412,11 +438,15 @@ class TestFormulaInListIntegration:
         """Metric with filters_combinator='any' emits correct params."""
         mock_api_client.insights_query.return_value = TIMESERIES_RESPONSE
         result = ws.query(
-            Metric(
-                "Login",
-                filters=[Filter.equals("$browser", "Chrome")],
-                filters_combinator="any",
-            ),
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Login",
+                        filters=[Filter.equals("$browser", "Chrome")],
+                        filters_combinator="any",
+                    )
+                ],
+            )
         )
         behavior = result.params["sections"]["show"][0]["behavior"]
         assert behavior["filtersDeterminer"] == "any"
@@ -432,7 +462,7 @@ class TestBuildParamsNoApiCall:
 
     def test_does_not_call_api(self, ws: Workspace, mock_api_client: MagicMock) -> None:
         """build_params() returns params without calling API client."""
-        result = ws.build_params("Login")
+        result = ws.build_params(InsightsQuery(events=[Metric("Login")]))
         mock_api_client.insights_query.assert_not_called()
         assert isinstance(result, dict)
 
@@ -440,5 +470,5 @@ class TestBuildParamsNoApiCall:
         """build_params() does not require live credentials."""
         workspace = Workspace(session=_TEST_SESSION)
         # No _api_client set at all
-        result = workspace.build_params("Login")
+        result = workspace.build_params(InsightsQuery(events=[Metric("Login")]))
         assert "sections" in result

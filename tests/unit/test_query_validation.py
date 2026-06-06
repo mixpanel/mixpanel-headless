@@ -28,7 +28,8 @@ from mixpanel_headless._internal.validation import (
     validate_time_args,
 )
 from mixpanel_headless.exceptions import BookmarkValidationError
-from mixpanel_headless.types import GroupBy
+from mixpanel_headless.query_models import InsightsQuery
+from mixpanel_headless.types import Formula, GroupBy, Metric
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -66,40 +67,53 @@ class TestTimeRangeValidation:
         with pytest.raises(
             BookmarkValidationError, match="last must be a positive integer"
         ):
-            ws.query("Login", last=0)
+            ws.query(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_v7_last_negative(self, ws: Workspace) -> None:
         """V7: negative last returns validation error."""
         with pytest.raises(
             BookmarkValidationError, match="last must be a positive integer"
         ):
-            ws.query("Login", last=-5)
+            ws.query(InsightsQuery(events=[Metric("Login")], last=-5))
 
     def test_v8_from_date_format(self, ws: Workspace) -> None:
         """V8: from_date must be YYYY-MM-DD format."""
         with pytest.raises(
             BookmarkValidationError, match="from_date must be YYYY-MM-DD format"
         ):
-            ws.query("Login", from_date="01/01/2024")
+            ws.query(InsightsQuery(events=[Metric("Login")], from_date="01/01/2024"))
 
     def test_v8_to_date_format(self, ws: Workspace) -> None:
         """V8: to_date must also be YYYY-MM-DD format."""
         with pytest.raises(
             BookmarkValidationError, match="to_date must be YYYY-MM-DD format"
         ):
-            ws.query("Login", from_date="2024-01-01", to_date="Jan 31 2024")
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login")],
+                    from_date="2024-01-01",
+                    to_date="Jan 31 2024",
+                )
+            )
 
     def test_v9_to_date_requires_from_date(self, ws: Workspace) -> None:
         """V9: to_date without from_date returns validation error."""
         with pytest.raises(BookmarkValidationError, match="to_date requires from_date"):
-            ws.query("Login", to_date="2024-01-31")
+            ws.query(InsightsQuery(events=[Metric("Login")], to_date="2024-01-31"))
 
     def test_v10_last_with_explicit_dates(self, ws: Workspace) -> None:
         """V10: Cannot combine non-default last with explicit dates."""
         with pytest.raises(
             BookmarkValidationError, match="Cannot combine last=.*with explicit dates"
         ):
-            ws.query("Login", last=7, from_date="2024-01-01", to_date="2024-01-31")
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login")],
+                    last=7,
+                    from_date="2024-01-01",
+                    to_date="2024-01-31",
+                )
+            )
 
     def test_v10_default_last_with_dates_ok(self) -> None:
         """V10: Default last (30) with explicit dates is OK (last is ignored)."""
@@ -162,12 +176,12 @@ class TestAggregationValidation:
     """Tests for aggregation validation rules V1-V3."""
 
     def test_v1_property_math_requires_property(self, ws: Workspace) -> None:
-        """V1: Property-based math requires math_property."""
-        with pytest.raises(BookmarkValidationError, match="requires math_property"):
-            ws.query("Purchase", math="average")
+        """V1: Property-based math requires property (caught at Metric construction)."""
+        with pytest.raises(ValueError, match="requires a property"):
+            InsightsQuery(events=[Metric("Purchase", math="average")])
 
     def test_v1_all_property_math_types(self, ws: Workspace) -> None:
-        """V1: All property math types require math_property."""
+        """V1: All property math types require property (caught at Metric construction)."""
         for math_type in (
             "average",
             "median",
@@ -178,37 +192,47 @@ class TestAggregationValidation:
             "p90",
             "p99",
         ):
-            with pytest.raises(BookmarkValidationError, match="requires math_property"):
-                ws.query("Purchase", math=math_type)
+            with pytest.raises(ValueError, match="requires a property"):
+                InsightsQuery(events=[Metric("Purchase", math=math_type)])
 
     def test_v2_non_property_math_rejects_property(self, ws: Workspace) -> None:
-        """V2: Non-property math with math_property returns validation error."""
-        with pytest.raises(
-            BookmarkValidationError, match="math_property is only valid"
-        ):
-            ws.query("Login", math="unique", math_property="amount")
+        """V2: Non-property math Metric with property returns validation error."""
+        with pytest.raises(BookmarkValidationError, match="property is only valid"):
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login", math="unique", property="amount")]
+                )
+            )
 
     def test_v2_unique_rejects_property(self, ws: Workspace) -> None:
-        """V2: 'unique' math rejects math_property."""
-        with pytest.raises(
-            BookmarkValidationError, match="math_property is only valid"
-        ):
-            ws.query("Login", math="unique", math_property="amount")
+        """V2: 'unique' math Metric rejects property."""
+        with pytest.raises(BookmarkValidationError, match="property is only valid"):
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login", math="unique", property="amount")]
+                )
+            )
 
     def test_v3_per_user_incompatible_with_dau(self, ws: Workspace) -> None:
         """V3: per_user is incompatible with DAU."""
         with pytest.raises(BookmarkValidationError, match="per_user is incompatible"):
-            ws.query("Login", math="dau", per_user="average")
+            ws.query(
+                InsightsQuery(events=[Metric("Login", math="dau", per_user="average")])
+            )
 
     def test_v3_per_user_incompatible_with_wau(self, ws: Workspace) -> None:
         """V3: per_user is incompatible with WAU."""
         with pytest.raises(BookmarkValidationError, match="per_user is incompatible"):
-            ws.query("Login", math="wau", per_user="total")
+            ws.query(
+                InsightsQuery(events=[Metric("Login", math="wau", per_user="total")])
+            )
 
     def test_v3_per_user_incompatible_with_mau(self, ws: Workspace) -> None:
         """V3: per_user is incompatible with MAU."""
         with pytest.raises(BookmarkValidationError, match="per_user is incompatible"):
-            ws.query("Login", math="mau", per_user="min")
+            ws.query(
+                InsightsQuery(events=[Metric("Login", math="mau", per_user="min")])
+            )
 
     def test_valid_property_math_with_property(self) -> None:
         """Valid property math with math_property passes validation."""
@@ -296,16 +320,16 @@ class TestPerMetricValidation:
 
     def test_v14_metric_non_property_math_rejects_property(self, ws: Workspace) -> None:
         """V14: Metric with non-property math rejects property."""
-        from mixpanel_headless import Metric
-
         with pytest.raises(BookmarkValidationError, match="property is only valid"):
-            ws.query(Metric("Login", math="unique", property="amount"))
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login", math="unique", property="amount")]
+                )
+            )
 
     def test_v14_metric_total_with_property_allowed(self, ws: Workspace) -> None:
         """V14: Metric with math='total' + property is allowed (sum semantics)."""
         from unittest.mock import MagicMock
-
-        from mixpanel_headless import Metric
 
         mock_api_client = MagicMock()
         mock_api_client.insights_query.return_value = {
@@ -318,22 +342,26 @@ class TestPerMetricValidation:
         ws._api_client = mock_api_client
 
         # Should pass validation and reach the API
-        ws.query(Metric("Purchase", math="total", property="amount"))
+        ws.query(
+            InsightsQuery(events=[Metric("Purchase", math="total", property="amount")])
+        )
         mock_api_client.insights_query.assert_called_once()
 
     def test_metric_per_user_with_dau(self, ws: Workspace) -> None:
         """Per-Metric per_user incompatible with DAU."""
-        from mixpanel_headless import Metric
-
         with pytest.raises(BookmarkValidationError, match="per_user is incompatible"):
-            ws.query(Metric("Login", math="dau", per_user="average"))
+            ws.query(
+                InsightsQuery(events=[Metric("Login", math="dau", per_user="average")])
+            )
 
     def test_metric_per_user_requires_property(self, ws: Workspace) -> None:
         """Per-Metric per_user requires property to be set."""
-        from mixpanel_headless import Metric
-
         with pytest.raises(BookmarkValidationError, match="per_user requires property"):
-            ws.query(Metric("Login", math="total", per_user="average"))
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Login", math="total", per_user="average")]
+                )
+            )
 
 
 # =============================================================================
@@ -349,7 +377,7 @@ class TestFormulaValidation:
         with pytest.raises(
             BookmarkValidationError, match="formula requires at least 2 events"
         ):
-            ws.query("Login", formula="A * 100")
+            ws.query(InsightsQuery(events=[Metric("Login")], formula="A * 100"))
 
     def test_v4_formula_with_two_events_ok(self) -> None:
         """V4: Formula with 2 events passes validation."""
@@ -380,21 +408,23 @@ class TestAnalysisModeValidation:
     def test_v5_rolling_and_cumulative_exclusive(self, ws: Workspace) -> None:
         """V5: Rolling and cumulative are mutually exclusive."""
         with pytest.raises(BookmarkValidationError, match="mutually exclusive"):
-            ws.query("Login", rolling=7, cumulative=True)
+            ws.query(
+                InsightsQuery(events=[Metric("Login")], rolling=7, cumulative=True)
+            )
 
     def test_v6_rolling_must_be_positive(self, ws: Workspace) -> None:
         """V6: Rolling must be a positive integer."""
         with pytest.raises(
             BookmarkValidationError, match="rolling must be a positive integer"
         ):
-            ws.query("Login", rolling=0)
+            ws.query(InsightsQuery(events=[Metric("Login")], rolling=0))
 
     def test_v6_rolling_negative(self, ws: Workspace) -> None:
         """V6: Negative rolling returns validation error."""
         with pytest.raises(
             BookmarkValidationError, match="rolling must be a positive integer"
         ):
-            ws.query("Login", rolling=-3)
+            ws.query(InsightsQuery(events=[Metric("Login")], rolling=-3))
 
 
 # =============================================================================
@@ -407,21 +437,27 @@ class TestGroupByValidation:
 
     def test_v11_bucket_min_requires_bucket_size(self, ws: Workspace) -> None:
         """V11: bucket_min requires bucket_size."""
-        from mixpanel_headless import GroupBy
-
         with pytest.raises(
             BookmarkValidationError, match="bucket_min/bucket_max require bucket_size"
         ):
-            ws.query("Purchase", group_by=GroupBy("amount", bucket_min=0))
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy("amount", bucket_min=0)],
+                )
+            )
 
     def test_v11_bucket_max_requires_bucket_size(self, ws: Workspace) -> None:
         """V11: bucket_max requires bucket_size."""
-        from mixpanel_headless import GroupBy
-
         with pytest.raises(
             BookmarkValidationError, match="bucket_min/bucket_max require bucket_size"
         ):
-            ws.query("Purchase", group_by=GroupBy("amount", bucket_max=100))
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy("amount", bucket_max=100)],
+                )
+            )
 
     def test_v12_bucket_size_must_be_positive(self) -> None:
         """V12: bucket_size must be positive (caught at construction)."""
@@ -439,18 +475,19 @@ class TestGroupByValidation:
 
     def test_bucket_size_requires_numeric_type(self, ws: Workspace) -> None:
         """bucket_size with default string property_type returns validation error."""
-        from mixpanel_headless import GroupBy
-
         with pytest.raises(
             BookmarkValidationError, match="bucket_size requires property_type='number'"
         ):
-            ws.query("Purchase", group_by=GroupBy("amount", bucket_size=10))
+            ws.query(
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy("amount", bucket_size=10)],
+                )
+            )
 
     def test_bucket_size_with_numeric_type_ok(self, ws: Workspace) -> None:
         """bucket_size with property_type='number' passes validation."""
         from unittest.mock import MagicMock
-
-        from mixpanel_headless import GroupBy
 
         mock_api_client = MagicMock()
         mock_api_client.insights_query.return_value = {
@@ -464,25 +501,31 @@ class TestGroupByValidation:
 
         # Should not raise BookmarkValidationError — validation passes
         ws.query(
-            "Purchase",
-            group_by=GroupBy(
-                "amount",
-                property_type="number",
-                bucket_size=10,
-                bucket_min=0,
-                bucket_max=100,
-            ),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[
+                    GroupBy(
+                        "amount",
+                        property_type="number",
+                        bucket_size=10,
+                        bucket_min=0,
+                        bucket_max=100,
+                    )
+                ],
+            )
         )
         mock_api_client.insights_query.assert_called_once()
 
     def test_bucket_size_requires_min_max(self, ws: Workspace) -> None:
         """bucket_size without bucket_min/bucket_max returns validation error."""
-        from mixpanel_headless import GroupBy
-
         with pytest.raises(BookmarkValidationError, match="bucket_size requires both"):
             ws.query(
-                "Purchase",
-                group_by=GroupBy("amount", property_type="number", bucket_size=10),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[
+                        GroupBy("amount", property_type="number", bucket_size=10)
+                    ],
+                )
             )
 
 
@@ -495,11 +538,11 @@ class TestEmptyEventsValidation:
     """Tests for empty events list validation (V0)."""
 
     def test_v0_empty_list_raises(self, ws: Workspace) -> None:
-        """V0: Empty events list returns validation error."""
-        with pytest.raises(
-            BookmarkValidationError, match="At least one event is required"
-        ):
-            ws.query([])
+        """V0: Empty events list returns validation error (caught at model construction)."""
+        from pydantic import ValidationError as PydanticValidationError
+
+        with pytest.raises(PydanticValidationError, match="too_short"):
+            InsightsQuery(events=[])
 
     def test_v0_non_empty_list_passes(self, ws: Workspace) -> None:
         """V0: Non-empty events list passes validation (may fail at API)."""
@@ -507,7 +550,7 @@ class TestEmptyEventsValidation:
         # since we don't have a mock API client here.
         # We only test that validation doesn't raise.
         try:
-            ws.query(["Login"])
+            ws.query(InsightsQuery(events=[Metric("Login")]))
         except Exception as e:
             # Any error other than BookmarkValidationError about empty events is acceptable
             assert "At least one event is required" not in str(e)
@@ -523,31 +566,27 @@ class TestFormulaInListValidation:
 
     def test_formula_alone_raises(self, ws: Workspace) -> None:
         """A Formula as the sole argument returns validation error."""
-        from mixpanel_headless import Formula
-
         with pytest.raises(
-            BookmarkValidationError, match="Formula cannot be the only item"
+            BookmarkValidationError, match="At least one event is required"
         ):
-            ws.query(Formula("A * 100"))
+            ws.query(InsightsQuery(events=[Formula("A * 100")]))
 
     def test_formula_with_top_level_raises(self, ws: Workspace) -> None:
         """Mixing Formula in list with top-level formula returns validation error."""
-        from mixpanel_headless import Formula, Metric
-
         with pytest.raises(BookmarkValidationError, match="Cannot combine top-level"):
             ws.query(
-                [Metric("A"), Metric("B"), Formula("A + B")],
-                formula="A - B",
+                InsightsQuery(
+                    events=[Metric("A"), Metric("B"), Formula("A + B")],
+                    formula="A - B",
+                )
             )
 
     def test_formula_in_list_requires_two_events(self, ws: Workspace) -> None:
         """Formula in list with only 1 event triggers V4."""
-        from mixpanel_headless import Formula
-
         with pytest.raises(
             BookmarkValidationError, match="formula requires at least 2 events"
         ):
-            ws.query(["Login", Formula("A * 100")])
+            ws.query(InsightsQuery(events=[Metric("Login"), Formula("A * 100")]))
 
 
 # =============================================================================
@@ -563,19 +602,21 @@ class TestBuildParamsValidation:
         with pytest.raises(
             BookmarkValidationError, match="last must be a positive integer"
         ):
-            ws.build_params("Login", last=0)
+            ws.build_params(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_rejects_formula_without_events(self, ws: Workspace) -> None:
         """build_params() validates formula requires 2+ events."""
         with pytest.raises(
             BookmarkValidationError, match="formula requires at least 2 events"
         ):
-            ws.build_params("Login", formula="A + B")
+            ws.build_params(InsightsQuery(events=[Metric("Login")], formula="A + B"))
 
     def test_rejects_invalid_date_format(self, ws: Workspace) -> None:
         """build_params() validates date format."""
         with pytest.raises(BookmarkValidationError, match="YYYY-MM-DD"):
-            ws.build_params("Login", from_date="01/01/2024")
+            ws.build_params(
+                InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
+            )
 
 
 # =============================================================================
@@ -587,29 +628,37 @@ class TestPercentileValidation:
     """T064: Percentile validation rules."""
 
     def test_v1_percentile_requires_math_property(self, ws: Workspace) -> None:
-        """V1: math='percentile' requires math_property."""
-        with pytest.raises(BookmarkValidationError, match="requires math_property"):
-            ws.build_params("Login", math="percentile", percentile_value=95)
+        """V1: math='percentile' requires property (caught at Metric construction)."""
+        with pytest.raises(ValueError, match="requires a property"):
+            InsightsQuery(
+                events=[Metric("Login", math="percentile", percentile_value=95)]
+            )
 
     def test_v26_percentile_requires_percentile_value(self, ws: Workspace) -> None:
-        """V26: math='percentile' requires percentile_value."""
-        with pytest.raises(BookmarkValidationError, match="percentile_value"):
-            ws.build_params("Login", math="percentile", math_property="duration")
+        """V26: math='percentile' requires percentile_value (caught at Metric construction)."""
+        with pytest.raises(ValueError, match="percentile_value"):
+            InsightsQuery(
+                events=[Metric("Login", math="percentile", property="duration")]
+            )
 
     def test_v26_metric_percentile_requires_value(self) -> None:
         """V26: Metric with math='percentile' requires percentile_value (caught at construction)."""
-        from mixpanel_headless import Metric
-
         with pytest.raises(ValueError, match="percentile_value"):
             Metric("Login", math="percentile", property="duration")
 
     def test_valid_percentile_passes(self, ws: Workspace) -> None:
         """Percentile with property and value passes validation."""
         result = ws.build_params(
-            "Login",
-            math="percentile",
-            math_property="duration",
-            percentile_value=95,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Login",
+                        math="percentile",
+                        property="duration",
+                        percentile_value=95,
+                    )
+                ],
+            )
         )
         assert isinstance(result, dict)
 
@@ -623,29 +672,41 @@ class TestHistogramValidation:
     """T068: Histogram validation."""
 
     def test_v1_histogram_requires_property(self, ws: Workspace) -> None:
-        """V1: math='histogram' requires math_property."""
-        with pytest.raises(BookmarkValidationError, match="requires math_property"):
-            ws.build_params("Login", math="histogram")
+        """V1: math='histogram' requires property (caught at Metric construction)."""
+        with pytest.raises(ValueError, match="requires a property"):
+            InsightsQuery(events=[Metric("Login", math="histogram")])
 
     def test_v27_histogram_requires_per_user(self, ws: Workspace) -> None:
         """V27: math='histogram' requires per_user."""
         with pytest.raises(BookmarkValidationError, match="requires per_user"):
-            ws.build_params("Purchase", math="histogram", math_property="amount")
+            ws.build_params(
+                InsightsQuery(
+                    events=[Metric("Purchase", math="histogram", property="amount")]
+                )
+            )
 
     def test_v27_metric_histogram_requires_per_user(self, ws: Workspace) -> None:
         """V27: Metric(math='histogram') requires per_user."""
-        from mixpanel_headless import Metric
-
         with pytest.raises(BookmarkValidationError, match="requires per_user"):
-            ws.build_params(Metric("Purchase", math="histogram", property="amount"))
+            ws.build_params(
+                InsightsQuery(
+                    events=[Metric("Purchase", math="histogram", property="amount")]
+                )
+            )
 
     def test_histogram_with_property_and_per_user_passes(self, ws: Workspace) -> None:
         """Histogram with property and per_user passes validation."""
         result = ws.build_params(
-            "Purchase",
-            math="histogram",
-            math_property="amount",
-            per_user="total",
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "Purchase",
+                        math="histogram",
+                        property="amount",
+                        per_user="total",
+                    )
+                ],
+            )
         )
         assert isinstance(result, dict)
 

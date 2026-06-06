@@ -46,6 +46,12 @@ from mixpanel_headless import (
     Workspace,
 )
 from mixpanel_headless.exceptions import APIError, QueryError
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 
 # All tests require the `live` marker — skipped by default
 pytestmark = pytest.mark.live
@@ -175,7 +181,7 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        result = ws.query(real_event, last=7)
+        result = ws.query(InsightsQuery(events=[Metric(real_event)], last=7))
         assert isinstance(result, QueryResult)
 
     def test_s02_backward_compat_build_params(
@@ -187,7 +193,7 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_params(real_event, last=7)
+        params = ws.build_params(InsightsQuery(events=[Metric(real_event)], last=7))
         assert isinstance(params, dict)
         assert "sections" in params
 
@@ -202,8 +208,7 @@ class TestSmokeSuite:
         """
         result = _query_or_api_error(
             ws.query_funnel,
-            list(real_events_pair),
-            last=7,
+            FunnelQuery(steps=list(real_events_pair), last=7),
         )
         if result is not None:
             assert isinstance(result, FunnelQueryResult)
@@ -219,9 +224,11 @@ class TestSmokeSuite:
         """
         result = _query_or_api_error(
             ws.query_retention,
-            real_events_pair[0],
-            real_events_pair[1],
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, RetentionQueryResult)
@@ -233,7 +240,7 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        result = _query_or_api_error(ws.query_flow, real_event, last=7)
+        result = _query_or_api_error(ws.query_flow, FlowQuery(event=real_event, last=7))
         if result is not None:
             assert isinstance(result, FlowQueryResult)
 
@@ -246,7 +253,9 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_events_pair: Two known event names.
         """
-        params = ws.build_funnel_params(list(real_events_pair), last=7)
+        params = ws.build_funnel_params(
+            FunnelQuery(steps=list(real_events_pair), last=7)
+        )
         assert isinstance(params, dict)
 
     def test_s07_backward_compat_build_retention_params(
@@ -259,7 +268,11 @@ class TestSmokeSuite:
             real_events_pair: Two known event names.
         """
         params = ws.build_retention_params(
-            real_events_pair[0], real_events_pair[1], last=7
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                last=7,
+            )
         )
         assert isinstance(params, dict)
 
@@ -272,7 +285,7 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_flow_params(real_event, last=7)
+        params = ws.build_flow_params(FlowQuery(event=real_event, last=7))
         assert isinstance(params, dict)
 
     def test_s09_new_math_type_accepted(self, ws: Workspace, real_event: str) -> None:
@@ -282,7 +295,12 @@ class TestSmokeSuite:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_params(real_event, math="cumulative_unique", last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event, math="cumulative_unique")],
+                last=7,
+            )
+        )
         assert isinstance(params, dict)
 
     def test_s10_time_comparison_accepted(self, ws: Workspace, real_event: str) -> None:
@@ -293,7 +311,13 @@ class TestSmokeSuite:
             real_event: Known event name.
         """
         tc = TimeComparison.relative("month")
-        params = ws.build_params(real_event, last=30, time_comparison=tc)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                last=30,
+                time_comparison=tc,
+            )
+        )
         assert isinstance(params, dict)
         assert "displayOptions" in params
 
@@ -323,7 +347,12 @@ class TestOfflineUS1:
             real_event: Known event name.
             math_type: Math type to test.
         """
-        params = ws.build_params(real_event, math=math_type, last=7)  # type: ignore[arg-type]
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event, math=math_type)],  # type: ignore[arg-type]
+                last=7,
+            )
+        )
         show = _dig(params, "sections", "show")
         assert show is not None
         assert show[0]["measurement"]["math"] in (
@@ -353,10 +382,10 @@ class TestOfflineUS1:
             math_type: Math type to test.
         """
         params = ws.build_params(
-            real_event,
-            math=math_type,  # type: ignore[arg-type]
-            math_property="$browser",
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math=math_type, property="$browser")],  # type: ignore[arg-type]
+                last=7,
+            )
         )
         show = _dig(params, "sections", "show")
         assert show is not None
@@ -382,7 +411,12 @@ class TestOfflineUS1:
             math_type: Math type to test.
         """
         with pytest.raises((ValueError, BookmarkValidationError)):
-            ws.build_params(real_event, math=math_type, last=7)  # type: ignore[arg-type]
+            ws.build_params(
+                InsightsQuery(
+                    events=[Metric(real_event, math=math_type)],  # type: ignore[arg-type]
+                    last=7,
+                )
+            )
 
     @pytest.mark.parametrize(
         "math_type",
@@ -414,7 +448,7 @@ class TestOfflineUS1:
             real_event: Known event name.
             math_type: Math type to test.
         """
-        kwargs: dict[str, Any] = {"last": 7}
+        kwargs: dict[str, Any] = {}
         # Types requiring a property
         needs_prop = {
             "average",
@@ -428,13 +462,20 @@ class TestOfflineUS1:
             "percentile",
             "histogram",
         }
+        metric_kwargs: dict[str, Any] = {"math": math_type}
         if math_type in needs_prop:
-            kwargs["math_property"] = "$browser"
+            metric_kwargs["property"] = "$browser"
         if math_type == "percentile":
             kwargs["percentile_value"] = 50
         if math_type == "histogram":
             kwargs["per_user"] = "total"
-        params = ws.build_params(real_event, math=math_type, **kwargs)  # type: ignore[arg-type]
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event, **metric_kwargs)],
+                last=7,
+                **kwargs,
+            )
+        )
         assert isinstance(params, dict)
 
     @pytest.mark.parametrize("math_type", ["total", "average"])
@@ -452,10 +493,12 @@ class TestOfflineUS1:
             math_type: Retention math type to test.
         """
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            math=math_type,  # type: ignore[arg-type]
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                math=math_type,
+                last=7,
+            )
         )
         show = _dig(params, "sections", "show")
         assert show is not None
@@ -472,10 +515,12 @@ class TestOfflineUS1:
             real_events_pair: Two known event names.
         """
         params = ws.build_funnel_params(
-            list(real_events_pair),
-            math="histogram",
-            math_property="$browser",
-            last=7,
+            FunnelQuery(
+                steps=list(real_events_pair),
+                math="histogram",
+                math_property="$browser",
+                last=7,
+            )
         )
         show = _dig(params, "sections", "show")
         assert show is not None
@@ -487,7 +532,7 @@ class TestOfflineUS1:
             ws: Workspace fixture.
         """
         m = Metric("$mp_web_page_view", math="cumulative_unique")
-        params = ws.build_params(m, last=7)
+        params = ws.build_params(InsightsQuery(events=[m], last=7))
         assert isinstance(params, dict)
 
     def test_m08_metric_property_required_math(self, ws: Workspace) -> None:
@@ -501,7 +546,7 @@ class TestOfflineUS1:
             math="unique_values",
             property="$browser",
         )
-        params = ws.build_params(m, last=7)
+        params = ws.build_params(InsightsQuery(events=[m], last=7))
         assert isinstance(params, dict)
 
     def test_m09_metric_property_required_math_rejects_missing(self) -> None:
@@ -536,9 +581,11 @@ class TestOfflineUS2:
             mode: Reentry mode value.
         """
         params = ws.build_funnel_params(
-            list(real_events_pair),
-            reentry_mode=mode,  # type: ignore[arg-type]
-            last=7,
+            FunnelQuery(
+                steps=list(real_events_pair),
+                reentry_mode=mode,
+                last=7,
+            )
         )
         behavior = _dig(params, "sections", "show", 0, "behavior")
         assert behavior is not None
@@ -561,10 +608,12 @@ class TestOfflineUS2:
             mode: Unbounded mode value.
         """
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            unbounded_mode=mode,  # type: ignore[arg-type]
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                unbounded_mode=mode,
+                last=7,
+            )
         )
         behavior = _dig(params, "sections", "show", 0, "behavior")
         assert behavior is not None
@@ -582,10 +631,12 @@ class TestOfflineUS2:
             real_events_pair: Two known event names.
         """
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            retention_cumulative=True,
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                retention_cumulative=True,
+                last=7,
+            )
         )
         measurement = _dig(params, "sections", "show", 0, "measurement")
         assert measurement is not None
@@ -603,9 +654,11 @@ class TestOfflineUS2:
             real_events_pair: Two known event names.
         """
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                last=7,
+            )
         )
         measurement = _dig(params, "sections", "show", 0, "measurement")
         assert measurement is not None
@@ -624,7 +677,7 @@ class TestOfflineUS2:
             method: Segment method value.
         """
         m = Metric(real_event, segment_method=method)  # type: ignore[arg-type]
-        params = ws.build_params(m, last=7)
+        params = ws.build_params(InsightsQuery(events=[m], last=7))
         # Verify the param builds without error
         assert isinstance(params, dict)
 
@@ -640,7 +693,7 @@ class TestOfflineUS2:
             real_event: Known event name.
         """
         m = Metric(real_event, segment_method="first")
-        params = ws.build_params(m, last=7)
+        params = ws.build_params(InsightsQuery(events=[m], last=7))
         measurement = _dig(params, "sections", "show", 0, "measurement")
         assert measurement is not None
         assert measurement.get("segmentMethod") == "first"
@@ -662,7 +715,9 @@ class TestOfflineUS3:
             real_event: Known event name.
         """
         tc = TimeComparison.relative("month")
-        params = ws.build_params(real_event, last=30, time_comparison=tc)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], last=30, time_comparison=tc)
+        )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
         assert tc_output.get("type") == "relative"
@@ -679,10 +734,12 @@ class TestOfflineUS3:
         """
         tc = TimeComparison.absolute_start("2026-01-01")
         params = ws.build_params(
-            real_event,
-            from_date="2026-03-01",
-            to_date="2026-03-31",
-            time_comparison=tc,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                from_date="2026-03-01",
+                to_date="2026-03-31",
+                time_comparison=tc,
+            )
         )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
@@ -700,10 +757,12 @@ class TestOfflineUS3:
         """
         tc = TimeComparison.absolute_end("2026-12-31")
         params = ws.build_params(
-            real_event,
-            from_date="2026-03-01",
-            to_date="2026-03-31",
-            time_comparison=tc,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                from_date="2026-03-01",
+                to_date="2026-03-31",
+                time_comparison=tc,
+            )
         )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
@@ -722,7 +781,9 @@ class TestOfflineUS3:
             unit: Time comparison unit.
         """
         tc = TimeComparison.relative(unit)  # type: ignore[arg-type]
-        params = ws.build_params(real_event, last=30, time_comparison=tc)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], last=30, time_comparison=tc)
+        )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
         assert tc_output.get("value") == unit
@@ -740,7 +801,11 @@ class TestOfflineUS3:
         """
         tc = TimeComparison.relative("week")
         params = ws.build_funnel_params(
-            list(real_events_pair), last=30, time_comparison=tc
+            FunnelQuery(
+                steps=list(real_events_pair),
+                last=30,
+                time_comparison=tc,
+            )
         )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
@@ -758,10 +823,12 @@ class TestOfflineUS3:
         """
         tc = TimeComparison.relative("month")
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            last=30,
-            time_comparison=tc,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                last=30,
+                time_comparison=tc,
+            )
         )
         tc_output = _dig(params, "displayOptions", "timeComparison")
         assert tc_output is not None
@@ -785,7 +852,9 @@ class TestOfflineUS4:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event, bucket_size=1, bucket_min=0, bucket_max=10)
-        params = ws.build_params(real_event, group_by=fb, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], group_by=[fb], last=7)
+        )
         group = _dig(params, "sections", "group")
         assert group is not None
         assert len(group) > 0
@@ -800,7 +869,9 @@ class TestOfflineUS4:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event)
-        params = ws.build_params(real_event, group_by=fb, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], group_by=[fb], last=7)
+        )
         group = _dig(params, "sections", "group")
         assert group is not None
         # Find the frequency group entry (behaviorType is inside behavior dict)
@@ -822,7 +893,9 @@ class TestOfflineUS4:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event)
-        params = ws.build_params(real_event, group_by=fb, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], group_by=[fb], last=7)
+        )
         group = _dig(params, "sections", "group")
         assert group is not None
         freq_entries = [
@@ -844,7 +917,9 @@ class TestOfflineUS4:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event, bucket_size=5, bucket_min=0, bucket_max=50)
-        params = ws.build_params(real_event, group_by=fb, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], group_by=[fb], last=7)
+        )
         group = _dig(params, "sections", "group")
         assert group is not None
         assert len(group) > 0
@@ -859,7 +934,9 @@ class TestOfflineUS4:
             real_event: Known event name.
         """
         ff = FrequencyFilter(real_event, operator="is at least", value=5)
-        params = ws.build_params(real_event, where=ff, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], where=[ff], last=7)
+        )
         filt = _dig(params, "sections", "filter")
         assert filt is not None
         assert len(filt) > 0
@@ -885,7 +962,9 @@ class TestOfflineUS4:
             operator: Frequency filter operator.
         """
         ff = FrequencyFilter(real_event, operator=operator, value=5)  # type: ignore[arg-type]
-        params = ws.build_params(real_event, where=ff, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], where=[ff], last=7)
+        )
         assert isinstance(params, dict)
 
     def test_m28_frequency_filter_with_date_range(
@@ -903,7 +982,9 @@ class TestOfflineUS4:
             date_range_value=30,
             date_range_unit="day",
         )
-        params = ws.build_params(real_event, where=ff, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], where=[ff], last=7)
+        )
         assert isinstance(params, dict)
 
 
@@ -1026,7 +1107,9 @@ class TestOfflineUS6:
             real_event: Known event name.
         """
         f = Filter.at_least("$browser_version", 10)
-        params = ws.build_params(real_event, where=f, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], where=[f], last=7)
+        )
         assert isinstance(params, dict)
         filt = _dig(params, "sections", "filter")
         assert filt is not None
@@ -1041,7 +1124,9 @@ class TestOfflineUS6:
             real_event: Known event name.
         """
         f = Filter.starts_with("$browser", "Chr")
-        params = ws.build_params(real_event, where=f, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], where=[f], last=7)
+        )
         assert isinstance(params, dict)
 
 
@@ -1060,7 +1145,9 @@ class TestOfflineUS7:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_params(real_event, data_group_id=5, last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[Metric(real_event)], data_group_id=5, last=7)
+        )
         assert isinstance(params, dict)
         # Check dataGroupId appears in the structure
         dg = _dig(params, "sections", "dataGroupId")
@@ -1077,7 +1164,13 @@ class TestOfflineUS7:
             ws: Workspace fixture.
             real_events_pair: Two known event names.
         """
-        params = ws.build_funnel_params(list(real_events_pair), data_group_id=5, last=7)
+        params = ws.build_funnel_params(
+            FunnelQuery(
+                steps=list(real_events_pair),
+                data_group_id=5,
+                last=7,
+            )
+        )
         assert isinstance(params, dict)
         dg = _dig(params, "sections", "dataGroupId")
         assert dg == 5
@@ -1094,10 +1187,12 @@ class TestOfflineUS7:
             real_events_pair: Two known event names.
         """
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            data_group_id=5,
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                data_group_id=5,
+                last=7,
+            )
         )
         assert isinstance(params, dict)
         dg = _dig(params, "sections", "dataGroupId")
@@ -1110,7 +1205,9 @@ class TestOfflineUS7:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_flow_params(real_event, data_group_id=5, last=7)
+        params = ws.build_flow_params(
+            FlowQuery(event=real_event, data_group_id=5, last=7)
+        )
         assert isinstance(params, dict)
         dg = params.get("data_group_id")
         assert dg == 5
@@ -1124,7 +1221,7 @@ class TestOfflineUS7:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        params = ws.build_params(real_event, last=7)
+        params = ws.build_params(InsightsQuery(events=[Metric(real_event)], last=7))
         dg = _dig(params, "sections", "dataGroupId")
         assert dg is None
 
@@ -1144,7 +1241,7 @@ class TestOfflineUS8:
             ws: Workspace fixture.
         """
         step = FlowStep("$session_start", session_event="start", forward=5)
-        params = ws.build_flow_params(step, last=7)
+        params = ws.build_flow_params(FlowQuery(event=step, last=7))
         assert isinstance(params, dict)
         steps = params.get("steps", [])
         assert len(steps) > 0
@@ -1156,7 +1253,7 @@ class TestOfflineUS8:
             ws: Workspace fixture.
         """
         step = FlowStep("$session_end", session_event="end", forward=3)
-        params = ws.build_flow_params(step, last=7)
+        params = ws.build_flow_params(FlowQuery(event=step, last=7))
         assert isinstance(params, dict)
 
     def test_m48_flow_exclusions(self, ws: Workspace, real_event: str) -> None:
@@ -1167,9 +1264,11 @@ class TestOfflineUS8:
             real_event: Known event name.
         """
         params = ws.build_flow_params(
-            real_event,
-            exclusions=["$identify", "$mp_web_page_view"],
-            last=7,
+            FlowQuery(
+                event=real_event,
+                exclusions=["$identify", "$mp_web_page_view"],
+                last=7,
+            )
         )
         assert isinstance(params, dict)
         excl = params.get("exclusions")
@@ -1183,9 +1282,11 @@ class TestOfflineUS8:
             real_event: Known event name.
         """
         params = ws.build_flow_params(
-            real_event,
-            segments=GroupBy(property="$browser"),
-            last=7,
+            FlowQuery(
+                event=real_event,
+                segments=[GroupBy(property="$browser")],
+                last=7,
+            )
         )
         assert isinstance(params, dict)
         segs = params.get("segments")
@@ -1199,9 +1300,11 @@ class TestOfflineUS8:
             real_event: Known event name.
         """
         params = ws.build_flow_params(
-            real_event,
-            where=Filter.equals("$browser", "Chrome"),
-            last=7,
+            FlowQuery(
+                event=real_event,
+                where=[Filter.equals("$browser", "Chrome")],
+                last=7,
+            )
         )
         assert isinstance(params, dict)
         fbe = params.get("filter_by_event")
@@ -1219,7 +1322,7 @@ class TestOfflineUS8:
         # Use in_cohort filter -- may not have a real cohort, so just
         # verify the params build without error.
         f = Filter.in_cohort(12345)
-        params = ws.build_flow_params(real_event, where=f, last=7)
+        params = ws.build_flow_params(FlowQuery(event=real_event, where=[f], last=7))
         assert isinstance(params, dict)
 
 
@@ -1396,7 +1499,11 @@ class TestLiveUS1:
             real_event: Known event name.
         """
         result = _query_or_api_error(
-            ws.query, real_event, math="cumulative_unique", last=7
+            ws.query,
+            InsightsQuery(
+                events=[Metric(real_event, math="cumulative_unique")],
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, QueryResult)
@@ -1408,7 +1515,13 @@ class TestLiveUS1:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        result = _query_or_api_error(ws.query, real_event, math="sessions", last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(
+                events=[Metric(real_event, math="sessions")],
+                last=7,
+            ),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1421,10 +1534,10 @@ class TestLiveUS1:
         """
         result = _query_or_api_error(
             ws.query,
-            real_event,
-            math="unique_values",
-            math_property="$browser",
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="unique_values", property="$browser")],
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, QueryResult)
@@ -1438,10 +1551,10 @@ class TestLiveUS1:
         """
         result = _query_or_api_error(
             ws.query,
-            real_event,
-            math="most_frequent",
-            math_property="$browser",
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="most_frequent", property="$browser")],
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, QueryResult)
@@ -1459,10 +1572,12 @@ class TestLiveUS1:
         """
         result = _query_or_api_error(
             ws.query_retention,
-            real_events_pair[0],
-            real_events_pair[1],
-            math="total",
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                math="total",
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, RetentionQueryResult)
@@ -1489,9 +1604,11 @@ class TestLiveUS2:
         """
         result = _query_or_api_error(
             ws.query_funnel,
-            list(real_events_pair),
-            reentry_mode="aggressive",
-            last=7,
+            FunnelQuery(
+                steps=list(real_events_pair),
+                reentry_mode="aggressive",
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, FunnelQueryResult)
@@ -1509,10 +1626,12 @@ class TestLiveUS2:
         """
         result = _query_or_api_error(
             ws.query_retention,
-            real_events_pair[0],
-            real_events_pair[1],
-            unbounded_mode="carry_forward",
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                unbounded_mode="carry_forward",
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, RetentionQueryResult)
@@ -1530,10 +1649,12 @@ class TestLiveUS2:
         """
         result = _query_or_api_error(
             ws.query_retention,
-            real_events_pair[0],
-            real_events_pair[1],
-            retention_cumulative=True,
-            last=7,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                retention_cumulative=True,
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, RetentionQueryResult)
@@ -1557,7 +1678,14 @@ class TestLiveUS3:
             real_event: Known event name.
         """
         tc = TimeComparison.relative("month")
-        result = _query_or_api_error(ws.query, real_event, last=30, time_comparison=tc)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                last=30,
+                time_comparison=tc,
+            ),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1575,9 +1703,11 @@ class TestLiveUS3:
         tc = TimeComparison.relative("week")
         result = _query_or_api_error(
             ws.query_funnel,
-            list(real_events_pair),
-            last=30,
-            time_comparison=tc,
+            FunnelQuery(
+                steps=list(real_events_pair),
+                last=30,
+                time_comparison=tc,
+            ),
         )
         if result is not None:
             assert isinstance(result, FunnelQueryResult)
@@ -1596,10 +1726,12 @@ class TestLiveUS3:
         tc = TimeComparison.relative("month")
         result = _query_or_api_error(
             ws.query_retention,
-            real_events_pair[0],
-            real_events_pair[1],
-            last=30,
-            time_comparison=tc,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                last=30,
+                time_comparison=tc,
+            ),
         )
         if result is not None:
             assert isinstance(result, RetentionQueryResult)
@@ -1621,7 +1753,10 @@ class TestLiveUS4:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event)
-        result = _query_or_api_error(ws.query, real_event, group_by=fb, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], group_by=[fb], last=7),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1633,7 +1768,10 @@ class TestLiveUS4:
             real_event: Known event name.
         """
         ff = FrequencyFilter(real_event, value=1)
-        result = _query_or_api_error(ws.query, real_event, where=ff, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], where=[ff], last=7),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1654,7 +1792,10 @@ class TestLiveUS6:
             real_event: Known event name.
         """
         f = Filter.at_least("$browser_version", 1)
-        result = _query_or_api_error(ws.query, real_event, where=f, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1666,7 +1807,10 @@ class TestLiveUS6:
             real_event: Known event name.
         """
         f = Filter.starts_with("$browser", "Chr")
-        result = _query_or_api_error(ws.query, real_event, where=f, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1678,7 +1822,10 @@ class TestLiveUS6:
             real_event: Known event name.
         """
         f = Filter.not_between("$browser_version", 0, 50)
-        result = _query_or_api_error(ws.query, real_event, where=f, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
+        )
         if result is not None:
             assert isinstance(result, QueryResult)
 
@@ -1701,7 +1848,10 @@ class TestLiveUS7:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        result = _query_or_api_error(ws.query, real_event, data_group_id=5, last=7)
+        result = _query_or_api_error(
+            ws.query,
+            InsightsQuery(events=[Metric(real_event)], data_group_id=5, last=7),
+        )
         # Either a valid result or an API error; no crash
         if result is not None:
             assert isinstance(result, QueryResult)
@@ -1725,7 +1875,10 @@ class TestLiveUS8:
             real_event: Known event name.
         """
         f = Filter.equals("$browser", "Chrome")
-        result = _query_or_api_error(ws.query_flow, real_event, where=f, last=7)
+        result = _query_or_api_error(
+            ws.query_flow,
+            FlowQuery(event=real_event, where=[f], last=7),
+        )
         if result is not None:
             assert isinstance(result, FlowQueryResult)
 
@@ -1740,9 +1893,7 @@ class TestLiveUS8:
         """
         result = _query_or_api_error(
             ws.query_flow,
-            real_event,
-            exclusions=["$identify"],
-            last=7,
+            FlowQuery(event=real_event, exclusions=["$identify"], last=7),
         )
         if result is not None:
             assert isinstance(result, FlowQueryResult)
@@ -1756,9 +1907,11 @@ class TestLiveUS8:
         """
         result = _query_or_api_error(
             ws.query_flow,
-            real_event,
-            segments=GroupBy(property="$browser"),
-            last=7,
+            FlowQuery(
+                event=real_event,
+                segments=[GroupBy(property="$browser")],
+                last=7,
+            ),
         )
         if result is not None:
             assert isinstance(result, FlowQueryResult)
@@ -1770,7 +1923,7 @@ class TestLiveUS8:
             ws: Workspace fixture.
         """
         step = FlowStep("$session_start", session_event="start", forward=3)
-        result = _query_or_api_error(ws.query_flow, step, last=7)
+        result = _query_or_api_error(ws.query_flow, FlowQuery(event=step, last=7))
         if result is not None:
             assert isinstance(result, FlowQueryResult)
 
@@ -1794,10 +1947,11 @@ class TestCrossParameterInteractions:
         """
         tc = TimeComparison.relative("month")
         params = ws.build_params(
-            real_event,
-            math="cumulative_unique",
-            last=30,
-            time_comparison=tc,
+            InsightsQuery(
+                events=[Metric(real_event, math="cumulative_unique")],
+                last=30,
+                time_comparison=tc,
+            )
         )
         assert isinstance(params, dict)
         assert _dig(params, "displayOptions", "timeComparison") is not None
@@ -1813,7 +1967,14 @@ class TestCrossParameterInteractions:
         """
         fb = FrequencyBreakdown(real_event)
         f = Filter.equals("$browser", "Chrome")
-        params = ws.build_params(real_event, group_by=fb, where=f, last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[fb],
+                where=[f],
+                last=7,
+            )
+        )
         assert isinstance(params, dict)
         assert _dig(params, "sections", "group") is not None
         assert _dig(params, "sections", "filter") is not None
@@ -1829,7 +1990,14 @@ class TestCrossParameterInteractions:
         """
         ff = FrequencyFilter(real_event, value=2)
         gb = GroupBy(property="$browser")
-        params = ws.build_params(real_event, group_by=gb, where=ff, last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[gb],
+                where=[ff],
+                last=7,
+            )
+        )
         assert isinstance(params, dict)
         assert _dig(params, "sections", "group") is not None
         assert _dig(params, "sections", "filter") is not None
@@ -1847,10 +2015,12 @@ class TestCrossParameterInteractions:
         """
         tc = TimeComparison.relative("week")
         params = ws.build_funnel_params(
-            list(real_events_pair),
-            reentry_mode="aggressive",
-            time_comparison=tc,
-            last=30,
+            FunnelQuery(
+                steps=list(real_events_pair),
+                reentry_mode="aggressive",
+                time_comparison=tc,
+                last=30,
+            )
         )
         assert isinstance(params, dict)
         behavior = _dig(params, "sections", "show", 0, "behavior")
@@ -1871,12 +2041,14 @@ class TestCrossParameterInteractions:
         """
         tc = TimeComparison.relative("month")
         params = ws.build_retention_params(
-            real_events_pair[0],
-            real_events_pair[1],
-            unbounded_mode="carry_forward",
-            retention_cumulative=True,
-            time_comparison=tc,
-            last=30,
+            RetentionQuery(
+                born_event=real_events_pair[0],
+                return_event=real_events_pair[1],
+                unbounded_mode="carry_forward",
+                retention_cumulative=True,
+                time_comparison=tc,
+                last=30,
+            )
         )
         assert isinstance(params, dict)
         behavior = _dig(params, "sections", "show", 0, "behavior")
@@ -1897,7 +2069,14 @@ class TestCrossParameterInteractions:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event)
-        params = ws.build_params(real_event, group_by=fb, data_group_id=5, last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[fb],
+                data_group_id=5,
+                last=7,
+            )
+        )
         assert isinstance(params, dict)
         assert _dig(params, "sections", "dataGroupId") == 5
         assert _dig(params, "sections", "group") is not None
@@ -1912,11 +2091,13 @@ class TestCrossParameterInteractions:
             real_event: Known event name.
         """
         params = ws.build_flow_params(
-            real_event,
-            exclusions=["$identify"],
-            segments=GroupBy(property="$browser"),
-            where=Filter.equals("$os", "Mac OS X"),
-            last=7,
+            FlowQuery(
+                event=real_event,
+                exclusions=["$identify"],
+                segments=[GroupBy(property="$browser")],
+                where=[Filter.equals("$os", "Mac OS X")],
+                last=7,
+            )
         )
         assert isinstance(params, dict)
         assert params.get("exclusions") is not None

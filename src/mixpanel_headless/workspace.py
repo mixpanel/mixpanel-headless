@@ -42,6 +42,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
+    from mixpanel_headless.query_models import (
+        FlowQuery,
+        FunnelQuery,
+        InsightsQuery,
+        RetentionQuery,
+    )
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
@@ -2259,7 +2265,8 @@ class Workspace:
         | Metric
         | CohortMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[str | Metric | CohortMetric | Formula]
+        | InsightsQuery,
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2434,7 +2441,8 @@ class Workspace:
         | Metric
         | CohortMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[str | Metric | CohortMetric | Formula]
+        | InsightsQuery,
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -3088,7 +3096,7 @@ class Workspace:
 
     def query_funnel(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | FunnelQuery,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3213,7 +3221,7 @@ class Workspace:
                 to_date=query.to_date,
                 last=query.last,
                 unit=query.unit,
-                group_by=query.group_by,
+                group_by=query.group_by,  # type: ignore[arg-type]
                 where=query.where,
                 exclusions=query.exclusions,
                 holding_constant=query.holding_constant,
@@ -3255,7 +3263,7 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | FunnelQuery,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3362,7 +3370,7 @@ class Workspace:
                 to_date=query.to_date,
                 last=query.last,
                 unit=query.unit,
-                group_by=query.group_by,
+                group_by=query.group_by,  # type: ignore[arg-type]
                 where=query.where,
                 exclusions=query.exclusions,
                 holding_constant=query.holding_constant,
@@ -3930,7 +3938,7 @@ class Workspace:
 
     def query_flow(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep],
+        event: str | FlowStep | Sequence[str | FlowStep] | FlowQuery,
         *,
         forward: int = 3,
         reverse: int = 0,
@@ -4058,7 +4066,7 @@ class Workspace:
                 mode=query.mode,
                 where=query.where,
                 data_group_id=query.data_group_id,
-                segments=query.segments,
+                segments=query.segments,  # type: ignore[arg-type]
                 exclusions=query.exclusions,
             )
             return self._live_query_service.query_flow(
@@ -4095,7 +4103,7 @@ class Workspace:
 
     def build_flow_params(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep],
+        event: str | FlowStep | Sequence[str | FlowStep] | FlowQuery,
         *,
         forward: int = 3,
         reverse: int = 0,
@@ -4201,7 +4209,7 @@ class Workspace:
                 mode=query.mode,
                 where=query.where,
                 data_group_id=query.data_group_id,
-                segments=query.segments,
+                segments=query.segments,  # type: ignore[arg-type]
                 exclusions=query.exclusions,
             )
 
@@ -4356,8 +4364,8 @@ class Workspace:
 
     def query_retention(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | RetentionQuery,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4481,6 +4489,10 @@ class Workspace:
                 project_id=int(self._session.project.id),
             )
 
+        if return_event is None:
+            msg = "return_event is required when born_event is not a RetentionQuery"
+            raise TypeError(msg)
+
         params = self._resolve_and_build_retention_params(
             born_event=born_event,
             return_event=return_event,
@@ -4508,8 +4520,8 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | RetentionQuery,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4620,6 +4632,10 @@ class Workspace:
                 time_comparison=query.time_comparison,
                 data_group_id=query.data_group_id,
             )
+
+        if return_event is None:
+            msg = "return_event is required when born_event is not a RetentionQuery"
+            raise TypeError(msg)
 
         return self._resolve_and_build_retention_params(
             born_event=born_event,

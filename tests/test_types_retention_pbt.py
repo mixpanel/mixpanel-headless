@@ -31,6 +31,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import RetentionQuery
 from mixpanel_headless.types import RetentionEvent, RetentionQueryResult
 from tests.conftest import make_session
 
@@ -264,7 +265,9 @@ class TestBuildRetentionParamsPBT:
         valid. They must always be present regardless of event names.
         """
         ws = _make_workspace()
-        result = ws.build_retention_params(born, ret)
+        result = ws.build_retention_params(
+            RetentionQuery(born_event=born, return_event=ret)
+        )
         assert "sections" in result
         assert "displayOptions" in result
 
@@ -279,7 +282,9 @@ class TestBuildRetentionParamsPBT:
         return event, so the behaviors array must always have length 2.
         """
         ws = _make_workspace()
-        result = ws.build_retention_params(born, ret)
+        result = ws.build_retention_params(
+            RetentionQuery(born_event=born, return_event=ret)
+        )
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert len(behaviors) == 2
 
@@ -291,6 +296,8 @@ class TestBuildRetentionParamsPBT:
         only valid chart type strings for the retention report.
         """
         ws = _make_workspace()
-        result = ws.build_retention_params("Signup", "Login", mode=mode)  # type: ignore[arg-type]
+        result = ws.build_retention_params(
+            RetentionQuery(born_event="Signup", return_event="Login", mode=mode)
+        )
         valid_chart_types = {"retention-curve", "line", "table"}
         assert result["displayOptions"]["chartType"] in valid_chart_types

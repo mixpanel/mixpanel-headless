@@ -25,6 +25,7 @@ from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.validation import validate_bookmark
 from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
+from mixpanel_headless.query_models import FunnelQuery, InsightsQuery
 from mixpanel_headless.types import (
     CohortBreakdown,
     CohortCriteria,
@@ -32,6 +33,7 @@ from mixpanel_headless.types import (
     CustomPropertyRef,
     Filter,
     FunnelStep,
+    GroupBy,
     InlineCustomProperty,
     Metric,
     PropertyInput,
@@ -85,43 +87,59 @@ class TestVector1MetricFilterCPFixed:
         """CustomPropertyRef(0) in Metric.filters raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
     def test_negative_cp_id_raises(self, ws: Workspace) -> None:
         """CustomPropertyRef(-1) in Metric.filters raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=CustomPropertyRef(-1))],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
     def test_valid_cp_id_passes(self, ws: Workspace) -> None:
         """CustomPropertyRef(42) in Metric.filters passes validation."""
         params = ws.build_params(
-            Metric(
-                "AnyEvent",
-                filters=[Filter.is_set(property=CustomPropertyRef(42))],
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "AnyEvent",
+                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                    )
+                ],
+                last=7,
+            )
         )
         assert "sections" in params
 
     def test_l2_also_catches_invalid_cp_id(self, ws: Workspace) -> None:
         """Defense-in-depth: L2 B18b validates customPropertyId > 0."""
         params = ws.build_params(
-            Metric(
-                "AnyEvent",
-                filters=[Filter.is_set(property=CustomPropertyRef(42))],
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "AnyEvent",
+                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                    )
+                ],
+                last=7,
+            )
         )
         # Mutate to inject invalid ID after build (simulating L2-only check)
         params["sections"]["show"][0]["behavior"]["filters"][0]["customPropertyId"] = 0
@@ -145,27 +163,31 @@ class TestVector2FunnelStepFilterCPFixed:
         """CustomPropertyRef(0) in FunnelStep.filters raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_funnel_params(
-                [
-                    FunnelStep(
-                        "Step1",
-                        filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                    ),
-                    "Step2",
-                ],
-                last=30,
+                FunnelQuery(
+                    steps=[
+                        FunnelStep(
+                            "Step1",
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        ),
+                        "Step2",
+                    ],
+                    last=30,
+                )
             )
 
     def test_valid_cp_id_passes(self, ws: Workspace) -> None:
         """CustomPropertyRef(42) in FunnelStep.filters passes validation."""
         params = ws.build_funnel_params(
-            [
-                FunnelStep(
-                    "Step1",
-                    filters=[Filter.is_set(property=CustomPropertyRef(42))],
-                ),
-                "Step2",
-            ],
-            last=30,
+            FunnelQuery(
+                steps=[
+                    FunnelStep(
+                        "Step1",
+                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                    ),
+                    "Step2",
+                ],
+                last=30,
+            )
         )
         assert "sections" in params
 
@@ -189,9 +211,11 @@ class TestVector3InlineCohortDesignChoice:
         criteria = CohortCriteria.did_event("FakeEvent", at_least=1, within_days=30)
         defn = CohortDefinition(criteria)
         params = ws.build_params(
-            "AnyEvent",
-            group_by=CohortBreakdown(defn, "Test Cohort"),
-            last=7,
+            InsightsQuery(
+                events=[Metric("AnyEvent")],
+                group_by=[CohortBreakdown(defn, "Test Cohort")],
+                last=7,
+            )
         )
         assert "sections" in params
 
@@ -205,9 +229,11 @@ class TestVector3InlineCohortDesignChoice:
         criteria = CohortCriteria.did_event("FakeEvent", at_least=1, within_days=30)
         defn = CohortDefinition(criteria)
         params = ws.build_params(
-            "AnyEvent",
-            group_by=CohortBreakdown(defn, "Test Cohort"),
-            last=7,
+            InsightsQuery(
+                events=[Metric("AnyEvent")],
+                group_by=[CohortBreakdown(defn, "Test Cohort")],
+                last=7,
+            )
         )
         group = params["sections"]["group"]
         cohorts = group[0]["cohorts"]
@@ -231,7 +257,11 @@ class TestVector4WarningOnlyEnumDesignChoice:
 
     def test_invalid_resource_type_is_warning_only(self, ws: Workspace) -> None:
         """Invalid resourceType in group section → warning, not error."""
-        params = ws.build_params("AnyEvent", group_by="country", last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric("AnyEvent")], group_by=[GroupBy("country")], last=7
+            )
+        )
         params["sections"]["group"][0]["resourceType"] = "BOGUS_TYPE"
 
         errors = validate_bookmark(params)
@@ -242,7 +272,11 @@ class TestVector4WarningOnlyEnumDesignChoice:
 
     def test_invalid_property_type_is_warning_only(self, ws: Workspace) -> None:
         """Invalid propertyType in group section → warning, not error."""
-        params = ws.build_params("AnyEvent", group_by="country", last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric("AnyEvent")], group_by=[GroupBy("country")], last=7
+            )
+        )
         params["sections"]["group"][0]["propertyType"] = "FAKE_TYPE"
 
         errors = validate_bookmark(params)
@@ -253,7 +287,7 @@ class TestVector4WarningOnlyEnumDesignChoice:
 
     def test_invalid_behavior_type_is_warning_only(self, ws: Workspace) -> None:
         """Invalid behavior.type → warning via B7, not error."""
-        params = ws.build_params("AnyEvent", last=7)
+        params = ws.build_params(InsightsQuery(events=[Metric("AnyEvent")], last=7))
         params["sections"]["show"][0]["behavior"]["type"] = "NONEXISTENT"
 
         errors = validate_bookmark(params)
@@ -274,22 +308,32 @@ class TestVector5NegativeCPRefFixed:
         """CustomPropertyRef(-1) in Metric.filters raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=CustomPropertyRef(-1))],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
     def test_large_negative_id_raises(self, ws: Workspace) -> None:
         """CustomPropertyRef(-999999) in Metric.filters raises."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=CustomPropertyRef(-999999))],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[
+                                Filter.is_set(property=CustomPropertyRef(-999999))
+                            ],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
 
@@ -309,11 +353,15 @@ class TestVector6EmptyFormulaFixed:
         )
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=bad_cp)],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[Filter.is_set(property=bad_cp)],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
     def test_valid_inline_cp_in_metric_filter_passes(self, ws: Workspace) -> None:
@@ -323,11 +371,15 @@ class TestVector6EmptyFormulaFixed:
             inputs={"A": PropertyInput("$browser")},
         )
         params = ws.build_params(
-            Metric(
-                "AnyEvent",
-                filters=[Filter.is_set(property=good_cp)],
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        "AnyEvent",
+                        filters=[Filter.is_set(property=good_cp)],
+                    )
+                ],
+                last=7,
+            )
         )
         assert "sections" in params
 
@@ -348,7 +400,7 @@ class TestVector7FormulaShowClauseFixed:
         self, ws: Workspace
     ) -> None:
         """A hybrid clause (formula + behavior) still validates the behavior."""
-        params = ws.build_params("AnyEvent", last=7)
+        params = ws.build_params(InsightsQuery(events=[Metric("AnyEvent")], last=7))
         # Inject formula key into a valid show clause — creates hybrid
         params["sections"]["show"][0]["formula"] = ""
 
@@ -360,7 +412,7 @@ class TestVector7FormulaShowClauseFixed:
         self, ws: Workspace
     ) -> None:
         """Corrupted behavior IS detected even when 'formula' key present."""
-        params = ws.build_params("AnyEvent", last=7)
+        params = ws.build_params(InsightsQuery(events=[Metric("AnyEvent")], last=7))
         # Corrupt the behavior block
         params["sections"]["show"][0]["behavior"]["type"] = "INVALID"
         # Attempt to hide it with formula key — no longer works
@@ -387,12 +439,16 @@ class TestCombinedFixes:
         """Invalid CP ID in Metric.filters is caught regardless of other params."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    "AnyEvent",
-                    filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                ),
-                group_by="country",
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "AnyEvent",
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        )
+                    ],
+                    group_by=[GroupBy("country")],
+                    last=7,
+                )
             )
 
     def test_empty_formula_cp_in_funnel_step_now_caught(self, ws: Workspace) -> None:
@@ -403,12 +459,14 @@ class TestCombinedFixes:
         )
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_funnel_params(
-                [
-                    FunnelStep(
-                        "Step1",
-                        filters=[Filter.is_set(property=bad_cp)],
-                    ),
-                    "Step2",
-                ],
-                last=30,
+                FunnelQuery(
+                    steps=[
+                        FunnelStep(
+                            "Step1",
+                            filters=[Filter.is_set(property=bad_cp)],
+                        ),
+                        "Step2",
+                    ],
+                    last=30,
+                )
             )

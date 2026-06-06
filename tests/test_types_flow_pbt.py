@@ -30,6 +30,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import FlowQuery
 from mixpanel_headless.types import FlowQueryResult, FlowStep
 from tests.conftest import make_session
 
@@ -378,7 +379,7 @@ class TestBuildFlowParamsPBT:
         valid. They must always be present regardless of event names.
         """
         ws = _make_workspace()
-        result = ws.build_flow_params(event)
+        result = ws.build_flow_params(FlowQuery(event=event))
         required_keys = {"steps", "date_range", "chartType", "version", "count_type"}
         assert required_keys.issubset(set(result.keys()))
 
@@ -391,7 +392,7 @@ class TestBuildFlowParamsPBT:
         format, regardless of the input event name.
         """
         ws = _make_workspace()
-        result = ws.build_flow_params(event)
+        result = ws.build_flow_params(FlowQuery(event=event))
         assert result["version"] == 2
 
     @given(
@@ -416,5 +417,5 @@ class TestBuildFlowParamsPBT:
         ]
         assume(max(effective) > 0)
         ws = _make_workspace()
-        result = ws.build_flow_params(steps)
+        result = ws.build_flow_params(FlowQuery(event=steps))
         assert len(result["steps"]) == len(steps)

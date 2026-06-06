@@ -32,9 +32,12 @@ from mixpanel_headless._internal.validation import (
     validate_bookmark,
     validate_query_args,
 )
+from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
+    CohortBreakdown,
     Filter,
     Formula,
+    FrequencyBreakdown,
     GroupBy,
     Metric,
     QueryResult,
@@ -318,11 +321,12 @@ class TestBuildParamsInvariant:
         """build_params() always returns dict with sections and displayOptions."""
         ws = _make_ws()
         result = ws.build_params(
-            event,
-            math=math,  # type: ignore[arg-type]
-            unit=unit,  # type: ignore[arg-type]
-            last=last,
-            mode=mode,  # type: ignore[arg-type]
+            InsightsQuery(
+                events=[Metric(event, math=math)],  # type: ignore[arg-type]
+                unit=unit,
+                last=last,
+                mode=mode,
+            )
         )
         assert isinstance(result, dict)
         assert "sections" in result
@@ -391,10 +395,11 @@ class TestPercentileInvariant:
         """math='percentile' always maps to 'custom_percentile' in bookmark."""
         ws = _make_ws()
         params = ws.build_params(
-            event,
-            math="percentile",
-            math_property=prop,
-            percentile_value=pv,
+            InsightsQuery(
+                events=[
+                    Metric(event, math="percentile", property=prop, percentile_value=pv)
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "custom_percentile"
@@ -414,7 +419,11 @@ class TestHistogramInvariant:
         """Histogram bookmark always has property and perUserAggregation."""
         ws = _make_ws()
         params = ws.build_params(
-            event, math="histogram", math_property=prop, per_user="total"
+            InsightsQuery(
+                events=[
+                    Metric(event, math="histogram", property=prop, per_user="total")
+                ],
+            )
         )
         m = params["sections"]["show"][0]["measurement"]
         assert m["math"] == "histogram"
@@ -526,15 +535,26 @@ class TestBuildParamsBookmarkConsistency:
     ) -> None:
         """Any list of valid Metrics produces a bookmark passing validate_bookmark."""
         ws = _make_ws()
+        # Wrap plain string group_by in GroupBy for InsightsQuery compatibility
+        resolved_group_by: (
+            list[GroupBy | CohortBreakdown | FrequencyBreakdown] | None
+        ) = None
+        if group_by is not None:
+            if isinstance(group_by, str):
+                resolved_group_by = [GroupBy(group_by)]
+            else:
+                resolved_group_by = [group_by]
         params = ws.build_params(
-            metrics,
-            unit=unit,  # type: ignore[arg-type]
-            last=last,
-            mode=mode,  # type: ignore[arg-type]
-            where=where,
-            group_by=group_by,
-            rolling=rolling,
-            cumulative=False,
+            InsightsQuery(
+                events=metrics,
+                unit=unit,
+                last=last,
+                mode=mode,
+                where=[where] if where is not None else None,
+                group_by=resolved_group_by,
+                rolling=rolling,
+                cumulative=False,
+            )
         )
         errors = validate_bookmark(params)
         hard_errors = [e for e in errors if e.severity == "error"]
@@ -554,9 +574,11 @@ class TestBuildParamsBookmarkConsistency:
         """Formula queries always produce valid bookmarks."""
         ws = _make_ws()
         params = ws.build_params(
-            events,
-            formula=formula_expr,
-            formula_label="Test Formula",
+            InsightsQuery(
+                events=[Metric(e) for e in events],
+                formula=formula_expr,
+                formula_label="Test Formula",
+            )
         )
         errors = validate_bookmark(params)
         hard_errors = [e for e in errors if e.severity == "error"]
@@ -665,8 +687,10 @@ class TestMetricOverridePropagation:
         ws = _make_ws()
         m = Metric(event=event, math=metric_math, property=metric_prop)  # type: ignore[arg-type]
         params = ws.build_params(
-            [m],
-            math=top_math,  # type: ignore[arg-type]
+            InsightsQuery(
+                events=[m],
+                math=top_math,
+            )
         )
         bookmark_math = params["sections"]["show"][0]["measurement"]["math"]
         # "percentile" maps to "custom_percentile" in bookmark
@@ -689,9 +713,11 @@ class TestMetricOverridePropagation:
         ws = _make_ws()
         m = Metric(event=event, math="average", property=metric_prop)
         params = ws.build_params(
-            [m],
-            math="average",
-            math_property=top_prop,
+            InsightsQuery(
+                events=[m],
+                math="average",
+                math_property=top_prop,
+            )
         )
         assert (
             params["sections"]["show"][0]["measurement"]["property"]["name"]
@@ -717,7 +743,7 @@ class TestMetricOverridePropagation:
             property=prop,
             per_user=metric_per_user,  # type: ignore[arg-type]
         )
-        params = ws.build_params([m])
+        params = ws.build_params(InsightsQuery(events=[m]))
         assert (
             params["sections"]["show"][0]["measurement"]["perUserAggregation"]
             == metric_per_user
@@ -732,7 +758,7 @@ class TestMetricOverridePropagation:
     ) -> None:
         """N Metrics produce exactly N show clauses, each with its own math."""
         ws = _make_ws()
-        params = ws.build_params(events)
+        params = ws.build_params(InsightsQuery(events=events))
         show = params["sections"]["show"]
         assert len(show) == len(events)
         for i, m in enumerate(events):

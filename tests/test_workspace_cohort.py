@@ -20,6 +20,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import FlowQuery, InsightsQuery
 from mixpanel_headless.types import (
     CohortBreakdown,
     CohortCriteria,
@@ -27,6 +28,7 @@ from mixpanel_headless.types import (
     CohortMetric,
     Filter,
     Formula,
+    GroupBy,
     Metric,
 )
 
@@ -126,8 +128,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=Filter.in_cohort(123, "Power Users"),
+                FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
             )
             assert "filter_by_cohort" in result
         finally:
@@ -141,8 +142,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=Filter.in_cohort(456, "Active"),
+                FlowQuery(event="Login", where=[Filter.in_cohort(456, "Active")])
             )
             assert result["filter_by_cohort"]["id"] == 456
         finally:
@@ -156,8 +156,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=Filter.in_cohort(456, "Active"),
+                FlowQuery(event="Login", where=[Filter.in_cohort(456, "Active")])
             )
             assert result["filter_by_cohort"]["name"] == "Active"
         finally:
@@ -171,8 +170,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=Filter.not_in_cohort(789, "Bots"),
+                FlowQuery(event="Login", where=[Filter.not_in_cohort(789, "Bots")])
             )
             assert result["filter_by_cohort"]["negated"] is True
         finally:
@@ -186,8 +184,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=Filter.equals("country", "US"),
+                FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
             assert "filter_by_event" in result
             assert result["filter_by_event"]["operator"] == "and"
@@ -203,11 +200,13 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                "Login",
-                where=[
-                    Filter.in_cohort(123, "PU"),
-                    Filter.equals("country", "US"),
-                ],
+                FlowQuery(
+                    event="Login",
+                    where=[
+                        Filter.in_cohort(123, "PU"),
+                        Filter.equals("country", "US"),
+                    ],
+                )
             )
             assert "filter_by_cohort" in result
             assert "filter_by_event" in result
@@ -223,7 +222,7 @@ class TestQueryFlowWhere:
         """T007: No where= parameter produces no filter_by_cohort key."""
         ws = workspace_factory()
         try:
-            result = ws.build_flow_params("Login")
+            result = ws.build_flow_params(FlowQuery(event="Login"))
             assert "filter_by_cohort" not in result
         finally:
             ws.close()
@@ -236,7 +235,9 @@ class TestQueryFlowWhere:
         """T007: build_flow_params does not make API calls."""
         ws = workspace_factory()
         try:
-            ws.build_flow_params("Login", where=Filter.in_cohort(123))
+            ws.build_flow_params(
+                FlowQuery(event="Login", where=[Filter.in_cohort(123)])
+            )
             mock_api_client.request.assert_not_called()
         finally:
             ws.close()
@@ -262,7 +263,9 @@ class TestResolveAndBuildParamsCohortMetric:
         """T041: CohortMetric alone produces a valid params dict."""
         ws = workspace_factory()
         try:
-            result = ws.build_params(CohortMetric(123, "Power Users"))
+            result = ws.build_params(
+                InsightsQuery(events=[CohortMetric(123, "Power Users")])
+            )
             assert isinstance(result, dict)
             assert "sections" in result
             assert "displayOptions" in result
@@ -276,7 +279,7 @@ class TestResolveAndBuildParamsCohortMetric:
         """T041: CohortMetric produces non-empty sections.show."""
         ws = workspace_factory()
         try:
-            result = ws.build_params(CohortMetric(123, "PU"))
+            result = ws.build_params(InsightsQuery(events=[CohortMetric(123, "PU")]))
             assert len(result["sections"]["show"]) > 0
         finally:
             ws.close()
@@ -288,7 +291,7 @@ class TestResolveAndBuildParamsCohortMetric:
         """T041: CohortMetric show entry has behavior.type='cohort'."""
         ws = workspace_factory()
         try:
-            result = ws.build_params(CohortMetric(123, "PU"))
+            result = ws.build_params(InsightsQuery(events=[CohortMetric(123, "PU")]))
             behavior = result["sections"]["show"][0]["behavior"]
             assert behavior["type"] == "cohort"
         finally:
@@ -301,7 +304,9 @@ class TestResolveAndBuildParamsCohortMetric:
         """T041: CohortMetric in sequence with string event is accepted."""
         ws = workspace_factory()
         try:
-            result = ws.build_params([CohortMetric(123, "PU"), "Login"])
+            result = ws.build_params(
+                InsightsQuery(events=[CohortMetric(123, "PU"), Metric("Login")])
+            )
             assert len(result["sections"]["show"]) == 2
         finally:
             ws.close()
@@ -314,10 +319,12 @@ class TestResolveAndBuildParamsCohortMetric:
         ws = workspace_factory()
         try:
             result = ws.build_params(
-                [
-                    CohortMetric(123, "PU"),
-                    Metric("Login", math="unique"),
-                ]
+                InsightsQuery(
+                    events=[
+                        CohortMetric(123, "PU"),
+                        Metric("Login", math="unique"),
+                    ],
+                )
             )
             assert len(result["sections"]["show"]) == 2
         finally:
@@ -331,11 +338,13 @@ class TestResolveAndBuildParamsCohortMetric:
         ws = workspace_factory()
         try:
             result = ws.build_params(
-                [
-                    CohortMetric(123, "PU"),
-                    Metric("Login"),
-                    Formula("A/B", label="Ratio"),
-                ]
+                InsightsQuery(
+                    events=[
+                        CohortMetric(123, "PU"),
+                        Metric("Login"),
+                        Formula("A/B", label="Ratio"),
+                    ],
+                )
             )
             assert "sections" in result
         finally:
@@ -349,7 +358,7 @@ class TestResolveAndBuildParamsCohortMetric:
         """T041: build_params with CohortMetric does not call API."""
         ws = workspace_factory()
         try:
-            ws.build_params(CohortMetric(123, "PU"))
+            ws.build_params(InsightsQuery(events=[CohortMetric(123, "PU")]))
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()
@@ -371,8 +380,10 @@ class TestResolveAndBuildParamsCohortMetric:
         ws = workspace_factory()
         try:
             result = ws.build_params(
-                CohortMetric(123, "PU"),
-                group_by="platform",
+                InsightsQuery(
+                    events=[CohortMetric(123, "PU")],
+                    group_by=[GroupBy("platform")],
+                )
             )
             assert len(result["sections"]["show"]) > 0
             assert len(result["sections"]["group"]) > 0
@@ -387,8 +398,10 @@ class TestResolveAndBuildParamsCohortMetric:
         ws = workspace_factory()
         try:
             result = ws.build_params(
-                CohortMetric(123, "PU"),
-                where=Filter.in_cohort(456, "Other"),
+                InsightsQuery(
+                    events=[CohortMetric(123, "PU")],
+                    where=[Filter.in_cohort(456, "Other")],
+                )
             )
             assert len(result["sections"]["show"]) > 0
             assert len(result["sections"]["filter"]) > 0
@@ -403,8 +416,10 @@ class TestResolveAndBuildParamsCohortMetric:
         ws = workspace_factory()
         try:
             result = ws.build_params(
-                CohortMetric(123, "PU"),
-                group_by=CohortBreakdown(456, "Other Cohort"),
+                InsightsQuery(
+                    events=[CohortMetric(123, "PU")],
+                    group_by=[CohortBreakdown(456, "Other Cohort")],
+                )
             )
             assert len(result["sections"]["show"]) > 0
             assert len(result["sections"]["group"]) > 0
