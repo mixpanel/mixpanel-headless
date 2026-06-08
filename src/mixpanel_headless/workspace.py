@@ -2301,7 +2301,7 @@ class Workspace:
             math_property=query.math_property,
             per_user=query.per_user,
             percentile_value=query.percentile_value,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             formula=query.formula,
             formula_label=query.formula_label,
@@ -2357,7 +2357,7 @@ class Workspace:
             math_property=query.math_property,
             per_user=query.per_user,
             percentile_value=query.percentile_value,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             formula=query.formula,
             formula_label=query.formula_label,
@@ -2930,7 +2930,7 @@ class Workspace:
             to_date=query.to_date,
             last=query.last,
             unit=query.unit,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             exclusions=query.exclusions,
             holding_constant=query.holding_constant,
@@ -2986,7 +2986,7 @@ class Workspace:
             to_date=query.to_date,
             last=query.last,
             unit=query.unit,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             exclusions=query.exclusions,
             holding_constant=query.holding_constant,
@@ -3581,7 +3581,7 @@ class Workspace:
             mode=query.mode,
             where=query.where,
             data_group_id=query.data_group_id,
-            segments=query.segments,  # type: ignore[arg-type]
+            segments=query.segments,
             exclusions=query.exclusions,
         )
         return self._live_query_service.query_flow(
@@ -3637,7 +3637,7 @@ class Workspace:
             mode=query.mode,
             where=query.where,
             data_group_id=query.data_group_id,
-            segments=query.segments,  # type: ignore[arg-type]
+            segments=query.segments,
             exclusions=query.exclusions,
         )
 
@@ -3818,7 +3818,7 @@ class Workspace:
             to_date=query.to_date,
             last=query.last,
             unit=query.unit,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             mode=query.mode,
             unbounded_mode=query.unbounded_mode,
@@ -3875,7 +3875,7 @@ class Workspace:
             to_date=query.to_date,
             last=query.last,
             unit=query.unit,
-            group_by=query.group_by,  # type: ignore[arg-type]
+            group_by=query.group_by,
             where=query.where,
             mode=query.mode,
             unbounded_mode=query.unbounded_mode,

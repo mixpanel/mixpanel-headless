@@ -620,4 +620,9 @@ __all__ = [
     "TimeComparison",
     "FrequencyBreakdown",
     "FrequencyFilter",
+    # Query models (Pydantic input models)
+    "InsightsQuery",
+    "FunnelQuery",
+    "RetentionQuery",
+    "FlowQuery",
 ]

@@ -78,11 +78,11 @@ class InsightsQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    events: list[Metric | CohortMetric | Formula] = Field(
+    events: list[str | Metric | CohortMetric | Formula] = Field(
         ...,
-        description="Events to query. Each is a Metric, CohortMetric, or Formula.",
+        description="Events to query. Each is an event name string, Metric, CohortMetric, or Formula.",
         min_length=1,
     )
     from_date: str | None = Field(
@@ -95,7 +95,7 @@ class InsightsQuery(BaseModel):
     )
     last: int = Field(
         30,
-        description="Relative time range in days. Default: 30. Ignored if from_date is set.",
+        description="Relative time range in days. Default: 30. Overridden when from_date is set.",
     )
     unit: QueryTimeUnit = Field(
         "day",
@@ -103,21 +103,21 @@ class InsightsQuery(BaseModel):
     )
     math: MathType = Field(
         "total",
-        description="Default aggregation for plain-string events.",
+        description="Aggregation function applied to bare-string events.",
     )
     math_property: str | None = Field(
         None,
-        description="Property name for property-based math.",
+        description="Property name for property-based math (applies to bare-string events).",
     )
     per_user: PerUserAggregation | None = Field(
         None,
-        description="Per-user pre-aggregation.",
+        description="Per-user pre-aggregation (applies to bare-string events).",
     )
     percentile_value: int | float | None = Field(
         None,
-        description="Custom percentile value (e.g. 95). Required when math='percentile'.",
+        description="Custom percentile value (e.g. 95). Used when math='percentile'.",
     )
-    group_by: list[GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
+    group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
         None,
         description="Break down results by property values, cohort, or event frequency.",
     )
@@ -185,7 +185,7 @@ class FunnelQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     steps: list[str | FunnelStep] = Field(
         ...,
@@ -293,7 +293,7 @@ class RetentionQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     born_event: str | RetentionEvent = Field(
         ...,
@@ -395,7 +395,7 @@ class FlowQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     event: str | FlowStep | list[str | FlowStep] = Field(
         ...,

@@ -364,3 +364,86 @@ class TestFlowQuery:
             segments=[CohortBreakdown(cohort=123)],
         )
         assert len(q.segments) == 1  # type: ignore[arg-type]
+
+
+# =============================================================================
+# Extra Fields Rejection (C1)
+# =============================================================================
+
+
+class TestExtraFieldsRejected:
+    """Models must reject unknown keys (extra='forbid')."""
+
+    def test_insights_rejects_extra_top_level(self) -> None:
+        """InsightsQuery rejects unknown top-level keys."""
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            InsightsQuery.model_validate(
+                {"events": [{"event": "Login"}], "typo_field": 1}
+            )
+
+    def test_funnel_rejects_extra_top_level(self) -> None:
+        """FunnelQuery rejects unknown top-level keys."""
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            FunnelQuery.model_validate(
+                {"steps": ["A", "B"], "typo_field": 1}
+            )
+
+    def test_retention_rejects_extra_top_level(self) -> None:
+        """RetentionQuery rejects unknown top-level keys."""
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            RetentionQuery.model_validate(
+                {"born_event": "A", "return_event": "B", "extra_key": 1}
+            )
+
+    def test_flow_rejects_extra_top_level(self) -> None:
+        """FlowQuery rejects unknown top-level keys."""
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            FlowQuery.model_validate({"event": "A", "extra_key": 1})
+
+
+# =============================================================================
+# Bare String Events (C2)
+# =============================================================================
+
+
+class TestBareStringEvents:
+    """InsightsQuery must accept bare strings in events and group_by."""
+
+    def test_bare_string_event(self) -> None:
+        """InsightsQuery accepts a bare string event name."""
+        q = InsightsQuery(events=["Login"])
+        assert q.events == ["Login"]
+
+    def test_mixed_string_and_metric(self) -> None:
+        """InsightsQuery accepts a mix of strings and Metric objects."""
+        q = InsightsQuery(events=["Login", Metric("Purchase", math="unique")])
+        assert len(q.events) == 2
+
+    def test_bare_string_via_model_validate(self) -> None:
+        """InsightsQuery.model_validate accepts bare string events."""
+        q = InsightsQuery.model_validate({"events": ["Login"]})
+        assert q.events == ["Login"]
+
+    def test_bare_string_group_by(self) -> None:
+        """InsightsQuery accepts bare string group_by."""
+        q = InsightsQuery(events=["Login"], group_by=["country"])
+        assert q.group_by == ["country"]
+
+
+# =============================================================================
+# Public Exports (I3)
+# =============================================================================
+
+
+class TestPublicExports:
+    """Query models must appear in mixpanel_headless.__all__."""
+
+    @pytest.mark.parametrize(
+        "name",
+        ["InsightsQuery", "FunnelQuery", "RetentionQuery", "FlowQuery"],
+    )
+    def test_in_all(self, name: str) -> None:
+        """Query model is listed in __all__."""
+        import mixpanel_headless
+
+        assert name in mixpanel_headless.__all__
