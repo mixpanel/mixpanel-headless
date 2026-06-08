@@ -7070,22 +7070,22 @@ class Formula:
 
     Example:
         ```python
-        from mixpanel_headless import Formula, Metric
+        from mixpanel_headless import Formula, InsightsQuery, Metric
 
         # Formula in the events list
-        result = ws.query(
-            [Metric("Signup", math="unique"),
-             Metric("Purchase", math="unique"),
-             Formula("(B / A) * 100", label="Conversion %")],
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique"),
+                    Formula("(B / A) * 100", label="Conversion %")],
+        ))
 
         # Equivalent using top-level parameter
-        result = ws.query(
-            [Metric("Signup", math="unique"),
-             Metric("Purchase", math="unique")],
+        result = ws.query(InsightsQuery(
+            events=[Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique")],
             formula="(B / A) * 100",
             formula_label="Conversion %",
-        )
+        ))
         ```
     """
 
@@ -9197,16 +9197,19 @@ class CohortBreakdown:
 
     Example:
         ```python
-        from mixpanel_headless import CohortBreakdown
+        from mixpanel_headless import CohortBreakdown, InsightsQuery, Metric
 
         # Segment by saved cohort
-        result = ws.query("Purchase", group_by=CohortBreakdown(123, "Power Users"))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            group_by=[CohortBreakdown(123, "Power Users")],
+        ))
 
         # Without "Not In" segment
-        result = ws.query(
-            "Purchase",
-            group_by=CohortBreakdown(123, "Power Users", include_negated=False),
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            group_by=[CohortBreakdown(123, "Power Users", include_negated=False)],
+        ))
         ```
     """
 
@@ -9251,17 +9254,19 @@ class CohortMetric:
 
     Example:
         ```python
-        from mixpanel_headless import CohortMetric, Metric, Formula
+        from mixpanel_headless import CohortMetric, InsightsQuery, Metric, Formula
 
         # Track cohort growth
-        result = ws.query(CohortMetric(123, "Power Users"), last=90, unit="week")
+        result = ws.query(InsightsQuery(
+            events=[CohortMetric(123, "Power Users")], last=90, unit="week",
+        ))
 
         # Mix with event metrics and formulas
-        result = ws.query(
-            [Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
             formula="(B / A) * 100",
             formula_label="Power User %",
-        )
+        ))
         ```
     """
 
@@ -9308,18 +9313,21 @@ class FrequencyBreakdown:
 
     Example:
         ```python
-        from mixpanel_headless import FrequencyBreakdown
+        from mixpanel_headless import FrequencyBreakdown, InsightsQuery, Metric
 
         # How often users purchased (0-10 in increments of 1)
-        result = ws.query("Login", group_by=FrequencyBreakdown("Purchase"))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            group_by=[FrequencyBreakdown("Purchase")],
+        ))
 
         # Custom buckets: 0-50 in increments of 5
-        result = ws.query(
-            "Login",
-            group_by=FrequencyBreakdown(
-                "Purchase", bucket_size=5, bucket_min=0, bucket_max=50
-            ),
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            group_by=[FrequencyBreakdown(
+                "Purchase", bucket_size=5, bucket_min=0, bucket_max=50,
+            )],
+        ))
         ```
     """
 
@@ -9394,21 +9402,24 @@ class FrequencyFilter:
 
     Example:
         ```python
-        from mixpanel_headless import FrequencyFilter
+        from mixpanel_headless import FrequencyFilter, InsightsQuery, Metric
 
         # Users who logged in at least 5 times
-        result = ws.query("Purchase", where=FrequencyFilter("Login", value=5))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            where=[FrequencyFilter("Login", value=5)],
+        ))
 
         # Users who purchased 3+ times in the last 30 days
-        result = ws.query(
-            "Login",
-            where=FrequencyFilter(
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            where=[FrequencyFilter(
                 "Purchase",
                 value=3,
                 date_range_value=30,
                 date_range_unit="day",
-            ),
-        )
+            )],
+        ))
         ```
     """
 
@@ -9517,7 +9528,11 @@ class QueryResult(ResultWithDataFrame):
 
     Example:
         ```python
-        result = ws.query("Login", math="unique", last=7)
+        from mixpanel_headless import InsightsQuery, Metric
+
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login", math="unique")], last=7,
+        ))
 
         # DataFrame access
         print(result.df.head())

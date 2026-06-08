@@ -1243,8 +1243,12 @@ class BookmarkValidationError(MixpanelHeadlessError):
 
     Example:
         ```python
+        from mixpanel_headless import InsightsQuery, Metric
+
         try:
-            result = ws.query("Login", math="totl")
+            result = ws.query(InsightsQuery(
+                events=[Metric("Login", math="totl")],
+            ))
         except BookmarkValidationError as e:
             print(f"{e.error_count} errors, {e.warning_count} warnings")
             for err in e.errors:
