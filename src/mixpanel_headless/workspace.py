@@ -2287,7 +2287,7 @@ class Workspace:
             from mixpanel_headless.query_models import InsightsQuery
 
             ws = Workspace()
-            result = ws.query(InsightsQuery(events="Login", math="unique", last=7))
+            result = ws.query(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
             print(result.df.head())
             ```
         """
@@ -2343,7 +2343,7 @@ class Workspace:
             from mixpanel_headless.query_models import InsightsQuery
 
             ws = Workspace()
-            params = ws.build_params(InsightsQuery(events="Login", math="unique", last=7))
+            params = ws.build_params(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
             print(json.dumps(params, indent=2))
             ```
         """
