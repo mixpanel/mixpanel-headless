@@ -55,6 +55,10 @@ class InsightsQuery(BaseModel):
     ``Workspace.query()`` into a single validated object.  Useful as a
     JSON-schema source for MCP tools and other schema-driven consumers.
 
+    Note:
+        Frozen but not hashable — list fields prevent hashing despite
+        ``frozen=True``. Use ``model_dump()`` for dict keys if needed.
+
     Example (typed):
         ```python
         from mixpanel_headless import InsightsQuery, Metric, Filter

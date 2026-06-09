@@ -663,3 +663,22 @@ class TestCrossFieldValidation:
             events=["Login"], from_date="2025-01-01", to_date="2025-01-31"
         )
         assert q.from_date == "2025-01-01"
+
+
+# =============================================================================
+# Hashability (S3)
+# =============================================================================
+
+
+class TestHashability:
+    """Document frozen-but-unhashable behavior."""
+
+    def test_metric_is_hashable(self) -> None:
+        """Metric (pydantic_dataclass) is hashable."""
+        h = hash(Metric("Login"))
+        assert isinstance(h, int)
+
+    def test_insights_query_is_not_hashable(self) -> None:
+        """InsightsQuery (BaseModel with list) is not hashable."""
+        with pytest.raises(TypeError):
+            hash(InsightsQuery(events=["Login"]))
