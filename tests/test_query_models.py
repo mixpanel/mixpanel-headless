@@ -163,7 +163,8 @@ class TestInsightsQuery:
             events=[Metric("Purchase")],
             where=[FrequencyFilter("Login", value=5)],
         )
-        assert len(q.where) == 1  # type: ignore[arg-type]
+        assert q.where is not None
+        assert len(q.where) == 1
 
     def test_frequency_breakdown(self) -> None:
         """FrequencyBreakdown accepted in group_by list."""
@@ -171,7 +172,8 @@ class TestInsightsQuery:
             events=[Metric("Purchase")],
             group_by=[FrequencyBreakdown("Login")],
         )
-        assert len(q.group_by) == 1  # type: ignore[arg-type]
+        assert q.group_by is not None
+        assert len(q.group_by) == 1
 
 
 # =============================================================================
@@ -359,7 +361,8 @@ class TestFlowQuery:
             event="Login",
             segments=[FrequencyBreakdown("Purchase")],
         )
-        assert len(q.segments) == 1  # type: ignore[arg-type]
+        assert q.segments is not None
+        assert len(q.segments) == 1
 
     def test_segments_with_cohort_breakdown(self) -> None:
         """CohortBreakdown accepted in segments list."""
@@ -367,7 +370,8 @@ class TestFlowQuery:
             event="Login",
             segments=[CohortBreakdown(cohort=123)],
         )
-        assert len(q.segments) == 1  # type: ignore[arg-type]
+        assert q.segments is not None
+        assert len(q.segments) == 1
 
 
 # =============================================================================

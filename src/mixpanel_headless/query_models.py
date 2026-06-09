@@ -2,9 +2,6 @@
 
 Each model mirrors the signature of a ``Workspace.build_*_params()`` method,
 providing a single validated object for schema generation and type-safe input.
-
-No ``from __future__ import annotations`` — Pydantic resolves type aliases
-(``QueryTimeUnit``, ``MathType``, etc.) eagerly at class-creation time.
 """
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
