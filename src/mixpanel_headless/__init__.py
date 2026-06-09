@@ -81,6 +81,7 @@ from mixpanel_headless.exceptions import (
     ValidationError,
     WorkspaceScopeError,
 )
+from mixpanel_headless.query_models import FilterInput as FilterInput
 from mixpanel_headless.query_models import FlowQuery as FlowQuery
 from mixpanel_headless.query_models import FunnelQuery as FunnelQuery
 from mixpanel_headless.query_models import InsightsQuery as InsightsQuery
@@ -621,6 +622,7 @@ __all__ = [
     "FrequencyBreakdown",
     "FrequencyFilter",
     # Query models (Pydantic input models)
+    "FilterInput",
     "InsightsQuery",
     "FunnelQuery",
     "RetentionQuery",

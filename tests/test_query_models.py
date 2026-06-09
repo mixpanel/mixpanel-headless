@@ -678,3 +678,72 @@ class TestHashability:
         """InsightsQuery (BaseModel with list) is not hashable."""
         with pytest.raises(TypeError):
             hash(InsightsQuery(events=["Login"]))
+
+
+# =============================================================================
+# FilterInput (I2)
+# =============================================================================
+
+
+class TestFilterInput:
+    """FilterInput provides public-field dict construction for Filters."""
+
+    def test_equals_construction(self) -> None:
+        """FilterInput with 'equals' operator produces a valid Filter."""
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput(property="country", operator="equals", value="US")
+        f = fi.to_filter()
+        assert isinstance(f, Filter)
+
+    def test_numeric_operator(self) -> None:
+        """FilterInput with 'is greater than' works."""
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput(property="amount", operator="is greater than", value=50)
+        f = fi.to_filter()
+        assert isinstance(f, Filter)
+
+    def test_is_set_no_value(self) -> None:
+        """FilterInput with 'is set' needs no value."""
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput(property="email", operator="is set")
+        f = fi.to_filter()
+        assert isinstance(f, Filter)
+
+    def test_between_operator(self) -> None:
+        """FilterInput with 'is between' accepts a two-element list."""
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput(property="amount", operator="is between", value=[10, 50])
+        f = fi.to_filter()
+        assert isinstance(f, Filter)
+
+    def test_model_validate_dict(self) -> None:
+        """FilterInput.model_validate works from a plain dict."""
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput.model_validate(
+            {"property": "country", "operator": "equals", "value": "US"}
+        )
+        assert fi.property == "country"
+        assert fi.operator == "equals"
+
+    def test_in_insights_query(self) -> None:
+        """InsightsQuery accepts FilterInput in where list."""
+        from mixpanel_headless.query_models import FilterInput
+
+        q = InsightsQuery(
+            events=["Login"],
+            where=[FilterInput(property="country", operator="equals", value="US")],
+        )
+        assert q.where is not None
+        assert len(q.where) == 1
+
+    def test_invalid_operator_rejected(self) -> None:
+        """Unknown operator string is rejected by FilterOperator literal."""
+        from mixpanel_headless.query_models import FilterInput
+
+        with pytest.raises(ValidationError):
+            FilterInput(property="x", operator="bogus", value="y")

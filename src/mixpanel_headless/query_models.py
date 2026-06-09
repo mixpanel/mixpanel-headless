@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
+    FilterOperator,
     FlowChartType,
     FlowConversionWindowUnit,
     FlowCountType,
@@ -47,6 +48,97 @@ from mixpanel_headless.types import (
     RetentionEvent,
     TimeComparison,
 )
+
+_OPERATOR_TO_CLASSMETHOD: dict[str, str] = {
+    "equals": "equals",
+    "does not equal": "not_equals",
+    "contains": "contains",
+    "does not contain": "not_contains",
+    "is greater than": "greater_than",
+    "is less than": "less_than",
+    "is between": "between",
+    "not between": "not_between",
+    "is at least": "at_least",
+    "is at most": "at_most",
+    "is set": "is_set",
+    "is not set": "is_not_set",
+    "starts with": "starts_with",
+    "ends with": "ends_with",
+    "true": "is_true",
+    "false": "is_false",
+    "was on": "on",
+    "was not on": "not_on",
+    "was before": "before",
+    "was since": "since",
+    "was in the": "in_the_last",
+    "was not in the": "not_in_the_last",
+    "was between": "date_between",
+    "was not between": "date_not_between",
+    "was in the next": "in_the_next",
+}
+
+_NO_VALUE_OPS = frozenset({"is set", "is not set", "true", "false"})
+_TWO_VALUE_OPS = frozenset(
+    {
+        "is between",
+        "not between",
+        "was between",
+        "was not between",
+    }
+)
+
+
+class FilterInput(BaseModel):
+    """Public-field filter input for dict/JSON/LLM construction.
+
+    Provides a schema-friendly alternative to Filter's private-field
+    dataclass. Uses the ``FilterOperator`` literal for strict operator
+    typing and dispatches to Filter classmethods via ``to_filter()``,
+    getting all normalization (scalar wrapping, type inference) for free.
+
+    Example:
+        ```python
+        from mixpanel_headless.query_models import FilterInput
+
+        fi = FilterInput(property="country", operator="equals", value="US")
+        f = fi.to_filter()  # Filter with _operator="equals", _value=["US"]
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    property: str = Field(..., description="Property name to filter on.")
+    operator: FilterOperator = Field(
+        ..., description="Filter operator (see FilterOperator for valid values)."
+    )
+    value: str | int | float | list[str] | list[int | float] | None = Field(
+        None, description="Comparison value(s). Required for most operators."
+    )
+
+    def to_filter(self) -> Filter:
+        """Convert to a Filter via the matching classmethod.
+
+        Returns:
+            A fully normalized Filter instance.
+
+        Raises:
+            ValueError: If the operator/value combination is invalid.
+        """
+        method_name = _OPERATOR_TO_CLASSMETHOD.get(self.operator)
+        if method_name is None:
+            msg = f"Unsupported operator for FilterInput: {self.operator!r}"
+            raise ValueError(msg)
+
+        method = getattr(Filter, method_name)
+
+        if self.operator in _NO_VALUE_OPS:
+            return method(self.property)
+        if self.operator in _TWO_VALUE_OPS:
+            if not isinstance(self.value, list) or len(self.value) != 2:
+                msg = f"Operator {self.operator!r} requires a 2-element list"
+                raise ValueError(msg)
+            return method(self.property, self.value[0], self.value[1])
+        return method(self.property, self.value)
 
 
 class InsightsQuery(BaseModel):
@@ -127,9 +219,9 @@ class InsightsQuery(BaseModel):
         None,
         description="Break down results by property values, cohort, or event frequency.",
     )
-    where: list[Filter | FrequencyFilter] | None = Field(
+    where: list[Filter | FilterInput | FrequencyFilter] | None = Field(
         None,
-        description="Filter results by property conditions.",
+        description="Filter results by property conditions. Accepts Filter, FilterInput (dict-friendly), or FrequencyFilter.",
     )
     formula: str | None = Field(
         None,
@@ -277,9 +369,9 @@ class FunnelQuery(BaseModel):
         None,
         description="Break down results by property or cohort membership.",
     )
-    where: list[Filter] | None = Field(
+    where: list[Filter | FilterInput] | None = Field(
         None,
-        description="Filter results by property conditions.",
+        description="Filter results by property conditions. Accepts Filter or FilterInput (dict-friendly).",
     )
     exclusions: list[str | Exclusion] | None = Field(
         None,
@@ -416,9 +508,9 @@ class RetentionQuery(BaseModel):
         None,
         description="Break down results by property or cohort membership.",
     )
-    where: list[Filter] | None = Field(
+    where: list[Filter | FilterInput] | None = Field(
         None,
-        description="Filter results by property conditions.",
+        description="Filter results by property conditions. Accepts Filter or FilterInput (dict-friendly).",
     )
     mode: RetentionMode = Field(
         "curve",
@@ -550,9 +642,9 @@ class FlowQuery(BaseModel):
         "sankey",
         description="Display mode: sankey, paths, or tree.",
     )
-    where: list[Filter] | None = Field(
+    where: list[Filter | FilterInput] | None = Field(
         None,
-        description="Filter results by property conditions.",
+        description="Filter results by property conditions. Accepts Filter or FilterInput (dict-friendly).",
     )
     data_group_id: int | None = Field(
         None,
