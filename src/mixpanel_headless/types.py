@@ -6761,7 +6761,7 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """Regex for YYYY-MM-DD date format validation."""
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class TimeComparison:
     """Overlay a comparison time period on insights, funnel, or retention queries.
 
@@ -6956,7 +6956,7 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Metric:
     """Encapsulates a single event to query with its aggregation settings.
 
@@ -7053,7 +7053,7 @@ class Metric:
                 )
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Formula:
     """A formula expression referencing events by position letter (A, B, C...).
 
@@ -7105,7 +7105,7 @@ class Formula:
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Filter:
     """Represents a typed filter condition on a property.
 
@@ -8201,7 +8201,7 @@ class Filter:
         )
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class ListItemGroupMode:
     """Discriminator for ``GroupBy.list_item`` — sub-property name + scalar type.
 
@@ -8249,7 +8249,7 @@ class ListItemGroupMode:
             )
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class GroupBy:
     """Specifies a property breakdown with optional numeric bucketing.
 
@@ -9175,7 +9175,7 @@ class CohortDefinition:
         return {"selector": selector, "behaviors": behaviors}
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortBreakdown:
     """Break down query results by cohort membership.
 
@@ -9232,7 +9232,7 @@ class CohortBreakdown:
         _validate_cohort_args(self.cohort, self.name)
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortMetric:
     """Track cohort size over time as an event metric.
 
@@ -9293,7 +9293,7 @@ class CohortMetric:
             )
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FrequencyBreakdown:
     """Break down query results by how often users performed an event.
 
@@ -9377,7 +9377,7 @@ class FrequencyBreakdown:
             )
 
 
-@pydantic_dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FrequencyFilter:
     """Filter query results by how often users performed an event.
 
@@ -9802,7 +9802,7 @@ class FlowEdge(TypedDict, total=False):
 # for backward compatibility.
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FunnelStep:
     """A single step in a funnel query.
 
@@ -9864,7 +9864,7 @@ class FunnelStep:
         _validate_event_name(self.event, "FunnelStep")
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Exclusion:
     """An event to exclude between funnel steps.
 
@@ -9923,7 +9923,7 @@ class Exclusion:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class HoldingConstant:
     """A property to hold constant across all funnel steps.
 
@@ -10124,7 +10124,7 @@ class FunnelQueryResult(ResultWithDataFrame):
 # from _literal_types (imported above) for backward compatibility.
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class RetentionEvent:
     """An event specification for retention queries.
 
@@ -10392,7 +10392,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
 # =============================================================================
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FlowStep:
     """An anchor event in a flow query with per-step configuration.
 

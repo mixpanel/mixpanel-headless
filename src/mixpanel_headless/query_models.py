@@ -7,7 +7,12 @@ No ``from __future__ import annotations`` — Pydantic resolves type aliases
 (``QueryTimeUnit``, ``MathType``, etc.) eagerly at class-creation time.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from mixpanel_headless.exceptions import (
+    BookmarkValidationError,
+    ValidationError as InternalValidationError,
+)
 
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
@@ -83,7 +88,6 @@ class InsightsQuery(BaseModel):
     events: list[str | Metric | CohortMetric | Formula] = Field(
         ...,
         description="Events to query. Each is an event name string, Metric, CohortMetric, or Formula.",
-        min_length=1,
     )
     from_date: str | None = Field(
         None,
@@ -154,6 +158,21 @@ class InsightsQuery(BaseModel):
         description="Data group ID for group-level analytics.",
     )
 
+    @model_validator(mode="after")
+    def _validate_min_events(self) -> "InsightsQuery":
+        """Ensure at least one event is provided."""
+        if len(self.events) < 1:
+            raise BookmarkValidationError(
+                [
+                    InternalValidationError(
+                        path="events",
+                        message="At least 1 event is required (got 0)",
+                        code="MIN_EVENTS",
+                    )
+                ]
+            )
+        return self
+
 
 class FunnelQuery(BaseModel):
     """Input model for a funnel query.
@@ -190,7 +209,6 @@ class FunnelQuery(BaseModel):
     steps: list[str | FunnelStep] = Field(
         ...,
         description="Funnel step specifications. At least 2 required.",
-        min_length=2,
     )
     conversion_window: int = Field(
         14,
@@ -260,6 +278,21 @@ class FunnelQuery(BaseModel):
         None,
         description="Data group ID for group-level analytics.",
     )
+
+    @model_validator(mode="after")
+    def _validate_min_steps(self) -> "FunnelQuery":
+        """Ensure at least 2 steps are provided."""
+        if len(self.steps) < 2:
+            raise BookmarkValidationError(
+                [
+                    InternalValidationError(
+                        path="steps",
+                        message=f"At least 2 steps are required (got {len(self.steps)})",
+                        code="F1_MIN_STEPS",
+                    )
+                ]
+            )
+        return self
 
 
 class RetentionQuery(BaseModel):

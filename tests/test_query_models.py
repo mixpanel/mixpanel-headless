@@ -119,8 +119,10 @@ class TestInsightsQuery:
         assert q.mode == "timeseries"
 
     def test_events_min_length(self) -> None:
-        """Empty events list is rejected."""
-        with pytest.raises(ValidationError, match="events"):
+        """Empty events list raises BookmarkValidationError."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError, match="events"):
             InsightsQuery(events=[])
 
     def test_full_construction(self) -> None:
@@ -188,8 +190,10 @@ class TestFunnelQuery:
         assert q.mode == "steps"
 
     def test_steps_min_length(self) -> None:
-        """Single step is rejected (minimum 2)."""
-        with pytest.raises(ValidationError, match="steps"):
+        """Single step raises BookmarkValidationError (minimum 2)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError, match="steps"):
             FunnelQuery(steps=["Signup"])
 
     def test_funnel_step_objects(self) -> None:
@@ -447,3 +451,162 @@ class TestPublicExports:
         import mixpanel_headless
 
         assert name in mixpanel_headless.__all__
+
+
+# =============================================================================
+# Validation Error Contract (I1)
+# =============================================================================
+
+
+class TestValidationErrorContract:
+    """min-length constraints must raise BookmarkValidationError, not Pydantic."""
+
+    def test_empty_events_raises_bookmark_error(self) -> None:
+        """InsightsQuery(events=[]) raises BookmarkValidationError."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=[])
+
+    def test_single_step_raises_bookmark_error(self) -> None:
+        """FunnelQuery(steps=['A']) raises BookmarkValidationError (needs 2)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            FunnelQuery(steps=["A"])
+
+    def test_bookmark_error_has_structured_fields(self) -> None:
+        """BookmarkValidationError carries code and path."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery(events=[])
+        err = exc_info.value
+        assert err.error_count >= 1
+        assert len(err.errors) >= 1
+        first = err.errors[0]
+        assert first.path == "events"
+
+
+# =============================================================================
+# Round-Trip Serialization (I4)
+# =============================================================================
+
+
+class TestRoundTrip:
+    """model.model_dump() -> Model.model_validate(dump) preserves equality."""
+
+    def test_insights_round_trip(self) -> None:
+        """InsightsQuery survives dump/validate round-trip."""
+        original = InsightsQuery(
+            events=[Metric("Login", math="unique")],
+            last=7,
+            group_by=[GroupBy("country")],
+        )
+        restored = InsightsQuery.model_validate(original.model_dump())
+        assert restored == original
+
+    def test_funnel_round_trip(self) -> None:
+        """FunnelQuery survives dump/validate round-trip."""
+        original = FunnelQuery(
+            steps=[FunnelStep("Signup"), FunnelStep("Purchase")],
+            conversion_window=7,
+        )
+        restored = FunnelQuery.model_validate(original.model_dump())
+        assert restored == original
+
+    def test_retention_round_trip(self) -> None:
+        """RetentionQuery survives dump/validate round-trip."""
+        original = RetentionQuery(
+            born_event="Signup",
+            return_event=RetentionEvent("Login"),
+        )
+        restored = RetentionQuery.model_validate(original.model_dump())
+        assert restored == original
+
+    def test_flow_round_trip(self) -> None:
+        """FlowQuery survives dump/validate round-trip."""
+        original = FlowQuery(event="Login", forward=5, reverse=2)
+        restored = FlowQuery.model_validate(original.model_dump())
+        assert restored == original
+
+
+# =============================================================================
+# Nested Dict Validation (I4)
+# =============================================================================
+
+
+class TestNestedDictValidation:
+    """model_validate with nested dicts for dataclass members."""
+
+    def test_metric_from_dict(self) -> None:
+        """Metric constructed from dict inside InsightsQuery."""
+        q = InsightsQuery.model_validate(
+            {"events": [{"event": "Login", "math": "unique"}]}
+        )
+        assert len(q.events) == 1
+
+    def test_funnel_step_from_dict(self) -> None:
+        """FunnelStep constructed from dict inside FunnelQuery."""
+        q = FunnelQuery.model_validate(
+            {"steps": [{"event": "Signup"}, {"event": "Purchase"}]}
+        )
+        assert len(q.steps) == 2
+
+    def test_retention_event_from_dict(self) -> None:
+        """RetentionEvent constructed from dict inside RetentionQuery."""
+        q = RetentionQuery.model_validate(
+            {"born_event": {"event": "Signup"}, "return_event": "Login"}
+        )
+        assert q.born_event is not None
+
+    def test_flow_step_from_dict(self) -> None:
+        """FlowStep constructed from dict inside FlowQuery."""
+        q = FlowQuery.model_validate(
+            {"event": {"event": "Login"}}
+        )
+        assert q.event is not None
+
+    def test_exclusion_from_dict(self) -> None:
+        """Exclusion constructed from dict inside FunnelQuery."""
+        q = FunnelQuery.model_validate(
+            {
+                "steps": ["Signup", "Purchase"],
+                "exclusions": [{"event": "Logout"}],
+            }
+        )
+        assert q.exclusions is not None
+        assert len(q.exclusions) == 1
+
+
+# =============================================================================
+# Member-Level Extra Forbid (I7)
+# =============================================================================
+
+
+class TestMemberExtraForbid:
+    """Typos in nested member dicts must be rejected."""
+
+    def test_metric_typo_rejected(self) -> None:
+        """Capital-M 'Math' in Metric dict is rejected."""
+        with pytest.raises(ValidationError):
+            InsightsQuery.model_validate(
+                {"events": [{"event": "Login", "Math": "unique"}]}
+            )
+
+    def test_funnel_step_typo_rejected(self) -> None:
+        """Extra key in FunnelStep dict is rejected."""
+        with pytest.raises(ValidationError):
+            FunnelQuery.model_validate(
+                {"steps": [{"event": "A", "typo": 1}, {"event": "B"}]}
+            )
+
+    def test_retention_event_typo_rejected(self) -> None:
+        """Extra key in RetentionEvent dict is rejected."""
+        with pytest.raises(ValidationError):
+            RetentionQuery.model_validate(
+                {
+                    "born_event": {"event": "Signup", "extra": 1},
+                    "return_event": "Login",
+                }
+            )
