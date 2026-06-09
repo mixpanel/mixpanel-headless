@@ -6,11 +6,6 @@ providing a single validated object for schema generation and type-safe input.
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from mixpanel_headless.exceptions import (
-    BookmarkValidationError,
-    ValidationError as InternalValidationError,
-)
-
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
     FlowChartType,
@@ -29,6 +24,12 @@ from mixpanel_headless._literal_types import (
     RetentionMode,
     RetentionUnboundedMode,
     TimeUnit,
+)
+from mixpanel_headless.exceptions import (
+    BookmarkValidationError,
+)
+from mixpanel_headless.exceptions import (
+    ValidationError as InternalValidationError,
 )
 from mixpanel_headless.types import (
     CohortBreakdown,
