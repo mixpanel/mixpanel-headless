@@ -610,3 +610,52 @@ class TestMemberExtraForbid:
                     "return_event": "Login",
                 }
             )
+
+
+# =============================================================================
+# Cross-Field Validation (S4 + S5)
+# =============================================================================
+
+
+class TestCrossFieldValidation:
+    """Cross-field constraints must be enforced by model validators."""
+
+    def test_flow_empty_event_list_rejected(self) -> None:
+        """FlowQuery(event=[]) is rejected."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            FlowQuery(event=[])
+
+    def test_to_date_without_from_date_rejected(self) -> None:
+        """to_date without from_date is rejected."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], to_date="2025-01-31")
+
+    def test_percentile_without_value_rejected(self) -> None:
+        """math='percentile' without percentile_value is rejected."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], math="percentile")
+
+    def test_last_zero_rejected(self) -> None:
+        """last=0 is rejected (must be >= 1)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], last=0)
+
+    def test_valid_percentile_accepted(self) -> None:
+        """math='percentile' with percentile_value is accepted."""
+        q = InsightsQuery(events=["Login"], math="percentile", percentile_value=95)
+        assert q.percentile_value == 95
+
+    def test_valid_date_range_accepted(self) -> None:
+        """from_date + to_date is accepted."""
+        q = InsightsQuery(
+            events=["Login"], from_date="2025-01-01", to_date="2025-01-31"
+        )
+        assert q.from_date == "2025-01-01"

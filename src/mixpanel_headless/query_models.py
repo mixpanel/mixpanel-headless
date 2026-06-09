@@ -159,18 +159,43 @@ class InsightsQuery(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_min_events(self) -> "InsightsQuery":
-        """Ensure at least one event is provided."""
+    def _validate_constraints(self) -> "InsightsQuery":
+        """Validate min-events and cross-field constraints."""
+        errors: list[InternalValidationError] = []
         if len(self.events) < 1:
-            raise BookmarkValidationError(
-                [
-                    InternalValidationError(
-                        path="events",
-                        message="At least 1 event is required (got 0)",
-                        code="MIN_EVENTS",
-                    )
-                ]
+            errors.append(
+                InternalValidationError(
+                    path="events",
+                    message="At least 1 event is required (got 0)",
+                    code="MIN_EVENTS",
+                )
             )
+        if self.last < 1:
+            errors.append(
+                InternalValidationError(
+                    path="last",
+                    message=f"last must be >= 1 (got {self.last})",
+                    code="INVALID_LAST",
+                )
+            )
+        if self.to_date is not None and self.from_date is None:
+            errors.append(
+                InternalValidationError(
+                    path="to_date",
+                    message="to_date requires from_date to be set",
+                    code="TO_DATE_WITHOUT_FROM",
+                )
+            )
+        if self.math == "percentile" and self.percentile_value is None:
+            errors.append(
+                InternalValidationError(
+                    path="percentile_value",
+                    message="percentile_value is required when math='percentile'",
+                    code="MISSING_PERCENTILE_VALUE",
+                )
+            )
+        if errors:
+            raise BookmarkValidationError(errors)
         return self
 
 
@@ -280,18 +305,35 @@ class FunnelQuery(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_min_steps(self) -> "FunnelQuery":
-        """Ensure at least 2 steps are provided."""
+    def _validate_constraints(self) -> "FunnelQuery":
+        """Validate min-steps and cross-field constraints."""
+        errors: list[InternalValidationError] = []
         if len(self.steps) < 2:
-            raise BookmarkValidationError(
-                [
-                    InternalValidationError(
-                        path="steps",
-                        message=f"At least 2 steps are required (got {len(self.steps)})",
-                        code="F1_MIN_STEPS",
-                    )
-                ]
+            errors.append(
+                InternalValidationError(
+                    path="steps",
+                    message=f"At least 2 steps are required (got {len(self.steps)})",
+                    code="F1_MIN_STEPS",
+                )
             )
+        if self.last < 1:
+            errors.append(
+                InternalValidationError(
+                    path="last",
+                    message=f"last must be >= 1 (got {self.last})",
+                    code="INVALID_LAST",
+                )
+            )
+        if self.to_date is not None and self.from_date is None:
+            errors.append(
+                InternalValidationError(
+                    path="to_date",
+                    message="to_date requires from_date to be set",
+                    code="TO_DATE_WITHOUT_FROM",
+                )
+            )
+        if errors:
+            raise BookmarkValidationError(errors)
         return self
 
 
@@ -397,6 +439,30 @@ class RetentionQuery(BaseModel):
         description="Data group ID for group-level analytics.",
     )
 
+    @model_validator(mode="after")
+    def _validate_constraints(self) -> "RetentionQuery":
+        """Validate cross-field constraints."""
+        errors: list[InternalValidationError] = []
+        if self.last < 1:
+            errors.append(
+                InternalValidationError(
+                    path="last",
+                    message=f"last must be >= 1 (got {self.last})",
+                    code="INVALID_LAST",
+                )
+            )
+        if self.to_date is not None and self.from_date is None:
+            errors.append(
+                InternalValidationError(
+                    path="to_date",
+                    message="to_date requires from_date to be set",
+                    code="TO_DATE_WITHOUT_FROM",
+                )
+            )
+        if errors:
+            raise BookmarkValidationError(errors)
+        return self
+
 
 class FlowQuery(BaseModel):
     """Input model for a flow query.
@@ -498,3 +564,35 @@ class FlowQuery(BaseModel):
         None,
         description="Event names to exclude from flow paths.",
     )
+
+    @model_validator(mode="after")
+    def _validate_constraints(self) -> "FlowQuery":
+        """Validate cross-field constraints."""
+        errors: list[InternalValidationError] = []
+        if isinstance(self.event, list) and len(self.event) == 0:
+            errors.append(
+                InternalValidationError(
+                    path="event",
+                    message="event list must not be empty",
+                    code="EMPTY_EVENT_LIST",
+                )
+            )
+        if self.last < 1:
+            errors.append(
+                InternalValidationError(
+                    path="last",
+                    message=f"last must be >= 1 (got {self.last})",
+                    code="INVALID_LAST",
+                )
+            )
+        if self.to_date is not None and self.from_date is None:
+            errors.append(
+                InternalValidationError(
+                    path="to_date",
+                    message="to_date requires from_date to be set",
+                    code="TO_DATE_WITHOUT_FROM",
+                )
+            )
+        if errors:
+            raise BookmarkValidationError(errors)
+        return self
