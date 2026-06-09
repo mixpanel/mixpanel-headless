@@ -10,8 +10,9 @@ Analyze Mixpanel data by writing and executing Python code using the `mixpanel_h
 
 ```python
 import mixpanel_headless as mp
+from mixpanel_headless import InsightsQuery
 ws = mp.Workspace()
-result = ws.query("Login", last=30)
+result = ws.query(InsightsQuery(events=["Login"], last=30))
 print(result.df.head())
 ```
 
@@ -201,8 +202,8 @@ interesting_props = [p for p in props if not p.endswith('_id')]
 for prop in interesting_props:
     vals = ws.property_values(prop, event=event, limit=10)
     if len(set(vals)) <= 10:  # low cardinality — worth a breakdown
-        result = ws.query(event, math='average', math_property=numeric_prop,
-                           group_by=prop, last=90, mode='total')
+        result = ws.query(InsightsQuery(events=[event], math='average', math_property=numeric_prop,
+                           group_by=[prop], last=90, mode='total'))
         print(f"\n{numeric_prop} by {prop}:")
         print(result.df.to_string(index=False))
         # Flag segments where metric differs >15% from overall
@@ -298,7 +299,7 @@ params = CreateCustomPropertyParams(
 )
 prop = ws.create_custom_property(params)
 ref = CustomPropertyRef(prop.custom_property_id)
-result = ws.query(event, group_by=GroupBy(ref), last=30, mode='total')
+result = ws.query(InsightsQuery(events=[event], group_by=[GroupBy(ref)], last=30, mode='total'))
 ```
 
 ## Workspace
@@ -563,18 +564,18 @@ When a single breakdown shows a difference, verify it holds across dimensions:
 
 ```python
 # Step 1: Find the interesting segment
-result = ws.query(event, math='average', math_property='order_total',
-                   group_by='deal_sweet_spot', last=90, mode='total')
+result = ws.query(InsightsQuery(events=[event], math='average', math_property='order_total',
+                   group_by=['deal_sweet_spot'], last=90, mode='total'))
 # Found: deal_sweet_spot=true has 37% higher AOV
 
 # Step 2: Check if it holds across another dimension
-result = ws.query(event, math='average', math_property='order_total',
-                   group_by=['deal_sweet_spot', 'platform'], last=90, mode='total')
+result = ws.query(InsightsQuery(events=[event], math='average', math_property='order_total',
+                   group_by=['deal_sweet_spot', 'platform'], last=90, mode='total'))
 # Does the sweet spot hold for both iOS and Android?
 
 # Step 3: Check segment rates across a third dimension
-result = ws.query(event, math='unique',
-                   group_by=['loyalty_tier', 'deal_sweet_spot'], last=90, mode='total')
+result = ws.query(InsightsQuery(events=[event], math='unique',
+                   group_by=['loyalty_tier', 'deal_sweet_spot'], last=90, mode='total'))
 # Which tier is most likely to achieve the sweet spot?
 ```
 
@@ -593,15 +594,15 @@ for mt in ['total', 'unique', 'dau', 'average', 'median', 'sum']:
     kwargs = {'math': mt, 'last': 30, 'mode': 'total'}
     if mt in ('average', 'median', 'sum'):
         kwargs['math_property'] = prop
-    result = ws.query(event, **kwargs)
+    result = ws.query(InsightsQuery(events=[event], **kwargs))
     print(f"{mt:>10}: {result.df['count'].iloc[0]:>12,.2f}")
 # total = event volume, unique = user reach, dau = daily engagement,
 # average/median = typical transaction, sum = total revenue
 
 # Per-user aggregation: compare global average vs per-user average
-global_avg = ws.query(event, math='average', math_property=prop, last=30, mode='total')
-per_user_avg = ws.query(event, math='average', math_property=prop,
-                         per_user='average', last=30, mode='total')
+global_avg = ws.query(InsightsQuery(events=[event], math='average', math_property=prop, last=30, mode='total'))
+per_user_avg = ws.query(InsightsQuery(events=[event], math='average', math_property=prop,
+                         per_user='average', last=30, mode='total'))
 print(f"Global avg: {global_avg.df['count'].iloc[0]:.2f}")
 print(f"Per-user avg: {per_user_avg.df['count'].iloc[0]:.2f}")
 # If these differ significantly, power users are skewing the global average
@@ -622,8 +623,8 @@ Funnel queries return time data in step metadata columns (`avg_time`, `avg_time_
 ```python
 # Try progressively tighter windows to find where signal emerges
 for window, unit in [(14, 'day'), (7, 'day'), (1, 'day'), (12, 'hour'), (6, 'hour')]:
-    result = ws.query_funnel(steps, last=90,
-        conversion_window=window, conversion_window_unit=unit)
+    result = ws.query_funnel(FunnelQuery(steps=steps, last=90,
+        conversion_window=window, conversion_window_unit=unit))
     final = result.df[result.df['step'] == result.df['step'].max()].iloc[0]
     print(f"{window}{unit}: conv={final['overall_conv_ratio']:.3f} "
           f"time={final['avg_time_from_start']/3600:.1f}h")
@@ -639,13 +640,13 @@ for window, unit in [(14, 'day'), (7, 'day'), (1, 'day'), (12, 'hour'), (6, 'hou
 
 ```python
 # Median time via funnel math
-result = ws.query_funnel(steps, last=90, math='median')
+result = ws.query_funnel(FunnelQuery(steps=steps, last=90, math='median'))
 
 # Compare segments with filtered funnels + tight window
-ios = ws.query_funnel(steps, where=Filter.equals('platform', 'iOS'),
-    last=90, conversion_window=6, conversion_window_unit='hour')
-android = ws.query_funnel(steps, where=Filter.equals('platform', 'Android'),
-    last=90, conversion_window=6, conversion_window_unit='hour')
+ios = ws.query_funnel(FunnelQuery(steps=steps, where=[Filter.equals('platform', 'iOS')],
+    last=90, conversion_window=6, conversion_window_unit='hour'))
+android = ws.query_funnel(FunnelQuery(steps=steps, where=[Filter.equals('platform', 'Android')],
+    last=90, conversion_window=6, conversion_window_unit='hour'))
 # Compare avg_time_from_start on matching steps
 ```
 
@@ -656,7 +657,7 @@ android = ws.query_funnel(steps, where=Filter.equals('platform', 'Android'),
 ```python
 # order='loose' vs 'any' — same steps, fundamentally different questions
 for ord in ['loose', 'any']:
-    result = ws.query_funnel(steps, last=90, order=ord)
+    result = ws.query_funnel(FunnelQuery(steps=steps, last=90, order=ord))
     print(f"order={ord}: {result.overall_conversion_rate:.3f}")
 # If 'any' >> 'loose', users are completing all steps but not in the expected order
 # This often reveals UX issues — users accomplish the goal but not via the designed path
@@ -680,7 +681,7 @@ for ord in ['loose', 'any']:
 # Sweep retention_unit to find natural product cadence
 born, ret = 'Signup', 'Login'  # use real event names
 for ru in ['day', 'week', 'month']:
-    result = ws.query_retention(born, ret, retention_unit=ru, last=90)
+    result = ws.query_retention(RetentionQuery(born_event=born, return_event=ret, retention_unit=ru, last=90))
     avg = result.average
     if avg is not None and len(avg) > 1:
         bucket_1_rate = avg.iloc[1]['rate'] if 'rate' in avg.columns else None
@@ -688,15 +689,15 @@ for ru in ['day', 'week', 'month']:
 # The unit where bucket-1 retention is highest reveals natural usage cadence
 
 # Custom buckets for milestone-based retention (days 1, 3, 7, 14, 30)
-result = ws.query_retention(born, ret, retention_unit='week',
-    bucket_sizes=[1, 3, 7, 14, 30], unit='day', last=90)
+result = ws.query_retention(RetentionQuery(born_event=born, return_event=ret, retention_unit='week',
+    bucket_sizes=[1, 3, 7, 14, 30], unit='day', last=90))
 print(result.df[result.df['cohort_date'] == '$overall'])
 # Day 1 = activation, Day 7 = habit formation, Day 30 = long-term retention
 
 # Compare alignment modes — can shift results dramatically
 for align in ['birth', 'interval_start']:
-    result = ws.query_retention(born, ret, retention_unit='week',
-        alignment=align, last=90)
+    result = ws.query_retention(RetentionQuery(born_event=born, return_event=ret, retention_unit='week',
+        alignment=align, last=90))
     print(f"\nalignment={align}:")
     print(result.average.head() if result.average is not None else "No data")
 ```
@@ -717,7 +718,7 @@ for align in ['birth', 'interval_start']:
 # Sweep cardinality to find signal-to-noise sweet spot
 event = 'Login'  # use a real anchor event
 for card in [2, 3, 5, 10]:
-    result = ws.query_flow(event, forward=3, cardinality=card, last=30)
+    result = ws.query_flow(FlowQuery(event=event, forward=3, cardinality=card, last=30))
     transitions = result.top_transitions(5)
     print(f"\ncardinality={card}: {len(transitions)} top transitions")
     for src, dst, count in transitions[:3]:
@@ -726,15 +727,15 @@ for card in [2, 3, 5, 10]:
 
 # Compare count types (same principle as funnels)
 for ct in ['unique', 'total', 'session']:
-    result = ws.query_flow(event, forward=3, count_type=ct, last=30)
+    result = ws.query_flow(FlowQuery(event=event, forward=3, count_type=ct, last=30))
     dropoff = result.drop_off_summary()
     print(f"\n{ct}: step 0 dropoff = {dropoff}")
 # unique = how many people; total = how much activity; session = how many sessions
 
 # Compare collapse_repeated to separate intent from noise
 for collapse in [False, True]:
-    result = ws.query_flow(event, forward=3, collapse_repeated=collapse,
-                            cardinality=5, last=30)
+    result = ws.query_flow(FlowQuery(event=event, forward=3, collapse_repeated=collapse,
+                            cardinality=5, last=30))
     print(f"\ncollapse_repeated={collapse}:")
     for src, dst, count in result.top_transitions(3):
         print(f"  {src} → {dst}: {count}")
@@ -801,11 +802,11 @@ revenue_tier = InlineCustomProperty(
     inputs={"A": PropertyInput("revenue", type="number")},
     property_type="string",
 )
-result = ws.query("Purchase", group_by=GroupBy(property=revenue_tier), last=30, mode='total')
+result = ws.query(InsightsQuery(events=["Purchase"], group_by=[GroupBy(property=revenue_tier)], last=30, mode='total'))
 
 # Derive profit margin for aggregation
 margin = InlineCustomProperty.numeric("(A - B) / A * 100", A="revenue", B="cost")
-result = ws.query(Metric("Purchase", math="average", property=margin), last=30)
+result = ws.query(InsightsQuery(events=[Metric("Purchase", math="average", property=margin)], last=30))
 
 # Clean messy strings for segmentation
 domain = InlineCustomProperty(
@@ -813,7 +814,7 @@ domain = InlineCustomProperty(
     inputs={"A": PropertyInput("email", type="string")},
     property_type="string",
 )
-result = ws.query("Signup", group_by=GroupBy(property=domain), last=30, mode='total')
+result = ws.query(InsightsQuery(events=["Signup"], group_by=[GroupBy(property=domain)], last=30, mode='total'))
 ```
 
 Use `InlineCustomProperty` for ad-hoc exploration. When a formula proves valuable, persist it with `ws.create_custom_property()` and reference it via `CustomPropertyRef(id)` across reports.
@@ -830,16 +831,16 @@ power_users = CohortDefinition.all_of(
 )
 
 # Use inline cohort as a breakdown — no need to save first
-result = ws.query("Login", group_by=CohortBreakdown(power_users, "Power Users"), last=30)
+result = ws.query(InsightsQuery(events=["Login"], group_by=[CohortBreakdown(power_users, "Power Users")], last=30))
 
 # Use inline cohort as a filter in user queries
 result = ws.query_user(cohort=power_users, mode='aggregate', aggregate='count')
 
 # Track saved cohort size over time alongside event metrics
-result = ws.query(
-    [Metric("Login", math="unique"), CohortMetric(saved_cohort_id, "Power Users")],
+result = ws.query(InsightsQuery(
+    events=[Metric("Login", math="unique"), CohortMetric(saved_cohort_id, "Power Users")],
     formula="(B / A) * 100", formula_label="% Power Users Active", last=90,
-)
+))
 ```
 
 **Frequency Breakdown/Filter — segment by behavioral intensity.** `FrequencyBreakdown` answers "how do users who did X once differ from users who did X ten times?" `FrequencyFilter` restricts queries to users meeting a frequency threshold. These bridge "what users did" with "who users are":
@@ -848,15 +849,15 @@ result = ws.query(
 from mixpanel_headless import FrequencyBreakdown, FrequencyFilter
 
 # Break down login behavior by purchase frequency
-result = ws.query("Login", math='unique',
-    group_by=FrequencyBreakdown("Purchase", bucket_size=3, bucket_min=0, bucket_max=15),
-    last=30, mode='total')
+result = ws.query(InsightsQuery(events=["Login"], math='unique',
+    group_by=[FrequencyBreakdown("Purchase", bucket_size=3, bucket_min=0, bucket_max=15)],
+    last=30, mode='total'))
 # Reveals: do frequent purchasers also log in more?
 
 # Filter to users who purchased 3+ times in 30 days, then analyze their flow
-result = ws.query_flow("Login", forward=3,
-    where=FrequencyFilter("Purchase", value=3, date_range_value=30, date_range_unit="day"),
-    last=30)
+result = ws.query_flow(FlowQuery(event="Login", forward=3,
+    where=[FrequencyFilter("Purchase", value=3, date_range_value=30, date_range_unit="day")],
+    last=30))
 # Reveals: what do repeat purchasers do after logging in?
 ```
 

@@ -155,11 +155,11 @@ import mixpanel_headless as mp
 ws = mp.Workspace()
 
 # Insights: "How many signups last week?"
-result = ws.query("Signup", last=7, unit="day")
+result = ws.query(InsightsQuery(events=["Signup"], last=7, unit="day"))
 print(result.df)
 
 # Funnels: "Where do users drop off?"
-funnel = ws.query_funnel(["Signup", "Onboarding", "Purchase"], last=30)
+funnel = ws.query_funnel(FunnelQuery(steps=["Signup", "Onboarding", "Purchase"], last=30))
 print(funnel.overall_conversion_rate)
 
 # Retention: "Do users come back?"

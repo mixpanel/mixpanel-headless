@@ -163,7 +163,7 @@ Chart type is set in `displayOptions.chartType` within the bookmark params JSON.
 import json
 
 # Typed queries set chartType automatically -- no override needed
-result = ws.query("Login", from_date="2025-01-01", to_date="2025-03-31")
+result = ws.query(InsightsQuery(events=["Login"], from_date="2025-01-01", to_date="2025-03-31"))
 
 # The chart type lives at params["displayOptions"]["chartType"]
 # To inspect:

@@ -29,12 +29,13 @@ When you ask a question, Claude writes Python using the appropriate engine:
 
 ```python
 import mixpanel_headless as mp
+from mixpanel_headless import InsightsQuery
 ws = mp.Workspace()
-result = ws.query("Signup", last=30, unit="day")
+result = ws.query(InsightsQuery(events=["Signup"], last=30, unit="day"))
 df = result.df  # date, event, count
 
 # With group_by segmentation
-result = ws.query("Signup", last=30, group_by="platform")
+result = ws.query(InsightsQuery(events=["Signup"], last=30, group_by=["platform"]))
 df = result.df  # date, event, segment, count
 ```
 

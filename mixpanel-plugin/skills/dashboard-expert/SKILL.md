@@ -64,7 +64,8 @@ from mixpanel_headless.types import CreateDashboardParams, DashboardRow, Dashboa
 import json
 
 ws = mp.Workspace()
-dau = ws.query("Login", math="dau", last=90)
+from mixpanel_headless import InsightsQuery
+dau = ws.query(InsightsQuery(events=["Login"], math="dau", last=90))
 
 def text(html):
     return DashboardRowContent(content_type="text", content_params={"markdown": html})
@@ -194,7 +195,7 @@ for t in top:
 
 # Validate candidate events
 for event in candidate_events:
-    result = ws.query(event, from_date="2025-01-01", to_date="2025-03-31")
+    result = ws.query(InsightsQuery(events=[event], from_date="2025-01-01", to_date="2025-03-31"))
     print(f"{event}: {result.df['count'].sum():,.0f} total")
 
 # Explore properties for breakdowns
@@ -256,7 +257,7 @@ dashboard = ws.create_dashboard(CreateDashboardParams(
 **On report failure**, substitute a fallback text card:
 ```python
 try:
-    result = ws.query(event, math="total", last=90)
+    result = ws.query(InsightsQuery(events=[event], math="total", last=90))
     row_items.append(report(f"{event} Trend", "insights", result))
 except Exception as e:
     row_items.append(text(f"<p><strong>Failed:</strong> {event} — {e}</p>"))

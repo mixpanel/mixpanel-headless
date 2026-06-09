@@ -34,7 +34,7 @@ The key advantage: `.params` is generated automatically by the typed query metho
 
 ```python
 # 1. Query
-result = ws.query("Login", math="dau", group_by="platform", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["platform"], last=90))
 
 # 2. Inspect
 print(result.df.describe())
@@ -160,7 +160,7 @@ Create reports directly on dashboards without creating separate bookmarks. This 
 import json
 
 # Query any engine
-result = ws.query("Login", math="dau", last=30)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", last=30))
 
 # Create report directly on dashboard
 ws.update_dashboard(dashboard.id, UpdateDashboardParams(
@@ -240,7 +240,7 @@ ws.create_bookmark(CreateBookmarkParams(
 bookmark = ws.create_bookmark(CreateBookmarkParams(...))
 
 # CORRECT -- verify the query returned meaningful data
-result = ws.query("Login", math="dau", last=30)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", last=30))
 if result.df.empty:
     print("No data -- skipping this report")
 else:
@@ -296,7 +296,7 @@ ws.update_dashboard(dashboard.id, UpdateDashboardParams(
 ))
 
 # Query all 4 engines
-dau = ws.query("Login", math="dau", last=30)
+dau = ws.query(InsightsQuery(events=["Login"], math="dau", last=30))
 funnel = ws.query_funnel(
     steps=["Signup", "Onboarding", "First Action"],
     last=90,

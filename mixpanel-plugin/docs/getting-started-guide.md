@@ -254,7 +254,7 @@ print(props)
 
 ```python
 # Simple event count over the last 30 days
-result = ws.query("Signup", last=30, unit="day")
+result = ws.query(InsightsQuery(events=["Signup"], last=30, unit="day"))
 print(result.df)  # pandas DataFrame
 ```
 
@@ -507,10 +507,10 @@ ws = mp.Workspace()
 
 ws.events()                              # List events
 ws.properties("EventName")              # List properties
-ws.query("Event", last=30)              # Insights query
-ws.query_funnel(["A", "B", "C"])        # Funnel query
-ws.query_retention("A", "B")            # Retention query
-ws.query_flow("Event", forward=3)       # Flow query
+ws.query(InsightsQuery(events=["Event"], last=30))              # Insights query
+ws.query_funnel(FunnelQuery(steps=["A", "B", "C"]))            # Funnel query
+ws.query_retention(RetentionQuery(born_event="A", return_event="B"))  # Retention query
+ws.query_flow(FlowQuery(event="Event", forward=3))             # Flow query
 ws.query_user(properties=["$email"])    # User profile query
 ws.stream_events(from_date="...", to_date="...")  # Stream events
 ```
