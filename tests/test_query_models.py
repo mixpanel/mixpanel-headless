@@ -392,9 +392,7 @@ class TestExtraFieldsRejected:
     def test_funnel_rejects_extra_top_level(self) -> None:
         """FunnelQuery rejects unknown top-level keys."""
         with pytest.raises(ValidationError, match="extra_forbidden"):
-            FunnelQuery.model_validate(
-                {"steps": ["A", "B"], "typo_field": 1}
-            )
+            FunnelQuery.model_validate({"steps": ["A", "B"], "typo_field": 1})
 
     def test_retention_rejects_extra_top_level(self) -> None:
         """RetentionQuery rejects unknown top-level keys."""
@@ -566,9 +564,7 @@ class TestNestedDictValidation:
 
     def test_flow_step_from_dict(self) -> None:
         """FlowStep constructed from dict inside FlowQuery."""
-        q = FlowQuery.model_validate(
-            {"event": {"event": "Login"}}
-        )
+        q = FlowQuery.model_validate({"event": {"event": "Login"}})
         assert q.event is not None
 
     def test_exclusion_from_dict(self) -> None:

@@ -273,7 +273,7 @@ class FunnelQuery(BaseModel):
         None,
         description="Numeric property for property-aggregation math types.",
     )
-    group_by: list[GroupBy | CohortBreakdown] | None = Field(
+    group_by: list[str | GroupBy | CohortBreakdown] | None = Field(
         None,
         description="Break down results by property or cohort membership.",
     )
@@ -412,7 +412,7 @@ class RetentionQuery(BaseModel):
         "retention_rate",
         description="Retention aggregation function.",
     )
-    group_by: list[GroupBy | CohortBreakdown] | None = Field(
+    group_by: list[str | GroupBy | CohortBreakdown] | None = Field(
         None,
         description="Break down results by property or cohort membership.",
     )
@@ -558,7 +558,7 @@ class FlowQuery(BaseModel):
         None,
         description="Data group ID for group-level analytics.",
     )
-    segments: list[GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
+    segments: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
         None,
         description="Segment (breakdown) specification for flow results.",
     )
