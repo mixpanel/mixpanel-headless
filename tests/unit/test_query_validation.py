@@ -64,12 +64,12 @@ class TestTimeRangeValidation:
 
     def test_v7_last_must_be_positive(self, ws: Workspace) -> None:
         """V7: last must be a positive integer."""
-        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
+        with pytest.raises(BookmarkValidationError, match="greater than or equal to 1"):
             ws.query(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_v7_last_negative(self, ws: Workspace) -> None:
         """V7: negative last returns validation error."""
-        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
+        with pytest.raises(BookmarkValidationError, match="greater than or equal to 1"):
             ws.query(InsightsQuery(events=[Metric("Login")], last=-5))
 
     def test_v8_from_date_format(self, ws: Workspace) -> None:
@@ -533,7 +533,7 @@ class TestEmptyEventsValidation:
 
     def test_v0_empty_list_raises(self, ws: Workspace) -> None:
         """V0: Empty events list returns BookmarkValidationError."""
-        with pytest.raises(BookmarkValidationError, match="At least 1 event"):
+        with pytest.raises(BookmarkValidationError, match="at least 1 item"):
             InsightsQuery(events=[])
 
     def test_v0_non_empty_list_passes(self, ws: Workspace) -> None:
@@ -591,7 +591,7 @@ class TestBuildParamsValidation:
 
     def test_rejects_invalid_last(self, ws: Workspace) -> None:
         """build_params() raises BookmarkValidationError for last=0."""
-        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
+        with pytest.raises(BookmarkValidationError, match="greater than or equal to 1"):
             ws.build_params(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_rejects_formula_without_events(self, ws: Workspace) -> None:

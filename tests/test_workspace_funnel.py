@@ -119,7 +119,7 @@ class TestQueryFunnelValidation:
         mock_api_client: MagicMock,
     ) -> None:
         """T021-F1: A single-step funnel is rejected by FunnelQuery model validator."""
-        with pytest.raises(BookmarkValidationError, match="At least 2 steps"):
+        with pytest.raises(BookmarkValidationError, match="at least 2 items"):
             FunnelQuery(steps=["A"])
 
     def test_empty_event_name_raises_f2(
@@ -159,10 +159,8 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-math: Invalid math type is rejected by Pydantic."""
-        from pydantic import ValidationError as PydanticValidationError
-
-        with pytest.raises(PydanticValidationError):
+        """T021-math: Invalid math type is rejected."""
+        with pytest.raises(BookmarkValidationError):
             FunnelQuery(
                 steps=["A", "B"],
                 math="invalid_math",
@@ -427,7 +425,7 @@ class TestBuildFunnelParamsVsQueryFunnel:
         mock_api_client: MagicMock,
     ) -> None:
         """T023-validation: Single-step funnel rejected by FunnelQuery model validator."""
-        with pytest.raises(BookmarkValidationError, match="At least 2 steps"):
+        with pytest.raises(BookmarkValidationError, match="at least 2 items"):
             FunnelQuery(steps=["A"])
 
     def test_params_has_sections_and_display_options(

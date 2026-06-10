@@ -11,6 +11,7 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import (
     FlowQuery,
     FunnelQuery,
@@ -386,26 +387,26 @@ class TestExtraFieldsRejected:
 
     def test_insights_rejects_extra_top_level(self) -> None:
         """InsightsQuery rejects unknown top-level keys."""
-        with pytest.raises(ValidationError, match="extra_forbidden"):
+        with pytest.raises(BookmarkValidationError, match="Extra inputs"):
             InsightsQuery.model_validate(
                 {"events": [{"event": "Login"}], "typo_field": 1}
             )
 
     def test_funnel_rejects_extra_top_level(self) -> None:
         """FunnelQuery rejects unknown top-level keys."""
-        with pytest.raises(ValidationError, match="extra_forbidden"):
+        with pytest.raises(BookmarkValidationError, match="Extra inputs"):
             FunnelQuery.model_validate({"steps": ["A", "B"], "typo_field": 1})
 
     def test_retention_rejects_extra_top_level(self) -> None:
         """RetentionQuery rejects unknown top-level keys."""
-        with pytest.raises(ValidationError, match="extra_forbidden"):
+        with pytest.raises(BookmarkValidationError, match="Extra inputs"):
             RetentionQuery.model_validate(
                 {"born_event": "A", "return_event": "B", "extra_key": 1}
             )
 
     def test_flow_rejects_extra_top_level(self) -> None:
         """FlowQuery rejects unknown top-level keys."""
-        with pytest.raises(ValidationError, match="extra_forbidden"):
+        with pytest.raises(BookmarkValidationError, match="Extra inputs"):
             FlowQuery.model_validate({"event": "A", "extra_key": 1})
 
 
@@ -591,21 +592,21 @@ class TestMemberExtraForbid:
 
     def test_metric_typo_rejected(self) -> None:
         """Capital-M 'Math' in Metric dict is rejected."""
-        with pytest.raises(ValidationError):
+        with pytest.raises(BookmarkValidationError):
             InsightsQuery.model_validate(
                 {"events": [{"event": "Login", "Math": "unique"}]}
             )
 
     def test_funnel_step_typo_rejected(self) -> None:
         """Extra key in FunnelStep dict is rejected."""
-        with pytest.raises(ValidationError):
+        with pytest.raises(BookmarkValidationError):
             FunnelQuery.model_validate(
                 {"steps": [{"event": "A", "typo": 1}, {"event": "B"}]}
             )
 
     def test_retention_event_typo_rejected(self) -> None:
         """Extra key in RetentionEvent dict is rejected."""
-        with pytest.raises(ValidationError):
+        with pytest.raises(BookmarkValidationError):
             RetentionQuery.model_validate(
                 {
                     "born_event": {"event": "Signup", "extra": 1},

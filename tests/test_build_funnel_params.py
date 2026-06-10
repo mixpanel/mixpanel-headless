@@ -390,12 +390,12 @@ class TestBuildFunnelParamsPublicMethod:
 
     def test_single_step_raises_validation_error(self, ws: Workspace) -> None:
         """Verify a single-step funnel is rejected by FunnelQuery model validator."""
-        with pytest.raises(BookmarkValidationError, match="At least 2 steps"):
+        with pytest.raises(BookmarkValidationError, match="at least 2 items"):
             FunnelQuery(steps=["OnlyOneStep"])
 
     def test_empty_steps_raises_validation_error(self, ws: Workspace) -> None:
         """Verify empty steps list is rejected by FunnelQuery model validator."""
-        with pytest.raises(BookmarkValidationError, match="At least 2 steps"):
+        with pytest.raises(BookmarkValidationError, match="at least 2 items"):
             FunnelQuery(steps=[])
 
     def test_sections_contains_expected_keys(self, ws: Workspace) -> None:

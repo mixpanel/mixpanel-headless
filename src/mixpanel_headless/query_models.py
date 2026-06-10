@@ -4,7 +4,18 @@ Each model mirrors the signature of a ``Workspace.build_*_params()`` method,
 providing a single validated object for schema generation and type-safe input.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ModelWrapValidatorHandler,
+    ValidationError,
+    model_validator,
+)
 
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
@@ -49,7 +60,63 @@ from mixpanel_headless.types import (
 )
 
 
-class InsightsQuery(BaseModel):
+class _BaseQuery(BaseModel):
+    """Shared base for query models.
+
+    Provides frozen config with ``extra="forbid"``, and a wrap
+    validator that converts ``pydantic.ValidationError`` (from
+    ``Field`` constraints like ``ge``, ``min_length``) into
+    ``BookmarkValidationError`` so callers get a single error type.
+    Subclasses add cross-field checks in ``_get_cross_field_errors``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    from_date: str | None = Field(
+        None,
+        description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
+    )
+    to_date: str | None = Field(
+        None,
+        description="End date (YYYY-MM-DD). Requires from_date.",
+    )
+    last: int = Field(
+        30,
+        ge=1,
+        description="Relative time range in days. Default: 30.",
+    )
+
+    def _get_cross_field_errors(self) -> list[InternalValidationError]:
+        """Return cross-field errors. Override in subclasses."""
+        return []
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _wrap_validation(
+        cls,
+        data: Any,
+        handler: ModelWrapValidatorHandler[_BaseQuery],
+    ) -> _BaseQuery:
+        """Catch pydantic ValidationError and convert to BookmarkValidationError."""
+        try:
+            instance = handler(data)
+        except ValidationError as exc:
+            errors = [
+                InternalValidationError(
+                    path=".".join(str(loc) for loc in e["loc"]),
+                    message=e["msg"],
+                    code=e["type"],
+                )
+                for e in exc.errors()
+            ]
+            raise BookmarkValidationError(errors) from exc
+        cross = instance._get_cross_field_errors()
+        if cross:
+            raise BookmarkValidationError(cross)
+        return instance
+
+
+class InsightsQuery(_BaseQuery):
     """Input model for an insights query.
 
     Bundles all parameters accepted by ``Workspace.build_params()`` and
@@ -85,23 +152,10 @@ class InsightsQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
     events: list[str | Metric | CohortMetric | Formula] = Field(
         ...,
+        min_length=1,
         description="Events to query. Each is an event name string, Metric, CohortMetric, or Formula.",
-    )
-    from_date: str | None = Field(
-        None,
-        description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
-    )
-    to_date: str | None = Field(
-        None,
-        description="End date (YYYY-MM-DD). Requires from_date.",
-    )
-    last: int = Field(
-        30,
-        description="Relative time range in days. Default: 30. Overridden when from_date is set.",
     )
     unit: QueryTimeUnit = Field(
         "day",
@@ -160,26 +214,9 @@ class InsightsQuery(BaseModel):
         description="Data group ID for group-level analytics.",
     )
 
-    @model_validator(mode="after")
-    def _validate_constraints(self) -> "InsightsQuery":
-        """Validate min-events and cross-field constraints."""
+    def _get_cross_field_errors(self) -> list[InternalValidationError]:
+        """Validate cross-field constraints for insights queries."""
         errors: list[InternalValidationError] = []
-        if len(self.events) < 1:
-            errors.append(
-                InternalValidationError(
-                    path="events",
-                    message="At least 1 event is required (got 0)",
-                    code="MIN_EVENTS",
-                )
-            )
-        if self.last < 1:
-            errors.append(
-                InternalValidationError(
-                    path="last",
-                    message=f"last must be >= 1 (got {self.last})",
-                    code="INVALID_LAST",
-                )
-            )
         if self.to_date is not None and self.from_date is None:
             errors.append(
                 InternalValidationError(
@@ -209,12 +246,10 @@ class InsightsQuery(BaseModel):
                     code="MISSING_PERCENTILE_VALUE",
                 )
             )
-        if errors:
-            raise BookmarkValidationError(errors)
-        return self
+        return errors
 
 
-class FunnelQuery(BaseModel):
+class FunnelQuery(_BaseQuery):
     """Input model for a funnel query.
 
     Bundles all parameters accepted by ``Workspace.build_funnel_params()``
@@ -244,10 +279,9 @@ class FunnelQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
     steps: list[str | FunnelStep] = Field(
         ...,
+        min_length=2,
         description="Funnel step specifications. At least 2 required.",
     )
     conversion_window: int = Field(
@@ -261,18 +295,6 @@ class FunnelQuery(BaseModel):
     order: FunnelOrder = Field(
         "loose",
         description="Step ordering mode: loose or any.",
-    )
-    from_date: str | None = Field(
-        None,
-        description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
-    )
-    to_date: str | None = Field(
-        None,
-        description="End date (YYYY-MM-DD). Requires from_date.",
-    )
-    last: int = Field(
-        30,
-        description="Relative time range in days. Default: 30.",
     )
     unit: QueryTimeUnit = Field(
         "day",
@@ -319,26 +341,9 @@ class FunnelQuery(BaseModel):
         description="Data group ID for group-level analytics.",
     )
 
-    @model_validator(mode="after")
-    def _validate_constraints(self) -> "FunnelQuery":
-        """Validate min-steps and cross-field constraints."""
+    def _get_cross_field_errors(self) -> list[InternalValidationError]:
+        """Validate cross-field constraints for funnel queries."""
         errors: list[InternalValidationError] = []
-        if len(self.steps) < 2:
-            errors.append(
-                InternalValidationError(
-                    path="steps",
-                    message=f"At least 2 steps are required (got {len(self.steps)})",
-                    code="F1_MIN_STEPS",
-                )
-            )
-        if self.last < 1:
-            errors.append(
-                InternalValidationError(
-                    path="last",
-                    message=f"last must be >= 1 (got {self.last})",
-                    code="INVALID_LAST",
-                )
-            )
         if self.to_date is not None and self.from_date is None:
             errors.append(
                 InternalValidationError(
@@ -355,12 +360,10 @@ class FunnelQuery(BaseModel):
                     code="FROM_DATE_WITHOUT_TO",
                 )
             )
-        if errors:
-            raise BookmarkValidationError(errors)
-        return self
+        return errors
 
 
-class RetentionQuery(BaseModel):
+class RetentionQuery(_BaseQuery):
     """Input model for a retention query.
 
     Bundles all parameters accepted by ``Workspace.build_retention_params()``
@@ -391,8 +394,6 @@ class RetentionQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
     born_event: str | RetentionEvent = Field(
         ...,
         description="Event that defines cohort membership.",
@@ -412,18 +413,6 @@ class RetentionQuery(BaseModel):
     bucket_sizes: list[int] | None = Field(
         None,
         description="Custom bucket sizes for retention periods.",
-    )
-    from_date: str | None = Field(
-        None,
-        description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
-    )
-    to_date: str | None = Field(
-        None,
-        description="End date (YYYY-MM-DD). Requires from_date.",
-    )
-    last: int = Field(
-        30,
-        description="Relative time range in days. Default: 30.",
     )
     unit: QueryTimeUnit = Field(
         "day",
@@ -462,18 +451,9 @@ class RetentionQuery(BaseModel):
         description="Data group ID for group-level analytics.",
     )
 
-    @model_validator(mode="after")
-    def _validate_constraints(self) -> "RetentionQuery":
-        """Validate cross-field constraints."""
+    def _get_cross_field_errors(self) -> list[InternalValidationError]:
+        """Validate cross-field constraints for retention queries."""
         errors: list[InternalValidationError] = []
-        if self.last < 1:
-            errors.append(
-                InternalValidationError(
-                    path="last",
-                    message=f"last must be >= 1 (got {self.last})",
-                    code="INVALID_LAST",
-                )
-            )
         if self.to_date is not None and self.from_date is None:
             errors.append(
                 InternalValidationError(
@@ -490,12 +470,10 @@ class RetentionQuery(BaseModel):
                     code="FROM_DATE_WITHOUT_TO",
                 )
             )
-        if errors:
-            raise BookmarkValidationError(errors)
-        return self
+        return errors
 
 
-class FlowQuery(BaseModel):
+class FlowQuery(_BaseQuery):
     """Input model for a flow query.
 
     Bundles all parameters accepted by ``Workspace.build_flow_params()``
@@ -525,8 +503,6 @@ class FlowQuery(BaseModel):
         ```
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
     event: str | FlowStep | list[str | FlowStep] = Field(
         ...,
         description="Event specification: a name, FlowStep, or list of names/FlowSteps.",
@@ -538,18 +514,6 @@ class FlowQuery(BaseModel):
     reverse: int = Field(
         0,
         description="Default reverse step count. Default: 0.",
-    )
-    from_date: str | None = Field(
-        None,
-        description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
-    )
-    to_date: str | None = Field(
-        None,
-        description="End date (YYYY-MM-DD). Requires from_date.",
-    )
-    last: int = Field(
-        30,
-        description="Relative time range in days. Default: 30.",
     )
     conversion_window: int = Field(
         7,
@@ -596,9 +560,8 @@ class FlowQuery(BaseModel):
         description="Event names to exclude from flow paths.",
     )
 
-    @model_validator(mode="after")
-    def _validate_constraints(self) -> "FlowQuery":
-        """Validate cross-field constraints."""
+    def _get_cross_field_errors(self) -> list[InternalValidationError]:
+        """Validate cross-field constraints for flow queries."""
         errors: list[InternalValidationError] = []
         if isinstance(self.event, list) and len(self.event) == 0:
             errors.append(
@@ -606,14 +569,6 @@ class FlowQuery(BaseModel):
                     path="event",
                     message="event list must not be empty",
                     code="EMPTY_EVENT_LIST",
-                )
-            )
-        if self.last < 1:
-            errors.append(
-                InternalValidationError(
-                    path="last",
-                    message=f"last must be >= 1 (got {self.last})",
-                    code="INVALID_LAST",
                 )
             )
         if self.to_date is not None and self.from_date is None:
@@ -632,6 +587,4 @@ class FlowQuery(BaseModel):
                     code="FROM_DATE_WITHOUT_TO",
                 )
             )
-        if errors:
-            raise BookmarkValidationError(errors)
-        return self
+        return errors
