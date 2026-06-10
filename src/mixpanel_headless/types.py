@@ -7224,6 +7224,12 @@ class Filter:
     _SINGLE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
         {"was on", "was not on", "was before", "was since"}
     )
+    _NO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is set", "is not set", "true", "false"}
+    )
+    _TWO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is between", "not between", "was between", "was not between"}
+    )
 
     def __post_init__(self) -> None:
         """Validate invariants and normalize dict-constructed instances.
@@ -7263,13 +7269,8 @@ class Filter:
                         "list_item_filters cannot themselves be list_contains"
                     )
 
-        _NO_VALUE_OPS = frozenset({"is set", "is not set", "true", "false"})
-        _TWO_VALUE_OPS = frozenset(
-            {"is between", "not between", "was between", "was not between"}
-        )
-
         # Clear value for no-value operators
-        if self._operator in _NO_VALUE_OPS and self._value is not None:
+        if self._operator in self._NO_VALUE_OPS and self._value is not None:
             object.__setattr__(self, "_value", None)
 
         # Wrap scalar string to list for equals/not_equals (matches classmethod behavior)
@@ -7280,7 +7281,7 @@ class Filter:
                 object.__setattr__(self, "_value", [self._value])
 
         # Validate two-value operators require exactly 2 elements
-        if self._operator in _TWO_VALUE_OPS and (
+        if self._operator in self._TWO_VALUE_OPS and (
             not isinstance(self._value, list) or len(self._value) != 2
         ):
             raise ValueError(
@@ -8458,18 +8459,17 @@ class GroupBy:
 
         Raises:
             ValueError: If property is an empty string (GB1),
-                bucket_size is not positive (GB2, also enforced by gt=0),
                 bucket_min >= bucket_max (GB3),
                 ``_list_item_mode`` is combined with bucketing (GB4),
                 or ``_list_item_mode`` is set but ``property`` is not a
                 plain ``str`` (GB5).
+
+        Note:
+            GB2 (bucket_size > 0) is enforced by ``Field(gt=0)`` and
+            visible in the JSON schema.
         """
         if isinstance(self.property, str) and not self.property.strip():
             raise ValueError("GroupBy.property must be a non-empty string")
-        if self.bucket_size is not None and self.bucket_size <= 0:
-            raise ValueError(
-                f"GroupBy.bucket_size must be positive, got {self.bucket_size}"
-            )
         if (
             self.bucket_min is not None
             and self.bucket_max is not None
@@ -9495,29 +9495,19 @@ class FrequencyBreakdown:
     """Display label for the breakdown."""
 
     def __post_init__(self) -> None:
-        """Validate construction arguments (rules FB1-FB4).
+        """Validate cross-field construction arguments.
+
+        Single-field constraints (FB1: non-empty event, FB2: positive
+        bucket_size, FB4: non-negative bucket_min) are enforced by
+        Field constraints and visible in the JSON schema.
 
         Raises:
-            ValueError: If event is empty (FB1), bucket_size is not
-                positive (FB2), bucket_min >= bucket_max (FB3), or
-                bucket_min is negative (FB4).
+            ValueError: If event is whitespace-only (FB1 edge case
+                not caught by ``min_length``), or bucket_min >=
+                bucket_max (FB3, cross-field).
         """
-        # FB1: event must be non-empty (also enforced by min_length=1)
-        if not self.event.strip():
+        if self.event and not self.event.strip():
             raise ValueError("FrequencyBreakdown.event must be a non-empty string")
-        # FB2: bucket_size must be positive (also enforced by gt=0)
-        if self.bucket_size <= 0:
-            raise ValueError(
-                f"FrequencyBreakdown.bucket_size must be positive, "
-                f"got {self.bucket_size}"
-            )
-        # FB4: bucket_min must be non-negative (also enforced by ge=0)
-        if self.bucket_min < 0:
-            raise ValueError(
-                f"FrequencyBreakdown.bucket_min must be non-negative, "
-                f"got {self.bucket_min}"
-            )
-        # FB3: bucket_min must be < bucket_max (cross-field, stays in code)
         if self.bucket_min >= self.bucket_max:
             raise ValueError(
                 f"FrequencyBreakdown.bucket_min ({self.bucket_min}) must be "
