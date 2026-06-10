@@ -1080,16 +1080,16 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with segments=GroupBy('country') produces segments in output."""
+        """build_flow_params with segments=GroupBy('country') produces segment_by."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
                 FlowQuery(event="Login", segments=[GroupBy("country")])
             )
-            assert "segments" in params
-            assert isinstance(params["segments"], list)
-            assert len(params["segments"]) == 1
-            assert params["segments"][0]["value"] == "country"
+            assert "segment_by" in params
+            assert isinstance(params["segment_by"], list)
+            assert len(params["segment_by"]) == 1
+            assert params["segment_by"][0]["property"] == "country"
         finally:
             ws.close()
 
@@ -1097,14 +1097,14 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with segments='country' produces segments in output."""
+        """build_flow_params with segments='country' produces segment_by."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
                 FlowQuery(event="Login", segments=[GroupBy("country")])
             )
-            assert "segments" in params
-            assert len(params["segments"]) == 1
+            assert "segment_by" in params
+            assert len(params["segment_by"]) == 1
         finally:
             ws.close()
 
@@ -1112,7 +1112,7 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with list of GroupBy produces multiple segments."""
+        """build_flow_params with list of GroupBy produces multiple segment_by entries."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
@@ -1120,7 +1120,7 @@ class TestFlowSegments:
                     event="Login", segments=[GroupBy("country"), GroupBy("platform")]
                 )
             )
-            assert len(params["segments"]) == 2
+            assert len(params["segment_by"]) == 2
         finally:
             ws.close()
 
@@ -1128,11 +1128,11 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params without segments does not include segments key."""
+        """build_flow_params without segments does not include segment_by key."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(FlowQuery(event="Login"))
-            assert "segments" not in params
+            assert "segment_by" not in params
         finally:
             ws.close()
 
@@ -1182,26 +1182,23 @@ class TestFlowExclusions:
 
 
 class TestFlowPropertyFilters:
-    """Tests for property filters (filter_by_event) on flow queries (T038)."""
+    """Tests for property filters (where) on flow queries (T038)."""
 
-    def test_property_filter_produces_filter_by_event(
+    def test_property_filter_produces_where(
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with where=Filter.equals produces filter_by_event."""
+        """build_flow_params with where=Filter.equals produces where key."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
                 FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
-            assert "filter_by_event" in params
-            fbe = params["filter_by_event"]
-            assert fbe["operator"] == "and"
-            assert len(fbe["children"]) == 1
-            child = fbe["children"][0]
-            assert child["filterOperator"] == "equals"
-            assert child["propertyName"] == "country"
-            assert child["filterValue"] == ["US"]
+            assert "where" in params
+            assert len(params["where"]) == 1
+            entry = params["where"][0]
+            assert entry["property"] == "country"
+            assert entry["operator"] == "equals"
         finally:
             ws.close()
 
@@ -1209,7 +1206,7 @@ class TestFlowPropertyFilters:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with list of property filters produces children array."""
+        """build_flow_params with list of property filters produces where entries."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
@@ -1221,8 +1218,7 @@ class TestFlowPropertyFilters:
                     ],
                 )
             )
-            fbe = params["filter_by_event"]
-            assert len(fbe["children"]) == 2
+            assert len(params["where"]) == 2
         finally:
             ws.close()
 
@@ -1237,7 +1233,7 @@ class TestFlowPropertyFilters:
                 FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
             )
             assert "filter_by_cohort" in params
-            assert "filter_by_event" not in params
+            assert "where" not in params
         finally:
             ws.close()
 

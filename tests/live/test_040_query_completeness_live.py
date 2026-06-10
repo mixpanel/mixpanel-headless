@@ -28,6 +28,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from mixpanel_headless import (
     BookmarkValidationError,
@@ -1372,11 +1373,11 @@ class TestValidationErrors:
             real_event: Known event name.
         """
         tc = TimeComparison.relative("month")
-        with pytest.raises(TypeError, match="unexpected keyword argument"):
+        with pytest.raises((TypeError, ValidationError)):
             FlowQuery(
                 event=real_event,
                 last=7,
-                time_comparison=tc,
+                time_comparison=tc,  # type: ignore[call-arg]
             )
 
     def test_v07_frequency_breakdown_empty_event(self) -> None:

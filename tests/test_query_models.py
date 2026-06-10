@@ -6,8 +6,10 @@ frozen immutability, and field constraints for all query model types.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from mixpanel_headless.query_models import (
     FlowQuery,
@@ -681,69 +683,100 @@ class TestHashability:
 
 
 # =============================================================================
-# FilterInput (I2)
+# Filter dict construction (I2)
 # =============================================================================
 
 
-class TestFilterInput:
-    """FilterInput provides public-field dict construction for Filters."""
+class TestFilterDictConstruction:
+    """Filter supports dict construction via validation aliases."""
 
-    def test_equals_construction(self) -> None:
-        """FilterInput with 'equals' operator produces a valid Filter."""
-        from mixpanel_headless.query_models import FilterInput
+    _adapter: ClassVar[TypeAdapter[Filter]]
 
-        fi = FilterInput(property="country", operator="equals", value="US")
-        f = fi.to_filter()
-        assert isinstance(f, Filter)
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
 
-    def test_numeric_operator(self) -> None:
-        """FilterInput with 'is greater than' works."""
-        from mixpanel_headless.query_models import FilterInput
-
-        fi = FilterInput(property="amount", operator="is greater than", value=50)
-        f = fi.to_filter()
-        assert isinstance(f, Filter)
-
-    def test_is_set_no_value(self) -> None:
-        """FilterInput with 'is set' needs no value."""
-        from mixpanel_headless.query_models import FilterInput
-
-        fi = FilterInput(property="email", operator="is set")
-        f = fi.to_filter()
-        assert isinstance(f, Filter)
-
-    def test_between_operator(self) -> None:
-        """FilterInput with 'is between' accepts a two-element list."""
-        from mixpanel_headless.query_models import FilterInput
-
-        fi = FilterInput(property="amount", operator="is between", value=[10, 50])
-        f = fi.to_filter()
-        assert isinstance(f, Filter)
-
-    def test_model_validate_dict(self) -> None:
-        """FilterInput.model_validate works from a plain dict."""
-        from mixpanel_headless.query_models import FilterInput
-
-        fi = FilterInput.model_validate(
+    def test_equals_dict(self) -> None:
+        """Dict with 'equals' produces a Filter with wrapped value."""
+        f = self._adapter.validate_python(
             {"property": "country", "operator": "equals", "value": "US"}
         )
-        assert fi.property == "country"
-        assert fi.operator == "equals"
+        assert isinstance(f, Filter)
+        assert f._value == ["US"]
+        assert f._property_type == "string"
+
+    def test_numeric_operator_dict(self) -> None:
+        """Dict with numeric operator infers property_type='number'."""
+        f = self._adapter.validate_python(
+            {"property": "amount", "operator": "is greater than", "value": 50}
+        )
+        assert isinstance(f, Filter)
+        assert f._property_type == "number"
+
+    def test_is_set_no_value(self) -> None:
+        """Dict with 'is set' needs no value field."""
+        f = self._adapter.validate_python({"property": "email", "operator": "is set"})
+        assert isinstance(f, Filter)
+        assert f._value is None
+
+    def test_between_operator_dict(self) -> None:
+        """Dict with 'is between' accepts a two-element list."""
+        f = self._adapter.validate_python(
+            {"property": "amount", "operator": "is between", "value": [10, 50]}
+        )
+        assert isinstance(f, Filter)
+        assert f._property_type == "number"
+        assert f._value == [10, 50]
+
+    def test_equivalence_with_classmethod(self) -> None:
+        """Dict-constructed Filter matches classmethod-constructed Filter."""
+        f_dict = self._adapter.validate_python(
+            {"property": "country", "operator": "equals", "value": "US"}
+        )
+        f_cls = Filter.equals("country", "US")
+        assert f_dict._property == f_cls._property
+        assert f_dict._operator == f_cls._operator
+        assert f_dict._value == f_cls._value
+        assert f_dict._property_type == f_cls._property_type
 
     def test_in_insights_query(self) -> None:
-        """InsightsQuery accepts FilterInput in where list."""
-        from mixpanel_headless.query_models import FilterInput
-
-        q = InsightsQuery(
-            events=["Login"],
-            where=[FilterInput(property="country", operator="equals", value="US")],
+        """InsightsQuery accepts dict-constructed Filter in where list."""
+        f = self._adapter.validate_python(
+            {"property": "country", "operator": "equals", "value": "US"}
         )
+        q = InsightsQuery(events=["Login"], where=[f])
         assert q.where is not None
         assert len(q.where) == 1
 
     def test_invalid_operator_rejected(self) -> None:
         """Unknown operator string is rejected by FilterOperator literal."""
-        from mixpanel_headless.query_models import FilterInput
-
         with pytest.raises(ValidationError):
-            FilterInput(property="x", operator="bogus", value="y")
+            self._adapter.validate_python(
+                {"property": "x", "operator": "bogus", "value": "y"}
+            )
+
+    def test_relative_date_default_unit(self) -> None:
+        """Relative-date operators default date_unit to 'day'."""
+        f = self._adapter.validate_python(
+            {"property": "created", "operator": "was in the", "value": 7}
+        )
+        assert f._date_unit == "day"
+        assert f._property_type == "datetime"
+
+    def test_relative_date_explicit_unit(self) -> None:
+        """Explicit date_unit overrides the default."""
+        f = self._adapter.validate_python(
+            {
+                "property": "created",
+                "operator": "was in the",
+                "value": 2,
+                "date_unit": "week",
+            }
+        )
+        assert f._date_unit == "week"
+
+    def test_boolean_type_inference(self) -> None:
+        """Boolean operators infer property_type='boolean'."""
+        f = self._adapter.validate_python({"property": "active", "operator": "true"})
+        assert f._property_type == "boolean"

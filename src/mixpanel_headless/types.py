@@ -28,7 +28,16 @@ from datetime import date as dt_date
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Generic, Literal, TypedDict, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    TypedDict,
+    TypeVar,
+)
 
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
@@ -7105,15 +7114,17 @@ class Formula:
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(
+    frozen=True,
+    config=ConfigDict(extra="forbid", populate_by_name=True),
+)
 class Filter:
     """Represents a typed filter condition on a property.
 
-    Constructed exclusively via class methods — never instantiated directly.
-    Each class method maps to specific filterType, filterOperator, and
-    filterValue format in the bookmark JSON.
+    Constructed via class methods or via dict construction with
+    public field names for dict/JSON/LLM callers.
 
-    Example:
+    Example (classmethods):
         ```python
         from mixpanel_headless import Filter
 
@@ -7122,17 +7133,32 @@ class Filter:
         f3 = Filter.between("amount", 10, 100)
         f4 = Filter.is_set("email")
         ```
+
+    Example (dict construction):
+        ```python
+        from pydantic import TypeAdapter
+        from mixpanel_headless import Filter
+
+        adapter = TypeAdapter(Filter)
+        f = adapter.validate_python({
+            "property": "country",
+            "operator": "equals",
+            "value": "US",
+        })
+        ```
     """
 
-    _property: str | CustomPropertyRef | InlineCustomProperty
+    _property: str | CustomPropertyRef | InlineCustomProperty = Field(
+        validation_alias="property",
+    )
     """Property to filter on (name, ref, or inline)."""
 
-    _operator: FilterOperator
+    _operator: FilterOperator = Field(validation_alias="operator")
     """Internal operator string. Must be one of the values in :data:`FilterOperator`."""
 
     _value: (
         str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None
-    )
+    ) = Field(default=None, validation_alias="value")
     """Value(s) to compare against.
 
     Shape varies by operator: list for equals/not_equals, str for
@@ -7141,13 +7167,19 @@ class Filter:
     list of dicts for cohort filters (in_cohort/not_in_cohort).
     """
 
-    _property_type: FilterPropertyType = "string"
+    _property_type: FilterPropertyType = Field(
+        default="string", validation_alias="property_type"
+    )
     """Data type of the property."""
 
-    _resource_type: Literal["events", "people"] = "events"
+    _resource_type: Literal["events", "people"] = Field(
+        default="events", validation_alias="resource_type"
+    )
     """Resource type to filter."""
 
-    _date_unit: FilterDateUnit | None = None
+    _date_unit: FilterDateUnit | None = Field(
+        default=None, validation_alias="date_unit"
+    )
     """Time unit for relative date filters (hour, day, week, month).
 
     Set by ``in_the_last()``, ``not_in_the_last()``, and ``in_the_next()`` factory methods.
@@ -7155,25 +7187,57 @@ class Filter:
     and absolute date filters.
     """
 
-    _list_item_filters: tuple[Filter, ...] | None = None
+    _list_item_filters: tuple[Filter, ...] | None = Field(
+        default=None, validation_alias="list_item_filters"
+    )
     """Sub-filters for ``list_contains``, evaluated per-item against a list-of-objects property."""
 
-    _list_item_quantifier: Literal["any", "all"] | None = None
+    _list_item_quantifier: Literal["any", "all"] | None = Field(
+        default=None, validation_alias="list_item_quantifier"
+    )
     """Quantifier for ``list_contains``: ``"any"`` (≥1 item matches) or ``"all"`` (every item matches)."""
 
-    def __post_init__(self) -> None:
-        """Validate Filter mode invariants.
+    _NUMERIC_OPS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "is greater than",
+            "is less than",
+            "is at least",
+            "is at most",
+            "is between",
+            "not between",
+        }
+    )
+    _BOOLEAN_OPS: ClassVar[frozenset[str]] = frozenset({"true", "false"})
+    _DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "was on",
+            "was not on",
+            "was before",
+            "was since",
+            "was between",
+            "was not between",
+        }
+    )
+    _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"was in the", "was not in the", "was in the next"}
+    )
 
-        Only validates the ``list_contains`` mode today. Other operator
-        modes rely on classmethod-only validation; expanding this
-        coverage is a separate concern from this PR's list_contains
-        feature.
+    def __post_init__(self) -> None:
+        """Validate invariants and normalize dict-constructed instances.
+
+        Normalization replicates the logic in classmethods so that
+        dict/JSON callers get the same result:
+
+        - ``equals`` / ``does not equal``: wraps scalar string to list
+        - Numeric operators: infers ``_property_type="number"``
+        - Boolean operators: infers ``_property_type="boolean"``
+        - Date operators: infers ``_property_type="datetime"``
+        - Relative-date operators: defaults ``_date_unit="day"``
 
         Raises:
             ValueError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``. List-contains filters must be constructed
-                via ``Filter.list_contains(...)``.
+                ``None``.
         """
         if self._operator == "list_contains":
             if self._list_item_filters is None:
@@ -7186,6 +7250,49 @@ class Filter:
                     "list_contains Filter requires _list_item_quantifier; "
                     "construct via Filter.list_contains(...)"
                 )
+            for sub in self._list_item_filters:
+                if sub._operator == "list_contains":
+                    raise ValueError(
+                        "Nested list_contains is not supported; "
+                        "list_item_filters cannot themselves be list_contains"
+                    )
+
+        _NO_VALUE_OPS = frozenset({"is set", "is not set", "true", "false"})
+        _TWO_VALUE_OPS = frozenset(
+            {"is between", "not between", "was between", "was not between"}
+        )
+
+        # Clear value for no-value operators
+        if self._operator in _NO_VALUE_OPS and self._value is not None:
+            object.__setattr__(self, "_value", None)
+
+        # Wrap scalar string to list for equals/not_equals (matches classmethod behavior)
+        if self._operator in ("equals", "does not equal"):
+            if self._value is None:
+                raise ValueError(f"Filter operator '{self._operator}' requires a value")
+            if isinstance(self._value, str):
+                object.__setattr__(self, "_value", [self._value])
+
+        # Validate two-value operators require exactly 2 elements
+        if self._operator in _TWO_VALUE_OPS and (
+            not isinstance(self._value, list) or len(self._value) != 2
+        ):
+            raise ValueError(
+                f"Filter operator '{self._operator}' requires a "
+                f"2-element list, got {self._value!r}"
+            )
+
+        # Infer _property_type from operator when left at default
+        if self._property_type == "string":
+            if self._operator in self._NUMERIC_OPS:
+                object.__setattr__(self, "_property_type", "number")
+            elif self._operator in self._BOOLEAN_OPS:
+                object.__setattr__(self, "_property_type", "boolean")
+            elif self._operator in (self._DATE_OPS | self._RELATIVE_DATE_OPS):
+                object.__setattr__(self, "_property_type", "datetime")
+
+        if self._operator in self._RELATIVE_DATE_OPS and self._date_unit is None:
+            object.__setattr__(self, "_date_unit", "day")
 
     @classmethod
     def equals(

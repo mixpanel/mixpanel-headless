@@ -64,24 +64,18 @@ class TestTimeRangeValidation:
 
     def test_v7_last_must_be_positive(self, ws: Workspace) -> None:
         """V7: last must be a positive integer."""
-        with pytest.raises(
-            BookmarkValidationError, match="last must be a positive integer"
-        ):
+        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
             ws.query(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_v7_last_negative(self, ws: Workspace) -> None:
         """V7: negative last returns validation error."""
-        with pytest.raises(
-            BookmarkValidationError, match="last must be a positive integer"
-        ):
+        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
             ws.query(InsightsQuery(events=[Metric("Login")], last=-5))
 
     def test_v8_from_date_format(self, ws: Workspace) -> None:
-        """V8: from_date must be YYYY-MM-DD format."""
-        with pytest.raises(
-            BookmarkValidationError, match="from_date must be YYYY-MM-DD format"
-        ):
-            ws.query(InsightsQuery(events=[Metric("Login")], from_date="01/01/2024"))
+        """V8: from_date without to_date is rejected by model validator."""
+        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
+            InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
 
     def test_v8_to_date_format(self, ws: Workspace) -> None:
         """V8: to_date must also be YYYY-MM-DD format."""
@@ -538,10 +532,8 @@ class TestEmptyEventsValidation:
     """Tests for empty events list validation (V0)."""
 
     def test_v0_empty_list_raises(self, ws: Workspace) -> None:
-        """V0: Empty events list returns validation error (caught at model construction)."""
-        from pydantic import ValidationError as PydanticValidationError
-
-        with pytest.raises(PydanticValidationError, match="too_short"):
+        """V0: Empty events list returns BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError, match="At least 1 event"):
             InsightsQuery(events=[])
 
     def test_v0_non_empty_list_passes(self, ws: Workspace) -> None:
@@ -599,9 +591,7 @@ class TestBuildParamsValidation:
 
     def test_rejects_invalid_last(self, ws: Workspace) -> None:
         """build_params() raises BookmarkValidationError for last=0."""
-        with pytest.raises(
-            BookmarkValidationError, match="last must be a positive integer"
-        ):
+        with pytest.raises(BookmarkValidationError, match="last must be >= 1"):
             ws.build_params(InsightsQuery(events=[Metric("Login")], last=0))
 
     def test_rejects_formula_without_events(self, ws: Workspace) -> None:
@@ -612,11 +602,9 @@ class TestBuildParamsValidation:
             ws.build_params(InsightsQuery(events=[Metric("Login")], formula="A + B"))
 
     def test_rejects_invalid_date_format(self, ws: Workspace) -> None:
-        """build_params() validates date format."""
-        with pytest.raises(BookmarkValidationError, match="YYYY-MM-DD"):
-            ws.build_params(
-                InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
-            )
+        """from_date without to_date is rejected at model construction."""
+        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
+            InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
 
 
 # =============================================================================

@@ -623,10 +623,13 @@ def build_flow_property_filter(
                 f"filters; got {type(prop).__name__} — custom property refs "
                 f"are not supported in flow filters"
             )
-        # Remove the "value" key since flow filters use propertyName instead
+        # Remove keys that the flow filter_by_event children reject.
+        # Flow filters use a simpler schema than insights/funnels/retention:
+        # only filterOperator, filterValue, and propertyName are accepted.
         entry.pop("value", None)
-        # Remove defaultType — flow filters don't use it
         entry.pop("defaultType", None)
+        entry.pop("resourceType", None)
+        entry.pop("filterType", None)
         children.append(entry)
 
     return {

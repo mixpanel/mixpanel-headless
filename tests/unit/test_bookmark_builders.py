@@ -984,7 +984,7 @@ class TestBuildFlowPropertyFilter:
     """Tests for build_flow_property_filter() — filter_by_event structure."""
 
     def test_single_filter_structure(self) -> None:
-        """Single Filter produces correct filter_by_event structure."""
+        """Single Filter produces correct flow filter structure."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_property_filter,
         )
@@ -994,10 +994,10 @@ class TestBuildFlowPropertyFilter:
         assert len(result["children"]) == 1
         child = result["children"][0]
         assert child["filterOperator"] == "equals"
-        assert child["filterType"] == "string"
         assert child["propertyName"] == "country"
         assert child["filterValue"] == ["US"]
-        assert child["resourceType"] == "events"
+        assert "resourceType" not in child
+        assert "filterType" not in child
 
     def test_multiple_filters_produce_children(self) -> None:
         """Multiple Filters produce a children array with one entry per filter."""
@@ -1016,19 +1016,18 @@ class TestBuildFlowPropertyFilter:
         assert result["children"][0]["propertyName"] == "country"
         assert result["children"][1]["propertyName"] == "age"
 
-    def test_filter_entry_uses_build_filter_entry(self) -> None:
-        """Each child uses build_filter_entry structure (resourceType, filterType, etc.)."""
+    def test_filter_entry_has_expected_keys(self) -> None:
+        """Each child has filterOperator, filterValue, propertyName (no resourceType/filterType)."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_property_filter,
         )
 
         result = build_flow_property_filter([Filter.contains("name", "test")])
         child = result["children"][0]
-        assert "resourceType" in child
-        assert "filterType" in child
         assert "filterOperator" in child
         assert "filterValue" in child
         assert "propertyName" in child
+        assert "resourceType" not in child
 
     def test_custom_property_ref_raises_type_error(self) -> None:
         """build_flow_property_filter rejects CustomPropertyRef properties."""

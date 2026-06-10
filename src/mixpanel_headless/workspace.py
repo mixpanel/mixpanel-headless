@@ -73,7 +73,6 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_filter_entry,
     build_filter_section,
     build_flow_cohort_filter,
-    build_flow_property_filter,
     build_group_section,
     build_time_comparison,
     build_time_section,
@@ -3256,7 +3255,10 @@ class Workspace:
         if data_group_id is not None:
             params["data_group_id"] = data_group_id
 
-        # Add filters if present — route cohort vs property filters
+        # Add filters if present — route cohort vs property filters.
+        # The arb_funnels endpoint uses a flat ``where`` list with
+        # simple ``{property, operator, value}`` entries for property
+        # filters, and a ``filter_by_cohort`` dict for cohort filters.
         if where is not None:
             filter_list = where if isinstance(where, list) else [where]
             cohort_filters = [f for f in filter_list if f._property == "$cohorts"]
@@ -3268,11 +3270,29 @@ class Workspace:
                     params["filter_by_cohort"] = cohort_filter
 
             if property_filters:
-                params["filter_by_event"] = build_flow_property_filter(property_filters)
+                where_entries: list[dict[str, Any]] = []
+                for f in property_filters:
+                    entry: dict[str, Any] = {
+                        "property": f._property,
+                        "operator": f._operator,
+                    }
+                    if f._value is not None:
+                        entry["value"] = f._value
+                    where_entries.append(entry)
+                params["where"] = where_entries
 
-        # Add segments if present
+        # Add segments if present — the arb_funnels endpoint uses
+        # ``segment_by`` with simple ``{property}`` entries.
         if segments is not None:
-            params["segments"] = build_group_section(segments)
+            raw_segments = build_group_section(segments)
+            segment_entries: list[dict[str, Any]] = []
+            for seg in raw_segments:
+                prop = (
+                    seg.get("property") or seg.get("propertyName") or seg.get("value")
+                )
+                if prop is not None:
+                    segment_entries.append({"property": prop})
+            params["segment_by"] = segment_entries
 
         return params
 

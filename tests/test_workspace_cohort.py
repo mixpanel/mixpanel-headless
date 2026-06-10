@@ -176,19 +176,19 @@ class TestQueryFlowWhere:
         finally:
             ws.close()
 
-    def test_property_filter_produces_filter_by_event(
+    def test_property_filter_produces_where(
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """T007: Property filter in flow where= produces filter_by_event."""
+        """T007: Property filter in flow where= produces where key."""
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
                 FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
-            assert "filter_by_event" in result
-            assert result["filter_by_event"]["operator"] == "and"
-            assert len(result["filter_by_event"]["children"]) == 1
+            assert "where" in result
+            assert len(result["where"]) == 1
+            assert result["where"][0]["property"] == "country"
         finally:
             ws.close()
 
@@ -209,9 +209,9 @@ class TestQueryFlowWhere:
                 )
             )
             assert "filter_by_cohort" in result
-            assert "filter_by_event" in result
+            assert "where" in result
             assert result["filter_by_cohort"]["name"] == "PU"
-            assert len(result["filter_by_event"]["children"]) == 1
+            assert len(result["where"]) == 1
         finally:
             ws.close()
 

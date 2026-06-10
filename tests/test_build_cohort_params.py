@@ -289,14 +289,14 @@ class TestBuildFlowCohortFilter:
         fbc = result["filter_by_cohort"]
         assert fbc["negated"] is False
 
-    def test_flow_property_filter_produces_filter_by_event(self, ws: Workspace) -> None:
-        """Verify property filter in flow where= produces filter_by_event."""
+    def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
+        """Verify property filter in flow where= produces where key."""
         result = ws.build_flow_params(
             FlowQuery(event="Login", where=[Filter.equals("country", "US")])
         )
-        assert "filter_by_event" in result
-        assert result["filter_by_event"]["operator"] == "and"
-        assert len(result["filter_by_event"]["children"]) == 1
+        assert "where" in result
+        assert len(result["where"]) == 1
+        assert result["where"][0]["property"] == "country"
 
 
 # =============================================================================
@@ -952,14 +952,14 @@ class TestQueryFlowCohortFilter:
         result = ws.build_flow_params(FlowQuery(event="Login"))
         assert "filter_by_cohort" not in result
 
-    def test_flow_property_filter_produces_filter_by_event(self, ws: Workspace) -> None:
-        """Verify property filter in flow where= produces filter_by_event."""
+    def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
+        """Verify property filter in flow where= produces where key."""
         result = ws.build_flow_params(
             FlowQuery(event="Login", where=[Filter.equals("country", "US")])
         )
-        assert "filter_by_event" in result
-        assert result["filter_by_event"]["operator"] == "and"
-        assert len(result["filter_by_event"]["children"]) == 1
+        assert "where" in result
+        assert len(result["where"]) == 1
+        assert result["where"][0]["property"] == "country"
 
     def test_flow_multiple_cohort_filters_raises_value_error(
         self, ws: Workspace

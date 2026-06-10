@@ -695,14 +695,13 @@ class TestTier2CrashPaths:
                 _property_type="string",
             )
 
-    def test_t2_06_filter_to_selector_equals_non_list_value(
+    def test_t2_06_filter_to_selector_equals_scalar_auto_wrapped(
         self,
     ) -> None:
-        """Equals operator with non-list value triggers ValueError.
+        """Equals operator with scalar string is auto-wrapped by __post_init__.
 
-        The type check at user_builders.py raises ValueError when
-        ``isinstance(value, list)`` fails. This is production-safe
-        (not stripped by ``python -O`` like bare assert).
+        Filter's ``__post_init__`` normalizes scalar strings for
+        equals/does-not-equal to ``[value]``.
         """
         f = Filter(
             _property="plan",
@@ -710,28 +709,26 @@ class TestTier2CrashPaths:
             _value="string_not_list",
             _property_type="string",
         )
+        assert f._value == ["string_not_list"]
+        result = filter_to_selector(f)
+        assert result is not None
 
-        with pytest.raises(ValueError, match="Expected list"):
-            filter_to_selector(f)
-
-    def test_t2_07_filter_to_selector_between_wrong_length(
+    def test_t2_07_filter_between_wrong_length_rejected_at_construction(
         self,
     ) -> None:
-        """Between operator with wrong list length triggers ValueError.
+        """Between operator with wrong list length rejected at construction.
 
-        The type check at user_builders.py raises ValueError when
-        the value is not a list of length 2. A 3-element list fails.
+        Filter's ``__post_init__`` now validates that two-value operators
+        receive exactly a 2-element list.
         """
         between_val: list[int | float] = [1, 2, 3]
-        f = Filter(
-            _property="amount",
-            _operator="is between",
-            _value=between_val,
-            _property_type="number",
-        )
-
-        with pytest.raises(ValueError, match="Expected list"):
-            filter_to_selector(f)
+        with pytest.raises(ValueError, match="2-element list"):
+            Filter(
+                _property="amount",
+                _operator="is between",
+                _value=between_val,
+                _property_type="number",
+            )
 
     def test_t2_08_aggregate_response_missing_results_key(
         self,
