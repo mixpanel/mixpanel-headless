@@ -149,7 +149,7 @@ class TestQueryFunnelValidation:
                 ws.query_funnel(FunnelQuery(steps=["A", "B"], conversion_window=-1))
 
             error_codes = [e.code for e in exc_info.value.errors]
-            assert "F3_CONVERSION_WINDOW_POSITIVE" in error_codes
+            assert "greater_than_equal" in error_codes
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()
@@ -201,7 +201,7 @@ class TestQueryFunnelValidation:
 
             err = exc_info.value
             error_codes = {e.code for e in err.errors}
-            assert "F3_CONVERSION_WINDOW_POSITIVE" in error_codes
+            assert "greater_than_equal" in error_codes
             assert err.error_count >= 1
             mock_api_client.insights_query.assert_not_called()
         finally:

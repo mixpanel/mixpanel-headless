@@ -6,6 +6,7 @@ frozen immutability, and field constraints for all query model types.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 import pytest
@@ -358,23 +359,24 @@ class TestFlowQuery:
         assert q.forward == 5
         assert q.mode == "tree"
 
-    def test_segments_with_frequency_breakdown(self) -> None:
-        """FrequencyBreakdown accepted in segments list."""
-        q = FlowQuery(
-            event="Login",
-            segments=[FrequencyBreakdown("Purchase")],
-        )
-        assert q.segments is not None
-        assert len(q.segments) == 1
+    def test_segments_with_frequency_breakdown_rejected(self) -> None:
+        """FrequencyBreakdown is rejected — the flow segment_by wire format
+        only carries plain property names, so accepting it would produce
+        silently empty results."""
+        with pytest.raises(BookmarkValidationError):
+            FlowQuery(event="Login", segments=[FrequencyBreakdown("Purchase")])
 
-    def test_segments_with_cohort_breakdown(self) -> None:
-        """CohortBreakdown accepted in segments list."""
-        q = FlowQuery(
-            event="Login",
-            segments=[CohortBreakdown(cohort=123)],
-        )
+    def test_segments_with_cohort_breakdown_rejected(self) -> None:
+        """CohortBreakdown is rejected — the flow segment_by wire format
+        only carries plain property names."""
+        with pytest.raises(BookmarkValidationError):
+            FlowQuery(event="Login", segments=[CohortBreakdown(cohort=123)])
+
+    def test_segments_with_group_by_accepted(self) -> None:
+        """GroupBy and plain strings remain valid segment specs."""
+        q = FlowQuery(event="Login", segments=["country", GroupBy("city")])
         assert q.segments is not None
-        assert len(q.segments) == 1
+        assert len(q.segments) == 2
 
 
 # =============================================================================
@@ -663,6 +665,53 @@ class TestCrossFieldValidation:
         )
         assert q.from_date == "2025-01-01"
 
+    def test_lone_from_date_accepted_insights(self) -> None:
+        """from_date alone is valid for insights (builder fills today)."""
+        q = InsightsQuery(events=["Login"], from_date="2025-01-01")
+        assert q.from_date == "2025-01-01"
+        assert q.to_date is None
+
+    def test_lone_from_date_accepted_funnel(self) -> None:
+        """from_date alone is valid for funnels (builder fills today)."""
+        q = FunnelQuery(steps=["A", "B"], from_date="2025-01-01")
+        assert q.from_date == "2025-01-01"
+
+    def test_lone_from_date_accepted_retention(self) -> None:
+        """from_date alone is valid for retention (builder fills today)."""
+        q = RetentionQuery(
+            born_event="Signup", return_event="Login", from_date="2025-01-01"
+        )
+        assert q.from_date == "2025-01-01"
+
+    def test_lone_from_date_rejected_flow(self) -> None:
+        """Flow keeps the rejection — its builder silently ignores
+        a lone from_date, so accepting it would silently fall back to last."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
+            FlowQuery(event="Login", from_date="2025-01-01")
+
+    @pytest.mark.parametrize(
+        "make_query",
+        [
+            lambda: InsightsQuery(events=["Login"], to_date="2025-01-31"),
+            lambda: FunnelQuery(steps=["A", "B"], to_date="2025-01-31"),
+            lambda: RetentionQuery(
+                born_event="Signup", return_event="Login", to_date="2025-01-31"
+            ),
+            lambda: FlowQuery(event="Login", to_date="2025-01-31"),
+        ],
+        ids=["insights", "funnel", "retention", "flow"],
+    )
+    def test_to_date_without_from_rejected_all_models(
+        self, make_query: Callable[[], object]
+    ) -> None:
+        """to_date without from_date is rejected by every model (base check)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError, match="to_date requires from_date"):
+            make_query()
+
 
 # =============================================================================
 # Hashability (S3)
@@ -781,3 +830,149 @@ class TestFilterDictConstruction:
         """Boolean operators infer property_type='boolean'."""
         f = self._adapter.validate_python({"property": "active", "operator": "true"})
         assert f._property_type == "boolean"
+
+
+class TestFilterDictDateValidation:
+    """Dict-constructed Filters validate dates exactly like the classmethods.
+
+    ``__post_init__`` must replicate the classmethods' date validation
+    (``_validate_date``, from<=to ordering, quantity > 0) so the
+    dict/LLM construction path cannot produce wire payloads the
+    classmethod path would reject.
+    """
+
+    _adapter: ClassVar[TypeAdapter[Filter]]
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
+
+    def test_was_on_rejects_malformed_date(self) -> None:
+        """'was on' with a non-date string is rejected (classmethod parity)."""
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            self._adapter.validate_python(
+                {"property": "$time", "operator": "was on", "value": "not-a-date"}
+            )
+
+    def test_was_on_rejects_invalid_calendar_date(self) -> None:
+        """'was on' with an impossible calendar date is rejected."""
+        with pytest.raises(ValueError, match="not a valid calendar date"):
+            self._adapter.validate_python(
+                {"property": "$time", "operator": "was on", "value": "2024-02-30"}
+            )
+
+    def test_was_on_rejects_non_string_value(self) -> None:
+        """'was on' with a numeric value is rejected."""
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            self._adapter.validate_python(
+                {"property": "$time", "operator": "was on", "value": 20240101}
+            )
+
+    @pytest.mark.parametrize("operator", ["was not on", "was before", "was since"])
+    def test_single_date_operators_reject_malformed_date(self, operator: str) -> None:
+        """All single-date operators validate their date value."""
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            self._adapter.validate_python(
+                {"property": "created", "operator": operator, "value": "01/01/2024"}
+            )
+
+    def test_was_on_valid_date_matches_classmethod(self) -> None:
+        """'was on' with a valid date matches Filter.on()."""
+        f_dict = self._adapter.validate_python(
+            {"property": "created", "operator": "was on", "value": "2024-06-01"}
+        )
+        f_cls = Filter.on("created", "2024-06-01")
+        assert f_dict._value == f_cls._value
+        assert f_dict._property_type == f_cls._property_type
+
+    def test_was_between_rejects_reversed_range(self) -> None:
+        """'was between' with from > to is rejected (classmethod parity)."""
+        with pytest.raises(ValueError, match="from_date must be before to_date"):
+            self._adapter.validate_python(
+                {
+                    "property": "created",
+                    "operator": "was between",
+                    "value": ["2024-06-30", "2024-01-01"],
+                }
+            )
+
+    def test_was_not_between_rejects_reversed_range(self) -> None:
+        """'was not between' with from > to is rejected."""
+        with pytest.raises(ValueError, match="from_date must be before to_date"):
+            self._adapter.validate_python(
+                {
+                    "property": "created",
+                    "operator": "was not between",
+                    "value": ["2024-06-30", "2024-01-01"],
+                }
+            )
+
+    def test_was_between_rejects_malformed_dates(self) -> None:
+        """'was between' validates both elements as dates."""
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            self._adapter.validate_python(
+                {
+                    "property": "created",
+                    "operator": "was between",
+                    "value": ["2024-01-01", "garbage"],
+                }
+            )
+
+    def test_was_between_valid_range_matches_classmethod(self) -> None:
+        """'was between' with a valid range matches Filter.date_between()."""
+        f_dict = self._adapter.validate_python(
+            {
+                "property": "created",
+                "operator": "was between",
+                "value": ["2024-01-01", "2024-06-30"],
+            }
+        )
+        f_cls = Filter.date_between("created", "2024-01-01", "2024-06-30")
+        assert f_dict._value == f_cls._value
+        assert f_dict._property_type == f_cls._property_type
+
+    def test_numeric_between_unaffected_by_date_checks(self) -> None:
+        """Numeric 'is between' still accepts descending numbers (not dates)."""
+        f = self._adapter.validate_python(
+            {"property": "amount", "operator": "is between", "value": [10, 50]}
+        )
+        assert f._value == [10, 50]
+
+    @pytest.mark.parametrize(
+        "operator", ["was in the", "was not in the", "was in the next"]
+    )
+    def test_relative_date_rejects_zero_quantity(self, operator: str) -> None:
+        """Relative-date operators reject quantity == 0 (classmethod parity)."""
+        with pytest.raises(ValueError, match="positive integer"):
+            self._adapter.validate_python(
+                {"property": "created", "operator": operator, "value": 0}
+            )
+
+    def test_relative_date_rejects_negative_quantity(self) -> None:
+        """Relative-date operators reject negative quantities."""
+        with pytest.raises(ValueError, match="positive integer"):
+            self._adapter.validate_python(
+                {"property": "created", "operator": "was in the", "value": -3}
+            )
+
+    def test_relative_date_rejects_non_int_quantity(self) -> None:
+        """Relative-date operators reject non-integer quantities."""
+        with pytest.raises(ValueError, match="positive integer"):
+            self._adapter.validate_python(
+                {"property": "created", "operator": "was in the", "value": "soon"}
+            )
+
+    def test_relative_date_valid_matches_classmethod(self) -> None:
+        """'was in the' with valid quantity matches Filter.in_the_last()."""
+        f_dict = self._adapter.validate_python(
+            {
+                "property": "created",
+                "operator": "was in the",
+                "value": 7,
+                "date_unit": "week",
+            }
+        )
+        f_cls = Filter.in_the_last("created", 7, "week")
+        assert f_dict._value == f_cls._value
+        assert f_dict._date_unit == f_cls._date_unit

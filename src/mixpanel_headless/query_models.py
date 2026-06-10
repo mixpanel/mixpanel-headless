@@ -6,7 +6,7 @@ providing a single validated object for schema generation and type-safe input.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import (
     BaseModel,
@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     ModelWrapValidatorHandler,
     ValidationError,
+    WithJsonSchema,
     model_validator,
 )
 
@@ -59,6 +60,17 @@ from mixpanel_headless.types import (
     TimeComparison,
 )
 
+_DateStr = Annotated[
+    str,
+    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
+]
+"""String annotated with a YYYY-MM-DD pattern for JSON schema consumers.
+
+The pattern appears in the generated schema so LLM callers know the
+expected format.  Runtime validation stays in ``build_time_section``
+(V8 checks) to preserve existing error messages.
+"""
+
 
 class _BaseQuery(BaseModel):
     """Shared base for query models.
@@ -72,23 +84,48 @@ class _BaseQuery(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    from_date: str | None = Field(
+    from_date: _DateStr | None = Field(
         None,
         description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
+        examples=["2025-01-01"],
     )
-    to_date: str | None = Field(
+    to_date: _DateStr | None = Field(
         None,
         description="End date (YYYY-MM-DD). Requires from_date.",
+        examples=["2025-01-31"],
     )
     last: int = Field(
         30,
         ge=1,
         description="Relative time range in days. Default: 30.",
+        examples=[7, 30, 90],
     )
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Return cross-field errors. Override in subclasses."""
-        return []
+        """Return cross-field errors shared by all query models.
+
+        Rejects ``to_date`` without ``from_date`` — every builder
+        ignores a lone ``to_date``, silently falling back to ``last``.
+        A lone ``from_date`` is allowed here because the insights /
+        funnel / retention builders fill today's date for the missing
+        ``to_date``; ``FlowQuery`` overrides to reject it since the
+        flow builder cannot express a from-only range.
+
+        Subclasses extend via ``super()._get_cross_field_errors()``.
+
+        Returns:
+            List of validation errors (empty when the model is valid).
+        """
+        errors: list[InternalValidationError] = []
+        if self.to_date is not None and self.from_date is None:
+            errors.append(
+                InternalValidationError(
+                    path="to_date",
+                    message="to_date requires from_date to be set",
+                    code="TO_DATE_WITHOUT_FROM",
+                )
+            )
+        return errors
 
     @model_validator(mode="wrap")
     @classmethod
@@ -195,6 +232,7 @@ class InsightsQuery(_BaseQuery):
     )
     rolling: int | None = Field(
         None,
+        gt=0,
         description="Rolling window size in periods.",
     )
     cumulative: bool = Field(
@@ -216,23 +254,7 @@ class InsightsQuery(_BaseQuery):
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Validate cross-field constraints for insights queries."""
-        errors: list[InternalValidationError] = []
-        if self.to_date is not None and self.from_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="to_date",
-                    message="to_date requires from_date to be set",
-                    code="TO_DATE_WITHOUT_FROM",
-                )
-            )
-        if self.from_date is not None and self.to_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="from_date",
-                    message="from_date requires to_date to be set",
-                    code="FROM_DATE_WITHOUT_TO",
-                )
-            )
+        errors = super()._get_cross_field_errors()
         has_bare_strings = any(isinstance(e, str) for e in self.events)
         if (
             self.math == "percentile"
@@ -286,6 +308,7 @@ class FunnelQuery(_BaseQuery):
     )
     conversion_window: int = Field(
         14,
+        ge=1,
         description="Conversion window size. Default: 14.",
     )
     conversion_window_unit: ConversionWindowUnit = Field(
@@ -340,27 +363,6 @@ class FunnelQuery(_BaseQuery):
         None,
         description="Data group ID for group-level analytics.",
     )
-
-    def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Validate cross-field constraints for funnel queries."""
-        errors: list[InternalValidationError] = []
-        if self.to_date is not None and self.from_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="to_date",
-                    message="to_date requires from_date to be set",
-                    code="TO_DATE_WITHOUT_FROM",
-                )
-            )
-        if self.from_date is not None and self.to_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="from_date",
-                    message="from_date requires to_date to be set",
-                    code="FROM_DATE_WITHOUT_TO",
-                )
-            )
-        return errors
 
 
 class RetentionQuery(_BaseQuery):
@@ -451,27 +453,6 @@ class RetentionQuery(_BaseQuery):
         description="Data group ID for group-level analytics.",
     )
 
-    def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Validate cross-field constraints for retention queries."""
-        errors: list[InternalValidationError] = []
-        if self.to_date is not None and self.from_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="to_date",
-                    message="to_date requires from_date to be set",
-                    code="TO_DATE_WITHOUT_FROM",
-                )
-            )
-        if self.from_date is not None and self.to_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="from_date",
-                    message="from_date requires to_date to be set",
-                    code="FROM_DATE_WITHOUT_TO",
-                )
-            )
-        return errors
-
 
 class FlowQuery(_BaseQuery):
     """Input model for a flow query.
@@ -509,14 +490,17 @@ class FlowQuery(_BaseQuery):
     )
     forward: int = Field(
         3,
+        ge=0,
         description="Default forward step count. Default: 3.",
     )
     reverse: int = Field(
         0,
+        ge=0,
         description="Default reverse step count. Default: 0.",
     )
     conversion_window: int = Field(
         7,
+        ge=1,
         description="Conversion window size. Default: 7.",
     )
     conversion_window_unit: FlowConversionWindowUnit = Field(
@@ -529,6 +513,7 @@ class FlowQuery(_BaseQuery):
     )
     cardinality: int = Field(
         3,
+        ge=1,
         description="Number of top paths to return. Default: 3.",
     )
     collapse_repeated: bool = Field(
@@ -551,9 +536,13 @@ class FlowQuery(_BaseQuery):
         None,
         description="Data group ID for group-level analytics.",
     )
-    segments: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
+    segments: list[str | GroupBy] | None = Field(
         None,
-        description="Segment (breakdown) specification for flow results.",
+        description=(
+            "Segment (breakdown) specification for flow results. "
+            "Flow segments only carry plain property names — cohort and "
+            "frequency breakdowns are not supported."
+        ),
     )
     exclusions: list[str] | None = Field(
         None,
@@ -561,22 +550,20 @@ class FlowQuery(_BaseQuery):
     )
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Validate cross-field constraints for flow queries."""
-        errors: list[InternalValidationError] = []
+        """Validate cross-field constraints for flow queries.
+
+        Unlike the other query models, flow rejects a lone
+        ``from_date``: the flow builder's ``build_date_range`` cannot
+        express a from-only range and would silently fall back to the
+        relative ``last`` window.
+        """
+        errors = super()._get_cross_field_errors()
         if isinstance(self.event, list) and len(self.event) == 0:
             errors.append(
                 InternalValidationError(
                     path="event",
                     message="event list must not be empty",
                     code="EMPTY_EVENT_LIST",
-                )
-            )
-        if self.to_date is not None and self.from_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="to_date",
-                    message="to_date requires from_date to be set",
-                    code="TO_DATE_WITHOUT_FROM",
                 )
             )
         if self.from_date is not None and self.to_date is None:

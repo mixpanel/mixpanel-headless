@@ -421,7 +421,7 @@ class TestValidateFunnelArgsF6:
     def test_negative_bucket_size_raises_at_construction(self) -> None:
         """A negative bucket_size must raise ValueError at construction."""
 
-        with pytest.raises(ValueError, match="GroupBy.bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",
@@ -433,7 +433,7 @@ class TestValidateFunnelArgsF6:
     def test_zero_bucket_size_raises_at_construction(self) -> None:
         """A zero bucket_size must raise ValueError at construction."""
 
-        with pytest.raises(ValueError, match="GroupBy.bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",
@@ -534,19 +534,15 @@ class TestValidateFunnelArgsF6:
         assert not any(e.code in group_codes for e in errors)
 
     def test_nan_bucket_size_returns_v24_error(self) -> None:
-        """A NaN bucket_size must produce a V24_BUCKET_NOT_FINITE error."""
-        errors = validate_funnel_args(
-            **_valid_funnel_args(
-                group_by=GroupBy(
-                    "revenue",
-                    property_type="number",
-                    bucket_size=float("nan"),
-                    bucket_min=0,
-                    bucket_max=100,
-                )
+        """A NaN bucket_size is now rejected at construction by Field(gt=0)."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            GroupBy(
+                "revenue",
+                property_type="number",
+                bucket_size=float("nan"),
+                bucket_min=0,
+                bucket_max=100,
             )
-        )
-        assert any(e.code == "V24_BUCKET_NOT_FINITE" for e in errors)
 
 
 # =============================================================================
@@ -613,7 +609,7 @@ class TestValidateFunnelArgsMultipleErrors:
         """GroupBy with negative bucket_size raises at construction; F3 tested separately."""
 
         # GroupBy with negative bucket_size now raises at construction
-        with pytest.raises(ValueError, match="GroupBy.bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",
@@ -637,7 +633,7 @@ class TestValidateFunnelArgsMultipleErrors:
             Exclusion("")
 
         # GroupBy with negative bucket_size raises at construction
-        with pytest.raises(ValueError, match="GroupBy.bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",

@@ -577,65 +577,153 @@ def _build_list_contains_entry(f: Filter) -> dict[str, Any]:
     }
 
 
-def build_flow_property_filter(
+def build_flow_where_entries(
     filters: list[Filter],
-) -> dict[str, Any]:
-    """Build the ``filter_by_event`` dict for flow bookmark params.
+) -> list[dict[str, Any]]:
+    """Build the flat ``where`` entry list for flow bookmark params.
 
-    Flows accept global property filters via a ``filter_by_event``
-    top-level key containing an ``operator`` (always ``"and"``) and
-    a ``children`` array of filter entries. Each child is produced
-    by :func:`build_filter_entry` with an added ``propertyName`` key.
+    The arb_funnels endpoint accepts global property filters as a flat
+    ``where`` list of ``{property, operator, value}`` dicts (a simpler
+    schema than the ``sections.filter`` entries used by insights /
+    funnels / retention). Filter kinds the flat format cannot express
+    are rejected at build time rather than silently corrupted:
+
+    - non-string properties (custom property refs) are not addressable
+      by name in the flat format
+    - ``list_contains`` carries nested sub-filters the flat format has
+      no key for
+    - relative-date operators carry a date unit the flat format has no
+      key for; an absolute date filter expresses the same intent
 
     Args:
         filters: List of property ``Filter`` objects. Must not be
             empty — caller should check before calling.
 
     Returns:
-        Dict with ``operator`` and ``children`` keys suitable for
-        the ``filter_by_event`` bookmark key.
+        List of ``{property, operator[, value]}`` dicts suitable for
+        the ``where`` bookmark key. ``value`` is omitted for no-value
+        operators such as ``is set``.
+
+    Raises:
+        ValueError: If ``filters`` is empty, or contains a
+            ``list_contains`` or relative-date filter.
+        TypeError: If a filter's property is not a plain string
+            (custom property refs are not supported in flow filters).
 
     Example:
         ```python
-        fbe = build_flow_property_filter([Filter.equals("country", "US")])
-        # {"operator": "and", "children": [
-        #   {"filterOperator": "equals", "filterType": "string",
-        #    "propertyName": "country", "filterValue": ["US"],
-        #    "resourceType": "events"}
-        # ]}
+        entries = build_flow_where_entries([Filter.equals("country", "US")])
+        # [{"property": "country", "operator": "equals", "value": ["US"]}]
         ```
     """
     if not filters:
         raise ValueError(
-            "build_flow_property_filter requires at least one filter; "
+            "build_flow_where_entries requires at least one filter; "
             "caller should check before calling"
         )
-    children: list[dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
     for f in filters:
-        entry = build_filter_entry(f)
-        # Add propertyName — flow filters only support string property names
         prop = f._property
-        if isinstance(prop, str):
-            entry["propertyName"] = prop
-        else:
+        if not isinstance(prop, str):
             raise TypeError(
-                f"build_flow_property_filter only supports string property "
-                f"filters; got {type(prop).__name__} — custom property refs "
+                f"flow where filters only support string property names; "
+                f"got {type(prop).__name__} — custom property refs "
                 f"are not supported in flow filters"
             )
-        # Remove keys that the flow filter_by_event children reject.
-        # Flow filters use a simpler schema than insights/funnels/retention:
-        # only filterOperator, filterValue, and propertyName are accepted.
-        entry.pop("value", None)
-        entry.pop("defaultType", None)
-        entry.pop("resourceType", None)
-        entry.pop("filterType", None)
-        children.append(entry)
+        if f._operator == "list_contains":
+            raise ValueError(
+                "flow where filters cannot express list_contains — the "
+                "flat where format has no key for nested sub-filters"
+            )
+        if f._operator in Filter._RELATIVE_DATE_OPS:
+            raise ValueError(
+                f"flow where filters cannot express the relative-date "
+                f"operator '{f._operator}' — the flat where format has no "
+                f"key for the date unit. Use an absolute date filter "
+                f"instead (Filter.date_between / Filter.before / "
+                f"Filter.since)"
+            )
+        entry: dict[str, Any] = {"property": prop, "operator": f._operator}
+        if f._value is not None:
+            entry["value"] = f._value
+        entries.append(entry)
+    return entries
 
-    return {
-        "operator": "and",
-        "children": children,
-    }
+
+def build_flow_segment_entries(
+    segments: Sequence[str | GroupBy | CohortBreakdown | FrequencyBreakdown],
+) -> list[dict[str, Any]]:
+    """Build the flat ``segment_by`` entry list for flow bookmark params.
+
+    The arb_funnels endpoint accepts breakdowns as a flat ``segment_by``
+    list of ``{property}`` dicts. Breakdown kinds the flat format cannot
+    express are rejected at build time — forwarding them produces an
+    HTTP 200 with silently empty results:
+
+    - ``CohortBreakdown`` / ``FrequencyBreakdown`` have no property
+      name; their group-section entries carry display labels instead
+    - ``GroupBy`` on a custom property ref has no name to send
+    - ``GroupBy`` numeric bucketing has no key in the flat format
+
+    Args:
+        segments: List of segment specifications. Must not be empty —
+            caller should check before calling. Only plain property
+            name strings and ``GroupBy`` objects with string properties
+            and no bucketing are expressible.
+
+    Returns:
+        List of ``{property}`` dicts suitable for the ``segment_by``
+        bookmark key.
+
+    Raises:
+        ValueError: If ``segments`` is empty, or a ``GroupBy`` uses
+            numeric bucketing.
+        TypeError: If a segment is a ``CohortBreakdown`` /
+            ``FrequencyBreakdown``, or a ``GroupBy`` whose property is
+            not a plain string.
+
+    Example:
+        ```python
+        entries = build_flow_segment_entries(["country", GroupBy("city")])
+        # [{"property": "country"}, {"property": "city"}]
+        ```
+    """
+    if not segments:
+        raise ValueError(
+            "build_flow_segment_entries requires at least one segment; "
+            "caller should check before calling"
+        )
+    entries: list[dict[str, Any]] = []
+    for seg in segments:
+        if isinstance(seg, str):
+            entries.append({"property": seg})
+            continue
+        if isinstance(seg, GroupBy):
+            prop = seg.property
+            if not isinstance(prop, str):
+                raise TypeError(
+                    f"flow segments only support plain property names; got a "
+                    f"GroupBy on {type(prop).__name__} — custom properties "
+                    f"are not supported in flow segment_by"
+                )
+            if (
+                seg.bucket_size is not None
+                or seg.bucket_min is not None
+                or seg.bucket_max is not None
+            ):
+                raise ValueError(
+                    "flow segments cannot express numeric bucketing — the "
+                    "flat segment_by format has no key for bucket "
+                    "parameters. Use a plain GroupBy without buckets"
+                )
+            entries.append({"property": prop})
+            continue
+        raise TypeError(
+            f"flow segments do not support {type(seg).__name__} — the flat "
+            f"segment_by format only carries property names. Use a property "
+            f"name string or GroupBy instead"
+        )
+    return entries
 
 
 def build_flow_cohort_filter(
@@ -676,7 +764,7 @@ def build_flow_cohort_filter(
             raise ValueError(
                 "build_flow_cohort_filter only accepts cohort filters "
                 "(Filter.in_cohort/not_in_cohort); property filters should "
-                "use build_flow_property_filter instead"
+                "use build_flow_where_entries instead"
             )
 
     if len(filters) > 1:

@@ -73,9 +73,23 @@ class TestTimeRangeValidation:
             ws.query(InsightsQuery(events=[Metric("Login")], last=-5))
 
     def test_v8_from_date_format(self, ws: Workspace) -> None:
-        """V8: from_date without to_date is rejected by model validator."""
-        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
-            InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
+        """V8: malformed from_date is rejected at build time (a lone
+        from_date is accepted at model construction)."""
+        with pytest.raises(
+            BookmarkValidationError, match="from_date must be YYYY-MM-DD format"
+        ):
+            ws.query(InsightsQuery(events=[Metric("Login")], from_date="01/01/2024"))
+
+    def test_lone_from_date_builds_between_today(self, ws: Workspace) -> None:
+        """from_date alone builds a 'between [from_date, today]' range."""
+        from datetime import date
+
+        params = ws.build_params(
+            InsightsQuery(events=[Metric("Login")], from_date="2025-01-01")
+        )
+        time_entry = params["sections"]["time"][0]
+        assert time_entry["dateRangeType"] == "between"
+        assert time_entry["value"] == ["2025-01-01", date.today().isoformat()]
 
     def test_v8_to_date_format(self, ws: Workspace) -> None:
         """V8: to_date must also be YYYY-MM-DD format."""
@@ -408,16 +422,12 @@ class TestAnalysisModeValidation:
 
     def test_v6_rolling_must_be_positive(self, ws: Workspace) -> None:
         """V6: Rolling must be a positive integer."""
-        with pytest.raises(
-            BookmarkValidationError, match="rolling must be a positive integer"
-        ):
+        with pytest.raises(BookmarkValidationError, match="greater than 0"):
             ws.query(InsightsQuery(events=[Metric("Login")], rolling=0))
 
     def test_v6_rolling_negative(self, ws: Workspace) -> None:
         """V6: Negative rolling returns validation error."""
-        with pytest.raises(
-            BookmarkValidationError, match="rolling must be a positive integer"
-        ):
+        with pytest.raises(BookmarkValidationError, match="greater than 0"):
             ws.query(InsightsQuery(events=[Metric("Login")], rolling=-3))
 
 
@@ -457,14 +467,14 @@ class TestGroupByValidation:
         """V12: bucket_size must be positive (caught at construction)."""
         from mixpanel_headless import GroupBy
 
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy("amount", bucket_size=0)
 
     def test_v12_bucket_size_negative(self) -> None:
         """V12: Negative bucket_size is caught at construction."""
         from mixpanel_headless import GroupBy
 
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy("amount", bucket_size=-10)
 
     def test_bucket_size_requires_numeric_type(self, ws: Workspace) -> None:
@@ -602,9 +612,13 @@ class TestBuildParamsValidation:
             ws.build_params(InsightsQuery(events=[Metric("Login")], formula="A + B"))
 
     def test_rejects_invalid_date_format(self, ws: Workspace) -> None:
-        """from_date without to_date is rejected at model construction."""
-        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
-            InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
+        """build_params() rejects a malformed lone from_date via V8."""
+        with pytest.raises(
+            BookmarkValidationError, match="from_date must be YYYY-MM-DD format"
+        ):
+            ws.build_params(
+                InsightsQuery(events=[Metric("Login")], from_date="01/01/2024")
+            )
 
 
 # =============================================================================
@@ -804,13 +818,13 @@ class TestValidateGroupByArgs:
         assert any(e.code == "V11_BUCKET_REQUIRES_SIZE" for e in errors)
 
     def test_v12_bucket_size_zero(self) -> None:
-        """V12: bucket_size=0 is rejected by GroupBy.__post_init__."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        """V12: bucket_size=0 is rejected at construction."""
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy("amount", bucket_size=0)
 
     def test_v12_bucket_size_negative(self) -> None:
-        """V12: bucket_size=-5 is rejected by GroupBy.__post_init__."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        """V12: bucket_size=-5 is rejected at construction."""
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy("amount", bucket_size=-5)
 
     def test_v12b_bucket_size_wrong_property_type(self) -> None:
@@ -839,11 +853,9 @@ class TestValidateGroupByArgs:
             )
 
     def test_v24_bucket_size_nan(self) -> None:
-        """V24: bucket_size=float('nan') returns V24_BUCKET_NOT_FINITE."""
-        errors = validate_group_by_args(
-            group_by=GroupBy("amount", bucket_size=float("nan")),
-        )
-        assert any(e.code == "V24_BUCKET_NOT_FINITE" for e in errors)
+        """V24: bucket_size=float('nan') is rejected at construction."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            GroupBy("amount", bucket_size=float("nan"))
 
     def test_v24_bucket_min_inf(self) -> None:
         """V24: bucket_min=float('inf') returns V24_BUCKET_NOT_FINITE."""

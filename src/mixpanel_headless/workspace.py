@@ -73,6 +73,8 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_filter_entry,
     build_filter_section,
     build_flow_cohort_filter,
+    build_flow_segment_entries,
+    build_flow_where_entries,
     build_group_section,
     build_time_comparison,
     build_time_section,
@@ -3149,12 +3151,7 @@ class Workspace:
         mode: str,
         where: Filter | list[Filter] | None = None,
         data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
+        segments: str | GroupBy | list[str | GroupBy] | None = None,
         exclusions: list[str] | None = None,
     ) -> dict[str, Any]:
         """Build a flat flow bookmark params dict from typed arguments.
@@ -3270,29 +3267,13 @@ class Workspace:
                     params["filter_by_cohort"] = cohort_filter
 
             if property_filters:
-                where_entries: list[dict[str, Any]] = []
-                for f in property_filters:
-                    entry: dict[str, Any] = {
-                        "property": f._property,
-                        "operator": f._operator,
-                    }
-                    if f._value is not None:
-                        entry["value"] = f._value
-                    where_entries.append(entry)
-                params["where"] = where_entries
+                params["where"] = build_flow_where_entries(property_filters)
 
         # Add segments if present — the arb_funnels endpoint uses
         # ``segment_by`` with simple ``{property}`` entries.
         if segments is not None:
-            raw_segments = build_group_section(segments)
-            segment_entries: list[dict[str, Any]] = []
-            for seg in raw_segments:
-                prop = (
-                    seg.get("property") or seg.get("propertyName") or seg.get("value")
-                )
-                if prop is not None:
-                    segment_entries.append({"property": prop})
-            params["segment_by"] = segment_entries
+            segment_list = segments if isinstance(segments, list) else [segments]
+            params["segment_by"] = build_flow_segment_entries(segment_list)
 
         return params
 
@@ -3314,12 +3295,7 @@ class Workspace:
         mode: FlowChartType,
         where: Filter | list[Filter] | None = None,
         data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
+        segments: str | GroupBy | list[str | GroupBy] | None = None,
         exclusions: list[str] | None = None,
     ) -> dict[str, Any]:
         """Normalize, validate, and build flow bookmark params.

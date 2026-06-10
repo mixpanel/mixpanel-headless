@@ -1632,7 +1632,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_empty_event_raises(self, bad_event: str, bucket_size: int) -> None:
         """FB1: empty event name always raises ValueError."""
-        with pytest.raises(ValueError, match="non-empty"):
+        with pytest.raises(ValueError, match="at least 1 character"):
             FrequencyBreakdown(event=bad_event, bucket_size=bucket_size)
 
     @given(
@@ -1641,7 +1641,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_non_positive_bucket_size_raises(self, event: str, bad_size: int) -> None:
         """FB2: non-positive bucket_size always raises ValueError."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             FrequencyBreakdown(event=event, bucket_size=bad_size)
 
     @given(
@@ -1659,7 +1659,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_negative_bucket_min_raises(self, event: str, bad_min: int) -> None:
         """FB4: negative bucket_min always raises ValueError."""
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
             FrequencyBreakdown(event=event, bucket_min=bad_min, bucket_max=bad_min + 10)
 
     @given(event=event_names)

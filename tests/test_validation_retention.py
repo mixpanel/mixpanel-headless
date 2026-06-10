@@ -448,7 +448,7 @@ class TestValidateRetentionDelegation:
 
     def test_negative_bucket_size_returns_v12_error(self) -> None:
         """A negative bucket_size must be rejected by GroupBy.__post_init__."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",
@@ -459,7 +459,7 @@ class TestValidateRetentionDelegation:
 
     def test_zero_bucket_size_returns_v12_error(self) -> None:
         """A zero bucket_size must be rejected by GroupBy.__post_init__."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 "revenue",
                 property_type="number",

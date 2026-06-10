@@ -1195,10 +1195,9 @@ class TestFlowPropertyFilters:
                 FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
             assert "where" in params
-            assert len(params["where"]) == 1
-            entry = params["where"][0]
-            assert entry["property"] == "country"
-            assert entry["operator"] == "equals"
+            assert params["where"] == [
+                {"property": "country", "operator": "equals", "value": ["US"]}
+            ]
         finally:
             ws.close()
 
@@ -1218,7 +1217,69 @@ class TestFlowPropertyFilters:
                     ],
                 )
             )
-            assert len(params["where"]) == 2
+            assert params["where"] == [
+                {"property": "country", "operator": "equals", "value": ["US"]},
+                {"property": "age", "operator": "is greater than", "value": 18},
+            ]
+        finally:
+            ws.close()
+
+    def test_list_contains_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """list_contains filters cannot be expressed in the flow where
+        format — rejected at build time instead of silently dropping the
+        inner conditions."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(ValueError, match="list_contains"):
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        where=[Filter.list_contains("cart", Brand="nike")],
+                    )
+                )
+        finally:
+            ws.close()
+
+    def test_custom_property_ref_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """CustomPropertyRef filters are rejected at build time instead of
+        crashing in json.dumps at request time."""
+        from mixpanel_headless.types import CustomPropertyRef
+
+        ws = workspace_factory()
+        try:
+            f = Filter(
+                _property=CustomPropertyRef(id=42),
+                _operator="equals",
+                _value=["US"],
+                _property_type="string",
+                _resource_type="events",
+            )
+            with pytest.raises(TypeError, match="custom property refs"):
+                ws.build_flow_params(FlowQuery(event="Login", where=[f]))
+        finally:
+            ws.close()
+
+    def test_relative_date_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """Relative-date filters lose their date unit in the flow where
+        format — rejected with a pointer to absolute-date alternatives."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(ValueError, match="absolute date"):
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        where=[Filter.in_the_last("created", 2, "week")],
+                    )
+                )
         finally:
             ws.close()
 

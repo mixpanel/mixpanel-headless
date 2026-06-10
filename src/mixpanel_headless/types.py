@@ -6997,7 +6997,7 @@ class Metric:
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name."""
 
     math: MathType = "total"
@@ -7098,7 +7098,7 @@ class Formula:
         ```
     """
 
-    expression: str
+    expression: str = Field(min_length=1)
     """Formula expression referencing events by letter."""
 
     label: str | None = None
@@ -7221,6 +7221,9 @@ class Filter:
     _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
         {"was in the", "was not in the", "was in the next"}
     )
+    _SINGLE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"was on", "was not on", "was before", "was since"}
+    )
 
     def __post_init__(self) -> None:
         """Validate invariants and normalize dict-constructed instances.
@@ -7237,7 +7240,10 @@ class Filter:
         Raises:
             ValueError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``.
+                ``None``; if a date operator receives a value that is
+                not a valid YYYY-MM-DD date (or two-date range with
+                from <= to); or if a relative-date operator receives a
+                non-positive quantity.
         """
         if self._operator == "list_contains":
             if self._list_item_filters is None:
@@ -7280,6 +7286,41 @@ class Filter:
             raise ValueError(
                 f"Filter operator '{self._operator}' requires a "
                 f"2-element list, got {self._value!r}"
+            )
+
+        # Validate date values (classmethod parity — dict construction
+        # must reject the same inputs Filter.on()/date_between()/etc. do)
+        if self._operator in self._SINGLE_DATE_OPS:
+            if not isinstance(self._value, str):
+                raise ValueError(
+                    f"Filter operator '{self._operator}' requires a date "
+                    f"string in YYYY-MM-DD format, got {self._value!r}"
+                )
+            self._validate_date(self._value)
+
+        if self._operator in ("was between", "was not between") and isinstance(
+            self._value, list
+        ):
+            from_raw, to_raw = self._value
+            if not isinstance(from_raw, str) or not isinstance(to_raw, str):
+                raise ValueError(
+                    f"Filter operator '{self._operator}' requires two date "
+                    f"strings in YYYY-MM-DD format, got {self._value!r}"
+                )
+            from_parsed = self._validate_date(from_raw)
+            to_parsed = self._validate_date(to_raw)
+            if from_parsed > to_parsed:
+                raise ValueError(
+                    f"from_date must be before to_date (got '{from_raw}' > '{to_raw}')"
+                )
+
+        if self._operator in self._RELATIVE_DATE_OPS and (
+            not isinstance(self._value, int)
+            or isinstance(self._value, bool)
+            or self._value <= 0
+        ):
+            raise ValueError(
+                f"quantity must be a positive integer (got {self._value!r})"
             )
 
         # Infer _property_type from operator when left at default
@@ -8400,7 +8441,7 @@ class GroupBy:
     independently of this field.
     """
 
-    bucket_size: int | float | None = None
+    bucket_size: int | float | None = Field(default=None, gt=0)
     """Bucket width for numeric properties."""
 
     bucket_min: int | float | None = None
@@ -8417,7 +8458,7 @@ class GroupBy:
 
         Raises:
             ValueError: If property is an empty string (GB1),
-                bucket_size is not positive (GB2),
+                bucket_size is not positive (GB2, also enforced by gt=0),
                 bucket_min >= bucket_max (GB3),
                 ``_list_item_mode`` is combined with bucketing (GB4),
                 or ``_list_item_mode`` is set but ``property`` is not a
@@ -9438,13 +9479,13 @@ class FrequencyBreakdown:
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Event name to count frequency for."""
 
-    bucket_size: int = 1
+    bucket_size: int = Field(default=1, gt=0)
     """Width of each frequency bucket."""
 
-    bucket_min: int = 0
+    bucket_min: int = Field(default=0, ge=0)
     """Minimum frequency value."""
 
     bucket_max: int = 10
@@ -9461,22 +9502,22 @@ class FrequencyBreakdown:
                 positive (FB2), bucket_min >= bucket_max (FB3), or
                 bucket_min is negative (FB4).
         """
-        # FB1: event must be non-empty
+        # FB1: event must be non-empty (also enforced by min_length=1)
         if not self.event.strip():
             raise ValueError("FrequencyBreakdown.event must be a non-empty string")
-        # FB2: bucket_size must be positive
+        # FB2: bucket_size must be positive (also enforced by gt=0)
         if self.bucket_size <= 0:
             raise ValueError(
                 f"FrequencyBreakdown.bucket_size must be positive, "
                 f"got {self.bucket_size}"
             )
-        # FB4: bucket_min must be non-negative (check before FB3 for clarity)
+        # FB4: bucket_min must be non-negative (also enforced by ge=0)
         if self.bucket_min < 0:
             raise ValueError(
                 f"FrequencyBreakdown.bucket_min must be non-negative, "
                 f"got {self.bucket_min}"
             )
-        # FB3: bucket_min must be < bucket_max
+        # FB3: bucket_min must be < bucket_max (cross-field, stays in code)
         if self.bucket_min >= self.bucket_max:
             raise ValueError(
                 f"FrequencyBreakdown.bucket_min ({self.bucket_min}) must be "
