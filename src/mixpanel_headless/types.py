@@ -7036,9 +7036,9 @@ class Metric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (M1), math requires a property but none is set (M2),
-                or math="percentile" but percentile_value is missing (M3).
+            ValueError: If event is empty or contains control characters,
+                math requires a property but none is set,
+                or math="percentile" but percentile_value is missing.
         """
         _validate_event_name(self.event, "Metric")
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
@@ -7052,7 +7052,6 @@ class Metric:
                 'Metric math="percentile" requires percentile_value '
                 "(e.g., Metric(event, math='percentile', percentile_value=95))"
             )
-        # M4: segment_method must be valid if set
         if self.segment_method is not None:
             valid_segments = {"all", "first"}
             if self.segment_method not in valid_segments:
@@ -7108,7 +7107,7 @@ class Formula:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If expression is empty (FM1).
+            ValueError: If expression is empty.
         """
         if not self.expression or not self.expression.strip():
             raise ValueError("Formula.expression must be a non-empty string")
@@ -8458,15 +8457,12 @@ class GroupBy:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is an empty string (GB1),
-                bucket_min >= bucket_max (GB3),
-                ``_list_item_mode`` is combined with bucketing (GB4),
+            ValueError: If property is an empty string,
+                bucket_min >= bucket_max,
+                ``_list_item_mode`` is combined with bucketing,
                 or ``_list_item_mode`` is set but ``property`` is not a
-                plain ``str`` (GB5).
-
-        Note:
-            GB2 (bucket_size > 0) is enforced by ``Field(gt=0)`` and
-            visible in the JSON schema.
+                plain ``str``. Note that bucket_size > 0 is enforced
+                by ``Field(gt=0)`` and visible in the JSON schema.
         """
         if isinstance(self.property, str) and not self.property.strip():
             raise ValueError("GroupBy.property must be a non-empty string")
@@ -9374,8 +9370,8 @@ class CohortBreakdown:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CB1) or name
-                is empty when provided (CB2).
+            ValueError: If cohort ID is not positive or name
+                is empty when provided.
         """
         _validate_cohort_args(self.cohort, self.name)
 
@@ -9389,9 +9385,9 @@ class CohortMetric:
     with ``behavior.type: "cohort"`` in the bookmark JSON.
 
     Cannot be used with ``query_funnel()``, ``query_retention()``,
-    or ``query_flow()`` (CM4 — insights only).
+    or ``query_flow()`` — insights only.
 
-    Inline ``CohortDefinition`` is not supported (CM5 — server returns
+    Inline ``CohortDefinition`` is not supported (server returns
     500). Use a saved cohort ID instead. This is enforced at construction.
 
     Attributes:
@@ -9428,12 +9424,11 @@ class CohortMetric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CM1), name
-                is empty when provided (CM2), or cohort is an inline
-                ``CohortDefinition`` (CM5 — server returns 500).
+            ValueError: If cohort ID is not positive, name is empty
+                when provided, or cohort is an inline
+                ``CohortDefinition`` (server returns 500).
         """
         _validate_cohort_args(self.cohort, self.name)
-        # CM5: Inline CohortDefinition causes server-side 500.
         if isinstance(self.cohort, CohortDefinition):
             raise ValueError(
                 "CohortMetric does not support inline CohortDefinition "
@@ -9457,7 +9452,8 @@ class FrequencyBreakdown:
             ``"<event> Frequency"`` (e.g., ``"Purchase Frequency"``).
 
     Raises:
-        ValueError: If validation rules FB1-FB4 are violated.
+        ValueError: If event is empty, bucket_size is not positive,
+            bucket_min is negative, or bucket_min >= bucket_max.
 
     Example:
         ```python
@@ -9497,14 +9493,13 @@ class FrequencyBreakdown:
     def __post_init__(self) -> None:
         """Validate cross-field construction arguments.
 
-        Single-field constraints (FB1: non-empty event, FB2: positive
-        bucket_size, FB4: non-negative bucket_min) are enforced by
-        Field constraints and visible in the JSON schema.
+        Single-field constraints (non-empty event, positive bucket_size,
+        non-negative bucket_min) are enforced by Field constraints and
+        visible in the JSON schema.
 
         Raises:
-            ValueError: If event is whitespace-only (FB1 edge case
-                not caught by ``min_length``), or bucket_min >=
-                bucket_max (FB3, cross-field).
+            ValueError: If event is whitespace-only (edge case not
+                caught by ``min_length``), or bucket_min >= bucket_max.
         """
         if self.event and not self.event.strip():
             raise ValueError("FrequencyBreakdown.event must be a non-empty string")
