@@ -348,9 +348,7 @@ class TestQueryRetentionValidationIntegration:
         """Empty born_event must be caught by RetentionEvent.__post_init__ without calling the API."""
         ws = workspace_factory()
         try:
-            with pytest.raises(
-                ValueError, match="at least 1 character"
-            ):
+            with pytest.raises(ValueError, match="at least 1 character"):
                 ws.query_retention(RetentionQuery(born_event="", return_event="Login"))
             mock_api_client.insights_query.assert_not_called()
         finally:

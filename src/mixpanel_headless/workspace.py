@@ -10207,9 +10207,8 @@ class Workspace:
                     )
                     failures.append((rid, exc))
         if not results and failures:
-            # Every replay failed — surface the first underlying error rather
-            # than a generic wrapper, preserving its type (ReplayNotFoundError,
-            # SignedURLExpiredError, ...) for callers that branch on it.
+            for failed_rid, failed_exc in failures:
+                logger.warning("replay %s failed: %s", failed_rid, failed_exc)
             raise failures[0][1]
         ordered = [results[i] for i in sorted(results)]
 

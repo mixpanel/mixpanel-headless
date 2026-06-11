@@ -130,9 +130,7 @@ class TestQueryFunnelValidation:
         """T021-F2: An empty event name is caught by FunnelStep.__post_init__."""
         ws = workspace_factory()
         try:
-            with pytest.raises(
-                ValueError, match="at least 1 character"
-            ):
+            with pytest.raises(ValueError, match="at least 1 character"):
                 ws.query_funnel(FunnelQuery(steps=["Signup", ""]))
         finally:
             ws.close()
@@ -174,9 +172,7 @@ class TestQueryFunnelValidation:
         """T021-multi: Empty event name is caught by FunnelStep.__post_init__."""
         ws = workspace_factory()
         try:
-            with pytest.raises(
-                ValueError, match="at least 1 character"
-            ):
+            with pytest.raises(ValueError, match="at least 1 character"):
                 ws.query_funnel(FunnelQuery(steps=["", "B"]))
         finally:
             ws.close()

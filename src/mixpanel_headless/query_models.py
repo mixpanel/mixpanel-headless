@@ -212,6 +212,8 @@ class InsightsQuery(_BaseQuery):
     )
     percentile_value: int | float | None = Field(
         None,
+        ge=0,
+        le=100,
         description="Custom percentile value (e.g. 95). Used when math='percentile'.",
     )
     group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
@@ -253,7 +255,16 @@ class InsightsQuery(_BaseQuery):
     )
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Validate cross-field constraints for insights queries."""
+        """Validate cross-field constraints for insights queries.
+
+        Extends the base checks with a percentile-specific rule:
+        ``percentile_value`` is required when ``math="percentile"``
+        and at least one event is a bare string (Metric objects carry
+        their own math).
+
+        Returns:
+            List of validation errors (empty when the model is valid).
+        """
         errors = super()._get_cross_field_errors()
         has_bare_strings = any(isinstance(e, str) for e in self.events)
         if (

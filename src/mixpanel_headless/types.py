@@ -9944,7 +9944,7 @@ class FunnelStep:
 
     Example:
         ```python
-        from mixpanel_headless import FunnelStep, Filter
+        from mixpanel_headless import FunnelQuery, FunnelStep, Filter
 
         # Simple step (equivalent to just using "Signup" string)
         step1 = FunnelStep("Signup")
@@ -10002,7 +10002,7 @@ class Exclusion:
 
     Example:
         ```python
-        from mixpanel_headless import Exclusion
+        from mixpanel_headless import FunnelQuery, Exclusion
 
         # Exclude between all steps (same as using string "Logout")
         ex1 = Exclusion("Logout")
@@ -13109,7 +13109,15 @@ class Replay(ResultWithDataFrame):
             DataFrame projection (``actions_df``-shaped) of the click
             actions for which ``predicate`` returned True.
         """
-        cols = ["t", "action", "target_node_id", "target_desc", "url", "metadata"]
+        cols = [
+            "t",
+            "action",
+            "target_node_id",
+            "target_desc",
+            "description",
+            "url",
+            "metadata",
+        ]
         if not self.actions:
             return pd.DataFrame(columns=cols)
         keep = [a for a in self.actions if a.action == "click" and predicate(a)]
@@ -13119,6 +13127,7 @@ class Replay(ResultWithDataFrame):
                 "action": a.action,
                 "target_node_id": a.target_node_id,
                 "target_desc": a.target_desc,
+                "description": a.description,
                 "url": a.url,
                 "metadata": dict(a.metadata),
             }
@@ -13141,7 +13150,7 @@ class Replay(ResultWithDataFrame):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "retention_days": self.retention_days,
-            "rrweb_events": list(self.rrweb_events),
+            "rrweb_events": copy.deepcopy(self.rrweb_events),
             "actions": [a.to_dict() for a in self.actions],
             "mixpanel_events": [e.to_dict() for e in self.mixpanel_events],
         }
@@ -13198,7 +13207,7 @@ class ReplayBundle(ResultWithDataFrame):
             ValueError: A replay's ``project_id`` differs from the
                 bundle's ``project_id``.
         """
-        if self.project_id and any(
+        if self.project_id != 0 and any(
             r.project_id != self.project_id for r in self.replays
         ):
             mismatches = [

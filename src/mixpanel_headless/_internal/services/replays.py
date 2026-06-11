@@ -207,16 +207,25 @@ class ReplaysService:
         """
         signed_at = time.time()
         raw = self._api.sign_replays(replay_ids, env=env)
-        return [
-            SignedReplay(
-                replay_id=str(item["replay_id"]),
-                url=str(item["url"]),
-                query_string=str(item["query_string"]),
-                env=env,
-                signed_at=signed_at,
-            )
-            for item in raw
-        ]
+        results: list[SignedReplay] = []
+        for item in raw:
+            try:
+                results.append(
+                    SignedReplay(
+                        replay_id=str(item["replay_id"]),
+                        url=str(item["url"]),
+                        query_string=str(item["query_string"]),
+                        env=env,
+                        signed_at=signed_at,
+                    )
+                )
+            except KeyError as exc:
+                raise MixpanelHeadlessError(
+                    f"Sign response missing key {exc} in item: "
+                    f"{list(item.keys()) if isinstance(item, dict) else type(item).__name__}",
+                    code="SIGN_RESPONSE_SCHEMA",
+                ) from exc
+        return results
 
     # =========================================================================
     # Fetch / walk
@@ -346,6 +355,10 @@ class ReplaysService:
                     if not re_sign_on_expiry or re_signed_once:
                         raise self._build_expired_error(signed)
                     re_signed_once = True
+                    # Sync call inside async walker — sign() uses the sync
+                    # httpx.Client. Acceptable because re-sign is rare (once per
+                    # expired replay) and brief. A proper fix would require an
+                    # async sign path or run_in_executor.
                     fresh = self.sign([signed.replay_id], env=signed.env)
                     current_signed = fresh[0]
                     results = await self._fetch_batch(
@@ -468,6 +481,12 @@ class ReplaysService:
                     f"CDN file {file_num:04d} returned non-JSON: {exc}",
                     code="CDN_INVALID_RESPONSE",
                 ) from exc
+            if not isinstance(payload, list):
+                self._logger.warning(
+                    "CDN file %04d returned %s instead of list; treating as empty",
+                    file_num,
+                    type(payload).__name__,
+                )
             events = payload if isinstance(payload, list) else []
             return (200, events)
         if response.status_code in (403, 404):
@@ -957,6 +976,7 @@ def _to_unix_ms(value: Any) -> int:
         ts = pd.Timestamp(value)
         return int(ts.value // 1_000_000)
     except (ValueError, TypeError, ImportError):
+        _logger.warning("_to_unix_ms: unparseable timestamp %r, defaulting to 0", value)
         return 0
 
 
