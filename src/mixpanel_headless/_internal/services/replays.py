@@ -35,6 +35,7 @@ from mixpanel_headless.exceptions import (
     SignedURLExpiredError,
     UnsupportedReplayFormatError,
 )
+from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     Filter,
     ReplayEvent,
@@ -151,7 +152,7 @@ class ReplaysService:
         self,
         api_client: MixpanelAPIClient,
         *,
-        query_fn: Callable[..., Any] | None = None,
+        query_fn: Callable[[InsightsQuery], Any] | None = None,
         logger: logging.Logger | None = None,
         _async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -552,9 +553,9 @@ class ReplaysService:
             )
 
         if distinct_id is not None:
-            where: Filter | list[Filter] = Filter.equals("$distinct_id", distinct_id)
+            where: list[Filter] = [Filter.equals("$distinct_id", distinct_id)]
         elif replay_ids:
-            where = Filter.equals("$mp_replay_id", list(replay_ids))
+            where = [Filter.equals("$mp_replay_id", list(replay_ids))]
         else:
             return []
 
@@ -577,13 +578,15 @@ class ReplaysService:
         # property is "$time" (the reserved event-time property); plain "time"
         # silently returns an empty series.
         result = self._query_fn(
-            "$mp_session_record",
-            group_by=["$mp_replay_id", "$mp_replay_retention_period"],
-            where=where,
-            math="min",
-            math_property="$time",
-            mode="table",
-            **date_kwargs,
+            InsightsQuery(
+                events=["$mp_session_record"],
+                group_by=["$mp_replay_id", "$mp_replay_retention_period"],
+                where=where,
+                math="min",
+                math_property="$time",
+                mode="table",
+                **date_kwargs,
+            )
         )
 
         project_id = int(self._api.project_id)
@@ -613,7 +616,7 @@ class ReplaysService:
             {metric: {replay_id: {retention: {"all": min_time_seconds}}}}
 
         The leaf is the per-replay minimum event time in unix SECONDS (from the
-        ``math="min"`` / ``math_property="time"`` aggregation);
+        ``math="min"`` / ``math_property="$time"`` aggregation);
         :func:`_to_unix_ms` up-converts it. Retention defaults to 30 with a
         :class:`UserWarning` when the property is absent, per error-messages.md §10.
 
@@ -740,11 +743,13 @@ class ReplaysService:
         else:
             date_kwargs = {"last": _EVENTS_DEFAULT_LOOKBACK_DAYS}
         result = self._query_fn(
-            "$all_events",
-            group_by=group_by,
-            where=where,
-            mode="table",
-            **date_kwargs,
+            InsightsQuery(
+                events=["$all_events"],
+                group_by=group_by,
+                where=where,
+                mode="table",
+                **date_kwargs,
+            )
         )
 
         # Parse result.series directly. The .df projection only flattens one

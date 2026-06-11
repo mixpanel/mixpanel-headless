@@ -2277,7 +2277,7 @@ class Workspace:
             QueryResult with series data, DataFrame, and metadata.
 
         Raises:
-            ValueError: If arguments violate validation rules.
+            BookmarkValidationError: If arguments violate validation rules.
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid query parameters.
@@ -2285,7 +2285,7 @@ class Workspace:
 
         Example:
             ```python
-            from mixpanel_headless.query_models import InsightsQuery
+            from mixpanel_headless import InsightsQuery, Metric
 
             ws = Workspace()
             result = ws.query(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
@@ -2322,7 +2322,7 @@ class Workspace:
 
         Example:
             ```python
-            from mixpanel_headless.query_models import InsightsQuery
+            from mixpanel_headless import InsightsQuery, Metric
 
             ws = Workspace()
             params = ws.build_params(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
@@ -9750,8 +9750,9 @@ class Workspace:
         """List replays for a user, or hydrate summaries for explicit IDs.
 
         Issues one Insights query against ``$mp_session_record`` grouped on
-        ``$mp_replay_id`` and ``$mp_replay_retention_period`` (and ``$time``
-        for the start-time column), then collapses the result rows into
+        ``$mp_replay_id`` and ``$mp_replay_retention_period`` with
+        ``math="min"`` / ``math_property="$time"`` to extract each
+        replay's start time, then collapses the result rows into
         :class:`ReplaySummary` objects.
 
         Exactly one of ``distinct_id`` or ``replay_ids`` MUST be provided.

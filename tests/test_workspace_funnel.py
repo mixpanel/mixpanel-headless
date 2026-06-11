@@ -131,7 +131,7 @@ class TestQueryFunnelValidation:
         ws = workspace_factory()
         try:
             with pytest.raises(
-                ValueError, match="FunnelStep.event must be a non-empty"
+                ValueError, match="at least 1 character"
             ):
                 ws.query_funnel(FunnelQuery(steps=["Signup", ""]))
         finally:
@@ -175,7 +175,7 @@ class TestQueryFunnelValidation:
         ws = workspace_factory()
         try:
             with pytest.raises(
-                ValueError, match="FunnelStep.event must be a non-empty"
+                ValueError, match="at least 1 character"
             ):
                 ws.query_funnel(FunnelQuery(steps=["", "B"]))
         finally:

@@ -528,10 +528,10 @@ class TestDiscoverParsing:
         service.discover(
             distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
         )
-        _args, kwargs = query_fn.call_args
-        assert kwargs["math"] == "min"
-        assert kwargs["math_property"] == "$time"
-        assert kwargs["group_by"] == [
+        q = query_fn.call_args[0][0]
+        assert q.math == "min"
+        assert q.math_property == "$time"
+        assert q.group_by == [
             "$mp_replay_id",
             "$mp_replay_retention_period",
         ]
@@ -606,10 +606,10 @@ class TestDiscoverParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.discover(replay_ids=["rid-aaa"])
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("last") == 90
-        assert "from_date" not in kwargs
-        assert "to_date" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.last == 90
+        assert q.from_date is None
+        assert q.to_date is None
 
     def test_explicit_window_overrides_lookback(self) -> None:
         """An explicit from/to is passed through; last is not sent."""
@@ -619,10 +619,9 @@ class TestDiscoverParsing:
         service.discover(
             distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
         )
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("from_date") == "2026-05-20"
-        assert kwargs.get("to_date") == "2026-05-27"
-        assert "last" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.from_date == "2026-05-20"
+        assert q.to_date == "2026-05-27"
 
     def test_missing_retention_warning_has_no_doubled_prefix(self) -> None:
         """The warning text must not carry a literal 'UserWarning:' prefix.
@@ -672,9 +671,9 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result(_EVENTS_SERIES))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"])
-        args, kwargs = query_fn.call_args
-        assert args[0] == "$all_events"
-        assert kwargs["group_by"][:3] == ["$time", "$event_name", "$mp_replay_id"]
+        q = query_fn.call_args[0][0]
+        assert q.events == ["$all_events"]
+        assert q.group_by[:3] == ["$time", "$event_name", "$mp_replay_id"]
 
     def test_empty_series_returns_empty_dict(self) -> None:
         """An empty series yields an empty dict, no raise."""
@@ -693,10 +692,10 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"])
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("last") == 90
-        assert "from_date" not in kwargs
-        assert "to_date" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.last == 90
+        assert q.from_date is None
+        assert q.to_date is None
 
     def test_explicit_window_overrides_lookback(self) -> None:
         """An explicit from/to is passed through; last is not sent."""
@@ -704,10 +703,9 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"], from_date="2026-05-20", to_date="2026-05-21")
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("from_date") == "2026-05-20"
-        assert kwargs.get("to_date") == "2026-05-21"
-        assert "last" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.from_date == "2026-05-20"
+        assert q.to_date == "2026-05-21"
 
 
 # Ensure the module is importable as a package for pytest collection.

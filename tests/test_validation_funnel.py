@@ -137,7 +137,7 @@ class TestValidateFunnelArgsF2:
         """A FunnelStep with an empty event must raise ValueError at construction."""
 
         with pytest.raises(
-            ValueError, match="FunnelStep.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             FunnelStep("")
 
@@ -150,7 +150,7 @@ class TestValidateFunnelArgsF2:
         """A FunnelStep with whitespace-only event raises ValueError."""
 
         with pytest.raises(
-            ValueError, match="FunnelStep.event must be a non-empty string"
+            ValueError, match="non-empty"
         ):
             FunnelStep("  \t  ")
 
@@ -260,7 +260,7 @@ class TestValidateFunnelArgsF4:
         """An Exclusion with an empty event must raise ValueError at construction."""
 
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
@@ -268,7 +268,7 @@ class TestValidateFunnelArgsF4:
         """An Exclusion with a whitespace-only event raises ValueError."""
 
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="non-empty"
         ):
             Exclusion("   ")
 
@@ -296,13 +296,13 @@ class TestValidateFunnelArgsF4:
 
         # Empty string is caught by __post_init__
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
-        # Whitespace-only also caught by __post_init__
+        # Whitespace-only caught by __post_init__
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="non-empty"
         ):
             Exclusion("  ")
 
@@ -318,7 +318,7 @@ class TestValidateFunnelArgsF4:
 
         # Exclusion("") now raises at construction before reaching validation
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
@@ -326,7 +326,7 @@ class TestValidateFunnelArgsF4:
         """Empty exclusion event raises ValueError at construction."""
 
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
@@ -571,13 +571,13 @@ class TestValidateFunnelArgsMultipleErrors:
 
         # Exclusion("") raises at construction
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
         # Exclusion("  ") also raises at construction
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="non-empty"
         ):
             Exclusion("  ")
 
@@ -628,7 +628,7 @@ class TestValidateFunnelArgsMultipleErrors:
 
         # Exclusion("") raises at construction
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="at least 1 character"
         ):
             Exclusion("")
 
@@ -644,7 +644,7 @@ class TestValidateFunnelArgsMultipleErrors:
 
         # Exclusion("  ") also raises at construction
         with pytest.raises(
-            ValueError, match="Exclusion.event must be a non-empty string"
+            ValueError, match="non-empty"
         ):
             Exclusion("  ")
 

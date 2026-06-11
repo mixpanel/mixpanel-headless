@@ -192,18 +192,14 @@ class TestListReplaysQueryCall:
         )
 
         assert query_mock.call_count == 1
-        # The single positional arg is the event name.
-        args, kwargs = query_mock.call_args
-        assert args[0] == "$mp_session_record"
-        # group_by must include both replay-id and retention.
-        gb = kwargs.get("group_by", [])
-        assert "$mp_replay_id" in gb
-        assert "$mp_replay_retention_period" in gb
-        # start_time comes from a min(time) aggregation, not a $time grouping.
-        assert kwargs.get("math") == "min"
-        assert kwargs.get("math_property") == "$time"
-        assert kwargs.get("from_date") == "2026-05-20"
-        assert kwargs.get("to_date") == "2026-05-27"
+        q = query_mock.call_args[0][0]
+        assert q.events == ["$mp_session_record"]
+        assert "$mp_replay_id" in q.group_by
+        assert "$mp_replay_retention_period" in q.group_by
+        assert q.math == "min"
+        assert q.math_property == "$time"
+        assert q.from_date == "2026-05-20"
+        assert q.to_date == "2026-05-27"
 
     def test_replay_ids_path_uses_90_day_lookback(self) -> None:
         """Dateless replay_ids hydration reaches Workspace.query with last=90.
@@ -221,10 +217,10 @@ class TestListReplaysQueryCall:
 
         ws.list_replays(replay_ids=["r-1"])
 
-        _args, kwargs = query_mock.call_args
-        assert kwargs.get("last") == 90
-        assert "from_date" not in kwargs
-        assert "to_date" not in kwargs
+        q = query_mock.call_args[0][0]
+        assert q.last == 90
+        assert q.from_date is None
+        assert q.to_date is None
 
 
 # =============================================================================

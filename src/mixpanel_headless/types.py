@@ -6799,8 +6799,8 @@ class TimeComparison:
             must be ``None`` otherwise.
 
     Raises:
-        ValueError: If validation rules TC1-TC3 are violated during
-            construction.
+        ValueError: If cross-field constraints are violated during
+            construction (e.g. relative without unit, absolute without date).
 
     Example:
         ```python
@@ -6827,16 +6827,15 @@ class TimeComparison:
     """ISO date (YYYY-MM-DD) for absolute comparison."""
 
     def __post_init__(self) -> None:
-        """Validate construction arguments (rules TC1-TC3).
+        """Validate cross-field construction arguments.
 
         Raises:
-            ValueError: If type="relative" and unit is None (TC1),
-                or type="relative" and date is set (TC1),
-                or type is absolute and date is None (TC2),
-                or type is absolute and unit is set (TC2),
-                or date does not match YYYY-MM-DD format (TC3).
+            ValueError: If type="relative" and unit is None,
+                or type="relative" and date is set,
+                or type is absolute and date is None,
+                or type is absolute and unit is set,
+                or date does not match YYYY-MM-DD format.
         """
-        # TC0: type must be a valid TimeComparisonType
         valid_types = {"relative", "absolute-start", "absolute-end"}
         if self.type not in valid_types:
             raise ValueError(
@@ -6844,13 +6843,11 @@ class TimeComparison:
                 f"got {self.type!r}"
             )
         if self.type == "relative":
-            # TC1: relative requires unit, rejects date
             if self.unit is None:
                 raise ValueError(
                     "TimeComparison type='relative' requires unit to be set "
                     "(e.g., TimeComparison.relative('month'))"
                 )
-            # TC1b: unit must be a valid TimeComparisonUnit
             valid_units = {"day", "week", "month", "quarter", "year"}
             if self.unit not in valid_units:
                 raise ValueError(
@@ -6863,7 +6860,6 @@ class TimeComparison:
                     "use absolute-start or absolute-end for date-based comparison"
                 )
         else:
-            # TC2: absolute-start / absolute-end requires date, rejects unit
             if self.date is None:
                 raise ValueError(
                     f"TimeComparison type={self.type!r} requires date to be set "
@@ -6874,13 +6870,11 @@ class TimeComparison:
                     f"TimeComparison type={self.type!r} does not accept unit; "
                     f"unit is only valid for type='relative'"
                 )
-            # TC3: date must be a valid YYYY-MM-DD calendar date
             if not _DATE_RE.match(self.date):
                 raise ValueError(
                     f"TimeComparison date must be in YYYY-MM-DD format, "
                     f"got {self.date!r}"
                 )
-            # TC3b: verify it's a real calendar date (e.g. reject 2026-02-30)
             try:
                 import datetime
 
@@ -6929,7 +6923,7 @@ class TimeComparison:
             the specified ``date``.
 
         Raises:
-            ValueError: If date is not in YYYY-MM-DD format (TC3).
+            ValueError: If date is not in YYYY-MM-DD format.
 
         Example:
             ```python
@@ -6954,7 +6948,7 @@ class TimeComparison:
             the specified ``date``.
 
         Raises:
-            ValueError: If date is not in YYYY-MM-DD format (TC3).
+            ValueError: If date is not in YYYY-MM-DD format.
 
         Example:
             ```python
@@ -7052,13 +7046,6 @@ class Metric:
                 'Metric math="percentile" requires percentile_value '
                 "(e.g., Metric(event, math='percentile', percentile_value=95))"
             )
-        if self.segment_method is not None:
-            valid_segments = {"all", "first"}
-            if self.segment_method not in valid_segments:
-                raise ValueError(
-                    f"Metric segment_method must be one of {sorted(valid_segments)}, "
-                    f"got {self.segment_method!r}"
-                )
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -9969,11 +9956,11 @@ class FunnelStep:
             filters=[Filter.greater_than("amount", 50)],
         )
 
-        ws.query_funnel([step1, step2])
+        result = ws.query_funnel(FunnelQuery(steps=[step1, step2]))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name for this funnel step."""
 
     label: str | None = None
@@ -9992,7 +9979,7 @@ class FunnelStep:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters (FS1).
+            ValueError: If event is empty or contains control characters.
         """
         _validate_event_name(self.event, "FunnelStep")
 
@@ -10023,14 +10010,14 @@ class Exclusion:
         # Exclude only between steps 1 and 2
         ex2 = Exclusion("Refund", from_step=1, to_step=2)
 
-        ws.query_funnel(
-            ["Signup", "Add to Cart", "Purchase"],
+        result = ws.query_funnel(FunnelQuery(
+            steps=["Signup", "Add to Cart", "Purchase"],
             exclusions=[ex1, ex2],
-        )
+        ))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Event name to exclude between steps."""
 
     from_step: int = 0
@@ -10043,8 +10030,8 @@ class Exclusion:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty (EX1), from_step is negative
-                (EX2), or to_step < from_step (EX3).
+            ValueError: If event is empty, from_step is negative,
+                or to_step < from_step.
         """
         _validate_event_name(self.event, "Exclusion")
         if self.from_step < 0:
@@ -10080,10 +10067,10 @@ class HoldingConstant:
         # Hold a user-profile property constant
         hc2 = HoldingConstant("plan_tier", resource_type="people")
 
-        ws.query_funnel(
-            ["Signup", "Purchase"],
+        result = ws.query_funnel(FunnelQuery(
+            steps=["Signup", "Purchase"],
             holding_constant=[hc1, hc2],
-        )
+        ))
         ```
     """
 
@@ -10097,7 +10084,7 @@ class HoldingConstant:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is empty (HC1).
+            ValueError: If property is empty.
         """
         if not self.property or not self.property.strip():
             raise ValueError("HoldingConstant.property must be a non-empty string")
@@ -10132,7 +10119,7 @@ class FunnelQueryResult(ResultWithDataFrame):
 
     Example:
         ```python
-        result = ws.query_funnel(["Signup", "Purchase"])
+        result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
         # Overall conversion
         print(result.overall_conversion_rate)  # e.g. 0.12
@@ -10286,11 +10273,13 @@ class RetentionEvent:
             filters=[Filter.equals("source", "organic")],
         )
 
-        ws.query_retention(born, "Login")
+        result = ws.query_retention(RetentionQuery(
+            born_event=born, return_event="Login",
+        ))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name."""
 
     filters: list[Filter] | None = None
@@ -10303,7 +10292,7 @@ class RetentionEvent:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters (RE1).
+            ValueError: If event is empty or contains control characters.
         """
         _validate_event_name(self.event, "RetentionEvent")
 
@@ -10343,14 +10332,17 @@ class RetentionQueryResult(ResultWithDataFrame):
     Example:
         ```python
         # Unsegmented retention
-        result = ws.query_retention("Signup", "Login")
+        result = ws.query_retention(RetentionQuery(
+            born_event="Signup", return_event="Login",
+        ))
         print(result.df)
         #   cohort_date  bucket  count  rate
 
         # Segmented retention
-        result = ws.query_retention(
-            "Signup", "Login", group_by="platform"
-        )
+        result = ws.query_retention(RetentionQuery(
+            born_event="Signup", return_event="Login",
+            group_by=["platform"],
+        ))
         print(result.df)
         #   segment  cohort_date  bucket  count  rate
         for name, cohorts in result.segments.items():
@@ -10571,7 +10563,7 @@ class FlowStep:
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     forward: int | None = None
     reverse: int | None = None
     label: str | None = None
@@ -10583,9 +10575,9 @@ class FlowStep:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (FL1), forward/reverse is outside 0-5 range (FL2), or
-                session_event conflicts with event name (FS1).
+            ValueError: If event is empty or contains control characters,
+                forward/reverse is outside 0-5 range, or
+                session_event conflicts with event name.
         """
         _validate_event_name(self.event, "FlowStep")
         if self.forward is not None and not 0 <= self.forward <= 5:
@@ -10596,7 +10588,6 @@ class FlowStep:
             raise ValueError(
                 f"FlowStep.reverse must be in range 0-5, got {self.reverse}"
             )
-        # FS1: Validate session_event / event consistency
         if self.session_event is not None:
             expected_event = (
                 "$session_start" if self.session_event == "start" else "$session_end"
@@ -11316,7 +11307,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", forward=3)
+            result = ws.query_flow(FlowQuery(event="Login", forward=3))
             for src, tgt, count in result.top_transitions(n=5):
                 print(f"{src} -> {tgt}: {count}")
             # Login@0 -> Search@1: 150
@@ -11354,7 +11345,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", forward=3)
+            result = ws.query_flow(FlowQuery(event="Login", forward=3))
             for step, info in result.drop_off_summary().items():
                 print(f"{step}: {info['rate']:.0%} drop-off")
             ```
@@ -11417,7 +11408,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", mode="tree")
+            result = ws.query_flow(FlowQuery(event="Login", mode="tree"))
             for root in result.anytree:
                 from anytree import RenderTree
                 print(RenderTree(root))
