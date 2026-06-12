@@ -66,9 +66,12 @@ _DateStr = Annotated[
 ]
 """String annotated with a YYYY-MM-DD pattern for JSON schema consumers.
 
-The pattern appears in the generated schema so LLM callers know the
-expected format.  Runtime validation stays in ``build_time_section``
-(V8 checks) to preserve existing error messages.
+Schema-only — no runtime enforcement here.  Runtime date validation
+is handled by ``validate_time_args`` (V8 checks) at build time, which
+produces domain-specific error messages (``"from_date must be
+YYYY-MM-DD format"``).  Adding a Pydantic ``pattern`` or
+``AfterValidator`` would catch bad dates earlier but replace those
+messages with generic Pydantic errors.
 """
 
 
