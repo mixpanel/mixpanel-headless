@@ -7093,10 +7093,12 @@ class Formula:
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
+        Empty expressions are caught by ``Field(min_length=1)``.
+
         Raises:
-            ValueError: If expression is empty.
+            ValueError: If expression is whitespace-only.
         """
-        if not self.expression or not self.expression.strip():
+        if self.expression and not self.expression.strip():
             raise ValueError("Formula.expression must be a non-empty string")
 
 
@@ -7219,6 +7221,11 @@ class Filter:
 
     def __post_init__(self) -> None:
         """Validate invariants and normalize dict-constructed instances.
+
+        Uses ``object.__setattr__`` to mutate the frozen instance during
+        construction — the documented pydantic pattern for dataclass
+        normalization. A model_validator(mode='before') alternative would
+        avoid the mutation but requires restructuring the entire class.
 
         Normalization replicates the logic in classmethods so that
         dict/JSON callers get the same result:

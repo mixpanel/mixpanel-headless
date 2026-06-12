@@ -653,6 +653,51 @@ class TestCrossFieldValidation:
         with pytest.raises(BookmarkValidationError):
             InsightsQuery(events=["Login"], last=0)
 
+    def test_percentile_above_100_rejected(self) -> None:
+        """percentile_value=101 is rejected (must be <= 100)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], math="percentile", percentile_value=101)
+
+    def test_percentile_negative_rejected(self) -> None:
+        """percentile_value=-1 is rejected (must be >= 0)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], math="percentile", percentile_value=-1)
+
+    def test_rolling_zero_rejected(self) -> None:
+        """rolling=0 is rejected (must be > 0)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery(events=["Login"], rolling=0)
+
+    def test_funnel_conversion_window_zero_rejected(self) -> None:
+        """FunnelQuery conversion_window=0 is rejected (must be >= 1)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            FunnelQuery(steps=["A", "B"], conversion_window=0)
+
+    def test_flow_cardinality_zero_rejected(self) -> None:
+        """FlowQuery cardinality=0 is rejected (must be >= 1)."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError):
+            FlowQuery(event="Login", cardinality=0)
+
+    def test_flow_zero_steps_accepted_at_construction(self) -> None:
+        """FlowQuery(forward=0, reverse=0) is accepted at construction.
+
+        The zero-step check happens at build time (FL5) because
+        per-step FlowStep overrides can provide non-zero directions.
+        """
+        q = FlowQuery(event="Login", forward=0, reverse=0)
+        assert q.forward == 0
+        assert q.reverse == 0
+
     def test_valid_percentile_accepted(self) -> None:
         """math='percentile' with percentile_value is accepted."""
         q = InsightsQuery(events=["Login"], math="percentile", percentile_value=95)

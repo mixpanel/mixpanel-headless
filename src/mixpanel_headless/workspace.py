@@ -2418,7 +2418,9 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Type guard: events must be str, Metric, CohortMetric, Formula, or sequence thereof
+        # Defensive type guards — unreachable through the InsightsQuery model
+        # path (Pydantic enforces types at construction), but kept for direct
+        # callers of this internal method.
         if not isinstance(events, (str, Metric, CohortMetric, Formula, list, tuple)):
             raise BookmarkValidationError(
                 [
@@ -3179,7 +3181,7 @@ class Workspace:
             where: Filter results by cohort membership or property
                 conditions. Cohort filters (``Filter.in_cohort`` /
                 ``Filter.not_in_cohort``) produce ``filter_by_cohort``.
-                Property filters produce ``filter_by_event``.
+                Property filters produce ``where`` entries.
                 Default: ``None``.
             data_group_id: Optional data group ID for group-level
                 analytics. Default: ``None``.
@@ -3433,11 +3435,6 @@ class Workspace:
 
         if any(e.severity == "error" for e in step_errors):
             raise BookmarkValidationError(step_errors)
-
-        # Default to_date to today when from_date is set alone, so the
-        # absolute date isn't silently ignored by build_date_range().
-        if from_date is not None and to_date is None:
-            to_date = _date.today().isoformat()
 
         # Layer 1: Argument validation — use effective direction values
         # from normalized steps so per-step overrides aren't rejected by FL5.
