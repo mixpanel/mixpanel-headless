@@ -966,7 +966,7 @@ class TestQueryFlowCohortFilter:
     ) -> None:
         """Verify multiple cohort filters in flow where= raises ValueError."""
         with pytest.raises(
-            ValueError,
+            BookmarkValidationError,
             match="query_flow supports a single cohort filter, but 2",
         ):
             ws.build_flow_params(
