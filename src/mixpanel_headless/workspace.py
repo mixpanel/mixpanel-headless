@@ -3460,24 +3460,35 @@ class Workspace:
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
-        # Build bookmark params
-        params = self._build_flow_params(
-            steps=steps,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
-        )
+        # Build bookmark params — convert raw ValueError/TypeError from
+        # the internal builders into the documented BookmarkValidationError.
+        try:
+            params = self._build_flow_params(
+                steps=steps,
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                conversion_window=conversion_window,
+                conversion_window_unit=conversion_window_unit,
+                count_type=count_type,
+                cardinality=cardinality,
+                collapse_repeated=collapse_repeated,
+                hidden_events=hidden_events,
+                mode=mode,
+                where=where,
+                data_group_id=data_group_id,
+                segments=segments,
+                exclusions=exclusions,
+            )
+        except (ValueError, TypeError) as exc:
+            raise BookmarkValidationError([
+                ValidationError(
+                    path="flow.build",
+                    message=str(exc),
+                    code="flow_build_error",
+                    severity="error",
+                )
+            ]) from exc
 
         # Layer 2: Bookmark structure validation
         bookmark_errors = validate_flow_bookmark(params)

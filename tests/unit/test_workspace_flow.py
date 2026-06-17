@@ -1233,7 +1233,7 @@ class TestFlowPropertyFilters:
         inner conditions."""
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="list_contains"):
+            with pytest.raises(BookmarkValidationError, match="list_contains"):
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
@@ -1260,7 +1260,7 @@ class TestFlowPropertyFilters:
                 _property_type="string",
                 _resource_type="events",
             )
-            with pytest.raises(TypeError, match="custom property refs"):
+            with pytest.raises(BookmarkValidationError, match="custom property refs"):
                 ws.build_flow_params(FlowQuery(event="Login", where=[f]))
         finally:
             ws.close()
@@ -1273,7 +1273,7 @@ class TestFlowPropertyFilters:
         format — rejected with a pointer to absolute-date alternatives."""
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="absolute date"):
+            with pytest.raises(BookmarkValidationError, match="absolute date"):
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
