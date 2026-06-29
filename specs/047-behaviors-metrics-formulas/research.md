@@ -2,9 +2,9 @@
 
 **Feature**: 047-behaviors-metrics-formulas
 **Date**: 2026-06-28
-**Status**: One open NEEDS-CONFIRMATION (R-1: exact endpoint shapes). All other decisions settled.
+**Status**: All decisions settled. R-1 (transport — endpoint paths + list-response envelope) is now CONFIRMED against the Mixpanel backend App API; the request/response BODY shapes were already confirmed. No open NEEDS-CONFIRMATION risks remain.
 
-The validated payload constraints come from [mixpanel/mixpanel-power-tools](https://github.com/mixpanel/mixpanel-power-tools) (`templates/prompts/ai-behaviors-metrics-system.txt`), which encodes the structures that make Mixpanel 400 or crash its own webapp on load. This document records the decisions, their rationale, the rejected alternatives, and the single risk that must be closed by a live call before the binding surface is frozen.
+The validated payload constraints come from [mixpanel/mixpanel-power-tools](https://github.com/mixpanel/mixpanel-power-tools) (`templates/prompts/ai-behaviors-metrics-system.txt`), which encodes the structures that make Mixpanel 400 or crash its own webapp on load. This document records the decisions, their rationale, and the rejected alternatives; both the bodies and the transport are confirmed against the Mixpanel backend.
 
 ---
 
@@ -22,23 +22,27 @@ The validated payload constraints come from [mixpanel/mixpanel-power-tools](http
 
 ---
 
-## R-1. Exact App API endpoints + request/response shapes — NEEDS CONFIRMATION
+## R-1. App API endpoint paths + list envelope — CONFIRMED
 
-**Decision (provisional)**: Behaviors, metrics, and formulas are saved entities reachable through the same `maybe_scoped_path` / `app_request` idiom cohorts already use (`/api/app/projects/{pid}/...`, workspace-scoped when a workspace is set). The build session MUST reverse-engineer the exact paths + request/response shapes from the power-tools macros AND confirm with one live call before finalizing the binding surface. The confirmed contracts are recorded in `contracts/payload-shapes.md`; the types are recorded in `data-model.md`.
+**Decision (CONFIRMED against the Mixpanel backend App API)**: Behaviors, metrics, and formulas are saved entities reached through `app_request` on **project-scoped** paths. There is **NO workspace scoping** for these entities — the paths are `/api/app/projects/{project_id}/...` only (unlike cohorts, which carry a workspace-scoped idiom). The exact paths, methods, list envelope, and the formulas-ride-the-metrics-endpoint fact below are all confirmed; the request/response BODY shapes were already confirmed (recorded in `contracts/payload-shapes.md §1–§6`).
 
-**Why this is a risk**: The cohort surface is confirmed (`list_cohorts_app` → `maybe_scoped_path("cohorts")` → `/api/app/projects/{pid}/cohorts`, POST/PATCH/DELETE the same path with an `{id}` suffix). Behaviors / metrics / formulas are documented in the power-tools macros at the *payload* level but their exact *endpoint paths* and *list-response envelope* (cursor-paginated like cohorts? wrapped in a `results` key? scoped to workspace or project?) are not yet verified against a live response in this repo.
+**Confirmed transport**:
+- **Behaviors** — collection `/api/app/projects/{project_id}/behaviors/`: GET (list), POST (create; body is a single behavior OR `{"behaviors": [...]}`), PATCH (bulk update, body `{"behaviors": [{id, ...}]}`), DELETE (bulk delete, body `{"behaviors": [{id}]}`). Single-item `/api/app/projects/{project_id}/behaviors/{behavior_id}/`: GET, PATCH, DELETE.
+- **Metrics** — collection `/api/app/projects/{project_id}/metrics/`: GET (list), POST (create), PATCH (bulk update, body `{"metrics": [{id, ...}]}`), DELETE (bulk delete, body `{"metrics": [{id}]}`). Single-item `/api/app/projects/{project_id}/metrics/{metric_id}/`: GET, PATCH. **Single-item DELETE returns 501 NOT IMPLEMENTED** — metric (and formula) deletion MUST go through the bulk DELETE on the collection path.
+- **Formulas are NOT a separate endpoint.** A formula IS a metric with `type="formula"`; it is created, listed, updated, and deleted via the SAME `/metrics/` endpoint. The metric `type` field discriminates: `"metric"` (behavior-backed metric) or `"formula"` (formula-backed). So the library's three public method families map onto **TWO endpoints**: behaviors → `/behaviors/`, and BOTH metrics and formulas → `/metrics/` (discriminated by `type`).
 
-**Confirmation procedure (MUST run before freeze)**:
-1. Inspect the power-tools macros that create / list behaviors, metrics, formulas; extract the candidate paths and bodies.
-2. Issue one live `GET` (list) per entity type against the demo project via `ws.api.app_request(...)` and capture the real response envelope.
-3. Issue one live `POST` (create) with a minimal valid body, capture the assigned-ID response, then `DELETE` to clean up.
-4. Record the confirmed paths, request bodies, and response envelopes in `contracts/payload-shapes.md`. Update `data-model.md` if the response shape differs from the provisional model.
+**Confirmed list-response envelope**: `{"status": "ok", "results": {"<id>": {<entity>}, ...}}`. `results` is an **OBJECT MAP KEYED BY STRING ID**, NOT an array, and there is **NO cursor pagination / `page_info`**. The `list_*` methods parse the map's values into a list of typed objects — no pagination helper is needed for these entities (this differs from cohorts).
 
-**Rationale for the idiom choice**: Cohorts, dashboards, bookmarks, feature flags, and custom properties all go through `app_request` + `maybe_scoped_path` + the cursor pagination helper. The semantic-layer entities are the same family of saved App API objects; reusing the idiom keeps one error-mapping path and one pagination path.
+**Confirmed scoping**: project-scoped only. No `WorkspaceScopeError` path applies to these entities; a project is sufficient.
+
+**Why R-1 is now closed (no blocking gate)**: the cohort surface uses a workspace-scoped idiom + cursor pagination; these entities deliberately do NOT. The transport above is confirmed against the Mixpanel backend, so the binding surface can be frozen without a blocking reverse-engineer step. T003 is therefore a smoke-test verification (one live round-trip per family to confirm the recorded shapes still hold), not a blocking reverse-engineer gate.
+
+**Rationale for the idiom choice**: `app_request` carries the one error-mapping path the rest of the App API surface uses. The semantic-layer entities reuse that single path; they skip the cohort workspace-scoped idiom (project-only) and the cursor pagination helper (object-map list, no pages).
 
 **Alternatives considered**:
-- **Assume the cohort path shape and skip the live call**: rejected — a wrong path or envelope would ship a binding that 404s or mis-decodes; the whole point is to be the trustworthy client.
-- **Wrap the power-tools HTTP layer as a sidecar**: rejected — adds a runtime dependency and a network hop for what is a direct App API call.
+- **Assume the cohort workspace-scoped path + cursor pagination**: rejected — these entities are project-scoped and return an object map, so the cohort idiom would 404 (wrong scope) or mis-decode (wrong envelope).
+- **Model formulas as a separate `/formulas/` endpoint**: rejected — confirmed against the backend, a formula is a metric with `type="formula"` on the same `/metrics/` endpoint; a separate endpoint would 404.
+- **Single-item DELETE for metrics**: rejected — confirmed to return 501; metric/formula deletion routes through the bulk DELETE.
 
 ---
 
@@ -56,9 +60,9 @@ The validated payload constraints come from [mixpanel/mixpanel-power-tools](http
 
 ## R-3. `measurement.property` is a `MeasurementProperty` object, never a bare string
 
-**Decision**: Model the aggregand as a `MeasurementProperty` dataclass/model with `name`, `type`, `resource_type` (serialized `resourceType`). A bare string is unrepresentable in the type and raises `ValidationError`. For property-aggregation math the property is REQUIRED; for plain counts it MUST be omitted from the emitted payload.
+**Decision**: Model the aggregand as a `MeasurementProperty` dataclass/model with `name`, `type`, `resource_type` (serialized `resourceType`). A bare string is unrepresentable in the type and raises `ValidationError`. Property presence splits into THREE branches, confirmed against the Mixpanel backend: (1) property-aggregation math (`average`/`median`/`min`/`max`/`sum`/`p25`/`p75`/`p90`/`p99`/`unique_values`) — property REQUIRED; (2) plain counts (`total`/`unique`/`dau`/`wau`/`mau`) — property omitted from the emitted payload, and a stray property is silently stripped (the backend itself strips it on count maths) rather than rejected; (3) rate maths (`conversion_rate_unique`/`conversion_rate_total`/`conversion_rate_session`/`retention_rate`) — property FORBIDDEN (omitted), AND a behavior shape REQUIRED: the three `conversion_rate_*` require a funnel behavior with >= 2 steps, `retention_rate` requires a retention behavior with EXACTLY 2 steps. Real backend payloads emit `"property": null` for all four rate maths.
 
-**Rationale**: The reference is explicit — a bare string like `"purchase.amount"` corrupts the metric and crashes the webapp query builder. Modeling it as an object makes the crashing form impossible to construct. The presence/absence rule (required for `average`/`sum`/percentiles, omitted for `total`/`unique`/`dau`) is a cross-field validator.
+**Rationale**: The reference is explicit — a bare string like `"purchase.amount"` corrupts the metric and crashes the webapp query builder. Modeling it as an object makes the crashing form impossible to construct. The three-branch presence rule (required for aggregations, omitted/stripped for counts, forbidden-plus-behavior-shape for rates) is a cross-field validator, and the rate branch's behavior-shape requirement is confirmed against the backend (retention validation requires exactly 2 behaviors; conversion rates require a funnel).
 
 **Alternatives considered**:
 - **Accept `str | MeasurementProperty` and coerce strings**: rejected — coercion would hide the exact bug the reference warns about; the str form must be a hard error.
@@ -94,9 +98,11 @@ The validated payload constraints come from [mixpanel/mixpanel-power-tools](http
 
 ## R-6. Mirror the cohort / custom-property surface exactly
 
-**Decision**: The new CRUD methods follow the cohort method shape verbatim — `list_*` (cursor-paginated via the existing helper), `get_*(id)`, `create_*(params)`, `update_*(id, params)`, `delete_*(id)` — with `params.model_dump(exclude_none=True)` bodies and `Model.model_validate(raw)` decode. The client methods follow `list_cohorts_app` / `create_cohort` shape.
+**Decision**: The new CRUD methods follow the cohort method *naming* shape — `list_*`, `get_*(id)`, `create_*(params)`, `update_*(id, params)`, `delete_*(id)` — with `params.model_dump(exclude_none=True)` bodies and `Model.model_validate(raw)` decode. The transport differs from cohorts in three confirmed ways (R-1): the paths are project-scoped (no workspace scoping), `list_*` parses the object-map list envelope into a list (no cursor pagination helper), and metric/formula deletion goes through the bulk DELETE (single-item metric DELETE returns 501). Formulas route through the metrics endpoint with `type="formula"`, so `create_formula` / `list_formulas` / `update_formula` / `delete_formula` are the metrics client methods discriminated by `type`.
 
-**Rationale**: Consistency lowers the contributor-onboarding cost (SC-007), reuses the proven error-mapping and pagination paths, and makes the auto-discovery (`help.py`) output uniform with the rest of the surface.
+**`exclude_none` exception — `ReferencedMetric`**: the universal `exclude_none=True` rule has exactly one documented exception. Confirmed against the Mixpanel backend, a saved formula stores each `referencedMetrics[i]` measurement block with its nullable keys (`property`, `rolling`, `perUserAggregation`) as EXPLICIT NULLS and `cumulative` as an explicit boolean (`false`). To round-trip a formula the library MUST emit those explicit nulls, so `ReferencedMetric` carries a custom Pydantic v2 serializer (a `@model_serializer`, or a per-call `model_dump(by_alias=True)` WITHOUT `exclude_none`) that keeps the nulls; the enclosing `CreateFormulaParams` keeps `exclude_none=True` for its own top-level keys. This is recorded in [data-model.md §7.3](data-model.md) and the matching wire shape is [contracts/payload-shapes.md §6](contracts/payload-shapes.md). (`exclude_none` is still correct on response paths; the explicit nulls are authoritative for the stored/sent formula payload.)
+
+**Rationale**: Consistency lowers the contributor-onboarding cost (SC-007), reuses the proven error-mapping and pagination paths, and makes the auto-discovery (`help.py`) output uniform with the rest of the surface. The single `ReferencedMetric` exception is required by the confirmed backend contract — omitting the nulls would not round-trip.
 
 **Alternatives considered**:
 - **A fluent builder API**: rejected — inconsistent with the rest of the repo; the Pydantic param model is already the builder.
@@ -120,7 +126,7 @@ The validated payload constraints come from [mixpanel/mixpanel-power-tools](http
 
 Spec 036-cohort-behaviors and spec 037-custom-properties-queries already establish the pattern this feature needs: frozen Pydantic param models that fail fast with `ValidationError` / `ValueError` at construction time before any HTTP call, with named validation-rule IDs (036's CF1/CB1/CM1, 037's CP1–CP6) that each map 1:1 to a unit test. This feature adopts the identical pattern and the same ID convention — metric rules M1, M2, ...; behavior rules B1, B2, ...; formula rules F1, F2, ... — so SC-002's "one unit test per failure class" maps 1:1 to a rule, exactly as 036/037 do. The behavior step-count rules also echo the step / criteria validation lineage in spec 035-cohort-definition-builder.
 
-**Naming collision**: spec 036 already introduced query-layer shapes named `Metric` / `CohortMetric` and the `behavior.type` / `measurement.math` show-entry vocabulary. The new saved-entity result types `Metric` and `Behavior` collide by name in `mixpanel_headless.__init__` exports. This is a real risk FR-018 must close: keep the existing query-layer types where they live and export the new saved-entity types under unambiguous names (or otherwise guarantee no `__init__.py` export collides). The chosen reconciliation is recorded in `data-model.md`.
+**Naming collision**: spec 036 already introduced query-layer shapes named `Metric` / `CohortMetric` and the `behavior.type` / `measurement.math` show-entry vocabulary. The new saved-entity result types `Metric` and `Behavior` collide by name in `mixpanel_headless.__init__` exports. Because formulas ride the metrics endpoint (R-1) and "metric" is the entity the query layer already exports, the resolved direction is to keep the existing query-layer types where they live and export the new saved-entity result types under unambiguous, saved-entity-prefixed names (e.g. `SavedMetric` / `SavedBehavior`) so neither shadows an existing public symbol; the `Create*Params` / `Update*Params` names do not collide and stay as written. The exact exported names are locked at FR-018 / T018 / T036 time once the live `__all__` is inspected; this stays a reconciliation note (no export may shadow an existing public symbol) and is recorded in `data-model.md`.
 
 **Rationale**: re-deriving validation idioms that 036/037 already proved wastes review and risks divergence; the named-rule-ID convention makes the validator table, the error catalog, and the test suite traceable to each other. The collision must be surfaced now because it changes the public export names, which are part of the contract.
 

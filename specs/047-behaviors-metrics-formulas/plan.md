@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add Mixpanel's modeling / semantic layer to `mixpanel-headless` as a typed library surface: extend `Workspace` with full CRUD for the three saved-entity types Mixpanel calls **behaviors**, **metrics**, and **formulas**, mirroring the existing cohort / custom-property surface exactly. Pydantic v2 `Create*`/`Update*` param models + `Metric`/`Behavior`/`Formula` result types in `types.py`, methods on `workspace.py`, App API plumbing through `MixpanelAPIClient` (the `maybe_scoped_path` / `app_request` / pagination idiom cohorts already use), and `__init__.py` exports that `help.py` auto-discovers.
+Add Mixpanel's modeling / semantic layer to `mixpanel-headless` as a typed library surface: extend `Workspace` with full CRUD for the three saved-entity types Mixpanel calls **behaviors**, **metrics**, and **formulas**, mirroring the existing cohort / custom-property *method-naming* surface. Pydantic v2 `Create*`/`Update*` param models + `Metric`/`Behavior`/`Formula` result types in `types.py`, methods on `workspace.py`, App API plumbing through `MixpanelAPIClient` via `app_request` on two project-scoped endpoints (`/behaviors/` and the shared `/metrics/` for metrics + formulas, discriminated by `type`; object-map list envelope, no pagination — confirmed, research.md R-1), and `__init__.py` exports that `help.py` auto-discovers.
 
 The load-bearing decision is that the param-model validators are the authoritative guard that the library can never emit a payload Mixpanel would 400 on or that would crash the webapp on load. The validated constraints come from [mixpanel/mixpanel-power-tools](https://github.com/mixpanel/mixpanel-power-tools) (`templates/prompts/ai-behaviors-metrics-system.txt`) and are baked in as Pydantic validators: the `measurement.math` strict enum, the `measurement.property` object requirement, behavior step-count rules (simple >=1, funnel >=2, retention ==2), `funnelOrder` loose|any only, and the formula 1:1 variable↔referencedMetrics mapping. The validators follow the fail-fast construction-time + named-rule-ID precedent from spec 036-cohort-behaviors / spec 037-custom-properties-queries (see spec.md FR-015).
 
@@ -23,14 +23,14 @@ Estimated scope: ~1,300 LoC across ~4 modified source files plus new tests.
 
 **Storage**: None. These are remote App API entities; the feature persists nothing to `~/.mp`.
 
-**Testing**: pytest (unit + integration); Hypothesis PBT for the math-enum / step-count / formula-variable validators; mutmut on the new pure validator modules. Integration tests gated on a live fixture project (the demo project or equivalent) to confirm the reverse-engineered endpoint shapes and round-trip CRUD.
+**Testing**: pytest (unit + integration); Hypothesis PBT for the math-enum / step-count / formula-variable validators; mutmut on the new pure validator modules. Integration tests gated on a live fixture project (the demo project or equivalent) to smoke-test the confirmed endpoint shapes and round-trip CRUD.
 
 **Target Platform**: Cross-platform. No platform-specific code paths.
 
 **Project Type**: Library feature addition. No CLI commands added; the semantic layer is a Python surface.
 
 **Performance Goals**:
-- Each CRUD method is a single App API round-trip (list uses the existing cursor pagination helper).
+- Each CRUD method is a single App API round-trip; `list_*` parses the object-map list envelope (no cursor pagination for these entities).
 - Param-model validation is in-process and sub-millisecond; it MUST run before any HTTP call.
 
 **Constraints**:
@@ -39,7 +39,7 @@ Estimated scope: ~1,300 LoC across ~4 modified source files plus new tests.
 - 90% test coverage minimum (CI fails below).
 - 80% mutation score on the new validator modules.
 - The library MUST NOT be able to emit a payload that violates the power-tools constraints; validators are the gate.
-- The exact endpoint shapes are NEEDS-CONFIRMATION until one live call confirms them (see research.md R-1).
+- The request/response BODY shapes AND the transport (project-scoped endpoint PATHS, the object-map list-response ENVELOPE, the two-endpoints-with-`type`-discriminator mapping, the bulk-DELETE-for-metrics fact) are confirmed against the Mixpanel backend App API (research.md R-1, CONFIRMED).
 
 **Scale/Scope**:
 - ~4 modified files (`types.py`, `workspace.py`, `_internal/api_client.py`, `__init__.py`) + new tests, ~1,300 LoC including tests.
@@ -75,7 +75,7 @@ Estimated scope: ~1,300 LoC across ~4 modified source files plus new tests.
 specs/047-behaviors-metrics-formulas/
 ├── plan.md                       # This file
 ├── spec.md                       # Feature specification
-├── research.md                   # Phase 0 output — endpoint reverse-engineering + NEEDS-CONFIRMATION risk
+├── research.md                   # Phase 0 output — endpoint contract (R-1 CONFIRMED) + design decisions
 ├── data-model.md                 # Phase 1 output — param models, result types, validators
 ├── quickstart.md                 # Library walkthrough (US1–US3)
 └── contracts/                    # Phase 1 output
@@ -100,9 +100,10 @@ src/mixpanel_headless/
 │                                 #   MeasurementMath enum
 ├── __init__.py                   # MODIFIED — export the new public symbols, extend __all__
 └── _internal/
-    └── api_client.py             # MODIFIED — behaviors/metrics/formulas App API methods
-                                  #   (list_*_app / get_* / create_* / update_* / delete_*)
-                                  #   via maybe_scoped_path + app_request + pagination
+    └── api_client.py             # MODIFIED — two project-scoped App API endpoints via app_request:
+                                  #   /behaviors/ (behaviors) and /metrics/ (metrics AND formulas,
+                                  #   discriminated by type); object-map list parse, no pagination;
+                                  #   bulk DELETE for metrics/formulas (single-item metric DELETE → 501)
 
 tests/
 ├── unit/
@@ -139,4 +140,4 @@ tests/
 | US1 (metrics) | math-enum + property-object + property-presence validators green; metric CRUD round-trips (mocked). |
 | US2 (behaviors) | step-count + funnel_order + nameless-step validators green; behavior CRUD round-trips (mocked). |
 | US3 (formulas) | variable↔referencedMetrics 1:1 + display-key validators green; formula CRUD round-trips (mocked). |
-| All three | live round-trip confirms endpoint shapes (research.md R-1 closed); >=90% cov; >=80% mutation on validators; `just check` green. |
+| All three | live smoke-test verifies the confirmed endpoint shapes (research.md R-1 CONFIRMED); >=90% cov; >=80% mutation on validators; `just check` green. |

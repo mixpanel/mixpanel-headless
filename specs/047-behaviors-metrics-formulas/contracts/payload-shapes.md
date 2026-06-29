@@ -3,25 +3,61 @@
 **Feature**: 047-behaviors-metrics-formulas
 **Surface**: App API request/response bodies for the three saved-entity families
 **Audience**: The build session wiring `MixpanelAPIClient`; reviewers verifying the validators emit exactly these shapes
-**Source of truth**: [mixpanel/mixpanel-power-tools](https://github.com/mixpanel/mixpanel-power-tools), `templates/prompts/ai-behaviors-metrics-system.txt`, for the BODY shapes; the exact ENDPOINT PATHS + LIST ENVELOPE are NEEDS-CONFIRMATION (see [research.md R-1](../research.md)) and MUST be filled in from one live call before the binding surface freezes.
+**Source of truth**: [mixpanel/mixpanel-power-tools](https://github.com/mixpanel/mixpanel-power-tools), `templates/prompts/ai-behaviors-metrics-system.txt`, for the BODY shapes; the ENDPOINT PATHS + LIST ENVELOPE are CONFIRMED against the Mixpanel backend App API (see [research.md R-1](../research.md)) and recorded in §0 below.
 
 The param-model validators MUST refuse to emit anything that violates the constraints in this document. Changing a documented constraint requires a power-tools reference update and a CHANGELOG entry.
 
 ---
 
-## 0. Endpoint paths — CONFIRM BEFORE FREEZE
+## 0. Endpoint paths — CONFIRMED
 
-Provisional (mirrors the cohort idiom; confirm against live):
+CONFIRMED against the Mixpanel backend App API (see [research.md R-1](../research.md)). All paths are **project-scoped** — there is **NO workspace scoping** for these entities (unlike cohorts). Two endpoints back the three public method families: `/behaviors/` and `/metrics/` (formulas ride `/metrics/`, discriminated by `type`).
 
-| Operation | Method | Provisional path (via `maybe_scoped_path`) |
-|-----------|--------|--------------------------------------------|
-| list behaviors | GET | `/api/app/projects/{pid}/behaviors` |
-| create behavior | POST | `/api/app/projects/{pid}/behaviors` |
-| get / update / delete behavior | GET / PATCH / DELETE | `.../behaviors/{id}` |
-| metrics | ... | `.../metrics` + `.../metrics/{id}` |
-| formulas | ... | `.../formulas` + `.../formulas/{id}` |
+### Behaviors — `/api/app/projects/{project_id}/behaviors/`
 
-The build session records the CONFIRMED paths, the list-response envelope (raw list vs `{results: [...]}` vs cursor-paginated), and the create-response shape here after the live call. Until then this section is provisional.
+| Operation | Method | Path | Body |
+|-----------|--------|------|------|
+| list | GET | `/api/app/projects/{project_id}/behaviors/` | — |
+| create | POST | `/api/app/projects/{project_id}/behaviors/` | a single behavior OR `{"behaviors": [...]}` |
+| bulk update | PATCH | `/api/app/projects/{project_id}/behaviors/` | `{"behaviors": [{id, ...}]}` |
+| bulk delete | DELETE | `/api/app/projects/{project_id}/behaviors/` | `{"behaviors": [{id}]}` |
+| get | GET | `/api/app/projects/{project_id}/behaviors/{behavior_id}/` | — |
+| update | PATCH | `/api/app/projects/{project_id}/behaviors/{behavior_id}/` | behavior fields |
+| delete | DELETE | `/api/app/projects/{project_id}/behaviors/{behavior_id}/` | — |
+
+### Metrics AND formulas — `/api/app/projects/{project_id}/metrics/`
+
+A formula is a metric with `type="formula"`; metrics (`type="metric"`) and formulas (`type="formula"`) share this one endpoint, discriminated by the top-level `type` field.
+
+| Operation | Method | Path | Body |
+|-----------|--------|------|------|
+| list | GET | `/api/app/projects/{project_id}/metrics/` | — |
+| create | POST | `/api/app/projects/{project_id}/metrics/` | a single metric/formula (`type` discriminates) |
+| bulk update | PATCH | `/api/app/projects/{project_id}/metrics/` | `{"metrics": [{id, ...}]}` |
+| bulk delete | DELETE | `/api/app/projects/{project_id}/metrics/` | `{"metrics": [{id}]}` |
+| get | GET | `/api/app/projects/{project_id}/metrics/{metric_id}/` | — |
+| update | PATCH | `/api/app/projects/{project_id}/metrics/{metric_id}/` | metric/formula fields |
+| delete (single) | DELETE | `/api/app/projects/{project_id}/metrics/{metric_id}/` | **returns 501 NOT IMPLEMENTED** |
+
+**Metric/formula deletion MUST go through the bulk DELETE** on the collection path — single-item DELETE returns 501. (Behaviors support single-item DELETE; metrics/formulas do not.)
+
+### List-response envelope (CONFIRMED)
+
+```json
+{ "status": "ok", "results": { "<id>": { /* entity */ }, "<id2>": { /* entity */ } } }
+```
+
+`results` is an **OBJECT MAP KEYED BY STRING ID**, NOT an array, with **NO cursor pagination / `page_info`**. The `list_*` methods parse the map's values into a list of typed objects — no pagination helper needed (this differs from cohorts).
+
+### Create/update body — top-level keys
+
+`name` (str, max 255), `type`, `definition`, `description` (optional). PATCH additionally accepts `verified` (bool) and `owned_by` (`{id}`). Behavior `type` ∈ {`simple`, `funnel`, `retention`}; metric `type` ∈ {`metric`, `formula`}.
+
+### Response entity fields
+
+`id`, `name`, `type`, `description`, `definition`, `is_visible`, `is_locked`, `created`, `modified`, `created_by` (`{id, email, name}`), `verified` (optional), `owned_by` (optional).
+
+The BODY shapes in §1–§6 below are confirmed against the Mixpanel backend (math property-presence branches, rate-math behavior shapes, the saved measurement-object shape, and the formula `referencedMetrics` explicit nulls).
 
 ---
 
@@ -37,7 +73,10 @@ Allowed keys ONLY (omit unset): `math, property, cumulative, dataGroupId, perUse
 { "name": "amount", "type": "number", "resourceType": "events" }
 ```
 
-For plain counts (`total`/`unique`/`dau`/`wau`/`mau`) `property` MUST be OMITTED.
+Property presence has THREE branches (confirmed against the Mixpanel backend):
+- **property-aggregation** (`average`/`median`/`min`/`max`/`sum`/`p25`/`p75`/`p90`/`p99`/`unique_values`): `property` REQUIRED.
+- **plain count** (`total`/`unique`/`dau`/`wau`/`mau`): `property` MUST be OMITTED (a stray property is silently stripped, not rejected — the backend strips it on count maths).
+- **rate** (`conversion_rate_unique`/`conversion_rate_total`/`conversion_rate_session`/`retention_rate`): `property` FORBIDDEN (omitted; real backend payloads carry `"property": null`), AND a behavior shape is REQUIRED — the three `conversion_rate_*` need a `funnel` behavior with >= 2 steps, `retention_rate` needs a `retention` behavior with EXACTLY 2 steps (born + return).
 
 There is NO `avg`, NO `unique_group`, NO `groupKey`. To count distinct groups use `math: "unique"` + a numeric `dataGroupId`.
 
@@ -195,6 +234,7 @@ Rules:
 - `referencedMetrics[0]` → `A`, `[1]` → `B`, ...
 - each `display` object: ONLY `abbrev, axis, direction, hideTrendline, precision, prefix, suffix, trendline`. NO `label`. Empty `{}` is fine.
 - formula expressions: simple `+ - * /` only (per the reference; nested-metric formulas are out of scope).
+- **Explicit nulls inside each referenced metric** (confirmed against the Mixpanel backend): the `measurement` block of each `referencedMetrics[i]` carries its nullable keys as EXPLICIT NULLS — `property: null`, `rolling: null`, `perUserAggregation: null` — and `cumulative` as an explicit boolean (`false`). These are NOT omitted (see the example above). This is the one place the feature-wide `exclude_none=True` rule does NOT apply: `ReferencedMetric` uses a custom serializer that keeps the nulls so the formula round-trips. See [data-model.md §7.3](../data-model.md) and [research.md R-6](../research.md).
 
 ---
 

@@ -10,13 +10,16 @@ This contract enumerates every new public symbol and its signature. `data-model.
 
 ## 1. `Workspace` methods
 
-All added to `mixpanel_headless.workspace.Workspace`, mirroring the cohort CRUD shape.
+All added to `mixpanel_headless.workspace.Workspace`, mirroring the cohort CRUD *naming* shape. The three public method families map onto **two project-scoped App API endpoints** (confirmed; research.md R-1): behaviors → `/api/app/projects/{pid}/behaviors/`, and BOTH metrics and formulas → `/api/app/projects/{pid}/metrics/` (a formula is a metric with `type="formula"`, so the formula methods are the metrics client operations discriminated by `type`). These entities are project-scoped only — no workspace scoping. `list_*` parses the object-map list envelope (`{"status":"ok","results":{"<id>":{...}}}`) into a typed list; there is no cursor pagination.
 
 ### Behaviors
 
 ```python
 def list_behaviors(self) -> list[Behavior]:
-    """List saved behaviors via the App API (cursor-paginated).
+    """List saved behaviors via the App API.
+
+    Parses the object-map list envelope (results keyed by string ID) into a
+    typed list; no cursor pagination.
 
     Returns:
         List of Behavior, possibly empty.
@@ -36,32 +39,37 @@ def update_behavior(self, behavior_id: int, params: UpdateBehaviorParams) -> Beh
     """Update a behavior (PATCH semantics; unset fields untouched)."""
 
 def delete_behavior(self, behavior_id: int) -> None:
-    """Delete a behavior. Raises QueryError on 404."""
+    """Delete a behavior via single-item DELETE on /behaviors/{id}/.
+    Raises QueryError on 404."""
 ```
 
 ### Metrics
 
 ```python
-def list_metrics(self) -> list[Metric]: ...
+def list_metrics(self) -> list[Metric]: ...        # /metrics/ results filtered to type="metric"
 def get_metric(self, metric_id: int) -> Metric: ...
-def create_metric(self, params: CreateMetricParams) -> Metric: ...
+def create_metric(self, params: CreateMetricParams) -> Metric: ...   # POST /metrics/ with type="metric"
 def update_metric(self, metric_id: int, params: UpdateMetricParams) -> Metric: ...
-def delete_metric(self, metric_id: int) -> None: ...
+def delete_metric(self, metric_id: int) -> None: ...   # BULK DELETE on /metrics/ ({"metrics":[{id}]})
 ```
 
-Docstrings mirror the behavior family. `create_metric` / `update_metric` emit a `measurement` object containing only the allowed keys; the property is included iff `math` is a property-aggregation math.
+Docstrings mirror the behavior family. `create_metric` / `update_metric` emit a `measurement` object containing only the allowed keys; the property is included iff `math` is a property-aggregation math. `list_metrics` reads the `/metrics/` collection and returns only entries with `type="metric"` (formulas are filtered out — see `list_formulas`). `delete_metric` MUST use the **bulk DELETE** on the `/metrics/` collection path (the single-item metric DELETE returns 501 NOT IMPLEMENTED); it sends `{"metrics":[{"id": metric_id}]}`.
 
 ### Formulas
 
+Formulas have no separate endpoint: each method below is the corresponding `/metrics/` operation with `type="formula"`.
+
 ```python
-def list_formulas(self) -> list[Formula]: ...
+def list_formulas(self) -> list[Formula]: ...      # /metrics/ results filtered to type="formula"
 def get_formula(self, formula_id: int) -> Formula: ...
-def create_formula(self, params: CreateFormulaParams) -> Formula: ...
+def create_formula(self, params: CreateFormulaParams) -> Formula: ...   # POST /metrics/ with type="formula"
 def update_formula(self, formula_id: int, params: UpdateFormulaParams) -> Formula: ...
-def delete_formula(self, formula_id: int) -> None: ...
+def delete_formula(self, formula_id: int) -> None: ...   # BULK DELETE on /metrics/ ({"metrics":[{id}]})
 ```
 
-`create_formula` / `update_formula` emit `referencedMetrics` in `A, B, ...` array order matching the variables in `definition`.
+`create_formula` / `update_formula` POST to the **metrics** endpoint with `type="formula"` and emit `referencedMetrics` in `A, B, ...` array order matching the variables in `definition`. `list_formulas` reads the `/metrics/` collection and returns only entries with `type="formula"`. `delete_formula` MUST use the **bulk DELETE** on the `/metrics/` collection path (single-item metric DELETE returns 501); it sends `{"metrics":[{"id": formula_id}]}`.
+
+**Public 3-family / 2-endpoint mapping**: `*_behavior` → `/behaviors/`; `*_metric` and `*_formula` → `/metrics/`, discriminated by the wire `type` field (`"metric"` vs `"formula"`). The three public families stay distinct for typed ergonomics, but only two endpoints are wired.
 
 ---
 

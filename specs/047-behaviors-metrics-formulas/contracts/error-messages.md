@@ -42,8 +42,20 @@ corrupts the metric and crashes the Mixpanel webapp.
 ```
 ValidationError: math="sum" is a property aggregation and requires a property object.
 ```
+
+A plain count (`total`/`unique`/`dau`/`wau`/`mau`) with a stray `property` is NOT an error: the property is silently dropped from the emitted payload (M2 normalization), matching the backend, which strips it on count maths. Likewise a rate math with a stray `property` is dropped, not rejected (M5 normalization). Neither raises.
+
+---
+
+## 3a. Rate-math behavior shape
+
+**When**: a rate math is paired with the wrong behavior shape (rule M6).
+
 ```
-ValidationError: math="dau" is a plain count and must not carry a property; omit it.
+ValidationError: math="conversion_rate_total" is a conversion rate and requires a funnel behavior with >= 2 steps; got behavior_type="simple".
+```
+```
+ValidationError: math="retention_rate" requires a retention behavior with EXACTLY 2 steps (born + return); got behavior_type="simple".
 ```
 
 ---

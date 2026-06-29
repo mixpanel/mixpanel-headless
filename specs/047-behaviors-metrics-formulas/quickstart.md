@@ -178,7 +178,7 @@ except Exception:
 | Operation | Target | Measurement |
 |-----------|--------|-------------|
 | `create_metric` / `create_behavior` / `create_formula` | 1 round-trip | single POST |
-| `list_*` (paginated) | linear in pages | cursor pagination helper |
+| `list_*` | single GET | object-map list envelope parsed to a list (no pagination) |
 | param-model validation | < 1 ms, 0 round-trips | construction-time only |
 
 ---
