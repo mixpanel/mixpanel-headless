@@ -17,10 +17,13 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_date_range,
     build_filter_entry,
     build_filter_section,
+    build_flow_segment_entries,
+    build_flow_where_entries,
     build_group_section,
     build_time_section,
     patch_custom_property_filters_for_transform,
 )
+from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -1043,11 +1046,9 @@ class TestBuildFlowWhereEntries:
             }
         ]
 
-    def test_custom_property_ref_raises_type_error(self) -> None:
-        """Non-string properties are rejected at build time, not at json.dumps."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_where_entries,
-        )
+    def test_custom_property_ref_rejected(self) -> None:
+        """Non-string properties are rejected with a structured error at
+        build time, not a crash at json.dumps."""
         from mixpanel_headless.types import CustomPropertyRef
 
         f = Filter(
@@ -1057,37 +1058,49 @@ class TestBuildFlowWhereEntries:
             _property_type="string",
             _resource_type="events",
         )
-        with pytest.raises(TypeError, match="custom property refs"):
+        with pytest.raises(
+            BookmarkValidationError, match="custom property refs"
+        ) as exc_info:
             build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED"
+        assert err.path == "where[0]"
 
-    def test_list_contains_raises_value_error(self) -> None:
-        """list_contains cannot be expressed in the flat format — reject loudly."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_where_entries,
-        )
-
+    def test_list_contains_rejected(self) -> None:
+        """list_contains cannot be expressed in the flat format — rejected
+        with a structured error naming the offending filter."""
         f = Filter.list_contains("cart", Brand="nike")
-        with pytest.raises(ValueError, match="list_contains"):
+        with pytest.raises(BookmarkValidationError, match="list_contains") as exc_info:
             build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_LIST_CONTAINS_UNSUPPORTED"
+        assert err.path == "where[0]"
 
-    def test_relative_date_raises_value_error(self) -> None:
+    def test_relative_date_rejected(self) -> None:
         """Relative-date operators lose their date unit in the flat format —
-        reject loudly and point at the absolute-date alternatives."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_where_entries,
-        )
-
+        rejected with a pointer to the absolute-date alternatives."""
         f = Filter.in_the_last("created", 2, "week")
-        with pytest.raises(ValueError, match="absolute date"):
+        with pytest.raises(BookmarkValidationError, match="absolute date") as exc_info:
             build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_RELATIVE_DATE_UNSUPPORTED"
+        assert err.path == "where[0]"
 
-    def test_empty_list_raises_value_error(self) -> None:
-        """build_flow_where_entries rejects an empty filter list."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_where_entries,
-        )
+    def test_rejection_reports_offending_index(self) -> None:
+        """A rejection names the offending filter's position, not where[0]."""
+        filters = [
+            Filter.equals("country", "US"),
+            Filter.list_contains("cart", Brand="nike"),
+        ]
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            build_flow_where_entries(filters)
+        assert exc_info.value.errors[0].path == "where[1]"
 
-        with pytest.raises(ValueError, match="requires at least one filter"):
+    def test_empty_list_raises_runtime_error(self) -> None:
+        """An empty filter list is caller misuse — the public path guards
+        with ``if property_filters:`` — so it crashes as an internal error
+        rather than reporting user input as invalid."""
+        with pytest.raises(RuntimeError, match="requires at least one filter"):
             build_flow_where_entries([])
 
 
@@ -1131,51 +1144,50 @@ class TestBuildFlowSegmentEntries:
         ]
 
     def test_cohort_breakdown_rejected(self) -> None:
-        """CohortBreakdown cannot be expressed — reject instead of sending
-        display labels as a property name."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_segment_entries,
-        )
-
-        with pytest.raises(TypeError, match="CohortBreakdown"):
+        """CohortBreakdown cannot be expressed — structured rejection
+        instead of sending display labels as a property name."""
+        with pytest.raises(
+            BookmarkValidationError, match="CohortBreakdown"
+        ) as exc_info:
             build_flow_segment_entries([CohortBreakdown(123, "Power Users")])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_TYPE_UNSUPPORTED"
+        assert err.path == "segments[0]"
 
     def test_frequency_breakdown_rejected(self) -> None:
-        """FrequencyBreakdown cannot be expressed — reject loudly."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_segment_entries,
-        )
+        """FrequencyBreakdown cannot be expressed — structured rejection."""
         from mixpanel_headless.types import FrequencyBreakdown
 
-        with pytest.raises(TypeError, match="FrequencyBreakdown"):
+        with pytest.raises(
+            BookmarkValidationError, match="FrequencyBreakdown"
+        ) as exc_info:
             build_flow_segment_entries([FrequencyBreakdown("Login")])
+        assert exc_info.value.errors[0].code == "FL_SEGMENT_TYPE_UNSUPPORTED"
 
     def test_custom_property_ref_rejected(self) -> None:
-        """GroupBy on a CustomPropertyRef has no name to send — reject."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_segment_entries,
-        )
-
-        with pytest.raises(TypeError, match="property names"):
+        """GroupBy on a CustomPropertyRef has no name to send —
+        structured rejection."""
+        with pytest.raises(BookmarkValidationError, match="property names") as exc_info:
             build_flow_segment_entries([GroupBy(CustomPropertyRef(id=42))])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED"
+        assert err.path == "segments[0]"
 
     def test_bucketed_group_by_rejected(self) -> None:
-        """GroupBy with numeric bucketing cannot be expressed — reject."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_segment_entries,
-        )
-
+        """GroupBy with numeric bucketing cannot be expressed — structured
+        rejection naming the offending position."""
         g = GroupBy("revenue", property_type="number", bucket_size=50)
-        with pytest.raises(ValueError, match="bucket"):
-            build_flow_segment_entries([g])
+        with pytest.raises(BookmarkValidationError, match="bucket") as exc_info:
+            build_flow_segment_entries(["country", g])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_BUCKETING_UNSUPPORTED"
+        assert err.path == "segments[1]"
 
-    def test_empty_list_raises_value_error(self) -> None:
-        """build_flow_segment_entries rejects an empty segment list."""
-        from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_segment_entries,
-        )
-
-        with pytest.raises(ValueError, match="requires at least one segment"):
+    def test_empty_list_raises_runtime_error(self) -> None:
+        """An empty segment list is caller misuse — the public path guards
+        with ``if segments:`` — so it crashes as an internal error rather
+        than reporting user input as invalid."""
+        with pytest.raises(RuntimeError, match="requires at least one segment"):
             build_flow_segment_entries([])
 
 

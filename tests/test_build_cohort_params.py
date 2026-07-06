@@ -961,14 +961,12 @@ class TestQueryFlowCohortFilter:
         assert len(result["where"]) == 1
         assert result["where"][0]["property"] == "country"
 
-    def test_flow_multiple_cohort_filters_raises_value_error(
-        self, ws: Workspace
-    ) -> None:
-        """Verify multiple cohort filters in flow where= raises ValueError."""
+    def test_flow_multiple_cohort_filters_rejected(self, ws: Workspace) -> None:
+        """Multiple cohort filters in flow where= raise a structured error."""
         with pytest.raises(
             BookmarkValidationError,
             match="query_flow supports a single cohort filter, but 2",
-        ):
+        ) as exc_info:
             ws.build_flow_params(
                 FlowQuery(
                     event="Login",
@@ -978,6 +976,9 @@ class TestQueryFlowCohortFilter:
                     ],
                 )
             )
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_MULTIPLE_COHORTS"
+        assert err.path == "where"
 
 
 # =============================================================================
@@ -1023,22 +1024,28 @@ class TestBuildFlowCohortFilterDirect:
         assert result is not None
         assert result["negated"] is True
 
-    def test_non_cohort_filter_raises(self) -> None:
-        """Non-cohort filter raises ValueError."""
+    def test_non_cohort_filter_raises_runtime_error(self) -> None:
+        """A non-cohort filter reaching this builder is caller misuse — the
+        flow path splits cohort from property filters first — so it crashes
+        as an internal error rather than a user validation failure."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_cohort_filter,
         )
 
-        with pytest.raises(ValueError, match="only accepts cohort filters"):
+        with pytest.raises(RuntimeError, match="only accepts cohort filters"):
             build_flow_cohort_filter(Filter.equals("country", "US"))
 
-    def test_multiple_filters_raises(self) -> None:
-        """Multiple cohort filters raises ValueError."""
+    def test_multiple_filters_rejected(self) -> None:
+        """Multiple cohort filters raise a structured error (user-reachable
+        via FlowQuery.where)."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_cohort_filter,
         )
 
-        with pytest.raises(ValueError, match="single cohort filter, but 2"):
+        with pytest.raises(
+            BookmarkValidationError, match="single cohort filter, but 2"
+        ) as exc_info:
             build_flow_cohort_filter(
                 [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]
             )
+        assert exc_info.value.errors[0].code == "FL_WHERE_MULTIPLE_COHORTS"

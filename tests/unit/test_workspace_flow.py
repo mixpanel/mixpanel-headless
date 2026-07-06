@@ -1233,13 +1233,18 @@ class TestFlowPropertyFilters:
         inner conditions."""
         ws = workspace_factory()
         try:
-            with pytest.raises(BookmarkValidationError, match="list_contains"):
+            with pytest.raises(
+                BookmarkValidationError, match="list_contains"
+            ) as exc_info:
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
                         where=[Filter.list_contains("cart", Brand="nike")],
                     )
                 )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_LIST_CONTAINS_UNSUPPORTED"
+            assert err.path == "where[0]"
         finally:
             ws.close()
 
@@ -1260,8 +1265,13 @@ class TestFlowPropertyFilters:
                 _property_type="string",
                 _resource_type="events",
             )
-            with pytest.raises(BookmarkValidationError, match="custom property refs"):
+            with pytest.raises(
+                BookmarkValidationError, match="custom property refs"
+            ) as exc_info:
                 ws.build_flow_params(FlowQuery(event="Login", where=[f]))
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED"
+            assert err.path == "where[0]"
         finally:
             ws.close()
 
@@ -1273,13 +1283,18 @@ class TestFlowPropertyFilters:
         format — rejected with a pointer to absolute-date alternatives."""
         ws = workspace_factory()
         try:
-            with pytest.raises(BookmarkValidationError, match="absolute date"):
+            with pytest.raises(
+                BookmarkValidationError, match="absolute date"
+            ) as exc_info:
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
                         where=[Filter.in_the_last("created", 2, "week")],
                     )
                 )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_RELATIVE_DATE_UNSUPPORTED"
+            assert err.path == "where[0]"
         finally:
             ws.close()
 

@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Literal, cast
 
 from mixpanel_headless._literal_types import QueryTimeUnit
+from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -597,7 +598,8 @@ def build_flow_where_entries(
 
     Args:
         filters: List of property ``Filter`` objects. Must not be
-            empty — caller should check before calling.
+            empty — caller should check before calling. Error paths are
+            indexed relative to this list (``where[i]``).
 
     Returns:
         List of ``{property, operator[, value]}`` dicts suitable for
@@ -605,10 +607,12 @@ def build_flow_where_entries(
         operators such as ``is set``.
 
     Raises:
-        ValueError: If ``filters`` is empty, or contains a
-            ``list_contains`` or relative-date filter.
-        TypeError: If a filter's property is not a plain string
-            (custom property refs are not supported in flow filters).
+        BookmarkValidationError: If a filter uses ``list_contains``, a
+            relative-date operator, or a non-string property (custom
+            property refs) — kinds the flat format cannot express. The
+            error carries an ``FL_WHERE_*`` code and a ``where[i]`` path.
+        RuntimeError: If ``filters`` is empty (caller misuse — the flow
+            path guards with ``if property_filters:``).
 
     Example:
         ```python
@@ -617,31 +621,58 @@ def build_flow_where_entries(
         ```
     """
     if not filters:
-        raise ValueError(
+        raise RuntimeError(
             "build_flow_where_entries requires at least one filter; "
             "caller should check before calling"
         )
     entries: list[dict[str, Any]] = []
-    for f in filters:
+    for i, f in enumerate(filters):
         prop = f._property
         if not isinstance(prop, str):
-            raise TypeError(
-                f"flow where filters only support string property names; "
-                f"got {type(prop).__name__} — custom property refs "
-                f"are not supported in flow filters"
+            raise BookmarkValidationError(
+                [
+                    ValidationError(
+                        path=f"where[{i}]",
+                        message=(
+                            f"flow where filters only support string "
+                            f"property names; got {type(prop).__name__} — "
+                            f"custom property refs are not supported in "
+                            f"flow filters"
+                        ),
+                        code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
+                    )
+                ]
             )
         if f._operator == "list_contains":
-            raise ValueError(
-                "flow where filters cannot express list_contains — the "
-                "flat where format has no key for nested sub-filters"
+            raise BookmarkValidationError(
+                [
+                    ValidationError(
+                        path=f"where[{i}]",
+                        message=(
+                            "flow where filters cannot express "
+                            "list_contains — the flat where format has "
+                            "no key for nested sub-filters"
+                        ),
+                        code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
+                    )
+                ]
             )
         if f._operator in Filter._RELATIVE_DATE_OPS:
-            raise ValueError(
-                f"flow where filters cannot express the relative-date "
-                f"operator '{f._operator}' — the flat where format has no "
-                f"key for the date unit. Use an absolute date filter "
-                f"instead (Filter.date_between / Filter.before / "
-                f"Filter.since)"
+            raise BookmarkValidationError(
+                [
+                    ValidationError(
+                        path=f"where[{i}]",
+                        message=(
+                            f"flow where filters cannot express the "
+                            f"relative-date operator '{f._operator}' — the "
+                            f"flat where format has no key for the date "
+                            f"unit. Use an absolute date filter instead "
+                            f"(Filter.date_between / Filter.before / "
+                            f"Filter.since)"
+                        ),
+                        code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
+                    )
+                ]
             )
         entry: dict[str, Any] = {"property": prop, "operator": f._operator}
         if f._value is not None:
@@ -669,18 +700,21 @@ def build_flow_segment_entries(
         segments: List of segment specifications. Must not be empty —
             caller should check before calling. Only plain property
             name strings and ``GroupBy`` objects with string properties
-            and no bucketing are expressible.
+            and no bucketing are expressible. Error paths are indexed
+            relative to this list (``segments[i]``).
 
     Returns:
         List of ``{property}`` dicts suitable for the ``segment_by``
         bookmark key.
 
     Raises:
-        ValueError: If ``segments`` is empty, or a ``GroupBy`` uses
-            numeric bucketing.
-        TypeError: If a segment is a ``CohortBreakdown`` /
-            ``FrequencyBreakdown``, or a ``GroupBy`` whose property is
-            not a plain string.
+        BookmarkValidationError: If a segment is a ``CohortBreakdown``
+            / ``FrequencyBreakdown``, a ``GroupBy`` on a custom
+            property ref, or a ``GroupBy`` with numeric bucketing —
+            kinds the flat format cannot express. The error carries an
+            ``FL_SEGMENT_*`` code and a ``segments[i]`` path.
+        RuntimeError: If ``segments`` is empty (caller misuse — the
+            flow path guards with ``if segments:``).
 
     Example:
         ```python
@@ -689,39 +723,66 @@ def build_flow_segment_entries(
         ```
     """
     if not segments:
-        raise ValueError(
+        raise RuntimeError(
             "build_flow_segment_entries requires at least one segment; "
             "caller should check before calling"
         )
     entries: list[dict[str, Any]] = []
-    for seg in segments:
+    for i, seg in enumerate(segments):
         if isinstance(seg, str):
             entries.append({"property": seg})
             continue
         if isinstance(seg, GroupBy):
             prop = seg.property
             if not isinstance(prop, str):
-                raise TypeError(
-                    f"flow segments only support plain property names; got a "
-                    f"GroupBy on {type(prop).__name__} — custom properties "
-                    f"are not supported in flow segment_by"
+                raise BookmarkValidationError(
+                    [
+                        ValidationError(
+                            path=f"segments[{i}]",
+                            message=(
+                                f"flow segments only support plain property "
+                                f"names; got a GroupBy on "
+                                f"{type(prop).__name__} — custom properties "
+                                f"are not supported in flow segment_by"
+                            ),
+                            code="FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED",
+                        )
+                    ]
                 )
             if (
                 seg.bucket_size is not None
                 or seg.bucket_min is not None
                 or seg.bucket_max is not None
             ):
-                raise ValueError(
-                    "flow segments cannot express numeric bucketing — the "
-                    "flat segment_by format has no key for bucket "
-                    "parameters. Use a plain GroupBy without buckets"
+                raise BookmarkValidationError(
+                    [
+                        ValidationError(
+                            path=f"segments[{i}]",
+                            message=(
+                                "flow segments cannot express numeric "
+                                "bucketing — the flat segment_by format has "
+                                "no key for bucket parameters. Use a plain "
+                                "GroupBy without buckets"
+                            ),
+                            code="FL_SEGMENT_BUCKETING_UNSUPPORTED",
+                        )
+                    ]
                 )
             entries.append({"property": prop})
             continue
-        raise TypeError(
-            f"flow segments do not support {type(seg).__name__} — the flat "
-            f"segment_by format only carries property names. Use a property "
-            f"name string or GroupBy instead"
+        raise BookmarkValidationError(
+            [
+                ValidationError(
+                    path=f"segments[{i}]",
+                    message=(
+                        f"flow segments do not support "
+                        f"{type(seg).__name__} — the flat segment_by format "
+                        f"only carries property names. Use a property name "
+                        f"string or GroupBy instead"
+                    ),
+                    code="FL_SEGMENT_TYPE_UNSUPPORTED",
+                )
+            ]
         )
     return entries
 
@@ -746,8 +807,13 @@ def build_flow_cohort_filter(
         key, or ``None`` if ``where`` is empty.
 
     Raises:
-        ValueError: If any filter is not a cohort filter
-            (``_property != "$cohorts"``).
+        BookmarkValidationError: If more than one cohort filter is
+            provided (flows support a single cohort filter) — the one
+            user-reachable rejection, code ``FL_WHERE_MULTIPLE_COHORTS``.
+        RuntimeError: If a non-cohort filter reaches this builder (the
+            flow path splits cohort from property filters first), or a
+            cohort filter's ``_value`` structure is malformed — both
+            indicate library bugs, not bad user input.
 
     Example:
         ```python
@@ -761,37 +827,46 @@ def build_flow_cohort_filter(
 
     for f in filters:
         if f._property != "$cohorts":
-            raise ValueError(
+            raise RuntimeError(
                 "build_flow_cohort_filter only accepts cohort filters "
                 "(Filter.in_cohort/not_in_cohort); property filters should "
                 "use build_flow_where_entries instead"
             )
 
     if len(filters) > 1:
-        raise ValueError(
-            f"query_flow supports a single cohort filter, but {len(filters)} "
-            "were provided. Pass only one Filter.in_cohort/not_in_cohort."
+        raise BookmarkValidationError(
+            [
+                ValidationError(
+                    path="where",
+                    message=(
+                        f"query_flow supports a single cohort filter, but "
+                        f"{len(filters)} were provided. Pass only one "
+                        f"Filter.in_cohort/not_in_cohort."
+                    ),
+                    code="FL_WHERE_MULTIPLE_COHORTS",
+                )
+            ]
         )
 
     f = filters[0]
     # Extract from the _value structure: [{"cohort": {...}}]
     cohort_value = f._value
     if not isinstance(cohort_value, list) or len(cohort_value) == 0:
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value must be a non-empty list; "
             f"got {type(cohort_value).__name__}. This indicates a bug in "
             "Filter._build_cohort_filter."
         )
     first_item = cohort_value[0]
     if not isinstance(first_item, dict):
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value[0] is not a dict; "
             f"got {type(first_item).__name__}. This indicates a bug in "
             "Filter._build_cohort_filter."
         )
     cohort_data = first_item.get("cohort")
     if not isinstance(cohort_data, dict):
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value[0] is missing 'cohort' key; "
             f"got keys {list(first_item.keys())}. This indicates a bug in "
             "Filter._build_cohort_filter."
