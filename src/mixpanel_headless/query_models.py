@@ -18,6 +18,9 @@ from pydantic import (
     model_validator,
 )
 
+from mixpanel_headless._internal.bookmark_schema import (
+    translate_pydantic_exception,
+)
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
     FlowChartType,
@@ -137,19 +140,35 @@ class _BaseQuery(BaseModel):
         data: Any,
         handler: ModelWrapValidatorHandler[_BaseQuery],
     ) -> _BaseQuery:
-        """Catch pydantic ValidationError and convert to BookmarkValidationError."""
+        """Convert pydantic validation failures to ``BookmarkValidationError``.
+
+        Routes pydantic errors through the shared translator
+        (``translate_pydantic_exception``) so model-construction errors
+        carry the same path grammar (``where[0].bogus``) and stable
+        ``B*``/``S*`` codes as every other producer of
+        ``BookmarkValidationError`` — union member class names and raw
+        pydantic type strings never reach callers. Cross-field rules
+        from ``_get_cross_field_errors()`` are applied after field
+        validation succeeds.
+
+        Args:
+            data: The raw input being validated (dict, keyword dict, or
+                an existing instance, per pydantic wrap-validator rules).
+            handler: Pydantic's inner validation callable; invoking it
+                runs normal field validation for the model.
+
+        Returns:
+            The validated model instance.
+
+        Raises:
+            BookmarkValidationError: If field validation fails (with the
+                translated pydantic errors) or any cross-field rule
+                fails (with that rule's structured error).
+        """
         try:
             instance = handler(data)
         except ValidationError as exc:
-            errors = [
-                InternalValidationError(
-                    path=".".join(str(loc) for loc in e["loc"]),
-                    message=e["msg"],
-                    code=e["type"],
-                )
-                for e in exc.errors()
-            ]
-            raise BookmarkValidationError(errors) from exc
+            raise BookmarkValidationError(translate_pydantic_exception(exc)) from exc
         cross = instance._get_cross_field_errors()
         if cross:
             raise BookmarkValidationError(cross)

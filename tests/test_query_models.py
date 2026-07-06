@@ -1021,3 +1021,70 @@ class TestFilterDictDateValidation:
         f_cls = Filter.in_the_last("created", 7, "week")
         assert f_dict._value == f_cls._value
         assert f_dict._date_unit == f_cls._date_unit
+
+
+# =============================================================================
+# Wrap-validator error grammar: package paths and stable codes
+# =============================================================================
+
+
+class TestWrapValidationErrorGrammar:
+    """Model-construction errors use the package path grammar and codes.
+
+    ``_BaseQuery._wrap_validation`` routes pydantic errors through the
+    same translator as ``validate_with_pydantic``, so paths use
+    bracketed indices (``where[0].bogus``), union member class names
+    never leak into paths, and codes are the stable ``B*``/``S*``
+    family rather than raw pydantic type strings.
+    """
+
+    _BAD_WHERE_INPUT: ClassVar[dict[str, object]] = {
+        "events": ["Login"],
+        "where": [
+            {
+                "property": "country",
+                "operator": "equals",
+                "value": ["US"],
+                "bogus": 1,
+            }
+        ],
+    }
+
+    def test_extra_key_path_uses_bracketed_indices(self) -> None:
+        """Extra-key errors render where[0].bogus, not where.0.Tag.bogus."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(self._BAD_WHERE_INPUT)
+        paths = [e.path for e in exc_info.value.errors]
+        assert any(p == "where[0].bogus" for p in paths)
+        joined = " ".join(paths)
+        assert "FrequencyFilter" not in joined
+        assert "Filter." not in joined
+        assert ".0." not in joined
+
+    def test_extra_key_maps_to_stable_code(self) -> None:
+        """Extra keys map to S3_UNKNOWN_FIELD, not a raw pydantic type."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(self._BAD_WHERE_INPUT)
+        err = next(e for e in exc_info.value.errors if e.path == "where[0].bogus")
+        assert err.code == "S3_UNKNOWN_FIELD"
+
+    def test_min_length_maps_to_stable_code(self) -> None:
+        """List min_length failures map to B0_MIN_LENGTH."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery(events=[])
+        err = next(e for e in exc_info.value.errors if e.path == "events")
+        assert err.code == "B0_MIN_LENGTH"
+
+    def test_literal_error_maps_to_stable_code(self) -> None:
+        """Bad Literal values map to B0_INVALID_LITERAL."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate({"events": ["Login"], "unit": "bogus"})
+        err = next(e for e in exc_info.value.errors if e.path == "unit")
+        assert err.code == "B0_INVALID_LITERAL"
+
+    def test_numeric_range_maps_to_stable_code(self) -> None:
+        """Field range failures (ge/le) map to B0_OUT_OF_RANGE."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            FunnelQuery(steps=["A", "B"], conversion_window=-1)
+        err = next(e for e in exc_info.value.errors if e.path == "conversion_window")
+        assert err.code == "B0_OUT_OF_RANGE"

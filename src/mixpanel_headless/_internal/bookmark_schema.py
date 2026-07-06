@@ -73,6 +73,8 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
     "missing": "B0_MISSING_FIELD",
     # Extra (unexpected) field at a model with extra="forbid"
     "extra_forbidden": "S3_UNKNOWN_FIELD",
+    # Same failure at a pydantic dataclass (component types use these)
+    "unexpected_keyword_argument": "S3_UNKNOWN_FIELD",
     # Wrong value at a Literal[...] / enum field
     "literal_error": "B0_INVALID_LITERAL",
     "enum": "B0_INVALID_LITERAL",
@@ -306,6 +308,30 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         # ShowClause
         "FormulaShowClause",
         "BehaviorShowClause",
+        # Query-model union members (query_models.py smart unions insert
+        # the attempted arm's label into loc when every arm fails)
+        "Metric",
+        "CohortMetric",
+        "Formula",
+        "Filter",
+        "FrequencyFilter",
+        "GroupBy",
+        "CohortBreakdown",
+        "FrequencyBreakdown",
+        "FunnelStep",
+        "Exclusion",
+        "HoldingConstant",
+        "RetentionEvent",
+        "FlowStep",
+        "TimeComparison",
+        # Primitive union-arm labels (e.g. the ``str`` arm of
+        # ``str | Metric``); parameterized arms like ``list[union[...]]``
+        # are caught by the bracket heuristic in ``_loc_to_jsonpath``
+        "str",
+        "int",
+        "float",
+        "bool",
+        "NoneType",
     }
 )
 
@@ -342,7 +368,10 @@ def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:
     if prefix:
         parts.append(prefix)
     for item in loc:
-        if isinstance(item, str) and item in _DISCRIMINATOR_TAGS:
+        # Union-arm labels: known tag/class names, plus parameterized
+        # arms like ``list[union[str,FlowStep]]`` — real field names are
+        # Python identifiers and never contain brackets.
+        if isinstance(item, str) and (item in _DISCRIMINATOR_TAGS or "[" in item):
             continue
         if isinstance(item, int):
             if not parts:
