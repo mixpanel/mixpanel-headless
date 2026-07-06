@@ -700,6 +700,10 @@ def build_flow_segment_entries(
       name; their group-section entries carry display labels instead
     - ``GroupBy`` on a custom property ref has no name to send
     - ``GroupBy`` numeric bucketing has no key in the flat format
+    - ``GroupBy.list_item`` sub-property breakdowns have no key in the
+      flat format (the group-section ``listItemGroup`` shape is
+      insights-only); sending just the list property would run a
+      different query
 
     Args:
         segments: List of segment specifications. Must not be empty —
@@ -770,6 +774,23 @@ def build_flow_segment_entries(
                                 "GroupBy without buckets"
                             ),
                             code="FL_SEGMENT_BUCKETING_UNSUPPORTED",
+                        )
+                    ]
+                )
+            if seg._list_item_mode is not None:
+                raise BookmarkValidationError(
+                    [
+                        ValidationError(
+                            path=f"segments[{i}]",
+                            message=(
+                                "flow segments cannot express "
+                                "GroupBy.list_item sub-property breakdowns "
+                                "— the flat segment_by format has no key "
+                                "for the sub-property, and sending just "
+                                "the list property would run a different "
+                                "query. Use a plain property name instead"
+                            ),
+                            code="FL_SEGMENT_LIST_ITEM_UNSUPPORTED",
                         )
                     ]
                 )

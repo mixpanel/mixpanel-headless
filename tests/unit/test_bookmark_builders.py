@@ -1197,6 +1197,17 @@ class TestBuildFlowSegmentEntries:
         assert err.code == "FL_SEGMENT_BUCKETING_UNSUPPORTED"
         assert err.path == "segments[1]"
 
+    def test_list_item_group_by_rejected(self) -> None:
+        """GroupBy.list_item sub-property breakdowns cannot be expressed —
+        rejected instead of silently stripping the sub-property and
+        segmenting by the raw list property."""
+        g = GroupBy.list_item("cart", "Brand")
+        with pytest.raises(BookmarkValidationError, match="list_item") as exc_info:
+            build_flow_segment_entries([g])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_LIST_ITEM_UNSUPPORTED"
+        assert err.path == "segments[0]"
+
     def test_empty_list_raises_runtime_error(self) -> None:
         """An empty segment list is caller misuse — the public path guards
         with ``if segments:`` — so it crashes as an internal error rather

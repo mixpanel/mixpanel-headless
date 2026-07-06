@@ -1373,3 +1373,24 @@ class TestFlowDateAndEmptyListHandling:
             assert "filter_by_cohort" not in params
         finally:
             ws.close()
+
+    def test_list_item_segment_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """GroupBy.list_item in segments raises a structured error instead
+        of silently dropping the sub-property from the wire payload."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(BookmarkValidationError, match="list_item") as exc_info:
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        segments=[GroupBy.list_item("cart", "Brand")],
+                    )
+                )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_SEGMENT_LIST_ITEM_UNSUPPORTED"
+            assert err.path == "segments[0]"
+        finally:
+            ws.close()
