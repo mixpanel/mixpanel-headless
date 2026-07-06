@@ -150,6 +150,20 @@ class TestBuildDateRange:
         assert result["from_date"]["value"] == 7
         assert result["from_date"]["unit"] == "day"
 
+    def test_from_only_fills_today(self) -> None:
+        """Only from_date fills to_date with today (build_time_section parity)."""
+        with patch("mixpanel_headless._internal.bookmark_builders.date") as mock_date:
+            mock_date.today.return_value = date(2025, 6, 15)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            result = build_date_range(
+                from_date="2025-01-01",
+                to_date=None,
+                last=30,
+            )
+        assert result["type"] == "between"
+        assert result["from_date"] == "2025-01-01"
+        assert result["to_date"] == "2025-06-15"
+
 
 class TestBuildFilterSection:
     """Tests for build_filter_section() — sections.filter array building."""

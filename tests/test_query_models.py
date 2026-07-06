@@ -728,13 +728,14 @@ class TestCrossFieldValidation:
         )
         assert q.from_date == "2025-01-01"
 
-    def test_lone_from_date_rejected_flow(self) -> None:
-        """Flow keeps the rejection — its builder silently ignores
-        a lone from_date, so accepting it would silently fall back to last."""
-        from mixpanel_headless.exceptions import BookmarkValidationError
+    def test_lone_from_date_accepted_flow(self) -> None:
+        """from_date alone is valid for flow — the builder fills today.
 
-        with pytest.raises(BookmarkValidationError, match="from_date requires to_date"):
-            FlowQuery(event="Login", from_date="2025-01-01")
+        Parity with the other three models and with main, whose flow
+        path pre-filled today's date for the missing to_date.
+        """
+        q = FlowQuery(event="Login", from_date="2025-01-01")
+        assert q.from_date == "2025-01-01"
 
     @pytest.mark.parametrize(
         "make_query",

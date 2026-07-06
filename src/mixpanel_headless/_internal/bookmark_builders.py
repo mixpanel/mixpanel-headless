@@ -136,7 +136,10 @@ def build_date_range(
     """Build a flat date range dict for flows (non-sections format).
 
     Flows use a flat ``date_range`` object rather than the sections-based
-    ``sections.time`` array used by insights.
+    ``sections.time`` array used by insights. A lone ``from_date`` fills
+    today's date for the missing ``to_date`` — the same defaulting
+    ``build_time_section`` applies — so an "everything since X" query
+    behaves identically across all four query paths.
 
     Args:
         from_date: Start date (YYYY-MM-DD) or ``None``.
@@ -147,6 +150,7 @@ def build_date_range(
         Date range dict. Structure varies by case:
 
         - Absolute: ``{"type": "between", "from_date": ..., "to_date": ...}``
+          (``to_date`` defaults to today when only ``from_date`` is set)
         - Relative: ``{"type": "in the last", "from_date": {"unit": "day", "value": N}, "to_date": "$now"}``
 
     Example:
@@ -157,11 +161,12 @@ def build_date_range(
         #  "to_date": "$now"}
         ```
     """
-    if from_date is not None and to_date is not None:
+    if from_date is not None:
+        effective_to = to_date if to_date is not None else date.today().isoformat()
         return {
             "type": "between",
             "from_date": from_date,
-            "to_date": to_date,
+            "to_date": effective_to,
         }
     return {
         "type": "in the last",

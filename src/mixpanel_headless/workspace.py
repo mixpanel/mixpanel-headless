@@ -3312,8 +3312,9 @@ class Workspace:
                 params["where"] = build_flow_where_entries(property_filters)
 
         # Add segments if present — the arb_funnels endpoint uses
-        # ``segment_by`` with simple ``{property}`` entries.
-        if segments is not None:
+        # ``segment_by`` with simple ``{property}`` entries. An empty
+        # list no-ops, mirroring the ``if property_filters:`` guard.
+        if segments:
             segment_list = segments if isinstance(segments, list) else [segments]
             params["segment_by"] = build_flow_segment_entries(segment_list)
 

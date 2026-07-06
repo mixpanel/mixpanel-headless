@@ -1325,3 +1325,51 @@ class TestFlowPropertyFilters:
             assert "filter_by_cohort" not in params
         finally:
             ws.close()
+
+
+class TestFlowDateAndEmptyListHandling:
+    """Flow accepts the same date/empty-list inputs as its sibling models."""
+
+    def test_lone_from_date_builds_between_today(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """from_date alone builds a 'between [from_date, today]' range."""
+        from datetime import date
+
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(
+                FlowQuery(event="Login", from_date="2025-06-01")
+            )
+            dr = params["date_range"]
+            assert dr["type"] == "between"
+            assert dr["from_date"] == "2025-06-01"
+            assert dr["to_date"] == date.today().isoformat()
+        finally:
+            ws.close()
+
+    def test_empty_segments_list_no_ops(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """segments=[] builds without a segment_by key (like where=[])."""
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(FlowQuery(event="Login", segments=[]))
+            assert "segment_by" not in params
+        finally:
+            ws.close()
+
+    def test_empty_where_list_no_ops(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """where=[] builds without where or filter_by_cohort keys."""
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(FlowQuery(event="Login", where=[]))
+            assert "where" not in params
+            assert "filter_by_cohort" not in params
+        finally:
+            ws.close()

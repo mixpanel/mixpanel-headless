@@ -569,10 +569,15 @@ class FlowQuery(_BaseQuery):
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Validate cross-field constraints for flow queries.
 
-        Unlike the other query models, flow rejects a lone
-        ``from_date``: the flow builder's ``build_date_range`` cannot
-        express a from-only range and would silently fall back to the
-        relative ``last`` window.
+        Extends the base checks (lone ``to_date`` rejection) with an
+        empty-event-list rule: ``event=[]`` is schema-representable (the
+        list union arm has no minItems) but meaningless, so it is
+        rejected with a distinct code. A lone ``from_date`` is accepted
+        like the other models — ``build_date_range`` fills today's date
+        for the missing ``to_date``.
+
+        Returns:
+            List of validation errors (empty when the model is valid).
         """
         errors = super()._get_cross_field_errors()
         if isinstance(self.event, list) and len(self.event) == 0:
@@ -581,14 +586,6 @@ class FlowQuery(_BaseQuery):
                     path="event",
                     message="event list must not be empty",
                     code="EMPTY_EVENT_LIST",
-                )
-            )
-        if self.from_date is not None and self.to_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="from_date",
-                    message="from_date requires to_date to be set",
-                    code="FROM_DATE_WITHOUT_TO",
                 )
             )
         return errors
