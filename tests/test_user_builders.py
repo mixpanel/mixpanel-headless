@@ -495,9 +495,29 @@ class TestNotEqualsErrorMessage:
     """Tests for not_equals error message correctness."""
 
     def test_error_references_correct_method_name(self) -> None:
-        """Error message references Filter.not_equals(), not does_not_equal()."""
-        f = Filter("prop", "does not equal", [{"nested": True}])
+        """Error message references Filter.not_equals(), not does_not_equal().
+
+        Uses an explicitly numeric-typed filter — string-typed equals now
+        rejects non-string list elements at construction, so this
+        downstream guard is only reachable for exotic typed shapes.
+        """
+        f = Filter(
+            "prop",
+            "does not equal",
+            [{"nested": True}],
+            _property_type="number",
+        )
         import pytest
 
         with pytest.raises(ValueError, match="Filter.not_equals"):
             filter_to_selector(f)
+
+    def test_string_typed_non_string_values_rejected_at_construction(
+        self,
+    ) -> None:
+        """Default (string-typed) equals rejects non-string list elements
+        at construction, before any selector building."""
+        import pytest
+
+        with pytest.raises(ValueError, match="list of strings"):
+            Filter("prop", "does not equal", [{"nested": True}])

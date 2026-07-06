@@ -7266,12 +7266,29 @@ class Filter:
         if self._operator in self._NO_VALUE_OPS and self._value is not None:
             object.__setattr__(self, "_value", None)
 
-        # Wrap scalar string to list for equals/not_equals (matches classmethod behavior)
+        # Wrap scalar string to list for equals/not_equals (matches classmethod
+        # behavior); for string-typed filters (the default, and the LLM dict
+        # path) reject non-string scalars and non-string list elements — the
+        # classmethod contract is str | list[str], and a bare scalar
+        # filterValue is rejected by the API. Explicitly numeric/boolean-typed
+        # filters keep their scalar values (the segfilter engine stringifies
+        # them downstream).
         if self._operator in ("equals", "does not equal"):
             if self._value is None:
                 raise ValueError(f"Filter operator '{self._operator}' requires a value")
             if isinstance(self._value, str):
                 object.__setattr__(self, "_value", [self._value])
+            elif self._property_type == "string":
+                if not isinstance(self._value, list):
+                    raise ValueError(
+                        f"Filter operator '{self._operator}' requires a string "
+                        f"or a list of strings, got {type(self._value).__name__!r}"
+                    )
+                if not all(isinstance(v, str) for v in self._value):
+                    raise ValueError(
+                        f"Filter operator '{self._operator}' requires a list of "
+                        f"strings, got {self._value!r}"
+                    )
 
         # Validate two-value operators require exactly 2 elements
         if self._operator in self._TWO_VALUE_OPS and (
@@ -7280,6 +7297,22 @@ class Filter:
             raise ValueError(
                 f"Filter operator '{self._operator}' requires a "
                 f"2-element list, got {self._value!r}"
+            )
+
+        # Numeric two-value operators require numeric endpoints
+        # (Filter.between/not_between contract is list[int | float]); the
+        # date pair ("was between"/"was not between") is validated below
+        if (
+            self._operator in ("is between", "not between")
+            and isinstance(self._value, list)
+            and not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool)
+                for v in self._value
+            )
+        ):
+            raise ValueError(
+                f"Filter operator '{self._operator}' requires two numeric "
+                f"values, got {self._value!r}"
             )
 
         # Validate date values (classmethod parity — dict construction
@@ -7928,7 +7961,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was on",
@@ -7958,7 +7990,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was not on",
@@ -7988,7 +8019,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was before",
@@ -8018,7 +8048,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was since",
@@ -8051,8 +8080,6 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was in the",
@@ -8086,8 +8113,6 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was not in the",
@@ -8121,12 +8146,6 @@ class Filter:
             ValueError: If dates are not valid YYYY-MM-DD or
                 from_date is after to_date.
         """
-        from_parsed = cls._validate_date(from_date)
-        to_parsed = cls._validate_date(to_date)
-        if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
-            )
         return cls(
             _property=property,
             _operator="was between",
@@ -8164,12 +8183,6 @@ class Filter:
             f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
             ```
         """
-        from_parsed = cls._validate_date(from_date)
-        to_parsed = cls._validate_date(to_date)
-        if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
-            )
         return cls(
             _property=property,
             _operator="was not between",
@@ -8207,8 +8220,6 @@ class Filter:
             f = Filter.in_the_next("expires", 7, "day")
             ```
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was in the next",

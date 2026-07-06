@@ -825,6 +825,58 @@ class TestFilterDictConstruction:
         assert f._property_type == "number"
         assert f._value == [10, 50]
 
+    def test_equals_non_string_scalar_rejected(self) -> None:
+        """equals with a bare non-string scalar is rejected.
+
+        The classmethod contract is ``str | list[str]``; passing the
+        scalar through emitted a bare ``filterValue: 5`` on the wire
+        where every classmethod-built equals emits a list.
+        """
+        with pytest.raises(ValidationError, match="string or a list"):
+            self._adapter.validate_python(
+                {"property": "plan_tier", "operator": "equals", "value": 5}
+            )
+
+    def test_not_equals_bool_scalar_rejected(self) -> None:
+        """does not equal with a bare bool is rejected like other scalars."""
+        with pytest.raises(ValidationError, match="string or a list"):
+            self._adapter.validate_python(
+                {"property": "active", "operator": "does not equal", "value": True}
+            )
+
+    def test_equals_list_elements_must_be_strings(self) -> None:
+        """String-typed equals rejects a homogeneous non-string list."""
+        with pytest.raises(ValidationError, match="list of strings"):
+            self._adapter.validate_python(
+                {"property": "plan_tier", "operator": "equals", "value": [5, 6]}
+            )
+
+    def test_equals_mixed_list_rejected_by_field_typing(self) -> None:
+        """Mixed-type lists match no _value union arm and are rejected."""
+        with pytest.raises(ValidationError):
+            self._adapter.validate_python(
+                {"property": "plan_tier", "operator": "equals", "value": [5, "a"]}
+            )
+
+    def test_is_between_requires_numeric_elements(self) -> None:
+        """is between requires numeric endpoints (Filter.between parity).
+
+        String endpoints built a self-contradictory wire entry
+        (filterType "number" with string operands).
+        """
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": "is between", "value": ["a", "b"]}
+            )
+
+    def test_is_between_mixed_float_int_accepted(self) -> None:
+        """is between accepts mixed int/float endpoints like Filter.between."""
+        f = self._adapter.validate_python(
+            {"property": "amount", "operator": "is between", "value": [1, 2.5]}
+        )
+        assert f._value == [1, 2.5]
+        assert f._property_type == "number"
+
     def test_equivalence_with_classmethod(self) -> None:
         """Dict-constructed Filter matches classmethod-constructed Filter."""
         f_dict = self._adapter.validate_python(
