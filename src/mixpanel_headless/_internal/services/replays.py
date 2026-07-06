@@ -204,11 +204,22 @@ class ReplaysService:
                 lacks ``sensitive_data_replay`` permission.
             APIError: Other 4xx (other than the sensitive-data 403) or
                 ``ServerError`` on 5xx.
+            MixpanelHeadlessError: The sign response doesn't match the
+                expected schema — a non-dict item, or a dict missing
+                ``replay_id``/``url``/``query_string``
+                (``code="SIGN_RESPONSE_SCHEMA"``).
         """
         signed_at = time.time()
         raw = self._api.sign_replays(replay_ids, env=env)
         results: list[SignedReplay] = []
         for item in raw:
+            if not isinstance(item, dict):
+                raise MixpanelHeadlessError(
+                    f"Sign response item is not an object: expected an "
+                    f"object with replay_id/url/query_string, got "
+                    f"{type(item).__name__}",
+                    code="SIGN_RESPONSE_SCHEMA",
+                )
             try:
                 results.append(
                     SignedReplay(
@@ -221,8 +232,7 @@ class ReplaysService:
                 )
             except KeyError as exc:
                 raise MixpanelHeadlessError(
-                    f"Sign response missing key {exc} in item: "
-                    f"{list(item.keys()) if isinstance(item, dict) else type(item).__name__}",
+                    f"Sign response missing key {exc} in item: {list(item.keys())}",
                     code="SIGN_RESPONSE_SCHEMA",
                 ) from exc
         return results
