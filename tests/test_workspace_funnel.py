@@ -127,11 +127,18 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-F2: An empty event name is caught by FunnelStep.__post_init__."""
+        """T021-F2: An empty event name raises structured F2, not a raw
+        pydantic error from FunnelStep construction."""
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="at least 1 character"):
+            with pytest.raises(
+                BookmarkValidationError, match="non-empty string"
+            ) as exc_info:
                 ws.query_funnel(FunnelQuery(steps=["Signup", ""]))
+            err = next(
+                e for e in exc_info.value.errors if e.code == "F2_EMPTY_STEP_EVENT"
+            )
+            assert err.path == "steps[1]"
         finally:
             ws.close()
 
@@ -169,11 +176,16 @@ class TestQueryFunnelValidation:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """T021-multi: Empty event name is caught by FunnelStep.__post_init__."""
+        """T021-multi: Empty event name raises structured F2 before any
+        FunnelStep construction or API call."""
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="at least 1 character"):
+            with pytest.raises(
+                BookmarkValidationError, match="non-empty string"
+            ) as exc_info:
                 ws.query_funnel(FunnelQuery(steps=["", "B"]))
+            assert any(e.code == "F2_EMPTY_STEP_EVENT" for e in exc_info.value.errors)
+            mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()
 

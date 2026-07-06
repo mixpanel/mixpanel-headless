@@ -28,7 +28,12 @@ from mixpanel_headless._internal.validation import (
     validate_time_args,
 )
 from mixpanel_headless.exceptions import BookmarkValidationError
-from mixpanel_headless.query_models import InsightsQuery
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 from mixpanel_headless.types import Formula, GroupBy, Metric
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -886,3 +891,109 @@ class TestValidateGroupByArgs:
             ),
         )
         assert errors == []
+
+
+# =============================================================================
+# Normalization error contract: build methods raise BookmarkValidationError
+# =============================================================================
+
+
+class TestNormalizationErrorContract:
+    """Schema-valid model inputs never leak raw pydantic errors from build.
+
+    The bare-``str`` union arms on the query models carry no length or
+    range constraints (that is what the published JSON schema advertises),
+    so empty strings and out-of-range top-level values reach the build
+    methods. The documented contract is ``BookmarkValidationError`` with
+    the Layer-1 code — not ``pydantic.ValidationError`` from the str →
+    component normalization.
+    """
+
+    def test_funnel_empty_step_string(self, ws: Workspace) -> None:
+        """F2: empty step string surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_funnel_params(FunnelQuery(steps=["", "Login"]))
+        err = next(e for e in exc_info.value.errors if e.code == "F2_EMPTY_STEP_EVENT")
+        assert err.path == "steps[0]"
+
+    def test_funnel_empty_exclusion_string(self, ws: Workspace) -> None:
+        """F4: empty exclusion string surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_funnel_params(
+                FunnelQuery(steps=["Signup", "Login"], exclusions=[""])
+            )
+        err = next(
+            e for e in exc_info.value.errors if e.code == "F4_EMPTY_EXCLUSION_EVENT"
+        )
+        assert err.path == "exclusions[0]"
+
+    def test_funnel_empty_holding_constant_string(self, ws: Workspace) -> None:
+        """F8b: empty holding_constant string surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_funnel_params(
+                FunnelQuery(steps=["Signup", "Login"], holding_constant=[""])
+            )
+        err = next(
+            e
+            for e in exc_info.value.errors
+            if e.code == "F8_EMPTY_HOLDING_CONSTANT_PROPERTY"
+        )
+        assert err.path == "holding_constant[0]"
+
+    def test_funnel_aggregates_multiple_normalization_errors(
+        self, ws: Workspace
+    ) -> None:
+        """Empty step and empty exclusion are reported in a single pass."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_funnel_params(FunnelQuery(steps=["", "Login"], exclusions=[""]))
+        codes = {e.code for e in exc_info.value.errors}
+        assert "F2_EMPTY_STEP_EVENT" in codes
+        assert "F4_EMPTY_EXCLUSION_EVENT" in codes
+
+    def test_insights_empty_formula(self, ws: Workspace) -> None:
+        """Empty top-level formula surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_params(InsightsQuery(events=["Signup", "Login"], formula=""))
+        assert any(e.path.startswith("formula") for e in exc_info.value.errors)
+
+    def test_retention_empty_born_event(self, ws: Workspace) -> None:
+        """R1: empty born_event surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_retention_params(
+                RetentionQuery(born_event="", return_event="Login")
+            )
+        assert any(e.code == "R1_EMPTY_BORN_EVENT" for e in exc_info.value.errors)
+
+    def test_retention_empty_return_event(self, ws: Workspace) -> None:
+        """R2: empty return_event surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="")
+            )
+        assert any(e.code == "R2_EMPTY_RETURN_EVENT" for e in exc_info.value.errors)
+
+    def test_flow_empty_event_string(self, ws: Workspace) -> None:
+        """FL2: empty flow event string surfaces as BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_flow_params(FlowQuery(event=""))
+        err = next(e for e in exc_info.value.errors if e.code == "FL2_EMPTY_STEP_EVENT")
+        assert err.path == "steps[0]"
+
+    def test_flow_forward_out_of_range(self, ws: Workspace) -> None:
+        """FL3: top-level forward beyond FlowStep's 0-5 range is structured."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_flow_params(FlowQuery(event="Login", forward=7))
+        assert any(e.code == "FL3_FORWARD_RANGE" for e in exc_info.value.errors)
+
+    def test_flow_reverse_out_of_range(self, ws: Workspace) -> None:
+        """FL4: top-level reverse beyond FlowStep's 0-5 range is structured."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_flow_params(FlowQuery(event="Login", reverse=9))
+        assert any(e.code == "FL4_REVERSE_RANGE" for e in exc_info.value.errors)
+
+    def test_exception_type_independent_of_input_spelling(self, ws: Workspace) -> None:
+        """Dict-spelled and bare-str-spelled bad input raise the same type."""
+        with pytest.raises(BookmarkValidationError):
+            FunnelQuery.model_validate({"steps": [{"event": ""}, {"event": "L"}]})
+        with pytest.raises(BookmarkValidationError):
+            ws.build_funnel_params(FunnelQuery(steps=["", "L"]))

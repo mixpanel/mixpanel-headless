@@ -92,6 +92,14 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
     "union_tag_not_found": "B7_INVALID_BEHAVIOR_TYPE",
     # Custom validator failure (raised by @field_validator / @model_validator)
     "value_error": "B0_VALIDATOR_ERROR",
+    # Length constraints (Field(min_length=...) on strings and lists)
+    "string_too_short": "B0_MIN_LENGTH",
+    "too_short": "B0_MIN_LENGTH",
+    # Numeric range constraints (Field(ge=..., le=..., gt=..., lt=...))
+    "greater_than": "B0_OUT_OF_RANGE",
+    "greater_than_equal": "B0_OUT_OF_RANGE",
+    "less_than": "B0_OUT_OF_RANGE",
+    "less_than_equal": "B0_OUT_OF_RANGE",
 }
 
 
@@ -209,15 +217,46 @@ def validate_with_pydantic(
         #                           code="B0_INVALID_LITERAL", ...)]
         ```
     """
-    mapper = code_mapper or _default_code_mapper
     try:
         model_cls.model_validate(raw)
     except PydanticValidationError as exc:
-        return [
-            _translate_pydantic_error(dict(err), mapper, path_prefix)
-            for err in exc.errors()
-        ]
+        return translate_pydantic_exception(
+            exc, path_prefix=path_prefix, code_mapper=code_mapper
+        )
     return []
+
+
+def translate_pydantic_exception(
+    exc: PydanticValidationError,
+    *,
+    path_prefix: str = "",
+    code_mapper: CodeMapper | None = None,
+) -> list[ValidationError]:
+    """Translate a caught ``pydantic.ValidationError`` into package errors.
+
+    Shared adapter for callers that already hold the exception (query-model
+    wrap validators, component-normalization backstops) rather than a raw
+    dict to validate. Produces the same path grammar and stable codes as
+    ``validate_with_pydantic``, so pydantic-layer failures are
+    indistinguishable from the hand-written validators' output.
+
+    Args:
+        exc: The caught ``pydantic.ValidationError``.
+        path_prefix: JSONPath-like prefix prepended to every error's
+            ``path`` (e.g. ``"steps"``).
+        code_mapper: Optional path-aware mapper from
+            ``(pydantic_error_type, loc)`` to a package error code.
+            Defaults to the ``_DEFAULT_CODE_MAP`` lookup.
+
+    Returns:
+        One ``ValidationError`` per Pydantic error, with ``path``
+        translated from Pydantic's ``loc`` tuple and a stable code.
+    """
+    mapper = code_mapper or _default_code_mapper
+    return [
+        _translate_pydantic_error(dict(err), mapper, path_prefix)
+        for err in exc.errors()
+    ]
 
 
 def _translate_pydantic_error(

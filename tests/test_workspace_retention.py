@@ -17,6 +17,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import RetentionQuery
 from mixpanel_headless.types import RetentionQueryResult
 
@@ -345,11 +346,14 @@ class TestQueryRetentionValidationIntegration:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,
     ) -> None:
-        """Empty born_event must be caught by RetentionEvent.__post_init__ without calling the API."""
+        """Empty born_event raises structured R1 without calling the API."""
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="at least 1 character"):
+            with pytest.raises(
+                BookmarkValidationError, match="non-empty string"
+            ) as exc_info:
                 ws.query_retention(RetentionQuery(born_event="", return_event="Login"))
+            assert any(e.code == "R1_EMPTY_BORN_EVENT" for e in exc_info.value.errors)
             mock_api_client.insights_query.assert_not_called()
         finally:
             ws.close()

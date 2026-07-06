@@ -43,6 +43,8 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
 
+from pydantic import ValidationError as PydanticValidationError
+
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
 from mixpanel_headless._internal.auth.bridge import load_bridge as _load_bridge
@@ -83,6 +85,7 @@ from mixpanel_headless._internal.bookmark_builders import (
 from mixpanel_headless._internal.bookmark_schema import (
     PARTIAL_UPDATE_SUB_MODELS,
     get_root_model_for_bookmark_type,
+    translate_pydantic_exception,
     validate_with_pydantic,
 )
 from mixpanel_headless._internal.config import ConfigManager
@@ -300,6 +303,32 @@ logger = logging.getLogger(__name__)
 # Limit validation bounds (Mixpanel API restriction)
 _MIN_LIMIT = 1
 _MAX_LIMIT = 100_000
+
+
+def _normalization_error(
+    exc: PydanticValidationError, section: str
+) -> BookmarkValidationError:
+    """Convert a component-construction pydantic error to the documented type.
+
+    Backstop for the str → component normalization in the
+    ``_resolve_and_build_*`` methods. Layer-1 validators run before
+    normalization and are expected to reject bad inputs first with their
+    structured codes; this converts anything they don't pre-check so the
+    public ``Raises: BookmarkValidationError`` contract holds regardless.
+
+    Args:
+        exc: The ``pydantic.ValidationError`` raised by a component
+            constructor (``FunnelStep``, ``Formula``, ``RetentionEvent``,
+            ``FlowStep``, ...).
+        section: JSONPath-like prefix naming the query section being
+            normalized (e.g. ``"steps"``, ``"formula"``).
+
+    Returns:
+        A ``BookmarkValidationError`` wrapping the translated errors.
+    """
+    return BookmarkValidationError(
+        translate_pydantic_exception(exc, path_prefix=section)
+    )
 
 
 def _check_event_properties_count(event_properties: list[str] | None) -> None:
@@ -2492,9 +2521,12 @@ class Workspace:
             )
 
         if formula is not None:
-            resolved_formulas: Sequence[Formula] = [
-                Formula(expression=formula, label=formula_label)
-            ]
+            try:
+                resolved_formulas: Sequence[Formula] = [
+                    Formula(expression=formula, label=formula_label)
+                ]
+            except PydanticValidationError as exc:
+                raise _normalization_error(exc, "formula") from exc
         else:
             resolved_formulas = formulas_from_list
 
@@ -2799,36 +2831,25 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Normalize steps: str → FunnelStep
-        normalized_steps = [FunnelStep(s) if isinstance(s, str) else s for s in steps]
-
-        # Normalize exclusions: str → Exclusion
-        normalized_exclusions: list[Exclusion] = []
-        if exclusions is not None:
-            normalized_exclusions = [
-                Exclusion(e) if isinstance(e, str) else e for e in exclusions
-            ]
-
-        # Normalize holding_constant: str → HoldingConstant
-        normalized_hc: list[HoldingConstant] = []
+        # Shape-normalize holding_constant (single → list; no construction)
+        hc_list: list[str | HoldingConstant] | None = None
         if holding_constant is not None:
             if isinstance(holding_constant, (str, HoldingConstant)):
-                hc_list: list[str | HoldingConstant] = [holding_constant]
+                hc_list = [holding_constant]
             else:
                 hc_list = list(holding_constant)
-            normalized_hc = [
-                HoldingConstant(h) if isinstance(h, str) else h for h in hc_list
-            ]
 
-        # Layer 1: Argument validation
+        # Layer 1: Argument validation on the raw inputs (F2/F4/F8b accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
         arg_errors = validate_funnel_args(
-            steps=normalized_steps,
+            steps=steps,
             conversion_window=conversion_window,
             conversion_window_unit=conversion_window_unit,
             math=math,
             math_property=math_property,
-            exclusions=normalized_exclusions if normalized_exclusions else None,
-            holding_constant=normalized_hc if normalized_hc else None,
+            exclusions=list(exclusions) if exclusions else None,
+            holding_constant=hc_list if hc_list else None,
             from_date=from_date,
             to_date=to_date,
             last=last,
@@ -2840,6 +2861,25 @@ class Workspace:
         arg_errors.extend(_scan_custom_properties(where=where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            normalized_steps = [
+                FunnelStep(event=s) if isinstance(s, str) else s for s in steps
+            ]
+            normalized_exclusions: list[Exclusion] = []
+            if exclusions is not None:
+                normalized_exclusions = [
+                    Exclusion(event=e) if isinstance(e, str) else e for e in exclusions
+                ]
+            normalized_hc: list[HoldingConstant] = []
+            if hc_list is not None:
+                normalized_hc = [
+                    HoldingConstant(h) if isinstance(h, str) else h for h in hc_list
+                ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "funnel") from exc
 
         # Build bookmark params
         params = self._build_funnel_params(
@@ -3340,34 +3380,18 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Normalize input: str → FlowStep, single → list
-        if isinstance(event, str):
-            raw_steps: list[str | FlowStep] = [FlowStep(event)]
-        elif isinstance(event, FlowStep):
-            raw_steps = [event]
+        # Shape-normalize input (single → list) WITHOUT constructing
+        # FlowStep yet — Layers 0.5/1 validate the raw values first so
+        # structured errors fire before any component constructor can
+        # raise on the same input
+        if isinstance(event, (str, FlowStep)):
+            raw_steps: list[str | FlowStep] = [event]
         else:
             raw_steps = list(event)
 
-        steps: list[FlowStep] = [
-            FlowStep(s) if isinstance(s, str) else s for s in raw_steps
-        ]
-
-        # Apply top-level forward/reverse defaults to steps where None
-        steps = [
-            FlowStep(
-                event=s.event,
-                forward=s.forward if s.forward is not None else forward,
-                reverse=s.reverse if s.reverse is not None else reverse,
-                label=s.label,
-                filters=s.filters,
-                filters_combinator=s.filters_combinator,
-                session_event=s.session_event,
-            )
-            for s in steps
-        ]
-
         # Layer 0.5: Per-step validation (FlowStep-level fields that
-        # validate_flow_args cannot see — it only receives event names)
+        # validate_flow_args cannot see — it only receives event names);
+        # bare ``str`` steps have no per-step fields and are skipped
         step_errors: list[ValidationError] = []
 
         # Top-level forward/reverse type checks (must be int, not bool/float)
@@ -3383,7 +3407,9 @@ class Workspace:
                     )
                 )
 
-        for i, s in enumerate(steps):
+        for i, s in enumerate(raw_steps):
+            if not isinstance(s, FlowStep):
+                continue
             spath = f"steps[{i}]"
             # Per-step forward/reverse type + range checks
             step_errors.extend(_check_step_direction(s.forward, "forward", spath))
@@ -3401,8 +3427,8 @@ class Workspace:
                     )
                 )
         # Per-step filter property validation
-        for i, s in enumerate(steps):
-            if s.filters:
+        for i, s in enumerate(raw_steps):
+            if isinstance(s, FlowStep) and s.filters:
                 for fi, f in enumerate(s.filters):
                     if isinstance(f._property, str) and contains_control_chars(
                         f._property
@@ -3436,11 +3462,20 @@ class Workspace:
         if any(e.severity == "error" for e in step_errors):
             raise BookmarkValidationError(step_errors)
 
-        # Layer 1: Argument validation — use effective direction values
-        # from normalized steps so per-step overrides aren't rejected by FL5.
-        effective_forward = max(s.forward or 0 for s in steps)
-        effective_reverse = max(s.reverse or 0 for s in steps)
-        event_names = [s.event for s in steps]
+        # Layer 1: Argument validation — effective direction values fold
+        # per-step overrides over the top-level defaults so overrides
+        # aren't rejected by FL5
+        step_forwards = [
+            s.forward if isinstance(s, FlowStep) and s.forward is not None else forward
+            for s in raw_steps
+        ]
+        step_reverses = [
+            s.reverse if isinstance(s, FlowStep) and s.reverse is not None else reverse
+            for s in raw_steps
+        ]
+        effective_forward = max(step_forwards) if step_forwards else forward
+        effective_reverse = max(step_reverses) if step_reverses else reverse
+        event_names = [s if isinstance(s, str) else s.event for s in raw_steps]
         arg_errors = validate_flow_args(
             steps=event_names,
             forward=effective_forward,
@@ -3456,9 +3491,33 @@ class Workspace:
             data_group_id=data_group_id,
         )
         # CP1-CP6: Custom property validation for flow step filters
-        arg_errors.extend(_scan_custom_properties(flow_steps=steps, where=where))
+        # (raw items are position-preserving; bare strings carry no filters)
+        arg_errors.extend(_scan_custom_properties(flow_steps=raw_steps, where=where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
+
+        # Normalization: str → FlowStep, then fold top-level defaults into
+        # per-step ``None`` slots (inputs validated above; the backstop
+        # keeps the documented exception type for anything the validators
+        # don't pre-check)
+        try:
+            constructed = [
+                FlowStep(event=s) if isinstance(s, str) else s for s in raw_steps
+            ]
+            steps = [
+                FlowStep(
+                    event=s.event,
+                    forward=s.forward if s.forward is not None else forward,
+                    reverse=s.reverse if s.reverse is not None else reverse,
+                    label=s.label,
+                    filters=s.filters,
+                    filters_combinator=s.filters_combinator,
+                    session_event=s.session_event,
+                )
+                for s in constructed
+            ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "steps") from exc
 
         # Build bookmark params — convert raw ValueError/TypeError from
         # the internal builders into the documented BookmarkValidationError.
@@ -3655,20 +3714,16 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Normalize events: str → RetentionEvent
-        norm_born = (
-            RetentionEvent(born_event) if isinstance(born_event, str) else born_event
+        # Layer 1: Argument validation on the raw event names (R1/R2 accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
+        born_name = born_event if isinstance(born_event, str) else born_event.event
+        return_name = (
+            return_event if isinstance(return_event, str) else return_event.event
         )
-        norm_return = (
-            RetentionEvent(return_event)
-            if isinstance(return_event, str)
-            else return_event
-        )
-
-        # Layer 1: Argument validation
         arg_errors = validate_retention_args(
-            born_event=norm_born.event,
-            return_event=norm_return.event,
+            born_event=born_name,
+            return_event=return_name,
             retention_unit=retention_unit,
             alignment=alignment,
             bucket_sizes=bucket_sizes,
@@ -3683,14 +3738,31 @@ class Workspace:
             data_group_id=data_group_id,
         )
         # CP1-CP6: Custom property validation for where and event filters
+        # (raw items are position-preserving: idx 0 = born, idx 1 = return)
         arg_errors.extend(
             _scan_custom_properties(
                 where=where,
-                retention_events=[norm_born, norm_return],
+                retention_events=[born_event, return_event],
             )
         )
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            norm_born = (
+                RetentionEvent(event=born_event)
+                if isinstance(born_event, str)
+                else born_event
+            )
+            norm_return = (
+                RetentionEvent(event=return_event)
+                if isinstance(return_event, str)
+                else return_event
+            )
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "retention") from exc
 
         # Build bookmark params
         params = self._build_retention_params(

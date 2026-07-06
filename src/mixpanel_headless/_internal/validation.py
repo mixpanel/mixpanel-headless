@@ -226,8 +226,8 @@ def _scan_custom_properties(
     where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
     events: Sequence[str | Metric | CohortMetric] | None = None,
     funnel_steps: Sequence[str | FunnelStep] | None = None,
-    flow_steps: Sequence[FlowStep] | None = None,
-    retention_events: Sequence[RetentionEvent] | None = None,
+    flow_steps: Sequence[str | FlowStep] | None = None,
+    retention_events: Sequence[str | RetentionEvent] | None = None,
 ) -> list[ValidationError]:
     """Scan all query positions for custom properties and validate.
 
@@ -316,10 +316,11 @@ def _scan_custom_properties(
                     _scan_filters_for_custom_properties(step.filters, f"steps[{idx}]")
                 )
 
-    # Scan flow steps (FlowStep.filters)
+    # Scan flow steps (FlowStep.filters); bare ``str`` steps carry no
+    # filters and are skipped in place so indices stay position-accurate
     if flow_steps is not None:
         for idx, fstep in enumerate(flow_steps):
-            if fstep.filters:
+            if isinstance(fstep, FlowStep) and fstep.filters:
                 errors.extend(
                     _scan_filters_for_custom_properties(fstep.filters, f"steps[{idx}]")
                 )
@@ -328,7 +329,7 @@ def _scan_custom_properties(
     # retention_events is always [born_event, return_event] — see workspace.py
     if retention_events is not None:
         for idx, rev in enumerate(retention_events):
-            if rev.filters:
+            if isinstance(rev, RetentionEvent) and rev.filters:
                 label = "born_event" if idx == 0 else "return_event"
                 errors.extend(_scan_filters_for_custom_properties(rev.filters, label))
 
@@ -783,7 +784,7 @@ def validate_funnel_args(
     conversion_window_unit: ConversionWindowUnit = "day",
     math: FunnelMathType = "conversion_rate_unique",
     math_property: str | None = None,
-    exclusions: list[Exclusion] | None,
+    exclusions: Sequence[str | Exclusion] | None,
     holding_constant: Sequence[str | HoldingConstant] | None = None,
     from_date: str | None,
     to_date: str | None,
@@ -814,7 +815,9 @@ def validate_funnel_args(
             math types (average, median, min, max, p25, p75, p90, p99).
             Required when ``math`` is a property-aggregation type;
             must be ``None`` otherwise. Default: ``None``.
-        exclusions: Events to exclude between steps, or ``None``.
+        exclusions: Events to exclude between steps, or ``None``. Accepts
+            bare event-name strings (validated with the ``Exclusion``
+            field defaults) or ``Exclusion`` objects.
         holding_constant: Properties to hold constant, or ``None``.
         from_date: Start date (YYYY-MM-DD) or ``None``.
         to_date: End date (YYYY-MM-DD) or ``None``.
@@ -1032,9 +1035,14 @@ def validate_funnel_args(
         )
 
     # F4: Non-empty exclusion event names and step range validation
+    # (accepts raw ``str`` items — normalization happens after Layer 1,
+    # so bare event names carry the ``Exclusion`` field defaults here)
     if exclusions is not None:
         for i, ex in enumerate(exclusions):
-            if not ex.event or not ex.event.strip():
+            ex_event = ex.event if isinstance(ex, Exclusion) else ex
+            ex_from = ex.from_step if isinstance(ex, Exclusion) else 0
+            ex_to = ex.to_step if isinstance(ex, Exclusion) else None
+            if not ex_event or not ex_event.strip():
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
@@ -1043,59 +1051,57 @@ def validate_funnel_args(
                     )
                 )
             # F4 control char check on exclusion events
-            elif _CONTROL_CHAR_RE.search(ex.event):
+            elif _CONTROL_CHAR_RE.search(ex_event):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
                             f"Exclusion event name contains control "
-                            f"characters: {ex.event!r}"
+                            f"characters: {ex_event!r}"
                         ),
                         code="F4_CONTROL_CHAR_EXCLUSION",
                     )
                 )
             # F4e: from_step must be non-negative
-            if ex.from_step < 0:
+            if ex_from < 0:
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
-                        message=(
-                            f"Exclusion from_step must be >= 0 (got {ex.from_step})"
-                        ),
+                        message=(f"Exclusion from_step must be >= 0 (got {ex_from})"),
                         code="F4_EXCLUSION_NEGATIVE_STEP",
                     )
                 )
             # F4b: to_step must be > from_step (server requires strict from < to)
-            if ex.to_step is not None and ex.to_step <= ex.from_step:
+            if ex_to is not None and ex_to <= ex_from:
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion to_step ({ex.to_step}) must be > "
-                            f"from_step ({ex.from_step})"
+                            f"Exclusion to_step ({ex_to}) must be > "
+                            f"from_step ({ex_from})"
                         ),
                         code="F4_EXCLUSION_STEP_ORDER",
                     )
                 )
             # F4c: to_step must not exceed step count
-            if ex.to_step is not None and ex.to_step >= len(steps):
+            if ex_to is not None and ex_to >= len(steps):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion to_step ({ex.to_step}) exceeds "
+                            f"Exclusion to_step ({ex_to}) exceeds "
                             f"step count ({len(steps)})"
                         ),
                         code="F4_EXCLUSION_STEP_BOUNDS",
                     )
                 )
             # F4d: from_step must not exceed step count
-            if ex.from_step >= len(steps):
+            if ex_from >= len(steps):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion from_step ({ex.from_step}) exceeds "
+                            f"Exclusion from_step ({ex_from}) exceeds "
                             f"step count ({len(steps)})"
                         ),
                         code="F4_EXCLUSION_STEP_BOUNDS",
