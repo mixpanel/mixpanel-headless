@@ -1196,3 +1196,29 @@ class TestCrossFieldErrorCodes:
         """Metric events carry their own math — no V26 for them."""
         q = InsightsQuery(events=[Metric("Login")], math="percentile")
         assert q.math == "percentile"
+
+
+class TestSharedFieldSchema:
+    """Shared fields survive the _BaseQuery hoist in every model's schema."""
+
+    @pytest.mark.parametrize(
+        "model", [InsightsQuery, FunnelQuery, RetentionQuery, FlowQuery]
+    )
+    def test_data_group_id_in_schema(self, model: type[BaseModel]) -> None:
+        """data_group_id appears with its description in each schema."""
+        props = model.model_json_schema()["properties"]
+        assert "data_group_id" in props
+        assert (
+            props["data_group_id"]["description"]
+            == "Data group ID for group-level analytics."
+        )
+
+    @pytest.mark.parametrize("model", [InsightsQuery, FunnelQuery, RetentionQuery])
+    def test_time_comparison_in_schema(self, model: type[BaseModel]) -> None:
+        """time_comparison appears in the three models that support it."""
+        props = model.model_json_schema()["properties"]
+        assert "time_comparison" in props
+
+    def test_flow_has_no_time_comparison(self) -> None:
+        """FlowQuery does not advertise time_comparison (flows reject it)."""
+        assert "time_comparison" not in FlowQuery.model_json_schema()["properties"]

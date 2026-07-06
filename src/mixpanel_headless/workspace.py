@@ -2382,11 +2382,7 @@ class Workspace:
     def _resolve_and_build_params(
         self,
         *,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        events: Sequence[str | Metric | CohortMetric | Formula],
         from_date: str | None,
         to_date: str | None,
         last: int,
@@ -2395,13 +2391,9 @@ class Workspace:
         math_property: str | None,
         per_user: PerUserAggregation | None,
         percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
+        group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
         | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
+        where: list[Filter | FrequencyFilter] | None = None,
         formula: str | None = None,
         formula_label: str | None = None,
         rolling: int | None = None,
@@ -2413,13 +2405,16 @@ class Workspace:
         """Normalize, validate, and build bookmark params.
 
         Shared implementation for :meth:`query` and :meth:`build_params`.
-        Handles type guards, event/formula normalization, argument
-        validation (Layer 1), bookmark construction, and bookmark
-        structure validation (Layer 2).
+        Handles formula normalization, argument validation (Layer 1),
+        bookmark construction, and bookmark structure validation
+        (Layer 2). Parameter types mirror the ``InsightsQuery`` fields —
+        the model is the only production caller, so the kwargs-era
+        scalar shapes (bare ``str`` events, single ``Filter`` where)
+        are no longer accepted here.
 
         Args:
-            events: Raw events input (str, Metric, CohortMetric,
-                Formula, or sequence).
+            events: Events list (str, Metric, CohortMetric, or Formula
+                items).
             from_date: Start date (YYYY-MM-DD) or None.
             to_date: End date (YYYY-MM-DD) or None.
             last: Relative time range in days.
@@ -2447,63 +2442,15 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Defensive type guards — unreachable through the InsightsQuery model
-        # path (Pydantic enforces types at construction), but kept for direct
-        # callers of this internal method.
-        if not isinstance(events, (str, Metric, CohortMetric, Formula, list, tuple)):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message=(
-                            f"events must be a string, Metric, CohortMetric, Formula, or "
-                            f"sequence, got {type(events).__name__}"
-                        ),
-                        code="V21_INVALID_EVENT_TYPE",
-                    )
-                ]
-            )
-
-        # Type guard: where must be Filter, FrequencyFilter, or list
-        if where is not None and not isinstance(where, (Filter, FrequencyFilter, list)):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="where",
-                        message=(
-                            f"where must be a Filter, FrequencyFilter, or list, "
-                            f"got {type(where).__name__}"
-                        ),
-                        code="V25_INVALID_FILTER_TYPE",
-                    )
-                ]
-            )
-
-        # Normalize events to sequence, separating Formula objects
-        if isinstance(events, str):
-            events_list: list[str | Metric | CohortMetric] = [events]
-            formulas_from_list: list[Formula] = []
-        elif isinstance(events, (Metric, CohortMetric)):
-            events_list = [events]
-            formulas_from_list = []
-        elif isinstance(events, Formula):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message="Formula cannot be the only item; provide event(s) too",
-                        code="V0_NO_EVENTS",
-                    )
-                ]
-            )
-        else:
-            events_list = []
-            formulas_from_list = []
-            for item in events:
-                if isinstance(item, Formula):
-                    formulas_from_list.append(item)
-                else:
-                    events_list.append(item)
+        # Split Formula objects out of the events list (Layer 1's V0/V21
+        # checks cover empty/invalid events)
+        events_list: list[str | Metric | CohortMetric] = []
+        formulas_from_list: list[Formula] = []
+        for item in events:
+            if isinstance(item, Formula):
+                formulas_from_list.append(item)
+            else:
+                events_list.append(item)
 
         # Resolve formulas: can't use both approaches
         if formula is not None and formulas_from_list:

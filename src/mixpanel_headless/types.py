@@ -6836,23 +6836,13 @@ class TimeComparison:
                 or type is absolute and unit is set,
                 or date does not match YYYY-MM-DD format.
         """
-        valid_types = {"relative", "absolute-start", "absolute-end"}
-        if self.type not in valid_types:
-            raise ValueError(
-                f"TimeComparison type must be one of {sorted(valid_types)}, "
-                f"got {self.type!r}"
-            )
+        # type/unit Literal membership is enforced by pydantic before
+        # __post_init__ runs; only cross-field rules live here
         if self.type == "relative":
             if self.unit is None:
                 raise ValueError(
                     "TimeComparison type='relative' requires unit to be set "
                     "(e.g., TimeComparison.relative('month'))"
-                )
-            valid_units = {"day", "week", "month", "quarter", "year"}
-            if self.unit not in valid_units:
-                raise ValueError(
-                    f"TimeComparison unit must be one of {sorted(valid_units)}, "
-                    f"got {self.unit!r}"
                 )
             if self.date is not None:
                 raise ValueError(
@@ -8385,21 +8375,16 @@ class ListItemGroupMode:
     """Subproperty data type, matching :data:`CustomPropertyType`."""
 
     def __post_init__(self) -> None:
-        """Validate sub is non-empty and sub_type is a known scalar type.
+        """Validate sub is non-empty.
+
+        ``sub_type`` Literal membership is enforced by pydantic before
+        ``__post_init__`` runs.
 
         Raises:
-            ValueError: If ``sub`` is empty after stripping or
-                ``sub_type`` is not one of the four
-                ``CustomPropertyType`` values.
+            ValueError: If ``sub`` is empty after stripping.
         """
         if not self.sub.strip():
             raise ValueError("ListItemGroupMode.sub must be a non-empty string")
-        if self.sub_type not in ("string", "number", "boolean", "datetime"):
-            raise ValueError(
-                "ListItemGroupMode.sub_type must be one of "
-                "'string'/'number'/'boolean'/'datetime', "
-                f"got {self.sub_type!r}"
-            )
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -9586,25 +9571,16 @@ class FrequencyFilter:
         """Validate construction arguments (rules FF1-FF5).
 
         Raises:
-            ValueError: If event is empty (FF1), operator is invalid
-                (FF2), value is negative (FF3), date_range_value and
-                date_range_unit are not both set or both None (FF4),
-                or date_range_value is not positive when set (FF5).
+            ValueError: If event is empty (FF1), value is negative
+                (FF3), date_range_value and date_range_unit are not
+                both set or both None (FF4), or date_range_value is not
+                positive when set (FF5). Operator membership (FF2) is
+                enforced by pydantic's Literal validation before
+                ``__post_init__`` runs.
         """
-        from mixpanel_headless._internal.bookmark_enums import (
-            VALID_FREQUENCY_FILTER_OPERATORS,
-        )
-
         # FF1: event must be non-empty
         if not self.event.strip():
             raise ValueError("FrequencyFilter.event must be a non-empty string")
-        # FF2: operator must be valid
-        if self.operator not in VALID_FREQUENCY_FILTER_OPERATORS:
-            valid = ", ".join(sorted(VALID_FREQUENCY_FILTER_OPERATORS))
-            raise ValueError(
-                f"FrequencyFilter.operator must be one of: {valid}; "
-                f"got {self.operator!r}"
-            )
         # FF3: value must be non-negative
         if self.value < 0:
             raise ValueError(

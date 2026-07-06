@@ -110,6 +110,10 @@ class _BaseQuery(BaseModel):
         description="Relative time range in days. Default: 30.",
         examples=[7, 30, 90],
     )
+    data_group_id: int | None = Field(
+        None,
+        description="Data group ID for group-level analytics.",
+    )
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Return cross-field errors shared by all query models.
@@ -169,7 +173,21 @@ class _BaseQuery(BaseModel):
         return instance
 
 
-class InsightsQuery(_BaseQuery):
+class _TimeComparableQuery(_BaseQuery):
+    """Base for query models that support period-over-period comparison.
+
+    ``FlowQuery`` extends ``_BaseQuery`` directly — the flows endpoint
+    rejects time comparison (``FL_TIME_COMPARISON_NOT_SUPPORTED``), so
+    its schema must not advertise the field.
+    """
+
+    time_comparison: TimeComparison | None = Field(
+        None,
+        description="Period-over-period comparison.",
+    )
+
+
+class InsightsQuery(_TimeComparableQuery):
     """Input model for an insights query.
 
     Bundles all parameters accepted by ``Workspace.build_params()`` and
@@ -261,14 +279,6 @@ class InsightsQuery(_BaseQuery):
         "timeseries",
         description="Result shape: timeseries (per-period), total (single aggregate), table.",
     )
-    time_comparison: TimeComparison | None = Field(
-        None,
-        description="Period-over-period comparison.",
-    )
-    data_group_id: int | None = Field(
-        None,
-        description="Data group ID for group-level analytics.",
-    )
 
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Validate cross-field constraints for insights queries.
@@ -288,7 +298,7 @@ class InsightsQuery(_BaseQuery):
         return errors
 
 
-class FunnelQuery(_BaseQuery):
+class FunnelQuery(_TimeComparableQuery):
     """Input model for a funnel query.
 
     Bundles all parameters accepted by ``Workspace.build_funnel_params()``
@@ -372,17 +382,9 @@ class FunnelQuery(_BaseQuery):
         None,
         description="Funnel reentry mode: default, basic, aggressive, or optimized.",
     )
-    time_comparison: TimeComparison | None = Field(
-        None,
-        description="Period-over-period comparison.",
-    )
-    data_group_id: int | None = Field(
-        None,
-        description="Data group ID for group-level analytics.",
-    )
 
 
-class RetentionQuery(_BaseQuery):
+class RetentionQuery(_TimeComparableQuery):
     """Input model for a retention query.
 
     Bundles all parameters accepted by ``Workspace.build_retention_params()``
@@ -460,14 +462,6 @@ class RetentionQuery(_BaseQuery):
     retention_cumulative: bool = Field(
         False,
         description="Whether to use cumulative retention counting.",
-    )
-    time_comparison: TimeComparison | None = Field(
-        None,
-        description="Period-over-period comparison.",
-    )
-    data_group_id: int | None = Field(
-        None,
-        description="Data group ID for group-level analytics.",
     )
 
 
@@ -548,10 +542,6 @@ class FlowQuery(_BaseQuery):
     where: list[Filter] | None = Field(
         None,
         description="Filter results by property conditions.",
-    )
-    data_group_id: int | None = Field(
-        None,
-        description="Data group ID for group-level analytics.",
     )
     segments: list[str | GroupBy] | None = Field(
         None,
