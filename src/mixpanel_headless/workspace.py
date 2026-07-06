@@ -3481,14 +3481,16 @@ class Workspace:
                 exclusions=exclusions,
             )
         except (ValueError, TypeError) as exc:
-            raise BookmarkValidationError([
-                ValidationError(
-                    path="flow.build",
-                    message=str(exc),
-                    code="flow_build_error",
-                    severity="error",
-                )
-            ]) from exc
+            raise BookmarkValidationError(
+                [
+                    ValidationError(
+                        path="flow.build",
+                        message=str(exc),
+                        code="flow_build_error",
+                        severity="error",
+                    )
+                ]
+            ) from exc
 
         # Layer 2: Bookmark structure validation
         bookmark_errors = validate_flow_bookmark(params)
