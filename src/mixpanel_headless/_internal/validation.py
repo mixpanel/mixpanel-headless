@@ -509,6 +509,71 @@ def _validate_data_group_id(
     return []
 
 
+def v9_to_requires_from(
+    from_date: str | None, to_date: str | None
+) -> list[ValidationError]:
+    """V9: ``to_date`` requires ``from_date`` to be set.
+
+    Every builder ignores a lone ``to_date``, silently falling back to
+    ``last`` — reject it instead. Shared by ``validate_time_args``
+    (build-time Layer 1) and the query models' cross-field validators
+    (construction time) so both layers emit the same stable code.
+
+    Args:
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+
+    Returns:
+        List with one ``V9_TO_REQUIRES_FROM`` error if ``to_date`` is
+        set without ``from_date``, empty otherwise.
+    """
+    if to_date is not None and from_date is None:
+        return [
+            ValidationError(
+                path="to_date",
+                message="to_date requires from_date",
+                code="V9_TO_REQUIRES_FROM",
+            )
+        ]
+    return []
+
+
+def v26_percentile_requires_value(
+    events: Sequence[str | Metric | CohortMetric | Formula],
+    math: str,
+    percentile_value: int | float | None,
+) -> list[ValidationError]:
+    """V26: percentile math requires ``percentile_value``.
+
+    Top-level ``math`` only applies to plain-string events (``Metric``
+    and ``CohortMetric`` carry their own math), so the rule is gated on
+    the events list containing at least one bare string. Shared by
+    ``validate_query_args`` (build-time Layer 1) and
+    ``InsightsQuery``'s cross-field validator (construction time) so
+    both layers emit the same stable code.
+
+    Args:
+        events: The query's events list (bare names and/or metric
+            objects).
+        math: The top-level aggregation function.
+        percentile_value: The percentile to compute, or ``None``.
+
+    Returns:
+        List with one ``V26_PERCENTILE_REQUIRES_VALUE`` error if
+        percentile math lacks a value, empty otherwise.
+    """
+    has_plain_events = any(isinstance(item, str) for item in events)
+    if has_plain_events and math == "percentile" and percentile_value is None:
+        return [
+            ValidationError(
+                path="percentile_value",
+                message=("math='percentile' requires percentile_value to be set"),
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
+        ]
+    return []
+
+
 def validate_time_args(
     *,
     from_date: str | None,
@@ -591,15 +656,9 @@ def validate_time_args(
                 )
             )
 
-    # V9: to_date requires from_date
-    if to_date is not None and from_date is None:
-        errors.append(
-            ValidationError(
-                path="to_date",
-                message="to_date requires from_date",
-                code="V9_TO_REQUIRES_FROM",
-            )
-        )
+    # V9: to_date requires from_date (shared with the query models'
+    # construction-time cross-field validation)
+    errors.extend(v9_to_requires_from(from_date, to_date))
 
     # V10: Cannot combine explicit dates with non-default last
     if from_date is not None and last != 30:
@@ -2055,15 +2114,9 @@ def validate_query_args(
             )
         )
 
-    # V26: percentile math requires percentile_value
-    if has_plain_events and math == "percentile" and percentile_value is None:
-        errors.append(
-            ValidationError(
-                path="percentile_value",
-                message=("math='percentile' requires percentile_value to be set"),
-                code="V26_PERCENTILE_REQUIRES_VALUE",
-            )
-        )
+    # V26: percentile math requires percentile_value (shared with
+    # InsightsQuery's construction-time cross-field validation)
+    errors.extend(v26_percentile_requires_value(events, math, percentile_value))
 
     # V27: histogram math requires per_user
     if has_plain_events and math == "histogram" and per_user is None:

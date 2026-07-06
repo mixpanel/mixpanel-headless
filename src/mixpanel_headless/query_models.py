@@ -21,6 +21,10 @@ from pydantic import (
 from mixpanel_headless._internal.bookmark_schema import (
     translate_pydantic_exception,
 )
+from mixpanel_headless._internal.validation import (
+    v9_to_requires_from,
+    v26_percentile_requires_value,
+)
 from mixpanel_headless._literal_types import (
     ConversionWindowUnit,
     FlowChartType,
@@ -110,28 +114,18 @@ class _BaseQuery(BaseModel):
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Return cross-field errors shared by all query models.
 
-        Rejects ``to_date`` without ``from_date`` — every builder
-        ignores a lone ``to_date``, silently falling back to ``last``.
-        A lone ``from_date`` is allowed here because the insights /
-        funnel / retention builders fill today's date for the missing
-        ``to_date``; ``FlowQuery`` overrides to reject it since the
-        flow builder cannot express a from-only range.
+        Rejects ``to_date`` without ``from_date`` via the shared V9
+        predicate (``v9_to_requires_from``) — every builder ignores a
+        lone ``to_date``, silently falling back to ``last``. A lone
+        ``from_date`` is allowed because every builder fills today's
+        date for the missing ``to_date``.
 
         Subclasses extend via ``super()._get_cross_field_errors()``.
 
         Returns:
             List of validation errors (empty when the model is valid).
         """
-        errors: list[InternalValidationError] = []
-        if self.to_date is not None and self.from_date is None:
-            errors.append(
-                InternalValidationError(
-                    path="to_date",
-                    message="to_date requires from_date to be set",
-                    code="TO_DATE_WITHOUT_FROM",
-                )
-            )
-        return errors
+        return v9_to_requires_from(self.from_date, self.to_date)
 
     @model_validator(mode="wrap")
     @classmethod
@@ -279,28 +273,18 @@ class InsightsQuery(_BaseQuery):
     def _get_cross_field_errors(self) -> list[InternalValidationError]:
         """Validate cross-field constraints for insights queries.
 
-        Extends the base checks with a percentile-specific rule:
-        ``percentile_value`` is required when ``math="percentile"``
-        and at least one event is a bare string (Metric objects carry
-        their own math).
+        Extends the base checks with the shared V26 predicate
+        (``v26_percentile_requires_value``): ``percentile_value`` is
+        required when ``math="percentile"`` and at least one event is a
+        bare string (Metric objects carry their own math).
 
         Returns:
             List of validation errors (empty when the model is valid).
         """
         errors = super()._get_cross_field_errors()
-        has_bare_strings = any(isinstance(e, str) for e in self.events)
-        if (
-            self.math == "percentile"
-            and self.percentile_value is None
-            and has_bare_strings
-        ):
-            errors.append(
-                InternalValidationError(
-                    path="percentile_value",
-                    message="percentile_value is required when math='percentile'",
-                    code="MISSING_PERCENTILE_VALUE",
-                )
-            )
+        errors.extend(
+            v26_percentile_requires_value(self.events, self.math, self.percentile_value)
+        )
         return errors
 
 

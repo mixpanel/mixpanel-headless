@@ -1088,3 +1088,58 @@ class TestWrapValidationErrorGrammar:
             FunnelQuery(steps=["A", "B"], conversion_window=-1)
         err = next(e for e in exc_info.value.errors if e.path == "conversion_window")
         assert err.code == "B0_OUT_OF_RANGE"
+
+
+class TestCrossFieldErrorCodes:
+    """Model-layer cross-field rules reuse the Layer-1 V* codes.
+
+    ``to_date``-without-``from_date`` and percentile-without-value were
+    validated on main as V9_TO_REQUIRES_FROM and
+    V26_PERCENTILE_REQUIRES_VALUE; the model layer surfaces the same
+    stable codes (via shared predicates in ``_internal.validation``)
+    instead of inventing a second vocabulary.
+    """
+
+    @pytest.mark.parametrize(
+        "make_query",
+        [
+            pytest.param(
+                lambda: InsightsQuery(events=["Login"], to_date="2025-01-31"),
+                id="insights",
+            ),
+            pytest.param(
+                lambda: FunnelQuery(steps=["A", "B"], to_date="2025-01-31"),
+                id="funnel",
+            ),
+            pytest.param(
+                lambda: RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    to_date="2025-01-31",
+                ),
+                id="retention",
+            ),
+            pytest.param(
+                lambda: FlowQuery(event="Login", to_date="2025-01-31"),
+                id="flow",
+            ),
+        ],
+    )
+    def test_lone_to_date_uses_v9_code(self, make_query: Callable[[], object]) -> None:
+        """to_date without from_date carries V9_TO_REQUIRES_FROM."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            make_query()
+        err = next(e for e in exc_info.value.errors if e.path == "to_date")
+        assert err.code == "V9_TO_REQUIRES_FROM"
+
+    def test_percentile_without_value_uses_v26_code(self) -> None:
+        """math='percentile' without percentile_value carries V26."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery(events=["Login"], math="percentile")
+        err = next(e for e in exc_info.value.errors if e.path == "percentile_value")
+        assert err.code == "V26_PERCENTILE_REQUIRES_VALUE"
+
+    def test_percentile_with_metric_events_not_required(self) -> None:
+        """Metric events carry their own math — no V26 for them."""
+        q = InsightsQuery(events=[Metric("Login")], math="percentile")
+        assert q.math == "percentile"
