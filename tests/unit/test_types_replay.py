@@ -204,3 +204,30 @@ class TestReplayMixpanelDataFrame:
         assert len(df) == 0
         for col in ("t", "event_name", "properties"):
             assert col in df.columns
+
+
+class TestReplayToDict:
+    """to_dict() serialization semantics."""
+
+    def test_round_trips_all_fields(self) -> None:
+        """to_dict carries every visible field and JSON-serializes."""
+        import json
+
+        r = _build()
+        d = r.to_dict()
+        assert d["replay_id"] == "r-19221"
+        assert d["distinct_id"] == "user-42"
+        assert d["rrweb_events"] == r.rrweb_events
+        assert json.loads(json.dumps(d))["rrweb_events"] == r.rrweb_events
+
+    def test_rrweb_events_shallow_copy(self) -> None:
+        """to_dict returns a new list that aliases the event dicts.
+
+        A deep copy of the rrweb stream costs seconds and 2x memory on
+        real replays; no caller mutates the result, and the sibling
+        to_rrweb_player_json() aliases the same inner dicts.
+        """
+        r = _build()
+        d = r.to_dict()
+        assert d["rrweb_events"] is not r.rrweb_events
+        assert d["rrweb_events"][0] is r.rrweb_events[0]

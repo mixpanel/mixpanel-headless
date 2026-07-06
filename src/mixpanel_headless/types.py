@@ -13159,7 +13159,11 @@ class Replay(ResultWithDataFrame):
         Returns:
             Dict with the eight visible fields. ``rrweb_events`` is
             included so the dict can re-hydrate a full :class:`Replay`
-            via :meth:`Workspace.fetch_replay` follow-ups.
+            via :meth:`Workspace.fetch_replay` follow-ups. The events
+            list is a new list whose items alias the replay's event
+            dicts (same as :meth:`to_rrweb_player_json`) — deep-copying
+            a multi-megabyte rrweb stream on every serialization costs
+            seconds and doubles transient memory for no caller benefit.
         """
         return {
             "replay_id": self.replay_id,
@@ -13168,7 +13172,7 @@ class Replay(ResultWithDataFrame):
             "start_time": self.start_time,
             "end_time": self.end_time,
             "retention_days": self.retention_days,
-            "rrweb_events": copy.deepcopy(self.rrweb_events),
+            "rrweb_events": list(self.rrweb_events),
             "actions": [a.to_dict() for a in self.actions],
             "mixpanel_events": [e.to_dict() for e in self.mixpanel_events],
         }
