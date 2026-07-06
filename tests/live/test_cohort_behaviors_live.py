@@ -475,20 +475,25 @@ class TestCohortFilterFlows:
         )
         assert isinstance(result, FlowQueryResult)
 
-    def test_flow_non_cohort_filter_rejected(
+    def test_flow_property_filter_supported(
         self,
         ws: Workspace,
         real_event: str,
     ) -> None:
-        """Non-cohort filter in flow where= raises ValueError (client-side)."""
-        with pytest.raises(ValueError, match="query_flow where= only accepts cohort"):
-            ws.query_flow(
-                FlowQuery(
-                    event=real_event,
-                    where=[Filter.equals("$browser", "Chrome")],
-                    last=7,
-                )
+        """Property filters in flow where= build flat where entries and run.
+
+        The pre-R2 client rejected non-cohort flow filters wholesale;
+        the flow builder now emits them as flat ``where`` entries, so
+        this pins the supported behavior end-to-end against the live API.
+        """
+        result = ws.query_flow(
+            FlowQuery(
+                event=real_event,
+                where=[Filter.equals("$browser", "Chrome")],
+                last=7,
             )
+        )
+        assert isinstance(result, FlowQueryResult)
 
 
 # =============================================================================

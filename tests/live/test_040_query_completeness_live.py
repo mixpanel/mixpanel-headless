@@ -1276,7 +1276,7 @@ class TestOfflineUS8:
         assert excl is not None
 
     def test_m49_flow_segments_groupby(self, ws: Workspace, real_event: str) -> None:
-        """M49 -- Flow segments parameter with GroupBy accepted.
+        """M49 -- Flow segments parameter with GroupBy produces segment_by.
 
         Args:
             ws: Workspace fixture.
@@ -1290,11 +1290,10 @@ class TestOfflineUS8:
             )
         )
         assert isinstance(params, dict)
-        segs = params.get("segments")
-        assert segs is not None
+        assert params.get("segment_by") == [{"property": "$browser"}]
 
     def test_m50_flow_property_filter(self, ws: Workspace, real_event: str) -> None:
-        """M50 -- Flow with property filter produces filter_by_event.
+        """M50 -- Flow with property filter produces flat where entries.
 
         Args:
             ws: Workspace fixture.
@@ -1308,8 +1307,9 @@ class TestOfflineUS8:
             )
         )
         assert isinstance(params, dict)
-        fbe = params.get("filter_by_event")
-        assert fbe is not None
+        assert params.get("where") == [
+            {"property": "$browser", "operator": "equals", "value": ["Chrome"]}
+        ]
 
     def test_m51_flow_cohort_filter_still_works(
         self, ws: Workspace, real_event: str
@@ -2104,5 +2104,7 @@ class TestCrossParameterInteractions:
         )
         assert isinstance(params, dict)
         assert params.get("exclusions") is not None
-        assert params.get("segments") is not None
-        assert params.get("filter_by_event") is not None
+        assert params.get("segment_by") == [{"property": "$browser"}]
+        assert params.get("where") == [
+            {"property": "$os", "operator": "equals", "value": ["Mac OS X"]}
+        ]

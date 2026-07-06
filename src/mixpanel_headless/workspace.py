@@ -3366,7 +3366,7 @@ class Workspace:
             mode: Display mode.
             where: Filter results by cohort membership or property
                 conditions. Cohort filters produce ``filter_by_cohort``,
-                property filters produce ``filter_by_event``.
+                property filters produce flat ``where`` entries.
                 Default: ``None``.
             data_group_id: Optional data group ID for group-level
                 analytics. Default: ``None``.
