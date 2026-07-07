@@ -11,7 +11,7 @@ Build typed analytics queries against Mixpanel's Insights engine — the same en
 
 | Capability | Legacy methods | `query()` |
 |---|---|---|
-| Simple event count over time | `segmentation()` | `ws.query("Login")` |
+| Simple event count over time | `segmentation()` | `ws.query(InsightsQuery(events=["Login"]))` |
 | Unique users | `segmentation(type="unique")` | `math="unique"` |
 | DAU / WAU / MAU | Not available | `math="dau"` |
 | Multi-metric comparison | Not available | `["Signup", "Login", "Purchase"]` |
@@ -41,7 +41,7 @@ import mixpanel_headless as mp
 
 ws = mp.Workspace()
 
-result = ws.query("Login")
+result = ws.query(InsightsQuery(events=["Login"]))
 print(result.df.head())
 #         date                    event  count
 # 0  2025-03-01  Login [Total Events]    142
@@ -52,18 +52,17 @@ Add a time range and aggregation:
 
 ```python
 # Unique users per week for the last 7 days
-result = ws.query("Login", math="unique", last=7, unit="week")
+result = ws.query(InsightsQuery(events=["Login"], math="unique", last=7, unit="week"))
 
 # Last 90 days of DAU
-result = ws.query("Login", math="dau", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", last=90))
 
 # Specific date range
-result = ws.query(
-    "Purchase",
-    from_date="2025-01-01",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], from_date="2025-01-01",
     to_date="2025-03-31",
     unit="month",
-)
+))
 ```
 
 ## Aggregation
@@ -82,19 +81,19 @@ result = ws.query(
 
 ```python
 # DAU over the last 90 days
-result = ws.query("Login", math="dau", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", last=90))
 
 # Monthly active users
-result = ws.query("Login", math="mau", last=6, unit="month")
+result = ws.query(InsightsQuery(events=["Login"], math="mau", last=6, unit="month"))
 
 # Cumulative unique users over time
-result = ws.query("Login", math="cumulative_unique", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="cumulative_unique", last=90))
 
 # Count sessions instead of events
-result = ws.query("Login", math="sessions", last=30)
+result = ws.query(InsightsQuery(events=["Login"], math="sessions", last=30))
 
 # Distinct values of a property
-result = ws.query("Purchase", math="unique_values", math_property="product_id")
+result = ws.query(InsightsQuery(events=["Purchase"], math="unique_values", math_property="product_id"))
 ```
 
 ### Property Aggregation
@@ -118,27 +117,25 @@ Aggregate a numeric property across events. Requires `math_property`:
 
 ```python
 # Average purchase amount per day
-result = ws.query(
-    "Purchase",
-    math="average",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="average",
     math_property="amount",
     from_date="2025-01-01",
     to_date="2025-01-31",
-)
+))
 
 # P90 response time
-result = ws.query("API Call", math="p90", math_property="duration_ms")
+result = ws.query(InsightsQuery(events=["API Call"], math="p90", math_property="duration_ms"))
 
 # Custom percentile (p95) — use math="percentile" with percentile_value
-result = ws.query(
-    "API Call",
-    math="percentile",
+result = ws.query(InsightsQuery(
+    events=["API Call"], math="percentile",
     math_property="duration_ms",
     percentile_value=95,
-)
+))
 
 # Histogram — distribution of purchase amounts
-result = ws.query("Purchase", math="histogram", math_property="amount")
+result = ws.query(InsightsQuery(events=["Purchase"], math="histogram", math_property="amount"))
 ```
 
 ### Per-User Aggregation
@@ -147,12 +144,11 @@ Aggregate per user first, then across all users — like a SQL subquery. For exa
 
 ```python
 # Average purchases per user per week
-result = ws.query(
-    "Purchase",
-    math="total",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="total",
     per_user="average",
     unit="week",
-)
+))
 ```
 
 Valid `per_user` values: `"unique_values"`, `"total"`, `"average"`, `"min"`, `"max"`.
@@ -168,10 +164,10 @@ Control how events are counted per user with `Metric.segment_method`:
 - `"first"` — count only the first qualifying event per user
 
 ```python
-from mixpanel_headless import Metric
+from mixpanel_headless import Metric, InsightsQuery
 
 # Only count each user's first purchase
-result = ws.query(Metric("Purchase", segment_method="first"), last=30)
+result = ws.query(InsightsQuery(events=[Metric("Purchase", segment_method="first")], last=30))
 ```
 
 ### The `Metric` Class
@@ -179,40 +175,40 @@ result = ws.query(Metric("Purchase", segment_method="first"), last=30)
 When different events need different aggregation settings, use `Metric` objects instead of plain strings:
 
 ```python
-from mixpanel_headless import Metric
+from mixpanel_headless import Metric, InsightsQuery
 
 # Different math per event
-result = ws.query([
+result = ws.query(InsightsQuery(events=[
     Metric("Signup", math="unique"),
     Metric("Purchase", math="total", property="revenue"),
-])
+]))
 ```
 
 `Metric` also supports `percentile_value` for custom percentiles:
 
 ```python
 # Per-metric custom percentile
-result = ws.query(
-    Metric("API Call", math="percentile", property="duration_ms", percentile_value=95),
-)
+result = ws.query(InsightsQuery(
+    events=[Metric("API Call", math="percentile", property="duration_ms", percentile_value=95),
+]))
 ```
 
 Plain strings inherit the top-level `math`, `math_property`, and `per_user` defaults. `Metric` objects override them per-event:
 
 ```python
 # These are equivalent:
-ws.query("Login", math="unique")
-ws.query(Metric("Login", math="unique"))
+ws.query(InsightsQuery(events=["Login"], math="unique"))
+ws.query(InsightsQuery(events=[Metric("Login", math="unique")]))
 
 # Top-level defaults apply to all string events:
-ws.query(["Signup", "Login"], math="unique")
+ws.query(InsightsQuery(events=["Signup", "Login"], math="unique"))
 # Both events use math="unique"
 
 # Metric overrides per event:
-ws.query([
+ws.query(InsightsQuery(events=[
     Metric("Signup", math="unique"),    # unique users
     Metric("Purchase", math="total"),   # total events
-])
+]))
 ```
 
 ## Filters
@@ -222,22 +218,20 @@ ws.query([
 Apply filters across all metrics with `where=`. Construct filters using `Filter` class methods:
 
 ```python
-from mixpanel_headless import Filter
+from mixpanel_headless import Filter, InsightsQuery
 
 # Single filter
-result = ws.query(
-    "Purchase",
-    where=Filter.equals("country", "US"),
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[Filter.equals("country", "US")],
+))
 
 # Multiple filters (combined with AND)
-result = ws.query(
-    "Purchase",
-    where=[
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[
         Filter.equals("country", "US"),
         Filter.greater_than("amount", 50),
     ],
-)
+))
 ```
 
 ### Available Filter Methods
@@ -287,20 +281,18 @@ When a property's value is a list of objects (e.g. `cart` is a list of `{Brand, 
 
 ```python
 # Cart contains a nike-branded hat
-result = ws.query(
-    "Cart Viewed",
-    where=Filter.list_contains("cart", Brand="nike", Category="hats"),
-)
+result = ws.query(InsightsQuery(
+    events=["Cart Viewed"], where=[Filter.list_contains("cart", Brand="nike", Category="hats")],
+))
 ```
 
 **Explicit `Filter` instances** for any non-equality operator:
 
 ```python
 # Cart contains an item costing more than $50
-result = ws.query(
-    "Cart Viewed",
-    where=Filter.list_contains("cart", Filter.greater_than("Price", 50)),
-)
+result = ws.query(InsightsQuery(
+    events=["Cart Viewed"], where=[Filter.list_contains("cart", Filter.greater_than("Price", 50))],
+))
 ```
 
 **Quantifier** — `"any"` (default) requires at least one item to satisfy all inner conditions; `"all"` requires every item to:
@@ -328,23 +320,23 @@ Cannot be nested (a `list_contains` cannot appear inside another `list_contains`
 Apply filters to individual metrics using `Metric.filters`:
 
 ```python
-from mixpanel_headless import Metric, Filter
+from mixpanel_headless import Metric, Filter, InsightsQuery
 
 # Different filters on each event
-result = ws.query([
+result = ws.query(InsightsQuery(events=[
     Metric("Purchase", math="unique"),
     Metric(
         "Purchase",
         math="unique",
         filters=[Filter.equals("plan", "premium")],
     ),
-])
+]))
 ```
 
 By default, multiple per-metric filters combine with AND logic. Use `filters_combinator="any"` for OR logic:
 
 ```python
-result = ws.query(Metric(
+result = ws.query(InsightsQuery(events=[Metric(
     "Purchase",
     math="unique",
     filters=[
@@ -352,7 +344,7 @@ result = ws.query(Metric(
         Filter.equals("country", "CA"),
     ],
     filters_combinator="any",  # match US OR CA
-))
+)]))
 ```
 
 ### Date Filters
@@ -380,14 +372,13 @@ Filter.in_the_next("renewal_date", 30, "day")    # relative future date
 The relative date methods accept a `FilterDateUnit`: `"hour"`, `"day"`, `"week"`, or `"month"`.
 
 ```python
-from mixpanel_headless import FilterDateUnit  # Literal["hour", "day", "week", "month"]
+from mixpanel_headless import FilterDateUnit  # Literal["hour", "day", "week", "month"], InsightsQuery
 
 # Example: recent signups with purchases
-result = ws.query(
-    "Purchase",
-    where=Filter.in_the_last("signup_date", 7, "day"),
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[Filter.in_the_last("signup_date", 7, "day")],
     last=30,
-)
+))
 ```
 
 ## Breakdowns
@@ -398,10 +389,10 @@ Break down results by property values with `group_by`:
 
 ```python
 # Simple string breakdown
-result = ws.query("Login", group_by="platform", last=14)
+result = ws.query(InsightsQuery(events=["Login"], group_by=["platform"], last=14))
 
 # Multiple breakdowns
-result = ws.query("Purchase", group_by=["country", "platform"])
+result = ws.query(InsightsQuery(events=["Purchase"], group_by=["country", "platform"]))
 ```
 
 ### The `GroupBy` Class
@@ -409,34 +400,31 @@ result = ws.query("Purchase", group_by=["country", "platform"])
 For numeric bucketing, boolean breakdowns, or explicit type annotations, use `GroupBy`:
 
 ```python
-from mixpanel_headless import GroupBy
+from mixpanel_headless import GroupBy, InsightsQuery
 
 # Numeric breakdown with buckets
-result = ws.query(
-    "Purchase",
-    group_by=GroupBy(
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[GroupBy(
         "revenue",
         property_type="number",
         bucket_size=50,
         bucket_min=0,
         bucket_max=500,
-    ),
-)
+    )],
+))
 
 # Boolean breakdown
-result = ws.query(
-    "Login",
-    group_by=GroupBy("is_premium", property_type="boolean"),
-)
+result = ws.query(InsightsQuery(
+    events=["Login"], group_by=[GroupBy("is_premium", property_type="boolean")],
+))
 
 # Mixed: string shorthand + GroupBy
-result = ws.query(
-    "Purchase",
-    group_by=[
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[
         "country",
         GroupBy("amount", property_type="number", bucket_size=25),
     ],
-)
+))
 ```
 
 ### List-of-object breakdowns
@@ -444,22 +432,20 @@ result = ws.query(
 Mirror `Filter.list_contains` for breakdowns: when a property is a list of objects, break down by one of its subproperties via `GroupBy.list_item`. Discover valid subproperty names and types via [`Workspace.subproperties()`](discovery.md#subproperties).
 
 ```python
-from mixpanel_headless import GroupBy
+from mixpanel_headless import GroupBy, InsightsQuery
 
 # Break down Cart Viewed events by cart.Brand
-result = ws.query("Cart Viewed", group_by=GroupBy.list_item("cart", "Brand"))
+result = ws.query(InsightsQuery(events=["Cart Viewed"], group_by=[GroupBy.list_item("cart", "Brand")]))
 
 # Break down by a numeric subproperty (sub_type controls aggregation)
-result = ws.query(
-    "Cart Viewed",
-    group_by=GroupBy.list_item("cart", "Price", sub_type="number"),
-)
+result = ws.query(InsightsQuery(
+    events=["Cart Viewed"], group_by=[GroupBy.list_item("cart", "Price", sub_type="number")],
+))
 
 # Mix list-item with regular breakdowns
-result = ws.query(
-    "Cart Viewed",
-    group_by=["country", GroupBy.list_item("cart", "Brand")],
-)
+result = ws.query(InsightsQuery(
+    events=["Cart Viewed"], group_by=["country", GroupBy.list_item("cart", "Brand")],
+))
 ```
 
 `sub_type` accepts the four scalar values from `CustomPropertyType` (`"string"`, `"number"`, `"boolean"`, `"datetime"`). Bucketing (`bucket_size`/`bucket_min`/`bucket_max`) is incompatible with list-item breakdowns.
@@ -474,15 +460,15 @@ Compute derived metrics from multiple events. Letters A-Z reference events by th
 ### Top-Level `formula` Parameter
 
 ```python
-from mixpanel_headless import Metric
+from mixpanel_headless import Metric, InsightsQuery
 
 # Conversion rate: purchases / signups * 100
-result = ws.query(
-    [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
+result = ws.query(InsightsQuery(
+    events=[Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
     formula="(B / A) * 100",
     formula_label="Conversion Rate",
     unit="week",
-)
+))
 ```
 
 When `formula` is set, the underlying metrics are automatically hidden — only the formula result appears in the output.
@@ -492,13 +478,13 @@ When `formula` is set, the underlying metrics are automatically hidden — only 
 For inline formula definitions, pass `Formula` objects alongside events:
 
 ```python
-from mixpanel_headless import Metric, Formula
+from mixpanel_headless import Metric, Formula, InsightsQuery
 
-result = ws.query([
+result = ws.query(InsightsQuery(events=[
     Metric("Signup", math="unique"),
     Metric("Purchase", math="unique"),
     Formula("(B / A) * 100", label="Conversion Rate"),
-])
+]))
 ```
 
 Both approaches produce identical results. Use whichever reads more naturally.
@@ -509,11 +495,11 @@ Compare multiple events side by side without a formula:
 
 ```python
 # Three events on the same chart
-result = ws.query(
-    ["Signup", "Login", "Purchase"],
+result = ws.query(InsightsQuery(
+    events=["Signup", "Login", "Purchase"],
     math="unique",
     last=30,
-)
+))
 ```
 
 ## Time Ranges
@@ -524,13 +510,13 @@ By default, `query()` returns the last 30 days. Customize with `last` and `unit`
 
 ```python
 # Last 7 days (daily granularity)
-result = ws.query("Login", last=7)
+result = ws.query(InsightsQuery(events=["Login"], last=7))
 
 # Last 4 weeks (weekly granularity)
-result = ws.query("Login", last=4, unit="week")
+result = ws.query(InsightsQuery(events=["Login"], last=4, unit="week"))
 
 # Last 6 months
-result = ws.query("Login", last=6, unit="month")
+result = ws.query(InsightsQuery(events=["Login"], last=6, unit="month"))
 ```
 
 The `unit` controls both what "last N" means and how data is bucketed on the time axis.
@@ -541,15 +527,14 @@ Specify explicit start and end dates:
 
 ```python
 # Q1 2025
-result = ws.query(
-    "Purchase",
-    from_date="2025-01-01",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], from_date="2025-01-01",
     to_date="2025-03-31",
     unit="week",
-)
+))
 
 # From a date to today
-result = ws.query("Login", from_date="2025-01-01")
+result = ws.query(InsightsQuery(events=["Login"], from_date="2025-01-01"))
 ```
 
 Dates must be in `YYYY-MM-DD` format.
@@ -559,7 +544,7 @@ Dates must be in `YYYY-MM-DD` format.
 Use `unit="hour"` for intraday analysis:
 
 ```python
-result = ws.query("Login", last=2, unit="hour")
+result = ws.query(InsightsQuery(events=["Login"], last=2, unit="hour"))
 ```
 
 ## Analysis Modes
@@ -570,13 +555,12 @@ Smooth noisy data with a rolling average:
 
 ```python
 # 7-day rolling average of signups by country
-result = ws.query(
-    "Signup",
-    math="unique",
-    group_by="country",
+result = ws.query(InsightsQuery(
+    events=["Signup"], math="unique",
+    group_by=["country"],
     rolling=7,
     last=60,
-)
+))
 ```
 
 ### Cumulative
@@ -584,7 +568,7 @@ result = ws.query(
 Show running totals over time:
 
 ```python
-result = ws.query("Signup", math="unique", cumulative=True, last=30)
+result = ws.query(InsightsQuery(events=["Signup"], math="unique", cumulative=True, last=30))
 ```
 
 !!! note
@@ -602,13 +586,12 @@ The `mode` parameter controls result aggregation semantics:
 
 ```python
 # Single KPI number: total unique purchasers this month
-result = ws.query(
-    "Purchase",
-    math="unique",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="unique",
     from_date="2025-03-01",
     to_date="2025-03-31",
     mode="total",
-)
+))
 total = result.df["count"].iloc[0]
 ```
 
@@ -620,26 +603,24 @@ total = result.df["count"].iloc[0]
 Compare the current time range against a previous period using `TimeComparison`:
 
 ```python
-from mixpanel_headless import TimeComparison
+from mixpanel_headless import TimeComparison, InsightsQuery
 
 # Compare against previous week
-result = ws.query("Login", time_comparison=TimeComparison.relative("week"), last=7)
+result = ws.query(InsightsQuery(events=["Login"], time_comparison=TimeComparison.relative("week"), last=7))
 
 # Compare against window starting on a fixed date
-result = ws.query(
-    "Purchase",
-    time_comparison=TimeComparison.absolute_start("2025-01-01"),
+result = ws.query(InsightsQuery(
+    events=["Purchase"], time_comparison=TimeComparison.absolute_start("2025-01-01"),
     from_date="2026-01-01",
     to_date="2026-01-31",
-)
+))
 
 # Compare against window ending on a fixed date
-result = ws.query(
-    "Purchase",
-    time_comparison=TimeComparison.absolute_end("2025-12-31"),
+result = ws.query(InsightsQuery(
+    events=["Purchase"], time_comparison=TimeComparison.absolute_end("2025-12-31"),
     from_date="2026-01-01",
     to_date="2026-01-31",
-)
+))
 ```
 
 Three factory methods:
@@ -659,19 +640,18 @@ Three factory methods:
 Break down results by how often users performed an event using `FrequencyBreakdown`:
 
 ```python
-from mixpanel_headless import FrequencyBreakdown
+from mixpanel_headless import FrequencyBreakdown, InsightsQuery
 
 # How are logins distributed by purchase frequency?
-result = ws.query(
-    "Login",
-    group_by=FrequencyBreakdown(
+result = ws.query(InsightsQuery(
+    events=["Login"], group_by=[FrequencyBreakdown(
         event="Purchase",
         bucket_size=1,
         bucket_min=0,
         bucket_max=10,
-    ),
+    )],
     last=30,
-)
+))
 ```
 
 Parameters:
@@ -689,31 +669,29 @@ Parameters:
 Filter to users who performed an event a certain number of times using `FrequencyFilter`:
 
 ```python
-from mixpanel_headless import FrequencyFilter
+from mixpanel_headless import FrequencyFilter, InsightsQuery
 
 # Only users who purchased at least 3 times
-result = ws.query(
-    "Login",
-    where=FrequencyFilter(
+result = ws.query(InsightsQuery(
+    events=["Login"], where=[FrequencyFilter(
         event="Purchase",
         value=3,
         operator="is at least",
-    ),
+    )],
     last=30,
-)
+))
 
 # With a lookback window — purchased at least 3 times in the last 30 days
-result = ws.query(
-    "Login",
-    where=FrequencyFilter(
+result = ws.query(InsightsQuery(
+    events=["Login"], where=[FrequencyFilter(
         event="Purchase",
         value=3,
         operator="is at least",
         date_range_value=30,
         date_range_unit="day",
-    ),
+    )],
     last=90,
-)
+))
 ```
 
 Operators: `"is at least"`, `"is at most"`, `"is greater than"`, `"is less than"`, `"is equal to"`.
@@ -723,7 +701,7 @@ Operators: `"is at least"`, `"is at most"`, `"is greater than"`, `"is less than"
 Scope a query to a specific data group for group-level analytics:
 
 ```python
-result = ws.query("Login", data_group_id=42, last=30)
+result = ws.query(InsightsQuery(events=["Login"], data_group_id=42, last=30))
 ```
 
 `data_group_id` is available on all query engines: `query()`, `query_funnel()`, `query_retention()`, and `query_flow()`.
@@ -735,7 +713,7 @@ result = ws.query("Login", data_group_id=42, last=30)
 `query()` returns a `QueryResult` with:
 
 ```python
-result = ws.query("Login", math="unique", last=7)
+result = ws.query(InsightsQuery(events=["Login"], math="unique", last=7))
 
 # DataFrame (lazy, cached)
 result.df                  # pandas DataFrame
@@ -761,7 +739,7 @@ result.params              # dict — the full bookmark JSON sent to API
 For **timeseries** mode, the DataFrame has columns `date`, `event`, `count`:
 
 ```python
-result = ws.query(["Signup", "Login"], math="unique")
+result = ws.query(InsightsQuery(events=["Signup", "Login"], math="unique"))
 print(result.df.head())
 #         date                      event  count
 # 0  2025-03-01  Signup [Unique Users]    85
@@ -776,10 +754,10 @@ For **total** mode, the DataFrame has columns `event`, `count` (no date).
 The generated bookmark params can be saved as a Mixpanel report:
 
 ```python
-from mixpanel_headless import CreateBookmarkParams
+from mixpanel_headless import CreateBookmarkParams, InsightsQuery
 
 # Run query
-result = ws.query("Login", math="dau", group_by="platform", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["platform"], last=90))
 
 # Save as a report using the generated params
 ws.create_bookmark(CreateBookmarkParams(
@@ -800,7 +778,7 @@ Inspect `result.params` to see the exact bookmark JSON sent to the API. This is 
 ```python
 import json
 
-result = ws.query("Login", math="unique", group_by="platform")
+result = ws.query(InsightsQuery(events=["Login"], math="unique", group_by=["platform"]))
 print(json.dumps(result.params, indent=2))
 ```
 
@@ -825,37 +803,35 @@ print(json.dumps(result.params, indent=2))
 
 ```python
 import mixpanel_headless as mp
-from mixpanel_headless import Metric, Filter, GroupBy
+from mixpanel_headless import Metric, Filter, GroupBy, InsightsQuery
 
 ws = mp.Workspace()
 
 # Total revenue by country this quarter
-revenue = ws.query(
-    "Purchase",
-    math="total",
+revenue = ws.query(InsightsQuery(
+    events=["Purchase"], math="total",
     math_property="amount",
-    group_by="country",
+    group_by=["country"],
     from_date="2025-01-01",
     to_date="2025-03-31",
     unit="month",
-)
+))
 
 # Revenue distribution by bucket
-distribution = ws.query(
-    "Purchase",
-    group_by=GroupBy(
+distribution = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[GroupBy(
         "amount",
         property_type="number",
         bucket_size=25,
         bucket_min=0,
         bucket_max=500,
-    ),
+    )],
     last=30,
-)
+))
 
 # Conversion rate with per-metric filters
-conversion = ws.query(
-    [
+conversion = ws.query(InsightsQuery(
+    events=[
         Metric("Purchase", math="unique"),
         Metric(
             "Purchase",
@@ -865,40 +841,37 @@ conversion = ws.query(
     ],
     formula="(B / A) * 100",
     formula_label="Premium %",
-    group_by="platform",
+    group_by=["platform"],
     unit="week",
-)
+))
 ```
 
 ### User Engagement Analysis
 
 ```python
 # 7-day rolling average of DAU by platform
-engagement = ws.query(
-    "Login",
-    math="dau",
-    group_by="platform",
+engagement = ws.query(InsightsQuery(
+    events=["Login"], math="dau",
+    group_by=["platform"],
     rolling=7,
     last=90,
-)
+))
 
 # Average sessions per user per week
-sessions = ws.query(
-    "Session Start",
-    math="total",
+sessions = ws.query(InsightsQuery(
+    events=["Session Start"], math="total",
     per_user="average",
     unit="week",
     last=12,
-)
+))
 
 # WAU trend for premium users
-wau = ws.query(
-    "Login",
-    math="wau",
-    where=Filter.is_true("is_premium"),
+wau = ws.query(InsightsQuery(
+    events=["Login"], math="wau",
+    where=[Filter.is_true("is_premium")],
     last=6,
     unit="month",
-)
+))
 ```
 
 ## Generating Params Without Querying
@@ -907,13 +880,12 @@ Use `build_params()` to generate bookmark params without making an API call — 
 
 ```python
 # Same arguments as query(), returns dict instead of QueryResult
-params = ws.build_params(
-    "Login",
-    math="dau",
-    group_by="platform",
-    where=Filter.in_the_last("created", 30, "day"),
+params = ws.build_params(InsightsQuery(
+    events=["Login"], math="dau",
+    group_by=["platform"],
+    where=[Filter.in_the_last("created", 30, "day")],
     last=90,
-)
+))
 
 import json
 print(json.dumps(params, indent=2))  # inspect the generated bookmark JSON
@@ -944,25 +916,24 @@ Scope any query to a user segment — filter by cohort membership, break down by
 Restrict queries to users in (or not in) a cohort using `Filter.in_cohort()` and `Filter.not_in_cohort()`:
 
 ```python
-from mixpanel_headless import Filter, CohortCriteria, CohortDefinition
+from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, InsightsQuery
 
 # Saved cohort
-result = ws.query("Purchase", where=Filter.in_cohort(123, "Power Users"))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.in_cohort(123, "Power Users")]))
 
 # Inline cohort — define the segment right where you use it
 power_users = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=3, within_days=30)
 )
-result = ws.query("Login", where=Filter.in_cohort(power_users, name="Power Users"))
+result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
 
 # Exclude a cohort
-result = ws.query("Purchase", where=Filter.not_in_cohort(789, "Bots"))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.not_in_cohort(789, "Bots")]))
 
 # Combine with property filters
-result = ws.query(
-    "Purchase",
-    where=[Filter.in_cohort(power_users, name="PU"), Filter.equals("platform", "iOS")],
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[Filter.in_cohort(power_users, name="PU"), Filter.equals("platform", "iOS")],
+))
 ```
 
 Cohort filters work with all five query methods: `query()`, `query_funnel()`, `query_retention()`, `query_flow()`, and `query_user()`.
@@ -972,32 +943,28 @@ Cohort filters work with all five query methods: `query()`, `query_funnel()`, `q
 Segment results by cohort membership using `CohortBreakdown` in the `group_by=` parameter:
 
 ```python
-from mixpanel_headless import CohortBreakdown
+from mixpanel_headless import CohortBreakdown, InsightsQuery
 
 # Compare cohort vs. everyone else
-result = ws.query(
-    "Purchase",
-    group_by=CohortBreakdown(123, "Power Users"),
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[CohortBreakdown(123, "Power Users")],
+))
 # Result segments: "Power Users" and "Not In Power Users"
 
 # Inline cohort breakdown
-result = ws.query(
-    "Purchase",
-    group_by=CohortBreakdown(power_users, name="Power Users"),
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[CohortBreakdown(power_users, name="Power Users")],
+))
 
 # Only the cohort segment (no "Not In" group)
-result = ws.query(
-    "Purchase",
-    group_by=CohortBreakdown(123, "PU", include_negated=False),
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[CohortBreakdown(123, "PU", include_negated=False)],
+))
 
 # Mix with property breakdowns
-result = ws.query(
-    "Purchase",
-    group_by=[CohortBreakdown(123, "Power Users"), "platform"],
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[CohortBreakdown(123, "Power Users"), "platform"],
+))
 ```
 
 Cohort breakdowns work with `query()`, `query_funnel()`, and `query_retention()` (not flows).
@@ -1007,17 +974,17 @@ Cohort breakdowns work with `query()`, `query_funnel()`, and `query_retention()`
 Track cohort size over time as a metric — insights only:
 
 ```python
-from mixpanel_headless import CohortMetric, Metric
+from mixpanel_headless import CohortMetric, Metric, InsightsQuery
 
 # Track cohort growth
-result = ws.query(CohortMetric(123, "Power Users"), last=90, unit="week")
+result = ws.query(InsightsQuery(events=[CohortMetric(123, "Power Users")], last=90, unit="week"))
 
 # What % of active users are power users?
-result = ws.query(
-    [Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
+result = ws.query(InsightsQuery(
+    events=[Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
     formula="(B / A) * 100",
     formula_label="Power User %",
-)
+))
 ```
 
 `CohortMetric` is insights-only — it cannot be used with `query_funnel()`, `query_retention()`, or `query_flow()`.
@@ -1041,18 +1008,18 @@ To create and manage custom properties in Mixpanel, see [Data Governance — Cus
 Use `CustomPropertyRef` to reference a custom property that already exists in your Mixpanel project by its numeric ID:
 
 ```python
-from mixpanel_headless import CustomPropertyRef, GroupBy, Filter, Metric
+from mixpanel_headless import CustomPropertyRef, GroupBy, Filter, Metric, InsightsQuery
 
 ref = CustomPropertyRef(42)
 
 # Breakdown by saved custom property
-result = ws.query("Purchase", group_by=GroupBy(property=ref, property_type="number"))
+result = ws.query(InsightsQuery(events=["Purchase"], group_by=[GroupBy(property=ref, property_type="number")]))
 
 # Filter by saved custom property
-result = ws.query("Purchase", where=Filter.greater_than(property=ref, value=100))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.greater_than(property=ref, value=100)]))
 
 # Aggregate a saved custom property
-result = ws.query(Metric("Purchase", math="average", property=ref))
+result = ws.query(InsightsQuery(events=[Metric("Purchase", math="average", property=ref)]))
 ```
 
 Find custom property IDs with `ws.list_custom_properties()` or `mp custom-properties list`.
@@ -1089,35 +1056,32 @@ Both forms produce identical results. Use the full constructor when you need non
 Pass a custom property to `GroupBy.property` for breakdowns. Numeric bucketing works the same as with regular properties:
 
 ```python
-from mixpanel_headless import GroupBy, CustomPropertyRef, InlineCustomProperty
+from mixpanel_headless import GroupBy, CustomPropertyRef, InlineCustomProperty, InsightsQuery
 
 # Saved custom property with numeric buckets
-result = ws.query(
-    "Purchase",
-    group_by=GroupBy(
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[GroupBy(
         property=CustomPropertyRef(42),
         property_type="number",
         bucket_size=50,
-    ),
-)
+    )],
+))
 
 # Inline computed property
-result = ws.query(
-    "Purchase",
-    group_by=GroupBy(
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=[GroupBy(
         property=InlineCustomProperty.numeric("A * B", A="price", B="quantity"),
         property_type="number",
         bucket_size=100,
         bucket_min=0,
         bucket_max=1000,
-    ),
-)
+    )],
+))
 
 # Mix with regular property breakdowns
-result = ws.query(
-    "Purchase",
-    group_by=["country", GroupBy(property=CustomPropertyRef(42), property_type="number")],
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], group_by=["country", GroupBy(property=CustomPropertyRef(42), property_type="number")],
+))
 ```
 
 ### Custom Property Filters
@@ -1125,31 +1089,28 @@ result = ws.query(
 All 18 `Filter` factory methods accept custom properties in the `property` parameter:
 
 ```python
-from mixpanel_headless import Filter, CustomPropertyRef, InlineCustomProperty
+from mixpanel_headless import Filter, CustomPropertyRef, InlineCustomProperty, InsightsQuery
 
 # Saved custom property
-result = ws.query(
-    "Purchase",
-    where=Filter.greater_than(property=CustomPropertyRef(42), value=100),
-)
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+))
 
 # Inline computed property
-result = ws.query(
-    "Purchase",
-    where=Filter.between(
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[Filter.between(
         property=InlineCustomProperty.numeric("A * B", A="price", B="quantity"),
         value=[100, 1000],
-    ),
-)
+    )],
+))
 
 # Combine with regular filters
-result = ws.query(
-    "Purchase",
-    where=[
+result = ws.query(InsightsQuery(
+    events=["Purchase"], where=[
         Filter.equals("country", "US"),
         Filter.greater_than(property=CustomPropertyRef(42), value=50),
     ],
-)
+))
 ```
 
 ### Custom Property Measurement
@@ -1157,23 +1118,23 @@ result = ws.query(
 Aggregate a custom property as the metric value using `Metric(property=...)`:
 
 ```python
-from mixpanel_headless import Metric, CustomPropertyRef, InlineCustomProperty
+from mixpanel_headless import Metric, CustomPropertyRef, InlineCustomProperty, InsightsQuery
 
 # Average of a saved custom property
-result = ws.query(
-    Metric("Purchase", math="average", property=CustomPropertyRef(42)),
-)
+result = ws.query(InsightsQuery(
+    events=[Metric("Purchase", math="average", property=CustomPropertyRef(42)),
+]))
 
 # Sum of an inline computed property
-result = ws.query(
-    Metric("Purchase", math="total", property=InlineCustomProperty.numeric("A * B", A="price", B="quantity")),
-)
+result = ws.query(InsightsQuery(
+    events=[Metric("Purchase", math="total", property=InlineCustomProperty.numeric("A * B", A="price", B="quantity")),
+]))
 
 # Per-metric custom properties in multi-metric queries
-result = ws.query([
+result = ws.query(InsightsQuery(events=[
     Metric("Purchase", math="total", property=InlineCustomProperty.numeric("A * B", A="price", B="quantity")),
     Metric("Purchase", math="unique"),
-])
+]))
 ```
 
 !!! warning "Use `Metric(property=...)`, not `math_property=`"
@@ -1205,10 +1166,10 @@ Custom properties are validated **before** any API call. Invalid configurations 
 | Input property name non-empty | `CP6_EMPTY_INPUT_NAME` | input {key!r} has an empty property name |
 
 ```python
-from mixpanel_headless import BookmarkValidationError, CustomPropertyRef
+from mixpanel_headless import BookmarkValidationError, CustomPropertyRef, InsightsQuery
 
 try:
-    ws.query("Purchase", group_by=GroupBy(property=CustomPropertyRef(0), property_type="number"))
+    ws.query(InsightsQuery(events=["Purchase"], group_by=[GroupBy(property=CustomPropertyRef(0), property_type="number")]))
 except BookmarkValidationError as e:
     for error in e.errors:
         print(f"[{error.code}] {error.path}: {error.message}")

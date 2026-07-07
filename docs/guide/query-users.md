@@ -136,7 +136,7 @@ The real power of `query_user()` is combining it with behavioral engines. Identi
 
 ```python
 # Step 1: Which plan drives the most DAU?
-dau = ws.query("Login", math="dau", group_by="plan", last=30)
+dau = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["plan"], last=30))
 top_plan = dau.df.sort_values("count", ascending=False).iloc[0]["event"]
 
 # Step 2: Profile users from that plan

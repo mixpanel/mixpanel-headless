@@ -389,20 +389,20 @@ def close(self) -> None: ...
 Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query` for the full signature.
 
 ```python
-def query(
-    self,
-    events: str | Metric | CohortMetric | Formula | Sequence[...],
-    *,
-    from_date: str | None = None,        # YYYY-MM-DD, overrides last
+def query(self, query: InsightsQuery) -> QueryResult: ...
+
+InsightsQuery(
+    events: list[str | Metric | CohortMetric | Formula],  # required, min 1 item
+    from_date: str | None = None,        # YYYY-MM-DD; to_date defaults to today
     to_date: str | None = None,          # YYYY-MM-DD, requires from_date
-    last: int = 30,                      # relative days (ignored if from_date set)
+    last: int = 30,                      # relative days (used when no dates set)
     unit: QueryTimeUnit = 'day',
-    math: MathType = 'total',            # aggregation: total, unique, dau, average, sum, ...
+    math: MathType = 'total',            # aggregation for bare-string events
     math_property: str | None = None,    # top-level shorthand; Metric() uses property= instead
     per_user: PerUserAggregation | None = None,
     percentile_value: int | float | None = None,
-    group_by: str | GroupBy | CohortBreakdown | FrequencyBreakdown | list[...] | None = None,
-    where: Filter | FrequencyFilter | list[...] | None = None,
+    group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = None,
+    where: list[Filter | FrequencyFilter] | None = None,
     formula: str | None = None,          # e.g. "(B / A) * 100", requires 2+ events
     formula_label: str | None = None,
     rolling: int | None = None,
@@ -410,11 +410,11 @@ def query(
     mode: Literal['timeseries', 'total', 'table'] = 'timeseries',
     time_comparison: TimeComparison | None = None,
     data_group_id: int | None = None,
-) -> QueryResult:
-    # .df columns: timeseries → [date, event, count]
-    #              total → [event, count]
-    #              with group_by → adds segment column
-    ...
+)
+# result = ws.query(InsightsQuery(events=["Login"], math="dau", last=90))
+# .df columns: timeseries → [date, event, count]
+#              total → [event, count]
+#              with group_by → adds segment column
 ```
 
 ### Funnel Query
@@ -422,10 +422,10 @@ def query(
 Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_funnel` for the full signature.
 
 ```python
-def query_funnel(
-    self,
-    steps: list[str | FunnelStep],      # at least 2 steps required
-    *,
+def query_funnel(self, query: FunnelQuery) -> FunnelQueryResult: ...
+
+FunnelQuery(
+    steps: list[str | FunnelStep],      # required, at least 2 steps
     conversion_window: int = 14,
     conversion_window_unit: Literal['second', 'minute', 'hour', 'day', 'week', 'month', 'session'] = 'day',
     order: Literal['loose', 'any'] = 'loose',
@@ -433,18 +433,18 @@ def query_funnel(
     unit: QueryTimeUnit = 'day',
     math: FunnelMathType = 'conversion_rate_unique',
     math_property: str | None = None,
-    group_by: str | GroupBy | CohortBreakdown | list[...] | None = None,
-    where: Filter | list[Filter] | None = None,
+    group_by: list[str | GroupBy | CohortBreakdown] | None = None,
+    where: list[Filter] | None = None,
     exclusions: list[str | Exclusion] | None = None,
-    holding_constant: str | HoldingConstant | list[...] | None = None,
+    holding_constant: list[str | HoldingConstant] | None = None,
     mode: Literal['steps', 'trends', 'table'] = 'steps',
     reentry_mode: FunnelReentryMode | None = None,
     time_comparison: TimeComparison | None = None,
     data_group_id: int | None = None,
-) -> FunnelQueryResult:
-    # .df columns: [step, event, count, step_conv_ratio, avg_time]
-    # .overall_conversion_rate: float
-    ...
+)
+# result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], conversion_window=7))
+# .df columns: [step, event, count, step_conv_ratio, avg_time]
+# .overall_conversion_rate: float
 ```
 
 ### Retention Query
@@ -452,28 +452,28 @@ def query_funnel(
 Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_retention` for the full signature.
 
 ```python
-def query_retention(
-    self,
-    born_event: str | RetentionEvent,
-    return_event: str | RetentionEvent,
-    *,
+def query_retention(self, query: RetentionQuery) -> RetentionQueryResult: ...
+
+RetentionQuery(
+    born_event: str | RetentionEvent,   # required
+    return_event: str | RetentionEvent,  # required
     retention_unit: TimeUnit = 'week',
     alignment: RetentionAlignment = 'birth',
     bucket_sizes: list[int] | None = None,
     from_date: str | None = None, to_date: str | None = None, last: int = 30,
     unit: QueryTimeUnit = 'day',
     math: RetentionMathType = 'retention_rate',
-    group_by: str | GroupBy | CohortBreakdown | list[...] | None = None,
-    where: Filter | list[Filter] | None = None,
+    group_by: list[str | GroupBy | CohortBreakdown] | None = None,
+    where: list[Filter] | None = None,
     mode: RetentionMode = 'curve',
     unbounded_mode: RetentionUnboundedMode | None = None,
     retention_cumulative: bool = False,
     time_comparison: TimeComparison | None = None,
     data_group_id: int | None = None,
-) -> RetentionQueryResult:
-    # .df columns: [cohort_date, bucket, count, rate]  (+ segment with group_by)
-    # .average: synthetic average across cohorts
-    ...
+)
+# result = ws.query_retention(RetentionQuery(born_event="Signup", return_event="Login"))
+# .df columns: [cohort_date, bucket, count, rate]  (+ segment with group_by)
+# .average: synthetic average across cohorts
 ```
 
 ### Flow Query
@@ -481,11 +481,11 @@ def query_retention(
 Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_flow` for the full signature.
 
 ```python
-def query_flow(
-    self,
-    event: str | FlowStep | Sequence[str | FlowStep],
-    *,
-    forward: int = 3, reverse: int = 0,
+def query_flow(self, query: FlowQuery) -> FlowQueryResult: ...
+
+FlowQuery(
+    event: str | FlowStep | list[str | FlowStep],  # required anchor event(s)
+    forward: int = 3, reverse: int = 0,  # steps after/before the anchor (0-5)
     from_date: str | None = None, to_date: str | None = None, last: int = 30,
     conversion_window: int = 7,
     conversion_window_unit: Literal['day', 'week', 'month', 'session'] = 'day',
@@ -494,14 +494,14 @@ def query_flow(
     collapse_repeated: bool = False,
     hidden_events: list[str] | None = None,
     mode: Literal['sankey', 'paths', 'tree'] = 'sankey',
-    where: Filter | list[Filter] | None = None,
-    segments: str | GroupBy | CohortBreakdown | FrequencyBreakdown | list[...] | None = None,
+    where: list[Filter] | None = None,   # plain property filters or one cohort filter
+    segments: list[str | GroupBy] | None = None,  # plain property names only
     exclusions: list[str] | None = None,
-    data_group_id: int | None = None,
-) -> FlowQueryResult:
-    # .df, .graph (NetworkX DiGraph), .anytree (tree mode)
-    # .top_transitions(n), .drop_off_summary()
-    ...
+    data_group_id: int | None = None,    # no time_comparison — flows reject it
+)
+# result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=1))
+# .df, .graph (NetworkX DiGraph), .anytree (tree mode)
+# .top_transitions(n), .drop_off_summary()
 ```
 
 ### User Profile Query
@@ -537,14 +537,14 @@ def query_user(
 
 ### Build Params (without executing)
 
-Same parameters as the corresponding query methods, but return `dict[str, Any]` bookmark params without making an API call. Useful for creating saved reports (bookmarks).
+Take the same query models as the corresponding query methods, but return `dict[str, Any]` bookmark params without making an API call. Useful for creating saved reports (bookmarks).
 
 ```python
-def build_params(self, events, **kwargs) -> dict[str, Any]: ...
-def build_funnel_params(self, steps, **kwargs) -> dict[str, Any]: ...
-def build_retention_params(self, born_event, return_event, **kwargs) -> dict[str, Any]: ...
-def build_flow_params(self, event, **kwargs) -> dict[str, Any]: ...
-def build_user_params(self, **kwargs) -> dict[str, Any]: ...
+def build_params(self, query: InsightsQuery) -> dict[str, Any]: ...
+def build_funnel_params(self, query: FunnelQuery) -> dict[str, Any]: ...
+def build_retention_params(self, query: RetentionQuery) -> dict[str, Any]: ...
+def build_flow_params(self, query: FlowQuery) -> dict[str, Any]: ...
+def build_user_params(self, **kwargs) -> dict[str, Any]: ...  # user queries keep kwargs
 ```
 
 ### Multi-Step Analysis Patterns

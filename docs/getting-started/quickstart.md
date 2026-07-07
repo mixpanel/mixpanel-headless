@@ -245,31 +245,30 @@ Use `query()` for typed, composable analytics — DAU/WAU/MAU, formulas, filters
 
 ```python
 import mixpanel_headless as mp
-from mixpanel_headless import Metric, Filter
+from mixpanel_headless import Metric, Filter, InsightsQuery
 
 ws = mp.Workspace()
 
 # Simple event count (last 30 days by default)
-result = ws.query("Purchase")
+result = ws.query(InsightsQuery(events=["Purchase"]))
 print(result.df)
 
 # DAU with property breakdown
-result = ws.query("Login", math="dau", group_by="platform", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["platform"], last=90))
 
 # Filtered aggregation
-result = ws.query(
-    "Purchase",
-    math="total",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="total",
     math_property="amount",
-    where=Filter.equals("country", "US"),
-)
+    where=[Filter.equals("country", "US")],
+))
 
 # Multi-metric formula
-result = ws.query(
-    [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
+result = ws.query(InsightsQuery(
+    events=[Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
     formula="(B / A) * 100",
     formula_label="Conversion Rate",
-)
+))
 ```
 
 ### Cohort-Scoped Queries
@@ -277,7 +276,7 @@ result = ws.query(
 Scope any query to a user segment — define cohorts inline without saving them first:
 
 ```python
-from mixpanel_headless import CohortCriteria, CohortDefinition, Filter, CohortBreakdown
+from mixpanel_headless import CohortCriteria, CohortDefinition, Filter, CohortBreakdown, InsightsQuery
 
 # Define a cohort on the fly
 power_users = CohortDefinition(
@@ -285,10 +284,10 @@ power_users = CohortDefinition(
 )
 
 # Filter to that cohort
-result = ws.query("Login", where=Filter.in_cohort(power_users, name="Power Users"))
+result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
 
 # Compare cohort vs. everyone else
-result = ws.query("Login", group_by=CohortBreakdown(power_users, name="Power Users"))
+result = ws.query(InsightsQuery(events=["Login"], group_by=[CohortBreakdown(power_users, name="Power Users")]))
 ```
 
 Cohort filters work across all five query methods. See the [Insights Queries guide — Cohort-Scoped Queries](../guide/query.md#cohort-scoped-queries) for full coverage.
@@ -298,21 +297,21 @@ Cohort filters work across all five query methods. See the [Insights Queries gui
 Define funnels inline with typed steps — no saved funnel required:
 
 ```python
-from mixpanel_headless import FunnelStep, Filter
+from mixpanel_headless import FunnelStep, Filter, FunnelQuery
 
 # Simple funnel
-result = ws.query_funnel(["Signup", "Purchase"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 print(f"Conversion: {result.overall_conversion_rate:.1%}")
 
 # With per-step filters and conversion window
-result = ws.query_funnel(
-    [
+result = ws.query_funnel(FunnelQuery(
+    steps=[
         FunnelStep("Signup"),
         FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
     ],
     conversion_window=7,
     last=90,
-)
+))
 print(result.df)
 ```
 
@@ -323,22 +322,22 @@ See the [Funnel Queries guide](../guide/query-funnels.md) for full coverage.
 Measure cohort retention with typed event pairs — no saved report required:
 
 ```python
-from mixpanel_headless import RetentionEvent, Filter
+from mixpanel_headless import RetentionEvent, Filter, RetentionQuery
 
 # Simple retention: do signups come back?
-result = ws.query_retention("Signup", "Login", retention_unit="week", last=90)
+result = ws.query_retention(RetentionQuery(born_event="Signup", return_event="Login", retention_unit="week", last=90))
 print(result.df.head())
 #   cohort_date  bucket  count      rate
 # 0  2025-01-01       0   1000  1.000000
 # 1  2025-01-01       1    800  0.800000
 
 # With per-event filters and custom buckets
-result = ws.query_retention(
-    RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
-    "Login",
+result = ws.query_retention(RetentionQuery(
+    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    return_event="Login",
     retention_unit="day",
     bucket_sizes=[1, 3, 7, 14, 30],
-)
+))
 ```
 
 See the [Retention Queries guide](../guide/query-retention.md) for full coverage.
@@ -348,18 +347,18 @@ See the [Retention Queries guide](../guide/query-retention.md) for full coverage
 Analyze user paths through your product — what do users do before and after key events:
 
 ```python
-from mixpanel_headless import FlowStep, Filter
+from mixpanel_headless import FlowStep, Filter, FlowQuery
 
 # What happens after Purchase?
-result = ws.query_flow("Purchase", forward=3, last=90)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3, last=90))
 print(result.top_transitions(5))
 
 # With per-step filters and reverse analysis
-result = ws.query_flow(
-    FlowStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+result = ws.query_flow(FlowQuery(
+    event=FlowStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
     forward=3,
     reverse=2,
-)
+))
 print(result.nodes_df)
 print(result.edges_df)
 ```

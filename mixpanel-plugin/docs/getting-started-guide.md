@@ -261,17 +261,16 @@ print(result.df)  # pandas DataFrame
 ### Insights with Breakdown and Filter
 
 ```python
-from mixpanel_headless import Filter, GroupBy
+from mixpanel_headless import Filter, GroupBy, InsightsQuery
 
 # Purchase revenue by plan type, filtered to US customers
-result = ws.query(
-    "Purchase",
-    math="total",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="total",
     math_property="amount",
-    where=Filter.equals("country", "US"),
-    group_by="plan_type",
+    where=[Filter.equals("country", "US")],
+    group_by=["plan_type"],
     last=30,
-)
+))
 print(result.df)
 ```
 
@@ -279,11 +278,11 @@ print(result.df)
 
 ```python
 # Define funnel steps inline — no saved funnel needed
-funnel = ws.query_funnel(
-    ["Signup", "Onboarding Complete", "First Purchase"],
+funnel = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Onboarding Complete", "First Purchase"],
     conversion_window=7,
     last=90,
-)
+))
 print(f"Overall conversion: {funnel.overall_conversion_rate:.1%}")
 print(funnel.df)
 ```
@@ -292,12 +291,10 @@ print(funnel.df)
 
 ```python
 # How many users who signed up came back to log in?
-retention = ws.query_retention(
-    "Signup",
-    "Login",
-    retention_unit="week",
+retention = ws.query_retention(RetentionQuery(
+    born_event="Signup", return_event="Login", retention_unit="week",
     last=90,
-)
+))
 print(retention.df.head())  # cohort_date | bucket | count | rate
 ```
 
@@ -305,7 +302,7 @@ print(retention.df.head())  # cohort_date | bucket | count | rate
 
 ```python
 # What do users do after signing up?
-flow = ws.query_flow("Signup", forward=4)
+flow = ws.query_flow(FlowQuery(event="Signup", forward=4))
 print(flow.top_transitions(5))     # Top 5 most common paths
 print(flow.drop_off_summary())     # Where users drop off
 ```

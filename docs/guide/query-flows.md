@@ -11,8 +11,8 @@ Build typed flow path analysis against Mixpanel's Insights engine — define anc
 
 | Capability | Legacy `query_saved_flows()` | `query_flow()` |
 |---|---|---|
-| Basic flow analysis | `query_saved_flows(bookmark_id=123)` | `query_flow("Purchase")` |
-| Ad-hoc anchor events | Not available — requires saved report | `query_flow("Purchase")` or `query_flow(["Signup", "Purchase"])` |
+| Basic flow analysis | `query_saved_flows(bookmark_id=123)` | `query_flow(FlowQuery(event="Purchase"))` |
+| Ad-hoc anchor events | Not available — requires saved report | `query_flow(FlowQuery(event="Purchase"))` or `query_flow(["Signup", "Purchase"])` |
 | Per-step filters | Not available | `FlowStep("Purchase", filters=[...])` |
 | Direction control | Not available | `forward=3, reverse=1` |
 | Per-step direction | Not available | `FlowStep("Purchase", forward=5)` |
@@ -36,7 +36,7 @@ import mixpanel_headless as mp
 
 ws = mp.Workspace()
 
-result = ws.query_flow("Purchase")
+result = ws.query_flow(FlowQuery(event="Purchase"))
 print(result.nodes_df.head())
 #   step           event       type  count anchor_type
 # 0    0        Purchase     ANCHOR   5000      NORMAL
@@ -53,18 +53,17 @@ Add direction controls and time range:
 
 ```python
 # 3 steps forward and 1 step back from Purchase
-result = ws.query_flow("Purchase", forward=3, reverse=1, last=90)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=1, last=90))
 
 # Top user paths
 print(result.top_transitions(5))
 # [("Purchase", "View Receipt", 3200), ("View Receipt", "Checkout", 2100), ...]
 
 # Specific date range
-result = ws.query_flow(
-    "Purchase",
-    from_date="2025-01-01",
+result = ws.query_flow(FlowQuery(
+    event="Purchase", from_date="2025-01-01",
     to_date="2025-03-31",
-)
+))
 ```
 
 ## Steps
@@ -75,10 +74,10 @@ The simplest way to define anchor events — pass event names as strings:
 
 ```python
 # Single anchor event
-result = ws.query_flow("Purchase")
+result = ws.query_flow(FlowQuery(event="Purchase"))
 
 # Multiple anchor events
-result = ws.query_flow(["Signup", "Purchase"])
+result = ws.query_flow(FlowQuery(event=["Signup", "Purchase"]))
 ```
 
 Each string becomes an anchor step in the flow — Mixpanel traces user paths forward and backward from these events.
@@ -88,16 +87,16 @@ Each string becomes an anchor step in the flow — Mixpanel traces user paths fo
 For per-step configuration with filters and direction overrides, use `FlowStep` objects:
 
 ```python
-from mixpanel_headless import FlowStep, Filter
+from mixpanel_headless import FlowStep, Filter, FlowQuery
 
-result = ws.query_flow(
-    FlowStep(
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(
         "Purchase",
         forward=5,
         reverse=2,
         filters=[Filter.greater_than("amount", 50)],
     ),
-)
+))
 ```
 
 `FlowStep` fields:
@@ -114,10 +113,10 @@ result = ws.query_flow(
 Plain strings and `FlowStep` objects can be mixed freely:
 
 ```python
-result = ws.query_flow([
+result = ws.query_flow(FlowQuery(event=[
     "Signup",  # plain string — no overrides needed
-    FlowStep("Purchase", filters=[Filter.equals("country", "US")]),
-])
+    FlowStep("Purchase", filters=[Filter.equals("country", "US")], ),
+]))
 ```
 
 ### Per-Step Filters
@@ -125,24 +124,24 @@ result = ws.query_flow([
 Apply filters to individual steps using `FlowStep.filters`. These restrict which events count for that specific anchor:
 
 ```python
-from mixpanel_headless import FlowStep, Filter
+from mixpanel_headless import FlowStep, Filter, FlowQuery
 
-result = ws.query_flow(
-    FlowStep(
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(
         "Purchase",
         filters=[
             Filter.equals("country", "US"),
             Filter.greater_than("amount", 25),
         ],
     ),
-)
+))
 ```
 
 By default, multiple per-step filters combine with AND logic. Use `filters_combinator="any"` for OR logic:
 
 ```python
-result = ws.query_flow(
-    FlowStep(
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(
         "Purchase",
         filters=[
             Filter.equals("country", "US"),
@@ -150,7 +149,7 @@ result = ws.query_flow(
         ],
         filters_combinator="any",  # match US OR CA
     ),
-)
+))
 ```
 
 See [Insights Queries — Filters](query.md#filters) for the full list of `Filter` factory methods.
@@ -160,30 +159,27 @@ See [Insights Queries — Filters](query.md#filters) for the full list of `Filte
 Restrict flow analysis to a subset of users using the `where=` parameter. Flows support both cohort filters and property filters:
 
 ```python
-from mixpanel_headless import Filter, CohortCriteria, CohortDefinition
+from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, FlowQuery
 
 # Cohort filter — what do power users do after purchasing?
-result = ws.query_flow(
-    "Purchase",
-    forward=3,
-    where=Filter.in_cohort(123, "Power Users"),
-)
+result = ws.query_flow(FlowQuery(
+    event="Purchase", forward=3,
+    where=[Filter.in_cohort(123, "Power Users")],
+))
 
 # Property filter — iOS users only
-result = ws.query_flow(
-    "Purchase",
-    where=Filter.equals("platform", "iOS"),
+result = ws.query_flow(FlowQuery(
+    event="Purchase", where=[Filter.equals("platform", "iOS")],
     last=30,
-)
+))
 
 # Inline cohort — what paths do frequent buyers take?
 frequent_buyers = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=5, within_days=30)
 )
-result = ws.query_flow(
-    "Purchase",
-    where=Filter.in_cohort(frequent_buyers, name="Frequent Buyers"),
-)
+result = ws.query_flow(FlowQuery(
+    event="Purchase", where=[Filter.in_cohort(frequent_buyers, name="Frequent Buyers")],
+))
 ```
 
 !!! note
@@ -202,13 +198,13 @@ Control how many steps forward and backward from the anchor Mixpanel traces:
 
 ```python
 # Forward-only (default) — what happens after Purchase?
-result = ws.query_flow("Purchase", forward=3)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3))
 
 # Reverse-only — what led to Purchase?
-result = ws.query_flow("Purchase", forward=0, reverse=3)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=0, reverse=3))
 
 # Both directions — context around Purchase
-result = ws.query_flow("Purchase", forward=3, reverse=2)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=2))
 ```
 
 At least one direction must be nonzero — a flow with `forward=0, reverse=0` raises a validation error.
@@ -244,17 +240,17 @@ The `mode` parameter controls how flow data is structured and returned:
 
 ```python
 # Sankey mode (default) — aggregated graph
-result = ws.query_flow("Purchase", mode="sankey")
+result = ws.query_flow(FlowQuery(event="Purchase", mode="sankey"))
 print(result.nodes_df)   # node-level data
 print(result.edges_df)   # edge-level transitions
 print(result.graph)       # NetworkX DiGraph
 
 # Paths mode — top user paths
-result = ws.query_flow("Purchase", mode="paths")
+result = ws.query_flow(FlowQuery(event="Purchase", mode="paths"))
 print(result.df)          # ranked path sequences
 
 # Tree mode — recursive tree structure
-result = ws.query_flow("Purchase", mode="tree")
+result = ws.query_flow(FlowQuery(event="Purchase", mode="tree"))
 for tree in result.trees:
     print(f"{tree.event}: {tree.total_count} users")
     for child in tree.children:
@@ -267,16 +263,16 @@ Control the maximum time between the first and last step in the flow:
 
 ```python
 # 7-day conversion window (default)
-result = ws.query_flow("Purchase", conversion_window=7)
+result = ws.query_flow(FlowQuery(event="Purchase", conversion_window=7))
 
 # 30-day window
-result = ws.query_flow("Purchase", conversion_window=30, conversion_window_unit="day")
+result = ws.query_flow(FlowQuery(event="Purchase", conversion_window=30, conversion_window_unit="day"))
 
 # Weekly window
-result = ws.query_flow("Purchase", conversion_window=2, conversion_window_unit="week")
+result = ws.query_flow(FlowQuery(event="Purchase", conversion_window=2, conversion_window_unit="week"))
 
 # Session-based window
-result = ws.query_flow("Purchase", conversion_window=1, conversion_window_unit="session")
+result = ws.query_flow(FlowQuery(event="Purchase", conversion_window=1, conversion_window_unit="session"))
 ```
 
 | Unit | Description |
@@ -298,13 +294,13 @@ The `count_type` parameter controls how users are counted:
 
 ```python
 # Unique users (default)
-result = ws.query_flow("Purchase", count_type="unique")
+result = ws.query_flow(FlowQuery(event="Purchase", count_type="unique"))
 
 # Total events
-result = ws.query_flow("Purchase", count_type="total")
+result = ws.query_flow(FlowQuery(event="Purchase", count_type="total"))
 
 # Session-based
-result = ws.query_flow("Purchase", count_type="session")
+result = ws.query_flow(FlowQuery(event="Purchase", count_type="session"))
 ```
 
 ## Additional Options
@@ -315,7 +311,7 @@ Scope flow analysis to a specific data group:
 
 ```python
 # Scope to a data group
-result = ws.query_flow("Purchase", data_group_id=42, last=30)
+result = ws.query_flow(FlowQuery(event="Purchase", data_group_id=42, last=30))
 ```
 
 ### Cardinality
@@ -324,10 +320,10 @@ Control how many unique next/previous events are shown per step. Higher values s
 
 ```python
 # Show top 5 events per step (default is 3)
-result = ws.query_flow("Purchase", cardinality=5)
+result = ws.query_flow(FlowQuery(event="Purchase", cardinality=5))
 
 # Maximum granularity
-result = ws.query_flow("Purchase", cardinality=50)
+result = ws.query_flow(FlowQuery(event="Purchase", cardinality=50))
 ```
 
 Range: 1–50.
@@ -338,7 +334,7 @@ Merge consecutive occurrences of the same event into a single step:
 
 ```python
 # Collapse repeated events (e.g., multiple "Page View" in a row)
-result = ws.query_flow("Purchase", collapse_repeated=True)
+result = ws.query_flow(FlowQuery(event="Purchase", collapse_repeated=True))
 ```
 
 ### Hidden Events
@@ -347,10 +343,9 @@ Exclude specific events from the flow analysis:
 
 ```python
 # Hide noisy events from the flow
-result = ws.query_flow(
-    "Purchase",
-    hidden_events=["Session Start", "Page View", "Heartbeat"],
-)
+result = ws.query_flow(FlowQuery(
+    event="Purchase", hidden_events=["Session Start", "Page View", "Heartbeat"],
+))
 ```
 
 ## Time Ranges
@@ -361,10 +356,10 @@ By default, `query_flow()` returns the last 30 days. Customize with `last`:
 
 ```python
 # Last 7 days
-result = ws.query_flow("Purchase", last=7)
+result = ws.query_flow(FlowQuery(event="Purchase", last=7))
 
 # Last 90 days
-result = ws.query_flow("Purchase", last=90)
+result = ws.query_flow(FlowQuery(event="Purchase", last=90))
 ```
 
 ### Absolute
@@ -373,11 +368,10 @@ Specify explicit start and end dates:
 
 ```python
 # Q1 2025
-result = ws.query_flow(
-    "Purchase",
-    from_date="2025-01-01",
+result = ws.query_flow(FlowQuery(
+    event="Purchase", from_date="2025-01-01",
     to_date="2025-03-31",
-)
+))
 ```
 
 Dates must be in `YYYY-MM-DD` format. When `from_date` is provided without `to_date`, the end date defaults to today.
@@ -389,7 +383,7 @@ Dates must be in `YYYY-MM-DD` format. When `from_date` is provided without `to_d
 `query_flow()` returns a `FlowQueryResult` with mode-aware properties:
 
 ```python
-result = ws.query_flow("Purchase", forward=3, reverse=1, last=90)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=1, last=90))
 
 # Node data — one row per node in the flow
 result.nodes_df
@@ -512,7 +506,7 @@ Every graph theory algorithm in NetworkX — shortest paths, centrality, communi
 When `mode="tree"`, results include `FlowTreeNode` objects:
 
 ```python
-result = ws.query_flow("Purchase", mode="tree")
+result = ws.query_flow(FlowQuery(event="Purchase", mode="tree"))
 
 for tree in result.trees:
     print(f"{tree.event}: {tree.total_count} users")
@@ -560,7 +554,7 @@ for tree in result.trees:
 Tree mode gives each node its own `total_count`, `converted_count`, and `drop_off_count` — the full decision tree at every branching point. This lets you answer questions about *where exactly* users diverge:
 
 ```python
-result = ws.query_flow("Signup", mode="tree", forward=4)
+result = ws.query_flow(FlowQuery(event="Signup", mode="tree", forward=4))
 
 for tree in result.trees:
     # "At each step, what percentage of users take each branch?"
@@ -602,7 +596,7 @@ Use `to_anytree()` on any single `FlowTreeNode`, or `result.anytree` for the ful
 ```python
 from anytree import RenderTree, findall
 
-result = ws.query_flow("Purchase", mode="tree", forward=3)
+result = ws.query_flow(FlowQuery(event="Purchase", mode="tree", forward=3))
 root = result.anytree[0]  # converted AnyNode root
 
 # Render the full tree with counts
@@ -682,9 +676,9 @@ UniqueDotExporter(
 The generated bookmark params can be saved as a Mixpanel report:
 
 ```python
-from mixpanel_headless import CreateBookmarkParams
+from mixpanel_headless import CreateBookmarkParams, FlowQuery
 
-result = ws.query_flow("Purchase", forward=3, reverse=1)
+result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=1))
 
 ws.create_bookmark(CreateBookmarkParams(
     name="Purchase Flow Analysis",
@@ -700,7 +694,7 @@ Inspect `result.params` to see the exact bookmark JSON sent to the API:
 ```python
 import json
 
-result = ws.query_flow("Purchase")
+result = ws.query_flow(FlowQuery(event="Purchase"))
 print(json.dumps(result.params, indent=2))
 ```
 
@@ -725,10 +719,10 @@ print(json.dumps(result.params, indent=2))
 Errors are collected — all validation issues are reported at once, not just the first:
 
 ```python
-from mixpanel_headless import BookmarkValidationError
+from mixpanel_headless import BookmarkValidationError, FlowQuery
 
 try:
-    ws.query_flow("", forward=10, reverse=-1)
+    ws.query_flow(FlowQuery(event="", forward=10, reverse=-1))
 except BookmarkValidationError as e:
     for error in e.errors:
         print(f"[{error.code}] {error.path}: {error.message}")
@@ -743,13 +737,13 @@ except BookmarkValidationError as e:
 
 ```python
 import mixpanel_headless as mp
-from mixpanel_headless import FlowStep, Filter
+from mixpanel_headless import FlowStep, Filter, FlowQuery
 
 ws = mp.Workspace()
 
 # What happens after users add items to cart?
-result = ws.query_flow(
-    FlowStep(
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(
         "Add to Cart",
         forward=4,
         filters=[Filter.greater_than("item_price", 10)],
@@ -757,7 +751,7 @@ result = ws.query_flow(
     conversion_window=7,
     last=90,
     hidden_events=["Session Start", "Page View"],
-)
+))
 
 # Top conversion paths
 for src, tgt, count in result.top_transitions(10):
@@ -773,13 +767,12 @@ for step in summary["steps"]:
 
 ```python
 # What do new users do after signing up?
-result = ws.query_flow(
-    "Signup",
-    forward=5,
+result = ws.query_flow(FlowQuery(
+    event="Signup", forward=5,
     cardinality=10,
     last=30,
     collapse_repeated=True,
-)
+))
 
 # Visualize as NetworkX graph
 g = result.graph
@@ -797,13 +790,12 @@ for node in g.successors("Signup@0"):
 
 ```python
 # What led users to churn?
-result = ws.query_flow(
-    "Cancel Subscription",
-    forward=0,
+result = ws.query_flow(FlowQuery(
+    event="Cancel Subscription", forward=0,
     reverse=5,
     count_type="unique",
     last=90,
-)
+))
 
 # Analyze the reverse path
 print(result.nodes_df[result.nodes_df["type"] == "REVERSE"])
@@ -813,7 +805,7 @@ print(result.nodes_df[result.nodes_df["type"] == "REVERSE"])
 
 ```python
 # Detailed tree analysis of purchase paths
-result = ws.query_flow("Purchase", mode="tree", forward=3)
+result = ws.query_flow(FlowQuery(event="Purchase", mode="tree", forward=3))
 
 for tree in result.trees:
     print(f"\nAnchor: {tree.event} ({tree.total_count:,} users)")
@@ -832,19 +824,18 @@ Use `build_flow_params()` to generate bookmark params without making an API call
 
 ```python
 # Same arguments as query_flow(), returns dict instead of FlowQueryResult
-params = ws.build_flow_params(
-    "Purchase",
-    forward=3,
+params = ws.build_flow_params(FlowQuery(
+    event="Purchase", forward=3,
     reverse=1,
     conversion_window=7,
     last=90,
-)
+))
 
 import json
 print(json.dumps(params, indent=2))  # inspect the generated bookmark JSON
 
 # Save as a report directly from params
-from mixpanel_headless import CreateBookmarkParams
+from mixpanel_headless import CreateBookmarkParams, FlowQuery
 
 ws.create_bookmark(CreateBookmarkParams(
     name="Purchase Flow (3 forward, 1 reverse)",
@@ -859,23 +850,21 @@ Break flow results down by a property, cohort, or frequency using the `segments`
 
 ```python
 # Break down paths by platform
-result = ws.query_flow("Purchase", segments="platform", last=30)
+result = ws.query_flow(FlowQuery(event="Purchase", segments=["platform"], last=30))
 
 # Segment by a GroupBy with bucketing
-from mixpanel_headless import GroupBy
-result = ws.query_flow(
-    "Purchase",
-    segments=GroupBy("revenue", property_type="number", bucket_size=50),
+from mixpanel_headless import GroupBy, FlowQuery
+result = ws.query_flow(FlowQuery(
+    event="Purchase", segments=[GroupBy("revenue", property_type="number", bucket_size=50)],
     last=30,
-)
+))
 
 # Segment by cohort membership
 from mixpanel_headless import CohortBreakdown
-result = ws.query_flow(
-    "Purchase",
-    segments=CohortBreakdown(cohort_id=123, name="Power Users"),
+result = ws.query_flow(FlowQuery(
+    event="Purchase", segments=[CohortBreakdown(cohort_id=123, name="Power Users")],
     last=30,
-)
+))
 ```
 
 `segments` accepts a string (property name), `GroupBy`, `CohortBreakdown`, `FrequencyBreakdown`, or a list of these.
@@ -886,12 +875,11 @@ Hide specific events from flow paths using the `exclusions` parameter:
 
 ```python
 # Exclude noisy events from the flow
-result = ws.query_flow(
-    "Purchase",
-    exclusions=["Page View", "Session Start"],
+result = ws.query_flow(FlowQuery(
+    event="Purchase", exclusions=["Page View", "Session Start"],
     forward=3,
     last=30,
-)
+))
 ```
 
 Excluded events are removed from the flow graph — they won't appear as nodes or edges, making it easier to see meaningful user paths.
@@ -901,21 +889,21 @@ Excluded events are removed from the flow graph — they won't appear as nodes o
 Anchor a flow step to a session boundary using `FlowStep.session_event`:
 
 ```python
-from mixpanel_headless import FlowStep
+from mixpanel_headless import FlowStep, FlowQuery
 
 # What happens after a session starts?
-result = ws.query_flow(
-    FlowStep(event="Session Start", session_event="start"),
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(event="Session Start", session_event="start"),
     forward=5,
     last=30,
-)
+))
 
 # What leads up to a session ending?
-result = ws.query_flow(
-    FlowStep(event="Session End", session_event="end"),
+result = ws.query_flow(FlowQuery(
+    event=FlowStep(event="Session End", session_event="end"),
     reverse=3,
     last=30,
-)
+))
 ```
 
 Values: `"start"` (session start anchor) or `"end"` (session end anchor).

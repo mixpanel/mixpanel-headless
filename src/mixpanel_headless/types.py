@@ -11026,7 +11026,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             result.nodes_df
             #    step   event   type  count anchor_type  ...
             # 0     0   Login  ANCHOR   100      NORMAL  ...
@@ -11080,7 +11080,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             result.edges_df
             #    source_step source_event  target_step target_event  count target_type
             # 0            0        Login            1       Search     80      NORMAL
@@ -11135,7 +11135,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             G = result.graph
             G.nodes["Login@0"]["count"]
             # 100
@@ -11189,7 +11189,7 @@ class FlowQueryResult(ResultWithDataFrame):
         Example:
             ```python
             result = workspace.query_flow(
-                steps=[FlowStep("Login")], mode="sankey"
+                FlowQuery(event="Login", mode="sankey")
             )
             result.df.columns
             # Index(['step', 'event', 'type', 'count', ...])

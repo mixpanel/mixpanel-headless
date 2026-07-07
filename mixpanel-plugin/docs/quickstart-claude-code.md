@@ -163,11 +163,11 @@ funnel = ws.query_funnel(FunnelQuery(steps=["Signup", "Onboarding", "Purchase"],
 print(funnel.overall_conversion_rate)
 
 # Retention: "Do users come back?"
-retention = ws.query_retention("Signup", "Login", retention_unit="week", last=90)
+retention = ws.query_retention(RetentionQuery(born_event="Signup", return_event="Login", retention_unit="week", last=90))
 print(retention.df)
 
 # Flows: "What paths do users take?"
-flow = ws.query_flow("Signup", forward=4)
+flow = ws.query_flow(FlowQuery(event="Signup", forward=4))
 print(flow.top_transitions(5))
 ```
 

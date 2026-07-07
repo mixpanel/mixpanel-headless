@@ -42,10 +42,10 @@ df = result.df  # date, event, segment, count
 ### Funnels (conversion analysis)
 
 ```python
-result = ws.query_funnel(
-    ["Signup", "Onboarding Complete", "First Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Onboarding Complete", "First Purchase"],
     conversion_window=14,
-)
+))
 print(result.overall_conversion_rate)
 print(result.df)  # step, event, count, step_conv_ratio, avg_time
 ```
@@ -53,10 +53,9 @@ print(result.df)  # step, event, count, step_conv_ratio, avg_time
 ### Retention (user return behavior)
 
 ```python
-result = ws.query_retention(
-    "Signup", "Login",
-    retention_unit="week", last=90,
-)
+result = ws.query_retention(RetentionQuery(
+    born_event="Signup", return_event="Login", retention_unit="week", last=90,
+))
 print(result.average)  # synthetic average across cohorts
 print(result.df)       # cohort_date, bucket, count, rate
 ```
@@ -64,13 +63,13 @@ print(result.df)       # cohort_date, bucket, count, rate
 ### Flows (user path analysis)
 
 ```python
-result = ws.query_flow("Signup", forward=4)
+result = ws.query_flow(FlowQuery(event="Signup", forward=4))
 g = result.graph                   # networkx DiGraph
 print(result.top_transitions(5))   # highest-traffic paths
 print(result.drop_off_summary())   # per-step drop-off
 
 # Tree mode
-result = ws.query_flow("Signup", mode="tree")
+result = ws.query_flow(FlowQuery(event="Signup", mode="tree"))
 for tree in result.trees:
     print(tree.render())           # ASCII visualization
 ```

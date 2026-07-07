@@ -62,11 +62,11 @@ Key parameters: `events` (str or list), `math` (`"total"`, `"dau"`, `"wau"`, `"m
 
 ```python
 # 1. Query
-result = ws.query_funnel(
+result = ws.query_funnel(FunnelQuery(
     steps=["Page View", "Signup Started", "Signup Completed", "First Action"],
     from_date="2025-01-01",
     to_date="2025-03-31",
-)
+))
 
 # 2. Inspect
 print(result.df)
@@ -93,13 +93,13 @@ Key parameters: `steps` (list of str, min 2), `conversion_window` (default 14), 
 
 ```python
 # 1. Query
-result = ws.query_retention(
+result = ws.query_retention(RetentionQuery(
     born_event="Signup",
     return_event="Login",
     from_date="2025-01-01",
     to_date="2025-03-31",
     alignment="birth",
-)
+))
 
 # 2. Inspect
 print(result.df)
@@ -125,13 +125,13 @@ Key parameters: `born_event`, `return_event`, `retention_unit` (`"day"`, `"week"
 
 ```python
 # 1. Query
-result = ws.query_flow(
+result = ws.query_flow(FlowQuery(
     event="Signup",
     forward=5,
     count_type="unique",
     from_date="2025-01-01",
     to_date="2025-03-31",
-)
+))
 
 # 2. Inspect
 print(result.df.head())  # Top paths
@@ -254,9 +254,9 @@ else:
 
 ```python
 # WRONG -- these are not the actual parameter names
-ws.query_funnel(events=["A", "B"])       # parameter is "steps", not "events"
-ws.query_flow(from_event="A", steps=5)   # parameter is "event" and "forward"
-ws.query_retention(retention_type="birth")  # parameter is "alignment"
+ws.query_funnel(FunnelQuery(events=["A", "B"]))       # parameter is "steps", not "events"
+ws.query_flow(FlowQuery(from_event="A", steps=5))   # parameter is "event" and "forward"
+ws.query_retention(RetentionQuery(retention_type="birth"))  # parameter is "alignment"
 ```
 
 ---
@@ -297,20 +297,20 @@ ws.update_dashboard(dashboard.id, UpdateDashboardParams(
 
 # Query all 4 engines
 dau = ws.query(InsightsQuery(events=["Login"], math="dau", last=30))
-funnel = ws.query_funnel(
+funnel = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Onboarding", "First Action"],
     last=90,
-)
-retention = ws.query_retention(
+))
+retention = ws.query_retention(RetentionQuery(
     born_event="Signup",
     return_event="Login",
     last=90,
-)
-flows = ws.query_flow(
+))
+flows = ws.query_flow(FlowQuery(
     event="Signup",
     forward=5,
     last=30,
-)
+))
 
 # Add each report inline (preferred -- no cloning, no separate bookmarks)
 reports = [
