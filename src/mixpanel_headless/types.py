@@ -10160,6 +10160,38 @@ class CohortBreakdown:
         _validate_cohort_args(self.cohort, self.name)
 
 
+def _cohort_metric_cohort_discriminator(v: Any) -> str:
+    """Discriminator callable for ``CohortMetric.cohort``.
+
+    Routes structured inputs (dicts, ``CohortDefinition`` builder
+    instances, ``InlineCohort`` models) to the runtime-only definition
+    arm and everything else to the saved-cohort-ID arm. Total — it
+    returns a tag for every input, so pydantic can never emit a
+    ``union_tag_*`` error for this union (registered as such in
+    ``bookmark_schema._CALLABLE_DISCRIMINATOR_REWRITES``).
+
+    Routing through a discriminated union (instead of a smart union)
+    means a non-dict input is judged ONLY by the integer arm — the
+    published schema for the field is integer-only, so surfacing the
+    hidden definition arm's ``"Input should be a valid dictionary or
+    instance of InlineCohort"`` would contradict the schema and leak an
+    internal class name (finding
+    ``cohort-metric-hidden-arm-error-contradicts-integer-only-schema``).
+
+    Args:
+        v: The candidate value (int/str/... scalar, dict during JSON
+            validation, or builder instance during Python validation).
+
+    Returns:
+        ``"CohortDefinition"`` for structured inputs, ``"int"`` otherwise
+        (both registered in ``bookmark_schema._DISCRIMINATOR_TAGS`` so
+        they never leak into caller-facing paths).
+    """
+    if isinstance(v, (dict, CohortDefinition, InlineCohort)):
+        return "CohortDefinition"
+    return "int"
+
+
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortMetric:
     """Track cohort size over time as an event metric.
@@ -10201,10 +10233,13 @@ class CohortMetric:
         ```
     """
 
-    cohort: (
-        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
-        | SkipJsonSchema[CohortDefinition]
-    )
+    cohort: Annotated[
+        Annotated[
+            StrictInt, Tag("int"), Field(json_schema_extra={"exclusiveMinimum": 0})
+        ]
+        | Annotated[SkipJsonSchema[CohortDefinition], Tag("CohortDefinition")],
+        Discriminator(_cohort_metric_cohort_discriminator),
+    ]
     """Saved cohort ID (the only shape the server accepts here).
 
     The ID arm is a strict integer — bool/str inputs are rejected
@@ -10215,6 +10250,10 @@ class CohortMetric:
     the targeted server-returns-500 rejection from ``__post_init__``
     instead of a generic type error; it is hidden from the JSON schema
     because the server rejects inline definitions for cohort metrics.
+    The union is discriminated (``_cohort_metric_cohort_discriminator``)
+    so non-structured wrong-type inputs surface ONLY the schema-
+    consistent integer diagnosis — never the hidden arm's
+    dictionary/``InlineCohort`` message.
     """
 
     name: str | None = None
