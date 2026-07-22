@@ -109,6 +109,37 @@ class TestNoOpaqueHoles:
         assert not offenders, f"{model_cls.__name__}: open objects at {offenders}"
 
     @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
+    def test_every_object_with_properties_forbids_extras(
+        self, model_cls: type[BaseModel]
+    ) -> None:
+        """Every ``type: object`` node with ``properties`` sets ``additionalProperties: false``.
+
+        Regression guard for finding
+        ``custom-property-dataclasses-missing-additionalProperties-false``:
+        OMITTING ``additionalProperties`` means "arbitrary extra keys
+        allowed" in JSON Schema — semantically identical to ``true`` —
+        while the runtime rejects extras on every query building block.
+        ``test_no_additional_properties_true`` only catches the literal
+        ``true`` form, which pydantic never emits, so plain stdlib
+        dataclasses (whose ``$defs`` omit the keyword entirely) slipped
+        through as open-object holes. This asserts the explicit
+        ``false`` on every properties-bearing object node across the
+        four schemas, ``$defs`` included, keeping the advertised schema
+        an exact contract with the ``extra="forbid"`` runtime.
+        """
+        offenders = [
+            path
+            for path, node in _walk(model_cls.model_json_schema())
+            if node.get("type") == "object"
+            and "properties" in node
+            and node.get("additionalProperties") is not False
+        ]
+        assert not offenders, (
+            f"{model_cls.__name__}: object nodes allowing extra keys "
+            f"(additionalProperties omitted or not false) at {offenders}"
+        )
+
+    @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
     def test_no_underscore_properties(self, model_cls: type[BaseModel]) -> None:
         """No leaked private fields (property names starting with ``_``)."""
         schema = model_cls.model_json_schema()

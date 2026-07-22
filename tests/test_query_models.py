@@ -2922,6 +2922,99 @@ class TestCohortNodeKindlessSchemaRuntimeParity:
             InsightsQuery.model_validate(payload)
 
 
+class TestCustomPropertyExtraKeySchemaRuntimeParity:
+    """Extra keys on custom-property dicts are rejected by BOTH layers.
+
+    Regression tests for finding
+    ``custom-property-dataclasses-missing-additionalProperties-false``:
+    ``PropertyInput``, ``InlineCustomProperty``, and ``CustomPropertyRef``
+    were plain stdlib dataclasses, so their ``$defs`` OMITTED
+    ``additionalProperties: false`` — advertising "extra keys allowed" —
+    while ``model_validate`` rejected extras with ``Unexpected keyword
+    argument``. A schema-valid LLM payload therefore failed at runtime.
+    The three are now pydantic dataclasses with ``extra="forbid"``, so
+    the generated schema and the runtime agree: extras fail both, and
+    the clean payloads pass both.
+    """
+
+    EXTRA_KEY_PAYLOADS: ClassVar[dict[str, dict[str, Any]]] = {
+        "CustomPropertyRef": {
+            "events": ["Login"],
+            "group_by": [{"property": {"id": 42, "bogus": 1}}],
+        },
+        "InlineCustomProperty": {
+            "events": ["Login"],
+            "group_by": [
+                {
+                    "property": {
+                        "formula": "A",
+                        "inputs": {"A": {"name": "p"}},
+                        "bogus": 1,
+                    }
+                }
+            ],
+        },
+        "PropertyInput": {
+            "events": ["Login"],
+            "group_by": [
+                {
+                    "property": {
+                        "formula": "A",
+                        "inputs": {"A": {"name": "p", "bogus": 1}},
+                    }
+                }
+            ],
+        },
+    }
+    """One extra-key payload per formerly-open custom-property type."""
+
+    CLEAN_PAYLOADS: ClassVar[dict[str, dict[str, Any]]] = {
+        "CustomPropertyRef": {
+            "events": ["Login"],
+            "group_by": [{"property": {"id": 42}}],
+        },
+        "InlineCustomProperty": {
+            "events": ["Login"],
+            "group_by": [
+                {"property": {"formula": "A", "inputs": {"A": {"name": "p"}}}}
+            ],
+        },
+    }
+    """The same payloads without the extra key (positive controls)."""
+
+    @pytest.mark.parametrize("type_name", sorted(EXTRA_KEY_PAYLOADS), ids=str)
+    def test_extra_key_rejected_by_schema_and_runtime(self, type_name: str) -> None:
+        """A bogus extra key fails schema validation AND model_validate."""
+        payload = self.EXTRA_KEY_PAYLOADS[type_name]
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors != [], (
+            f"{type_name}: schema accepted an extra key the runtime rejects"
+        )
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery.model_validate(payload)
+
+    @pytest.mark.parametrize("type_name", sorted(CLEAN_PAYLOADS), ids=str)
+    def test_clean_payload_accepted_by_schema_and_runtime(self, type_name: str) -> None:
+        """The extra-free payload passes schema validation AND model_validate."""
+        payload = self.CLEAN_PAYLOADS[type_name]
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors == [], [e.message for e in schema_errors]
+        query = InsightsQuery.model_validate(payload)
+        assert isinstance(query, InsightsQuery)
+
+    @pytest.mark.parametrize(
+        "def_name", ["PropertyInput", "InlineCustomProperty", "CustomPropertyRef"]
+    )
+    def test_defs_advertise_additional_properties_false(self, def_name: str) -> None:
+        """Each of the three ``$defs`` renders ``additionalProperties: false``."""
+        definition = InsightsQuery.model_json_schema()["$defs"][def_name]
+        assert definition.get("additionalProperties") is False, definition
+
+
 class TestCohortMetricHiddenArmErrorConsistency:
     """CohortMetric.cohort errors never contradict its integer-only schema.
 

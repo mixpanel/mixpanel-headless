@@ -6611,12 +6611,16 @@ class ProfilePageResult:
 # =============================================================================
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class PropertyInput:
     """A raw property reference mapping a formula variable to a named property.
 
     Used as an entry in :attr:`InlineCustomProperty.inputs` to bind a
     formula variable (A-Z) to a concrete Mixpanel event or user property.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Attributes:
         name: The raw property name (e.g., ``"price"``, ``"$browser"``).
@@ -6650,13 +6654,17 @@ class PropertyInput:
     """Property domain (singular form for composedProperties schema)."""
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class InlineCustomProperty:
     """An ephemeral computed property defined by a formula and input references.
 
     Defines a custom property inline at query time without persisting it
     to Mixpanel. The formula uses variables (A-Z) that map to concrete
     properties via the ``inputs`` dict.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Can be used in ``GroupBy.property``, ``Filter`` class methods, and
     ``Metric.property`` to compute derived values on the fly.
@@ -6769,13 +6777,17 @@ class InlineCustomProperty:
         )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CustomPropertyRef:
     """A reference to a persisted custom property by its integer ID.
 
     Used in ``GroupBy.property``, ``Filter`` class methods, and
     ``Metric.property`` to reference a custom property that was
     previously created and saved in Mixpanel.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Attributes:
         id: The custom property's server-assigned ID (must be positive).
