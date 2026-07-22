@@ -7382,14 +7382,14 @@ class Filter:
 
         # Numeric two-value operators require numeric endpoints
         # (Filter.between/not_between contract is list[int | float]); the
-        # date pair ("was between"/"was not between") is validated below
+        # date pair ("was between"/"was not between") is validated below.
+        # Boolean endpoints never reach this check — _reject_bool_value
+        # scans list items before the int-arm coercion can turn
+        # True/False into 1/0.
         if (
             self._operator in ("is between", "not between")
             and isinstance(self._value, list)
-            and not all(
-                isinstance(v, (int, float)) and not isinstance(v, bool)
-                for v in self._value
-            )
+            and not all(isinstance(v, (int, float)) for v in self._value)
         ):
             raise ValueError(
                 f"Filter operator '{self._operator}' requires two numeric "
@@ -7446,16 +7446,18 @@ class Filter:
     @field_validator("_value", mode="before")
     @classmethod
     def _reject_bool_value(cls, v: object, info: core_schema.ValidationInfo) -> object:
-        """Reject raw boolean values before pydantic's lax int coercion.
+        """Reject boolean values (scalar or list item) before lax int coercion.
 
         Pydantic's lax mode coerces ``True``/``False`` into ``1``/``0``
-        via the ``int`` arm of the ``_value`` union *before*
-        ``__post_init__`` runs, so operator/value-shape checks there
-        would see an integer and accept a query the caller never wrote.
-        No operator family accepts a bare boolean value (boolean
-        property tests use the value-less ``true``/``false`` operators),
-        so booleans are rejected outright with an operator-specific
-        message.
+        via the ``int`` arm (and the ``list[int | float]`` arm) of the
+        ``_value`` union *before* ``__post_init__`` runs, so
+        operator/value-shape checks there would see integers and accept
+        a query the caller never wrote — ``Filter.between("amount",
+        True, 100)`` silently became ``[1, 100]``. No operator family
+        accepts a boolean value in any position (boolean property tests
+        use the value-less ``true``/``false`` operators), so booleans
+        are rejected outright with an operator-specific message that
+        reports the caller's original input.
 
         Args:
             v: The raw ``_value`` input, prior to any coercion.
@@ -7464,19 +7466,20 @@ class Filter:
                 ``_value``), used to phrase the error.
 
         Returns:
-            The input unchanged when it is not a boolean.
+            The input unchanged when it carries no boolean.
 
         Raises:
-            ValueError: If ``v`` is a ``bool``.
+            ValueError: If ``v`` is a ``bool``, or a list containing a
+                ``bool``.
 
         Example:
             ```python
             from pydantic import TypeAdapter
 
             TypeAdapter(Filter).validate_python(
-                {"property": "amount", "operator": "is less than", "value": True}
+                {"property": "amount", "operator": "is between", "value": [True, 100]}
             )
-            # ValidationError: ... requires a numeric value, got True
+            # ValidationError: ... requires two numeric values, got [True, 100]
             ```
         """
         if isinstance(v, bool):
@@ -7496,6 +7499,27 @@ class Filter:
                 )
             raise ValueError(
                 f"Filter value cannot be a boolean (got {v!r}); use "
+                "Filter.is_true()/Filter.is_false() for boolean property tests"
+            )
+        if isinstance(v, list) and any(isinstance(item, bool) for item in v):
+            operator = info.data.get("_operator")
+            if operator in ("equals", "does not equal"):
+                raise ValueError(
+                    f"Filter operator '{operator}' requires a list of "
+                    f"strings, got {v!r}"
+                )
+            if operator in ("is between", "not between"):
+                raise ValueError(
+                    f"Filter operator '{operator}' requires two numeric "
+                    f"values, got {v!r}"
+                )
+            if operator in ("was between", "was not between"):
+                raise ValueError(
+                    f"Filter operator '{operator}' requires two date "
+                    f"strings in YYYY-MM-DD format, got {v!r}"
+                )
+            raise ValueError(
+                f"Filter value cannot contain a boolean (got {v!r}); use "
                 "Filter.is_true()/Filter.is_false() for boolean property tests"
             )
         return v

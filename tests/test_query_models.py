@@ -1614,6 +1614,50 @@ class TestFilterOperatorValueShape:
                 {"property": "name", "operator": "contains", "value": ["a", "b"]}
             )
 
+    def test_is_between_list_position_bools_rejected(self) -> None:
+        """'is between' with [True, False] must not coerce to [1, 0].
+
+        Regression for finding ``filter-list-position-bools-still-coerce``:
+        booleans INSIDE list values hit pydantic's lax ``list[int | float]``
+        arm and coerced to 0/1 before ``__post_init__`` ran.
+        """
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": "is between", "value": [True, False]}
+            )
+
+    def test_not_between_list_position_bool_rejected(self) -> None:
+        """'not between' with a boolean endpoint is rejected."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": "not between", "value": [1, True]}
+            )
+
+    def test_between_classmethod_bool_endpoint_rejected(self) -> None:
+        """Filter.between('amount', True, 100) must not become [1, 100]."""
+        with pytest.raises(ValidationError, match="numeric"):
+            Filter.between("amount", True, 100)
+
+    def test_equals_number_ptype_bool_list_rejected(self) -> None:
+        """equals with property_type='number' and value [True] is rejected."""
+        with pytest.raises(ValidationError):
+            self._adapter.validate_python(
+                {
+                    "property": "amount",
+                    "operator": "equals",
+                    "value": [True],
+                    "property_type": "number",
+                }
+            )
+
+    def test_equals_bool_list_error_reports_original_input(self) -> None:
+        """The equals bool-list error reports [True], not the coerced [1]."""
+        with pytest.raises(ValidationError, match=r"\[True\]") as exc_info:
+            self._adapter.validate_python(
+                {"property": "plan", "operator": "equals", "value": [True]}
+            )
+        assert "[1]" not in str(exc_info.value)
+
     def test_string_operator_valid_value_matches_classmethod(self) -> None:
         """'contains' with a string still matches Filter.contains()."""
         f_dict = self._adapter.validate_python(
