@@ -2051,6 +2051,100 @@ class TestFilterNoValueOperatorValueRejected:
             )
 
 
+class TestSiblingArmNoisePrunedWithoutValueError:
+    """Sibling-arm shape noise is pruned when a field-level error wins.
+
+    Regression tests for finding
+    ``sibling-arm-shape-noise-survives-without-value-error``: the prune
+    only fired when the winning arm produced a ``value_error``. When the
+    distinguishing failure was a field-level pydantic error (literal,
+    bound violation) the full cross-arm blast survived — including
+    errors that contradict the schema, like ``events[0].event:
+    S3_UNKNOWN_FIELD`` (the CohortMetric arm complaining about the
+    *required* Metric field). An arm now also wins when it produced a
+    nested error strictly below its root or when every one of its
+    errors is a domain/constraint failure rather than shape noise.
+    """
+
+    def test_nested_filter_literal_error_prunes_sibling_arms(self) -> None:
+        """A deep literal error in the Metric arm suppresses other arms."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": [
+                        {
+                            "event": "L",
+                            "filters": [
+                                {"property": "c", "operator": "bogus", "value": 1}
+                            ],
+                        }
+                    ]
+                }
+            )
+        errors = exc_info.value.errors
+        assert [e.path for e in errors] == ["events[0].filters[0].operator"]
+        assert errors[0].code == "B0_INVALID_LITERAL"
+
+    def test_bound_violation_prunes_sibling_arms(self) -> None:
+        """A bucket_size range error is not also called an unknown field."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [{"event": "P", "bucket_size": 0}],
+                }
+            )
+        errors = exc_info.value.errors
+        assert [e.path for e in errors] == ["group_by[0].bucket_size"]
+        assert errors[0].code == "B0_OUT_OF_RANGE"
+
+    def test_ambiguous_shape_mismatch_keeps_all_arm_errors(self) -> None:
+        """Inputs matching no arm's shape keep the full error set."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {"events": ["Login"], "where": [{"event": "L"}]}
+            )
+        paths = {e.path for e in exc_info.value.errors}
+        # Both arms' missing-field errors survive: the caller's intent
+        # is genuinely ambiguous (FrequencyFilter lacks value, Filter
+        # lacks property/operator).
+        assert "where[0].value" in paths
+        assert "where[0].property" in paths
+
+
+class TestDataclassArmTypeErrorCode:
+    """Dataclass-arm wrong-type errors carry the stable B0_WRONG_TYPE code.
+
+    Regression tests for finding
+    ``dataclass-type-error-unmapped-to-generic-code``: pydantic emits
+    ``dataclass_type`` for the pydantic-dataclass union arms (Metric,
+    CohortMetric, Formula, ...) where a ``BaseModel`` arm emits
+    ``model_type`` — the same conceptual wrong-type failure got
+    ``B0_WRONG_TYPE`` on one arm kind and the generic
+    ``VALIDATION_ERROR`` fallback on the other.
+    """
+
+    def test_scalar_event_type_errors_all_carry_wrong_type(self) -> None:
+        """events=[3.14] yields B0_WRONG_TYPE for every arm's type error."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate({"events": [3.14]})
+        errors = exc_info.value.errors
+        assert errors, "expected at least one error"
+        assert all(e.code == "B0_WRONG_TYPE" for e in errors), [
+            (e.code, e.message) for e in errors
+        ]
+
+    def test_dataclass_arm_message_present_with_stable_code(self) -> None:
+        """The dataclass-arm message survives with the mapped code."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate({"events": [3.14]})
+        dataclass_errors = [
+            e for e in exc_info.value.errors if "instance of Metric" in e.message
+        ]
+        assert dataclass_errors
+        assert dataclass_errors[0].code == "B0_WRONG_TYPE"
+
+
 class TestPropertySpecArmPathTranslation:
     """``PropertySpec`` union-arm class names never leak into error paths.
 
@@ -2125,22 +2219,30 @@ def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
 
 
 def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
-    """Collect class names of every model/dataclass union arm in a schema.
+    """Collect every union-arm label pydantic can insert into error ``loc``.
 
     Walks ``model_cls.__pydantic_core_schema__`` and, for every ``union``
-    and ``tagged-union`` node, resolves each arm (following
-    ``definition-ref`` indirection) and records the arm's class name when
-    the arm is a ``BaseModel`` (``model`` schema) or pydantic dataclass
-    (``dataclass`` schema). These are exactly the arms whose bare class
-    names pydantic inserts into error ``loc`` tuples for smart unions —
-    every one must be registered in ``_DISCRIMINATOR_TAGS`` or the name
-    leaks into caller-facing error paths.
+    and ``tagged-union`` node, records two kinds of labels:
+
+    - For every arm, the arm's class name when the arm is a ``BaseModel``
+      (``model`` schema) or pydantic dataclass (``dataclass`` schema),
+      resolving ``definition-ref`` indirection. Smart unions insert these
+      bare class names into error ``loc`` tuples.
+    - For ``tagged-union`` nodes, the choice *keys*: pydantic inserts the
+      matched tag into ``loc`` for errors inside the chosen arm. With a
+      callable ``Discriminator(...)`` these keys are ``Tag(...)`` names
+      (class names); with a declarative ``Field(discriminator=...)`` they
+      are the raw tag values (e.g. ``"property"``), which are NOT
+      strippable — registering them would destroy real field paths.
+
+    Every collected label must be registered in ``_DISCRIMINATOR_TAGS``
+    (or otherwise strippable) or it leaks into caller-facing error paths.
 
     Args:
         model_cls: The pydantic model whose core schema to walk.
 
     Returns:
-        The set of union-arm class names reachable from ``model_cls``.
+        The set of union-arm labels reachable from ``model_cls``.
     """
     schema: Any = model_cls.__pydantic_core_schema__
     refs: dict[str, dict[str, Any]] = {
@@ -2153,6 +2255,8 @@ def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
         if node.get("type") not in ("union", "tagged-union"):
             continue
         choices = node.get("choices")
+        if node.get("type") == "tagged-union" and isinstance(choices, dict):
+            names.update(str(key) for key in choices)
         arms: list[Any] = (
             list(choices.values()) if isinstance(choices, dict) else list(choices or ())
         )
@@ -2217,6 +2321,145 @@ class TestUnionArmLabelRegistry:
             "CustomPropertyRef",
             "InlineCustomProperty",
         } <= names
+
+    def test_walker_covers_cohort_criteria_tagged_union(self) -> None:
+        """The declarative cohort-node union is covered by the walk.
+
+        Regression guard for finding
+        ``cohort-criteria-kind-tag-leaks-into-error-paths``: the
+        ``InlineCohort.criteria`` tagged union must surface its ``loc``
+        labels (the tagged-union choice keys) to the registry test.
+        With the callable ``Discriminator`` + ``Tag`` pattern those keys
+        are the criterion class names; a regression to the declarative
+        ``Field(discriminator="kind")`` form would surface the raw kind
+        values (``"property"`` — unregistrable, it is a real field name
+        everywhere) and fail ``test_every_union_arm_class_name_is_strippable``.
+        """
+        names = _union_arm_model_names(InsightsQuery)
+        assert {
+            "PropertyCriterion",
+            "BehavioralCriterion",
+            "CohortReferenceCriterion",
+            "InlineCohort",
+        } <= names
+
+
+class TestCohortCriteriaKindTagPathTranslation:
+    """Cohort-criteria ``kind`` tags never leak into error paths.
+
+    Regression tests for finding
+    ``cohort-criteria-kind-tag-leaks-into-error-paths``: the declarative
+    ``Field(discriminator="kind")`` on the cohort-node union made
+    pydantic insert the *kind tag value* into error ``loc`` tuples,
+    producing phantom path segments like
+    ``group_by[0].cohort.criteria[0].property.value`` — where
+    ``property`` is the union tag, not a field, and collides with
+    ``PropertyCriterion``'s real ``property`` field. The union now uses
+    the callable ``Discriminator(...)`` + ``Tag(<ClassName>)`` pattern
+    (like the sorting models) so the inserted labels are registered
+    class names that ``_loc_to_jsonpath`` strips.
+    """
+
+    def test_property_criterion_missing_value_path_clean(self) -> None:
+        """Missing PropertyCriterion.value reports criteria[0].value."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["L"],
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "criteria": [{"kind": "property", "property": "plan"}]
+                            }
+                        }
+                    ],
+                }
+            )
+        paths = [e.path for e in exc_info.value.errors]
+        assert "group_by[0].cohort.criteria[0].value" in paths
+        assert all(".property.value" not in p for p in paths), paths
+
+    def test_behavioral_criterion_field_error_path_clean(self) -> None:
+        """A BehavioralCriterion field error carries no 'behavioral' segment."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["L"],
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "criteria": [
+                                    {
+                                        "kind": "behavioral",
+                                        "event": "Purchase",
+                                        "at_least": -1,
+                                        "within_days": 30,
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+        paths = [e.path for e in exc_info.value.errors]
+        assert "group_by[0].cohort.criteria[0].at_least" in paths
+        assert all(".behavioral." not in p for p in paths), paths
+
+    def test_retention_group_by_cohort_criteria_path_clean(self) -> None:
+        """The retention query path strips the kind tag identically."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            RetentionQuery.model_validate(
+                {
+                    "born_event": "Signup",
+                    "return_event": "Login",
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "criteria": [{"kind": "property", "property": "plan"}]
+                            }
+                        }
+                    ],
+                }
+            )
+        paths = [e.path for e in exc_info.value.errors]
+        assert "group_by[0].cohort.criteria[0].value" in paths
+        assert all(".property.value" not in p for p in paths), paths
+
+    def test_valid_declarative_cohort_still_coerces(self) -> None:
+        """The Tag switch keeps valid declarative payloads validating."""
+        q = InsightsQuery.model_validate(
+            {
+                "events": ["L"],
+                "group_by": [
+                    {
+                        "cohort": {
+                            "operator": "or",
+                            "criteria": [
+                                {
+                                    "kind": "property",
+                                    "property": "plan",
+                                    "value": "pro",
+                                },
+                                {"kind": "cohort_reference", "cohort_id": 7},
+                                {
+                                    "kind": "group",
+                                    "criteria": [
+                                        {
+                                            "kind": "behavioral",
+                                            "event": "Buy",
+                                            "at_least": 1,
+                                            "within_days": 7,
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    }
+                ],
+            }
+        )
+        assert q.group_by is not None
+        assert isinstance(q.group_by[0], CohortBreakdown)
 
 
 class TestInstanceCheckArmNoise:

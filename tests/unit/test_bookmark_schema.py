@@ -378,6 +378,22 @@ class TestPydanticAdapter:
         assert _default_code_mapper("extra_forbidden", ()) == "S3_UNKNOWN_FIELD"
         assert _default_code_mapper("literal_error", ()) == "B0_INVALID_LITERAL"
 
+    def test_dataclass_and_instance_check_types_map_to_wrong_type(self) -> None:
+        """``dataclass_type`` / ``is_instance_of`` map to B0_WRONG_TYPE.
+
+        Regression for finding
+        ``dataclass-type-error-unmapped-to-generic-code``: pydantic's
+        ``dataclass_type`` is the exact dataclass-arm equivalent of
+        ``model_type`` (already mapped), and ``is_instance_of`` is the
+        surviving branch of ``_prune_instance_check_noise`` — both must
+        carry the stable wrong-type code instead of the generic
+        ``VALIDATION_ERROR`` fallback.
+        """
+        from mixpanel_headless._internal.bookmark_schema import _default_code_mapper
+
+        assert _default_code_mapper("dataclass_type", ()) == "B0_WRONG_TYPE"
+        assert _default_code_mapper("is_instance_of", ()) == "B0_WRONG_TYPE"
+
     def test_sorting_code_mapper_path_disambiguation(self) -> None:
         """Sorting mapper distinguishes ``missing`` codes by terminal field."""
         from mixpanel_headless._internal.bookmark_schema import _sorting_code_mapper

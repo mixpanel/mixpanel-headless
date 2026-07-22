@@ -89,6 +89,12 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
     "list_type": "B0_WRONG_TYPE",
     "dict_type": "B0_WRONG_TYPE",
     "model_type": "B0_WRONG_TYPE",
+    # Same failure at a pydantic dataclass (Metric, Filter, FlowStep, ...)
+    "dataclass_type": "B0_WRONG_TYPE",
+    # Builder-instance union arms (surviving branch of
+    # ``_prune_instance_check_noise`` — a Python caller passed the
+    # wrong object entirely)
+    "is_instance_of": "B0_WRONG_TYPE",
     # Discriminated-union failures (e.g. behavior.type missing/unknown)
     "union_tag_invalid": "B7_INVALID_BEHAVIOR_TYPE",
     "union_tag_not_found": "B7_INVALID_BEHAVIOR_TYPE",
@@ -243,11 +249,14 @@ def translate_pydantic_exception(
     indistinguishable from the hand-written validators' output.
 
     Union-arm noise is suppressed: when one arm of a smart union
-    pinpointed the failure with a ``value_error`` (a domain check in a
-    component's ``__post_init__``), the sibling arms' shape errors for
-    the same input (``Field required``, ``Unexpected keyword argument``)
-    are dropped — they describe types the caller never targeted and
-    actively misdirect self-correcting agents. ``is_instance_of`` arm
+    pinpointed the failure — a ``value_error`` from a component's
+    ``__post_init__``, an error nested strictly below the arm root
+    (e.g. ``filters[0].operator``), or an arm whose every error is a
+    domain/constraint failure rather than shape noise — the sibling
+    arms' shape errors for the same input (``Field required``,
+    ``Unexpected keyword argument``) are dropped: they describe types
+    the caller never targeted and actively misdirect self-correcting
+    agents (see ``_prune_union_arm_noise``). ``is_instance_of`` arm
     errors (Python-runtime builder arms excluded from the JSON schema)
     are likewise dropped when a sibling arm produced field-level errors
     for the same union value (see ``_prune_instance_check_noise``).
@@ -342,21 +351,111 @@ def _union_arm_key(loc: tuple[Any, ...]) -> tuple[tuple[Any, ...], str] | None:
     return None
 
 
+_SHAPE_NOISE_TYPES: frozenset[str] = frozenset(
+    {"missing", "extra_forbidden", "unexpected_keyword_argument"}
+)
+"""Pydantic error types that describe a shape mismatch with an arm.
+
+These are the errors every non-targeted union arm emits for a dict the
+caller aimed at a *different* arm (required fields "missing", the
+targeted arm's real fields "unexpected"). Wrong-type errors are folded
+in by ``_is_shape_noise``'s suffix checks.
+"""
+
+
+def _is_shape_noise(err_type: str) -> bool:
+    """Return whether a pydantic error type is union-arm shape noise.
+
+    Shape noise is any error that merely says "this input is not shaped
+    like this arm": missing/extra fields, wrong-type (``*_type``) and
+    failed-parse (``*_parsing``) errors, and the Python-only
+    ``is_instance_of`` builder-arm check. Domain failures
+    (``value_error``), constraint violations (``greater_than``, ...),
+    and bad literals are NOT shape noise — they mean the input matched
+    the arm's shape and failed a semantic rule.
+
+    Args:
+        err_type: Pydantic error ``type`` string.
+
+    Returns:
+        ``True`` when the error only reports an arm-shape mismatch.
+    """
+    return (
+        err_type in _SHAPE_NOISE_TYPES
+        or err_type.endswith("_type")
+        or err_type.endswith("_parsing")
+        or err_type == "is_instance_of"
+    )
+
+
+def _depth_below_arm(loc: tuple[Any, ...], base_len: int) -> int:
+    """Count concrete path elements below a union arm's root.
+
+    Args:
+        loc: A Pydantic error ``loc`` tuple.
+        base_len: Length of the union group base (the prefix before the
+            arm label), as returned by ``_union_arm_key``.
+
+    Returns:
+        The number of elements after the arm label that are real fields
+        or list indices (union-arm labels are skipped).
+
+    Example:
+        ```python
+        _depth_below_arm(("events", 0, "Metric", "filters", 0, "operator"), 2)
+        # 3 — filters, 0, operator
+        ```
+    """
+    return sum(1 for item in loc[base_len + 1 :] if not _is_union_arm_label(item))
+
+
+def _arm_pinpointed_failure(key_len: int, errs: list[dict[str, Any]]) -> bool:
+    """Return whether one union arm's error group pinpoints the failure.
+
+    An arm "won" its union group — i.e. the caller clearly targeted it —
+    when any of three signals holds:
+
+    - it raised a ``value_error`` (a domain check in a component's
+      ``__post_init__`` ran, so the input matched the arm's shape);
+    - it produced an error nested strictly below the arm root (e.g.
+      ``filters[0].operator`` — only an arm that accepted the outer
+      shape descends into nested containers); or
+    - every one of its errors is a semantic failure (bad literal, bound
+      violation) rather than shape noise — the input fit the arm's
+      shape completely and only broke domain rules.
+
+    Args:
+        key_len: Length of the union group base for this arm (prefix
+            before the arm label).
+        errs: The errors reported under this ``(base, arm)`` key.
+
+    Returns:
+        ``True`` when the arm pinpointed the failure.
+    """
+    if any(err.get("type") == "value_error" for err in errs):
+        return True
+    if any(_depth_below_arm(tuple(err.get("loc", ())), key_len) >= 2 for err in errs):
+        return True
+    return all(not _is_shape_noise(str(err.get("type", ""))) for err in errs)
+
+
 def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop sibling-arm shape errors when one union arm found the real failure.
 
     A single invalid dict in a union-typed field (e.g. ``where`` typed
     ``list[Filter | FrequencyFilter]``) makes pydantic report every
-    arm's failure. When one arm got far enough to raise a
-    ``value_error`` — meaning the input matched that arm's shape and
-    failed a domain check — the OTHER arms' ``missing`` /
-    ``extra_forbidden`` / type errors for the same union value are
-    noise. Only errors reported under a different arm label than every
-    ``value_error`` in the group are dropped: distinct errors from the
-    winning arm itself (e.g. an invalid ``operator`` literal alongside a
-    boolean-``value`` rejection on the same ``Filter``) are real,
-    independent failures and survive. Groups without a ``value_error``
-    (and errors outside any union) are returned unchanged.
+    arm's failure. When one arm pinpointed the failure (see
+    ``_arm_pinpointed_failure``: a ``value_error``, a nested error
+    strictly below the arm root, or an all-semantic error group), the
+    OTHER arms' ``missing`` / ``extra_forbidden`` / type errors for the
+    same union value are noise — they describe types the caller never
+    targeted, and some actively contradict the schema (e.g. the
+    CohortMetric arm calling Metric's *required* ``event`` field an
+    unexpected keyword). Distinct errors from a winning arm itself
+    (e.g. an invalid ``operator`` literal alongside a boolean-``value``
+    rejection on the same ``Filter``) are real, independent failures
+    and survive. Groups without a winning arm (and errors outside any
+    union) are returned unchanged.
 
     Args:
         errors: Raw error dicts from ``PydanticValidationError.errors()``.
@@ -364,22 +463,25 @@ def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]
     Returns:
         The filtered error list, in original order.
     """
-    value_error_keys = {
+    groups: dict[tuple[tuple[Any, ...], str], list[dict[str, Any]]] = {}
+    for err in errors:
+        key = _union_arm_key(tuple(err.get("loc", ())))
+        if key is not None:
+            groups.setdefault(key, []).append(err)
+    winner_keys = {
         key
-        for err in errors
-        if err.get("type") == "value_error"
-        and (key := _union_arm_key(tuple(err.get("loc", ())))) is not None
+        for key, errs in groups.items()
+        if _arm_pinpointed_failure(len(key[0]), errs)
     }
-    if not value_error_keys:
+    if not winner_keys:
         return errors
-    value_error_bases = {base for base, _arm in value_error_keys}
+    winner_bases = {base for base, _arm in winner_keys}
     return [
         err
         for err in errors
-        if err.get("type") == "value_error"
-        or (key := _union_arm_key(tuple(err.get("loc", ())))) is None
-        or key[0] not in value_error_bases
-        or key in value_error_keys
+        if (key := _union_arm_key(tuple(err.get("loc", ())))) is None
+        or key[0] not in winner_bases
+        or key in winner_keys
     ]
 
 
@@ -412,21 +514,30 @@ def _is_field_level_under(loc: tuple[Any, ...], base: tuple[Any, ...]) -> bool:
 
 
 def _prune_instance_check_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop ``is_instance_of`` arm errors when a sibling arm was actionable.
+    """Drop ``is_instance_of`` arm errors shadowed by field-level errors.
 
     Builder-only union arms (e.g. the ``CohortDefinition`` instance arm
     of ``cohort: StrictInt | CohortDefinition``) validate with an
     ``isinstance`` check that is deliberately excluded from the JSON
     schema — the arm exists for Python callers holding builder objects.
     When a dict/JSON caller sends a malformed structured value, the
-    sibling declarative arm (``InlineCohort``) reports precise
-    field-level errors; the instance arm's ``"Input should be an
-    instance of CohortDefinition"`` is Python-runtime noise that
-    misdirects dict/LLM callers, so it is dropped. When no error in the
-    same union group is field-level (e.g. a Python caller passed the
-    wrong object entirely), the instance-check message is the
-    actionable one and survives. Instance-check errors outside any
-    union are always preserved.
+    declarative arms report precise field-level errors; the instance
+    arm's ``"Input should be an instance of CohortDefinition"`` is
+    Python-runtime noise that misdirects dict/LLM callers, so it is
+    dropped.
+
+    The suppression group is the OUTERMOST union containing the
+    instance check (``_union_arm_key`` keys on the prefix before the
+    *first* arm label in ``loc``), not the innermost union the check
+    belongs to. On the translated query paths the cohort union is
+    nested inside the events/group_by unions, so a field-level error
+    from ANY arm of that outer union — e.g. the Metric arm's ``event:
+    Field required``, present for essentially every dict input —
+    suppresses the check, not just siblings of the inner cohort union.
+    Consequently the survives-branch (no field-level error anywhere
+    under the outer base, so the instance-check message is the
+    actionable one) is reachable only in non-nested union contexts;
+    instance-check errors outside any union are always preserved.
 
     Args:
         errors: Raw error dicts from ``PydanticValidationError.errors()``
@@ -516,13 +627,15 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         # InlineCustomProperty`` on Filter / GroupBy / Metric)
         "CustomPropertyRef",
         "InlineCustomProperty",
-        # Declarative cohort nodes (the ``kind``-discriminated
-        # ``InlineCohort.criteria`` union). Tagged-union locs carry the
-        # ``kind`` tag rather than the class name today, but the names
-        # are registered so a future switch to a smart union cannot leak
-        # them (enforced by ``TestUnionArmLabelRegistry`` in
+        # Declarative cohort nodes (the ``InlineCohort.criteria``
+        # union). Routed by a callable ``Discriminator`` +
+        # ``Tag(<ClassName>)`` (types.py ``_cohort_node_discriminator``)
+        # so tagged-union locs carry these class names — NOT the raw
+        # ``kind`` values ("property"/"behavioral"/...), which are
+        # unregistrable because "property" is also a real field name
+        # everywhere. Enforced by ``TestUnionArmLabelRegistry`` in
         # test_query_models.py, which walks every union reachable from
-        # the four query models).
+        # the four query models and collects tagged-union choice keys.
         "InlineCohort",
         "PropertyCriterion",
         "BehavioralCriterion",

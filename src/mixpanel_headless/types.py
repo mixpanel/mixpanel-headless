@@ -90,11 +90,13 @@ from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     GetCoreSchemaHandler,
     StrictBool,
     StrictFloat,
     StrictInt,
+    Tag,
     WithJsonSchema,
     computed_field,
     field_validator,
@@ -9868,11 +9870,51 @@ class CohortReferenceCriterion(BaseModel):
         return CohortCriteria.in_cohort(self.cohort_id)
 
 
+_COHORT_NODE_TAGS_BY_KIND: dict[str, str] = {
+    "property": "PropertyCriterion",
+    "behavioral": "BehavioralCriterion",
+    "cohort_reference": "CohortReferenceCriterion",
+    "group": "InlineCohort",
+}
+"""Maps each cohort-node ``kind`` value to its ``Tag`` (class) name."""
+
+
+def _cohort_node_discriminator(v: Any) -> str | None:
+    """Discriminator callable for the declarative cohort-node union.
+
+    Routes by the ``kind`` field. Using a callable + ``Tag(<ClassName>)``
+    (rather than the declarative ``Field(discriminator="kind")``) means
+    error ``loc`` carries the Tag name — a class name registered in
+    ``_DISCRIMINATOR_TAGS`` and stripped from user-facing JSONPaths —
+    instead of the raw ``kind`` value. The kind values themselves are
+    unregistrable as arm labels: ``"property"`` is also a real field
+    name everywhere, so stripping it would destroy paths like
+    ``where[0].property``.
+
+    Args:
+        v: The candidate value (dict during validation, criterion model
+            instance during Python-side validation/serialization).
+
+    Returns:
+        The ``Tag`` name of the selected variant; the raw ``kind``
+        string when it matches no variant (pydantic reports
+        ``union_tag_invalid``); or ``None`` when no ``kind`` can be
+        extracted (pydantic reports ``union_tag_not_found``).
+    """
+    kind = v.get("kind") if isinstance(v, dict) else getattr(v, "kind", None)
+    if not isinstance(kind, str):
+        return None
+    return _COHORT_NODE_TAGS_BY_KIND.get(kind, kind)
+
+
 _CohortNode = Annotated[
-    "PropertyCriterion | BehavioralCriterion | CohortReferenceCriterion | InlineCohort",
-    Field(discriminator="kind"),
+    Annotated["PropertyCriterion", Tag("PropertyCriterion")]
+    | Annotated["BehavioralCriterion", Tag("BehavioralCriterion")]
+    | Annotated["CohortReferenceCriterion", Tag("CohortReferenceCriterion")]
+    | Annotated["InlineCohort", Tag("InlineCohort")],
+    Discriminator(_cohort_node_discriminator),
 ]
-"""Discriminated union of every declarative cohort node, tagged by ``kind``."""
+"""Discriminated union of every declarative cohort node, routed by ``kind``."""
 
 
 class InlineCohort(BaseModel):
