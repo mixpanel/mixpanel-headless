@@ -465,11 +465,15 @@ class RetentionQuery(_TimeComparableQuery):
         "birth",
         description="Retention alignment mode: birth or interval_start.",
     )
-    bucket_sizes: list[StrictInt] | None = Field(
+    bucket_sizes: (
+        list[Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]]
+        | None
+    ) = Field(
         None,
         description=(
-            "Custom bucket sizes for retention periods. Items are "
-            "strict integers — bool/float/str values are rejected."
+            "Custom bucket sizes for retention periods (strictly ascending "
+            "positive integers). Items are strict integers — bool/float/str "
+            "values are rejected."
         ),
     )
     unit: QueryTimeUnit = Field(

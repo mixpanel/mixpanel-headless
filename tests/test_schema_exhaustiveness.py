@@ -205,6 +205,201 @@ class TestNumericConstraintRendering:
             f"{model_cls.__name__}: raw constraint keys at {offenders}"
         )
 
+    def test_metric_percentile_value_bounds_rendered(self) -> None:
+        """Metric.percentile_value arms carry minimum/maximum 0..100.
+
+        Regression for finding ``metric-percentile-value-unbounded-everywhere``:
+        the top-level ``InsightsQuery.percentile_value`` was bounded but the
+        per-metric field rendered as bare integer/number arms, so a
+        schema-conforming ``percentile_value: 150`` built and shipped
+        ``custom_percentile`` 150 to the server.
+        """
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["Metric"]["properties"]["percentile_value"]
+        numeric_arms = [
+            node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
+        ]
+        assert numeric_arms, f"no numeric arms found in {prop}"
+        for arm in numeric_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+            assert arm.get("maximum") == 100, f"missing maximum in {arm}"
+
+    def test_frequency_filter_value_minimum_rendered(self) -> None:
+        """FrequencyFilter.value arms carry minimum 0 (runtime rule FF3)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["FrequencyFilter"]["properties"]["value"]
+        numeric_arms = [
+            node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
+        ]
+        assert numeric_arms, f"no numeric arms found in {prop}"
+        for arm in numeric_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+
+    def test_frequency_filter_date_range_value_bound_rendered(self) -> None:
+        """FrequencyFilter.date_range_value carries exclusiveMinimum 0 (FF5)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["FrequencyFilter"]["properties"]["date_range_value"]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+
+    def test_exclusion_from_step_minimum_rendered(self) -> None:
+        """Exclusion.from_step carries minimum 0 (runtime >= 0 rule)."""
+        defs = FunnelQuery.model_json_schema()["$defs"]
+        prop = defs["Exclusion"]["properties"]["from_step"]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+
+    @pytest.mark.parametrize("field_name", ["forward", "reverse"])
+    def test_flow_step_direction_bounds_rendered(self, field_name: str) -> None:
+        """FlowStep.forward/reverse carry minimum 0 / maximum 5 (runtime 0-5)."""
+        defs = FlowQuery.model_json_schema()["$defs"]
+        prop = defs["FlowStep"]["properties"][field_name]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+            assert arm.get("maximum") == 5, f"missing maximum in {arm}"
+
+    def test_retention_bucket_sizes_items_bound_rendered(self) -> None:
+        """RetentionQuery.bucket_sizes items carry exclusiveMinimum 0 (R5)."""
+        prop = RetentionQuery.model_json_schema()["properties"]["bucket_sizes"]
+        item_schemas = [
+            node["items"]
+            for _, node in _walk(prop)
+            if node.get("type") == "array" and isinstance(node.get("items"), dict)
+        ]
+        assert item_schemas, f"no array arms found in {prop}"
+        for items in item_schemas:
+            assert items.get("type") == "integer", f"non-integer items in {items}"
+            assert items.get("exclusiveMinimum") == 0, f"missing bound in {items}"
+
+    @pytest.mark.parametrize("def_name", ["CohortBreakdown", "CohortMetric"])
+    def test_cohort_int_arm_bound_rendered(self, def_name: str) -> None:
+        """Saved-cohort-ID arms carry exclusiveMinimum 0 (positive-ID rule)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs[def_name]["properties"]["cohort"]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+
+    def test_custom_property_ref_id_bound_rendered(self) -> None:
+        """CustomPropertyRef.id carries exclusiveMinimum 0 (CP1 positive rule)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["CustomPropertyRef"]["properties"]["id"]
+        assert prop.get("type") == "integer"
+        assert prop.get("exclusiveMinimum") == 0, f"missing bound in {prop}"
+
+    def test_inline_custom_property_formula_max_length_rendered(self) -> None:
+        """InlineCustomProperty.formula carries maxLength 20000 (CP5)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["InlineCustomProperty"]["properties"]["formula"]
+        assert prop.get("maxLength") == 20_000, f"missing maxLength in {prop}"
+
+    def test_inline_custom_property_inputs_constraints_rendered(self) -> None:
+        """InlineCustomProperty.inputs renders CP3/CP4 as object keywords.
+
+        ``minProperties: 1`` mirrors CP3 (non-empty inputs) and
+        ``propertyNames.pattern`` mirrors CP4 (single uppercase A-Z keys),
+        while the typed ``additionalProperties`` value schema is preserved.
+        """
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["InlineCustomProperty"]["properties"]["inputs"]
+        assert prop.get("minProperties") == 1, f"missing minProperties in {prop}"
+        assert prop.get("propertyNames") == {"pattern": "^[A-Z]$"}, (
+            f"missing propertyNames in {prop}"
+        )
+        assert isinstance(prop.get("additionalProperties"), dict), (
+            f"untyped inputs values in {prop}"
+        )
+
+    def test_time_comparison_date_pattern_rendered(self) -> None:
+        """TimeComparison.date carries the YYYY-MM-DD pattern (runtime _DATE_RE)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["TimeComparison"]["properties"]["date"]
+        string_arms = [node for _, node in _walk(prop) if node.get("type") == "string"]
+        assert string_arms, f"no string arms found in {prop}"
+        for arm in string_arms:
+            assert arm.get("pattern") == r"^\d{4}-\d{2}-\d{2}$", (
+                f"missing pattern in {arm}"
+            )
+
+
+# =============================================================================
+# Schema/runtime parity: CohortMetric advertises only what it accepts
+# =============================================================================
+
+
+class TestCohortMetricSchemaMatchesRuntime:
+    """CohortMetric's schema advertises exactly the inputs its runtime accepts.
+
+    Regression tests for finding
+    ``cohort-metric-schema-advertises-unsupported-inline-cohort-arm``:
+    ``model_json_schema()`` rendered an ``InlineCohort`` arm on
+    ``CohortMetric.cohort`` although ``__post_init__`` unconditionally
+    rejects inline definitions (server returns 500) — a schema-valid
+    payload was guaranteed to fail at validation. The definition arm is
+    now hidden from the JSON schema (``SkipJsonSchema``) while the
+    runtime arm stays so Python builder callers keep the targeted
+    500-warning message.
+    """
+
+    def test_cohort_metric_schema_is_integer_only(self) -> None:
+        """The schema for CohortMetric.cohort has no InlineCohort arm."""
+        prop = InsightsQuery.model_json_schema()["$defs"]["CohortMetric"]["properties"][
+            "cohort"
+        ]
+        refs = [node["$ref"] for _, node in _walk(prop) if "$ref" in node]
+        assert not refs, f"CohortMetric.cohort advertises non-integer arms: {refs}"
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"integer arm missing from {prop}"
+
+    def test_cohort_breakdown_schema_keeps_inline_arm(self) -> None:
+        """CohortBreakdown.cohort (which accepts inline) keeps its schema arm."""
+        prop = InsightsQuery.model_json_schema()["$defs"]["CohortBreakdown"][
+            "properties"
+        ]["cohort"]
+        refs = [node["$ref"] for _, node in _walk(prop) if "$ref" in node]
+        assert any("InlineCohort" in ref for ref in refs), (
+            f"CohortBreakdown.cohort lost its inline arm: {prop}"
+        )
+
+    def test_cohort_metric_runtime_still_rejects_inline_definition(self) -> None:
+        """The dict path still rejects inline cohorts with the 500 warning."""
+        from mixpanel_headless.exceptions import BookmarkValidationError
+
+        with pytest.raises(BookmarkValidationError, match="server returns 500"):
+            InsightsQuery.model_validate(
+                {
+                    "events": [
+                        {
+                            "cohort": {
+                                "operator": "and",
+                                "criteria": [
+                                    {
+                                        "kind": "property",
+                                        "property": "plan",
+                                        "value": "premium",
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                }
+            )
+
+    def test_cohort_metric_builder_path_still_rejects_definition(self) -> None:
+        """Python builder callers still get the targeted 500 rejection."""
+        from pydantic import ValidationError
+
+        cd = CohortDefinition.all_of(CohortCriteria.has_property("plan", "premium"))
+        with pytest.raises(ValidationError, match="server returns 500"):
+            CohortMetric(cd)
+
 
 # =============================================================================
 # Declarative cohort input models are public

@@ -104,6 +104,7 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 from pydantic.dataclasses import dataclass as pydantic_dataclass
+from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import core_schema
 
 T = TypeVar("T")
@@ -6684,11 +6685,32 @@ class InlineCustomProperty:
         ```
     """
 
-    formula: str
-    """Expression in Mixpanel's formula language."""
+    formula: Annotated[str, Field(json_schema_extra={"maxLength": 20_000})]
+    """Expression in Mixpanel's formula language.
 
-    inputs: dict[str, PropertyInput]
-    """Mapping from single uppercase letters (A-Z) to property references."""
+    The ``maxLength`` keyword mirrors the build-time CP5 rule (max
+    20,000 chars) into the JSON schema; runtime enforcement stays in
+    ``validate_custom_property_spec`` so callers keep its
+    domain-specific ``CP5_FORMULA_TOO_LONG`` error.
+    """
+
+    inputs: Annotated[
+        dict[str, PropertyInput],
+        Field(
+            json_schema_extra={
+                "minProperties": 1,
+                "propertyNames": {"pattern": "^[A-Z]$"},
+            }
+        ),
+    ]
+    """Mapping from single uppercase letters (A-Z) to property references.
+
+    ``minProperties`` / ``propertyNames`` mirror the build-time CP3
+    (non-empty inputs) and CP4 (single uppercase A-Z keys) rules into
+    the JSON schema; runtime enforcement stays in
+    ``validate_custom_property_spec`` so callers keep the
+    ``CP3_EMPTY_INPUTS`` / ``CP4_INVALID_INPUT_KEY`` errors.
+    """
 
     property_type: Literal["string", "number", "boolean", "datetime"] | None = None
     """Result type of the formula; None defers to containing type."""
@@ -6758,8 +6780,14 @@ class CustomPropertyRef:
         ```
     """
 
-    id: int
-    """The custom property's server-assigned ID."""
+    id: Annotated[int, Field(json_schema_extra={"exclusiveMinimum": 0})]
+    """The custom property's server-assigned ID.
+
+    The ``exclusiveMinimum`` keyword mirrors the build-time CP1 rule
+    (positive integer) into the JSON schema; runtime enforcement stays
+    in ``validate_custom_property_spec`` so callers keep its
+    ``CP1_INVALID_ID`` error.
+    """
 
 
 PropertySpec = str | CustomPropertyRef | InlineCustomProperty
@@ -6776,6 +6804,18 @@ Accepted wherever a property can be specified: ``Metric.property``,
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """Regex for YYYY-MM-DD date format validation."""
+
+_DateStrSchema = Annotated[
+    str,
+    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
+]
+"""String annotated with a YYYY-MM-DD pattern for JSON-schema consumers.
+
+Schema-only — runtime date validation stays in the owning type's
+``__post_init__`` (``_DATE_RE`` plus ``date.fromisoformat``), which
+produces domain-specific messages a bare pydantic ``pattern`` error
+would replace.
+"""
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -6831,8 +6871,13 @@ class TimeComparison:
     unit: TimeComparisonUnit | None = None
     """Time unit for relative comparison (day, week, month, quarter, year)."""
 
-    date: str | None = None
-    """ISO date (YYYY-MM-DD) for absolute comparison."""
+    date: _DateStrSchema | None = None
+    """ISO date (YYYY-MM-DD) for absolute comparison.
+
+    The JSON schema renders the YYYY-MM-DD ``pattern`` (schema-only,
+    via ``_DateStrSchema``); runtime validation stays in
+    ``__post_init__`` with its domain-specific messages.
+    """
 
     def __post_init__(self) -> None:
         """Validate cross-field construction arguments.
@@ -7001,12 +7046,20 @@ class Metric:
     per_user: PerUserAggregation | None = None
     """Per-user pre-aggregation type."""
 
-    percentile_value: StrictInt | StrictFloat | None = None
+    percentile_value: (
+        Annotated[int, Field(strict=True, ge=0, le=100)]
+        | Annotated[float, Field(strict=True, ge=0, le=100)]
+        | None
+    ) = None
     """Custom percentile value (e.g. 95 for p95).
 
     Required when ``math="percentile"``. Ignored for other math types.
     Maps to ``percentile`` in bookmark JSON. Validated in strict mode —
     bool/str inputs are rejected instead of being coerced to a number.
+    The 0-100 bound is annotated per union arm (matching
+    ``InsightsQuery.percentile_value``) so it renders as JSON-Schema
+    ``minimum``/``maximum`` AND rejects out-of-range values at
+    construction instead of shipping a bad ``custom_percentile`` query.
     """
 
     filters: list[Filter] | None = None
@@ -10043,11 +10096,17 @@ class CohortBreakdown:
         ```
     """
 
-    cohort: StrictInt | CohortDefinition
+    cohort: (
+        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
+        | CohortDefinition
+    )
     """Saved cohort ID or inline definition.
 
     The ID arm is a strict integer — bool/str inputs are rejected
-    instead of being coerced into a (different) saved-cohort ID.
+    instead of being coerced into a (different) saved-cohort ID. The
+    ``exclusiveMinimum`` keyword mirrors the runtime positive-ID rule
+    (``_validate_cohort_args``) into the JSON schema; enforcement stays
+    in ``__post_init__`` so callers keep its message.
     """
 
     name: str | None = None
@@ -10078,13 +10137,16 @@ class CohortMetric:
     or ``query_flow()`` — insights only.
 
     Inline ``CohortDefinition`` is not supported (server returns
-    500). Use a saved cohort ID instead. This is enforced at construction.
+    500). Use a saved cohort ID instead. This is enforced at
+    construction, and the JSON schema advertises only the integer arm
+    so schema-driven consumers cannot synthesize the unsupported
+    inline shape.
 
     Attributes:
-        cohort: Saved cohort ID (positive integer) or inline
-            ``CohortDefinition``.
-        name: Display name / series label. Optional for saved
-            cohorts; recommended for inline definitions.
+        cohort: Saved cohort ID (positive integer). Inline
+            ``CohortDefinition`` values are rejected at construction
+            (server returns 500) and are hidden from the JSON schema.
+        name: Display name / series label.
 
     Example:
         ```python
@@ -10104,11 +10166,20 @@ class CohortMetric:
         ```
     """
 
-    cohort: StrictInt | CohortDefinition
-    """Saved cohort ID or inline definition.
+    cohort: (
+        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
+        | SkipJsonSchema[CohortDefinition]
+    )
+    """Saved cohort ID (the only shape the server accepts here).
 
     The ID arm is a strict integer — bool/str inputs are rejected
-    instead of being coerced into a (different) saved-cohort ID.
+    instead of being coerced into a (different) saved-cohort ID — and
+    carries ``exclusiveMinimum`` mirroring the runtime positive-ID rule
+    (``_validate_cohort_args``). The ``CohortDefinition`` arm exists
+    only at runtime (``SkipJsonSchema``) so Python builder callers get
+    the targeted server-returns-500 rejection from ``__post_init__``
+    instead of a generic type error; it is hidden from the JSON schema
+    because the server rejects inline definitions for cohort metrics.
     """
 
     name: str | None = None
@@ -10253,18 +10324,30 @@ class FrequencyFilter:
     event: str
     """Event name to count frequency for."""
 
-    value: StrictInt | StrictFloat
+    value: (
+        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0})]
+        | Annotated[StrictFloat, Field(json_schema_extra={"minimum": 0})]
+    )
     """Threshold value for the comparison.
 
     Strict — bool/str inputs are rejected instead of being coerced
-    to a threshold number.
+    to a threshold number. The per-arm ``minimum`` keyword mirrors the
+    runtime FF3 rule (value >= 0) into the JSON schema; enforcement
+    stays in ``__post_init__`` so callers keep its message.
     """
 
     operator: FrequencyFilterOperator = "is at least"
     """Comparison operator."""
 
-    date_range_value: StrictInt | None = None
-    """Lookback window size. Strict integer — bool/float/str rejected."""
+    date_range_value: (
+        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})] | None
+    ) = None
+    """Lookback window size. Strict integer — bool/float/str rejected.
+
+    The ``exclusiveMinimum`` keyword mirrors the runtime FF5 rule
+    (positive when set) into the JSON schema; enforcement stays in
+    ``__post_init__`` so callers keep its message.
+    """
 
     date_range_unit: Literal["day", "week", "month"] | None = None
     """Lookback window unit."""
@@ -10722,11 +10805,13 @@ class Exclusion:
     event: str = Field(min_length=1)
     """Event name to exclude between steps."""
 
-    from_step: StrictInt = 0
+    from_step: Annotated[StrictInt, Field(json_schema_extra={"minimum": 0})] = 0
     """Start of exclusion range (0-indexed, inclusive).
 
     Strict integer — bool/float/str inputs are rejected instead of
-    being coerced to a step index.
+    being coerced to a step index. The ``minimum`` keyword mirrors the
+    runtime ``from_step >= 0`` rule into the JSON schema; enforcement
+    stays in ``__post_init__`` so callers keep its message.
     """
 
     to_step: StrictInt | None = None
@@ -11239,10 +11324,12 @@ class FlowStep:
         forward: Maximum number of forward steps to trace from this event.
             ``None`` means use the query-level default. Validated in
             strict mode — bool/float/str inputs are rejected instead
-            of being coerced to an integer.
+            of being coerced to an integer. The runtime 0-5 range rule
+            renders as JSON-Schema ``minimum``/``maximum``; enforcement
+            stays in ``__post_init__``.
         reverse: Maximum number of reverse steps to trace from this event.
-            ``None`` means use the query-level default. Strict integer,
-            like ``forward``.
+            ``None`` means use the query-level default. Strict integer
+            with the same 0-5 range as ``forward``.
         label: Optional display label for this step. If ``None``, the event
             name is used as the label.
         filters: Optional list of ``Filter`` conditions to narrow the events
@@ -11276,8 +11363,14 @@ class FlowStep:
     """
 
     event: str = Field(min_length=1)
-    forward: StrictInt | None = None
-    reverse: StrictInt | None = None
+    forward: (
+        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0, "maximum": 5})]
+        | None
+    ) = None
+    reverse: (
+        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0, "maximum": 5})]
+        | None
+    ) = None
     label: str | None = None
     filters: list[Filter] | None = None
     filters_combinator: FiltersCombinator = "all"

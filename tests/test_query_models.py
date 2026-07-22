@@ -2051,6 +2051,65 @@ class TestFilterNoValueOperatorValueRejected:
             )
 
 
+class TestMetricPercentileValueBounds:
+    """Metric.percentile_value enforces the 0-100 range at construction.
+
+    Regression tests for finding
+    ``metric-percentile-value-unbounded-everywhere``: the top-level
+    ``InsightsQuery.percentile_value`` enforced 0 <= x <= 100 per arm,
+    but the per-metric field had no bound anywhere — ``Metric("E",
+    math="percentile", property="p", percentile_value=150)`` was
+    accepted and shipped ``custom_percentile`` 150 to the server.
+    """
+
+    def test_percentile_above_100_rejected_direct(self) -> None:
+        """Metric(percentile_value=150) is rejected at construction."""
+        with pytest.raises(ValidationError, match="percentile_value"):
+            Metric("E", math="percentile", property="p", percentile_value=150)
+
+    def test_percentile_negative_rejected_direct(self) -> None:
+        """Metric(percentile_value=-1) is rejected at construction."""
+        with pytest.raises(ValidationError, match="percentile_value"):
+            Metric("E", math="percentile", property="p", percentile_value=-1)
+
+    def test_percentile_above_100_rejected_model_path(self) -> None:
+        """The dict/LLM path rejects 150 with a stable range code."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": [
+                        {
+                            "event": "E",
+                            "math": "percentile",
+                            "property": "p",
+                            "percentile_value": 150,
+                        }
+                    ]
+                }
+            )
+        err = next(
+            e for e in exc_info.value.errors if e.path == "events[0].percentile_value"
+        )
+        assert err.code == "B0_OUT_OF_RANGE"
+
+    def test_float_arm_bounded_too(self) -> None:
+        """The float arm carries the same 0-100 bound."""
+        with pytest.raises(ValidationError, match="percentile_value"):
+            Metric("E", math="percentile", property="p", percentile_value=100.5)
+
+    def test_boundary_values_still_accepted(self) -> None:
+        """0, 100, and interior floats keep constructing."""
+        assert (
+            Metric("E", math="percentile", property="p", percentile_value=0)
+        ).percentile_value == 0
+        assert (
+            Metric("E", math="percentile", property="p", percentile_value=100)
+        ).percentile_value == 100
+        assert (
+            Metric("E", math="percentile", property="p", percentile_value=99.9)
+        ).percentile_value == 99.9
+
+
 class TestSiblingArmNoisePrunedWithoutValueError:
     """Sibling-arm shape noise is pruned when a field-level error wins.
 
