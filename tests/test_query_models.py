@@ -1814,6 +1814,65 @@ class TestFilterCohortPropertyGuard:
             self._adapter.validate_python({"property": "$cohorts", "operator": "true"})
 
 
+class TestUnionArmErrorTranslation:
+    """Union-typed fields surface clean errors, not sibling-arm noise.
+
+    Regression tests for finding ``union-arm-error-noise-for-invalid-filters``:
+    one invalid ``Filter`` in ``InsightsQuery.where`` (typed
+    ``list[Filter | FrequencyFilter]``) surfaced FIVE errors — the real
+    value error plus misleading FrequencyFilter-arm errors
+    (``where[0].event: Field required``) — and a bad ``Metric`` dict in
+    ``events`` produced exact duplicate (path, message) pairs from
+    sibling arms. ``translate_pydantic_exception`` now prefers the arm
+    that pinpointed the failure (a ``value_error``) and deduplicates
+    identical errors.
+    """
+
+    def test_bad_filter_in_union_where_yields_single_error(self) -> None:
+        """A bad Filter dict in a union-typed where yields ONE clean error."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {
+                            "property": "amount",
+                            "operator": "is greater than",
+                            "value": "oops",
+                        }
+                    ],
+                }
+            )
+        errors = exc_info.value.errors
+        assert len(errors) == 1
+        assert errors[0].path == "where[0]"
+        assert "numeric" in errors[0].message
+
+    def test_bad_frequency_filter_yields_single_error(self) -> None:
+        """A FrequencyFilter value_error is not buried under Filter-arm noise."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {"events": ["Login"], "where": [{"event": "Login", "value": -1}]}
+            )
+        errors = exc_info.value.errors
+        assert len(errors) == 1
+        assert "non-negative" in errors[0].message
+
+    def test_bad_metric_dict_yields_no_duplicate_errors(self) -> None:
+        """A bad Metric dict in events produces no duplicate (path, message)."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate({"events": [{"event": "Login", "bogus": 1}]})
+        pairs = [(e.path, e.message) for e in exc_info.value.errors]
+        assert len(pairs) == len(set(pairs)), f"duplicate errors: {pairs}"
+
+    def test_distinct_field_errors_all_preserved(self) -> None:
+        """Errors on distinct non-union fields are not collapsed."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate({"events": ["Login"], "last": 0, "rolling": 0})
+        paths = {e.path for e in exc_info.value.errors}
+        assert {"last", "rolling"} <= paths
+
+
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 

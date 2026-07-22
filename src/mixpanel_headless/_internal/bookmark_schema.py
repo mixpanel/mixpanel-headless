@@ -242,6 +242,15 @@ def translate_pydantic_exception(
     ``validate_with_pydantic``, so pydantic-layer failures are
     indistinguishable from the hand-written validators' output.
 
+    Union-arm noise is suppressed: when one arm of a smart union
+    pinpointed the failure with a ``value_error`` (a domain check in a
+    component's ``__post_init__``), the sibling arms' shape errors for
+    the same input (``Field required``, ``Unexpected keyword argument``)
+    are dropped — they describe types the caller never targeted and
+    actively misdirect self-correcting agents. Exact duplicate errors
+    (same translated path, message, and code — produced when several
+    union arms share a field name) are also deduplicated.
+
     Args:
         exc: The caught ``pydantic.ValidationError``.
         path_prefix: JSONPath-like prefix prepended to every error's
@@ -251,13 +260,92 @@ def translate_pydantic_exception(
             Defaults to the ``_DEFAULT_CODE_MAP`` lookup.
 
     Returns:
-        One ``ValidationError`` per Pydantic error, with ``path``
-        translated from Pydantic's ``loc`` tuple and a stable code.
+        One ``ValidationError`` per surviving Pydantic error, with
+        ``path`` translated from Pydantic's ``loc`` tuple and a stable
+        code.
     """
     mapper = code_mapper or _default_code_mapper
+    pruned = _prune_union_arm_noise([dict(err) for err in exc.errors()])
+    translated: list[ValidationError] = []
+    seen: set[tuple[str, str, str]] = set()
+    for err in pruned:
+        validation_error = _translate_pydantic_error(err, mapper, path_prefix)
+        key = (
+            validation_error.path,
+            validation_error.message,
+            validation_error.code,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        translated.append(validation_error)
+    return translated
+
+
+def _union_arm_base(loc: tuple[Any, ...]) -> tuple[Any, ...] | None:
+    """Return the ``loc`` prefix preceding the first union-arm label.
+
+    Smart unions insert the attempted arm's label (a class name from
+    ``_DISCRIMINATOR_TAGS`` or a parameterized label like
+    ``list[union[...]]``) into ``loc``. Every error produced while
+    trying the arms of one union value shares the prefix before that
+    label, so the prefix identifies the union "group" an error belongs
+    to.
+
+    Args:
+        loc: A Pydantic error ``loc`` tuple.
+
+    Returns:
+        The prefix before the first union-arm label, or ``None`` when
+        ``loc`` contains no such label (the error is not union-arm
+        scoped).
+
+    Example:
+        ```python
+        _union_arm_base(("where", 0, "FrequencyFilter", "event"))
+        # ("where", 0)
+        _union_arm_base(("last",))
+        # None
+        ```
+    """
+    for i, item in enumerate(loc):
+        if isinstance(item, str) and (item in _DISCRIMINATOR_TAGS or "[" in item):
+            return loc[:i]
+    return None
+
+
+def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop sibling-arm shape errors when one union arm found the real failure.
+
+    A single invalid dict in a union-typed field (e.g. ``where`` typed
+    ``list[Filter | FrequencyFilter]``) makes pydantic report every
+    arm's failure. When one arm got far enough to raise a
+    ``value_error`` — meaning the input matched that arm's shape and
+    failed a domain check — the other arms' ``missing`` /
+    ``extra_forbidden`` / type errors for the same union value are
+    noise. This keeps only the ``value_error`` entries within each such
+    union group; groups without a ``value_error`` (and errors outside
+    any union) are returned unchanged.
+
+    Args:
+        errors: Raw error dicts from ``PydanticValidationError.errors()``.
+
+    Returns:
+        The filtered error list, in original order.
+    """
+    value_error_bases = {
+        base
+        for err in errors
+        if err.get("type") == "value_error"
+        and (base := _union_arm_base(tuple(err.get("loc", ())))) is not None
+    }
+    if not value_error_bases:
+        return errors
     return [
-        _translate_pydantic_error(dict(err), mapper, path_prefix)
-        for err in exc.errors()
+        err
+        for err in errors
+        if err.get("type") == "value_error"
+        or _union_arm_base(tuple(err.get("loc", ()))) not in value_error_bases
     ]
 
 
