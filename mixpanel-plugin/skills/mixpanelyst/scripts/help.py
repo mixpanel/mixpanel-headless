@@ -45,8 +45,12 @@ def format_type(annotation: Any) -> str:
 
     ``Annotated[X, ...]`` renders as ``X`` (per-arm pydantic ``Field``
     metadata like ``Annotated[int, Field(strict=True, gt=0)]`` would
-    otherwise leak raw ``FieldInfo(...)`` reprs), and unions are
-    re-joined from their cleaned arms.
+    otherwise leak raw ``FieldInfo(...)`` reprs), unions are re-joined
+    from their cleaned arms, and parameterized generics
+    (``list``/``tuple``/``dict``/...) are rebuilt from recursively
+    cleaned arguments so nested ``Annotated`` (e.g.
+    ``list[Annotated[int, Strict(strict=True)]]`` from a
+    ``list[StrictInt]`` field) never leaks metadata reprs either.
 
     Args:
         annotation: A type annotation (class, generic, union, etc.).
@@ -56,11 +60,24 @@ def format_type(annotation: Any) -> str:
     """
     if annotation is None or annotation is type(None):
         return "None"
+    if annotation is Ellipsis:
+        return "..."
     origin = typing.get_origin(annotation)
     if origin is typing.Annotated:
         return format_type(typing.get_args(annotation)[0])
     if origin is typing.Union or origin is types.UnionType:
         return " | ".join(format_type(arg) for arg in typing.get_args(annotation))
+    if isinstance(origin, type):
+        args = typing.get_args(annotation)
+        if args:
+            rendered = ", ".join(
+                # Callable's first arg is a parameter-type list.
+                f"[{', '.join(format_type(a) for a in arg)}]"
+                if isinstance(arg, list)
+                else format_type(arg)
+                for arg in args
+            )
+            return f"{origin.__name__}[{rendered}]"
     if hasattr(annotation, "__name__") and not hasattr(annotation, "__args__"):
         return annotation.__name__
     s = str(annotation)
@@ -68,6 +85,79 @@ def format_type(annotation: Any) -> str:
     s = s.replace("<class '", "").replace("'>", "")
     s = s.replace("NoneType", "None")
     return s
+
+
+_CONSTRAINT_ATTRS = (
+    "max_length",
+    "min_length",
+    "ge",
+    "le",
+    "gt",
+    "lt",
+    "multiple_of",
+    "pattern",
+)
+
+
+def _constraint_strs(metadata: Any) -> list[str]:
+    """Extract ``attr=value`` constraint strings from pydantic metadata.
+
+    Handles both plain ``annotated_types`` markers (``Ge``, ``Le``, ...)
+    and ``FieldInfo`` objects (whose constraints live in their own
+    ``.metadata`` list, as produced by per-arm ``Annotated[int,
+    Field(...)]`` annotations).
+
+    Args:
+        metadata: An iterable of metadata objects (``FieldInfo.metadata``
+            or ``Annotated`` extras).
+
+    Returns:
+        Constraint strings like ``["ge=0", "le=100"]``, in encounter order.
+    """
+    parts: list[str] = []
+    for meta in metadata:
+        nested = getattr(meta, "metadata", None)
+        if isinstance(nested, list):
+            parts.extend(_constraint_strs(nested))
+        for attr in _CONSTRAINT_ATTRS:
+            val = getattr(meta, attr, None)
+            if val is not None:
+                parts.append(f"{attr}={val}")
+    return parts
+
+
+def _arm_constraint_strs(annotation: Any) -> list[str]:
+    """Collect constraint strings from ``Annotated`` union arms.
+
+    Bounds declared per union arm (e.g. ``Annotated[int,
+    Field(strict=True, ge=0, le=100)] | Annotated[float, ...]`` on
+    ``InsightsQuery.percentile_value``) live in the arm's ``Annotated``
+    metadata rather than ``FieldInfo.metadata``; this walks the arms so
+    the field listing still shows the valid range.
+
+    Args:
+        annotation: The field's type annotation (union or single type).
+
+    Returns:
+        Deduplicated constraint strings in encounter order (arms
+        typically repeat identical bounds).
+    """
+    origin = typing.get_origin(annotation)
+    if origin is typing.Union or origin is types.UnionType:
+        arms = typing.get_args(annotation)
+    else:
+        arms = (annotation,)
+    parts: list[str] = []
+    for arm in arms:
+        if typing.get_origin(arm) is typing.Annotated:
+            parts.extend(_constraint_strs(typing.get_args(arm)[1:]))
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for part in parts:
+        if part not in seen:
+            seen.add(part)
+            deduped.append(part)
+    return deduped
 
 
 def _enum_values_inline(annotation: Any) -> str:
@@ -238,26 +328,15 @@ def _print_pydantic_field(fname: str, finfo: Any, obj: type, indent: str) -> Non
     else:
         default = f" = {finfo.default!r}"
 
-    # Field constraints from metadata
+    # Field constraints: field-level metadata plus per-union-arm
+    # Annotated bounds (e.g. percentile_value's ge=0/le=100), deduped.
     constraints = ""
-    if finfo.metadata:
-        constraint_parts: list[str] = []
-        for meta in finfo.metadata:
-            for attr in (
-                "max_length",
-                "min_length",
-                "ge",
-                "le",
-                "gt",
-                "lt",
-                "multiple_of",
-                "pattern",
-            ):
-                val = getattr(meta, attr, None)
-                if val is not None:
-                    constraint_parts.append(f"{attr}={val}")
-        if constraint_parts:
-            constraints = f" ({', '.join(constraint_parts)})"
+    constraint_parts: list[str] = list(_constraint_strs(finfo.metadata or []))
+    for part in _arm_constraint_strs(finfo.annotation):
+        if part not in constraint_parts:
+            constraint_parts.append(part)
+    if constraint_parts:
+        constraints = f" ({', '.join(constraint_parts)})"
 
     # Alias resolution (validation_alias covers pydantic dataclasses)
     alias_info = ""

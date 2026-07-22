@@ -92,3 +92,69 @@ class TestShowFieldsPydanticDataclass:
         assert "FieldInfo(" not in out
         assert "Annotated[" not in out
         assert "bucket_size: int | float | None" in out
+
+    def test_annotated_nested_in_generic_renders_clean(
+        self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``Annotated`` nested inside a generic renders as the bare type.
+
+        ``RetentionQuery.bucket_sizes`` is ``list[StrictInt] | None``,
+        which pydantic stores as ``list[Annotated[int, Strict(...)]] |
+        None`` — the ``Annotated`` wrapper and ``Strict(...)`` metadata
+        must not leak into the field listing an LLM reads.
+        """
+        from mixpanel_headless.query_models import RetentionQuery
+
+        help_mod.show_fields(RetentionQuery)
+        out = capsys.readouterr().out
+        assert "Annotated[" not in out
+        assert "Strict(" not in out
+        assert "bucket_sizes: list[int] | None" in out
+
+
+class TestPerArmConstraintRendering:
+    """Numeric bounds declared per union arm still show in the listing.
+
+    Moving ``ge``/``le``/``gt`` bounds from the field into per-arm
+    ``Annotated[..., Field(...)]`` metadata removed them from
+    ``FieldInfo.metadata``; the help listing must collect them from the
+    union arms so LLM callers still see the valid range.
+    """
+
+    def test_percentile_value_bounds_shown(
+        self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """InsightsQuery.percentile_value shows its 0-100 range."""
+        from mixpanel_headless.query_models import InsightsQuery
+
+        help_mod.show_fields(InsightsQuery)
+        out = capsys.readouterr().out
+        line = next(
+            ln for ln in out.splitlines() if ln.strip().startswith("percentile_value:")
+        )
+        assert "ge=0" in line
+        assert "le=100" in line
+
+    def test_bucket_size_bound_shown(
+        self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """GroupBy.bucket_size shows its gt=0 bound."""
+        from mixpanel_headless.types import GroupBy
+
+        help_mod.show_fields(GroupBy)
+        out = capsys.readouterr().out
+        line = next(
+            ln for ln in out.splitlines() if ln.strip().startswith("bucket_size:")
+        )
+        assert "gt=0" in line
+
+    def test_field_level_constraints_still_shown(
+        self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Field-level metadata constraints (rolling gt=0) keep rendering."""
+        from mixpanel_headless.query_models import InsightsQuery
+
+        help_mod.show_fields(InsightsQuery)
+        out = capsys.readouterr().out
+        line = next(ln for ln in out.splitlines() if ln.strip().startswith("rolling:"))
+        assert "gt=0" in line
