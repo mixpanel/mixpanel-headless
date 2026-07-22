@@ -1781,6 +1781,38 @@ class TestFilterCohortPropertyGuard:
                 {"event": "Login", "where": [dict(self._COHORT_REPRO)]}
             )
 
+    def test_is_set_on_cohorts_allowed(self) -> None:
+        """Filter.is_set('$cohorts') constructs a normal is-set filter.
+
+        Regression for finding
+        ``cohorts-guard-rejects-previously-valid-is-set``: the guard
+        must not reject the value-less presence operators, which built
+        an ordinary filter entry before the guard existed.
+        """
+        f = Filter.is_set("$cohorts")
+        assert f._property == "$cohorts"
+        assert f._operator == "is set"
+        assert f._value is None
+
+    def test_is_not_set_on_cohorts_allowed(self) -> None:
+        """Filter.is_not_set('$cohorts') constructs a normal filter."""
+        f = Filter.is_not_set("$cohorts")
+        assert f._operator == "is not set"
+        assert f._value is None
+
+    def test_dict_path_is_set_on_cohorts_allowed(self) -> None:
+        """The dict/LLM path accepts a value-less is-set on '$cohorts'."""
+        f = self._adapter.validate_python(
+            {"property": "$cohorts", "operator": "is set"}
+        )
+        assert f._operator == "is set"
+        assert f._value is None
+
+    def test_true_operator_on_cohorts_still_rejected(self) -> None:
+        """Value-less boolean operators on '$cohorts' remain rejected."""
+        with pytest.raises(ValidationError, match="in_cohort"):
+            self._adapter.validate_python({"property": "$cohorts", "operator": "true"})
+
 
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""

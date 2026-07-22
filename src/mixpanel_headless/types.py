@@ -7276,7 +7276,8 @@ class Filter:
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
                 ``None``; if a ``$cohorts`` filter was hand-rolled
                 instead of built via ``Filter.in_cohort()`` /
-                ``Filter.not_in_cohort()``; if a scalar numeric
+                ``Filter.not_in_cohort()`` (the value-less ``is set`` /
+                ``is not set`` operators are exempt); if a scalar numeric
                 operator receives a non-numeric (or missing) value; if
                 a string operator receives a non-string (or missing)
                 value; if a date operator receives a value that is
@@ -7308,12 +7309,21 @@ class Filter:
         # {"property": "$cohorts", "operator": "contains", "value": "123"})
         # previously slipped through, then either crashed the flow builder
         # with an internal RuntimeError or silently emitted an ordinary
-        # string filter on the insights path.
-        if self._property == "$cohorts" and not self._has_cohort_wire_shape():
+        # string filter on the insights path. The value-less presence
+        # operators ("is set" / "is not set") stay allowed — they emit an
+        # ordinary filter entry that never touches the cohort wire
+        # structure and were constructible before this guard existed.
+        if (
+            self._property == "$cohorts"
+            and self._operator not in ("is set", "is not set")
+            and not self._has_cohort_wire_shape()
+        ):
             raise ValueError(
                 "Filters on '$cohorts' must be built via Filter.in_cohort() / "
                 "Filter.not_in_cohort() (or the declarative InlineCohort / "
-                "CohortReferenceCriterion inputs), not constructed by hand "
+                "CohortReferenceCriterion inputs), not constructed by hand; "
+                "only the value-less 'is set' / 'is not set' operators may "
+                "target '$cohorts' directly "
                 f"(got operator={self._operator!r}, value={self._value!r})"
             )
 
