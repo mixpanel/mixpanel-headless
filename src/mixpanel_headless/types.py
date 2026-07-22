@@ -9999,29 +9999,57 @@ _COHORT_NODE_TAGS_BY_KIND: dict[str, str] = {
 def _cohort_node_discriminator(v: Any) -> str | None:
     """Discriminator callable for the declarative cohort-node union.
 
-    Routes by the ``kind`` field. Using a callable + ``Tag(<ClassName>)``
-    (rather than the declarative ``Field(discriminator="kind")``) means
-    error ``loc`` carries the Tag name — a class name registered in
-    ``_DISCRIMINATOR_TAGS`` and stripped from user-facing JSONPaths —
-    instead of the raw ``kind`` value. The kind values themselves are
-    unregistrable as arm labels: ``"property"`` is also a real field
-    name everywhere, so stripping it would destroy paths like
-    ``where[0].property``.
+    Routes by the ``kind`` field when present. Using a callable +
+    ``Tag(<ClassName>)`` (rather than the declarative
+    ``Field(discriminator="kind")``) means error ``loc`` carries the Tag
+    name — a class name registered in ``_DISCRIMINATOR_TAGS`` and
+    stripped from user-facing JSONPaths — instead of the raw ``kind``
+    value. The kind values themselves are unregistrable as arm labels:
+    ``"property"`` is also a real field name everywhere, so stripping it
+    would destroy paths like ``where[0].property``.
+
+    When ``kind`` is absent, falls back to unambiguous structural
+    inference over each arm's required fields (``property`` + ``value``
+    -> property, ``event`` -> behavioral, ``cohort_id`` ->
+    cohort_reference, ``criteria`` -> group). Every criterion arm
+    renders ``kind`` as a defaulted (non-required) field in
+    ``model_json_schema()``, and schema-driven consumers omit defaulted
+    fields — so a kind-less dict that the advertised schema accepts must
+    also validate at runtime (finding
+    ``cohort-kind-optional-in-schema-required-at-runtime``). An explicit
+    ``kind`` always wins over structure; a dict with no distinguishing
+    key stays unroutable and keeps the curated missing-kind message.
 
     Args:
         v: The candidate value (dict during validation, criterion model
             instance during Python-side validation/serialization).
 
     Returns:
-        The ``Tag`` name of the selected variant; the raw ``kind``
-        string when it matches no variant (pydantic reports
-        ``union_tag_invalid``); or ``None`` when no ``kind`` can be
-        extracted (pydantic reports ``union_tag_not_found``).
+        The ``Tag`` name of the selected variant (via explicit ``kind``
+        or structural inference); the raw ``kind`` string when an
+        explicit kind matches no variant (pydantic reports
+        ``union_tag_invalid``); or ``None`` when no ``kind`` is present
+        and no arm can be inferred (pydantic reports
+        ``union_tag_not_found``).
     """
     kind = v.get("kind") if isinstance(v, dict) else getattr(v, "kind", None)
-    if not isinstance(kind, str):
+    if isinstance(kind, str):
+        return _COHORT_NODE_TAGS_BY_KIND.get(kind, kind)
+    if kind is not None or not isinstance(v, dict):
+        # A present-but-non-string kind is an explicit (broken) tag, not
+        # an omission — never route it structurally. Non-dict inputs
+        # carry no fields to infer from.
         return None
-    return _COHORT_NODE_TAGS_BY_KIND.get(kind, kind)
+    # kind omitted: infer the arm from its schema-required fields.
+    if "property" in v and "value" in v:
+        return "PropertyCriterion"
+    if "event" in v:
+        return "BehavioralCriterion"
+    if "cohort_id" in v:
+        return "CohortReferenceCriterion"
+    if "criteria" in v:
+        return "InlineCohort"
+    return None
 
 
 _CohortNode = Annotated[

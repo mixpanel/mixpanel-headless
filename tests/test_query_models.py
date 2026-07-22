@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, ClassVar
 
 import pytest
+from jsonschema import Draft202012Validator
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from mixpanel_headless._internal.bookmark_schema import _is_union_arm_label
@@ -21,8 +22,10 @@ from mixpanel_headless.query_models import (
     RetentionQuery,
 )
 from mixpanel_headless.types import (
+    BehavioralCriterion,
     CohortBreakdown,
     CohortMetric,
+    CohortReferenceCriterion,
     Exclusion,
     Filter,
     FlowStep,
@@ -32,6 +35,7 @@ from mixpanel_headless.types import (
     FunnelStep,
     GroupBy,
     HoldingConstant,
+    InlineCohort,
     Metric,
     PropertyCriterion,
     RetentionEvent,
@@ -2650,11 +2654,16 @@ class TestCohortNodeTagErrorMessages:
         "criterion",
         [
             {"kind": "bogus", "property": "p", "value": "x"},
-            {"property": "p", "value": "x"},
+            {"negated": True},
             "not-a-dict",
             {"kind": 7},
         ],
-        ids=["bogus-kind", "missing-kind", "non-dict-entry", "non-string-kind"],
+        ids=[
+            "bogus-kind",
+            "missing-kind-unroutable",
+            "non-dict-entry",
+            "non-string-kind",
+        ],
     )
     def test_no_internal_names_in_any_tag_failure_message(
         self, criterion: dict[str, Any] | str
@@ -2673,11 +2682,16 @@ class TestCohortNodeTagErrorMessages:
                 assert cls_name not in e.message, e.message
 
     def test_missing_kind_message_names_kind_field(self) -> None:
-        """A criterion without 'kind' is told to add the 'kind' field."""
+        """A truly unroutable criterion is told to add the 'kind' field.
+
+        A kind-less dict WITH a distinguishing key (``property``+``value``,
+        ``event``, ``cohort_id``, or ``criteria``) now routes structurally
+        (see ``TestCohortNodeKindlessSchemaRuntimeParity``); the curated
+        missing-kind message is reserved for dicts the discriminator
+        genuinely cannot place, like this bare ``negated`` flag.
+        """
         with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                _cohort_criteria_payload({"property": "p", "value": "x"})
-            )
+            InsightsQuery.model_validate(_cohort_criteria_payload({"negated": True}))
         (err,) = [
             e
             for e in exc_info.value.errors
@@ -2753,6 +2767,159 @@ class TestCohortNodeTagErrorMessages:
             and callable(node.get("discriminator"))
         }
         assert "_cohort_node_discriminator" in names
+
+
+class TestCohortNodeKindlessSchemaRuntimeParity:
+    """Kind-less criterion payloads validate wherever the schema admits them.
+
+    Regression tests for finding
+    ``cohort-kind-optional-in-schema-required-at-runtime``: every
+    criterion arm renders ``kind`` as OPTIONAL (a defaulted ``const``,
+    absent from ``required``) in ``model_json_schema()``, but
+    ``_cohort_node_discriminator`` used to return ``None`` for any
+    kind-less dict — so the most natural schema-driven payload (defaults
+    omitted, as the MCP Run-Query consumer's LLM emits) was schema-valid
+    yet runtime-rejected. The discriminator now falls back to
+    unambiguous structural inference (``property``+``value`` ->
+    property, ``event`` -> behavioral, ``cohort_id`` ->
+    cohort_reference, ``criteria`` -> group). An explicit ``kind`` still
+    wins, an explicit bogus ``kind`` still fails with the named-field
+    message, and a dict with no distinguishing key keeps the curated
+    missing-kind message.
+    """
+
+    KINDLESS_CRITERIA: ClassVar[dict[str, dict[str, Any]]] = {
+        "property": {"property": "plan", "value": "premium"},
+        "behavioral": {"event": "Signup", "at_least": 1, "within_days": 30},
+        "cohort_reference": {"cohort_id": 5},
+        "group": {
+            "operator": "or",
+            "criteria": [{"kind": "cohort_reference", "cohort_id": 5}],
+        },
+    }
+    """One kind-less payload per criterion arm (nested group included)."""
+
+    @pytest.mark.parametrize("arm", sorted(KINDLESS_CRITERIA), ids=str)
+    def test_schema_and_runtime_agree_on_kindless_criterion(self, arm: str) -> None:
+        """Schema validation and model_validate BOTH accept each kind-less arm."""
+        payload = {
+            "events": ["Login"],
+            "group_by": [{"cohort": {"criteria": [self.KINDLESS_CRITERIA[arm]]}}],
+        }
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors == [], [e.message for e in schema_errors]
+        query = InsightsQuery.model_validate(payload)
+        assert isinstance(query, InsightsQuery)
+
+    @pytest.mark.parametrize(
+        ("criterion", "expected_type"),
+        [
+            ({"property": "plan", "value": "premium"}, PropertyCriterion),
+            (
+                {"event": "Signup", "at_least": 1, "within_days": 30},
+                BehavioralCriterion,
+            ),
+            ({"cohort_id": 5}, CohortReferenceCriterion),
+            (
+                {"criteria": [{"kind": "cohort_reference", "cohort_id": 5}]},
+                InlineCohort,
+            ),
+        ],
+        ids=["property", "behavioral", "cohort_reference", "group"],
+    )
+    def test_kindless_criterion_routes_to_correct_arm(
+        self, criterion: dict[str, Any], expected_type: type
+    ) -> None:
+        """Structural inference routes each kind-less dict to its real arm."""
+        cohort = InlineCohort.model_validate({"criteria": [criterion]})
+        assert isinstance(cohort.criteria[0], expected_type)
+
+    def test_kindless_equals_explicit_kind(self) -> None:
+        """Omitting ``kind`` yields the same model as spelling it out."""
+        kindless = InlineCohort.model_validate(
+            {"criteria": [{"event": "Buy", "at_least": 1, "within_days": 7}]}
+        )
+        explicit = InlineCohort.model_validate(
+            {
+                "criteria": [
+                    {
+                        "kind": "behavioral",
+                        "event": "Buy",
+                        "at_least": 1,
+                        "within_days": 7,
+                    }
+                ]
+            }
+        )
+        assert kindless == explicit
+
+    def test_deeply_nested_kindless_group_validates(self) -> None:
+        """Kind-less groups and leaves validate at every nesting depth."""
+        query = InsightsQuery.model_validate(
+            {
+                "events": ["Login"],
+                "group_by": [
+                    {
+                        "cohort": {
+                            "criteria": [
+                                {
+                                    "operator": "or",
+                                    "criteria": [
+                                        {"property": "plan", "value": "premium"},
+                                        {"cohort_id": 5},
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                ],
+            }
+        )
+        assert isinstance(query, InsightsQuery)
+
+    def test_explicit_kind_wins_over_structural_inference(self) -> None:
+        """An explicit ``kind`` routes the arm even when structure disagrees."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                _cohort_criteria_payload(
+                    {
+                        "kind": "property",
+                        "event": "Buy",
+                        "at_least": 1,
+                        "within_days": 7,
+                    }
+                )
+            )
+        paths = {e.path for e in exc_info.value.errors}
+        # Routed to PropertyCriterion (explicit kind), NOT BehavioralCriterion.
+        assert "group_by[0].cohort.criteria[0].property" in paths
+        assert "group_by[0].cohort.criteria[0].value" in paths
+
+    def test_explicit_bogus_kind_still_rejected_with_named_field(self) -> None:
+        """A bogus explicit ``kind`` still fails with the kind-naming message."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                _cohort_criteria_payload({"kind": "bogus", "cohort_id": 5})
+            )
+        (err,) = [
+            e
+            for e in exc_info.value.errors
+            if e.path == "group_by[0].cohort.criteria[0]"
+        ]
+        assert "'bogus'" in err.message, err.message
+        assert "kind" in err.message, err.message
+
+    def test_unroutable_dict_agrees_with_schema_rejection(self) -> None:
+        """A dict with no distinguishing key is rejected by BOTH layers."""
+        payload = _cohort_criteria_payload({"negated": True})
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors != []
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery.model_validate(payload)
 
 
 class TestCohortMetricHiddenArmErrorConsistency:
