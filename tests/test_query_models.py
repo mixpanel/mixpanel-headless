@@ -1198,6 +1198,160 @@ class TestCrossFieldErrorCodes:
         assert q.math == "percentile"
 
 
+class TestStrictScalarCoercionRejected:
+    """Bool/float/str inputs where an int is expected are rejected.
+
+    Pydantic's lax defaults coerced ``True``/``1.0``/``"2"`` into
+    integers BEFORE the Workspace Layer 0.5/1 validators ran, so an
+    LLM typo (``conversion_window=True``) silently built and ran a
+    different query. Strict fields restore main's behavior: the model
+    raises ``BookmarkValidationError`` (translated from pydantic's
+    strict-mode error, code ``B0_WRONG_TYPE``) at construction time —
+    the same structured error type the ``build_*_params`` contract
+    documents.
+
+    Regression tests for finding
+    ``pydantic-coercion-bypasses-strict-query-validation``.
+    """
+
+    def test_funnel_conversion_window_bool_rejected(self) -> None:
+        """FunnelQuery(conversion_window=True) must not become 1."""
+        with pytest.raises(BookmarkValidationError, match="conversion_window"):
+            FunnelQuery(steps=["Signup", "Purchase"], conversion_window=True)
+
+    def test_funnel_conversion_window_float_rejected(self) -> None:
+        """FunnelQuery(conversion_window=1.0) must not become 1."""
+        with pytest.raises(BookmarkValidationError, match="conversion_window"):
+            FunnelQuery(steps=["Signup", "Purchase"], conversion_window=1.0)  # type: ignore[arg-type]
+
+    def test_funnel_conversion_window_str_rejected(self) -> None:
+        """Dict-path conversion_window='7' must not become 7."""
+        with pytest.raises(BookmarkValidationError, match="conversion_window"):
+            FunnelQuery.model_validate(
+                {"steps": ["Signup", "Purchase"], "conversion_window": "7"}
+            )
+
+    def test_funnel_conversion_window_error_code(self) -> None:
+        """Strict-mode failures carry the stable B0_WRONG_TYPE code."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            FunnelQuery(steps=["Signup", "Purchase"], conversion_window=True)
+        err = next(e for e in exc_info.value.errors if e.path == "conversion_window")
+        assert err.code == "B0_WRONG_TYPE"
+
+    def test_flow_forward_bool_rejected(self) -> None:
+        """FlowQuery(forward=True) must not become forward=1."""
+        with pytest.raises(BookmarkValidationError, match="forward"):
+            FlowQuery(event="Login", forward=True)
+
+    def test_flow_reverse_float_rejected(self) -> None:
+        """FlowQuery(reverse=1.0) must not become reverse=1."""
+        with pytest.raises(BookmarkValidationError, match="reverse"):
+            FlowQuery(event="Login", reverse=1.0)  # type: ignore[arg-type]
+
+    def test_flow_forward_str_rejected(self) -> None:
+        """Dict-path forward='3' must not become 3."""
+        with pytest.raises(BookmarkValidationError, match="forward"):
+            FlowQuery.model_validate({"event": "Login", "forward": "3"})
+
+    @pytest.mark.parametrize(
+        "make_query",
+        [
+            pytest.param(
+                lambda: InsightsQuery(events=["Login"], data_group_id=True),
+                id="insights",
+            ),
+            pytest.param(
+                lambda: FunnelQuery(steps=["A", "B"], data_group_id=True),
+                id="funnel",
+            ),
+            pytest.param(
+                lambda: RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    data_group_id=True,
+                ),
+                id="retention",
+            ),
+            pytest.param(
+                lambda: FlowQuery(event="Login", data_group_id=True),
+                id="flow",
+            ),
+        ],
+    )
+    def test_data_group_id_bool_rejected_all_models(
+        self, make_query: Callable[[], object]
+    ) -> None:
+        """data_group_id=True must not become group ID 1 on any model."""
+        with pytest.raises(BookmarkValidationError, match="data_group_id"):
+            make_query()
+
+    def test_data_group_id_str_rejected(self) -> None:
+        """Dict-path data_group_id='1' must not become 1."""
+        with pytest.raises(BookmarkValidationError, match="data_group_id"):
+            InsightsQuery.model_validate({"events": ["Login"], "data_group_id": "1"})
+
+    def test_retention_bucket_sizes_str_items_rejected(self) -> None:
+        """bucket_sizes=['2'] must not become [2]."""
+        with pytest.raises(BookmarkValidationError, match="bucket_sizes"):
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                bucket_sizes=["2"],
+            )
+
+    def test_retention_bucket_sizes_bool_items_rejected(self) -> None:
+        """bucket_sizes=[True] must not become [1]."""
+        with pytest.raises(BookmarkValidationError, match="bucket_sizes"):
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                bucket_sizes=[True],
+            )
+
+    def test_last_bool_rejected(self) -> None:
+        """last=True must not become last=1 (shared _BaseQuery field)."""
+        with pytest.raises(BookmarkValidationError, match="last"):
+            InsightsQuery(events=["Login"], last=True)
+
+    def test_cumulative_int_rejected(self) -> None:
+        """cumulative=1 must not become True (strict bool)."""
+        with pytest.raises(BookmarkValidationError, match="cumulative"):
+            InsightsQuery(events=["Login"], cumulative=1)  # type: ignore[arg-type]
+
+    def test_nested_flow_step_forward_bool_rejected(self) -> None:
+        """Nested FlowStep dict with forward=True is rejected."""
+        with pytest.raises(BookmarkValidationError, match="forward"):
+            FlowQuery.model_validate({"event": {"event": "Login", "forward": True}})
+
+    def test_nested_flow_step_reverse_float_rejected(self) -> None:
+        """Nested FlowStep dict with reverse=1.0 is rejected."""
+        with pytest.raises(BookmarkValidationError, match="reverse"):
+            FlowQuery.model_validate({"event": {"event": "Login", "reverse": 1.0}})
+
+    def test_flow_step_direct_construction_bool_rejected(self) -> None:
+        """FlowStep(forward=True) is rejected at dataclass construction."""
+        with pytest.raises(ValidationError):
+            FlowStep("Login", forward=True)
+
+    def test_flow_step_direct_construction_float_rejected(self) -> None:
+        """FlowStep(reverse=2.0) is rejected at dataclass construction."""
+        with pytest.raises(ValidationError):
+            FlowStep("Login", reverse=2.0)  # type: ignore[arg-type]
+
+    def test_valid_ints_still_accepted(self) -> None:
+        """Genuine integers still construct on every strict field."""
+        fq = FunnelQuery(steps=["A", "B"], conversion_window=7)
+        assert fq.conversion_window == 7
+        fl = FlowQuery(event="Login", forward=5, reverse=2, data_group_id=1)
+        assert (fl.forward, fl.reverse, fl.data_group_id) == (5, 2, 1)
+        rq = RetentionQuery(
+            born_event="Signup", return_event="Login", bucket_sizes=[1, 3, 7]
+        )
+        assert rq.bucket_sizes == [1, 3, 7]
+        step = FlowStep("Login", forward=4, reverse=1)
+        assert (step.forward, step.reverse) == (4, 1)
+
+
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 

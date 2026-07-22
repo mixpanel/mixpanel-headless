@@ -92,6 +92,7 @@ from pydantic import (
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
+    StrictInt,
     WithJsonSchema,
     computed_field,
     field_validator,
@@ -10977,9 +10978,12 @@ class FlowStep:
     Attributes:
         event: The event name to anchor this step on.
         forward: Maximum number of forward steps to trace from this event.
-            ``None`` means use the query-level default.
+            ``None`` means use the query-level default. Validated in
+            strict mode — bool/float/str inputs are rejected instead
+            of being coerced to an integer.
         reverse: Maximum number of reverse steps to trace from this event.
-            ``None`` means use the query-level default.
+            ``None`` means use the query-level default. Strict integer,
+            like ``forward``.
         label: Optional display label for this step. If ``None``, the event
             name is used as the label.
         filters: Optional list of ``Filter`` conditions to narrow the events
@@ -11013,8 +11017,8 @@ class FlowStep:
     """
 
     event: str = Field(min_length=1)
-    forward: int | None = None
-    reverse: int | None = None
+    forward: StrictInt | None = None
+    reverse: StrictInt | None = None
     label: str | None = None
     filters: list[Filter] | None = None
     filters_combinator: FiltersCombinator = "all"

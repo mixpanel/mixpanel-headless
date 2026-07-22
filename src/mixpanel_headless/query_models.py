@@ -15,6 +15,12 @@ an MCP "Run-Query" tool that generates its request schema from
   schema generation work standalone from a fresh import.
 - Every field carries a description and a closed type so the schema alone
   fully specifies every valid input.
+- Integer and boolean fields validate in **strict mode**
+  (``Field(strict=True)`` / ``StrictInt``): pydantic's lax coercion
+  would otherwise normalize ``True``/``1.0``/``"2"`` into integers
+  *before* the Workspace validators run, silently building a different
+  query than the caller wrote. Strict fields reject those inputs with
+  the same structured ``BookmarkValidationError`` the builders raise.
 """
 
 from __future__ import annotations
@@ -26,6 +32,8 @@ from pydantic import (
     ConfigDict,
     Field,
     ModelWrapValidatorHandler,
+    StrictFloat,
+    StrictInt,
     ValidationError,
     WithJsonSchema,
     model_validator,
@@ -120,10 +128,11 @@ class _BaseQuery(BaseModel):
     last: int = Field(
         30,
         ge=1,
+        strict=True,
         description="Relative time range in days. Default: 30.",
         examples=[7, 30, 90],
     )
-    data_group_id: int | None = Field(
+    data_group_id: StrictInt | None = Field(
         None,
         description="Data group ID for group-level analytics.",
     )
@@ -257,7 +266,7 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Per-user pre-aggregation (applies to bare-string events).",
     )
-    percentile_value: int | float | None = Field(
+    percentile_value: StrictInt | StrictFloat | None = Field(
         None,
         ge=0,
         le=100,
@@ -279,13 +288,14 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Display label for the formula result.",
     )
-    rolling: int | None = Field(
+    rolling: StrictInt | None = Field(
         None,
         gt=0,
         description="Rolling window size in periods.",
     )
     cumulative: bool = Field(
         False,
+        strict=True,
         description="Enable cumulative analysis mode.",
     )
     mode: InsightsMode = Field(
@@ -349,6 +359,7 @@ class FunnelQuery(_TimeComparableQuery):
     conversion_window: int = Field(
         14,
         ge=1,
+        strict=True,
         description="Conversion window size. Default: 14.",
     )
     conversion_window_unit: ConversionWindowUnit = Field(
@@ -444,9 +455,12 @@ class RetentionQuery(_TimeComparableQuery):
         "birth",
         description="Retention alignment mode: birth or interval_start.",
     )
-    bucket_sizes: list[int] | None = Field(
+    bucket_sizes: list[StrictInt] | None = Field(
         None,
-        description="Custom bucket sizes for retention periods.",
+        description=(
+            "Custom bucket sizes for retention periods. Items are "
+            "strict integers — bool/float/str values are rejected."
+        ),
     )
     unit: QueryTimeUnit = Field(
         "day",
@@ -474,6 +488,7 @@ class RetentionQuery(_TimeComparableQuery):
     )
     retention_cumulative: bool = Field(
         False,
+        strict=True,
         description="Whether to use cumulative retention counting.",
     )
 
@@ -515,16 +530,19 @@ class FlowQuery(_BaseQuery):
     forward: int = Field(
         3,
         ge=0,
+        strict=True,
         description="Default forward step count. Default: 3.",
     )
     reverse: int = Field(
         0,
         ge=0,
+        strict=True,
         description="Default reverse step count. Default: 0.",
     )
     conversion_window: int = Field(
         7,
         ge=1,
+        strict=True,
         description="Conversion window size. Default: 7.",
     )
     conversion_window_unit: FlowConversionWindowUnit = Field(
@@ -538,10 +556,12 @@ class FlowQuery(_BaseQuery):
     cardinality: int = Field(
         3,
         ge=1,
+        strict=True,
         description="Number of top paths to return. Default: 3.",
     )
     collapse_repeated: bool = Field(
         False,
+        strict=True,
         description="Merge consecutive repeated events.",
     )
     hidden_events: list[str] | None = Field(

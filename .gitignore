@@ -80,3 +80,9 @@ context/fastmcp/
 
 # oh-my-claudecode local state
 .omc/
+
+# review-loop scratch files
+.big-findings.json
+.cheap-findings.md
+.review-payload.json
+.fixed-ids.txt
