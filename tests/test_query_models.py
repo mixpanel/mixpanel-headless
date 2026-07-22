@@ -2149,6 +2149,52 @@ class TestUnionArmLabelRegistry:
         } <= names
 
 
+class TestInstanceCheckArmNoise:
+    """Builder-instance arm messages never shadow actionable field errors.
+
+    Regression tests for finding
+    ``is-instance-of-error-unmapped-leaks-python-only-arm-message``: the
+    ``CohortDefinition`` arm of ``cohort: StrictInt | CohortDefinition``
+    validates with an ``isinstance`` check that is deliberately excluded
+    from the JSON schema (it exists for Python callers holding builder
+    objects). A malformed inline-cohort dict made pydantic surface
+    ``"Input should be an instance of CohortDefinition"`` to dict/LLM
+    callers alongside the actionable ``InlineCohort``-arm field errors.
+    The instance-check arm error is dropped whenever a sibling arm
+    produced field-level errors for the same union value.
+    """
+
+    def test_malformed_inline_cohort_drops_instance_check_message(self) -> None:
+        """The Python-only 'instance of CohortDefinition' message is dropped."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {"events": [{"cohort": {"operator": "bogus", "criteria": "nope"}}]}
+            )
+        errors = exc_info.value.errors
+        assert not any("instance of CohortDefinition" in e.message for e in errors), [
+            e.message for e in errors
+        ]
+        # The actionable InlineCohort-arm field errors survive.
+        paths = {e.path for e in errors}
+        assert "events[0].cohort.operator" in paths
+        assert "events[0].cohort.criteria" in paths
+
+    def test_cohort_breakdown_inline_cohort_drops_instance_check_message(self) -> None:
+        """Same suppression on the CohortBreakdown.cohort path."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [{"cohort": {"operator": "bogus", "criteria": "nope"}}],
+                }
+            )
+        errors = exc_info.value.errors
+        assert not any("instance of CohortDefinition" in e.message for e in errors)
+        paths = {e.path for e in errors}
+        assert "group_by[0].cohort.operator" in paths
+        assert "group_by[0].cohort.criteria" in paths
+
+
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 

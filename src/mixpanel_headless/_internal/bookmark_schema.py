@@ -247,9 +247,13 @@ def translate_pydantic_exception(
     component's ``__post_init__``), the sibling arms' shape errors for
     the same input (``Field required``, ``Unexpected keyword argument``)
     are dropped — they describe types the caller never targeted and
-    actively misdirect self-correcting agents. Exact duplicate errors
-    (same translated path, message, and code — produced when several
-    union arms share a field name) are also deduplicated.
+    actively misdirect self-correcting agents. ``is_instance_of`` arm
+    errors (Python-runtime builder arms excluded from the JSON schema)
+    are likewise dropped when a sibling arm produced field-level errors
+    for the same union value (see ``_prune_instance_check_noise``).
+    Exact duplicate errors (same translated path, message, and code —
+    produced when several union arms share a field name) are also
+    deduplicated.
 
     Args:
         exc: The caught ``pydantic.ValidationError``.
@@ -265,7 +269,9 @@ def translate_pydantic_exception(
         code.
     """
     mapper = code_mapper or _default_code_mapper
-    pruned = _prune_union_arm_noise([dict(err) for err in exc.errors()])
+    pruned = _prune_instance_check_noise(
+        _prune_union_arm_noise([dict(err) for err in exc.errors()])
+    )
     translated: list[ValidationError] = []
     seen: set[tuple[str, str, str]] = set()
     for err in pruned:
@@ -375,6 +381,72 @@ def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]
         or key[0] not in value_error_bases
         or key in value_error_keys
     ]
+
+
+def _is_field_level_under(loc: tuple[Any, ...], base: tuple[Any, ...]) -> bool:
+    """Return whether ``loc`` names a real field beneath a union base.
+
+    Args:
+        loc: A Pydantic error ``loc`` tuple.
+        base: The union group prefix (as returned by ``_union_arm_key``)
+            to test against.
+
+    Returns:
+        ``True`` when ``loc`` starts with ``base`` and at least one
+        element after the prefix is not a union-arm label — i.e. the
+        error targets a concrete field (or list index) inside one of
+        the union's arms rather than the arm as a whole.
+
+    Example:
+        ```python
+        _is_field_level_under(("cohort", "json-or-python[...]", "operator"),
+                              ("cohort",))
+        # True — "operator" is a real field inside an arm
+        _is_field_level_under(("cohort", "int"), ("cohort",))
+        # False — the loc ends at the "int" arm label
+        ```
+    """
+    if loc[: len(base)] != base or len(loc) <= len(base):
+        return False
+    return any(not _is_union_arm_label(item) for item in loc[len(base) :])
+
+
+def _prune_instance_check_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop ``is_instance_of`` arm errors when a sibling arm was actionable.
+
+    Builder-only union arms (e.g. the ``CohortDefinition`` instance arm
+    of ``cohort: StrictInt | CohortDefinition``) validate with an
+    ``isinstance`` check that is deliberately excluded from the JSON
+    schema — the arm exists for Python callers holding builder objects.
+    When a dict/JSON caller sends a malformed structured value, the
+    sibling declarative arm (``InlineCohort``) reports precise
+    field-level errors; the instance arm's ``"Input should be an
+    instance of CohortDefinition"`` is Python-runtime noise that
+    misdirects dict/LLM callers, so it is dropped. When no error in the
+    same union group is field-level (e.g. a Python caller passed the
+    wrong object entirely), the instance-check message is the
+    actionable one and survives. Instance-check errors outside any
+    union are always preserved.
+
+    Args:
+        errors: Raw error dicts from ``PydanticValidationError.errors()``
+            (typically already filtered by ``_prune_union_arm_noise``).
+
+    Returns:
+        The filtered error list, in original order.
+    """
+    result: list[dict[str, Any]] = []
+    for err in errors:
+        if err.get("type") == "is_instance_of":
+            key = _union_arm_key(tuple(err.get("loc", ())))
+            if key is not None and any(
+                other is not err
+                and _is_field_level_under(tuple(other.get("loc", ())), key[0])
+                for other in errors
+            ):
+                continue
+        result.append(err)
+    return result
 
 
 def _translate_pydantic_error(
