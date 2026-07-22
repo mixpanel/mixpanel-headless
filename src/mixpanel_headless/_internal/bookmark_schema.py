@@ -282,35 +282,57 @@ def translate_pydantic_exception(
     return translated
 
 
-def _union_arm_base(loc: tuple[Any, ...]) -> tuple[Any, ...] | None:
-    """Return the ``loc`` prefix preceding the first union-arm label.
+def _is_union_arm_label(item: Any) -> bool:
+    """Return whether one ``loc`` element is a union-arm label.
 
-    Smart unions insert the attempted arm's label (a class name from
-    ``_DISCRIMINATOR_TAGS`` or a parameterized label like
-    ``list[union[...]]``) into ``loc``. Every error produced while
+    Pydantic inserts three kinds of arm labels into ``loc``: class /
+    primitive names from ``_DISCRIMINATOR_TAGS``, parameterized labels
+    like ``list[union[...]]`` (real field names are Python identifiers
+    and never contain brackets), and ``constrained-int`` /
+    ``constrained-float`` for ``Annotated`` arms carrying strict
+    numeric bounds. All are internal schema artifacts, never part of
+    the user-facing JSONPath.
+
+    Args:
+        item: A single element of a Pydantic error ``loc`` tuple.
+
+    Returns:
+        ``True`` when the element is a union-arm label to strip.
+    """
+    return isinstance(item, str) and (
+        item in _DISCRIMINATOR_TAGS or "[" in item or item.startswith("constrained-")
+    )
+
+
+def _union_arm_key(loc: tuple[Any, ...]) -> tuple[tuple[Any, ...], str] | None:
+    """Return the union group base and arm label for a union-scoped ``loc``.
+
+    Smart unions insert the attempted arm's label (see
+    ``_is_union_arm_label``) into ``loc``. Every error produced while
     trying the arms of one union value shares the prefix before that
-    label, so the prefix identifies the union "group" an error belongs
-    to.
+    label, so the prefix identifies the union "group" and the label
+    identifies WHICH arm reported the error.
 
     Args:
         loc: A Pydantic error ``loc`` tuple.
 
     Returns:
-        The prefix before the first union-arm label, or ``None`` when
+        A ``(base, arm_label)`` pair — the prefix before the first
+        union-arm label plus the label itself — or ``None`` when
         ``loc`` contains no such label (the error is not union-arm
         scoped).
 
     Example:
         ```python
-        _union_arm_base(("where", 0, "FrequencyFilter", "event"))
-        # ("where", 0)
-        _union_arm_base(("last",))
+        _union_arm_key(("where", 0, "FrequencyFilter", "event"))
+        # (("where", 0), "FrequencyFilter")
+        _union_arm_key(("last",))
         # None
         ```
     """
     for i, item in enumerate(loc):
-        if isinstance(item, str) and (item in _DISCRIMINATOR_TAGS or "[" in item):
-            return loc[:i]
+        if _is_union_arm_label(item):
+            return loc[:i], item
     return None
 
 
@@ -321,11 +343,14 @@ def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]
     ``list[Filter | FrequencyFilter]``) makes pydantic report every
     arm's failure. When one arm got far enough to raise a
     ``value_error`` — meaning the input matched that arm's shape and
-    failed a domain check — the other arms' ``missing`` /
+    failed a domain check — the OTHER arms' ``missing`` /
     ``extra_forbidden`` / type errors for the same union value are
-    noise. This keeps only the ``value_error`` entries within each such
-    union group; groups without a ``value_error`` (and errors outside
-    any union) are returned unchanged.
+    noise. Only errors reported under a different arm label than every
+    ``value_error`` in the group are dropped: distinct errors from the
+    winning arm itself (e.g. an invalid ``operator`` literal alongside a
+    boolean-``value`` rejection on the same ``Filter``) are real,
+    independent failures and survive. Groups without a ``value_error``
+    (and errors outside any union) are returned unchanged.
 
     Args:
         errors: Raw error dicts from ``PydanticValidationError.errors()``.
@@ -333,19 +358,22 @@ def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]
     Returns:
         The filtered error list, in original order.
     """
-    value_error_bases = {
-        base
+    value_error_keys = {
+        key
         for err in errors
         if err.get("type") == "value_error"
-        and (base := _union_arm_base(tuple(err.get("loc", ())))) is not None
+        and (key := _union_arm_key(tuple(err.get("loc", ())))) is not None
     }
-    if not value_error_bases:
+    if not value_error_keys:
         return errors
+    value_error_bases = {base for base, _arm in value_error_keys}
     return [
         err
         for err in errors
         if err.get("type") == "value_error"
-        or _union_arm_base(tuple(err.get("loc", ()))) not in value_error_bases
+        or (key := _union_arm_key(tuple(err.get("loc", ())))) is None
+        or key[0] not in value_error_bases
+        or key in value_error_keys
     ]
 
 
@@ -456,10 +484,10 @@ def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:
     if prefix:
         parts.append(prefix)
     for item in loc:
-        # Union-arm labels: known tag/class names, plus parameterized
-        # arms like ``list[union[str,FlowStep]]`` — real field names are
-        # Python identifiers and never contain brackets.
-        if isinstance(item, str) and (item in _DISCRIMINATOR_TAGS or "[" in item):
+        # Union-arm labels: known tag/class names, parameterized arms
+        # like ``list[union[str,FlowStep]]``, and constrained-scalar
+        # arms like ``constrained-int`` (see ``_is_union_arm_label``).
+        if _is_union_arm_label(item):
             continue
         if isinstance(item, int):
             if not parts:

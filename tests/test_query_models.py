@@ -1873,6 +1873,113 @@ class TestUnionArmErrorTranslation:
         assert {"last", "rolling"} <= paths
 
 
+class TestConstrainedArmPathTranslation:
+    """Per-arm ``constrained-int``/``constrained-float`` labels never leak.
+
+    Regression tests for finding
+    ``constrained-arm-labels-leak-into-error-paths``: the per-arm bound
+    annotations (``Annotated[int, Field(strict=True, ge=0, le=100)]`` on
+    ``InsightsQuery.percentile_value`` and ``GroupBy.bucket_size``) make
+    pydantic label those union arms ``constrained-int`` /
+    ``constrained-float`` in error ``loc``. Those labels are internal
+    schema artifacts — they must be stripped from the translated path
+    (like discriminator tags) so out-of-range input yields ONE error at
+    the field's clean JSONPath instead of two near-duplicates at
+    ``percentile_value.constrained-int`` / ``...constrained-float``.
+    """
+
+    def test_percentile_above_100_yields_single_clean_path(self) -> None:
+        """percentile_value=150 yields exactly one error at 'percentile_value'."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery(events=["Login"], percentile_value=150)
+        errors = exc_info.value.errors
+        assert [e.path for e in errors] == ["percentile_value"]
+
+    def test_percentile_negative_yields_single_clean_path(self) -> None:
+        """percentile_value=-1 yields exactly one error at 'percentile_value'."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery(events=["Login"], percentile_value=-1)
+        errors = exc_info.value.errors
+        assert [e.path for e in errors] == ["percentile_value"]
+
+    def test_group_by_bucket_size_out_of_range_path_clean(self) -> None:
+        """bucket_size=-5 in group_by yields one range error at a clean path."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [{"property": "x", "bucket_size": -5}],
+                }
+            )
+        errors = exc_info.value.errors
+        range_errors = [e for e in errors if "greater than 0" in e.message]
+        assert [e.path for e in range_errors] == ["group_by[0].bucket_size"]
+        assert all("constrained" not in e.path for e in errors)
+
+
+class TestSameArmDistinctErrorsPreserved:
+    """Union-arm pruning keeps distinct errors from the winning arm.
+
+    Regression tests for finding
+    ``union-prune-drops-distinct-same-arm-errors``: ``Filter``'s
+    boolean-value rejection is a ``mode="before"`` validator that raises
+    ``value_error`` even when OTHER fields of the SAME ``Filter`` arm
+    carry real, independent errors. The prune must drop only errors
+    reported under a DIFFERENT union arm (sibling shape noise), never a
+    same-arm error on another field — otherwise a self-correcting agent
+    fixes the boolean, resubmits, and only then learns the operator was
+    also invalid.
+    """
+
+    def test_invalid_operator_and_bool_value_both_surface(self) -> None:
+        """A bad operator AND a boolean value on one Filter both surface."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [{"property": "x", "operator": "bogus_op", "value": True}],
+                }
+            )
+        paths = {e.path for e in exc_info.value.errors}
+        assert "where[0].operator" in paths
+        assert "where[0].value" in paths
+        # Sibling FrequencyFilter-arm shape noise stays pruned.
+        assert "where[0].event" not in paths
+
+    def test_nested_list_item_filter_errors_both_surface(self) -> None:
+        """Distinct errors in two list_contains sub-filters both surface."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {
+                            "property": "items",
+                            "operator": "list_contains",
+                            "list_item_quantifier": "any",
+                            "list_item_filters": [
+                                {
+                                    "property": "sku",
+                                    "operator": "bogus_op",
+                                    "value": "X",
+                                },
+                                {
+                                    "property": "active",
+                                    "operator": "equals",
+                                    "value": True,
+                                },
+                            ],
+                        }
+                    ],
+                }
+            )
+        paths = {e.path for e in exc_info.value.errors}
+        assert "where[0].list_item_filters[0].operator" in paths
+        assert "where[0].list_item_filters[1].value" in paths
+        # Sibling FrequencyFilter-arm shape noise stays pruned.
+        assert "where[0].event" not in paths
+
+
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 
