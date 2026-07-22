@@ -1352,6 +1352,212 @@ class TestStrictScalarCoercionRejected:
         assert (step.forward, step.reverse) == (4, 1)
 
 
+class TestFilterOperatorValueShape:
+    """Filter enforces value shape per operator family at construction.
+
+    Regression tests for finding
+    ``filter-operator-value-shape-not-enforced``: numeric operators
+    must carry numeric scalars, string operators must carry strings,
+    and required values may not be omitted — otherwise the dict/LLM
+    path emits self-contradictory wire entries (``filterType="number"``
+    with ``filterValue="oops"``).
+    """
+
+    _adapter: ClassVar[TypeAdapter[Filter]]
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
+
+    def test_greater_than_string_value_rejected(self) -> None:
+        """'is greater than' with value 'oops' is rejected."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": "is greater than", "value": "oops"}
+            )
+
+    @pytest.mark.parametrize(
+        "operator", ["is greater than", "is less than", "is at least", "is at most"]
+    )
+    def test_numeric_operators_reject_string_values(self, operator: str) -> None:
+        """Every scalar numeric operator rejects a non-numeric value."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": operator, "value": "oops"}
+            )
+
+    def test_numeric_operator_rejects_bool_value(self) -> None:
+        """'is less than' with a bool value is rejected (bool is not numeric)."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {"property": "amount", "operator": "is less than", "value": True}
+            )
+
+    @pytest.mark.parametrize(
+        "operator", ["is greater than", "is less than", "is at least", "is at most"]
+    )
+    def test_numeric_operators_reject_omitted_value(self, operator: str) -> None:
+        """Scalar numeric operators require a value."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python({"property": "amount", "operator": operator})
+
+    @pytest.mark.parametrize(
+        "operator", ["contains", "does not contain", "starts with", "ends with"]
+    )
+    def test_string_operators_reject_numeric_values(self, operator: str) -> None:
+        """String operators reject int/float values."""
+        with pytest.raises(ValidationError, match="string"):
+            self._adapter.validate_python(
+                {"property": "name", "operator": operator, "value": 123}
+            )
+
+    def test_starts_with_float_value_rejected(self) -> None:
+        """'starts with' with a float value is rejected."""
+        with pytest.raises(ValidationError, match="string"):
+            self._adapter.validate_python(
+                {"property": "url", "operator": "starts with", "value": 1.5}
+            )
+
+    @pytest.mark.parametrize(
+        "operator", ["contains", "does not contain", "starts with", "ends with"]
+    )
+    def test_string_operators_reject_omitted_value(self, operator: str) -> None:
+        """String operators require a value."""
+        with pytest.raises(ValidationError, match="string"):
+            self._adapter.validate_python({"property": "name", "operator": operator})
+
+    def test_contains_list_value_rejected(self) -> None:
+        """'contains' with a list value is rejected (contract is str)."""
+        with pytest.raises(ValidationError, match="string"):
+            self._adapter.validate_python(
+                {"property": "name", "operator": "contains", "value": ["a", "b"]}
+            )
+
+    def test_string_operator_valid_value_matches_classmethod(self) -> None:
+        """'contains' with a string still matches Filter.contains()."""
+        f_dict = self._adapter.validate_python(
+            {"property": "name", "operator": "contains", "value": "john"}
+        )
+        f_cls = Filter.contains("name", "john")
+        assert f_dict._value == f_cls._value
+        assert f_dict._property_type == f_cls._property_type
+
+    def test_numeric_operator_valid_value_matches_classmethod(self) -> None:
+        """'is greater than' with a number still matches Filter.greater_than()."""
+        f_dict = self._adapter.validate_python(
+            {"property": "amount", "operator": "is greater than", "value": 50}
+        )
+        f_cls = Filter.greater_than("amount", 50)
+        assert f_dict._value == f_cls._value
+        assert f_dict._property_type == f_cls._property_type
+
+    def test_insights_model_path_raises_bookmark_error(self) -> None:
+        """The Insights model path surfaces BookmarkValidationError.
+
+        On the PR head this silently emitted filterType="number" with
+        filterValue="oops".
+        """
+        with pytest.raises(BookmarkValidationError, match="numeric"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {
+                            "property": "amount",
+                            "operator": "is greater than",
+                            "value": "oops",
+                        }
+                    ],
+                }
+            )
+
+    def test_flow_model_path_raises_bookmark_error(self) -> None:
+        """The Flow model path surfaces BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError, match="string"):
+            FlowQuery.model_validate(
+                {
+                    "event": "Login",
+                    "where": [{"property": "name", "operator": "contains", "value": 7}],
+                }
+            )
+
+
+class TestFilterCohortPropertyGuard:
+    """Hand-rolled '$cohorts' filters are rejected at construction.
+
+    Regression tests for finding
+    ``filter-operator-value-shape-not-enforced``: the dict repro
+    ``{"property": "$cohorts", "operator": "contains", "value": "123"}``
+    previously constructed fine, then the Flow build path crashed with
+    a raw internal ``RuntimeError`` while the Insights path silently
+    emitted an ordinary string filter. Cohort membership must go
+    through ``Filter.in_cohort()`` / ``Filter.not_in_cohort()``, which
+    build the internal wire structure the builders require.
+    """
+
+    _adapter: ClassVar[TypeAdapter[Filter]]
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
+
+    _COHORT_REPRO: ClassVar[dict[str, object]] = {
+        "property": "$cohorts",
+        "operator": "contains",
+        "value": "123",
+    }
+
+    def test_hand_rolled_cohorts_contains_rejected(self) -> None:
+        """The exact dict repro is rejected at Filter validation."""
+        with pytest.raises(ValidationError, match="in_cohort"):
+            self._adapter.validate_python(self._COHORT_REPRO)
+
+    def test_hand_rolled_cohorts_equals_rejected(self) -> None:
+        """'$cohorts' with a non-cohort operator is rejected."""
+        with pytest.raises(ValidationError, match="in_cohort"):
+            self._adapter.validate_python(
+                {"property": "$cohorts", "operator": "equals", "value": "123"}
+            )
+
+    def test_hand_rolled_cohorts_malformed_wire_shape_rejected(self) -> None:
+        """A list-of-dicts value missing the 'cohort' key is rejected."""
+        with pytest.raises(ValidationError, match="in_cohort"):
+            self._adapter.validate_python(
+                {
+                    "property": "$cohorts",
+                    "operator": "contains",
+                    "value": [{"not_cohort": 1}],
+                }
+            )
+
+    def test_in_cohort_constructor_still_works(self) -> None:
+        """Filter.in_cohort() output passes the new guard."""
+        f = Filter.in_cohort(123, "Power Users")
+        assert f._property == "$cohorts"
+        assert f._operator == "contains"
+
+    def test_not_in_cohort_constructor_still_works(self) -> None:
+        """Filter.not_in_cohort() output passes the new guard."""
+        f = Filter.not_in_cohort(789, "Bots")
+        assert f._operator == "does not contain"
+
+    def test_insights_model_path_raises_bookmark_error(self) -> None:
+        """Insights path: BookmarkValidationError, not a silent string filter."""
+        with pytest.raises(BookmarkValidationError, match="in_cohort"):
+            InsightsQuery.model_validate(
+                {"events": ["Login"], "where": [dict(self._COHORT_REPRO)]}
+            )
+
+    def test_flow_model_path_raises_bookmark_error(self) -> None:
+        """Flow path: BookmarkValidationError, not a raw RuntimeError."""
+        with pytest.raises(BookmarkValidationError, match="in_cohort"):
+            FlowQuery.model_validate(
+                {"event": "Login", "where": [dict(self._COHORT_REPRO)]}
+            )
+
+
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 

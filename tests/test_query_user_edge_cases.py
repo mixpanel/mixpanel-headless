@@ -603,15 +603,18 @@ class TestTier2CrashPaths:
         dicts) but the dict is missing the ``"cohort"`` key, the
         extraction raises ``BookmarkValidationError`` with code
         ``U_COHORT``.
+
+        ``Filter.__post_init__`` now rejects hand-rolled ``$cohorts``
+        filters at construction time, so the malformed shape can no
+        longer be built through the public constructor. The test
+        corrupts a validly constructed cohort filter via
+        ``object.__setattr__`` (the frozen-bypass pattern) to keep the
+        downstream extraction defense exercised.
         """
-        # Construct a Filter that passes _is_cohort_filter but has
-        # wrong internal structure
-        malformed_filter = Filter(
-            _property="$cohorts",
-            _operator="contains",
-            _value=[{"not_cohort": True}],
-            _property_type="list",
-        )
+        # Corrupt a valid cohort filter so it still passes
+        # _is_cohort_filter (list of dicts) but lacks the "cohort" key
+        malformed_filter = Filter.in_cohort(123, "Power Users")
+        object.__setattr__(malformed_filter, "_value", [{"not_cohort": True}])
 
         ws = workspace_factory()
         try:

@@ -7244,6 +7244,12 @@ class Filter:
     _TWO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
         {"is between", "not between", "was between", "was not between"}
     )
+    _NUMERIC_SCALAR_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is greater than", "is less than", "is at least", "is at most"}
+    )
+    _STRING_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"contains", "does not contain", "starts with", "ends with"}
+    )
 
     def __post_init__(self) -> None:
         """Validate invariants and normalize dict-constructed instances.
@@ -7265,7 +7271,12 @@ class Filter:
         Raises:
             ValueError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``; if a date operator receives a value that is
+                ``None``; if a ``$cohorts`` filter was hand-rolled
+                instead of built via ``Filter.in_cohort()`` /
+                ``Filter.not_in_cohort()``; if a scalar numeric
+                operator receives a non-numeric (or missing) value; if
+                a string operator receives a non-string (or missing)
+                value; if a date operator receives a value that is
                 not a valid YYYY-MM-DD date (or two-date range with
                 from <= to); or if a relative-date operator receives a
                 non-positive quantity.
@@ -7287,6 +7298,47 @@ class Filter:
                         "Nested list_contains is not supported; "
                         "list_item_filters cannot themselves be list_contains"
                     )
+
+        # Cohort-membership filters carry an internal wire structure in
+        # _value ([{"cohort": {...}}]) that only the constructors build.
+        # Hand-rolled '$cohorts' filters (e.g. the dict/LLM input
+        # {"property": "$cohorts", "operator": "contains", "value": "123"})
+        # previously slipped through, then either crashed the flow builder
+        # with an internal RuntimeError or silently emitted an ordinary
+        # string filter on the insights path.
+        if self._property == "$cohorts" and not self._has_cohort_wire_shape():
+            raise ValueError(
+                "Filters on '$cohorts' must be built via Filter.in_cohort() / "
+                "Filter.not_in_cohort() (or the declarative InlineCohort / "
+                "CohortReferenceCriterion inputs), not constructed by hand "
+                f"(got operator={self._operator!r}, value={self._value!r})"
+            )
+
+        # Scalar numeric operators require a numeric value (classmethod
+        # contract is int | float); anything else built a
+        # self-contradictory wire entry (filterType "number" with a
+        # non-numeric operand). Raw booleans never reach this check —
+        # _reject_bool_value refuses them before the int-arm coercion.
+        if self._operator in self._NUMERIC_SCALAR_OPS and not isinstance(
+            self._value, (int, float)
+        ):
+            raise ValueError(
+                f"Filter operator '{self._operator}' requires a numeric "
+                f"value, got {self._value!r}"
+            )
+
+        # String operators require a string value (classmethod contract
+        # is str); '$cohorts' filters reuse 'contains'/'does not contain'
+        # with the cohort wire structure validated above
+        if (
+            self._operator in self._STRING_OPS
+            and self._property != "$cohorts"
+            and not isinstance(self._value, str)
+        ):
+            raise ValueError(
+                f"Filter operator '{self._operator}' requires a string "
+                f"value, got {self._value!r}"
+            )
 
         # Clear value for no-value operators
         if self._operator in self._NO_VALUE_OPS and self._value is not None:
@@ -7387,6 +7439,92 @@ class Filter:
 
         if self._operator in self._RELATIVE_DATE_OPS and self._date_unit is None:
             object.__setattr__(self, "_date_unit", "day")
+
+    @field_validator("_value", mode="before")
+    @classmethod
+    def _reject_bool_value(cls, v: object, info: core_schema.ValidationInfo) -> object:
+        """Reject raw boolean values before pydantic's lax int coercion.
+
+        Pydantic's lax mode coerces ``True``/``False`` into ``1``/``0``
+        via the ``int`` arm of the ``_value`` union *before*
+        ``__post_init__`` runs, so operator/value-shape checks there
+        would see an integer and accept a query the caller never wrote.
+        No operator family accepts a bare boolean value (boolean
+        property tests use the value-less ``true``/``false`` operators),
+        so booleans are rejected outright with an operator-specific
+        message.
+
+        Args:
+            v: The raw ``_value`` input, prior to any coercion.
+            info: Validation context; ``info.data`` carries the
+                already-validated ``_operator`` field (declared before
+                ``_value``), used to phrase the error.
+
+        Returns:
+            The input unchanged when it is not a boolean.
+
+        Raises:
+            ValueError: If ``v`` is a ``bool``.
+
+        Example:
+            ```python
+            from pydantic import TypeAdapter
+
+            TypeAdapter(Filter).validate_python(
+                {"property": "amount", "operator": "is less than", "value": True}
+            )
+            # ValidationError: ... requires a numeric value, got True
+            ```
+        """
+        if isinstance(v, bool):
+            operator = info.data.get("_operator")
+            if operator in ("equals", "does not equal"):
+                raise ValueError(
+                    f"Filter operator '{operator}' requires a string "
+                    f"or a list of strings, got {type(v).__name__!r}"
+                )
+            if operator in cls._NUMERIC_SCALAR_OPS:
+                raise ValueError(
+                    f"Filter operator '{operator}' requires a numeric value, got {v!r}"
+                )
+            if operator in cls._STRING_OPS:
+                raise ValueError(
+                    f"Filter operator '{operator}' requires a string value, got {v!r}"
+                )
+            raise ValueError(
+                f"Filter value cannot be a boolean (got {v!r}); use "
+                "Filter.is_true()/Filter.is_false() for boolean property tests"
+            )
+        return v
+
+    def _has_cohort_wire_shape(self) -> bool:
+        """Check whether this filter carries the cohort wire structure.
+
+        The cohort-membership constructors (``in_cohort`` /
+        ``not_in_cohort``) produce ``_operator`` in
+        ``{"contains", "does not contain"}`` and ``_value`` shaped as a
+        non-empty list of ``{"cohort": {...}}`` dicts. Any ``$cohorts``
+        filter that does not match this shape was hand-rolled and would
+        break the downstream builders.
+
+        Returns:
+            True if ``_operator`` and ``_value`` match the structure
+            built by ``_build_cohort_filter``; False otherwise.
+
+        Example:
+            ```python
+            Filter.in_cohort(123, "PU")._has_cohort_wire_shape()
+            # True
+            ```
+        """
+        if self._operator not in ("contains", "does not contain"):
+            return False
+        if not isinstance(self._value, list) or len(self._value) == 0:
+            return False
+        return all(
+            isinstance(item, dict) and isinstance(item.get("cohort"), dict)
+            for item in self._value
+        )
 
     @classmethod
     def equals(
