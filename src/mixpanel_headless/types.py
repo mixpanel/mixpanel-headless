@@ -9731,8 +9731,10 @@ class PropertyCriterion(BaseModel):
     Attributes:
         kind: Discriminator tag (always ``"property"``).
         property: Property name (must be non-empty).
-        value: Value to compare against. Ignored for the ``is_set`` /
-            ``is_not_set`` operators (pass ``""``).
+        value: Value to compare against. The presence operators
+            (``is_set`` / ``is_not_set``) take no value — pass ``""``;
+            any other value is rejected (see
+            :meth:`_reject_value_on_presence_operators`).
         operator: Comparison operator. Default: ``"equals"``.
         property_type: Data type of the property. Default: ``"string"``.
 
@@ -9753,9 +9755,9 @@ class PropertyCriterion(BaseModel):
     """Property name (must be non-empty)."""
 
     value: str | int | float | bool | list[str] = Field(
-        description="Value to compare against (ignored for is_set/is_not_set).",
+        description='Value to compare against (must be "" for is_set/is_not_set).',
     )
-    """Value to compare against."""
+    """Value to compare against (must be ``""`` for the presence operators)."""
 
     operator: CohortPropertyOperator = Field(
         "equals",
@@ -9768,6 +9770,33 @@ class PropertyCriterion(BaseModel):
         description="Data type of the property.",
     )
     """Data type of the property."""
+
+    @model_validator(mode="after")
+    def _reject_value_on_presence_operators(self) -> PropertyCriterion:
+        """Reject a supplied value on the presence operators.
+
+        Mirrors ``Filter``'s no-value-operator rule: ``is_set`` /
+        ``is_not_set`` with a real value almost certainly meant
+        ``equals``, and silently discarding the operand would run a
+        semantically different query than the caller wrote (and ship
+        the ignored operand into the wire selector). ``value`` stays a
+        required field for the comparison operators, so the presence
+        operators accept only the documented ``""`` sentinel.
+
+        Returns:
+            The validated instance, unchanged.
+
+        Raises:
+            ValueError: If ``operator`` is ``is_set`` / ``is_not_set``
+                and ``value`` is anything other than ``""``.
+        """
+        if self.operator in ("is_set", "is_not_set") and self.value != "":
+            raise ValueError(
+                f"PropertyCriterion operator '{self.operator}' does not "
+                f'take a value (got {self.value!r}) — pass value=""; '
+                "did you mean operator 'equals'?"
+            )
+        return self
 
     def to_criteria(self) -> CohortCriteria:
         """Convert to the builder criterion.

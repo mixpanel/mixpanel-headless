@@ -33,6 +33,7 @@ from mixpanel_headless.types import (
     GroupBy,
     HoldingConstant,
     Metric,
+    PropertyCriterion,
     RetentionEvent,
     TimeComparison,
 )
@@ -2875,6 +2876,68 @@ class TestFrequencyFilterBoolValueArmRouting:
         errors = exc_info.value.errors
         assert len(errors) == 1
         assert "non-negative" in errors[0].message
+
+
+class TestPropertyCriterionNoValueOperatorValueRejected:
+    """Presence operators reject a supplied value instead of discarding it.
+
+    Regression tests for finding
+    ``property-criterion-silently-ignores-value-on-is-set-operators``:
+    mirrors ``TestFilterNoValueOperatorValueRejected`` — ``Filter`` now
+    rejects a supplied value on ``is set`` / ``is not set``, but
+    ``PropertyCriterion(property="country", value="US", operator="is_set")``
+    was accepted, ran a bare existence check, and shipped the ignored
+    operand into the wire selector. Because ``value`` is a required field
+    (the schema keeps it required for the comparison operators), the
+    presence operators accept only the documented ``""`` sentinel.
+    """
+
+    @pytest.mark.parametrize("operator", ["is_set", "is_not_set"])
+    def test_presence_operator_with_value_rejected(self, operator: str) -> None:
+        """Each presence operator rejects a caller-supplied value."""
+        with pytest.raises(ValidationError, match="does not take a value"):
+            PropertyCriterion(property="country", value="US", operator=operator)
+
+    def test_is_set_error_suggests_equals(self) -> None:
+        """The is_set rejection points the caller at operator 'equals'."""
+        with pytest.raises(ValidationError, match="did you mean operator 'equals'"):
+            PropertyCriterion(property="country", value="US", operator="is_set")
+
+    def test_error_reports_original_value(self) -> None:
+        """The rejection message echoes the discarded value."""
+        with pytest.raises(ValidationError, match="'US'"):
+            PropertyCriterion(property="country", value="US", operator="is_set")
+
+    @pytest.mark.parametrize("operator", ["is_set", "is_not_set"])
+    def test_empty_string_sentinel_still_accepted(self, operator: str) -> None:
+        """The documented '' sentinel keeps presence criteria constructible."""
+        c = PropertyCriterion(property="country", value="", operator=operator)
+        assert c.value == ""
+        assert c.to_criteria() is not None
+
+    def test_non_string_value_also_rejected(self) -> None:
+        """Non-string junk values (e.g. 0) are rejected too."""
+        with pytest.raises(ValidationError, match="does not take a value"):
+            PropertyCriterion(property="country", value=0, operator="is_set")
+
+    def test_comparison_operators_unaffected(self) -> None:
+        """Comparison operators keep requiring and accepting real values."""
+        c = PropertyCriterion(property="plan", value="premium")
+        assert c.value == "premium"
+
+    def test_insights_model_path_raises_bookmark_error(self) -> None:
+        """The Insights model path surfaces BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError, match="does not take a value"):
+            InsightsQuery.model_validate(
+                _cohort_criteria_payload(
+                    {
+                        "kind": "property",
+                        "property": "country",
+                        "value": "US",
+                        "operator": "is_set",
+                    }
+                )
+            )
 
 
 class TestInlineCohortIntegerArmNoisePruned:
