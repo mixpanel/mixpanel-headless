@@ -114,6 +114,7 @@ from mixpanel_headless.types import (
     AnnotationUser,
     AuditResponse,
     AuditViolation,
+    BehavioralCriterion,
     BlueprintCard,
     BlueprintConfig,
     BlueprintFinishParams,
@@ -145,6 +146,7 @@ from mixpanel_headless.types import (
     CohortDefinition,
     CohortInfo,
     CohortMetric,
+    CohortReferenceCriterion,
     ComposedPropertyValue,
     CreateAlertParams,
     CreateAnnotationParams,
@@ -213,6 +215,7 @@ from mixpanel_headless.types import (
     GroupBy,
     HoldingConstant,
     InitSchemaEnforcementParams,
+    InlineCohort,
     InlineCustomProperty,
     LexiconDefinition,
     LexiconMetadata,
@@ -233,6 +236,7 @@ from mixpanel_headless.types import (
     ProfilePageResult,
     ProjectWebhook,
     PropertyCountsResult,
+    PropertyCriterion,
     PropertyDefinition,
     PropertyInput,
     PropertyResourceType,
@@ -474,6 +478,11 @@ __all__ = [
     # Cohort Behaviors (Phase 036)
     "CohortBreakdown",
     "CohortMetric",
+    # Declarative cohort input models (schema-exhaustive, PR #195)
+    "PropertyCriterion",
+    "BehavioralCriterion",
+    "CohortReferenceCriterion",
+    "InlineCohort",
     # Custom Property Query Types (Phase 037)
     "PropertyInput",
     "InlineCustomProperty",

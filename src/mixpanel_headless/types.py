@@ -91,12 +91,15 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    GetCoreSchemaHandler,
+    WithJsonSchema,
     computed_field,
     field_validator,
     model_validator,
 )
 from pydantic.alias_generators import to_camel
 from pydantic.dataclasses import dataclass as pydantic_dataclass
+from pydantic_core import core_schema
 
 T = TypeVar("T")
 
@@ -7134,15 +7137,47 @@ class Filter:
     _operator: FilterOperator = Field(validation_alias="operator")
     """Internal operator string. Must be one of the values in :data:`FilterOperator`."""
 
-    _value: (
-        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None
-    ) = Field(default=None, validation_alias="value")
+    _value: Annotated[
+        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None,
+        WithJsonSchema(
+            {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "integer"},
+                    {"type": "number"},
+                    {"type": "array", "items": {"type": "string"}},
+                    {"type": "array", "items": {"type": "number"}},
+                    {"type": "null"},
+                ],
+                "description": (
+                    "Value(s) to compare against. Scalar or list-of-scalars "
+                    "depending on the operator (str for contains, list[str] "
+                    "for equals, numeric for greater_than/less_than, "
+                    "two-element list for between, null for is_set/is_true). "
+                    "Cohort-membership filters (in_cohort/not_in_cohort) carry "
+                    "an internal wire structure here and must be built via the "
+                    "Filter.in_cohort() / Filter.not_in_cohort() constructors, "
+                    "not by hand."
+                ),
+            }
+        ),
+    ] = Field(default=None, validation_alias="value")
     """Value(s) to compare against.
 
     Shape varies by operator: list for equals/not_equals, str for
     contains/not_contains, numeric for greater_than/less_than,
     two-element list for between, None for is_set/is_not_set/is_true/is_false,
     list of dicts for cohort filters (in_cohort/not_in_cohort).
+
+    The JSON schema for this field is overridden (via ``WithJsonSchema``) to a
+    closed scalar/list-of-scalar union. The runtime type still admits the
+    cohort ``list[dict]`` wire structure — a tested internal contract asserted
+    by ``tests/test_types_cohort_behaviors.py`` — but that shape is a builder
+    artifact of ``Filter.in_cohort``/``not_in_cohort``, not a declarative input
+    an LLM should synthesize, so it is deliberately excluded from the schema to
+    keep it free of opaque ``object`` holes. Declarative cohort membership is
+    expressed through :class:`InlineCohort` / :class:`CohortReferenceCriterion`
+    instead.
     """
 
     _property_type: FilterPropertyType = Field(
@@ -8387,7 +8422,10 @@ class ListItemGroupMode:
             raise ValueError("ListItemGroupMode.sub must be a non-empty string")
 
 
-@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@pydantic_dataclass(
+    frozen=True,
+    config=ConfigDict(extra="forbid", populate_by_name=True),
+)
 class GroupBy:
     """Specifies a property breakdown with optional numeric bucketing.
 
@@ -8440,7 +8478,9 @@ class GroupBy:
     bucket_max: int | float | None = None
     """Maximum value for numeric buckets."""
 
-    _list_item_mode: ListItemGroupMode | None = None
+    _list_item_mode: ListItemGroupMode | None = Field(
+        default=None, validation_alias="list_item_mode"
+    )
     """List-item breakdown discriminator. Set by :meth:`list_item`."""
 
     def __post_init__(self) -> None:
@@ -8542,6 +8582,37 @@ _PROPERTY_OPERATOR_MAP: dict[str, str] = {
     "is_not_set": "not defined",
 }
 """Maps ``CohortCriteria.has_property()`` operator names to selector tree operators."""
+
+CohortPropertyOperator = Literal[
+    "equals",
+    "not_equals",
+    "contains",
+    "not_contains",
+    "greater_than",
+    "less_than",
+    "is_set",
+    "is_not_set",
+]
+"""Comparison operators for property-based cohort criteria.
+
+Shared by :meth:`CohortCriteria.has_property` and
+:class:`PropertyCriterion`; the exact keys of :data:`_PROPERTY_OPERATOR_MAP`.
+"""
+
+CohortPropertyValueType = Literal[
+    "string",
+    "number",
+    "boolean",
+    "datetime",
+    "list",
+]
+"""Property data types for property-based cohort criteria.
+
+Shared by :meth:`CohortCriteria.has_property` and
+:class:`PropertyCriterion`. Includes ``"list"`` (unlike
+:data:`CustomPropertyType`) because cohort property selectors support
+list membership comparisons.
+"""
 
 _FILTER_TO_SELECTOR_SUPPORTED: frozenset[str] = frozenset(
     {
@@ -8921,23 +8992,8 @@ class CohortCriteria:
         property: str,
         value: str | int | float | bool | list[str],
         *,
-        operator: Literal[
-            "equals",
-            "not_equals",
-            "contains",
-            "not_contains",
-            "greater_than",
-            "less_than",
-            "is_set",
-            "is_not_set",
-        ] = "equals",
-        property_type: Literal[
-            "string",
-            "number",
-            "boolean",
-            "datetime",
-            "list",
-        ] = "string",
+        operator: CohortPropertyOperator = "equals",
+        property_type: CohortPropertyValueType = "string",
     ) -> CohortCriteria:
         """Create a property-based criterion.
 
@@ -9307,6 +9363,405 @@ class CohortDefinition:
 
         selector = _collect_and_build(self)
         return {"selector": selector, "behaviors": behaviors}
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source_type: Any,
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        """Bridge the builder type to the declarative :class:`InlineCohort` schema.
+
+        ``CohortDefinition`` is constructed via classmethods, not from
+        JSON, so its own fields are private and useless to a schema
+        consumer. This hook makes any pydantic field typed
+        ``int | CohortDefinition`` render its inline arm as the fully
+        self-describing :class:`InlineCohort` model while keeping the
+        builder API working at runtime:
+
+        - **JSON input** (an LLM's declarative payload) validates against
+          ``InlineCohort`` and is converted to a ``CohortDefinition`` via
+          :meth:`InlineCohort.to_definition`.
+        - **Python input** accepts an existing ``CohortDefinition``
+          instance unchanged, or the same declarative shape.
+        - **Serialization** delegates to :meth:`to_dict`.
+
+        Args:
+            source_type: The annotated source type (unused; always
+                ``CohortDefinition``).
+            handler: Pydantic core-schema handler used to build the
+                nested ``InlineCohort`` schema.
+
+        Returns:
+            A core schema that renders as ``InlineCohort`` in JSON schema,
+            accepts builder instances and declarative input at runtime,
+            and serializes via ``to_dict``.
+        """
+        inline_schema = handler.generate_schema(InlineCohort)
+        from_inline = core_schema.no_info_after_validator_function(
+            lambda inline: inline.to_definition(),
+            inline_schema,
+        )
+        return core_schema.json_or_python_schema(
+            json_schema=from_inline,
+            python_schema=core_schema.union_schema(
+                [
+                    core_schema.is_instance_schema(cls),
+                    from_inline,
+                ]
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda definition: definition.to_dict(),
+            ),
+        )
+
+
+# =============================================================================
+# Declarative Cohort Input Models (LLM-facing, JSON-schema exhaustive)
+# =============================================================================
+
+_CohortDateStr = Annotated[
+    str,
+    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
+]
+"""String annotated with a YYYY-MM-DD pattern for JSON-schema consumers.
+
+Schema-only — runtime date validation is performed by the underlying
+:meth:`CohortCriteria.did_event` (``_validate_cohort_date``), which
+produces the canonical ``"dates must be YYYY-MM-DD format"`` message.
+"""
+
+
+class PropertyCriterion(BaseModel):
+    """Declarative property-based cohort criterion.
+
+    JSON-schema-exhaustive mirror of
+    :meth:`CohortCriteria.has_property`. Selects users by a stored
+    user-property value.
+
+    Attributes:
+        kind: Discriminator tag (always ``"property"``).
+        property: Property name (must be non-empty).
+        value: Value to compare against. Ignored for the ``is_set`` /
+            ``is_not_set`` operators (pass ``""``).
+        operator: Comparison operator. Default: ``"equals"``.
+        property_type: Data type of the property. Default: ``"string"``.
+
+    Example:
+        ```python
+        from mixpanel_headless import PropertyCriterion
+
+        c = PropertyCriterion(property="plan", value="premium")
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["property"] = "property"
+    """Discriminator tag."""
+
+    property: str = Field(min_length=1, description="User property name.")
+    """Property name (must be non-empty)."""
+
+    value: str | int | float | bool | list[str] = Field(
+        description="Value to compare against (ignored for is_set/is_not_set).",
+    )
+    """Value to compare against."""
+
+    operator: CohortPropertyOperator = Field(
+        "equals",
+        description="Comparison operator.",
+    )
+    """Comparison operator."""
+
+    property_type: CohortPropertyValueType = Field(
+        "string",
+        description="Data type of the property.",
+    )
+    """Data type of the property."""
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.has_property`.
+
+        Raises:
+            ValueError: If the property name is empty (propagated from
+                ``has_property``).
+        """
+        return CohortCriteria.has_property(
+            self.property,
+            self.value,
+            operator=self.operator,
+            property_type=self.property_type,
+        )
+
+
+class BehavioralCriterion(BaseModel):
+    """Declarative behavioral (event-frequency) cohort criterion.
+
+    JSON-schema-exhaustive mirror of :meth:`CohortCriteria.did_event`.
+    Exactly one frequency bound (``at_least`` / ``at_most`` /
+    ``exactly``) and exactly one time constraint (one ``within_*`` OR the
+    ``from_date`` + ``to_date`` pair) must be provided; this is enforced
+    at conversion time by ``did_event``.
+
+    Attributes:
+        kind: Discriminator tag (always ``"behavioral"``).
+        event: Event name (must be non-empty).
+        at_least: Minimum event count (``>=``).
+        at_most: Maximum event count (``<=``).
+        exactly: Exact event count (``==``). Use ``0`` for "did not do".
+        within_days: Rolling window in days.
+        within_weeks: Rolling window in weeks.
+        within_months: Rolling window in months.
+        from_date: Absolute start date (YYYY-MM-DD).
+        to_date: Absolute end date (YYYY-MM-DD).
+        where: Event-property filters applied to the counted events.
+        aggregation: Aggregation operator for property thresholds; must
+            be paired with ``aggregation_property``.
+        aggregation_property: Event property to aggregate; must be paired
+            with ``aggregation``.
+
+    Example:
+        ```python
+        from mixpanel_headless import BehavioralCriterion
+
+        c = BehavioralCriterion(event="Purchase", at_least=3, within_days=30)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["behavioral"] = "behavioral"
+    """Discriminator tag."""
+
+    event: str = Field(min_length=1, description="Event name.")
+    """Event name (must be non-empty)."""
+
+    at_least: int | None = Field(None, ge=0, description="Minimum event count (>=).")
+    """Minimum event count."""
+
+    at_most: int | None = Field(None, ge=0, description="Maximum event count (<=).")
+    """Maximum event count."""
+
+    exactly: int | None = Field(
+        None, ge=0, description="Exact event count (==); use 0 for 'did not do'."
+    )
+    """Exact event count."""
+
+    within_days: int | None = Field(None, gt=0, description="Rolling window in days.")
+    """Rolling window in days."""
+
+    within_weeks: int | None = Field(None, gt=0, description="Rolling window in weeks.")
+    """Rolling window in weeks."""
+
+    within_months: int | None = Field(
+        None, gt=0, description="Rolling window in months."
+    )
+    """Rolling window in months."""
+
+    from_date: _CohortDateStr | None = Field(
+        None, description="Absolute start date (YYYY-MM-DD); requires to_date."
+    )
+    """Absolute start date."""
+
+    to_date: _CohortDateStr | None = Field(
+        None, description="Absolute end date (YYYY-MM-DD); requires from_date."
+    )
+    """Absolute end date."""
+
+    where: list[Filter] | None = Field(
+        None, description="Event-property filters applied to the counted events."
+    )
+    """Event-property filters."""
+
+    aggregation: CohortAggregationType | None = Field(
+        None,
+        description="Aggregation operator for property thresholds "
+        "(pair with aggregation_property).",
+    )
+    """Aggregation operator."""
+
+    aggregation_property: str | None = Field(
+        None,
+        description="Event property to aggregate (pair with aggregation).",
+    )
+    """Event property to aggregate."""
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.did_event`.
+
+        Raises:
+            ValueError: If frequency, time-constraint, date, or
+                aggregation invariants are violated (propagated from
+                ``did_event``).
+        """
+        return CohortCriteria.did_event(
+            self.event,
+            at_least=self.at_least,
+            at_most=self.at_most,
+            exactly=self.exactly,
+            within_days=self.within_days,
+            within_weeks=self.within_weeks,
+            within_months=self.within_months,
+            from_date=self.from_date,
+            to_date=self.to_date,
+            where=self.where,
+            aggregation=self.aggregation,
+            aggregation_property=self.aggregation_property,
+        )
+
+
+class CohortReferenceCriterion(BaseModel):
+    """Declarative saved-cohort membership criterion.
+
+    JSON-schema-exhaustive mirror of :meth:`CohortCriteria.in_cohort` /
+    :meth:`CohortCriteria.not_in_cohort`.
+
+    Attributes:
+        kind: Discriminator tag (always ``"cohort_reference"``).
+        cohort_id: Saved cohort ID (positive integer).
+        negated: When ``True``, selects users **not** in the cohort.
+            Default: ``False``.
+
+    Example:
+        ```python
+        from mixpanel_headless import CohortReferenceCriterion
+
+        c = CohortReferenceCriterion(cohort_id=456)
+        c_not = CohortReferenceCriterion(cohort_id=456, negated=True)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["cohort_reference"] = "cohort_reference"
+    """Discriminator tag."""
+
+    cohort_id: int = Field(gt=0, description="Saved cohort ID (positive integer).")
+    """Saved cohort ID."""
+
+    negated: bool = Field(
+        False, description="Select users NOT in the cohort when True."
+    )
+    """Whether to negate membership."""
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.not_in_cohort` when ``negated`` else
+            :meth:`CohortCriteria.in_cohort`.
+
+        Raises:
+            ValueError: If ``cohort_id`` is not positive (propagated).
+        """
+        if self.negated:
+            return CohortCriteria.not_in_cohort(self.cohort_id)
+        return CohortCriteria.in_cohort(self.cohort_id)
+
+
+_CohortNode = Annotated[
+    "PropertyCriterion | BehavioralCriterion | CohortReferenceCriterion | InlineCohort",
+    Field(discriminator="kind"),
+]
+"""Discriminated union of every declarative cohort node, tagged by ``kind``."""
+
+
+class InlineCohort(BaseModel):
+    """Declarative, JSON-schema-exhaustive cohort definition.
+
+    Mirror of the :class:`CohortDefinition` builder in a form that
+    fully self-describes in ``model_json_schema()`` — an LLM can emit a
+    valid cohort as plain JSON. Criteria are combined with AND
+    (``operator="and"``, the default) or OR (``operator="or"``), and may
+    nest other ``InlineCohort`` groups arbitrarily.
+
+    Any pydantic field typed ``int | CohortDefinition`` (e.g.
+    :class:`CohortBreakdown.cohort`) accepts this shape as JSON and
+    coerces it to a :class:`CohortDefinition` at validation time.
+
+    Attributes:
+        kind: Discriminator tag (always ``"group"``).
+        operator: Boolean combinator for ``criteria``. Default:
+            ``"and"``.
+        criteria: One or more child criteria or nested groups.
+
+    Example:
+        ```python
+        from mixpanel_headless import (
+            InlineCohort, PropertyCriterion, BehavioralCriterion,
+        )
+
+        cohort = InlineCohort(
+            criteria=[
+                PropertyCriterion(property="plan", value="premium"),
+                BehavioralCriterion(event="Purchase", at_least=3, within_days=30),
+            ]
+        )
+        wire = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["group"] = "group"
+    """Discriminator tag."""
+
+    operator: Literal["and", "or"] = Field(
+        "and", description="Boolean combinator for criteria."
+    )
+    """Boolean combinator."""
+
+    criteria: list[_CohortNode] = Field(
+        min_length=1,
+        description="Child criteria or nested groups (at least one).",
+    )
+    """Child criteria or nested groups."""
+
+    def to_definition(self) -> CohortDefinition:
+        """Convert to the builder :class:`CohortDefinition`.
+
+        Recursively converts each child (leaf criterion or nested group)
+        and combines them with the model's ``operator``.
+
+        Returns:
+            An equivalent :class:`CohortDefinition` producing byte-for-byte
+            identical :meth:`CohortDefinition.to_dict` output.
+
+        Raises:
+            ValueError: If any child criterion is invalid (propagated
+                from its ``to_criteria`` / ``to_definition``).
+        """
+        built: list[CohortCriteria | CohortDefinition] = [
+            child.to_definition()
+            if isinstance(child, InlineCohort)
+            else child.to_criteria()
+            for child in self.criteria
+        ]
+        if self.operator == "or":
+            return CohortDefinition.any_of(*built)
+        return CohortDefinition.all_of(*built)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to Mixpanel cohort definition JSON.
+
+        Returns:
+            The same ``{"selector": {...}, "behaviors": {...}}`` dict that
+            the equivalent :class:`CohortDefinition` would produce.
+        """
+        return self.to_definition().to_dict()
+
+
+InlineCohort.model_rebuild()
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))

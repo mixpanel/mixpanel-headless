@@ -2,6 +2,19 @@
 
 Each model mirrors the signature of a ``Workspace.build_*_params()`` method,
 providing a single validated object for schema generation and type-safe input.
+
+These query models — and every building block they reference (``Filter``,
+``Metric``, ``GroupBy``, cohort types, etc.) — MUST remain self-sufficient:
+they are designed to be imported independently by *other* repositories (e.g.
+an MCP "Run-Query" tool that generates its request schema from
+``model_json_schema()`` instead of hand-maintaining AI types). That means:
+
+- No opaque holes in the generated JSON schema (no ``Any``, no bare ``dict``,
+  no ``additionalProperties: true``, no leaked private/underscore fields).
+- No dependency on runtime state, config, or network — construction and
+  schema generation work standalone from a fresh import.
+- Every field carries a description and a closed type so the schema alone
+  fully specifies every valid input.
 """
 
 from __future__ import annotations

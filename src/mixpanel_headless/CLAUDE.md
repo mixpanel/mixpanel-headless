@@ -168,6 +168,25 @@ All frozen dataclasses with:
 
 Key types: `SegmentationResult`, `FunnelResult`, `RetentionResult`, `SavedReportResult`, `FlowsResult`, `UserQueryResult`, `SchemaGraphResult`, `BookmarkInfo`, `Dashboard`, `CreateDashboardParams`, `UpdateDashboardParams`, `Bookmark`, `CreateBookmarkParams`, `UpdateBookmarkParams`, `Cohort`, `CreateCohortParams`, `UpdateCohortParams`, `BlueprintTemplate`, `BlueprintConfig`, `BookmarkHistoryResponse`
 
+## Query Input Models (schema-exhaustive)
+
+The query models in `query_models.py` (`InsightsQuery`, `FunnelQuery`,
+`RetentionQuery`, `FlowQuery`) and every building block they reference
+(`Filter`, `Metric`, `GroupBy`, cohort types) are designed so
+`model_json_schema()` fully self-describes every valid input — no `Any`,
+no bare `dict`, no `additionalProperties: true`, no leaked underscore
+fields. This lets **other repositories import them directly** and drive
+an LLM/MCP request schema off the generated JSON schema instead of
+hand-maintaining AI types.
+
+Declarative cohort inputs (exported from the package root):
+- `PropertyCriterion`, `BehavioralCriterion`, `CohortReferenceCriterion`
+  — the criterion arms of an inline cohort definition.
+- `InlineCohort` — a fully declarative cohort (`{operator, criteria}`)
+  accepted anywhere a `CohortDefinition` is; `.to_dict()` matches the
+  builder wire format. Builder instances (`CohortDefinition`, `CohortCriteria`)
+  still work at runtime; the schema renders the declarative `InlineCohort` arm.
+
 ## Type Aliases
 
 For type hints in consuming code:
