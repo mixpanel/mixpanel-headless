@@ -6634,8 +6634,14 @@ class PropertyInput:
         ```
     """
 
-    name: str
-    """The raw property name."""
+    name: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    """The raw property name.
+
+    The ``minLength`` keyword mirrors the build-time CP6 rule
+    (non-empty) into the JSON schema; runtime enforcement stays in
+    ``_validate_custom_property`` so callers keep its domain-specific
+    ``CP6_EMPTY_INPUT_NAME`` error.
+    """
 
     type: Literal["string", "number", "boolean", "datetime", "list"] = "string"
     """Property data type."""
@@ -6685,13 +6691,16 @@ class InlineCustomProperty:
         ```
     """
 
-    formula: Annotated[str, Field(json_schema_extra={"maxLength": 20_000})]
+    formula: Annotated[
+        str, Field(json_schema_extra={"minLength": 1, "maxLength": 20_000})
+    ]
     """Expression in Mixpanel's formula language.
 
-    The ``maxLength`` keyword mirrors the build-time CP5 rule (max
-    20,000 chars) into the JSON schema; runtime enforcement stays in
-    ``validate_custom_property_spec`` so callers keep its
-    domain-specific ``CP5_FORMULA_TOO_LONG`` error.
+    The ``minLength`` / ``maxLength`` keywords mirror the build-time
+    CP2 (non-empty) and CP5 (max 20,000 chars) rules into the JSON
+    schema; runtime enforcement stays in ``_validate_custom_property``
+    so callers keep its domain-specific ``CP2_EMPTY_FORMULA`` /
+    ``CP5_FORMULA_TOO_LONG`` errors.
     """
 
     inputs: Annotated[
@@ -6708,7 +6717,7 @@ class InlineCustomProperty:
     ``minProperties`` / ``propertyNames`` mirror the build-time CP3
     (non-empty inputs) and CP4 (single uppercase A-Z keys) rules into
     the JSON schema; runtime enforcement stays in
-    ``validate_custom_property_spec`` so callers keep the
+    ``_validate_custom_property`` so callers keep the
     ``CP3_EMPTY_INPUTS`` / ``CP4_INVALID_INPUT_KEY`` errors.
     """
 
@@ -6785,7 +6794,7 @@ class CustomPropertyRef:
 
     The ``exclusiveMinimum`` keyword mirrors the build-time CP1 rule
     (positive integer) into the JSON schema; runtime enforcement stays
-    in ``validate_custom_property_spec`` so callers keep its
+    in ``_validate_custom_property`` so callers keep its
     ``CP1_INVALID_ID`` error.
     """
 
@@ -7204,8 +7213,24 @@ class Filter:
                     {"type": "string"},
                     {"type": "integer"},
                     {"type": "number"},
-                    {"type": "array", "items": {"type": "string"}},
-                    {"type": "array", "items": {"type": "number"}},
+                    # minItems / maxItems mirror the build-time B20
+                    # (non-empty filterValue) and B21 (at most 1000
+                    # entries) rules; runtime enforcement stays in
+                    # ``_validate_filter_clause`` so callers keep the
+                    # ``B20_EMPTY_FILTER_VALUE`` /
+                    # ``B21_FILTER_VALUE_TOO_MANY`` errors.
+                    {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 1000,
+                    },
+                    {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 1,
+                        "maxItems": 1000,
+                    },
                     {"type": "null"},
                 ],
                 "description": (
@@ -8702,8 +8727,18 @@ class GroupBy:
         ```
     """
 
-    property: str | CustomPropertyRef | InlineCustomProperty
-    """Property to break down by (name, ref, or inline)."""
+    property: (
+        Annotated[str, Field(json_schema_extra={"minLength": 1})]
+        | CustomPropertyRef
+        | InlineCustomProperty
+    )
+    """Property to break down by (name, ref, or inline).
+
+    The string arm's ``minLength`` keyword mirrors the runtime
+    non-empty rule into the JSON schema; enforcement stays in
+    ``__post_init__`` (which also rejects whitespace-only names) so
+    callers keep its message.
+    """
 
     property_type: CustomPropertyType = "string"
     """Data type of the property. One of the four scalar types.
@@ -10321,8 +10356,13 @@ class FrequencyFilter:
         ```
     """
 
-    event: str
-    """Event name to count frequency for."""
+    event: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    """Event name to count frequency for.
+
+    The ``minLength`` keyword mirrors the runtime FF1 rule (non-empty)
+    into the JSON schema; enforcement stays in ``__post_init__`` (which
+    also rejects whitespace-only names) so callers keep its message.
+    """
 
     value: (
         Annotated[StrictInt, Field(json_schema_extra={"minimum": 0})]
@@ -10868,8 +10908,13 @@ class HoldingConstant:
         ```
     """
 
-    property: str
-    """Property name to hold constant across steps."""
+    property: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    """Property name to hold constant across steps.
+
+    The ``minLength`` keyword mirrors the runtime non-empty rule into
+    the JSON schema; enforcement stays in ``__post_init__`` (which also
+    rejects whitespace-only names) so callers keep its message.
+    """
 
     resource_type: Literal["events", "people"] = "events"
     """Whether this is an event property or user-profile property."""

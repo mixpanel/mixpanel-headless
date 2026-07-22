@@ -328,6 +328,144 @@ class TestNumericConstraintRendering:
                 f"missing pattern in {arm}"
             )
 
+    # -------------------------------------------------------------------
+    # Runtime maxima render alongside the already-rendered minima.
+    # Regression tests for finding
+    # ``flow-and-time-maximum-bounds-missing-from-schema``: the minimum
+    # side of these bounds rendered but the runtime-enforced maxima
+    # (FL3/FL4/FL6, V20, V23, R5c, F1, F8) did not, so a schema-driven
+    # consumer could synthesize guaranteed-to-fail payloads.
+    # -------------------------------------------------------------------
+
+    @pytest.mark.parametrize("field_name", ["forward", "reverse"])
+    def test_flow_query_direction_maximum_rendered(self, field_name: str) -> None:
+        """FlowQuery.forward/reverse carry maximum 5 (runtime FL3/FL4)."""
+        prop = FlowQuery.model_json_schema()["properties"][field_name]
+        assert prop.get("minimum") == 0, f"missing minimum in {prop}"
+        assert prop.get("maximum") == 5, f"missing maximum in {prop}"
+
+    def test_flow_query_cardinality_maximum_rendered(self) -> None:
+        """FlowQuery.cardinality carries maximum 50 (runtime FL6)."""
+        prop = FlowQuery.model_json_schema()["properties"]["cardinality"]
+        assert prop.get("minimum") == 1, f"missing minimum in {prop}"
+        assert prop.get("maximum") == 50, f"missing maximum in {prop}"
+
+    @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
+    def test_last_maximum_rendered(self, model_cls: type[BaseModel]) -> None:
+        """Every model's ``last`` carries maximum 3650 (runtime V20)."""
+        prop = model_cls.model_json_schema()["properties"]["last"]
+        assert prop.get("minimum") == 1, f"missing minimum in {prop}"
+        assert prop.get("maximum") == 3650, f"missing maximum in {prop}"
+
+    def test_insights_rolling_maximum_rendered(self) -> None:
+        """InsightsQuery.rolling carries maximum 365 (runtime V23)."""
+        prop = InsightsQuery.model_json_schema()["properties"]["rolling"]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+            assert arm.get("maximum") == 365, f"missing maximum in {arm}"
+
+    def test_retention_bucket_sizes_max_items_rendered(self) -> None:
+        """RetentionQuery.bucket_sizes carries maxItems 730 (runtime R5c)."""
+        prop = RetentionQuery.model_json_schema()["properties"]["bucket_sizes"]
+        array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
+        assert array_arms, f"no array arms found in {prop}"
+        for arm in array_arms:
+            assert arm.get("maxItems") == 730, f"missing maxItems in {arm}"
+
+    def test_funnel_steps_max_items_rendered(self) -> None:
+        """FunnelQuery.steps carries maxItems 100 (runtime F1_MAX_STEPS)."""
+        prop = FunnelQuery.model_json_schema()["properties"]["steps"]
+        assert prop.get("minItems") == 2, f"missing minItems in {prop}"
+        assert prop.get("maxItems") == 100, f"missing maxItems in {prop}"
+
+    def test_funnel_holding_constant_max_items_rendered(self) -> None:
+        """FunnelQuery.holding_constant carries maxItems 3 (runtime F8)."""
+        prop = FunnelQuery.model_json_schema()["properties"]["holding_constant"]
+        array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
+        assert array_arms, f"no array arms found in {prop}"
+        for arm in array_arms:
+            assert arm.get("maxItems") == 3, f"missing maxItems in {arm}"
+
+    # -------------------------------------------------------------------
+    # Non-empty-string and filter-value item bounds render too.
+    # Regression tests for finding
+    # ``non-empty-string-and-filter-value-item-bounds-missing-from-schema``.
+    # -------------------------------------------------------------------
+
+    def test_filter_value_array_arm_item_bounds_rendered(self) -> None:
+        """Filter.value array arms carry minItems 1 / maxItems 1000 (B20/B21)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["Filter"]["properties"]["value"]
+        array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
+        assert array_arms, f"no array arms found in {prop}"
+        for arm in array_arms:
+            assert arm.get("minItems") == 1, f"missing minItems in {arm}"
+            assert arm.get("maxItems") == 1000, f"missing maxItems in {arm}"
+
+    def test_group_by_property_str_arm_min_length_rendered(self) -> None:
+        """GroupBy.property's string arm carries minLength 1 (post-init rule)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["GroupBy"]["properties"]["property"]
+        string_arms = [node for _, node in _walk(prop) if node.get("type") == "string"]
+        assert string_arms, f"no string arms found in {prop}"
+        for arm in string_arms:
+            assert arm.get("minLength") == 1, f"missing minLength in {arm}"
+
+    def test_frequency_filter_event_min_length_rendered(self) -> None:
+        """FrequencyFilter.event carries minLength 1 (runtime FF1)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["FrequencyFilter"]["properties"]["event"]
+        assert prop.get("minLength") == 1, f"missing minLength in {prop}"
+
+    def test_holding_constant_property_min_length_rendered(self) -> None:
+        """HoldingConstant.property carries minLength 1 (post-init rule)."""
+        defs = FunnelQuery.model_json_schema()["$defs"]
+        prop = defs["HoldingConstant"]["properties"]["property"]
+        assert prop.get("minLength") == 1, f"missing minLength in {prop}"
+
+    def test_inline_custom_property_formula_min_length_rendered(self) -> None:
+        """InlineCustomProperty.formula carries minLength 1 (CP2)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["InlineCustomProperty"]["properties"]["formula"]
+        assert prop.get("minLength") == 1, f"missing minLength in {prop}"
+        assert prop.get("maxLength") == 20_000, f"missing maxLength in {prop}"
+
+    def test_property_input_name_min_length_rendered(self) -> None:
+        """PropertyInput.name carries minLength 1 (CP6)."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["PropertyInput"]["properties"]["name"]
+        assert prop.get("minLength") == 1, f"missing minLength in {prop}"
+
+
+class TestSchemaOnlyBoundDocstringsNameRealEnforcers:
+    """Schema-only bound docstrings reference the real runtime enforcer.
+
+    Regression test for finding
+    ``cp-docstrings-name-nonexistent-validate-custom-property-spec``:
+    three docstrings claimed runtime enforcement "stays in
+    ``validate_custom_property_spec``", but no function of that name
+    exists — the CP1-CP6 rules live in ``_validate_custom_property``
+    (``_internal/validation.py``), reached via ``_scan_custom_properties``
+    at build time. Auditors grepping for the named function must find it.
+    """
+
+    def test_no_reference_to_nonexistent_validator(self) -> None:
+        """types.py never names the nonexistent validate_custom_property_spec."""
+        import inspect
+
+        from mixpanel_headless import types as types_module
+
+        source = inspect.getsource(types_module)
+        assert "validate_custom_property_spec" not in source
+
+    def test_named_enforcer_exists(self) -> None:
+        """The function the corrected docstrings name actually exists."""
+        from mixpanel_headless._internal import validation
+
+        assert callable(validation._validate_custom_property)
+
 
 # =============================================================================
 # Schema/runtime parity: CohortMetric advertises only what it accepts

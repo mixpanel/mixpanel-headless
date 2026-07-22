@@ -133,11 +133,17 @@ class _BaseQuery(BaseModel):
         description="End date (YYYY-MM-DD). Requires from_date.",
         examples=["2025-01-31"],
     )
+    # ``maximum`` (3650) is a schema-only mirror of the build-time V20
+    # cap (``_MAX_LAST_DAYS``); runtime enforcement stays in
+    # ``validate_time_args`` so callers keep its curated message.
     last: int = Field(
         30,
         ge=1,
         strict=True,
-        description="Relative time range in days. Default: 30.",
+        json_schema_extra={"maximum": 3650},
+        description=(
+            "Relative time range in days. Default: 30. Maximum: 3650 (~10 years)."
+        ),
         examples=[7, 30, 90],
     )
     data_group_id: StrictInt | None = Field(
@@ -298,10 +304,14 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Display label for the formula result.",
     )
-    rolling: StrictInt | None = Field(
+    # ``maximum`` (365) is a schema-only mirror of the build-time V23
+    # cap (``_MAX_ROLLING``); runtime enforcement stays in
+    # ``validate_query_args`` so callers keep its curated message.
+    rolling: (
+        Annotated[StrictInt, Field(gt=0, json_schema_extra={"maximum": 365})] | None
+    ) = Field(
         None,
-        gt=0,
-        description="Rolling window size in periods.",
+        description="Rolling window size in periods. Maximum: 365.",
     )
     cumulative: bool = Field(
         False,
@@ -361,10 +371,15 @@ class FunnelQuery(_TimeComparableQuery):
         ```
     """
 
+    # ``maxItems`` (100) is a schema-only mirror of the build-time F1
+    # step-count cap (``_MAX_FUNNEL_STEPS``); runtime enforcement stays
+    # in ``validate_funnel_args`` so callers keep the ``F1_MAX_STEPS``
+    # message.
     steps: list[str | FunnelStep] = Field(
         ...,
         min_length=2,
-        description="Funnel step specifications. At least 2 required.",
+        json_schema_extra={"maxItems": 100},
+        description="Funnel step specifications. At least 2 required, at most 100.",
     )
     conversion_window: int = Field(
         14,
@@ -404,9 +419,16 @@ class FunnelQuery(_TimeComparableQuery):
         None,
         description="Events to exclude between steps.",
     )
-    holding_constant: list[str | HoldingConstant] | None = Field(
+    # ``maxItems`` (3) is a schema-only mirror of the build-time F8
+    # cap (``_MAX_HOLDING_CONSTANT``); runtime enforcement stays in
+    # ``validate_funnel_args`` so callers keep the
+    # ``F8_MAX_HOLDING_CONSTANT`` message.
+    holding_constant: (
+        Annotated[list[str | HoldingConstant], Field(json_schema_extra={"maxItems": 3})]
+        | None
+    ) = Field(
         None,
-        description="Properties to hold constant across funnel steps.",
+        description="Properties to hold constant across funnel steps (at most 3).",
     )
     mode: FunnelMode = Field(
         "steps",
@@ -465,15 +487,23 @@ class RetentionQuery(_TimeComparableQuery):
         "birth",
         description="Retention alignment mode: birth or interval_start.",
     )
+    # ``maxItems`` (730) is a schema-only mirror of the build-time R5c
+    # cap (``_MAX_RETENTION_BUCKETS``); runtime enforcement stays in
+    # ``validate_retention_args`` so callers keep its curated message.
     bucket_sizes: (
-        list[Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]]
+        Annotated[
+            list[
+                Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
+            ],
+            Field(json_schema_extra={"maxItems": 730}),
+        ]
         | None
     ) = Field(
         None,
         description=(
             "Custom bucket sizes for retention periods (strictly ascending "
-            "positive integers). Items are strict integers — bool/float/str "
-            "values are rejected."
+            "positive integers, at most 730). Items are strict integers — "
+            "bool/float/str values are rejected."
         ),
     )
     unit: QueryTimeUnit = Field(
@@ -541,17 +571,24 @@ class FlowQuery(_BaseQuery):
         ...,
         description="Event specification: a name, FlowStep, or list of names/FlowSteps.",
     )
+    # The ``maximum`` keywords on forward/reverse (5) and cardinality
+    # (50) are schema-only mirrors of the build-time FL3/FL4/FL6 rules;
+    # runtime enforcement stays in ``validate_flow_args`` so callers
+    # keep its curated range messages. ``FlowStep.forward``/``reverse``
+    # carry the same 0-5 bound.
     forward: int = Field(
         3,
         ge=0,
         strict=True,
-        description="Default forward step count. Default: 3.",
+        json_schema_extra={"maximum": 5},
+        description="Default forward step count. Default: 3. Maximum: 5.",
     )
     reverse: int = Field(
         0,
         ge=0,
         strict=True,
-        description="Default reverse step count. Default: 0.",
+        json_schema_extra={"maximum": 5},
+        description="Default reverse step count. Default: 0. Maximum: 5.",
     )
     conversion_window: int = Field(
         7,
@@ -571,7 +608,8 @@ class FlowQuery(_BaseQuery):
         3,
         ge=1,
         strict=True,
-        description="Number of top paths to return. Default: 3.",
+        json_schema_extra={"maximum": 50},
+        description="Number of top paths to return. Default: 3. Maximum: 50.",
     )
     collapse_repeated: bool = Field(
         False,
