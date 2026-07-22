@@ -19,6 +19,8 @@ import importlib
 import inspect
 import re
 import sys
+import types
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,11 @@ def get_obj(path: str) -> Any:
 def format_type(annotation: Any) -> str:
     """Format a type annotation for clean display.
 
+    ``Annotated[X, ...]`` renders as ``X`` (per-arm pydantic ``Field``
+    metadata like ``Annotated[int, Field(strict=True, gt=0)]`` would
+    otherwise leak raw ``FieldInfo(...)`` reprs), and unions are
+    re-joined from their cleaned arms.
+
     Args:
         annotation: A type annotation (class, generic, union, etc.).
 
@@ -49,6 +56,11 @@ def format_type(annotation: Any) -> str:
     """
     if annotation is None or annotation is type(None):
         return "None"
+    origin = typing.get_origin(annotation)
+    if origin is typing.Annotated:
+        return format_type(typing.get_args(annotation)[0])
+    if origin is typing.Union or origin is types.UnionType:
+        return " | ".join(format_type(arg) for arg in typing.get_args(annotation))
     if hasattr(annotation, "__name__") and not hasattr(annotation, "__args__"):
         return annotation.__name__
     s = str(annotation)

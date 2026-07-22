@@ -74,3 +74,21 @@ class TestShowFieldsPydanticDataclass:
         assert "events" in out
         assert "(required)" in out
         assert "FieldInfo(" not in out
+
+    def test_annotated_union_arms_render_clean(
+        self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Per-arm ``Annotated[int, Field(...)]`` unions render as bare types.
+
+        The strict per-arm bound annotations (``Annotated[int,
+        Field(strict=True, gt=0)] | ...`` on ``GroupBy.bucket_size``)
+        must not leak ``Annotated[...]`` / ``FieldInfo(...)`` reprs
+        into the field listing an LLM reads.
+        """
+        from mixpanel_headless.types import GroupBy
+
+        help_mod.show_fields(GroupBy)
+        out = capsys.readouterr().out
+        assert "FieldInfo(" not in out
+        assert "Annotated[" not in out
+        assert "bucket_size: int | float | None" in out

@@ -21,6 +21,7 @@ from mixpanel_headless.query_models import (
 )
 from mixpanel_headless.types import (
     CohortBreakdown,
+    CohortMetric,
     Exclusion,
     Filter,
     FlowStep,
@@ -1350,6 +1351,185 @@ class TestStrictScalarCoercionRejected:
         assert rq.bucket_sizes == [1, 3, 7]
         step = FlowStep("Login", forward=4, reverse=1)
         assert (step.forward, step.reverse) == (4, 1)
+
+
+class TestNestedComponentStrictCoercion:
+    """Nested building blocks reject bool/float/str coercion into int fields.
+
+    Regression tests for finding
+    ``nested-component-int-bool-fields-still-lax-coerce``: commit
+    10f8411 made the four query models (and ``FlowStep``) strict, but
+    every OTHER component dataclass reachable from them still
+    lax-coerced ``True``/``"5"`` into integers on the dict/LLM path —
+    e.g. ``cohort=true`` silently queried saved cohort 1 and
+    ``bucket_size=true`` silently bucketed by 1. The same strict
+    treatment must cover ``Metric.percentile_value``,
+    ``GroupBy.bucket_size/bucket_min/bucket_max``,
+    ``Exclusion.from_step/to_step``,
+    ``FrequencyFilter.value/date_range_value``,
+    ``FrequencyBreakdown.bucket_size/bucket_min/bucket_max``,
+    ``CohortMetric.cohort``, and
+    ``CohortBreakdown.cohort/include_negated``.
+    """
+
+    def test_group_by_bucket_size_bool_rejected_dict_path(self) -> None:
+        """InsightsQuery group_by bucket_size=True must not become 1."""
+        with pytest.raises(BookmarkValidationError, match="bucket_size"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["x"],
+                    "group_by": [
+                        {
+                            "property": "p",
+                            "property_type": "number",
+                            "bucket_size": True,
+                        }
+                    ],
+                }
+            )
+
+    def test_group_by_bucket_size_str_rejected(self) -> None:
+        """GroupBy dict with bucket_size='5' must not become 5."""
+        with pytest.raises(ValidationError, match="bucket_size"):
+            TypeAdapter(GroupBy).validate_python(
+                {"property": "p", "property_type": "number", "bucket_size": "5"}
+            )
+
+    def test_group_by_bucket_min_bool_rejected(self) -> None:
+        """GroupBy dict with bucket_min=True must not become 1."""
+        with pytest.raises(ValidationError, match="bucket_min"):
+            TypeAdapter(GroupBy).validate_python(
+                {"property": "p", "property_type": "number", "bucket_min": True}
+            )
+
+    def test_group_by_bucket_max_str_rejected(self) -> None:
+        """GroupBy dict with bucket_max='10' must not become 10."""
+        with pytest.raises(ValidationError, match="bucket_max"):
+            TypeAdapter(GroupBy).validate_python(
+                {"property": "p", "property_type": "number", "bucket_max": "10"}
+            )
+
+    def test_exclusion_from_step_bool_rejected_dict_path(self) -> None:
+        """FunnelQuery exclusions from_step=True must not become 1."""
+        with pytest.raises(BookmarkValidationError, match="from_step"):
+            FunnelQuery.model_validate(
+                {
+                    "steps": ["a", "b"],
+                    "exclusions": [{"event": "e", "from_step": True}],
+                }
+            )
+
+    def test_exclusion_to_step_str_rejected(self) -> None:
+        """Exclusion dict with to_step='2' must not become 2."""
+        with pytest.raises(ValidationError, match="to_step"):
+            TypeAdapter(Exclusion).validate_python({"event": "e", "to_step": "2"})
+
+    def test_cohort_breakdown_cohort_bool_rejected(self) -> None:
+        """CohortBreakdown cohort=True must not become cohort ID 1."""
+        with pytest.raises(ValidationError):
+            TypeAdapter(CohortBreakdown).validate_python({"cohort": True})
+
+    def test_cohort_breakdown_include_negated_int_rejected(self) -> None:
+        """CohortBreakdown include_negated=1 must not become True."""
+        with pytest.raises(ValidationError, match="include_negated"):
+            TypeAdapter(CohortBreakdown).validate_python(
+                {"cohort": 123, "include_negated": 1}
+            )
+
+    def test_cohort_metric_cohort_str_rejected(self) -> None:
+        """CohortMetric cohort='5' must not become cohort ID 5."""
+        with pytest.raises(ValidationError):
+            TypeAdapter(CohortMetric).validate_python({"cohort": "5"})
+
+    def test_metric_percentile_value_bool_rejected(self) -> None:
+        """Metric percentile_value=True must not become 1."""
+        with pytest.raises(ValidationError, match="percentile_value"):
+            TypeAdapter(Metric).validate_python(
+                {
+                    "event": "x",
+                    "math": "percentile",
+                    "property": "amount",
+                    "percentile_value": True,
+                }
+            )
+
+    def test_metric_percentile_value_str_rejected(self) -> None:
+        """Metric percentile_value='95' must not become 95."""
+        with pytest.raises(ValidationError, match="percentile_value"):
+            TypeAdapter(Metric).validate_python(
+                {
+                    "event": "x",
+                    "math": "percentile",
+                    "property": "amount",
+                    "percentile_value": "95",
+                }
+            )
+
+    def test_frequency_filter_value_bool_rejected(self) -> None:
+        """FrequencyFilter value=True must not become threshold 1."""
+        with pytest.raises(ValidationError, match="value"):
+            TypeAdapter(FrequencyFilter).validate_python({"event": "x", "value": True})
+
+    def test_frequency_filter_value_str_rejected(self) -> None:
+        """FrequencyFilter value='5' must not become threshold 5."""
+        with pytest.raises(ValidationError, match="value"):
+            TypeAdapter(FrequencyFilter).validate_python({"event": "x", "value": "5"})
+
+    def test_frequency_filter_date_range_value_str_rejected(self) -> None:
+        """FrequencyFilter date_range_value='30' must not become 30."""
+        with pytest.raises(ValidationError, match="date_range_value"):
+            TypeAdapter(FrequencyFilter).validate_python(
+                {
+                    "event": "x",
+                    "value": 5,
+                    "date_range_value": "30",
+                    "date_range_unit": "day",
+                }
+            )
+
+    def test_frequency_breakdown_bucket_size_bool_rejected(self) -> None:
+        """FrequencyBreakdown bucket_size=True must not become 1."""
+        with pytest.raises(ValidationError, match="bucket_size"):
+            TypeAdapter(FrequencyBreakdown).validate_python(
+                {"event": "x", "bucket_size": True}
+            )
+
+    def test_frequency_breakdown_bucket_min_str_rejected(self) -> None:
+        """FrequencyBreakdown bucket_min='0' must not become 0."""
+        with pytest.raises(ValidationError, match="bucket_min"):
+            TypeAdapter(FrequencyBreakdown).validate_python(
+                {"event": "x", "bucket_min": "0"}
+            )
+
+    def test_frequency_breakdown_bucket_max_bool_rejected(self) -> None:
+        """FrequencyBreakdown bucket_max=True must not become 1."""
+        with pytest.raises(ValidationError, match="bucket_max"):
+            TypeAdapter(FrequencyBreakdown).validate_python(
+                {"event": "x", "bucket_max": True}
+            )
+
+    def test_valid_component_values_still_accepted(self) -> None:
+        """Genuine ints/floats still construct on every strict field."""
+        g = GroupBy(
+            "revenue",
+            property_type="number",
+            bucket_size=50.5,
+            bucket_min=0,
+            bucket_max=500,
+        )
+        assert (g.bucket_size, g.bucket_min, g.bucket_max) == (50.5, 0, 500)
+        ex = Exclusion("e", from_step=1, to_step=2)
+        assert (ex.from_step, ex.to_step) == (1, 2)
+        cb = CohortBreakdown(123, include_negated=False)
+        assert (cb.cohort, cb.include_negated) == (123, False)
+        cm = CohortMetric(123)
+        assert cm.cohort == 123
+        m = Metric("x", math="percentile", property="amount", percentile_value=95.5)
+        assert m.percentile_value == 95.5
+        ff = FrequencyFilter("x", value=2.5, date_range_value=30, date_range_unit="day")
+        assert (ff.value, ff.date_range_value) == (2.5, 30)
+        fb = FrequencyBreakdown("x", bucket_size=5, bucket_min=0, bucket_max=50)
+        assert (fb.bucket_size, fb.bucket_min, fb.bucket_max) == (5, 0, 50)
 
 
 class TestFilterOperatorValueShape:

@@ -92,6 +92,8 @@ from pydantic import (
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
+    StrictBool,
+    StrictFloat,
     StrictInt,
     WithJsonSchema,
     computed_field,
@@ -6997,11 +6999,12 @@ class Metric:
     per_user: PerUserAggregation | None = None
     """Per-user pre-aggregation type."""
 
-    percentile_value: int | float | None = None
+    percentile_value: StrictInt | StrictFloat | None = None
     """Custom percentile value (e.g. 95 for p95).
 
     Required when ``math="percentile"``. Ignored for other math types.
-    Maps to ``percentile`` in bookmark JSON.
+    Maps to ``percentile`` in bookmark JSON. Validated in strict mode —
+    bool/str inputs are rejected instead of being coerced to a number.
     """
 
     filters: list[Filter] | None = None
@@ -8608,14 +8611,24 @@ class GroupBy:
     independently of this field.
     """
 
-    bucket_size: int | float | None = Field(default=None, gt=0)
-    """Bucket width for numeric properties."""
+    bucket_size: (
+        Annotated[int, Field(strict=True, gt=0)]
+        | Annotated[float, Field(strict=True, gt=0)]
+        | None
+    ) = None
+    """Bucket width for numeric properties.
 
-    bucket_min: int | float | None = None
-    """Minimum value for numeric buckets."""
+    The ``gt=0`` bound is annotated per union arm so it renders as
+    JSON-Schema ``exclusiveMinimum`` (a constraint on the union itself
+    would emit a non-standard literal ``gt`` key that schema-driven
+    consumers ignore). Strict mode — bool/str inputs are rejected.
+    """
 
-    bucket_max: int | float | None = None
-    """Maximum value for numeric buckets."""
+    bucket_min: StrictInt | StrictFloat | None = None
+    """Minimum value for numeric buckets. Strict — bool/str rejected."""
+
+    bucket_max: StrictInt | StrictFloat | None = None
+    """Maximum value for numeric buckets. Strict — bool/str rejected."""
 
     _list_item_mode: ListItemGroupMode | None = Field(
         default=None, validation_alias="list_item_mode"
@@ -9941,14 +9954,18 @@ class CohortBreakdown:
         ```
     """
 
-    cohort: int | CohortDefinition
-    """Saved cohort ID or inline definition."""
+    cohort: StrictInt | CohortDefinition
+    """Saved cohort ID or inline definition.
+
+    The ID arm is a strict integer — bool/str inputs are rejected
+    instead of being coerced into a (different) saved-cohort ID.
+    """
 
     name: str | None = None
     """Display name for the cohort."""
 
-    include_negated: bool = True
-    """Whether to include a 'Not In' segment."""
+    include_negated: StrictBool = True
+    """Whether to include a 'Not In' segment. Strict — int inputs rejected."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
@@ -9998,8 +10015,12 @@ class CohortMetric:
         ```
     """
 
-    cohort: int | CohortDefinition
-    """Saved cohort ID or inline definition."""
+    cohort: StrictInt | CohortDefinition
+    """Saved cohort ID or inline definition.
+
+    The ID arm is a strict integer — bool/str inputs are rejected
+    instead of being coerced into a (different) saved-cohort ID.
+    """
 
     name: str | None = None
     """Display name / series label."""
@@ -10062,14 +10083,14 @@ class FrequencyBreakdown:
     event: str = Field(min_length=1)
     """Event name to count frequency for."""
 
-    bucket_size: int = Field(default=1, gt=0)
-    """Width of each frequency bucket."""
+    bucket_size: int = Field(default=1, gt=0, strict=True)
+    """Width of each frequency bucket. Strict — bool/float/str rejected."""
 
-    bucket_min: int = Field(default=0, ge=0)
-    """Minimum frequency value."""
+    bucket_min: int = Field(default=0, ge=0, strict=True)
+    """Minimum frequency value. Strict — bool/float/str rejected."""
 
-    bucket_max: int = 10
-    """Maximum frequency value."""
+    bucket_max: StrictInt = 10
+    """Maximum frequency value. Strict — bool/float/str rejected."""
 
     label: str | None = None
     """Display label for the breakdown."""
@@ -10143,14 +10164,18 @@ class FrequencyFilter:
     event: str
     """Event name to count frequency for."""
 
-    value: int | float
-    """Threshold value for the comparison."""
+    value: StrictInt | StrictFloat
+    """Threshold value for the comparison.
+
+    Strict — bool/str inputs are rejected instead of being coerced
+    to a threshold number.
+    """
 
     operator: FrequencyFilterOperator = "is at least"
     """Comparison operator."""
 
-    date_range_value: int | None = None
-    """Lookback window size."""
+    date_range_value: StrictInt | None = None
+    """Lookback window size. Strict integer — bool/float/str rejected."""
 
     date_range_unit: Literal["day", "week", "month"] | None = None
     """Lookback window unit."""
@@ -10608,11 +10633,18 @@ class Exclusion:
     event: str = Field(min_length=1)
     """Event name to exclude between steps."""
 
-    from_step: int = 0
-    """Start of exclusion range (0-indexed, inclusive)."""
+    from_step: StrictInt = 0
+    """Start of exclusion range (0-indexed, inclusive).
 
-    to_step: int | None = None
-    """End of exclusion range (0-indexed, inclusive). None = last step."""
+    Strict integer — bool/float/str inputs are rejected instead of
+    being coerced to a step index.
+    """
+
+    to_step: StrictInt | None = None
+    """End of exclusion range (0-indexed, inclusive). None = last step.
+
+    Strict integer, like ``from_step``.
+    """
 
     def __post_init__(self) -> None:
         """Validate construction arguments.

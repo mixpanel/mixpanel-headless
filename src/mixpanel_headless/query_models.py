@@ -16,11 +16,20 @@ an MCP "Run-Query" tool that generates its request schema from
 - Every field carries a description and a closed type so the schema alone
   fully specifies every valid input.
 - Integer and boolean fields validate in **strict mode**
-  (``Field(strict=True)`` / ``StrictInt``): pydantic's lax coercion
-  would otherwise normalize ``True``/``1.0``/``"2"`` into integers
-  *before* the Workspace validators run, silently building a different
-  query than the caller wrote. Strict fields reject those inputs with
-  the same structured ``BookmarkValidationError`` the builders raise.
+  (``Field(strict=True)`` / ``StrictInt``) — on the query models AND on
+  every nested building block (``Metric``, ``GroupBy``, ``Exclusion``,
+  ``FrequencyFilter``, ``FrequencyBreakdown``, ``CohortMetric``,
+  ``CohortBreakdown``, ``FlowStep``): pydantic's lax coercion would
+  otherwise normalize ``True``/``1.0``/``"2"`` into integers *before*
+  the Workspace validators run, silently building a different query
+  than the caller wrote (e.g. ``cohort: "5"`` querying saved cohort 5
+  after a typo). Strict fields reject those inputs with the same
+  structured ``BookmarkValidationError`` the builders raise.
+- Numeric bounds are annotated per union arm (e.g.
+  ``Annotated[int, Field(strict=True, ge=0, le=100)]``) so they render
+  as standard JSON-Schema ``minimum``/``maximum`` keywords instead of
+  pydantic's literal ``ge``/``le`` keys, which external validators
+  would silently ignore.
 """
 
 from __future__ import annotations
@@ -32,7 +41,6 @@ from pydantic import (
     ConfigDict,
     Field,
     ModelWrapValidatorHandler,
-    StrictFloat,
     StrictInt,
     ValidationError,
     WithJsonSchema,
@@ -266,10 +274,12 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Per-user pre-aggregation (applies to bare-string events).",
     )
-    percentile_value: StrictInt | StrictFloat | None = Field(
+    percentile_value: (
+        Annotated[int, Field(strict=True, ge=0, le=100)]
+        | Annotated[float, Field(strict=True, ge=0, le=100)]
+        | None
+    ) = Field(
         None,
-        ge=0,
-        le=100,
         description="Custom percentile value (e.g. 95). Used when math='percentile'.",
     )
     group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(

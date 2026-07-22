@@ -156,6 +156,57 @@ class TestNoOpaqueHoles:
 
 
 # =============================================================================
+# Numeric constraints render as JSON-Schema keywords
+# =============================================================================
+
+
+class TestNumericConstraintRendering:
+    """Numeric bounds render as standard JSON-Schema keywords.
+
+    Regression tests for finding ``percentile-bounds-dropped-from-json-schema``:
+    attaching ``Field(ge=..., le=...)`` to a *union* emits literal
+    ``ge``/``le`` keys that standard validators ignore, so a
+    schema-conforming payload like ``percentile_value: 150`` passed
+    external validation and failed at runtime. Bounds must be annotated
+    per-arm so ``minimum``/``maximum``/``exclusiveMinimum`` appear.
+    """
+
+    def test_percentile_value_bounds_rendered(self) -> None:
+        """InsightsQuery.percentile_value arms carry minimum/maximum 0..100."""
+        prop = InsightsQuery.model_json_schema()["properties"]["percentile_value"]
+        numeric_arms = [
+            node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
+        ]
+        assert numeric_arms, f"no numeric arms found in {prop}"
+        for arm in numeric_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+            assert arm.get("maximum") == 100, f"missing maximum in {arm}"
+
+    def test_group_by_bucket_size_bound_rendered(self) -> None:
+        """GroupBy.bucket_size arms carry exclusiveMinimum 0."""
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["GroupBy"]["properties"]["bucket_size"]
+        numeric_arms = [
+            node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
+        ]
+        assert numeric_arms, f"no numeric arms found in {prop}"
+        for arm in numeric_arms:
+            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+
+    @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
+    def test_no_raw_constraint_keys(self, model_cls: type[BaseModel]) -> None:
+        """No subschema carries pydantic's literal ge/le/gt/lt keys."""
+        offenders = [
+            (path, sorted(set(node) & {"ge", "le", "gt", "lt"}))
+            for path, node in _walk(model_cls.model_json_schema())
+            if set(node) & {"ge", "le", "gt", "lt"}
+        ]
+        assert not offenders, (
+            f"{model_cls.__name__}: raw constraint keys at {offenders}"
+        )
+
+
+# =============================================================================
 # Declarative cohort input models are public
 # =============================================================================
 
