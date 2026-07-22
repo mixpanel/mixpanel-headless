@@ -440,6 +440,21 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "RetentionEvent",
         "FlowStep",
         "TimeComparison",
+        # PropertySpec union members (``property: str | CustomPropertyRef |
+        # InlineCustomProperty`` on Filter / GroupBy / Metric)
+        "CustomPropertyRef",
+        "InlineCustomProperty",
+        # Declarative cohort nodes (the ``kind``-discriminated
+        # ``InlineCohort.criteria`` union). Tagged-union locs carry the
+        # ``kind`` tag rather than the class name today, but the names
+        # are registered so a future switch to a smart union cannot leak
+        # them (enforced by ``TestUnionArmLabelRegistry`` in
+        # test_query_models.py, which walks every union reachable from
+        # the four query models).
+        "InlineCohort",
+        "PropertyCriterion",
+        "BehavioralCriterion",
+        "CohortReferenceCriterion",
         # Primitive union-arm labels (e.g. the ``str`` arm of
         # ``str | Metric``); parameterized arms like ``list[union[...]]``
         # are caught by the bracket heuristic in ``_loc_to_jsonpath``

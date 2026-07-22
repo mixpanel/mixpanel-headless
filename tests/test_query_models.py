@@ -6,12 +6,13 @@ frozen immutability, and field constraints for all query model types.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import ClassVar
+from collections.abc import Callable, Iterator
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from mixpanel_headless._internal.bookmark_schema import _is_union_arm_label
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import (
     FlowQuery,
@@ -1978,6 +1979,174 @@ class TestSameArmDistinctErrorsPreserved:
         assert "where[0].list_item_filters[1].value" in paths
         # Sibling FrequencyFilter-arm shape noise stays pruned.
         assert "where[0].event" not in paths
+
+
+class TestPropertySpecArmPathTranslation:
+    """``PropertySpec`` union-arm class names never leak into error paths.
+
+    Regression tests for finding
+    ``property-spec-union-arm-labels-leak-into-error-paths``: the
+    ``PropertySpec`` union members ``CustomPropertyRef`` and
+    ``InlineCustomProperty`` (``property: str | CustomPropertyRef |
+    InlineCustomProperty`` on ``Filter``, ``GroupBy``, and ``Metric``)
+    were missing from ``_DISCRIMINATOR_TAGS``, so a malformed property
+    dict surfaced raw class-name path segments like
+    ``where[0].property.CustomPropertyRef.id`` on all four query paths.
+    The labels must be stripped so paths collapse to the clean
+    ``where[0].property``-rooted JSONPath grammar.
+    """
+
+    def test_bad_property_dict_in_where_yields_clean_paths(self) -> None:
+        """A bad property dict in a Filter yields property-rooted paths."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {
+                            "property": {"custom_property_id": True},
+                            "operator": "is set",
+                        }
+                    ],
+                }
+            )
+        paths = [e.path for e in exc_info.value.errors]
+        joined = " ".join(paths)
+        assert "CustomPropertyRef" not in joined
+        assert "InlineCustomProperty" not in joined
+        # The arm errors collapse onto the clean property-rooted paths.
+        assert "where[0].property.id" in paths
+        assert "where[0].property.formula" in paths
+
+    def test_bad_property_dict_in_group_by_yields_clean_paths(self) -> None:
+        """A bad property dict in a GroupBy yields property-rooted paths."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [{"property": {"custom_property_id": True}}],
+                }
+            )
+        joined = " ".join(e.path for e in exc_info.value.errors)
+        assert "CustomPropertyRef" not in joined
+        assert "InlineCustomProperty" not in joined
+
+
+def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
+    """Yield every dict node in a pydantic core-schema tree.
+
+    Walks the raw ``__pydantic_core_schema__`` structure (nested dicts,
+    lists, and tuples) without following ``definition-ref`` links, so
+    recursive schemas cannot loop.
+
+    Args:
+        node: Any core-schema fragment (dict, list, tuple, or scalar).
+
+    Yields:
+        Each ``dict`` encountered in the tree, including ``node`` itself.
+    """
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            yield from _iter_schema_nodes(value)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _iter_schema_nodes(item)
+
+
+def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
+    """Collect class names of every model/dataclass union arm in a schema.
+
+    Walks ``model_cls.__pydantic_core_schema__`` and, for every ``union``
+    and ``tagged-union`` node, resolves each arm (following
+    ``definition-ref`` indirection) and records the arm's class name when
+    the arm is a ``BaseModel`` (``model`` schema) or pydantic dataclass
+    (``dataclass`` schema). These are exactly the arms whose bare class
+    names pydantic inserts into error ``loc`` tuples for smart unions —
+    every one must be registered in ``_DISCRIMINATOR_TAGS`` or the name
+    leaks into caller-facing error paths.
+
+    Args:
+        model_cls: The pydantic model whose core schema to walk.
+
+    Returns:
+        The set of union-arm class names reachable from ``model_cls``.
+    """
+    schema: Any = model_cls.__pydantic_core_schema__
+    refs: dict[str, dict[str, Any]] = {
+        node["ref"]: node
+        for node in _iter_schema_nodes(schema)
+        if isinstance(node.get("ref"), str)
+    }
+    names: set[str] = set()
+    for node in _iter_schema_nodes(schema):
+        if node.get("type") not in ("union", "tagged-union"):
+            continue
+        choices = node.get("choices")
+        arms: list[Any] = (
+            list(choices.values()) if isinstance(choices, dict) else list(choices or ())
+        )
+        for arm in arms:
+            if isinstance(arm, tuple):
+                arm = arm[0]
+            seen_refs: set[str] = set()
+            while isinstance(arm, dict) and arm.get("type") == "definition-ref":
+                ref = str(arm.get("schema_ref"))
+                if ref in seen_refs:
+                    break
+                seen_refs.add(ref)
+                arm = refs.get(ref, {})
+            if isinstance(arm, dict) and arm.get("type") in ("model", "dataclass"):
+                names.add(arm["cls"].__name__)
+    return names
+
+
+class TestUnionArmLabelRegistry:
+    """Every reachable union-arm class name is a strippable arm label.
+
+    Structural guard for finding
+    ``property-spec-union-arm-labels-leak-into-error-paths``:
+    ``_DISCRIMINATOR_TAGS`` is hand-maintained, and each newly added
+    union member that is not registered leaks its raw class name into
+    caller-facing error paths (Metric/Filter/FlowStep in earlier rounds,
+    CustomPropertyRef/InlineCustomProperty in round 5). This test walks
+    the pydantic core schema of all four query models, collects every
+    ``BaseModel`` / pydantic-dataclass union arm, and asserts each class
+    name is caught by ``_is_union_arm_label`` — so adding a union member
+    without registering it fails CI instead of shipping a path leak.
+    """
+
+    @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
+    def test_every_union_arm_class_name_is_strippable(
+        self, model_cls: type[BaseModel]
+    ) -> None:
+        """All model/dataclass union arms reachable from the model are registered."""
+        unregistered = {
+            name
+            for name in _union_arm_model_names(model_cls)
+            if not _is_union_arm_label(name)
+        }
+        assert unregistered == set(), (
+            f"Union arm class names not registered in _DISCRIMINATOR_TAGS "
+            f"(their raw class names will leak into error paths): "
+            f"{sorted(unregistered)}"
+        )
+
+    def test_walker_finds_known_union_arms(self) -> None:
+        """The schema walk is not vacuous — known arms are discovered.
+
+        Guards the guard: if the core-schema walker silently broke (e.g.
+        a pydantic upgrade renames schema keys), the registry test above
+        would pass on an empty set. Pin a few arms that must be found.
+        """
+        names = _union_arm_model_names(InsightsQuery)
+        assert {
+            "Filter",
+            "FrequencyFilter",
+            "Metric",
+            "CustomPropertyRef",
+            "InlineCustomProperty",
+        } <= names
 
 
 class TestSharedFieldSchema:
