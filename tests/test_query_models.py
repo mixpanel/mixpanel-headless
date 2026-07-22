@@ -1981,6 +1981,76 @@ class TestSameArmDistinctErrorsPreserved:
         assert "where[0].event" not in paths
 
 
+class TestFilterNoValueOperatorValueRejected:
+    """No-value operators reject a supplied value instead of discarding it.
+
+    Regression tests for finding
+    ``filter-no-value-operators-silently-discard-value``: ``is set`` /
+    ``is not set`` / ``true`` / ``false`` silently nulled a
+    caller-supplied value, running a bare existence check instead of the
+    comparison the caller almost certainly meant (``operator "equals"``)
+    — a semantically different query. The other operator families all
+    reject mismatched values with a targeted ``ValueError``; the
+    no-value family must do the same.
+    """
+
+    _adapter: ClassVar[TypeAdapter[Filter]]
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
+
+    @pytest.mark.parametrize("operator", ["is set", "is not set", "true", "false"])
+    def test_no_value_operator_with_value_rejected(self, operator: str) -> None:
+        """Each no-value operator rejects a caller-supplied value."""
+        with pytest.raises(ValidationError, match="does not take a value"):
+            self._adapter.validate_python(
+                {"property": "country", "operator": operator, "value": "US"}
+            )
+
+    def test_is_set_error_suggests_equals(self) -> None:
+        """The is-set rejection points the caller at operator 'equals'."""
+        with pytest.raises(ValidationError, match="did you mean operator 'equals'"):
+            self._adapter.validate_python(
+                {"property": "country", "operator": "is set", "value": "US"}
+            )
+
+    def test_error_reports_original_value(self) -> None:
+        """The rejection message echoes the discarded value."""
+        with pytest.raises(ValidationError, match="'US'"):
+            self._adapter.validate_python(
+                {"property": "country", "operator": "is set", "value": "US"}
+            )
+
+    @pytest.mark.parametrize("operator", ["is set", "is not set", "true", "false"])
+    def test_no_value_operator_without_value_still_accepted(
+        self, operator: str
+    ) -> None:
+        """Omitting the value keeps every no-value operator constructible."""
+        f = self._adapter.validate_python({"property": "country", "operator": operator})
+        assert f._value is None
+
+    def test_classmethods_unaffected(self) -> None:
+        """The value-less classmethod constructors keep working."""
+        assert Filter.is_set("email")._value is None
+        assert Filter.is_not_set("email")._value is None
+        assert Filter.is_true("active")._value is None
+        assert Filter.is_false("active")._value is None
+
+    def test_insights_model_path_raises_bookmark_error(self) -> None:
+        """The Insights model path surfaces BookmarkValidationError."""
+        with pytest.raises(BookmarkValidationError, match="does not take a value"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {"property": "country", "operator": "is set", "value": "US"}
+                    ],
+                }
+            )
+
+
 class TestPropertySpecArmPathTranslation:
     """``PropertySpec`` union-arm class names never leak into error paths.
 

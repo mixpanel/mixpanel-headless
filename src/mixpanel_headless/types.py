@@ -7280,6 +7280,8 @@ class Filter:
                 ``is not set`` operators are exempt); if a scalar numeric
                 operator receives a non-numeric (or missing) value; if
                 a string operator receives a non-string (or missing)
+                value; if a no-value operator (``is set`` /
+                ``is not set`` / ``true`` / ``false``) receives a
                 value; if a date operator receives a value that is
                 not a valid YYYY-MM-DD date (or two-date range with
                 from <= to); or if a relative-date operator receives a
@@ -7353,9 +7355,20 @@ class Filter:
                 f"value, got {self._value!r}"
             )
 
-        # Clear value for no-value operators
+        # No-value operators reject a supplied value instead of silently
+        # discarding it — "is set" with a value almost certainly meant
+        # "equals", and running the bare existence check would be a
+        # semantically different query than the caller wrote.
         if self._operator in self._NO_VALUE_OPS and self._value is not None:
-            object.__setattr__(self, "_value", None)
+            hint = (
+                "; did you mean operator 'equals'?"
+                if self._operator in ("is set", "is not set")
+                else ""
+            )
+            raise ValueError(
+                f"Filter operator '{self._operator}' does not take a value "
+                f"(got {self._value!r}){hint}"
+            )
 
         # Wrap scalar string to list for equals/not_equals (matches classmethod
         # behavior); for string-typed filters (the default, and the LLM dict
