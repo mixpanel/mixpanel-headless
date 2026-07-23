@@ -18,14 +18,13 @@ of truth, no Layer 1 vs Layer 2 drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal, TypeVar, cast
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, JsonValue, Tag
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
 from mixpanel_headless.exceptions import ValidationError
-from mixpanel_headless.types import _COHORT_NODE_TAGS_BY_KIND
 
 # =============================================================================
 # Shared model configuration
@@ -92,9 +91,8 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
     "model_type": "B0_WRONG_TYPE",
     # Same failure at a pydantic dataclass (Metric, Filter, FlowStep, ...)
     "dataclass_type": "B0_WRONG_TYPE",
-    # Builder-instance union arms (surviving branch of
-    # ``_prune_instance_check_noise`` — a Python caller passed the
-    # wrong object entirely)
+    # Builder-instance union arms (a Python caller passed the wrong
+    # object entirely)
     "is_instance_of": "B0_WRONG_TYPE",
     # Discriminated-union failures (e.g. behavior.type missing/unknown)
     "union_tag_invalid": "B7_INVALID_BEHAVIOR_TYPE",
@@ -249,27 +247,15 @@ def translate_pydantic_exception(
     ``validate_with_pydantic``, so pydantic-layer failures are
     indistinguishable from the hand-written validators' output.
 
-    Union-arm noise is suppressed: when one arm of a smart union
-    pinpointed the failure — a ``value_error`` from a component's
-    ``__post_init__``, an error nested strictly below the arm root
-    (e.g. ``filters[0].operator``), or an arm whose every error is a
-    domain/constraint failure rather than shape noise — the sibling
-    arms' shape errors for the same input (``Field required``,
-    ``Unexpected keyword argument``) are dropped: they describe types
-    the caller never targeted and actively misdirect self-correcting
-    agents (see ``_prune_union_arm_noise``). Arm-root wrong-type errors
-    from inner unions (e.g. the saved-cohort ``int`` arm) are dropped
-    when a sibling error lives strictly below the same path (see
-    ``_prune_shadowed_arm_root_type_noise``). ``is_instance_of`` arm
-    errors (Python-runtime builder arms excluded from the JSON schema)
-    are likewise dropped when a sibling arm produced field-level errors
-    for the same union value (see ``_prune_instance_check_noise``).
-    Discriminated-union tag failures routed through a callable
-    ``Discriminator`` are rewritten in caller-facing terms (see
-    ``_rewrite_union_tag_message``) so ``Tag`` class names and private
-    discriminator function names never reach callers. Exact duplicate
-    errors (same translated path, message, and code — produced when
-    several union arms share a field name) are also deduplicated.
+    Every ambiguous union in the query models is a discriminated
+    (callable-``Discriminator``) union, so pydantic validates only the
+    arm the value structurally matches — the sibling-arm shape noise a
+    smart union would emit is never produced, and an unroutable value
+    yields the union's ``custom_error_message`` located at the item.
+    This function therefore only translates each raw error and
+    deduplicates exact duplicates (same translated path, message, and
+    code — produced when two arms of a non-discriminated union share a
+    field name).
 
     Args:
         exc: The caught ``pydantic.ValidationError``.
@@ -280,22 +266,16 @@ def translate_pydantic_exception(
             Defaults to the ``_DEFAULT_CODE_MAP`` lookup.
 
     Returns:
-        One ``ValidationError`` per surviving Pydantic error, with
+        One ``ValidationError`` per (deduplicated) Pydantic error, with
         ``path`` translated from Pydantic's ``loc`` tuple and a stable
         code.
     """
     mapper = code_mapper or _default_code_mapper
-    # ``exc.errors()`` returns freshly-built dicts, so the prune passes
-    # (which never mutate) can consume them directly — the cast erases
-    # pydantic's ``ErrorDetails`` TypedDict.
-    raw_errors = cast("list[dict[str, Any]]", exc.errors())
-    pruned = _prune_instance_check_noise(
-        _prune_shadowed_arm_root_type_noise(_prune_union_arm_noise(raw_errors))
-    )
+    raw_errors = exc.errors(include_url=False, include_input=False)
     translated: list[ValidationError] = []
     seen: set[tuple[str, str, str]] = set()
-    for err in pruned:
-        validation_error = _translate_pydantic_error(err, mapper, path_prefix)
+    for err in raw_errors:
+        validation_error = _translate_pydantic_error(dict(err), mapper, path_prefix)
         key = (
             validation_error.path,
             validation_error.message,
@@ -330,323 +310,6 @@ def _is_union_arm_label(item: Any) -> bool:
     )
 
 
-def _union_arm_key(loc: tuple[Any, ...]) -> tuple[tuple[Any, ...], str] | None:
-    """Return the union group base and arm label for a union-scoped ``loc``.
-
-    Smart unions insert the attempted arm's label (see
-    ``_is_union_arm_label``) into ``loc``. Every error produced while
-    trying the arms of one union value shares the prefix before that
-    label, so the prefix identifies the union "group" and the label
-    identifies WHICH arm reported the error.
-
-    Args:
-        loc: A Pydantic error ``loc`` tuple.
-
-    Returns:
-        A ``(base, arm_label)`` pair — the prefix before the first
-        union-arm label plus the label itself — or ``None`` when
-        ``loc`` contains no such label (the error is not union-arm
-        scoped).
-
-    Example:
-        ```python
-        _union_arm_key(("where", 0, "FrequencyFilter", "event"))
-        # (("where", 0), "FrequencyFilter")
-        _union_arm_key(("last",))
-        # None
-        ```
-    """
-    for i, item in enumerate(loc):
-        if _is_union_arm_label(item):
-            return loc[:i], item
-    return None
-
-
-_SHAPE_NOISE_TYPES: frozenset[str] = frozenset(
-    {"missing", "extra_forbidden", "unexpected_keyword_argument"}
-)
-"""Pydantic error types that describe a shape mismatch with an arm.
-
-These are the errors every non-targeted union arm emits for a dict the
-caller aimed at a *different* arm (required fields "missing", the
-targeted arm's real fields "unexpected"). Wrong-type errors are folded
-in by ``_is_shape_noise``'s suffix checks.
-"""
-
-
-def _is_shape_noise(err_type: str) -> bool:
-    """Return whether a pydantic error type is union-arm shape noise.
-
-    Shape noise is any error that merely says "this input is not shaped
-    like this arm": missing/extra fields, wrong-type (``*_type``) and
-    failed-parse (``*_parsing``) errors, and the Python-only
-    ``is_instance_of`` builder-arm check. Domain failures
-    (``value_error``), constraint violations (``greater_than``, ...),
-    and bad literals are NOT shape noise — they mean the input matched
-    the arm's shape and failed a semantic rule.
-
-    Args:
-        err_type: Pydantic error ``type`` string.
-
-    Returns:
-        ``True`` when the error only reports an arm-shape mismatch.
-    """
-    return (
-        err_type in _SHAPE_NOISE_TYPES
-        or err_type.endswith("_type")
-        or err_type.endswith("_parsing")
-        or err_type == "is_instance_of"
-    )
-
-
-def _depth_below_arm(loc: tuple[Any, ...], base_len: int) -> int:
-    """Count concrete path elements below a union arm's root.
-
-    Args:
-        loc: A Pydantic error ``loc`` tuple.
-        base_len: Length of the union group base (the prefix before the
-            arm label), as returned by ``_union_arm_key``.
-
-    Returns:
-        The number of elements after the arm label that are real fields
-        or list indices (union-arm labels are skipped).
-
-    Example:
-        ```python
-        _depth_below_arm(("events", 0, "Metric", "filters", 0, "operator"), 2)
-        # 3 — filters, 0, operator
-        ```
-    """
-    return sum(1 for item in loc[base_len + 1 :] if not _is_union_arm_label(item))
-
-
-def _arm_pinpointed_failure(key_len: int, errs: list[dict[str, Any]]) -> bool:
-    """Return whether one union arm's error group pinpoints the failure.
-
-    An arm "won" its union group — i.e. the caller clearly targeted it —
-    when any of three signals holds:
-
-    - it raised a ``value_error`` AND reported no ``missing`` required
-      fields (a domain check like a component's ``__post_init__`` or a
-      ``mode="before"`` field validator ran; the absence of ``missing``
-      means the input really matched the arm's shape — field validators
-      such as ``Filter._reject_bool_value`` fire even for inputs that
-      don't remotely fit the arm, so a mixed value_error+missing group
-      is a sibling arm's noise, not a win);
-    - it produced an error nested strictly below the arm root (e.g.
-      ``filters[0].operator`` — only an arm that accepted the outer
-      shape descends into nested containers); or
-    - every one of its errors is a semantic failure (bad literal, bound
-      violation) rather than shape noise — the input fit the arm's
-      shape completely and only broke domain rules.
-
-    Args:
-        key_len: Length of the union group base for this arm (prefix
-            before the arm label).
-        errs: The errors reported under this ``(base, arm)`` key.
-
-    Returns:
-        ``True`` when the arm pinpointed the failure.
-    """
-    if any(err.get("type") == "value_error" for err in errs) and not any(
-        err.get("type") == "missing" for err in errs
-    ):
-        return True
-    if any(_depth_below_arm(tuple(err.get("loc", ())), key_len) >= 2 for err in errs):
-        return True
-    return all(not _is_shape_noise(str(err.get("type", ""))) for err in errs)
-
-
-def _prune_union_arm_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop sibling-arm shape errors when one union arm found the real failure.
-
-    A single invalid dict in a union-typed field (e.g. ``where`` typed
-    ``list[Filter | FrequencyFilter]``) makes pydantic report every
-    arm's failure. When one arm pinpointed the failure (see
-    ``_arm_pinpointed_failure``: a ``value_error``, a nested error
-    strictly below the arm root, or an all-semantic error group), the
-    OTHER arms' ``missing`` / ``extra_forbidden`` / type errors for the
-    same union value are noise — they describe types the caller never
-    targeted, and some actively contradict the schema (e.g. the
-    CohortMetric arm calling Metric's *required* ``event`` field an
-    unexpected keyword). Distinct errors from a winning arm itself
-    (e.g. an invalid ``operator`` literal alongside a boolean-``value``
-    rejection on the same ``Filter``) are real, independent failures
-    and survive. Groups without a winning arm (and errors outside any
-    union) are returned unchanged.
-
-    Args:
-        errors: Raw error dicts from ``PydanticValidationError.errors()``.
-
-    Returns:
-        The filtered error list, in original order.
-    """
-    groups: dict[tuple[tuple[Any, ...], str], list[dict[str, Any]]] = {}
-    for err in errors:
-        key = _union_arm_key(tuple(err.get("loc", ())))
-        if key is not None:
-            groups.setdefault(key, []).append(err)
-    winner_keys = {
-        key
-        for key, errs in groups.items()
-        if _arm_pinpointed_failure(len(key[0]), errs)
-    }
-    if not winner_keys:
-        return errors
-    winner_bases = {base for base, _arm in winner_keys}
-    return [
-        err
-        for err in errors
-        if (key := _union_arm_key(tuple(err.get("loc", ())))) is None
-        or key[0] not in winner_bases
-        or key in winner_keys
-    ]
-
-
-def _stripped_loc(loc: tuple[Any, ...]) -> tuple[Any, ...]:
-    """Return ``loc`` with every union-arm label removed.
-
-    The result is the caller-facing path skeleton — exactly the elements
-    ``_loc_to_jsonpath`` renders — so two errors with the same stripped
-    prefix describe the same input subtree regardless of which union
-    arms they were reported under.
-
-    Args:
-        loc: A Pydantic error ``loc`` tuple.
-
-    Returns:
-        The tuple of non-arm-label elements, in order.
-
-    Example:
-        ```python
-        _stripped_loc(("group_by", 0, "CohortBreakdown", "cohort", "int"))
-        # ("group_by", 0, "cohort")
-        ```
-    """
-    return tuple(item for item in loc if not _is_union_arm_label(item))
-
-
-def _prune_shadowed_arm_root_type_noise(
-    errors: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Drop arm-root wrong-type errors shadowed by deeper sibling errors.
-
-    Inner unions (e.g. the ``int | CohortDefinition`` cohort union nested
-    inside the ``group_by`` breakdown union) are grouped by the OUTERMOST
-    arm label in ``_prune_union_arm_noise``, so a winning outer arm keeps
-    its inner ``int``-arm wrong-type error even when precise errors exist
-    deep inside the sibling inline arm — surfacing a contradictory
-    ``"Input should be a valid integer"`` at the parent path to callers
-    who sent the advertised structured shape. An error is arm-root noise
-    when its ``loc`` ends AT a union-arm label (it judges the arm as a
-    whole) and its type is shape noise; it is dropped when another error
-    lives strictly below the same stripped path — that deeper error came
-    from an arm that accepted the outer shape and is the actionable
-    diagnosis. Arm-root errors with no deeper sibling (a scalar of the
-    wrong type entirely) are preserved: there the wrong-type message is
-    the real guidance.
-
-    Args:
-        errors: Raw error dicts from ``PydanticValidationError.errors()``
-            (typically already filtered by ``_prune_union_arm_noise``).
-
-    Returns:
-        The filtered error list, in original order.
-    """
-    stripped = [_stripped_loc(tuple(err.get("loc", ()))) for err in errors]
-    result: list[dict[str, Any]] = []
-    for i, err in enumerate(errors):
-        loc = tuple(err.get("loc", ()))
-        if (
-            loc
-            and _is_union_arm_label(loc[-1])
-            and _is_shape_noise(str(err.get("type", "")))
-        ):
-            base = stripped[i]
-            if any(
-                j != i and other[: len(base)] == base and len(other) > len(base)
-                for j, other in enumerate(stripped)
-            ):
-                continue
-        result.append(err)
-    return result
-
-
-def _is_field_level_under(loc: tuple[Any, ...], base: tuple[Any, ...]) -> bool:
-    """Return whether ``loc`` names a real field beneath a union base.
-
-    Args:
-        loc: A Pydantic error ``loc`` tuple.
-        base: The union group prefix (as returned by ``_union_arm_key``)
-            to test against.
-
-    Returns:
-        ``True`` when ``loc`` starts with ``base`` and at least one
-        element after the prefix is not a union-arm label — i.e. the
-        error targets a concrete field (or list index) inside one of
-        the union's arms rather than the arm as a whole.
-
-    Example:
-        ```python
-        _is_field_level_under(("cohort", "json-or-python[...]", "operator"),
-                              ("cohort",))
-        # True — "operator" is a real field inside an arm
-        _is_field_level_under(("cohort", "int"), ("cohort",))
-        # False — the loc ends at the "int" arm label
-        ```
-    """
-    if loc[: len(base)] != base or len(loc) <= len(base):
-        return False
-    return any(not _is_union_arm_label(item) for item in loc[len(base) :])
-
-
-def _prune_instance_check_noise(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop ``is_instance_of`` arm errors shadowed by field-level errors.
-
-    Builder-only union arms (e.g. the ``CohortDefinition`` instance arm
-    of ``cohort: StrictInt | CohortDefinition``) validate with an
-    ``isinstance`` check that is deliberately excluded from the JSON
-    schema — the arm exists for Python callers holding builder objects.
-    When a dict/JSON caller sends a malformed structured value, the
-    declarative arms report precise field-level errors; the instance
-    arm's ``"Input should be an instance of CohortDefinition"`` is
-    Python-runtime noise that misdirects dict/LLM callers, so it is
-    dropped.
-
-    The suppression group is the OUTERMOST union containing the
-    instance check (``_union_arm_key`` keys on the prefix before the
-    *first* arm label in ``loc``), not the innermost union the check
-    belongs to. On the translated query paths the cohort union is
-    nested inside the events/group_by unions, so a field-level error
-    from ANY arm of that outer union — e.g. the Metric arm's ``event:
-    Field required``, present for essentially every dict input —
-    suppresses the check, not just siblings of the inner cohort union.
-    Consequently the survives-branch (no field-level error anywhere
-    under the outer base, so the instance-check message is the
-    actionable one) is reachable only in non-nested union contexts;
-    instance-check errors outside any union are always preserved.
-
-    Args:
-        errors: Raw error dicts from ``PydanticValidationError.errors()``
-            (typically already filtered by ``_prune_union_arm_noise``).
-
-    Returns:
-        The filtered error list, in original order.
-    """
-    result: list[dict[str, Any]] = []
-    for err in errors:
-        if err.get("type") == "is_instance_of":
-            key = _union_arm_key(tuple(err.get("loc", ())))
-            if key is not None and any(
-                other is not err
-                and _is_field_level_under(tuple(other.get("loc", ())), key[0])
-                for other in errors
-            ):
-                continue
-        result.append(err)
-    return result
-
-
 def _translate_pydantic_error(
     err: dict[str, Any],
     code_mapper: CodeMapper,
@@ -654,10 +317,12 @@ def _translate_pydantic_error(
 ) -> ValidationError:
     """Convert one ``pydantic.ValidationError.errors()`` entry.
 
-    Discriminated-union tag failures (``union_tag_invalid`` /
-    ``union_tag_not_found``) from callable discriminators are rewritten
-    in caller-facing terms via ``_rewrite_union_tag_message`` so ``Tag``
-    class names and private function names never reach callers.
+    Discriminated-union tag failures from the query models' callable
+    discriminators carry a ``custom_error_message`` (set on each
+    ``Discriminator``), so the caller-facing message is already clean —
+    no ``Tag`` class names or private function names to scrub here. The
+    ``Tag`` class names pydantic inserts into ``loc`` are stripped by
+    ``_loc_to_jsonpath``.
 
     Args:
         err: A single error dict from Pydantic's ``.errors()`` output
@@ -671,8 +336,6 @@ def _translate_pydantic_error(
     loc: tuple[Any, ...] = tuple(err.get("loc", ()))
     err_type: str = str(err.get("type", "validation_error"))
     msg: str = str(err.get("msg", "Validation failed"))
-    if err_type in ("union_tag_invalid", "union_tag_not_found"):
-        msg = _rewrite_union_tag_message(err, msg)
 
     path = _loc_to_jsonpath(loc, path_prefix)
     code = code_mapper(err_type, loc)
@@ -686,8 +349,9 @@ def _translate_pydantic_error(
 
 # Tag names from `Discriminator(...) + Tag(...)` annotations that Pydantic
 # inserts into `loc` for discriminated-union failures. These are model
-# class names — they aren't part of the user-facing JSONPath and would
-# leak as `sorting.line.FlatLabelSortConfig.sortOrder` if not filtered.
+# class names (and the "str"/"FlowStepList" primitive/list arm tags) —
+# they aren't part of the user-facing JSONPath and would leak as
+# `sorting.line.FlatLabelSortConfig.sortOrder` if not filtered.
 _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
     {
         # FlatSortConfig (colSortAttrs[i])
@@ -701,8 +365,8 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         # ShowClause
         "FormulaShowClause",
         "BehaviorShowClause",
-        # Query-model union members (query_models.py smart unions insert
-        # the attempted arm's label into loc when every arm fails)
+        # Query-model union members (query_models.py callable-Discriminator
+        # unions put the selected arm's Tag name into loc)
         "Metric",
         "CohortMetric",
         "Formula",
@@ -716,6 +380,9 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "HoldingConstant",
         "RetentionEvent",
         "FlowStep",
+        # The list arm of the flow ``event`` union
+        # (``str | FlowStep | list[str | FlowStep]``)
+        "FlowStepList",
         "TimeComparison",
         # PropertySpec union members (``property: str | CustomPropertyRef |
         # InlineCustomProperty`` on Filter / GroupBy / Metric)
@@ -747,111 +414,6 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "NoneType",
     }
 )
-
-
-_CALLABLE_DISCRIMINATOR_REWRITES: dict[str, tuple[str, tuple[str, ...]] | None] = {
-    # The declarative cohort-node union (types.py ``_CohortNode``): the
-    # discriminator returns unknown kinds / ``None`` verbatim, so
-    # ``union_tag_invalid`` / ``union_tag_not_found`` CAN fire and must
-    # be rewritten in terms of the caller-facing ``kind`` values —
-    # derived from the owning map so a new cohort node kind propagates
-    # here automatically.
-    "_cohort_node_discriminator": (
-        "kind",
-        tuple(_COHORT_NODE_TAGS_BY_KIND),
-    ),
-    # Total discriminators — they return a tag for EVERY input, so
-    # pydantic can never emit a tag failure for them. Registered with
-    # ``None`` to satisfy the structural guard
-    # (``test_every_callable_discriminator_has_rewrite_entry``) and to
-    # document the totality invariant.
-    "_cohort_metric_cohort_discriminator": None,
-    "_flat_sort_discriminator": None,
-    "_sort_config_discriminator": None,
-    "_flat_or_column_sort_discriminator": None,
-    "_table_sort_discriminator": None,
-    "_show_clause_discriminator": None,
-}
-"""Caller-facing rewrites for callable-``Discriminator`` tag failures.
-
-Pydantic's default ``union_tag_invalid`` / ``union_tag_not_found``
-messages embed the discriminator callable's name (a private function)
-and the ``Tag(...)`` names (internal class names) — e.g. ``"Input tag
-'bogus' found using _cohort_node_discriminator() does not match any of
-the expected tags: 'PropertyCriterion', ..."``. Both violate the
-invariant that internal names never reach caller-facing error paths,
-and the class-name "expected tags" actively misdirect self-correcting
-agents (``kind="BehavioralCriterion"`` then fails the ``Literal``).
-
-Each entry maps a discriminator function's ``__name__`` to the
-caller-facing ``(field_name, valid_values)`` pair used to rebuild the
-message, or to ``None`` for discriminators that are total (return a tag
-for every input) and therefore can never produce these errors.
-"""
-
-
-def _rewrite_union_tag_message(err: dict[str, Any], msg: str) -> str:
-    """Rewrite a discriminated-union tag failure in caller-facing terms.
-
-    Declarative discriminators (``Field(discriminator="type")``) produce
-    messages built from the real field name and real tag values — those
-    pass through untouched. Callable discriminators leak the private
-    function name and ``Tag`` class names; registered ones (see
-    ``_CALLABLE_DISCRIMINATOR_REWRITES``) are rebuilt around the
-    caller-facing field and values, and unregistered ones (defensive —
-    the structural guard in ``test_query_models.py`` keeps the registry
-    complete for query-model unions) get the function-name clause
-    scrubbed.
-
-    Args:
-        err: A single error dict from Pydantic's ``.errors()`` output
-            (``type`` is ``union_tag_invalid`` or ``union_tag_not_found``;
-            ``ctx`` carries ``discriminator`` and, for invalid tags,
-            ``tag``).
-        msg: The original Pydantic message.
-
-    Returns:
-        The caller-facing message.
-
-    Example:
-        ```python
-        _rewrite_union_tag_message(
-            {
-                "type": "union_tag_invalid",
-                "ctx": {
-                    "discriminator": "_cohort_node_discriminator()",
-                    "tag": "bogus",
-                },
-            },
-            "Input tag 'bogus' found using _cohort_node_discriminator() ...",
-        )
-        # "kind must be one of 'property', 'behavioral', "
-        # "'cohort_reference', 'group' (got 'bogus')"
-        ```
-    """
-    ctx = err.get("ctx") or {}
-    discriminator = str(ctx.get("discriminator", ""))
-    if not discriminator.endswith("()"):
-        # Declarative discriminator: message already names the real
-        # field and real tag values.
-        return msg
-    entry = _CALLABLE_DISCRIMINATOR_REWRITES.get(discriminator[:-2])
-    if entry is not None:
-        field_name, values = entry
-        valid = ", ".join(f"'{value}'" for value in values)
-        if err.get("type") == "union_tag_invalid":
-            return f"{field_name} must be one of {valid} (got {ctx.get('tag')!r})"
-        return (
-            f"missing or unrecognized '{field_name}': each entry must be "
-            f"an object with '{field_name}' set to one of {valid}"
-        )
-    # Unregistered callable discriminator: at minimum, never leak the
-    # private function name.
-    return (
-        msg.replace(f" using discriminator {discriminator}", "")
-        .replace(f" found using {discriminator}", "")
-        .replace(f" using {discriminator}", "")
-    )
 
 
 def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:

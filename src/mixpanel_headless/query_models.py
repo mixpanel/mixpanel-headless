@@ -39,9 +39,11 @@ from typing import Annotated, Any
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     ModelWrapValidatorHandler,
     StrictInt,
+    Tag,
     ValidationError,
     model_validator,
 )
@@ -105,7 +107,205 @@ from mixpanel_headless.types import (
     _DateStrSchema,
     _PercentileValue,
     _PositiveStrictIntSchema,
+    _str_or,
+    _union_discriminator,
 )
+
+# =============================================================================
+# Discriminated item types for the query models' union-typed list fields
+#
+# Each ambiguous union (a ``str`` shorthand plus model arms, or several
+# model arms) is a callable-``Discriminator`` union: only the arm the value
+# structurally matches is validated, so a malformed entry yields one located
+# error instead of every sibling arm's shape noise, and an unroutable entry
+# gets the ``custom_error_message`` located at the item. See
+# ``types._union_discriminator`` / ``types._str_or`` for the routing rules.
+# =============================================================================
+
+_EventItem = Annotated[
+    Annotated[str, Tag("str")]
+    | Annotated[Metric, Tag("Metric")]
+    | Annotated[CohortMetric, Tag("CohortMetric")]
+    | Annotated[Formula, Tag("Formula")],
+    Discriminator(
+        _union_discriminator(
+            (
+                (Formula, "expression", "Formula"),
+                (CohortMetric, "cohort", "CohortMetric"),
+                (Metric, "event", "Metric"),
+            )
+        ),
+        custom_error_type="invalid_event_item",
+        custom_error_message=(
+            "each event must be an event-name string or an object with "
+            "'event' (a metric), 'cohort' (a cohort metric), or 'expression' "
+            "(a formula)"
+        ),
+    ),
+]
+"""One ``events`` entry: string · ``Metric`` · ``CohortMetric`` · ``Formula``."""
+
+_InsightsBreakdownItem = Annotated[
+    Annotated[str, Tag("str")]
+    | Annotated[GroupBy, Tag("GroupBy")]
+    | Annotated[CohortBreakdown, Tag("CohortBreakdown")]
+    | Annotated[FrequencyBreakdown, Tag("FrequencyBreakdown")],
+    Discriminator(
+        _union_discriminator(
+            (
+                (CohortBreakdown, "cohort", "CohortBreakdown"),
+                (FrequencyBreakdown, "event", "FrequencyBreakdown"),
+                (GroupBy, "property", "GroupBy"),
+            )
+        ),
+        custom_error_type="invalid_group_by_item",
+        custom_error_message=(
+            "each group_by must be a property-name string or an object with "
+            "'property' (a property breakdown), 'cohort' (a cohort breakdown), "
+            "or 'event' (a frequency breakdown)"
+        ),
+    ),
+]
+"""One insights ``group_by`` entry (adds the frequency-breakdown arm)."""
+
+_BreakdownItem = Annotated[
+    Annotated[str, Tag("str")]
+    | Annotated[GroupBy, Tag("GroupBy")]
+    | Annotated[CohortBreakdown, Tag("CohortBreakdown")],
+    Discriminator(
+        _union_discriminator(
+            (
+                (CohortBreakdown, "cohort", "CohortBreakdown"),
+                (GroupBy, "property", "GroupBy"),
+            )
+        ),
+        custom_error_type="invalid_group_by_item",
+        custom_error_message=(
+            "each group_by must be a property-name string or an object with "
+            "'property' (a property breakdown) or 'cohort' (a cohort breakdown)"
+        ),
+    ),
+]
+"""One funnel / retention ``group_by`` entry (no frequency arm)."""
+
+_WhereItem = Annotated[
+    Annotated[Filter, Tag("Filter")]
+    | Annotated[FrequencyFilter, Tag("FrequencyFilter")],
+    Discriminator(
+        _union_discriminator(
+            (
+                (FrequencyFilter, "event", "FrequencyFilter"),
+                (Filter, "property", "Filter"),
+            ),
+            allow_str=False,
+        ),
+        custom_error_type="invalid_where_item",
+        custom_error_message=(
+            "each where entry must be an object with 'property' (a property "
+            "filter) or 'event' (a frequency filter)"
+        ),
+    ),
+]
+"""One insights ``where`` entry: ``Filter`` · ``FrequencyFilter`` (no string arm)."""
+
+_StepItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[FunnelStep, Tag("FunnelStep")],
+    Discriminator(
+        _str_or("FunnelStep"),
+        custom_error_type="invalid_funnel_step",
+        custom_error_message="each step must be an event-name string or a FunnelStep object",
+    ),
+]
+"""One funnel ``steps`` entry: string · ``FunnelStep``."""
+
+_ExclusionItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[Exclusion, Tag("Exclusion")],
+    Discriminator(
+        _str_or("Exclusion"),
+        custom_error_type="invalid_exclusion",
+        custom_error_message="each exclusion must be an event-name string or an Exclusion object",
+    ),
+]
+"""One funnel ``exclusions`` entry: string · ``Exclusion``."""
+
+_HoldingConstantItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[HoldingConstant, Tag("HoldingConstant")],
+    Discriminator(
+        _str_or("HoldingConstant"),
+        custom_error_type="invalid_holding_constant",
+        custom_error_message=(
+            "each holding_constant must be a property-name string or a "
+            "HoldingConstant object"
+        ),
+    ),
+]
+"""One funnel ``holding_constant`` entry: string · ``HoldingConstant``."""
+
+_RetentionEventItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[RetentionEvent, Tag("RetentionEvent")],
+    Discriminator(
+        _str_or("RetentionEvent"),
+        custom_error_type="invalid_retention_event",
+        custom_error_message="must be an event-name string or a RetentionEvent object",
+    ),
+]
+"""A retention ``born_event`` / ``return_event``: string · ``RetentionEvent``."""
+
+_SegmentItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[GroupBy, Tag("GroupBy")],
+    Discriminator(
+        _str_or("GroupBy"),
+        custom_error_type="invalid_segment",
+        custom_error_message="each segment must be a property-name string or a GroupBy object",
+    ),
+]
+"""One flow ``segments`` entry: string · ``GroupBy``."""
+
+
+def _flow_event_discriminator(v: Any) -> str:
+    """Route a flow ``event`` value: string, single step, or list of steps.
+
+    Total (never returns ``None``): strings route to ``"str"``, lists /
+    tuples to the list arm, and any other value to the single-``FlowStep``
+    arm so a malformed dict reports that model's field errors.
+
+    Args:
+        v: The candidate value (str, FlowStep, dict, or list).
+
+    Returns:
+        ``"str"``, ``"FlowStepList"``, or ``"FlowStep"``.
+    """
+    if isinstance(v, str):
+        return "str"
+    if isinstance(v, (list, tuple)):
+        return "FlowStepList"
+    return "FlowStep"
+
+
+_FlowStepItem = Annotated[
+    Annotated[str, Tag("str")] | Annotated[FlowStep, Tag("FlowStep")],
+    Discriminator(
+        _str_or("FlowStep"),
+        custom_error_type="invalid_flow_step",
+        custom_error_message="each flow step must be an event-name string or a FlowStep object",
+    ),
+]
+"""One item inside a flow ``event`` list: string · ``FlowStep``."""
+
+_FlowEvent = Annotated[
+    Annotated[str, Tag("str")]
+    | Annotated[FlowStep, Tag("FlowStep")]
+    | Annotated[list[_FlowStepItem], Tag("FlowStepList")],
+    Discriminator(
+        _flow_event_discriminator,
+        custom_error_type="invalid_flow_event",
+        custom_error_message=(
+            "event must be an event-name string, a FlowStep object, or a list "
+            "of event-name strings / FlowStep objects"
+        ),
+    ),
+]
+"""The flow ``event`` field: string · ``FlowStep`` · list of either."""
 
 
 class _BaseQuery(BaseModel):
@@ -262,7 +462,7 @@ class InsightsQuery(_TimeComparableQuery):
         ```
     """
 
-    events: list[str | Metric | CohortMetric | Formula] = Field(
+    events: list[_EventItem] = Field(
         ...,
         min_length=1,
         description="Events to query. Each is an event name string, Metric, CohortMetric, or Formula.",
@@ -287,11 +487,11 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Custom percentile value (e.g. 95). Used when math='percentile'.",
     )
-    group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown] | None = Field(
+    group_by: list[_InsightsBreakdownItem] | None = Field(
         None,
         description="Break down results by property values, cohort, or event frequency.",
     )
-    where: list[Filter | FrequencyFilter] | None = Field(
+    where: list[_WhereItem] | None = Field(
         None,
         description="Filter results by property conditions.",
     )
@@ -375,7 +575,7 @@ class FunnelQuery(_TimeComparableQuery):
     # step-count cap; runtime enforcement stays in
     # ``validate_funnel_args`` so callers keep the ``F1_MAX_STEPS``
     # message.
-    steps: list[str | FunnelStep] = Field(
+    steps: list[_StepItem] = Field(
         ...,
         min_length=2,
         json_schema_extra={"maxItems": _MAX_FUNNEL_STEPS},
@@ -410,7 +610,7 @@ class FunnelQuery(_TimeComparableQuery):
         None,
         description="Numeric property for property-aggregation math types.",
     )
-    group_by: list[str | GroupBy | CohortBreakdown] | None = Field(
+    group_by: list[_BreakdownItem] | None = Field(
         None,
         description="Break down results by property or cohort membership.",
     )
@@ -418,7 +618,7 @@ class FunnelQuery(_TimeComparableQuery):
         None,
         description="Filter results by property conditions.",
     )
-    exclusions: list[str | Exclusion] | None = Field(
+    exclusions: list[_ExclusionItem] | None = Field(
         None,
         description="Events to exclude between steps.",
     )
@@ -427,7 +627,7 @@ class FunnelQuery(_TimeComparableQuery):
     # keep the ``F8_MAX_HOLDING_CONSTANT`` message.
     holding_constant: (
         Annotated[
-            list[str | HoldingConstant],
+            list[_HoldingConstantItem],
             Field(json_schema_extra={"maxItems": _MAX_HOLDING_CONSTANT}),
         ]
         | None
@@ -479,11 +679,11 @@ class RetentionQuery(_TimeComparableQuery):
         ```
     """
 
-    born_event: str | RetentionEvent = Field(
+    born_event: _RetentionEventItem = Field(
         ...,
         description="Event that defines cohort membership.",
     )
-    return_event: str | RetentionEvent = Field(
+    return_event: _RetentionEventItem = Field(
         ...,
         description="Event that defines return.",
     )
@@ -520,7 +720,7 @@ class RetentionQuery(_TimeComparableQuery):
         "retention_rate",
         description="Retention aggregation function.",
     )
-    group_by: list[str | GroupBy | CohortBreakdown] | None = Field(
+    group_by: list[_BreakdownItem] | None = Field(
         None,
         description="Break down results by property or cohort membership.",
     )
@@ -573,7 +773,7 @@ class FlowQuery(_BaseQuery):
         ```
     """
 
-    event: str | FlowStep | list[str | FlowStep] = Field(
+    event: _FlowEvent = Field(
         ...,
         description="Event specification: a name, FlowStep, or list of names/FlowSteps.",
     )
@@ -643,7 +843,7 @@ class FlowQuery(_BaseQuery):
         None,
         description="Filter results by property conditions.",
     )
-    segments: list[str | GroupBy] | None = Field(
+    segments: list[_SegmentItem] | None = Field(
         None,
         description=(
             "Segment (breakdown) specification for flow results. "

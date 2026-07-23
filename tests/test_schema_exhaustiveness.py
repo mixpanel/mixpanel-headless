@@ -177,13 +177,15 @@ class TestNoOpaqueHoles:
         the declarative bridge must keep such holes out of the output.
         """
         schema = model_cls.model_json_schema()
-        # anyOf arms that are literally {} are the tell-tale is_instance holes.
+        # anyOf / oneOf arms that are literally {} are the tell-tale
+        # is_instance holes (converted unions render as oneOf).
         offenders = [
-            path
+            (path, keyword)
             for path, node in _walk(schema)
-            if "anyOf" in node and any(arm == {} for arm in node["anyOf"])
+            for keyword in ("anyOf", "oneOf")
+            if keyword in node and any(arm == {} for arm in node[keyword])
         ]
-        assert not offenders, f"{model_cls.__name__}: empty anyOf arm at {offenders}"
+        assert not offenders, f"{model_cls.__name__}: empty union arm at {offenders}"
 
 
 # =============================================================================

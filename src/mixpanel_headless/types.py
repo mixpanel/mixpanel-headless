@@ -6850,11 +6850,163 @@ class CustomPropertyRef:
     """
 
 
-PropertySpec = str | CustomPropertyRef | InlineCustomProperty
+def _union_discriminator(
+    specs: tuple[tuple[type, str, str], ...],
+    *,
+    allow_str: bool = True,
+) -> Callable[[Any], str | None]:
+    """Build a callable ``Discriminator`` that routes a union value by structure.
+
+    The returned callable inspects one union value and returns the
+    ``Tag`` name of the arm it belongs to, for use with
+    ``Annotated[<union>, Discriminator(...)]``. It handles all three
+    input forms pydantic passes a discriminator:
+
+    - a ``str`` (the shorthand arm) routes to ``"str"`` when
+      ``allow_str`` is set;
+    - a ``dict`` (the JSON / LLM path) routes to the first arm whose
+      distinguishing key is present;
+    - a model instance (pydantic runs the discriminator on the
+      serialization path too, where the value is already a model)
+      routes by ``isinstance``.
+
+    When nothing matches it returns ``None`` — the owning
+    ``Discriminator``'s ``custom_error_message`` then produces a single,
+    clean, located error instead of the sibling-arm noise an untagged
+    smart union would emit.
+
+    Args:
+        specs: Ordered ``(model_class, distinguishing_key, tag)`` triples.
+            Dict inputs are matched against ``distinguishing_key`` in this
+            order; model instances are matched against ``model_class``.
+        allow_str: Whether a bare ``str`` input routes to the ``"str"``
+            arm. Set ``False`` for unions with no string shorthand.
+
+    Returns:
+        A discriminator callable returning the selected arm's ``Tag``
+        name, or ``None`` when the value matches no arm.
+
+    Example:
+        ```python
+        disc = _union_discriminator(
+            ((Formula, "expression", "Formula"), (Metric, "event", "Metric"))
+        )
+        disc("Login")                 # "str"
+        disc({"event": "Login"})      # "Metric"
+        disc({"nope": 1})             # None -> custom_error_message fires
+        ```
+    """
+
+    def _discriminate(v: Any) -> str | None:
+        """Route one union value to its ``Tag`` name (see factory docstring).
+
+        Args:
+            v: The candidate union value (str, dict, or model instance).
+
+        Returns:
+            The selected arm's ``Tag`` name, or ``None`` when unroutable.
+        """
+        if allow_str and isinstance(v, str):
+            return "str"
+        if isinstance(v, dict):
+            for _model, key, tag in specs:
+                if key in v:
+                    return tag
+            return None
+        for model, _key, tag in specs:
+            if isinstance(v, model):
+                return tag
+        return None
+
+    return _discriminate
+
+
+def _str_or(tag: str) -> Callable[[Any], str]:
+    """Build a discriminator for a ``str | <single model>`` union.
+
+    Non-string values route to the model arm so a malformed dict reports
+    that arm's own field errors (e.g. ``steps[0].bogus``) instead of a
+    spurious ``"Input should be a valid string"`` from the string arm.
+    The callable is total — it always returns a tag — so the owning
+    ``Discriminator``'s ``custom_error_message`` never fires.
+
+    Args:
+        tag: The ``Tag`` name of the model arm.
+
+    Returns:
+        A discriminator callable returning ``"str"`` for string inputs
+        and ``tag`` for everything else.
+
+    Example:
+        ```python
+        disc = _str_or("FunnelStep")
+        disc("Signup")            # "str"
+        disc({"event": "Signup"}) # "FunnelStep"
+        ```
+    """
+
+    def _discriminate(v: Any) -> str:
+        """Route to ``"str"`` for strings and ``tag`` otherwise.
+
+        Args:
+            v: The candidate union value.
+
+        Returns:
+            ``"str"`` when ``v`` is a string, else ``tag``.
+        """
+        return "str" if isinstance(v, str) else tag
+
+    return _discriminate
+
+
+_property_spec_discriminator = _union_discriminator(
+    (
+        (CustomPropertyRef, "id", "CustomPropertyRef"),
+        (InlineCustomProperty, "formula", "InlineCustomProperty"),
+    )
+)
+"""Route a property spec: ``id`` -> ref, ``formula`` -> inline, str -> ``"str"``."""
+
+_PROPERTY_SPEC_ERROR_MESSAGE = (
+    "property must be a property-name string or an object with 'id' "
+    "(a saved custom-property reference) or 'formula' (an inline custom property)"
+)
+"""Caller-facing message for an unroutable property spec (no class names)."""
+
+PropertySpec = Annotated[
+    Annotated[str, Tag("str")]
+    | Annotated[CustomPropertyRef, Tag("CustomPropertyRef")]
+    | Annotated[InlineCustomProperty, Tag("InlineCustomProperty")],
+    Discriminator(
+        _property_spec_discriminator,
+        custom_error_type="invalid_property_spec",
+        custom_error_message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    ),
+]
 """Union type for property specifications in query parameters.
 
 Accepted wherever a property can be specified: ``Metric.property``,
-``GroupBy.property``, and ``Filter`` class method ``property`` parameters.
+``GroupBy.property`` (via ``_PropertySpecNonEmpty``), and ``Filter``
+class method ``property`` parameters. Discriminated by structure so a
+malformed property dict yields one located error rather than every
+arm's shape noise.
+"""
+
+_PropertySpecNonEmpty = Annotated[
+    Annotated[_NonEmptyStrSchema, Tag("str")]
+    | Annotated[CustomPropertyRef, Tag("CustomPropertyRef")]
+    | Annotated[InlineCustomProperty, Tag("InlineCustomProperty")],
+    Discriminator(
+        _property_spec_discriminator,
+        custom_error_type="invalid_property_spec",
+        custom_error_message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    ),
+]
+"""``PropertySpec`` whose string arm carries ``minLength: 1``.
+
+Used by ``GroupBy.property`` so the breakdown property keeps its
+schema-visible non-empty bound; shares one discriminator with
+``PropertySpec``.
 """
 
 
@@ -7102,7 +7254,7 @@ class Metric:
     math: MathType = "total"
     """Aggregation function."""
 
-    property: str | CustomPropertyRef | InlineCustomProperty | None = None
+    property: PropertySpec | None = None
     """Property for property-based math types (name, ref, or inline)."""
 
     per_user: PerUserAggregation | None = None
@@ -7242,7 +7394,7 @@ class Filter:
         ```
     """
 
-    _property: str | CustomPropertyRef | InlineCustomProperty = Field(
+    _property: PropertySpec = Field(
         validation_alias="property",
     )
     """Property to filter on (name, ref, or inline)."""
@@ -8769,7 +8921,7 @@ class GroupBy:
         ```
     """
 
-    property: _NonEmptyStrSchema | CustomPropertyRef | InlineCustomProperty
+    property: _PropertySpecNonEmpty
     """Property to break down by (name, ref, or inline).
 
     The string arm's ``minLength`` keyword mirrors the runtime
@@ -10044,7 +10196,7 @@ _COHORT_NODE_TAGS_BY_KIND: dict[str, str] = {
 def _cohort_node_discriminator(v: Any) -> str | None:
     """Discriminator callable for the declarative cohort-node union.
 
-    Routes by the ``kind`` field when present. Using a callable +
+    Routes by the ``kind`` field ONLY. Using a callable +
     ``Tag(<ClassName>)`` (rather than the declarative
     ``Field(discriminator="kind")``) means error ``loc`` carries the Tag
     name — a class name registered in ``_DISCRIMINATOR_TAGS`` and
@@ -10053,56 +10205,46 @@ def _cohort_node_discriminator(v: Any) -> str | None:
     ``"property"`` is also a real field name everywhere, so stripping it
     would destroy paths like ``where[0].property``.
 
-    When ``kind`` is absent, falls back to unambiguous structural
-    inference over each arm's required fields (``property`` + ``value``
-    -> property, ``event`` -> behavioral, ``cohort_id`` ->
-    cohort_reference, ``criteria`` -> group). Every criterion arm
-    renders ``kind`` as a defaulted (non-required) field in
-    ``model_json_schema()``, and schema-driven consumers omit defaulted
-    fields — so a kind-less dict that the advertised schema accepts must
-    also validate at runtime (finding
-    ``cohort-kind-optional-in-schema-required-at-runtime``). An explicit
-    ``kind`` always wins over structure; a dict with no distinguishing
-    key stays unroutable and keeps the curated missing-kind message.
+    A missing, non-string, or non-dict input returns ``None``, so the
+    owning ``Discriminator``'s ``custom_error_message`` surfaces the
+    caller-facing "kind must be one of ..." message. The ``kind`` field
+    keeps a default on each criterion model for ergonomic Python
+    construction (``PropertyCriterion(property=..., value=...)``); the
+    discriminator reads the raw dict's ``kind`` before any default
+    applies, so a kind-less dict at the union still errors cleanly.
 
     Args:
         v: The candidate value (dict during validation, criterion model
             instance during Python-side validation/serialization).
 
     Returns:
-        The ``Tag`` name of the selected variant (via explicit ``kind``
-        or structural inference); the raw ``kind`` string when an
-        explicit kind matches no variant (pydantic reports
-        ``union_tag_invalid``); or ``None`` when no ``kind`` is present
-        and no arm can be inferred (pydantic reports
-        ``union_tag_not_found``).
+        The ``Tag`` name for an explicit valid ``kind``; the raw ``kind``
+        string when an explicit kind matches no variant (pydantic
+        reports the ``custom_error_message`` via ``union_tag_invalid``);
+        or ``None`` when ``kind`` is missing / non-string / the input is
+        not a dict (``custom_error_message`` via ``union_tag_not_found``).
     """
     kind = v.get("kind") if isinstance(v, dict) else getattr(v, "kind", None)
     if isinstance(kind, str):
         return _COHORT_NODE_TAGS_BY_KIND.get(kind, kind)
-    if kind is not None or not isinstance(v, dict):
-        # A present-but-non-string kind is an explicit (broken) tag, not
-        # an omission — never route it structurally. Non-dict inputs
-        # carry no fields to infer from.
-        return None
-    # kind omitted: infer the arm from its schema-required fields.
-    if "property" in v and "value" in v:
-        return "PropertyCriterion"
-    if "event" in v:
-        return "BehavioralCriterion"
-    if "cohort_id" in v:
-        return "CohortReferenceCriterion"
-    if "criteria" in v:
-        return "InlineCohort"
     return None
 
+
+_COHORT_NODE_ERROR_MESSAGE = "kind must be one of " + ", ".join(
+    repr(kind) for kind in _COHORT_NODE_TAGS_BY_KIND
+)
+"""Caller-facing message for an unroutable cohort node (no class names)."""
 
 _CohortNode = Annotated[
     Annotated["PropertyCriterion", Tag("PropertyCriterion")]
     | Annotated["BehavioralCriterion", Tag("BehavioralCriterion")]
     | Annotated["CohortReferenceCriterion", Tag("CohortReferenceCriterion")]
     | Annotated["InlineCohort", Tag("InlineCohort")],
-    Discriminator(_cohort_node_discriminator),
+    Discriminator(
+        _cohort_node_discriminator,
+        custom_error_type="invalid_cohort_node",
+        custom_error_message=_COHORT_NODE_ERROR_MESSAGE,
+    ),
 ]
 """Discriminated union of every declarative cohort node, routed by ``kind``."""
 
@@ -10195,6 +10337,26 @@ class InlineCohort(BaseModel):
 InlineCohort.model_rebuild()
 
 
+def _cohort_int_or_definition_discriminator(v: Any) -> str:
+    """Route an ``int | CohortDefinition`` cohort field by structure.
+
+    Shared by ``CohortBreakdown.cohort`` and ``CohortMetric.cohort``.
+    Structured inputs (dict, ``CohortDefinition``, ``InlineCohort``) go
+    to the definition arm; everything else to the saved-cohort-ID arm.
+    Total, so a non-dict wrong-type value is judged only by the integer
+    arm — matching each field's advertised schema.
+
+    Args:
+        v: The candidate value (scalar, dict, or builder instance).
+
+    Returns:
+        ``"CohortDefinition"`` for structured inputs, else ``"int"``.
+    """
+    if isinstance(v, (dict, CohortDefinition, InlineCohort)):
+        return "CohortDefinition"
+    return "int"
+
+
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortBreakdown:
     """Break down query results by cohort membership.
@@ -10233,14 +10395,19 @@ class CohortBreakdown:
         ```
     """
 
-    cohort: _PositiveStrictIntSchema | CohortDefinition
+    cohort: Annotated[
+        Annotated[_PositiveStrictIntSchema, Tag("int")]
+        | Annotated[CohortDefinition, Tag("CohortDefinition")],
+        Discriminator(_cohort_int_or_definition_discriminator),
+    ]
     """Saved cohort ID or inline definition.
 
-    The ID arm is a strict integer — bool/str inputs are rejected
-    instead of being coerced into a (different) saved-cohort ID. The
-    ``exclusiveMinimum`` keyword mirrors the runtime positive-ID rule
-    (``_validate_cohort_args``) into the JSON schema; enforcement stays
-    in ``__post_init__`` so callers keep its message.
+    Discriminated like ``CohortMetric.cohort``, but the definition arm is
+    advertised in the schema (no ``SkipJsonSchema``) because inline
+    cohorts are accepted here. The ID arm is a strict integer — bool/str
+    inputs are rejected instead of coerced into a different saved-cohort
+    ID — and its ``exclusiveMinimum`` mirrors the runtime positive-ID
+    rule (enforced in ``__post_init__``).
     """
 
     name: str | None = None
@@ -10257,38 +10424,6 @@ class CohortBreakdown:
                 is empty when provided.
         """
         _validate_cohort_args(self.cohort, self.name)
-
-
-def _cohort_metric_cohort_discriminator(v: Any) -> str:
-    """Discriminator callable for ``CohortMetric.cohort``.
-
-    Routes structured inputs (dicts, ``CohortDefinition`` builder
-    instances, ``InlineCohort`` models) to the runtime-only definition
-    arm and everything else to the saved-cohort-ID arm. Total — it
-    returns a tag for every input, so pydantic can never emit a
-    ``union_tag_*`` error for this union (registered as such in
-    ``bookmark_schema._CALLABLE_DISCRIMINATOR_REWRITES``).
-
-    Routing through a discriminated union (instead of a smart union)
-    means a non-dict input is judged ONLY by the integer arm — the
-    published schema for the field is integer-only, so surfacing the
-    hidden definition arm's ``"Input should be a valid dictionary or
-    instance of InlineCohort"`` would contradict the schema and leak an
-    internal class name (finding
-    ``cohort-metric-hidden-arm-error-contradicts-integer-only-schema``).
-
-    Args:
-        v: The candidate value (int/str/... scalar, dict during JSON
-            validation, or builder instance during Python validation).
-
-    Returns:
-        ``"CohortDefinition"`` for structured inputs, ``"int"`` otherwise
-        (both registered in ``bookmark_schema._DISCRIMINATOR_TAGS`` so
-        they never leak into caller-facing paths).
-    """
-    if isinstance(v, (dict, CohortDefinition, InlineCohort)):
-        return "CohortDefinition"
-    return "int"
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -10335,7 +10470,7 @@ class CohortMetric:
     cohort: Annotated[
         Annotated[_PositiveStrictIntSchema, Tag("int")]
         | Annotated[SkipJsonSchema[CohortDefinition], Tag("CohortDefinition")],
-        Discriminator(_cohort_metric_cohort_discriminator),
+        Discriminator(_cohort_int_or_definition_discriminator),
     ]
     """Saved cohort ID (the only shape the server accepts here).
 
@@ -10347,7 +10482,7 @@ class CohortMetric:
     the targeted server-returns-500 rejection from ``__post_init__``
     instead of a generic type error; it is hidden from the JSON schema
     because the server rejects inline definitions for cohort metrics.
-    The union is discriminated (``_cohort_metric_cohort_discriminator``)
+    The union is discriminated (``_cohort_int_or_definition_discriminator``)
     so non-structured wrong-type inputs surface ONLY the schema-
     consistent integer diagnosis — never the hidden arm's
     dictionary/``InlineCohort`` message.

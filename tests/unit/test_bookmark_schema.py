@@ -384,8 +384,8 @@ class TestPydanticAdapter:
         Regression for finding
         ``dataclass-type-error-unmapped-to-generic-code``: pydantic's
         ``dataclass_type`` is the exact dataclass-arm equivalent of
-        ``model_type`` (already mapped), and ``is_instance_of`` is the
-        surviving branch of ``_prune_instance_check_noise`` — both must
+        ``model_type`` (already mapped), and ``is_instance_of`` fires for
+        a Python caller who passed the wrong builder object — both must
         carry the stable wrong-type code instead of the generic
         ``VALIDATION_ERROR`` fallback.
         """
@@ -453,92 +453,6 @@ class TestPydanticAdapter:
             FlatLabelSortConfig, {"sortBy": "label", "sortOrder": "asc"}
         )
         assert errs == []
-
-
-class TestPruneInstanceCheckNoise:
-    """Direct tests for ``_prune_instance_check_noise`` branch behavior.
-
-    Regression coverage for finding
-    ``is-instance-of-error-unmapped-leaks-python-only-arm-message``:
-    ``is_instance_of`` union-arm errors (Python-runtime builder arms
-    deliberately excluded from the JSON schema, e.g. the
-    ``CohortDefinition`` arm of ``StrictInt | CohortDefinition``) are
-    dropped only when a sibling arm produced field-level errors for the
-    same union value — otherwise they are the actionable message for a
-    Python caller holding the wrong object and must survive.
-    """
-
-    _INSTANCE_ERR: dict[str, Any] = {
-        "type": "is_instance_of",
-        "loc": ("cohort", "json-or-python[...]", "is-instance[CohortDefinition]"),
-        "msg": "Input should be an instance of CohortDefinition",
-    }
-
-    def test_dropped_when_sibling_arm_has_field_level_error(self) -> None:
-        """A field-level sibling error in the same union drops the check."""
-        from mixpanel_headless._internal.bookmark_schema import (
-            _prune_instance_check_noise,
-        )
-
-        field_err = {
-            "type": "literal_error",
-            "loc": (
-                "cohort",
-                "json-or-python[...]",
-                "function-after[<lambda>(), InlineCohort]",
-                "operator",
-            ),
-            "msg": "Input should be 'and' or 'or'",
-        }
-        pruned = _prune_instance_check_noise([dict(self._INSTANCE_ERR), field_err])
-        assert pruned == [field_err]
-
-    def test_kept_when_siblings_are_arm_terminal_only(self) -> None:
-        """Arm-terminal siblings (no field beneath) keep the check error."""
-        from mixpanel_headless._internal.bookmark_schema import (
-            _prune_instance_check_noise,
-        )
-
-        arm_terminal = {
-            "type": "int_type",
-            "loc": ("cohort", "int"),
-            "msg": "Input should be a valid integer",
-        }
-        errors = [dict(self._INSTANCE_ERR), arm_terminal]
-        assert _prune_instance_check_noise(errors) == errors
-
-    def test_kept_when_not_union_scoped(self) -> None:
-        """An ``is_instance_of`` outside any union is never dropped."""
-        from mixpanel_headless._internal.bookmark_schema import (
-            _prune_instance_check_noise,
-        )
-
-        bare = {
-            "type": "is_instance_of",
-            "loc": ("cohort",),
-            "msg": "Input should be an instance of CohortDefinition",
-        }
-        field_err = {
-            "type": "missing",
-            "loc": ("cohort", "operator"),
-            "msg": "Field required",
-        }
-        errors = [bare, field_err]
-        assert _prune_instance_check_noise(errors) == errors
-
-    def test_kept_when_field_level_error_is_in_other_union_group(self) -> None:
-        """Field-level errors under a different union base don't drop it."""
-        from mixpanel_headless._internal.bookmark_schema import (
-            _prune_instance_check_noise,
-        )
-
-        other_group = {
-            "type": "missing",
-            "loc": ("where", 0, "Filter", "property"),
-            "msg": "Field required",
-        }
-        errors = [dict(self._INSTANCE_ERR), other_group]
-        assert _prune_instance_check_noise(errors) == errors
 
 
 class TestEnumParity:

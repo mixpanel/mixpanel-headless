@@ -2073,69 +2073,6 @@ class TestConstrainedArmPathTranslation:
         assert all("constrained" not in e.path for e in errors)
 
 
-class TestSameArmDistinctErrorsPreserved:
-    """Union-arm pruning keeps distinct errors from the winning arm.
-
-    Regression tests for finding
-    ``union-prune-drops-distinct-same-arm-errors``: ``Filter``'s
-    boolean-value rejection is a ``mode="before"`` validator that raises
-    ``value_error`` even when OTHER fields of the SAME ``Filter`` arm
-    carry real, independent errors. The prune must drop only errors
-    reported under a DIFFERENT union arm (sibling shape noise), never a
-    same-arm error on another field — otherwise a self-correcting agent
-    fixes the boolean, resubmits, and only then learns the operator was
-    also invalid.
-    """
-
-    def test_invalid_operator_and_bool_value_both_surface(self) -> None:
-        """A bad operator AND a boolean value on one Filter both surface."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "where": [{"property": "x", "operator": "bogus_op", "value": True}],
-                }
-            )
-        paths = {e.path for e in exc_info.value.errors}
-        assert "where[0].operator" in paths
-        assert "where[0].value" in paths
-        # Sibling FrequencyFilter-arm shape noise stays pruned.
-        assert "where[0].event" not in paths
-
-    def test_nested_list_item_filter_errors_both_surface(self) -> None:
-        """Distinct errors in two list_contains sub-filters both surface."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "where": [
-                        {
-                            "property": "items",
-                            "operator": "list_contains",
-                            "list_item_quantifier": "any",
-                            "list_item_filters": [
-                                {
-                                    "property": "sku",
-                                    "operator": "bogus_op",
-                                    "value": "X",
-                                },
-                                {
-                                    "property": "active",
-                                    "operator": "equals",
-                                    "value": True,
-                                },
-                            ],
-                        }
-                    ],
-                }
-            )
-        paths = {e.path for e in exc_info.value.errors}
-        assert "where[0].list_item_filters[0].operator" in paths
-        assert "where[0].list_item_filters[1].value" in paths
-        # Sibling FrequencyFilter-arm shape noise stays pruned.
-        assert "where[0].event" not in paths
-
-
 class TestFilterNoValueOperatorValueRejected:
     """No-value operators reject a supplied value instead of discarding it.
 
@@ -2265,67 +2202,6 @@ class TestMetricPercentileValueBounds:
         ).percentile_value == 99.9
 
 
-class TestSiblingArmNoisePrunedWithoutValueError:
-    """Sibling-arm shape noise is pruned when a field-level error wins.
-
-    Regression tests for finding
-    ``sibling-arm-shape-noise-survives-without-value-error``: the prune
-    only fired when the winning arm produced a ``value_error``. When the
-    distinguishing failure was a field-level pydantic error (literal,
-    bound violation) the full cross-arm blast survived — including
-    errors that contradict the schema, like ``events[0].event:
-    S3_UNKNOWN_FIELD`` (the CohortMetric arm complaining about the
-    *required* Metric field). An arm now also wins when it produced a
-    nested error strictly below its root or when every one of its
-    errors is a domain/constraint failure rather than shape noise.
-    """
-
-    def test_nested_filter_literal_error_prunes_sibling_arms(self) -> None:
-        """A deep literal error in the Metric arm suppresses other arms."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {
-                    "events": [
-                        {
-                            "event": "L",
-                            "filters": [
-                                {"property": "c", "operator": "bogus", "value": 1}
-                            ],
-                        }
-                    ]
-                }
-            )
-        errors = exc_info.value.errors
-        assert [e.path for e in errors] == ["events[0].filters[0].operator"]
-        assert errors[0].code == "B0_INVALID_LITERAL"
-
-    def test_bound_violation_prunes_sibling_arms(self) -> None:
-        """A bucket_size range error is not also called an unknown field."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "group_by": [{"event": "P", "bucket_size": 0}],
-                }
-            )
-        errors = exc_info.value.errors
-        assert [e.path for e in errors] == ["group_by[0].bucket_size"]
-        assert errors[0].code == "B0_OUT_OF_RANGE"
-
-    def test_ambiguous_shape_mismatch_keeps_all_arm_errors(self) -> None:
-        """Inputs matching no arm's shape keep the full error set."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {"events": ["Login"], "where": [{"event": "L"}]}
-            )
-        paths = {e.path for e in exc_info.value.errors}
-        # Both arms' missing-field errors survive: the caller's intent
-        # is genuinely ambiguous (FrequencyFilter lacks value, Filter
-        # lacks property/operator).
-        assert "where[0].value" in paths
-        assert "where[0].property" in paths
-
-
 class TestDataclassArmTypeErrorCode:
     """Dataclass-arm wrong-type errors carry the stable B0_WRONG_TYPE code.
 
@@ -2338,10 +2214,16 @@ class TestDataclassArmTypeErrorCode:
     ``VALIDATION_ERROR`` fallback on the other.
     """
 
-    def test_scalar_event_type_errors_all_carry_wrong_type(self) -> None:
-        """events=[3.14] yields B0_WRONG_TYPE for every arm's type error."""
+    def test_dataclass_arm_type_error_carries_wrong_type(self) -> None:
+        """A non-str routed to a dataclass arm yields B0_WRONG_TYPE.
+
+        In a ``str | FunnelStep`` union, a scalar like ``3.14`` routes to
+        the ``FunnelStep`` arm (see ``_str_or``); pydantic emits
+        ``dataclass_type``, which must map to the stable wrong-type code
+        rather than the generic ``VALIDATION_ERROR`` fallback.
+        """
         with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate({"events": [3.14]})
+            FunnelQuery.model_validate({"steps": ["Signup", 3.14]})
         errors = exc_info.value.errors
         assert errors, "expected at least one error"
         assert all(e.code == "B0_WRONG_TYPE" for e in errors), [
@@ -2351,9 +2233,9 @@ class TestDataclassArmTypeErrorCode:
     def test_dataclass_arm_message_present_with_stable_code(self) -> None:
         """The dataclass-arm message survives with the mapped code."""
         with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate({"events": [3.14]})
+            FunnelQuery.model_validate({"steps": ["Signup", 3.14]})
         dataclass_errors = [
-            e for e in exc_info.value.errors if "instance of Metric" in e.message
+            e for e in exc_info.value.errors if "instance of FunnelStep" in e.message
         ]
         assert dataclass_errors
         assert dataclass_errors[0].code == "B0_WRONG_TYPE"
@@ -2369,13 +2251,41 @@ class TestPropertySpecArmPathTranslation:
     InlineCustomProperty`` on ``Filter``, ``GroupBy``, and ``Metric``)
     were missing from ``_DISCRIMINATOR_TAGS``, so a malformed property
     dict surfaced raw class-name path segments like
-    ``where[0].property.CustomPropertyRef.id`` on all four query paths.
-    The labels must be stripped so paths collapse to the clean
-    ``where[0].property``-rooted JSONPath grammar.
+    ``where[0].property.CustomPropertyRef.id``. ``PropertySpec`` is now a
+    callable-``Discriminator`` union, so a malformed dict routes to a
+    single arm (clean ``where[0].property.id`` path) and an unroutable
+    one gets the located ``custom_error_message`` — no class name leaks
+    into the path or message either way.
     """
 
-    def test_bad_property_dict_in_where_yields_clean_paths(self) -> None:
-        """A bad property dict in a Filter yields property-rooted paths."""
+    def test_routed_property_dict_in_where_yields_clean_path(self) -> None:
+        """A malformed custom-property ref in a Filter reports a clean path.
+
+        ``{"id": "x"}`` routes to the ``CustomPropertyRef`` arm; the strict
+        int rejection must surface at ``where[0].property.id`` with no
+        ``CustomPropertyRef`` class name in the path.
+        """
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [{"property": {"id": "x"}, "operator": "is set"}],
+                }
+            )
+        paths = [e.path for e in exc_info.value.errors]
+        joined = " ".join(paths)
+        assert "CustomPropertyRef" not in joined
+        assert "InlineCustomProperty" not in joined
+        assert "where[0].property.id" in paths
+
+    def test_unroutable_property_dict_yields_custom_error_at_property(self) -> None:
+        """A property dict matching no arm gets the custom message at the field.
+
+        ``{"custom_property_id": True}`` has neither ``id`` nor ``formula``,
+        so the discriminator cannot place it: one located error at
+        ``where[0].property`` with the caller-facing message and no leaked
+        class names.
+        """
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 {
@@ -2388,13 +2298,10 @@ class TestPropertySpecArmPathTranslation:
                     ],
                 }
             )
-        paths = [e.path for e in exc_info.value.errors]
-        joined = " ".join(paths)
-        assert "CustomPropertyRef" not in joined
-        assert "InlineCustomProperty" not in joined
-        # The arm errors collapse onto the clean property-rooted paths.
-        assert "where[0].property.id" in paths
-        assert "where[0].property.formula" in paths
+        (err,) = [e for e in exc_info.value.errors if e.path == "where[0].property"]
+        assert "'id'" in err.message and "'formula'" in err.message, err.message
+        assert "CustomPropertyRef" not in err.message
+        assert "InlineCustomProperty" not in err.message
 
     def test_bad_property_dict_in_group_by_yields_clean_paths(self) -> None:
         """A bad property dict in a GroupBy yields property-rooted paths."""
@@ -2402,12 +2309,13 @@ class TestPropertySpecArmPathTranslation:
             InsightsQuery.model_validate(
                 {
                     "events": ["Login"],
-                    "group_by": [{"property": {"custom_property_id": True}}],
+                    "group_by": [{"property": {"id": "x"}}],
                 }
             )
         joined = " ".join(e.path for e in exc_info.value.errors)
         assert "CustomPropertyRef" not in joined
         assert "InlineCustomProperty" not in joined
+        assert "group_by[0].property.id" in [e.path for e in exc_info.value.errors]
 
 
 def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
@@ -2676,52 +2584,6 @@ class TestCohortCriteriaKindTagPathTranslation:
         assert isinstance(q.group_by[0], CohortBreakdown)
 
 
-class TestInstanceCheckArmNoise:
-    """Builder-instance arm messages never shadow actionable field errors.
-
-    Regression tests for finding
-    ``is-instance-of-error-unmapped-leaks-python-only-arm-message``: the
-    ``CohortDefinition`` arm of ``cohort: StrictInt | CohortDefinition``
-    validates with an ``isinstance`` check that is deliberately excluded
-    from the JSON schema (it exists for Python callers holding builder
-    objects). A malformed inline-cohort dict made pydantic surface
-    ``"Input should be an instance of CohortDefinition"`` to dict/LLM
-    callers alongside the actionable ``InlineCohort``-arm field errors.
-    The instance-check arm error is dropped whenever a sibling arm
-    produced field-level errors for the same union value.
-    """
-
-    def test_malformed_inline_cohort_drops_instance_check_message(self) -> None:
-        """The Python-only 'instance of CohortDefinition' message is dropped."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {"events": [{"cohort": {"operator": "bogus", "criteria": "nope"}}]}
-            )
-        errors = exc_info.value.errors
-        assert not any("instance of CohortDefinition" in e.message for e in errors), [
-            e.message for e in errors
-        ]
-        # The actionable InlineCohort-arm field errors survive.
-        paths = {e.path for e in errors}
-        assert "events[0].cohort.operator" in paths
-        assert "events[0].cohort.criteria" in paths
-
-    def test_cohort_breakdown_inline_cohort_drops_instance_check_message(self) -> None:
-        """Same suppression on the CohortBreakdown.cohort path."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "group_by": [{"cohort": {"operator": "bogus", "criteria": "nope"}}],
-                }
-            )
-        errors = exc_info.value.errors
-        assert not any("instance of CohortDefinition" in e.message for e in errors)
-        paths = {e.path for e in errors}
-        assert "group_by[0].cohort.operator" in paths
-        assert "group_by[0].cohort.criteria" in paths
-
-
 class TestSharedFieldSchema:
     """Shared fields survive the _BaseQuery hoist in every model's schema."""
 
@@ -2779,7 +2641,13 @@ class TestCohortNodeTagErrorMessages:
     """
 
     def test_bogus_kind_message_names_kind_values(self) -> None:
-        """An unknown kind lists the four valid kind values, not class names."""
+        """An unknown kind lists the four valid kind values, not class names.
+
+        The message is the ``Discriminator``'s ``custom_error_message`` —
+        a fixed "kind must be one of ..." string, so it names the valid
+        kinds (guiding a self-correcting agent) without echoing the bogus
+        input or leaking any internal name.
+        """
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 _cohort_criteria_payload(
@@ -2791,9 +2659,9 @@ class TestCohortNodeTagErrorMessages:
             for e in exc_info.value.errors
             if e.path == "group_by[0].cohort.criteria[0]"
         ]
+        assert "kind must be one of" in err.message, err.message
         for kind in ("'property'", "'behavioral'", "'cohort_reference'", "'group'"):
             assert kind in err.message, err.message
-        assert "'bogus'" in err.message
 
     @pytest.mark.parametrize(
         "criterion",
@@ -2827,13 +2695,12 @@ class TestCohortNodeTagErrorMessages:
                 assert cls_name not in e.message, e.message
 
     def test_missing_kind_message_names_kind_field(self) -> None:
-        """A truly unroutable criterion is told to add the 'kind' field.
+        """A kind-less criterion is told which kind values are valid.
 
-        A kind-less dict WITH a distinguishing key (``property``+``value``,
-        ``event``, ``cohort_id``, or ``criteria``) now routes structurally
-        (see ``TestCohortNodeKindlessSchemaRuntimeParity``); the curated
-        missing-kind message is reserved for dicts the discriminator
-        genuinely cannot place, like this bare ``negated`` flag.
+        Routing is by ``kind`` only, so any dict without a valid string
+        ``kind`` (here a bare ``negated`` flag) is unroutable and gets
+        the ``custom_error_message`` naming the ``kind`` field and its
+        four valid values.
         """
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(_cohort_criteria_payload({"negated": True}))
@@ -2842,41 +2709,45 @@ class TestCohortNodeTagErrorMessages:
             for e in exc_info.value.errors
             if e.path == "group_by[0].cohort.criteria[0]"
         ]
-        assert "'kind'" in err.message, err.message
+        assert "kind must be one of" in err.message, err.message
         for kind in ("'property'", "'behavioral'", "'cohort_reference'", "'group'"):
             assert kind in err.message, err.message
 
-    def test_every_callable_discriminator_has_rewrite_entry(self) -> None:
-        """Structural guard: reachable callable discriminators are registered.
+    def test_callable_discriminators_that_return_none_set_custom_error(self) -> None:
+        """Structural guard: routing discriminators carry a ``custom_error_message``.
 
-        Extends ``TestUnionArmLabelRegistry``'s structural coverage to the
-        MESSAGE side: any tagged union reachable from the four query
-        models that routes through a callable ``Discriminator`` can leak
-        the callable's private name (and its ``Tag`` class names) into
-        ``union_tag_invalid`` / ``union_tag_not_found`` messages. Every
-        such callable must therefore be registered in
-        ``_CALLABLE_DISCRIMINATOR_REWRITES`` — either with a caller-facing
-        rewrite or with ``None`` documenting that it is total (returns a
-        tag for every input, so those errors can never fire).
+        Replaces the deleted rewrite-registry guard on the MESSAGE side.
+        Any tagged union reachable from the four query models that routes
+        through a callable ``Discriminator`` which can return ``None``
+        (unroutable input) must set ``custom_error_message`` on that
+        ``Discriminator`` — otherwise pydantic's default
+        ``union_tag_not_found`` message leaks the callable's private name
+        and the ``Tag`` class names. Discriminators annotated to return a
+        bare ``str`` (the total ``_str_or`` / ``_flow_event`` family)
+        never emit those errors and are exempt.
         """
-        from mixpanel_headless._internal.bookmark_schema import (
-            _CALLABLE_DISCRIMINATOR_REWRITES,
-        )
+        import inspect
 
-        unregistered: set[str] = set()
+        offenders: set[str] = set()
         for model_cls in ALL_MODELS:
             for node in _iter_schema_nodes(model_cls.__pydantic_core_schema__):
                 if node.get("type") != "tagged-union":
                     continue
                 discriminator = node.get("discriminator")
-                if callable(discriminator):
-                    name = discriminator.__name__
-                    if name not in _CALLABLE_DISCRIMINATOR_REWRITES:
-                        unregistered.add(name)
-        assert unregistered == set(), (
-            f"Callable discriminators without a message-rewrite entry "
-            f"(their private names will leak into caller-facing messages): "
-            f"{sorted(unregistered)}"
+                if not callable(discriminator):
+                    continue
+                returns_none = "None" in str(
+                    inspect.signature(discriminator).return_annotation
+                )
+                custom = node.get("custom_error_message") or node.get(
+                    "custom_error_type"
+                )
+                if returns_none and not custom:
+                    offenders.add(discriminator.__name__)
+        assert offenders == set(), (
+            f"Callable discriminators that can return None without a "
+            f"custom_error_message (their private names will leak into "
+            f"caller-facing messages): {sorted(offenders)}"
         )
 
     def test_walker_finds_cohort_node_discriminator(self) -> None:
@@ -2893,159 +2764,6 @@ class TestCohortNodeTagErrorMessages:
             and callable(node.get("discriminator"))
         }
         assert "_cohort_node_discriminator" in names
-
-
-class TestCohortNodeKindlessSchemaRuntimeParity:
-    """Kind-less criterion payloads validate wherever the schema admits them.
-
-    Regression tests for finding
-    ``cohort-kind-optional-in-schema-required-at-runtime``: every
-    criterion arm renders ``kind`` as OPTIONAL (a defaulted ``const``,
-    absent from ``required``) in ``model_json_schema()``, but
-    ``_cohort_node_discriminator`` used to return ``None`` for any
-    kind-less dict — so the most natural schema-driven payload (defaults
-    omitted, as the MCP Run-Query consumer's LLM emits) was schema-valid
-    yet runtime-rejected. The discriminator now falls back to
-    unambiguous structural inference (``property``+``value`` ->
-    property, ``event`` -> behavioral, ``cohort_id`` ->
-    cohort_reference, ``criteria`` -> group). An explicit ``kind`` still
-    wins, an explicit bogus ``kind`` still fails with the named-field
-    message, and a dict with no distinguishing key keeps the curated
-    missing-kind message.
-    """
-
-    KINDLESS_CRITERIA: ClassVar[dict[str, dict[str, Any]]] = {
-        "property": {"property": "plan", "value": "premium"},
-        "behavioral": {"event": "Signup", "at_least": 1, "within_days": 30},
-        "cohort_reference": {"cohort_id": 5},
-        "group": {
-            "operator": "or",
-            "criteria": [{"kind": "cohort_reference", "cohort_id": 5}],
-        },
-    }
-    """One kind-less payload per criterion arm (nested group included)."""
-
-    @pytest.mark.parametrize("arm", sorted(KINDLESS_CRITERIA), ids=str)
-    def test_schema_and_runtime_agree_on_kindless_criterion(self, arm: str) -> None:
-        """Schema validation and model_validate BOTH accept each kind-less arm."""
-        payload = {
-            "events": ["Login"],
-            "group_by": [{"cohort": {"criteria": [self.KINDLESS_CRITERIA[arm]]}}],
-        }
-        schema_errors = list(
-            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
-        )
-        assert schema_errors == [], [e.message for e in schema_errors]
-        query = InsightsQuery.model_validate(payload)
-        assert isinstance(query, InsightsQuery)
-
-    @pytest.mark.parametrize(
-        ("criterion", "expected_type"),
-        [
-            ({"property": "plan", "value": "premium"}, PropertyCriterion),
-            (
-                {"event": "Signup", "at_least": 1, "within_days": 30},
-                BehavioralCriterion,
-            ),
-            ({"cohort_id": 5}, CohortReferenceCriterion),
-            (
-                {"criteria": [{"kind": "cohort_reference", "cohort_id": 5}]},
-                InlineCohort,
-            ),
-        ],
-        ids=["property", "behavioral", "cohort_reference", "group"],
-    )
-    def test_kindless_criterion_routes_to_correct_arm(
-        self, criterion: dict[str, Any], expected_type: type
-    ) -> None:
-        """Structural inference routes each kind-less dict to its real arm."""
-        cohort = InlineCohort.model_validate({"criteria": [criterion]})
-        assert isinstance(cohort.criteria[0], expected_type)
-
-    def test_kindless_equals_explicit_kind(self) -> None:
-        """Omitting ``kind`` yields the same model as spelling it out."""
-        kindless = InlineCohort.model_validate(
-            {"criteria": [{"event": "Buy", "at_least": 1, "within_days": 7}]}
-        )
-        explicit = InlineCohort.model_validate(
-            {
-                "criteria": [
-                    {
-                        "kind": "behavioral",
-                        "event": "Buy",
-                        "at_least": 1,
-                        "within_days": 7,
-                    }
-                ]
-            }
-        )
-        assert kindless == explicit
-
-    def test_deeply_nested_kindless_group_validates(self) -> None:
-        """Kind-less groups and leaves validate at every nesting depth."""
-        query = InsightsQuery.model_validate(
-            {
-                "events": ["Login"],
-                "group_by": [
-                    {
-                        "cohort": {
-                            "criteria": [
-                                {
-                                    "operator": "or",
-                                    "criteria": [
-                                        {"property": "plan", "value": "premium"},
-                                        {"cohort_id": 5},
-                                    ],
-                                }
-                            ]
-                        }
-                    }
-                ],
-            }
-        )
-        assert isinstance(query, InsightsQuery)
-
-    def test_explicit_kind_wins_over_structural_inference(self) -> None:
-        """An explicit ``kind`` routes the arm even when structure disagrees."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                _cohort_criteria_payload(
-                    {
-                        "kind": "property",
-                        "event": "Buy",
-                        "at_least": 1,
-                        "within_days": 7,
-                    }
-                )
-            )
-        paths = {e.path for e in exc_info.value.errors}
-        # Routed to PropertyCriterion (explicit kind), NOT BehavioralCriterion.
-        assert "group_by[0].cohort.criteria[0].property" in paths
-        assert "group_by[0].cohort.criteria[0].value" in paths
-
-    def test_explicit_bogus_kind_still_rejected_with_named_field(self) -> None:
-        """A bogus explicit ``kind`` still fails with the kind-naming message."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                _cohort_criteria_payload({"kind": "bogus", "cohort_id": 5})
-            )
-        (err,) = [
-            e
-            for e in exc_info.value.errors
-            if e.path == "group_by[0].cohort.criteria[0]"
-        ]
-        assert "'bogus'" in err.message, err.message
-        assert "kind" in err.message, err.message
-
-    def test_unroutable_dict_agrees_with_schema_rejection(self) -> None:
-        """A dict with no distinguishing key is rejected by BOTH layers."""
-        payload = _cohort_criteria_payload({"negated": True})
-        schema_errors = list(
-            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
-        )
-        assert schema_errors != []
-        with pytest.raises(BookmarkValidationError):
-            InsightsQuery.model_validate(payload)
 
 
 class TestCustomPropertyExtraKeySchemaRuntimeParity:
@@ -3189,79 +2907,46 @@ class TestCohortMetricHiddenArmErrorConsistency:
                 }
             )
 
-    def test_cohort_breakdown_keeps_inline_guidance(self) -> None:
-        """CohortBreakdown.cohort (whose schema advertises InlineCohort) keeps it.
+    def test_cohort_breakdown_inline_arm_is_reachable(self) -> None:
+        """CohortBreakdown.cohort routes a structured dict to the inline arm.
 
-        The asymmetry is deliberate: the breakdown schema DOES advertise
-        the ``InlineCohort`` ``$ref``, so naming that shape in its
-        wrong-type message is schema-consistent guidance there.
+        The breakdown schema advertises the ``InlineCohort`` ``$ref``, and
+        the shared discriminator routes a dict to that arm — so a malformed
+        inline cohort reports field-level errors under the cohort path
+        (proving the arm is reachable) with no ``InlineCohort`` class name
+        leaked into any message.
         """
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "operator": "bogus",
+                                "criteria": [
+                                    {"kind": "cohort_reference", "cohort_id": 7}
+                                ],
+                            }
+                        }
+                    ],
+                }
+            )
+        paths = {e.path for e in exc_info.value.errors}
+        assert "group_by[0].cohort.operator" in paths, paths
+        for e in exc_info.value.errors:
+            assert "InlineCohort" not in e.message, e.message
+
+    def test_cohort_breakdown_scalar_gets_integer_diagnosis(self) -> None:
+        """A non-structured value routes only to the integer arm (like CohortMetric)."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 {"events": ["Login"], "group_by": [{"cohort": "5"}]}
             )
-        messages = [e.message for e in exc_info.value.errors]
-        assert any("InlineCohort" in m for m in messages), messages
-
-
-class TestFrequencyFilterBoolValueArmRouting:
-    """A shape-valid FrequencyFilter with a bool value keeps its arm's errors.
-
-    Regression tests for finding
-    ``value-error-arm-win-misdirects-frequency-filter-callers``:
-    ``Filter._reject_bool_value``-style ``value_error``s fire even when
-    the input does not remotely match ``Filter``'s shape, so the Filter
-    arm won the union group for a payload the caller aimed at
-    ``FrequencyFilter`` — pruning the FrequencyFilter arm's own strict
-    int/float rejections and leaving errors that instruct the caller to
-    add ``property`` and delete ``event`` (contradicting the schema-valid
-    FrequencyFilter they wrote). A ``value_error`` no longer counts as an
-    arm win when the same arm also reported ``missing`` for required
-    fields — a mixed group means the input wasn't really that arm's shape.
-    """
-
-    _BOOL_VALUE_PAYLOAD: ClassVar[dict[str, Any]] = {
-        "events": ["L"],
-        "where": [{"event": "Login", "operator": "is at least", "value": True}],
-    }
-
-    def test_frequency_filter_value_rejections_survive(self) -> None:
-        """The FrequencyFilter arm's strict value rejections are not pruned."""
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(dict(self._BOOL_VALUE_PAYLOAD))
-        value_messages = [
-            e.message for e in exc_info.value.errors if e.path == "where[0].value"
+        cohort_errors = [
+            e for e in exc_info.value.errors if e.path == "group_by[0].cohort"
         ]
-        assert any("valid integer" in m for m in value_messages), value_messages
-        assert any("valid number" in m for m in value_messages), value_messages
-
-    def test_filter_arm_numeric_hint_also_survives(self) -> None:
-        """The Filter arm's numeric-value hint stays available too.
-
-        With no unambiguous winner the full error set survives (the
-        established ambiguous-shape behavior), so the caller sees every
-        arm's diagnosis instead of a single wrong arm's shape noise.
-        """
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(dict(self._BOOL_VALUE_PAYLOAD))
-        messages = [e.message for e in exc_info.value.errors]
-        assert any("requires a numeric value" in m for m in messages), messages
-
-    def test_clean_value_error_arm_still_wins(self) -> None:
-        """An arm whose only failure is a value_error still prunes siblings.
-
-        Guards the narrowing: the win rule must only be cancelled by
-        same-arm ``missing`` errors, not weakened in general — the
-        single-error behavior pinned by ``TestUnionArmErrorTranslation``
-        must keep holding.
-        """
-        with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {"events": ["L"], "where": [{"event": "Login", "value": -1}]}
-            )
-        errors = exc_info.value.errors
-        assert len(errors) == 1
-        assert "non-negative" in errors[0].message
+        assert any("valid integer" in e.message for e in cohort_errors), cohort_errors
 
 
 class TestPropertyCriterionNoValueOperatorValueRejected:
@@ -3326,52 +3011,186 @@ class TestPropertyCriterionNoValueOperatorValueRejected:
             )
 
 
-class TestInlineCohortIntegerArmNoisePruned:
-    """Nested inline-cohort errors drop the integer-arm noise at the root.
+class TestDiscriminatedUnionRouting:
+    """Callable-``Discriminator`` unions route to one arm across every field.
 
-    Regression tests for finding
-    ``inline-cohort-errors-keep-misleading-integer-arm-noise``: every
-    validation failure inside a structured inline cohort also surfaced
-    ``path='...cohort' msg='Input should be a valid integer'`` — the
-    saved-cohort-ID arm's wrong-type error — because the union prune
-    groups by the OUTERMOST arm label, so the inner ``int``-arm error
-    lived in the winning arm's group. For schema-driven agents that sent
-    the advertised ``InlineCohort`` shape, the parent-path integer
-    message is contradictory noise; it is now dropped whenever a sibling
-    error exists strictly below the same arm root.
+    Locks the discriminated-union behavior that replaced the hand-rolled
+    prune pipeline: a malformed entry yields ONE located error (only the
+    matched arm validates), an unroutable entry gets the union's
+    ``custom_error_message`` located at the item, string shorthands still
+    validate, and the discriminators route model instances on the
+    serialization path (``model_dump`` round-trips).
     """
 
-    def test_nested_criterion_errors_drop_integer_arm_noise(self) -> None:
-        """Precise nested errors survive; the int-arm root error does not."""
+    def test_malformed_event_dict_yields_single_located_error(self) -> None:
+        """A bad math on a Metric dict is one error at events[0].math."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
-                _cohort_criteria_payload(
-                    {"kind": "behavioral", "event": "", "at_least": -1}
-                )
+                {"events": [{"event": "Login", "math": "totl"}]}
             )
         errors = exc_info.value.errors
-        paths = {e.path for e in errors}
-        assert "group_by[0].cohort.criteria[0].event" in paths
-        assert "group_by[0].cohort.criteria[0].at_least" in paths
-        int_noise = [
-            e
-            for e in errors
-            if e.path == "group_by[0].cohort" and "valid integer" in e.message
-        ]
-        assert int_noise == [], [e.message for e in int_noise]
+        assert [e.path for e in errors] == ["events[0].math"], errors
 
-    def test_scalar_wrong_type_cohort_keeps_integer_diagnosis(self) -> None:
-        """A scalar wrong-type cohort value keeps the integer-arm message.
-
-        Guards the prune's scope: with no sibling error strictly below
-        the arm root, the integer diagnosis is real guidance (the caller
-        sent neither a saved-cohort ID nor a structured inline cohort).
-        """
+    @pytest.mark.parametrize(
+        ("payload", "path", "needle"),
+        [
+            ({"events": [123]}, "events[0]", "each event must be"),
+            (
+                {"events": ["L"], "where": [123]},
+                "where[0]",
+                "each where entry must be",
+            ),
+            (
+                {"events": ["L"], "group_by": [123]},
+                "group_by[0]",
+                "each group_by must be",
+            ),
+        ],
+        ids=["events", "where", "group_by"],
+    )
+    def test_unroutable_entry_gets_custom_message_at_item(
+        self, payload: dict[str, Any], path: str, needle: str
+    ) -> None:
+        """An unroutable list entry yields the custom message located at the item."""
         with pytest.raises(BookmarkValidationError) as exc_info:
-            InsightsQuery.model_validate(
-                {"events": ["Login"], "group_by": [{"cohort": "x"}]}
-            )
-        messages = [
-            e.message for e in exc_info.value.errors if e.path == "group_by[0].cohort"
+            InsightsQuery.model_validate(payload)
+        (err,) = [e for e in exc_info.value.errors if e.path == path]
+        assert needle in err.message, err.message
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda: InsightsQuery(events=["Login"], group_by=["plan"], where=None),
+            lambda: FunnelQuery(steps=["Signup", "Purchase"], group_by=["plan"]),
+            lambda: RetentionQuery(born_event="Signup", return_event="Login"),
+            lambda: FlowQuery(event=["Login", "Logout"], segments=["plan"]),
+        ],
+        ids=["insights", "funnel", "retention", "flow"],
+    )
+    def test_string_shorthands_still_validate(
+        self, build: Callable[[], BaseModel]
+    ) -> None:
+        """Bare-string shorthands construct on every model."""
+        assert isinstance(build(), BaseModel)
+
+    def test_flow_event_list_of_strings_validates(self) -> None:
+        """The flow ``event`` list-of-strings arm routes and validates."""
+        q = FlowQuery(event=["Login", "Purchase"])
+        assert q.event == ["Login", "Purchase"]
+
+    def test_serialization_routes_every_model_instance_arm(self) -> None:
+        """model_dump() routes a model instance through every discriminator arm.
+
+        The discriminators run on the serialization path too — pydantic
+        passes the model instance, not a dict. If any discriminator's
+        ``isinstance`` branch were missing, ``model_dump`` would raise a
+        serialization error. Includes ``Filter`` (whose dump uses private
+        field names, so it is excluded from the re-validate round-trip
+        below).
+        """
+        q = InsightsQuery(
+            events=[
+                Metric("Login", math="unique"),
+                CohortMetric(7, "Power"),
+                Formula("A / B", label="ratio"),
+            ],
+            group_by=[
+                GroupBy("plan"),
+                CohortBreakdown(7),
+                FrequencyBreakdown("Purchase"),
+            ],
+            where=[Filter.equals("country", "US"), FrequencyFilter("Login", value=3)],
+        )
+        dumped = q.model_dump()
+        assert len(dumped["events"]) == 3
+        assert len(dumped["group_by"]) == 3
+        assert len(dumped["where"]) == 2
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            InsightsQuery(
+                events=[
+                    Metric("Login", math="unique"),
+                    CohortMetric(7, "Power"),
+                    Formula("A / B", label="ratio"),
+                ],
+                group_by=[
+                    GroupBy("plan"),
+                    CohortBreakdown(7),
+                    FrequencyBreakdown("Purchase"),
+                ],
+                where=[FrequencyFilter("Login", value=3)],
+            ),
+            FunnelQuery(
+                steps=[FunnelStep("Signup"), FunnelStep("Purchase")],
+                group_by=[GroupBy("plan"), CohortBreakdown(7)],
+                exclusions=[Exclusion("Refund")],
+                holding_constant=[HoldingConstant("country")],
+            ),
+            RetentionQuery(
+                born_event=RetentionEvent("Signup"),
+                return_event=RetentionEvent("Login"),
+                group_by=[GroupBy("plan")],
+            ),
+            FlowQuery(
+                event=[FlowStep("Login"), "Purchase"], segments=[GroupBy("plan")]
+            ),
+        ],
+        ids=["insights", "funnel", "retention", "flow"],
+    )
+    def test_model_instance_dump_revalidate_round_trip(self, query: BaseModel) -> None:
+        """A model built from instances dumps and re-validates to an equal model.
+
+        Covers every discriminated arm whose serialized form re-routes on
+        validation (``where`` uses ``FrequencyFilter`` — ``Filter`` dumps
+        private field names and is covered by the dump-only test above,
+        matching ``TestRoundTrip``'s handling).
+        """
+        dumped = query.model_dump()
+        reparsed = type(query).model_validate(dumped)
+        assert reparsed == query
+
+
+class TestCohortNodeMissingOrBogusKind:
+    """Cohort criteria with a missing or bogus ``kind`` fail cleanly.
+
+    Routing is by ``kind`` only, so a criterion without a valid string
+    ``kind`` is unroutable and gets the ``custom_error_message`` — with no
+    discriminator function name or criterion class name leaked. Direct
+    Python construction (which supplies the ``kind`` default) keeps working.
+    """
+
+    @pytest.mark.parametrize(
+        "criterion",
+        [{"property": "plan", "value": "pro"}, {"kind": "bogus", "cohort_id": 7}],
+        ids=["missing-kind", "bogus-kind"],
+    )
+    def test_missing_or_bogus_kind_yields_clean_error(
+        self, criterion: dict[str, Any]
+    ) -> None:
+        """A kind-less or bogus-kind criterion fails with the kind message."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(_cohort_criteria_payload(criterion))
+        (err,) = [
+            e
+            for e in exc_info.value.errors
+            if e.path == "group_by[0].cohort.criteria[0]"
         ]
-        assert any("valid integer" in m for m in messages), messages
+        assert "kind must be one of" in err.message, err.message
+        assert "_cohort_node_discriminator" not in err.message
+        for cls_name in (
+            "PropertyCriterion",
+            "BehavioralCriterion",
+            "CohortReferenceCriterion",
+            "InlineCohort",
+        ):
+            assert cls_name not in err.message, err.message
+
+    def test_direct_construction_supplies_kind_default(self) -> None:
+        """PropertyCriterion / InlineCohort still construct without a kind arg."""
+        crit = PropertyCriterion(property="plan", value="pro")
+        assert crit.kind == "property"
+        cohort = InlineCohort(criteria=[crit])
+        assert cohort.kind == "group"
+        assert cohort.criteria[0] is crit
