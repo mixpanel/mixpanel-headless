@@ -2701,25 +2701,6 @@ class TestCohortNodeTagErrorMessages:
         for kind in ("'property'", "'behavioral'", "'cohort_reference'", "'group'"):
             assert kind in err.message, err.message
 
-    def test_rewrite_registry_matches_cohort_node_kinds(self) -> None:
-        """The message-rewrite registry stays in lockstep with the union.
-
-        The rewrite entry's kind values live in ``bookmark_schema`` (it
-        cannot import ``types`` without a cycle risk); this parity check
-        makes adding a new criterion kind without updating the rewrite
-        fail CI instead of shipping a stale message.
-        """
-        from mixpanel_headless._internal.bookmark_schema import (
-            _CALLABLE_DISCRIMINATOR_REWRITES,
-        )
-        from mixpanel_headless.types import _COHORT_NODE_TAGS_BY_KIND
-
-        entry = _CALLABLE_DISCRIMINATOR_REWRITES["_cohort_node_discriminator"]
-        assert entry is not None
-        field_name, values = entry
-        assert field_name == "kind"
-        assert values == tuple(_COHORT_NODE_TAGS_BY_KIND)
-
     def test_every_callable_discriminator_has_rewrite_entry(self) -> None:
         """Structural guard: reachable callable discriminators are registered.
 

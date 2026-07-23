@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
-from typing import Any, Literal, cast
+from typing import Any, Literal, NoReturn, cast
 
 from mixpanel_headless._literal_types import QueryTimeUnit
 from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
@@ -27,6 +27,27 @@ from mixpanel_headless.types import (
     TimeComparison,
     _sanitize_raw_cohort,
 )
+
+
+def _reject(path: str, message: str, code: str) -> NoReturn:
+    """Raise a single-error ``BookmarkValidationError``.
+
+    Shared scaffolding for builder-level rejections of inputs the wire
+    format cannot express, so each call site reads as just the rule
+    (path, message, code).
+
+    Args:
+        path: JSONPath-like location of the offending input
+            (e.g. ``"where[0]"``).
+        message: Human-readable explanation of the rejection.
+        code: Stable error code (e.g. ``"FL_WHERE_LIST_CONTAINS_UNSUPPORTED"``).
+
+    Raises:
+        BookmarkValidationError: Always, wrapping the single error.
+    """
+    raise BookmarkValidationError(
+        [ValidationError(path=path, message=message, code=code)]
+    )
 
 
 def _build_composed_properties(
@@ -634,50 +655,38 @@ def build_flow_where_entries(
     for i, f in enumerate(filters):
         prop = f._property
         if not isinstance(prop, str):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path=f"where[{i}]",
-                        message=(
-                            f"flow where filters only support string "
-                            f"property names; got {type(prop).__name__} — "
-                            f"custom property refs are not supported in "
-                            f"flow filters"
-                        ),
-                        code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
-                    )
-                ]
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    f"flow where filters only support string "
+                    f"property names; got {type(prop).__name__} — "
+                    f"custom property refs are not supported in "
+                    f"flow filters"
+                ),
+                code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
             )
         if f._operator == "list_contains":
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path=f"where[{i}]",
-                        message=(
-                            "flow where filters cannot express "
-                            "list_contains — the flat where format has "
-                            "no key for nested sub-filters"
-                        ),
-                        code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
-                    )
-                ]
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    "flow where filters cannot express "
+                    "list_contains — the flat where format has "
+                    "no key for nested sub-filters"
+                ),
+                code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
             )
         if f._operator in Filter._RELATIVE_DATE_OPS:
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path=f"where[{i}]",
-                        message=(
-                            f"flow where filters cannot express the "
-                            f"relative-date operator '{f._operator}' — the "
-                            f"flat where format has no key for the date "
-                            f"unit. Use an absolute date filter instead "
-                            f"(Filter.date_between / Filter.before / "
-                            f"Filter.since)"
-                        ),
-                        code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
-                    )
-                ]
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    f"flow where filters cannot express the "
+                    f"relative-date operator '{f._operator}' — the "
+                    f"flat where format has no key for the date "
+                    f"unit. Use an absolute date filter instead "
+                    f"(Filter.date_between / Filter.before / "
+                    f"Filter.since)"
+                ),
+                code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
             )
         entry: dict[str, Any] = {"property": prop, "operator": f._operator}
         if f._value is not None:
@@ -744,71 +753,55 @@ def build_flow_segment_entries(
         if isinstance(seg, GroupBy):
             prop = seg.property
             if not isinstance(prop, str):
-                raise BookmarkValidationError(
-                    [
-                        ValidationError(
-                            path=f"segments[{i}]",
-                            message=(
-                                f"flow segments only support plain property "
-                                f"names; got a GroupBy on "
-                                f"{type(prop).__name__} — custom properties "
-                                f"are not supported in flow segment_by"
-                            ),
-                            code="FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED",
-                        )
-                    ]
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        f"flow segments only support plain property "
+                        f"names; got a GroupBy on "
+                        f"{type(prop).__name__} — custom properties "
+                        f"are not supported in flow segment_by"
+                    ),
+                    code="FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED",
                 )
             if (
                 seg.bucket_size is not None
                 or seg.bucket_min is not None
                 or seg.bucket_max is not None
             ):
-                raise BookmarkValidationError(
-                    [
-                        ValidationError(
-                            path=f"segments[{i}]",
-                            message=(
-                                "flow segments cannot express numeric "
-                                "bucketing — the flat segment_by format has "
-                                "no key for bucket parameters. Use a plain "
-                                "GroupBy without buckets"
-                            ),
-                            code="FL_SEGMENT_BUCKETING_UNSUPPORTED",
-                        )
-                    ]
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        "flow segments cannot express numeric "
+                        "bucketing — the flat segment_by format has "
+                        "no key for bucket parameters. Use a plain "
+                        "GroupBy without buckets"
+                    ),
+                    code="FL_SEGMENT_BUCKETING_UNSUPPORTED",
                 )
             if seg._list_item_mode is not None:
-                raise BookmarkValidationError(
-                    [
-                        ValidationError(
-                            path=f"segments[{i}]",
-                            message=(
-                                "flow segments cannot express "
-                                "GroupBy.list_item sub-property breakdowns "
-                                "— the flat segment_by format has no key "
-                                "for the sub-property, and sending just "
-                                "the list property would run a different "
-                                "query. Use a plain property name instead"
-                            ),
-                            code="FL_SEGMENT_LIST_ITEM_UNSUPPORTED",
-                        )
-                    ]
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        "flow segments cannot express "
+                        "GroupBy.list_item sub-property breakdowns "
+                        "— the flat segment_by format has no key "
+                        "for the sub-property, and sending just "
+                        "the list property would run a different "
+                        "query. Use a plain property name instead"
+                    ),
+                    code="FL_SEGMENT_LIST_ITEM_UNSUPPORTED",
                 )
             entries.append({"property": prop})
             continue
-        raise BookmarkValidationError(
-            [
-                ValidationError(
-                    path=f"segments[{i}]",
-                    message=(
-                        f"flow segments do not support "
-                        f"{type(seg).__name__} — the flat segment_by format "
-                        f"only carries property names. Use a property name "
-                        f"string or GroupBy instead"
-                    ),
-                    code="FL_SEGMENT_TYPE_UNSUPPORTED",
-                )
-            ]
+        _reject(
+            path=f"segments[{i}]",
+            message=(
+                f"flow segments do not support "
+                f"{type(seg).__name__} — the flat segment_by format "
+                f"only carries property names. Use a property name "
+                f"string or GroupBy instead"
+            ),
+            code="FL_SEGMENT_TYPE_UNSUPPORTED",
         )
     return entries
 
@@ -860,18 +853,14 @@ def build_flow_cohort_filter(
             )
 
     if len(filters) > 1:
-        raise BookmarkValidationError(
-            [
-                ValidationError(
-                    path="where",
-                    message=(
-                        f"query_flow supports a single cohort filter, but "
-                        f"{len(filters)} were provided. Pass only one "
-                        f"Filter.in_cohort/not_in_cohort."
-                    ),
-                    code="FL_WHERE_MULTIPLE_COHORTS",
-                )
-            ]
+        _reject(
+            path="where",
+            message=(
+                f"query_flow supports a single cohort filter, but "
+                f"{len(filters)} were provided. Pass only one "
+                f"Filter.in_cohort/not_in_cohort."
+            ),
+            code="FL_WHERE_MULTIPLE_COHORTS",
         )
 
     f = filters[0]

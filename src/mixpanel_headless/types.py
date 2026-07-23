@@ -39,6 +39,11 @@ from typing import (
     TypeVar,
 )
 
+from mixpanel_headless._internal.bookmark_enums import (
+    _CP_MAX_FORMULA_LENGTH,
+    _MAX_FILTER_VALUES,
+    _MAX_FLOW_STEPS_DIRECTION,
+)
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -6610,6 +6615,39 @@ class ProfilePageResult:
 # Custom Property Query Types (Phase 037)
 # =============================================================================
 
+_NonEmptyStrSchema = Annotated[str, Field(json_schema_extra={"minLength": 1})]
+"""String annotated with ``minLength: 1`` for JSON-schema consumers.
+
+Schema-only mirror of a build-time non-empty rule; runtime enforcement
+stays with each owning field's validator so callers keep its
+domain-specific error message.
+"""
+
+_PositiveStrictIntSchema = Annotated[
+    StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})
+]
+"""Strict integer annotated with ``exclusiveMinimum: 0`` for JSON-schema
+consumers.
+
+Strict mode rejects bool/float/str coercion at construction; the
+positivity bound is schema-only — runtime enforcement stays with each
+owning field's validator so callers keep its domain-specific error
+message.
+"""
+
+_PercentileValue = (
+    Annotated[int, Field(strict=True, ge=0, le=100)]
+    | Annotated[float, Field(strict=True, ge=0, le=100)]
+)
+"""Percentile number validated in strict mode and bounded to 0-100.
+
+Shared by ``Metric.percentile_value`` and
+``InsightsQuery.percentile_value`` so the two fields cannot drift. The
+bound is annotated per union arm so it renders as standard JSON-Schema
+``minimum``/``maximum`` keywords AND rejects out-of-range values at
+construction.
+"""
+
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class PropertyInput:
@@ -6638,7 +6676,7 @@ class PropertyInput:
         ```
     """
 
-    name: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    name: _NonEmptyStrSchema
     """The raw property name.
 
     The ``minLength`` keyword mirrors the build-time CP6 rule
@@ -6700,7 +6738,8 @@ class InlineCustomProperty:
     """
 
     formula: Annotated[
-        str, Field(json_schema_extra={"minLength": 1, "maxLength": 20_000})
+        str,
+        Field(json_schema_extra={"minLength": 1, "maxLength": _CP_MAX_FORMULA_LENGTH}),
     ]
     """Expression in Mixpanel's formula language.
 
@@ -6832,10 +6871,12 @@ _DateStrSchema = Annotated[
 ]
 """String annotated with a YYYY-MM-DD pattern for JSON-schema consumers.
 
-Schema-only — runtime date validation stays in the owning type's
-``__post_init__`` (``_DATE_RE`` plus ``date.fromisoformat``), which
-produces domain-specific messages a bare pydantic ``pattern`` error
-would replace.
+Schema-only, shared by every date-string field reachable from the query
+models (``TimeComparison``, ``BehavioralCriterion``, and the query
+models' own ``from_date``/``to_date``). Runtime date validation stays
+with each owner (``__post_init__`` checks, ``_validate_cohort_date``,
+or build-time ``validate_time_args``), which produce domain-specific
+messages a bare pydantic ``pattern`` error would replace.
 """
 
 
@@ -7067,20 +7108,12 @@ class Metric:
     per_user: PerUserAggregation | None = None
     """Per-user pre-aggregation type."""
 
-    percentile_value: (
-        Annotated[int, Field(strict=True, ge=0, le=100)]
-        | Annotated[float, Field(strict=True, ge=0, le=100)]
-        | None
-    ) = None
+    percentile_value: _PercentileValue | None = None
     """Custom percentile value (e.g. 95 for p95).
 
     Required when ``math="percentile"``. Ignored for other math types.
-    Maps to ``percentile`` in bookmark JSON. Validated in strict mode —
-    bool/str inputs are rejected instead of being coerced to a number.
-    The 0-100 bound is annotated per union arm (matching
-    ``InsightsQuery.percentile_value``) so it renders as JSON-Schema
-    ``minimum``/``maximum`` AND rejects out-of-range values at
-    construction instead of shipping a bad ``custom_percentile`` query.
+    Maps to ``percentile`` in bookmark JSON. See ``_PercentileValue``
+    for the shared strict-mode 0-100 validation.
     """
 
     filters: list[Filter] | None = None
@@ -7171,7 +7204,7 @@ class Formula:
         Raises:
             ValueError: If expression is whitespace-only.
         """
-        if self.expression and not self.expression.strip():
+        if not self.expression.strip():
             raise ValueError("Formula.expression must be a non-empty string")
 
 
@@ -7235,13 +7268,13 @@ class Filter:
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1,
-                        "maxItems": 1000,
+                        "maxItems": _MAX_FILTER_VALUES,
                     },
                     {
                         "type": "array",
                         "items": {"type": "number"},
                         "minItems": 1,
-                        "maxItems": 1000,
+                        "maxItems": _MAX_FILTER_VALUES,
                     },
                     {"type": "null"},
                 ],
@@ -7306,44 +7339,57 @@ class Filter:
     )
     """Quantifier for ``list_contains``: ``"any"`` (≥1 item matches) or ``"all"`` (every item matches)."""
 
-    _NUMERIC_OPS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "is greater than",
-            "is less than",
-            "is at least",
-            "is at most",
-            "is between",
-            "not between",
-        }
+    # Operator families. Composite sets are derived from the base sets
+    # so each operator string is stated exactly once.
+    _NUMERIC_SCALAR_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is greater than", "is less than", "is at least", "is at most"}
     )
+    _NUMERIC_OPS: ClassVar[frozenset[str]] = _NUMERIC_SCALAR_OPS | {
+        "is between",
+        "not between",
+    }
     _BOOLEAN_OPS: ClassVar[frozenset[str]] = frozenset({"true", "false"})
-    _DATE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {
-            "was on",
-            "was not on",
-            "was before",
-            "was since",
-            "was between",
-            "was not between",
-        }
-    )
-    _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"was in the", "was not in the", "was in the next"}
-    )
     _SINGLE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
         {"was on", "was not on", "was before", "was since"}
     )
-    _NO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"is set", "is not set", "true", "false"}
+    _DATE_OPS: ClassVar[frozenset[str]] = _SINGLE_DATE_OPS | {
+        "was between",
+        "was not between",
+    }
+    _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"was in the", "was not in the", "was in the next"}
+    )
+    _DATETIME_OPS: ClassVar[frozenset[str]] = _DATE_OPS | _RELATIVE_DATE_OPS
+    _NO_VALUE_OPS: ClassVar[frozenset[str]] = (
+        frozenset({"is set", "is not set"}) | _BOOLEAN_OPS
     )
     _TWO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
         {"is between", "not between", "was between", "was not between"}
     )
-    _NUMERIC_SCALAR_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"is greater than", "is less than", "is at least", "is at most"}
-    )
     _STRING_OPS: ClassVar[frozenset[str]] = frozenset(
         {"contains", "does not contain", "starts with", "ends with"}
+    )
+
+    # Operator/value-shape message templates, shared by ``__post_init__``
+    # and ``_reject_bool_value`` so the two producers cannot drift.
+    _MSG_NEEDS_NUMERIC: ClassVar[str] = (
+        "Filter operator '{op}' requires a numeric value, got {got!r}"
+    )
+    _MSG_NEEDS_STRING: ClassVar[str] = (
+        "Filter operator '{op}' requires a string value, got {got!r}"
+    )
+    _MSG_NEEDS_STR_OR_LIST: ClassVar[str] = (
+        "Filter operator '{op}' requires a string or a list of strings, got {got!r}"
+    )
+    _MSG_NEEDS_STR_LIST: ClassVar[str] = (
+        "Filter operator '{op}' requires a list of strings, got {got!r}"
+    )
+    _MSG_NEEDS_NUMERIC_PAIR: ClassVar[str] = (
+        "Filter operator '{op}' requires two numeric values, got {got!r}"
+    )
+    _MSG_NEEDS_DATE_PAIR: ClassVar[str] = (
+        "Filter operator '{op}' requires two date strings in "
+        "YYYY-MM-DD format, got {got!r}"
     )
 
     def __post_init__(self) -> None:
@@ -7430,8 +7476,7 @@ class Filter:
             self._value, (int, float)
         ):
             raise ValueError(
-                f"Filter operator '{self._operator}' requires a numeric "
-                f"value, got {self._value!r}"
+                self._MSG_NEEDS_NUMERIC.format(op=self._operator, got=self._value)
             )
 
         # String operators require a string value (classmethod contract
@@ -7443,8 +7488,7 @@ class Filter:
             and not isinstance(self._value, str)
         ):
             raise ValueError(
-                f"Filter operator '{self._operator}' requires a string "
-                f"value, got {self._value!r}"
+                self._MSG_NEEDS_STRING.format(op=self._operator, got=self._value)
             )
 
         # No-value operators reject a supplied value instead of silently
@@ -7477,13 +7521,15 @@ class Filter:
             elif self._property_type == "string":
                 if not isinstance(self._value, list):
                     raise ValueError(
-                        f"Filter operator '{self._operator}' requires a string "
-                        f"or a list of strings, got {type(self._value).__name__!r}"
+                        self._MSG_NEEDS_STR_OR_LIST.format(
+                            op=self._operator, got=type(self._value).__name__
+                        )
                     )
                 if not all(isinstance(v, str) for v in self._value):
                     raise ValueError(
-                        f"Filter operator '{self._operator}' requires a list of "
-                        f"strings, got {self._value!r}"
+                        self._MSG_NEEDS_STR_LIST.format(
+                            op=self._operator, got=self._value
+                        )
                     )
 
         # Validate two-value operators require exactly 2 elements
@@ -7507,8 +7553,7 @@ class Filter:
             and not all(isinstance(v, (int, float)) for v in self._value)
         ):
             raise ValueError(
-                f"Filter operator '{self._operator}' requires two numeric "
-                f"values, got {self._value!r}"
+                self._MSG_NEEDS_NUMERIC_PAIR.format(op=self._operator, got=self._value)
             )
 
         # Validate date values (classmethod parity — dict construction
@@ -7527,8 +7572,7 @@ class Filter:
             from_raw, to_raw = self._value
             if not isinstance(from_raw, str) or not isinstance(to_raw, str):
                 raise ValueError(
-                    f"Filter operator '{self._operator}' requires two date "
-                    f"strings in YYYY-MM-DD format, got {self._value!r}"
+                    self._MSG_NEEDS_DATE_PAIR.format(op=self._operator, got=self._value)
                 )
             from_parsed = self._validate_date(from_raw)
             to_parsed = self._validate_date(to_raw)
@@ -7552,7 +7596,7 @@ class Filter:
                 object.__setattr__(self, "_property_type", "number")
             elif self._operator in self._BOOLEAN_OPS:
                 object.__setattr__(self, "_property_type", "boolean")
-            elif self._operator in (self._DATE_OPS | self._RELATIVE_DATE_OPS):
+            elif self._operator in self._DATETIME_OPS:
                 object.__setattr__(self, "_property_type", "datetime")
 
         if self._operator in self._RELATIVE_DATE_OPS and self._date_unit is None:
@@ -7601,17 +7645,12 @@ class Filter:
             operator = info.data.get("_operator")
             if operator in ("equals", "does not equal"):
                 raise ValueError(
-                    f"Filter operator '{operator}' requires a string "
-                    f"or a list of strings, got {type(v).__name__!r}"
+                    cls._MSG_NEEDS_STR_OR_LIST.format(op=operator, got=type(v).__name__)
                 )
             if operator in cls._NUMERIC_SCALAR_OPS:
-                raise ValueError(
-                    f"Filter operator '{operator}' requires a numeric value, got {v!r}"
-                )
+                raise ValueError(cls._MSG_NEEDS_NUMERIC.format(op=operator, got=v))
             if operator in cls._STRING_OPS:
-                raise ValueError(
-                    f"Filter operator '{operator}' requires a string value, got {v!r}"
-                )
+                raise ValueError(cls._MSG_NEEDS_STRING.format(op=operator, got=v))
             raise ValueError(
                 f"Filter value cannot be a boolean (got {v!r}); use "
                 "Filter.is_true()/Filter.is_false() for boolean property tests"
@@ -7619,20 +7658,11 @@ class Filter:
         if isinstance(v, list) and any(isinstance(item, bool) for item in v):
             operator = info.data.get("_operator")
             if operator in ("equals", "does not equal"):
-                raise ValueError(
-                    f"Filter operator '{operator}' requires a list of "
-                    f"strings, got {v!r}"
-                )
+                raise ValueError(cls._MSG_NEEDS_STR_LIST.format(op=operator, got=v))
             if operator in ("is between", "not between"):
-                raise ValueError(
-                    f"Filter operator '{operator}' requires two numeric "
-                    f"values, got {v!r}"
-                )
+                raise ValueError(cls._MSG_NEEDS_NUMERIC_PAIR.format(op=operator, got=v))
             if operator in ("was between", "was not between"):
-                raise ValueError(
-                    f"Filter operator '{operator}' requires two date "
-                    f"strings in YYYY-MM-DD format, got {v!r}"
-                )
+                raise ValueError(cls._MSG_NEEDS_DATE_PAIR.format(op=operator, got=v))
             raise ValueError(
                 f"Filter value cannot contain a boolean (got {v!r}); use "
                 "Filter.is_true()/Filter.is_false() for boolean property tests"
@@ -8739,11 +8769,7 @@ class GroupBy:
         ```
     """
 
-    property: (
-        Annotated[str, Field(json_schema_extra={"minLength": 1})]
-        | CustomPropertyRef
-        | InlineCustomProperty
-    )
+    property: _NonEmptyStrSchema | CustomPropertyRef | InlineCustomProperty
     """Property to break down by (name, ref, or inline).
 
     The string arm's ``minLength`` keyword mirrors the runtime
@@ -9721,17 +9747,6 @@ class CohortDefinition:
 # Declarative Cohort Input Models (LLM-facing, JSON-schema exhaustive)
 # =============================================================================
 
-_CohortDateStr = Annotated[
-    str,
-    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
-]
-"""String annotated with a YYYY-MM-DD pattern for JSON-schema consumers.
-
-Schema-only — runtime date validation is performed by the underlying
-:meth:`CohortCriteria.did_event` (``_validate_cohort_date``), which
-produces the canonical ``"dates must be YYYY-MM-DD format"`` message.
-"""
-
 
 class PropertyCriterion(BaseModel):
     """Declarative property-based cohort criterion.
@@ -9893,12 +9908,12 @@ class BehavioralCriterion(BaseModel):
     )
     """Rolling window in months."""
 
-    from_date: _CohortDateStr | None = Field(
+    from_date: _DateStrSchema | None = Field(
         None, description="Absolute start date (YYYY-MM-DD); requires to_date."
     )
     """Absolute start date."""
 
-    to_date: _CohortDateStr | None = Field(
+    to_date: _DateStrSchema | None = Field(
         None, description="Absolute end date (YYYY-MM-DD); requires from_date."
     )
     """Absolute end date."""
@@ -10200,10 +10215,7 @@ class CohortBreakdown:
         ```
     """
 
-    cohort: (
-        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
-        | CohortDefinition
-    )
+    cohort: _PositiveStrictIntSchema | CohortDefinition
     """Saved cohort ID or inline definition.
 
     The ID arm is a strict integer — bool/str inputs are rejected
@@ -10303,9 +10315,7 @@ class CohortMetric:
     """
 
     cohort: Annotated[
-        Annotated[
-            StrictInt, Tag("int"), Field(json_schema_extra={"exclusiveMinimum": 0})
-        ]
+        Annotated[_PositiveStrictIntSchema, Tag("int")]
         | Annotated[SkipJsonSchema[CohortDefinition], Tag("CohortDefinition")],
         Discriminator(_cohort_metric_cohort_discriminator),
     ]
@@ -10409,7 +10419,7 @@ class FrequencyBreakdown:
             ValueError: If event is whitespace-only (edge case not
                 caught by ``min_length``), or bucket_min >= bucket_max.
         """
-        if self.event and not self.event.strip():
+        if not self.event.strip():
             raise ValueError("FrequencyBreakdown.event must be a non-empty string")
         if self.bucket_min >= self.bucket_max:
             raise ValueError(
@@ -10464,7 +10474,7 @@ class FrequencyFilter:
         ```
     """
 
-    event: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    event: _NonEmptyStrSchema
     """Event name to count frequency for.
 
     The ``minLength`` keyword mirrors the runtime FF1 rule (non-empty)
@@ -10487,9 +10497,7 @@ class FrequencyFilter:
     operator: FrequencyFilterOperator = "is at least"
     """Comparison operator."""
 
-    date_range_value: (
-        Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})] | None
-    ) = None
+    date_range_value: _PositiveStrictIntSchema | None = None
     """Lookback window size. Strict integer — bool/float/str rejected.
 
     The ``exclusiveMinimum`` keyword mirrors the runtime FF5 rule
@@ -11016,7 +11024,7 @@ class HoldingConstant:
         ```
     """
 
-    property: Annotated[str, Field(json_schema_extra={"minLength": 1})]
+    property: _NonEmptyStrSchema
     """Property name to hold constant across steps.
 
     The ``minLength`` keyword mirrors the runtime non-empty rule into
@@ -11463,6 +11471,18 @@ def _safe_int(value: Any, default: int = 0) -> int:
 # Flow Query Types (Phase 034)
 # =============================================================================
 
+_FlowStepDirection = Annotated[
+    StrictInt,
+    Field(json_schema_extra={"minimum": 0, "maximum": _MAX_FLOW_STEPS_DIRECTION}),
+]
+"""Strict integer annotated with the 0-5 flow step-direction range.
+
+Shared by ``FlowStep.forward`` and ``FlowStep.reverse``. Strict mode
+rejects bool/float/str coercion; the range renders as JSON-Schema
+``minimum``/``maximum`` while runtime enforcement stays in
+``FlowStep.__post_init__`` so callers keep its message.
+"""
+
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FlowStep:
@@ -11516,14 +11536,8 @@ class FlowStep:
     """
 
     event: str = Field(min_length=1)
-    forward: (
-        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0, "maximum": 5})]
-        | None
-    ) = None
-    reverse: (
-        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0, "maximum": 5})]
-        | None
-    ) = None
+    forward: _FlowStepDirection | None = None
+    reverse: _FlowStepDirection | None = None
     label: str | None = None
     filters: list[Filter] | None = None
     filters_combinator: FiltersCombinator = "all"
@@ -11538,13 +11552,21 @@ class FlowStep:
                 session_event conflicts with event name.
         """
         _validate_event_name(self.event, "FlowStep")
-        if self.forward is not None and not 0 <= self.forward <= 5:
+        if (
+            self.forward is not None
+            and not 0 <= self.forward <= _MAX_FLOW_STEPS_DIRECTION
+        ):
             raise ValueError(
-                f"FlowStep.forward must be in range 0-5, got {self.forward}"
+                f"FlowStep.forward must be in range 0-{_MAX_FLOW_STEPS_DIRECTION}, "
+                f"got {self.forward}"
             )
-        if self.reverse is not None and not 0 <= self.reverse <= 5:
+        if (
+            self.reverse is not None
+            and not 0 <= self.reverse <= _MAX_FLOW_STEPS_DIRECTION
+        ):
             raise ValueError(
-                f"FlowStep.reverse must be in range 0-5, got {self.reverse}"
+                f"FlowStep.reverse must be in range 0-{_MAX_FLOW_STEPS_DIRECTION}, "
+                f"got {self.reverse}"
             )
         if self.session_event is not None:
             expected_event = (

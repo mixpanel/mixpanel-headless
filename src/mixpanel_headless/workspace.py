@@ -117,14 +117,7 @@ from mixpanel_headless._internal.validation import (
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
-    ConversionWindowUnit,
-    FlowChartType,
-    FlowConversionWindowUnit,
-    FlowCountType,
-    FunnelMode,
-    FunnelOrder,
     FunnelReentryMode,
-    InsightsMode,
     QueryTimeUnit,
     RetentionUnboundedMode,
     TimeUnit,
@@ -223,7 +216,6 @@ from mixpanel_headless.types import (
     FrequencyFilter,
     FrequencyResult,
     FunnelInfo,
-    FunnelMathType,
     FunnelQueryResult,
     FunnelResult,
     FunnelStep,
@@ -370,45 +362,6 @@ def _validate_limit(limit: int | None) -> None:
         raise ValueError(f"limit must be at least {_MIN_LIMIT}, got {limit}")
     if limit > _MAX_LIMIT:
         raise ValueError(f"limit must be at most {_MAX_LIMIT}, got {limit}")
-
-
-def _check_step_direction(
-    value: int | None,
-    name: str,
-    step_path: str,
-) -> list[ValidationError]:
-    """Validate a per-step forward/reverse value for type and range.
-
-    Args:
-        value: The forward or reverse value (None means inherit default).
-        name: Field name (``"forward"`` or ``"reverse"``).
-        step_path: Parent path for error reporting (e.g. ``"steps[0]"``).
-
-    Returns:
-        List of validation errors (empty if valid).
-    """
-    if value is None:
-        return []
-    if isinstance(value, bool) or not isinstance(value, int):
-        return [
-            ValidationError(
-                path=f"{step_path}.{name}",
-                message=(
-                    f"Per-step {name} must be an integer (got {type(value).__name__})"
-                ),
-                code=f"FL_TYPE_{name.upper()}",
-            )
-        ]
-    if value < 0 or value > 5:
-        code = "FL3_FORWARD_RANGE" if name == "forward" else "FL4_REVERSE_RANGE"
-        return [
-            ValidationError(
-                path=f"{step_path}.{name}",
-                message=f"Per-step {name} must be between 0 and 5 (got {value})",
-                code=code,
-            )
-        ]
-    return []
 
 
 class Workspace:
@@ -2336,7 +2289,9 @@ class Workspace:
         Accepts an ``InsightsQuery`` model and returns the generated
         bookmark params dict instead of querying the Mixpanel API.
         Useful for debugging, inspecting generated JSON, persisting
-        via :meth:`create_bookmark`, or testing.
+        via :meth:`create_bookmark`, or testing. Handles formula
+        normalization, argument validation (Layer 1), bookmark
+        construction, and bookmark structure validation (Layer 2).
 
         Args:
             query: Fully configured insights query model.
@@ -2358,102 +2313,18 @@ class Workspace:
             print(json.dumps(params, indent=2))
             ```
         """
-        return self._resolve_and_build_params(
-            events=query.events,
-            from_date=query.from_date,
-            to_date=query.to_date,
-            last=query.last,
-            unit=query.unit,
-            math=query.math,
-            math_property=query.math_property,
-            per_user=query.per_user,
-            percentile_value=query.percentile_value,
-            group_by=query.group_by,
-            where=query.where,
-            formula=query.formula,
-            formula_label=query.formula_label,
-            rolling=query.rolling,
-            cumulative=query.cumulative,
-            mode=query.mode,
-            time_comparison=query.time_comparison,
-            data_group_id=query.data_group_id,
-        )
-
-    def _resolve_and_build_params(
-        self,
-        *,
-        events: Sequence[str | Metric | CohortMetric | Formula],
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        math: MathType,
-        math_property: str | None,
-        per_user: PerUserAggregation | None,
-        percentile_value: int | float | None = None,
-        group_by: list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: InsightsMode = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build bookmark params.
-
-        Shared implementation for :meth:`query` and :meth:`build_params`.
-        Handles formula normalization, argument validation (Layer 1),
-        bookmark construction, and bookmark structure validation
-        (Layer 2). Parameter types mirror the ``InsightsQuery`` fields —
-        the model is the only production caller, so the kwargs-era
-        scalar shapes (bare ``str`` events, single ``Filter`` where)
-        are no longer accepted here.
-
-        Args:
-            events: Events list (str, Metric, CohortMetric, or Formula
-                items).
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days.
-            unit: Time aggregation unit.
-            math: Aggregation function.
-            math_property: Property for property-based math.
-            per_user: Per-user pre-aggregation.
-            percentile_value: Custom percentile value. Required when
-                ``math="percentile"``. Maps to ``percentile`` in
-                bookmark measurement JSON.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            formula: Top-level formula expression.
-            formula_label: Display label for formula.
-            rolling: Rolling window size.
-            cumulative: Cumulative analysis mode.
-            mode: Result shape.
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
         # Split Formula objects out of the events list (Layer 1's V0/V21
         # checks cover empty/invalid events)
         events_list: list[str | Metric | CohortMetric] = []
         formulas_from_list: list[Formula] = []
-        for item in events:
+        for item in query.events:
             if isinstance(item, Formula):
                 formulas_from_list.append(item)
             else:
                 events_list.append(item)
 
         # Resolve formulas: can't use both approaches
-        if formula is not None and formulas_from_list:
+        if query.formula is not None and formulas_from_list:
             raise BookmarkValidationError(
                 [
                     ValidationError(
@@ -2467,10 +2338,10 @@ class Workspace:
                 ]
             )
 
-        if formula is not None:
+        if query.formula is not None:
             try:
                 resolved_formulas: Sequence[Formula] = [
-                    Formula(expression=formula, label=formula_label)
+                    Formula(expression=query.formula, label=query.formula_label)
                 ]
             except PydanticValidationError as exc:
                 raise _normalization_error(exc, "formula") from exc
@@ -2480,44 +2351,44 @@ class Workspace:
         # Layer 1: Argument validation
         arg_errors = validate_query_args(
             events=events_list,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
             has_formula=bool(resolved_formulas),
-            rolling=rolling,
-            cumulative=cumulative,
-            group_by=group_by,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            group_by=query.group_by,
             formulas=resolved_formulas,
-            data_group_id=data_group_id,
+            data_group_id=query.data_group_id,
         )
         # CP1-CP6: Custom property validation for where filters
-        arg_errors.extend(_scan_custom_properties(where=where))
+        arg_errors.extend(_scan_custom_properties(where=query.where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
         # Build bookmark params
         params = self._build_query_params(
             events=events_list,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,
+            where=query.where,
             formulas=resolved_formulas,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            mode=query.mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
 
         # Layer 2: Bookmark structure validation
@@ -2715,148 +2586,6 @@ class Workspace:
             "displayOptions": display_options,
         }
 
-    def _resolve_and_build_funnel_params(
-        self,
-        *,
-        steps: list[str | FunnelStep],
-        conversion_window: int,
-        conversion_window_unit: ConversionWindowUnit,
-        order: FunnelOrder,
-        math: FunnelMathType,
-        math_property: str | None,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None,
-        where: Filter | list[Filter] | None,
-        exclusions: list[str | Exclusion] | None,
-        holding_constant: str | HoldingConstant | list[str | HoldingConstant] | None,
-        mode: FunnelMode,
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build funnel bookmark params.
-
-        Shared implementation for :meth:`query_funnel` and
-        :meth:`build_funnel_params`. Handles normalization of
-        string shorthand to typed objects, argument validation
-        (Layer 1), bookmark construction, and structure validation
-        (Layer 2).
-
-        Args:
-            steps: Funnel step specs (strings or FunnelStep objects).
-            conversion_window: Conversion window size.
-            conversion_window_unit: Conversion window time unit.
-            order: Funnel step ordering mode.
-            math: Aggregation function.
-            math_property: Numeric property name for property-aggregation
-                math types, or None.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative date range in days.
-            unit: Time granularity.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            exclusions: Events to exclude, or None.
-            holding_constant: Properties to hold constant, or None.
-            mode: Display mode.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel. Default: ``None`` (omitted).
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Shape-normalize holding_constant (single → list; no construction)
-        hc_list: list[str | HoldingConstant] | None = None
-        if holding_constant is not None:
-            if isinstance(holding_constant, (str, HoldingConstant)):
-                hc_list = [holding_constant]
-            else:
-                hc_list = list(holding_constant)
-
-        # Layer 1: Argument validation on the raw inputs (F2/F4/F8b accept
-        # bare strings) so structured errors fire before any component
-        # constructor can raise on the same input
-        arg_errors = validate_funnel_args(
-            steps=steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            math=math,
-            math_property=math_property,
-            exclusions=list(exclusions) if exclusions else None,
-            holding_constant=hc_list if hc_list else None,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            group_by=group_by,
-            reentry_mode=reentry_mode,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for where filters
-        arg_errors.extend(_scan_custom_properties(where=where))
-        if any(e.severity == "error" for e in arg_errors):
-            raise BookmarkValidationError(arg_errors)
-
-        # Normalization (inputs validated above; the backstop keeps the
-        # documented exception type for anything Layer 1 doesn't pre-check)
-        try:
-            normalized_steps = [
-                FunnelStep(event=s) if isinstance(s, str) else s for s in steps
-            ]
-            normalized_exclusions: list[Exclusion] = []
-            if exclusions is not None:
-                normalized_exclusions = [
-                    Exclusion(event=e) if isinstance(e, str) else e for e in exclusions
-                ]
-            normalized_hc: list[HoldingConstant] = []
-            if hc_list is not None:
-                normalized_hc = [
-                    HoldingConstant(h) if isinstance(h, str) else h for h in hc_list
-                ]
-        except PydanticValidationError as exc:
-            raise _normalization_error(exc, "funnel") from exc
-
-        # Build bookmark params
-        params = self._build_funnel_params(
-            steps=normalized_steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=normalized_exclusions,
-            holding_constant=normalized_hc,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
-        # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
-        if any(e.severity == "error" for e in bookmark_errors):
-            raise BookmarkValidationError(bookmark_errors)
-
-        return params
-
     def query_funnel(
         self,
         query: FunnelQuery,
@@ -2905,7 +2634,10 @@ class Workspace:
         Accepts a ``FunnelQuery`` model and returns the generated
         bookmark params dict instead of querying the API. Useful for
         debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to typed objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
             query: Fully configured funnel query model.
@@ -2927,8 +2659,55 @@ class Workspace:
             print(json.dumps(params, indent=2))
             ```
         """
-        return self._resolve_and_build_funnel_params(
+        # Layer 1: Argument validation on the raw inputs (F2/F4/F8b accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
+        arg_errors = validate_funnel_args(
             steps=query.steps,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            math=query.math,
+            math_property=query.math_property,
+            exclusions=list(query.exclusions) if query.exclusions else None,
+            holding_constant=list(query.holding_constant)
+            if query.holding_constant
+            else None,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            group_by=query.group_by,
+            reentry_mode=query.reentry_mode,
+            data_group_id=query.data_group_id,
+        )
+        # CP1-CP6: Custom property validation for where filters
+        arg_errors.extend(_scan_custom_properties(where=query.where))
+        if any(e.severity == "error" for e in arg_errors):
+            raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            normalized_steps = [
+                FunnelStep(event=s) if isinstance(s, str) else s for s in query.steps
+            ]
+            normalized_exclusions: list[Exclusion] = []
+            if query.exclusions is not None:
+                normalized_exclusions = [
+                    Exclusion(event=e) if isinstance(e, str) else e
+                    for e in query.exclusions
+                ]
+            normalized_hc: list[HoldingConstant] = []
+            if query.holding_constant is not None:
+                normalized_hc = [
+                    HoldingConstant(h) if isinstance(h, str) else h
+                    for h in query.holding_constant
+                ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "funnel") from exc
+
+        # Build bookmark params
+        params = self._build_funnel_params(
+            steps=normalized_steps,
             conversion_window=query.conversion_window,
             conversion_window_unit=query.conversion_window_unit,
             order=query.order,
@@ -2940,13 +2719,20 @@ class Workspace:
             unit=query.unit,
             group_by=query.group_by,
             where=query.where,
-            exclusions=query.exclusions,
-            holding_constant=query.holding_constant,
+            exclusions=normalized_exclusions,
+            holding_constant=normalized_hc,
             mode=query.mode,
             reentry_mode=query.reentry_mode,
             time_comparison=query.time_comparison,
             data_group_id=query.data_group_id,
         )
+
+        # Layer 2: Bookmark structure validation
+        bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
+        if any(e.severity == "error" for e in bookmark_errors):
+            raise BookmarkValidationError(bookmark_errors)
+
+        return params
 
     # =========================================================================
     # Retention Query (Phase 033)
@@ -3267,236 +3053,6 @@ class Workspace:
 
         return params
 
-    def _resolve_and_build_flow_params(
-        self,
-        *,
-        event: str | FlowStep | Sequence[str | FlowStep],
-        forward: int,
-        reverse: int,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        conversion_window: int,
-        conversion_window_unit: FlowConversionWindowUnit,
-        count_type: FlowCountType,
-        cardinality: int,
-        collapse_repeated: bool,
-        hidden_events: list[str] | None,
-        mode: FlowChartType,
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str | GroupBy | list[str | GroupBy] | None = None,
-        exclusions: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build flow bookmark params.
-
-        Shared implementation for :meth:`query_flow` and
-        :meth:`build_flow_params`. Handles normalization of string
-        shorthand to ``FlowStep`` objects, argument validation (Layer 1),
-        bookmark construction, and structure validation (Layer 2).
-
-        Args:
-            event: Event specification — a string, ``FlowStep``, or a
-                list of strings/``FlowStep`` objects.
-            forward: Default forward step count for steps without one.
-            reverse: Default reverse step count for steps without one.
-            from_date: Start date (YYYY-MM-DD) or ``None``.
-            to_date: End date (YYYY-MM-DD) or ``None``.
-            last: Relative time range in days.
-            conversion_window: Conversion window size.
-            conversion_window_unit: Conversion window unit.
-            count_type: Counting method.
-            cardinality: Number of top paths to display.
-            collapse_repeated: Whether to merge consecutive repeated
-                events.
-            hidden_events: Events to hide from visualization.
-            mode: Display mode.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters produce ``filter_by_cohort``,
-                property filters produce flat ``where`` entries.
-                Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
-
-        Returns:
-            Validated flow bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Shape-normalize input (single → list) WITHOUT constructing
-        # FlowStep yet — Layers 0.5/1 validate the raw values first so
-        # structured errors fire before any component constructor can
-        # raise on the same input
-        if isinstance(event, (str, FlowStep)):
-            raw_steps: list[str | FlowStep] = [event]
-        else:
-            raw_steps = list(event)
-
-        # Layer 0.5: Per-step validation (FlowStep-level fields that
-        # validate_flow_args cannot see — it only receives event names);
-        # bare ``str`` steps have no per-step fields and are skipped
-        step_errors: list[ValidationError] = []
-
-        # Top-level forward/reverse type checks (must be int, not bool/float)
-        for fname, fval in [("forward", forward), ("reverse", reverse)]:
-            if isinstance(fval, bool) or not isinstance(fval, int):
-                step_errors.append(
-                    ValidationError(
-                        path=fname,
-                        message=(
-                            f"{fname} must be an integer (got {type(fval).__name__})"
-                        ),
-                        code=f"FL_TYPE_{fname.upper()}",
-                    )
-                )
-
-        for i, s in enumerate(raw_steps):
-            if not isinstance(s, FlowStep):
-                continue
-            spath = f"steps[{i}]"
-            # Per-step forward/reverse type + range checks
-            step_errors.extend(_check_step_direction(s.forward, "forward", spath))
-            step_errors.extend(_check_step_direction(s.reverse, "reverse", spath))
-            # Per-step filters_combinator must be "all" or "any"
-            if s.filters_combinator not in ("all", "any"):
-                step_errors.append(
-                    ValidationError(
-                        path=f"{spath}.filters_combinator",
-                        message=(
-                            f"filters_combinator must be 'all' or 'any' "
-                            f"(got {s.filters_combinator!r})"
-                        ),
-                        code="FL_INVALID_FILTERS_COMBINATOR",
-                    )
-                )
-        # Per-step filter property validation
-        for i, s in enumerate(raw_steps):
-            if isinstance(s, FlowStep) and s.filters:
-                for fi, f in enumerate(s.filters):
-                    if isinstance(f._property, str) and contains_control_chars(
-                        f._property
-                    ):
-                        step_errors.append(
-                            ValidationError(
-                                path=f"steps[{i}].filters[{fi}]",
-                                message=(
-                                    f"Filter property name contains "
-                                    f"control characters: {f._property!r}"
-                                ),
-                                code="FL_FILTER_CONTROL_CHAR",
-                            )
-                        )
-
-        # hidden_events type validation
-        if hidden_events is not None:
-            for i, he in enumerate(hidden_events):
-                if not isinstance(he, str):
-                    step_errors.append(
-                        ValidationError(
-                            path=f"hidden_events[{i}]",
-                            message=(
-                                f"hidden_events values must be strings "
-                                f"(got {type(he).__name__})"
-                            ),
-                            code="FL_INVALID_HIDDEN_EVENT_TYPE",
-                        )
-                    )
-
-        if any(e.severity == "error" for e in step_errors):
-            raise BookmarkValidationError(step_errors)
-
-        # Layer 1: Argument validation — effective direction values fold
-        # per-step overrides over the top-level defaults so overrides
-        # aren't rejected by FL5
-        step_forwards = [
-            s.forward if isinstance(s, FlowStep) and s.forward is not None else forward
-            for s in raw_steps
-        ]
-        step_reverses = [
-            s.reverse if isinstance(s, FlowStep) and s.reverse is not None else reverse
-            for s in raw_steps
-        ]
-        effective_forward = max(step_forwards) if step_forwards else forward
-        effective_reverse = max(step_reverses) if step_reverses else reverse
-        event_names = [s if isinstance(s, str) else s.event for s in raw_steps]
-        arg_errors = validate_flow_args(
-            steps=event_names,
-            forward=effective_forward,
-            reverse=effective_reverse,
-            count_type=count_type,
-            mode=mode,
-            cardinality=cardinality,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for flow step filters
-        # (raw items are position-preserving; bare strings carry no filters)
-        arg_errors.extend(_scan_custom_properties(flow_steps=raw_steps, where=where))
-        if any(e.severity == "error" for e in arg_errors):
-            raise BookmarkValidationError(arg_errors)
-
-        # Normalization: str → FlowStep, then fold top-level defaults into
-        # per-step ``None`` slots (inputs validated above; the backstop
-        # keeps the documented exception type for anything the validators
-        # don't pre-check)
-        try:
-            constructed = [
-                FlowStep(event=s) if isinstance(s, str) else s for s in raw_steps
-            ]
-            steps = [
-                FlowStep(
-                    event=s.event,
-                    forward=s.forward if s.forward is not None else forward,
-                    reverse=s.reverse if s.reverse is not None else reverse,
-                    label=s.label,
-                    filters=s.filters,
-                    filters_combinator=s.filters_combinator,
-                    session_event=s.session_event,
-                )
-                for s in constructed
-            ]
-        except PydanticValidationError as exc:
-            raise _normalization_error(exc, "steps") from exc
-
-        # Build bookmark params. The flow builders raise structured
-        # BookmarkValidationError (FL_WHERE_* / FL_SEGMENT_* codes with
-        # where[i]/segments[i] paths) for inputs the flat wire format
-        # cannot express; internal invariant violations crash as
-        # RuntimeError instead of masquerading as user input errors.
-        params = self._build_flow_params(
-            steps=steps,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
-        )
-
-        # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_flow_bookmark(params)
-        if any(e.severity == "error" for e in bookmark_errors):
-            raise BookmarkValidationError(bookmark_errors)
-
-        return params
-
     def query_flow(
         self,
         query: FlowQuery,
@@ -3547,7 +3103,10 @@ class Workspace:
         Accepts a ``FlowQuery`` model and returns the generated
         bookmark params dict instead of querying the API. Useful for
         debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to ``FlowStep`` objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
             query: Fully configured flow query model.
@@ -3569,10 +3128,103 @@ class Workspace:
             print(json.dumps(params, indent=2))
             ```
         """
-        return self._resolve_and_build_flow_params(
-            event=query.event,
-            forward=query.forward,
-            reverse=query.reverse,
+        # Shape-normalize input (single → list). Per-step field shapes
+        # (strict ints, 0-5 range, filters_combinator literal) are
+        # already enforced by the FlowStep / FlowQuery models.
+        if isinstance(query.event, (str, FlowStep)):
+            raw_steps: list[str | FlowStep] = [query.event]
+        else:
+            raw_steps = list(query.event)
+
+        # Layer 0.5: Per-step filter property validation (FlowStep-level
+        # fields that validate_flow_args cannot see — it only receives
+        # event names); bare ``str`` steps have no filters and are skipped
+        step_errors: list[ValidationError] = []
+        for i, s in enumerate(raw_steps):
+            if isinstance(s, FlowStep) and s.filters:
+                for fi, f in enumerate(s.filters):
+                    if isinstance(f._property, str) and contains_control_chars(
+                        f._property
+                    ):
+                        step_errors.append(
+                            ValidationError(
+                                path=f"steps[{i}].filters[{fi}]",
+                                message=(
+                                    f"Filter property name contains "
+                                    f"control characters: {f._property!r}"
+                                ),
+                                code="FL_FILTER_CONTROL_CHAR",
+                            )
+                        )
+        if step_errors:
+            raise BookmarkValidationError(step_errors)
+
+        # Layer 1: Argument validation — effective direction values fold
+        # per-step overrides over the top-level defaults so overrides
+        # aren't rejected by FL5
+        forward, reverse = query.forward, query.reverse
+        step_forwards = [
+            s.forward if isinstance(s, FlowStep) and s.forward is not None else forward
+            for s in raw_steps
+        ]
+        step_reverses = [
+            s.reverse if isinstance(s, FlowStep) and s.reverse is not None else reverse
+            for s in raw_steps
+        ]
+        effective_forward = max(step_forwards) if step_forwards else forward
+        effective_reverse = max(step_reverses) if step_reverses else reverse
+        event_names = [s if isinstance(s, str) else s.event for s in raw_steps]
+        arg_errors = validate_flow_args(
+            steps=event_names,
+            forward=effective_forward,
+            reverse=effective_reverse,
+            count_type=query.count_type,
+            mode=query.mode,
+            cardinality=query.cardinality,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            data_group_id=query.data_group_id,
+        )
+        # CP1-CP6: Custom property validation for flow step filters
+        # (raw items are position-preserving; bare strings carry no filters)
+        arg_errors.extend(
+            _scan_custom_properties(flow_steps=raw_steps, where=query.where)
+        )
+        if any(e.severity == "error" for e in arg_errors):
+            raise BookmarkValidationError(arg_errors)
+
+        # Normalization: str → FlowStep with the top-level defaults, and
+        # fold those defaults into per-step ``None`` slots (inputs
+        # validated above; the backstop keeps the documented exception
+        # type for anything the validators don't pre-check)
+        try:
+            steps = [
+                FlowStep(event=s, forward=forward, reverse=reverse)
+                if isinstance(s, str)
+                else FlowStep(
+                    event=s.event,
+                    forward=s.forward if s.forward is not None else forward,
+                    reverse=s.reverse if s.reverse is not None else reverse,
+                    label=s.label,
+                    filters=s.filters,
+                    filters_combinator=s.filters_combinator,
+                    session_event=s.session_event,
+                )
+                for s in raw_steps
+            ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "steps") from exc
+
+        # Build bookmark params. The flow builders raise structured
+        # BookmarkValidationError (FL_WHERE_* / FL_SEGMENT_* codes with
+        # where[i]/segments[i] paths) for inputs the flat wire format
+        # cannot express; internal invariant violations crash as
+        # RuntimeError instead of masquerading as user input errors.
+        params = self._build_flow_params(
+            steps=steps,
             from_date=query.from_date,
             to_date=query.to_date,
             last=query.last,
@@ -3589,147 +3241,16 @@ class Workspace:
             exclusions=query.exclusions,
         )
 
-    # =========================================================================
-    # RETENTION QUERY (inline ad-hoc)
-    # =========================================================================
-
-    def _resolve_and_build_retention_params(
-        self,
-        *,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
-        retention_unit: TimeUnit,
-        alignment: RetentionAlignment,
-        bucket_sizes: list[int] | None,
-        math: RetentionMathType,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None,
-        where: Filter | list[Filter] | None,
-        mode: RetentionMode,
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build retention bookmark params.
-
-        Shared implementation for :meth:`query_retention` and
-        :meth:`build_retention_params`. Handles normalization of
-        string shorthand to RetentionEvent objects, argument validation
-        (Layer 1), bookmark construction, and structure validation
-        (Layer 2).
-
-        Args:
-            born_event: Born event spec (string or RetentionEvent).
-            return_event: Return event spec (string or RetentionEvent).
-            retention_unit: Retention period unit.
-            alignment: Retention alignment mode.
-            bucket_sizes: Custom bucket sizes or None.
-            math: Aggregation function.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative date range in days.
-            unit: Time granularity.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            mode: Display mode.
-            unbounded_mode: Retention unbounded mode. Default: ``None``.
-            retention_cumulative: Cumulative retention counting.
-                Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Layer 1: Argument validation on the raw event names (R1/R2 accept
-        # bare strings) so structured errors fire before any component
-        # constructor can raise on the same input
-        born_name = born_event if isinstance(born_event, str) else born_event.event
-        return_name = (
-            return_event if isinstance(return_event, str) else return_event.event
-        )
-        arg_errors = validate_retention_args(
-            born_event=born_name,
-            return_event=return_name,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            mode=mode,
-            unit=unit,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            group_by=group_by,
-            unbounded_mode=unbounded_mode,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for where and event filters
-        # (raw items are position-preserving: idx 0 = born, idx 1 = return)
-        arg_errors.extend(
-            _scan_custom_properties(
-                where=where,
-                retention_events=[born_event, return_event],
-            )
-        )
-        if any(e.severity == "error" for e in arg_errors):
-            raise BookmarkValidationError(arg_errors)
-
-        # Normalization (inputs validated above; the backstop keeps the
-        # documented exception type for anything Layer 1 doesn't pre-check)
-        try:
-            norm_born = (
-                RetentionEvent(event=born_event)
-                if isinstance(born_event, str)
-                else born_event
-            )
-            norm_return = (
-                RetentionEvent(event=return_event)
-                if isinstance(return_event, str)
-                else return_event
-            )
-        except PydanticValidationError as exc:
-            raise _normalization_error(exc, "retention") from exc
-
-        # Build bookmark params
-        params = self._build_retention_params(
-            born_event=norm_born,
-            return_event=norm_return,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
         # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_bookmark(params, bookmark_type="retention")
+        bookmark_errors = validate_flow_bookmark(params)
         if any(e.severity == "error" for e in bookmark_errors):
             raise BookmarkValidationError(bookmark_errors)
 
         return params
+
+    # =========================================================================
+    # RETENTION QUERY (inline ad-hoc)
+    # =========================================================================
 
     def query_retention(
         self,
@@ -3783,7 +3304,10 @@ class Workspace:
         Accepts a ``RetentionQuery`` model and returns the generated
         bookmark params dict instead of querying the API. Useful for
         debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to RetentionEvent objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
             query: Fully configured retention query model.
@@ -3807,9 +3331,61 @@ class Workspace:
             print(json.dumps(params, indent=2))
             ```
         """
-        return self._resolve_and_build_retention_params(
-            born_event=query.born_event,
-            return_event=query.return_event,
+        # Layer 1: Argument validation on the raw event names (R1/R2 accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
+        born_event, return_event = query.born_event, query.return_event
+        born_name = born_event if isinstance(born_event, str) else born_event.event
+        return_name = (
+            return_event if isinstance(return_event, str) else return_event.event
+        )
+        arg_errors = validate_retention_args(
+            born_event=born_name,
+            return_event=return_name,
+            retention_unit=query.retention_unit,
+            alignment=query.alignment,
+            bucket_sizes=query.bucket_sizes,
+            math=query.math,
+            mode=query.mode,
+            unit=query.unit,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            group_by=query.group_by,
+            unbounded_mode=query.unbounded_mode,
+            data_group_id=query.data_group_id,
+        )
+        # CP1-CP6: Custom property validation for where and event filters
+        # (raw items are position-preserving: idx 0 = born, idx 1 = return)
+        arg_errors.extend(
+            _scan_custom_properties(
+                where=query.where,
+                retention_events=[born_event, return_event],
+            )
+        )
+        if any(e.severity == "error" for e in arg_errors):
+            raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            norm_born = (
+                RetentionEvent(event=born_event)
+                if isinstance(born_event, str)
+                else born_event
+            )
+            norm_return = (
+                RetentionEvent(event=return_event)
+                if isinstance(return_event, str)
+                else return_event
+            )
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "retention") from exc
+
+        # Build bookmark params
+        params = self._build_retention_params(
+            born_event=norm_born,
+            return_event=norm_return,
             retention_unit=query.retention_unit,
             alignment=query.alignment,
             bucket_sizes=query.bucket_sizes,
@@ -3826,6 +3402,13 @@ class Workspace:
             time_comparison=query.time_comparison,
             data_group_id=query.data_group_id,
         )
+
+        # Layer 2: Bookmark structure validation
+        bookmark_errors = validate_bookmark(params, bookmark_type="retention")
+        if any(e.severity == "error" for e in bookmark_errors):
+            raise BookmarkValidationError(bookmark_errors)
+
+        return params
 
     # =========================================================================
     # ESCAPE HATCHES

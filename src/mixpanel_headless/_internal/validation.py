@@ -20,8 +20,15 @@ from difflib import get_close_matches
 from typing import Any, Literal
 
 from mixpanel_headless._internal.bookmark_enums import (
+    _CP_MAX_FORMULA_LENGTH,
+    _MAX_FILTER_VALUES,
+    _MAX_FLOW_CARDINALITY,
+    _MAX_FLOW_STEPS_DIRECTION,
     _MAX_FUNNEL_STEPS,
     _MAX_HOLDING_CONSTANT,
+    _MAX_LAST_DAYS,
+    _MAX_RETENTION_BUCKETS,
+    _MAX_ROLLING,
     MATH_NO_PER_USER,
     MATH_PROPERTY_OPTIONAL,
     MATH_REQUIRING_PROPERTY,
@@ -89,7 +96,6 @@ from mixpanel_headless.types import (
 )
 
 _CP_INPUT_KEY_RE = re.compile(r"^[A-Z]$")
-_CP_MAX_FORMULA_LENGTH = 20_000
 
 
 def _validate_custom_property(
@@ -362,9 +368,6 @@ def contains_control_chars(s: str) -> bool:
 
 
 _INVISIBLE_RE = re.compile(r"^[\s\u200b\u200c\u200d\ufeff\u00ad\u2060]*$")
-_MAX_LAST_DAYS = 3650  # 10 years — generous but sane upper bound
-_MAX_ROLLING = 365  # rolling window sanity cap
-_MAX_FILTER_VALUES = 1000  # server rejects queries with very large filter value lists
 
 
 def _is_valid_date(date_str: str) -> bool:
@@ -562,8 +565,12 @@ def v26_percentile_requires_value(
         List with one ``V26_PERCENTILE_REQUIRES_VALUE`` error if
         percentile math lacks a value, empty otherwise.
     """
-    has_plain_events = any(isinstance(item, str) for item in events)
-    if has_plain_events and math == "percentile" and percentile_value is None:
+    # Cheap gates first — the events scan only runs for percentile math.
+    if (
+        math == "percentile"
+        and percentile_value is None
+        and any(isinstance(item, str) for item in events)
+    ):
         return [
             ValidationError(
                 path="percentile_value",
@@ -1098,9 +1105,10 @@ def validate_funnel_args(
     # so bare event names carry the ``Exclusion`` field defaults here)
     if exclusions is not None:
         for i, ex in enumerate(exclusions):
-            ex_event = ex.event if isinstance(ex, Exclusion) else ex
-            ex_from = ex.from_step if isinstance(ex, Exclusion) else 0
-            ex_to = ex.to_step if isinstance(ex, Exclusion) else None
+            if isinstance(ex, Exclusion):
+                ex_event, ex_from, ex_to = ex.event, ex.from_step, ex.to_step
+            else:
+                ex_event, ex_from, ex_to = ex, 0, None
             if not ex_event or not ex_event.strip():
                 errors.append(
                     ValidationError(
@@ -1236,9 +1244,6 @@ in bookmark_enums.py) accepted them. Now L1 and L2 use the same set.
 
 _VALID_RETENTION_MODES: frozenset[str] = frozenset({"curve", "trends", "table"})
 """Valid display modes for retention queries."""
-
-_MAX_RETENTION_BUCKETS = 730
-"""Maximum number of custom retention buckets allowed by the API."""
 
 
 def validate_retention_args(
@@ -1545,12 +1550,6 @@ def validate_retention_args(
 # =============================================================================
 # Flow argument validation (FL1-FL10)
 # =============================================================================
-
-_MAX_FLOW_STEPS_DIRECTION = 5
-"""Maximum number of forward or reverse steps in a flow query (0-5)."""
-
-_MAX_FLOW_CARDINALITY = 50
-"""Maximum cardinality (number of top paths shown) in a flow query."""
 
 _FLOW_MAX_WINDOW: dict[str, int] = {
     "month": 12,

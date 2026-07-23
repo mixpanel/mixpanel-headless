@@ -43,10 +43,18 @@ from pydantic import (
     ModelWrapValidatorHandler,
     StrictInt,
     ValidationError,
-    WithJsonSchema,
     model_validator,
 )
 
+from mixpanel_headless._internal.bookmark_enums import (
+    _MAX_FLOW_CARDINALITY,
+    _MAX_FLOW_STEPS_DIRECTION,
+    _MAX_FUNNEL_STEPS,
+    _MAX_HOLDING_CONSTANT,
+    _MAX_LAST_DAYS,
+    _MAX_RETENTION_BUCKETS,
+    _MAX_ROLLING,
+)
 from mixpanel_headless._internal.bookmark_schema import (
     translate_pydantic_exception,
 )
@@ -94,21 +102,10 @@ from mixpanel_headless.types import (
     Metric,
     RetentionEvent,
     TimeComparison,
+    _DateStrSchema,
+    _PercentileValue,
+    _PositiveStrictIntSchema,
 )
-
-_DateStr = Annotated[
-    str,
-    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
-]
-"""String annotated with a YYYY-MM-DD pattern for JSON schema consumers.
-
-Schema-only — no runtime enforcement here.  Runtime date validation
-is handled by ``validate_time_args`` (V8 checks) at build time, which
-produces domain-specific error messages (``"from_date must be
-YYYY-MM-DD format"``).  Adding a Pydantic ``pattern`` or
-``AfterValidator`` would catch bad dates earlier but replace those
-messages with generic Pydantic errors.
-"""
 
 
 class _BaseQuery(BaseModel):
@@ -123,26 +120,32 @@ class _BaseQuery(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    from_date: _DateStr | None = Field(
+    # Schema-only date pattern (``_DateStrSchema``) — runtime date
+    # validation is handled by ``validate_time_args`` (V8 checks) at
+    # build time, which produces domain-specific error messages
+    # (``"from_date must be YYYY-MM-DD format"``) a bare pydantic
+    # ``pattern`` error would replace.
+    from_date: _DateStrSchema | None = Field(
         None,
         description="Start date (YYYY-MM-DD). Overrides 'last' when set.",
         examples=["2025-01-01"],
     )
-    to_date: _DateStr | None = Field(
+    to_date: _DateStrSchema | None = Field(
         None,
         description="End date (YYYY-MM-DD). Requires from_date.",
         examples=["2025-01-31"],
     )
-    # ``maximum`` (3650) is a schema-only mirror of the build-time V20
-    # cap (``_MAX_LAST_DAYS``); runtime enforcement stays in
-    # ``validate_time_args`` so callers keep its curated message.
+    # ``maximum`` is a schema-only mirror of the build-time V20 cap;
+    # runtime enforcement stays in ``validate_time_args`` so callers
+    # keep its curated message.
     last: int = Field(
         30,
         ge=1,
         strict=True,
-        json_schema_extra={"maximum": 3650},
+        json_schema_extra={"maximum": _MAX_LAST_DAYS},
         description=(
-            "Relative time range in days. Default: 30. Maximum: 3650 (~10 years)."
+            f"Relative time range in days. Default: 30. "
+            f"Maximum: {_MAX_LAST_DAYS} (~10 years)."
         ),
         examples=[7, 30, 90],
     )
@@ -280,11 +283,7 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Per-user pre-aggregation (applies to bare-string events).",
     )
-    percentile_value: (
-        Annotated[int, Field(strict=True, ge=0, le=100)]
-        | Annotated[float, Field(strict=True, ge=0, le=100)]
-        | None
-    ) = Field(
+    percentile_value: _PercentileValue | None = Field(
         None,
         description="Custom percentile value (e.g. 95). Used when math='percentile'.",
     )
@@ -304,14 +303,15 @@ class InsightsQuery(_TimeComparableQuery):
         None,
         description="Display label for the formula result.",
     )
-    # ``maximum`` (365) is a schema-only mirror of the build-time V23
-    # cap (``_MAX_ROLLING``); runtime enforcement stays in
-    # ``validate_query_args`` so callers keep its curated message.
+    # ``maximum`` is a schema-only mirror of the build-time V23 cap;
+    # runtime enforcement stays in ``validate_query_args`` so callers
+    # keep its curated message.
     rolling: (
-        Annotated[StrictInt, Field(gt=0, json_schema_extra={"maximum": 365})] | None
+        Annotated[StrictInt, Field(gt=0, json_schema_extra={"maximum": _MAX_ROLLING})]
+        | None
     ) = Field(
         None,
-        description="Rolling window size in periods. Maximum: 365.",
+        description=f"Rolling window size in periods. Maximum: {_MAX_ROLLING}.",
     )
     cumulative: bool = Field(
         False,
@@ -371,15 +371,18 @@ class FunnelQuery(_TimeComparableQuery):
         ```
     """
 
-    # ``maxItems`` (100) is a schema-only mirror of the build-time F1
-    # step-count cap (``_MAX_FUNNEL_STEPS``); runtime enforcement stays
-    # in ``validate_funnel_args`` so callers keep the ``F1_MAX_STEPS``
+    # ``maxItems`` is a schema-only mirror of the build-time F1
+    # step-count cap; runtime enforcement stays in
+    # ``validate_funnel_args`` so callers keep the ``F1_MAX_STEPS``
     # message.
     steps: list[str | FunnelStep] = Field(
         ...,
         min_length=2,
-        json_schema_extra={"maxItems": 100},
-        description="Funnel step specifications. At least 2 required, at most 100.",
+        json_schema_extra={"maxItems": _MAX_FUNNEL_STEPS},
+        description=(
+            f"Funnel step specifications. At least 2 required, "
+            f"at most {_MAX_FUNNEL_STEPS}."
+        ),
     )
     conversion_window: int = Field(
         14,
@@ -419,16 +422,21 @@ class FunnelQuery(_TimeComparableQuery):
         None,
         description="Events to exclude between steps.",
     )
-    # ``maxItems`` (3) is a schema-only mirror of the build-time F8
-    # cap (``_MAX_HOLDING_CONSTANT``); runtime enforcement stays in
-    # ``validate_funnel_args`` so callers keep the
-    # ``F8_MAX_HOLDING_CONSTANT`` message.
+    # ``maxItems`` is a schema-only mirror of the build-time F8 cap;
+    # runtime enforcement stays in ``validate_funnel_args`` so callers
+    # keep the ``F8_MAX_HOLDING_CONSTANT`` message.
     holding_constant: (
-        Annotated[list[str | HoldingConstant], Field(json_schema_extra={"maxItems": 3})]
+        Annotated[
+            list[str | HoldingConstant],
+            Field(json_schema_extra={"maxItems": _MAX_HOLDING_CONSTANT}),
+        ]
         | None
     ) = Field(
         None,
-        description="Properties to hold constant across funnel steps (at most 3).",
+        description=(
+            f"Properties to hold constant across funnel steps "
+            f"(at most {_MAX_HOLDING_CONSTANT})."
+        ),
     )
     mode: FunnelMode = Field(
         "steps",
@@ -487,23 +495,21 @@ class RetentionQuery(_TimeComparableQuery):
         "birth",
         description="Retention alignment mode: birth or interval_start.",
     )
-    # ``maxItems`` (730) is a schema-only mirror of the build-time R5c
-    # cap (``_MAX_RETENTION_BUCKETS``); runtime enforcement stays in
-    # ``validate_retention_args`` so callers keep its curated message.
+    # ``maxItems`` is a schema-only mirror of the build-time R5c cap;
+    # runtime enforcement stays in ``validate_retention_args`` so
+    # callers keep its curated message.
     bucket_sizes: (
         Annotated[
-            list[
-                Annotated[StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})]
-            ],
-            Field(json_schema_extra={"maxItems": 730}),
+            list[_PositiveStrictIntSchema],
+            Field(json_schema_extra={"maxItems": _MAX_RETENTION_BUCKETS}),
         ]
         | None
     ) = Field(
         None,
         description=(
-            "Custom bucket sizes for retention periods (strictly ascending "
-            "positive integers, at most 730). Items are strict integers — "
-            "bool/float/str values are rejected."
+            f"Custom bucket sizes for retention periods (strictly ascending "
+            f"positive integers, at most {_MAX_RETENTION_BUCKETS}). Items are "
+            f"strict integers — bool/float/str values are rejected."
         ),
     )
     unit: QueryTimeUnit = Field(
@@ -571,24 +577,30 @@ class FlowQuery(_BaseQuery):
         ...,
         description="Event specification: a name, FlowStep, or list of names/FlowSteps.",
     )
-    # The ``maximum`` keywords on forward/reverse (5) and cardinality
-    # (50) are schema-only mirrors of the build-time FL3/FL4/FL6 rules;
-    # runtime enforcement stays in ``validate_flow_args`` so callers
-    # keep its curated range messages. ``FlowStep.forward``/``reverse``
-    # carry the same 0-5 bound.
+    # The ``maximum`` keywords on forward/reverse and cardinality are
+    # schema-only mirrors of the build-time FL3/FL4/FL6 rules; runtime
+    # enforcement stays in ``validate_flow_args`` so callers keep its
+    # curated range messages. ``FlowStep.forward``/``reverse`` carry
+    # the same 0-5 bound.
     forward: int = Field(
         3,
         ge=0,
         strict=True,
-        json_schema_extra={"maximum": 5},
-        description="Default forward step count. Default: 3. Maximum: 5.",
+        json_schema_extra={"maximum": _MAX_FLOW_STEPS_DIRECTION},
+        description=(
+            f"Default forward step count. Default: 3. "
+            f"Maximum: {_MAX_FLOW_STEPS_DIRECTION}."
+        ),
     )
     reverse: int = Field(
         0,
         ge=0,
         strict=True,
-        json_schema_extra={"maximum": 5},
-        description="Default reverse step count. Default: 0. Maximum: 5.",
+        json_schema_extra={"maximum": _MAX_FLOW_STEPS_DIRECTION},
+        description=(
+            f"Default reverse step count. Default: 0. "
+            f"Maximum: {_MAX_FLOW_STEPS_DIRECTION}."
+        ),
     )
     conversion_window: int = Field(
         7,
@@ -608,8 +620,11 @@ class FlowQuery(_BaseQuery):
         3,
         ge=1,
         strict=True,
-        json_schema_extra={"maximum": 50},
-        description="Number of top paths to return. Default: 3. Maximum: 50.",
+        json_schema_extra={"maximum": _MAX_FLOW_CARDINALITY},
+        description=(
+            f"Number of top paths to return. Default: 3. "
+            f"Maximum: {_MAX_FLOW_CARDINALITY}."
+        ),
     )
     collapse_repeated: bool = Field(
         False,

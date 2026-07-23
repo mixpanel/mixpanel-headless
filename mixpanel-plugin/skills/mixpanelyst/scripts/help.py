@@ -139,8 +139,9 @@ def _arm_constraint_strs(annotation: Any) -> list[str]:
         annotation: The field's type annotation (union or single type).
 
     Returns:
-        Deduplicated constraint strings in encounter order (arms
-        typically repeat identical bounds).
+        Constraint strings in encounter order, possibly repeated (arms
+        typically carry identical bounds) — the caller dedups once when
+        merging with field-level constraints.
     """
     origin = typing.get_origin(annotation)
     if origin is typing.Union or origin is types.UnionType:
@@ -151,13 +152,7 @@ def _arm_constraint_strs(annotation: Any) -> list[str]:
     for arm in arms:
         if typing.get_origin(arm) is typing.Annotated:
             parts.extend(_constraint_strs(typing.get_args(arm)[1:]))
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for part in parts:
-        if part not in seen:
-            seen.add(part)
-            deduped.append(part)
-    return deduped
+    return parts
 
 
 def _enum_values_inline(annotation: Any) -> str:
@@ -331,10 +326,12 @@ def _print_pydantic_field(fname: str, finfo: Any, obj: type, indent: str) -> Non
     # Field constraints: field-level metadata plus per-union-arm
     # Annotated bounds (e.g. percentile_value's ge=0/le=100), deduped.
     constraints = ""
-    constraint_parts: list[str] = list(_constraint_strs(finfo.metadata or []))
-    for part in _arm_constraint_strs(finfo.annotation):
-        if part not in constraint_parts:
-            constraint_parts.append(part)
+    constraint_parts = list(
+        dict.fromkeys(
+            _constraint_strs(finfo.metadata or [])
+            + _arm_constraint_strs(finfo.annotation)
+        )
+    )
     if constraint_parts:
         constraints = f" ({', '.join(constraint_parts)})"
 

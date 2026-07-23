@@ -519,6 +519,27 @@ _MAX_FUNNEL_STEPS = 100
 _MAX_HOLDING_CONSTANT = 3
 """Maximum number of holding-constant properties allowed."""
 
+_MAX_LAST_DAYS = 3650
+"""Maximum relative time range in days (~10 years — generous but sane)."""
+
+_MAX_ROLLING = 365
+"""Maximum rolling window size in periods (sanity cap)."""
+
+_MAX_FILTER_VALUES = 1000
+"""Maximum filter value list length (server rejects larger lists)."""
+
+_MAX_RETENTION_BUCKETS = 730
+"""Maximum number of custom retention bucket sizes."""
+
+_MAX_FLOW_STEPS_DIRECTION = 5
+"""Maximum forward/reverse step count in a flow query (0-5 range)."""
+
+_MAX_FLOW_CARDINALITY = 50
+"""Maximum number of top paths a flow query may request."""
+
+_CP_MAX_FORMULA_LENGTH = 20_000
+"""Maximum inline custom-property formula length in characters."""
+
 # =============================================================================
 # Retention-Specific Constants
 # =============================================================================

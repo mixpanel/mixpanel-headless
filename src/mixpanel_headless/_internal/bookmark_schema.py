@@ -18,13 +18,14 @@ of truth, no Layer 1 vs Layer 2 drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, JsonValue, Tag
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
 from mixpanel_headless.exceptions import ValidationError
+from mixpanel_headless.types import _COHORT_NODE_TAGS_BY_KIND
 
 # =============================================================================
 # Shared model configuration
@@ -284,10 +285,12 @@ def translate_pydantic_exception(
         code.
     """
     mapper = code_mapper or _default_code_mapper
+    # ``exc.errors()`` returns freshly-built dicts, so the prune passes
+    # (which never mutate) can consume them directly — the cast erases
+    # pydantic's ``ErrorDetails`` TypedDict.
+    raw_errors = cast("list[dict[str, Any]]", exc.errors())
     pruned = _prune_instance_check_noise(
-        _prune_shadowed_arm_root_type_noise(
-            _prune_union_arm_noise([dict(err) for err in exc.errors()])
-        )
+        _prune_shadowed_arm_root_type_noise(_prune_union_arm_noise(raw_errors))
     )
     translated: list[ValidationError] = []
     seen: set[tuple[str, str, str]] = set()
@@ -750,12 +753,12 @@ _CALLABLE_DISCRIMINATOR_REWRITES: dict[str, tuple[str, tuple[str, ...]] | None] 
     # The declarative cohort-node union (types.py ``_CohortNode``): the
     # discriminator returns unknown kinds / ``None`` verbatim, so
     # ``union_tag_invalid`` / ``union_tag_not_found`` CAN fire and must
-    # be rewritten in terms of the caller-facing ``kind`` values.
-    # Parity with ``types._COHORT_NODE_TAGS_BY_KIND`` is enforced by
-    # ``test_rewrite_registry_matches_cohort_node_kinds``.
+    # be rewritten in terms of the caller-facing ``kind`` values —
+    # derived from the owning map so a new cohort node kind propagates
+    # here automatically.
     "_cohort_node_discriminator": (
         "kind",
-        ("property", "behavioral", "cohort_reference", "group"),
+        tuple(_COHORT_NODE_TAGS_BY_KIND),
     ),
     # Total discriminators — they return a tag for EVERY input, so
     # pydantic can never emit a tag failure for them. Registered with
