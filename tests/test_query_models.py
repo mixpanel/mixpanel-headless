@@ -1543,6 +1543,151 @@ class TestNestedComponentStrictCoercion:
         assert (fb.bucket_size, fb.bucket_min, fb.bucket_max) == (5, 0, 50)
 
 
+class TestDeclarativeCriterionStrictCoercion:
+    """Declarative cohort criteria reject bool/str coercion into int/bool fields.
+
+    Regression tests for finding
+    ``declarative-cohort-criterion-models-lax-coerce-int-bool``: the
+    declarative criterion models used plain lax ``int``/``bool`` fields
+    while every other nested building block was strict, so on the
+    dict/LLM path ``cohort_id: "456"`` silently referenced saved cohort
+    456 (the exact ``cohort: "5"`` typo scenario the query_models.py
+    module docstring cites), ``at_least: True`` silently became count 1
+    (a caller who meant boolean "did the event" got a materially
+    different query), and ``negated: 1`` silently became ``True``.
+    ``CohortReferenceCriterion.cohort_id/negated`` and every
+    ``BehavioralCriterion`` count/window field must reject coercion
+    like their strict siblings (``CohortMetric.cohort``,
+    ``FrequencyFilter.date_range_value``, ...).
+    """
+
+    def test_cohort_reference_cohort_id_str_rejected(self) -> None:
+        """CohortReferenceCriterion cohort_id='456' must not become 456."""
+        with pytest.raises(ValidationError, match="cohort_id"):
+            CohortReferenceCriterion.model_validate({"cohort_id": "456"})
+
+    def test_cohort_reference_cohort_id_bool_rejected(self) -> None:
+        """CohortReferenceCriterion cohort_id=True must not become 1."""
+        with pytest.raises(ValidationError, match="cohort_id"):
+            CohortReferenceCriterion.model_validate({"cohort_id": True})
+
+    def test_cohort_reference_negated_int_rejected(self) -> None:
+        """CohortReferenceCriterion negated=1 must not become True."""
+        with pytest.raises(ValidationError, match="negated"):
+            CohortReferenceCriterion.model_validate({"cohort_id": 456, "negated": 1})
+
+    def test_behavioral_at_least_bool_rejected(self) -> None:
+        """BehavioralCriterion at_least=True must not become count 1."""
+        with pytest.raises(ValidationError, match="at_least"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_least": True, "within_days": 30}
+            )
+
+    def test_behavioral_at_least_str_rejected(self) -> None:
+        """BehavioralCriterion at_least='3' must not become count 3."""
+        with pytest.raises(ValidationError, match="at_least"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_least": "3", "within_days": 30}
+            )
+
+    def test_behavioral_at_most_str_rejected(self) -> None:
+        """BehavioralCriterion at_most='5' must not become count 5."""
+        with pytest.raises(ValidationError, match="at_most"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_most": "5", "within_days": 30}
+            )
+
+    def test_behavioral_exactly_bool_rejected(self) -> None:
+        """BehavioralCriterion exactly=False must not become count 0."""
+        with pytest.raises(ValidationError, match="exactly"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "exactly": False, "within_days": 30}
+            )
+
+    def test_behavioral_within_days_str_rejected(self) -> None:
+        """BehavioralCriterion within_days='30' must not become 30."""
+        with pytest.raises(ValidationError, match="within_days"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_least": 3, "within_days": "30"}
+            )
+
+    def test_behavioral_within_weeks_bool_rejected(self) -> None:
+        """BehavioralCriterion within_weeks=True must not become 1."""
+        with pytest.raises(ValidationError, match="within_weeks"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_least": 3, "within_weeks": True}
+            )
+
+    def test_behavioral_within_months_str_rejected(self) -> None:
+        """BehavioralCriterion within_months='6' must not become 6."""
+        with pytest.raises(ValidationError, match="within_months"):
+            BehavioralCriterion.model_validate(
+                {"event": "Purchase", "at_least": 3, "within_months": "6"}
+            )
+
+    def test_cohort_reference_str_id_rejected_via_query_dict_path(self) -> None:
+        """InsightsQuery group_by inline-cohort cohort_id='456' is rejected."""
+        with pytest.raises(BookmarkValidationError, match="cohort_id"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "criteria": [
+                                    {"kind": "cohort_reference", "cohort_id": "456"}
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+
+    def test_behavioral_bool_count_rejected_via_query_dict_path(self) -> None:
+        """InsightsQuery group_by inline-cohort at_least=True is rejected."""
+        with pytest.raises(BookmarkValidationError, match="at_least"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "group_by": [
+                        {
+                            "cohort": {
+                                "criteria": [
+                                    {
+                                        "kind": "behavioral",
+                                        "event": "Purchase",
+                                        "at_least": True,
+                                        "within_days": 30,
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+
+    def test_valid_criterion_values_still_accepted(self) -> None:
+        """Genuine ints/bools still construct on every strict field."""
+        ref = CohortReferenceCriterion.model_validate(
+            {"cohort_id": 456, "negated": True}
+        )
+        assert (ref.cohort_id, ref.negated) == (456, True)
+        ref_default = CohortReferenceCriterion.model_validate({"cohort_id": 7})
+        assert ref_default.negated is False
+        b = BehavioralCriterion.model_validate(
+            {"event": "Purchase", "at_least": 3, "within_days": 30}
+        )
+        assert (b.at_least, b.within_days) == (3, 30)
+        b_full = BehavioralCriterion(
+            event="Purchase",
+            at_most=5,
+            within_weeks=2,
+        )
+        assert (b_full.at_most, b_full.within_weeks) == (5, 2)
+        b_exact = BehavioralCriterion(event="Purchase", exactly=0, within_months=6)
+        assert (b_exact.exactly, b_exact.within_months) == (0, 6)
+
+
 class TestFilterOperatorValueShape:
     """Filter enforces value shape per operator family at construction.
 

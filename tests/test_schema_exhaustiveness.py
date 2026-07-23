@@ -318,6 +318,53 @@ class TestNumericConstraintRendering:
         for arm in int_arms:
             assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
 
+    def test_cohort_reference_criterion_id_bound_rendered(self) -> None:
+        """CohortReferenceCriterion.cohort_id carries exclusiveMinimum 0.
+
+        Regression guard for finding
+        ``declarative-cohort-criterion-models-lax-coerce-int-bool``:
+        making ``cohort_id`` strict must keep the positive-ID bound
+        rendered as a standard JSON-Schema keyword.
+        """
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["CohortReferenceCriterion"]["properties"]["cohort_id"]
+        assert prop.get("type") == "integer"
+        assert prop.get("exclusiveMinimum") == 0, f"missing bound in {prop}"
+
+    @pytest.mark.parametrize("field_name", ["at_least", "at_most", "exactly"])
+    def test_behavioral_count_bounds_rendered(self, field_name: str) -> None:
+        """BehavioralCriterion count arms carry minimum 0.
+
+        Regression guard for finding
+        ``declarative-cohort-criterion-models-lax-coerce-int-bool``:
+        making the frequency-bound fields strict must keep the
+        non-negative count bound rendered per integer arm.
+        """
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["BehavioralCriterion"]["properties"][field_name]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+
+    @pytest.mark.parametrize(
+        "field_name", ["within_days", "within_weeks", "within_months"]
+    )
+    def test_behavioral_window_bounds_rendered(self, field_name: str) -> None:
+        """BehavioralCriterion window arms carry exclusiveMinimum 0.
+
+        Regression guard for finding
+        ``declarative-cohort-criterion-models-lax-coerce-int-bool``:
+        making the rolling-window fields strict must keep the positive
+        bound rendered per integer arm.
+        """
+        defs = InsightsQuery.model_json_schema()["$defs"]
+        prop = defs["BehavioralCriterion"]["properties"][field_name]
+        int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
+        assert int_arms, f"no integer arms found in {prop}"
+        for arm in int_arms:
+            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+
     def test_custom_property_ref_id_bound_rendered(self) -> None:
         """CustomPropertyRef.id carries exclusiveMinimum 0 (CP1 positive rule)."""
         defs = InsightsQuery.model_json_schema()["$defs"]

@@ -9886,27 +9886,38 @@ class BehavioralCriterion(BaseModel):
     event: str = Field(min_length=1, description="Event name.")
     """Event name (must be non-empty)."""
 
-    at_least: int | None = Field(None, ge=0, description="Minimum event count (>=).")
-    """Minimum event count."""
+    at_least: int | None = Field(
+        None, ge=0, strict=True, description="Minimum event count (>=)."
+    )
+    """Minimum event count. Strict — bool/float/str inputs are rejected."""
 
-    at_most: int | None = Field(None, ge=0, description="Maximum event count (<=).")
-    """Maximum event count."""
+    at_most: int | None = Field(
+        None, ge=0, strict=True, description="Maximum event count (<=)."
+    )
+    """Maximum event count. Strict — bool/float/str inputs are rejected."""
 
     exactly: int | None = Field(
-        None, ge=0, description="Exact event count (==); use 0 for 'did not do'."
+        None,
+        ge=0,
+        strict=True,
+        description="Exact event count (==); use 0 for 'did not do'.",
     )
-    """Exact event count."""
+    """Exact event count. Strict — bool/float/str inputs are rejected."""
 
-    within_days: int | None = Field(None, gt=0, description="Rolling window in days.")
-    """Rolling window in days."""
+    within_days: int | None = Field(
+        None, gt=0, strict=True, description="Rolling window in days."
+    )
+    """Rolling window in days. Strict — bool/float/str inputs are rejected."""
 
-    within_weeks: int | None = Field(None, gt=0, description="Rolling window in weeks.")
-    """Rolling window in weeks."""
+    within_weeks: int | None = Field(
+        None, gt=0, strict=True, description="Rolling window in weeks."
+    )
+    """Rolling window in weeks. Strict — bool/float/str inputs are rejected."""
 
     within_months: int | None = Field(
-        None, gt=0, description="Rolling window in months."
+        None, gt=0, strict=True, description="Rolling window in months."
     )
-    """Rolling window in months."""
+    """Rolling window in months. Strict — bool/float/str inputs are rejected."""
 
     from_date: _DateStrSchema | None = Field(
         None, description="Absolute start date (YYYY-MM-DD); requires to_date."
@@ -9990,13 +10001,20 @@ class CohortReferenceCriterion(BaseModel):
     kind: Literal["cohort_reference"] = "cohort_reference"
     """Discriminator tag."""
 
-    cohort_id: int = Field(gt=0, description="Saved cohort ID (positive integer).")
-    """Saved cohort ID."""
+    cohort_id: int = Field(
+        gt=0, strict=True, description="Saved cohort ID (positive integer)."
+    )
+    """Saved cohort ID. Strict — bool/float/str inputs are rejected.
 
-    negated: bool = Field(
+    The ``exclusiveMinimum`` bound renders in the JSON schema and is
+    enforced at construction, so a ``cohort_id: "456"`` typo cannot
+    silently reference saved cohort 456.
+    """
+
+    negated: StrictBool = Field(
         False, description="Select users NOT in the cohort when True."
     )
-    """Whether to negate membership."""
+    """Whether to negate membership. Strict — int inputs are rejected."""
 
     def to_criteria(self) -> CohortCriteria:
         """Convert to the builder criterion.
