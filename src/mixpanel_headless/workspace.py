@@ -344,6 +344,23 @@ def _check_event_properties_count(event_properties: list[str] | None) -> None:
         )
 
 
+def _ms_to_utc_date(timestamp_ms: int) -> str:
+    """Format a unix-ms timestamp as a UTC ``YYYY-MM-DD`` date string.
+
+    Used to convert replay start/end times into the date-window bounds
+    passed to the Insights events join.
+
+    Args:
+        timestamp_ms: Unix timestamp in milliseconds.
+
+    Returns:
+        The UTC calendar date, ISO-formatted (e.g. ``"2026-05-20"``).
+    """
+    return datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).strftime(
+        "%Y-%m-%d"
+    )
+
+
 def _validate_limit(limit: int | None) -> None:
     """Validate limit is within the allowed range.
 
@@ -2668,10 +2685,8 @@ class Workspace:
             conversion_window_unit=query.conversion_window_unit,
             math=query.math,
             math_property=query.math_property,
-            exclusions=list(query.exclusions) if query.exclusions else None,
-            holding_constant=list(query.holding_constant)
-            if query.holding_constant
-            else None,
+            exclusions=query.exclusions or None,
+            holding_constant=query.holding_constant or None,
             from_date=query.from_date,
             to_date=query.to_date,
             last=query.last,
@@ -9613,12 +9628,8 @@ class Workspace:
         if include_mixpanel_events:
             # Scope the events scan to the replay's own day(s): tight, and
             # correct even for replays older than the default 90-day lookback.
-            win_from = datetime.fromtimestamp(start_time / 1000, timezone.utc).strftime(
-                "%Y-%m-%d"
-            )
-            win_to = datetime.fromtimestamp(end_time / 1000, timezone.utc).strftime(
-                "%Y-%m-%d"
-            )
+            win_from = _ms_to_utc_date(start_time)
+            win_to = _ms_to_utc_date(end_time)
             mixpanel_events = self.events_for_replay(
                 replay_id,
                 event_properties=event_properties,
@@ -9811,8 +9822,7 @@ class Workspace:
                     )
                     failures.append((rid, exc))
         if not results and failures:
-            for failed_rid, failed_exc in failures:
-                logger.warning("replay %s failed: %s", failed_rid, failed_exc)
+            # Each failure was already logged when caught above; just raise.
             raise failures[0][1]
         ordered = [results[i] for i in sorted(results)]
 
@@ -9820,12 +9830,8 @@ class Workspace:
         # alternative fans out N queries and exhausts the Insights rate limit).
         # The combined window spans the earliest start to the latest end.
         if include_mixpanel_events and ordered:
-            win_from = datetime.fromtimestamp(
-                min(r.start_time for r in ordered) / 1000, timezone.utc
-            ).strftime("%Y-%m-%d")
-            win_to = datetime.fromtimestamp(
-                max(r.end_time for r in ordered) / 1000, timezone.utc
-            ).strftime("%Y-%m-%d")
+            win_from = _ms_to_utc_date(min(r.start_time for r in ordered))
+            win_to = _ms_to_utc_date(max(r.end_time for r in ordered))
             events_by_replay = self.events_for_replays(
                 [r.replay_id for r in ordered],
                 event_properties=event_properties,

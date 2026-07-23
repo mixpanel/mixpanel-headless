@@ -13821,6 +13821,45 @@ def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_ACTION_COLS = [
+    "t",
+    "action",
+    "target_node_id",
+    "target_desc",
+    "description",
+    "url",
+    "metadata",
+]
+"""Column order for every action-level DataFrame projection.
+
+Shared by :attr:`Replay.actions_df`, :meth:`Replay.clicks_on`, and
+:attr:`ReplayBundle.actions_df` (which prepends ``replay_id``) so the
+three projections cannot drift.
+"""
+
+
+def _action_row(action: UserAction) -> dict[str, Any]:
+    """Project one :class:`UserAction` into the ``actions_df`` row shape.
+
+    Args:
+        action: The normalized action to project.
+
+    Returns:
+        Dict with the :data:`_ACTION_COLS` keys; ``metadata`` is a
+        shallow copy so DataFrame consumers cannot mutate the action's
+        own dict.
+    """
+    return {
+        "t": action.timestamp,
+        "action": action.action,
+        "target_node_id": action.target_node_id,
+        "target_desc": action.target_desc,
+        "description": action.description,
+        "url": action.url,
+        "metadata": dict(action.metadata),
+    }
+
+
 @dataclass(frozen=True)
 class Replay(ResultWithDataFrame):
     """Single fully-materialized session replay (data-model §2.5).
@@ -13954,28 +13993,8 @@ class Replay(ResultWithDataFrame):
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
-        cols = [
-            "t",
-            "action",
-            "target_node_id",
-            "target_desc",
-            "description",
-            "url",
-            "metadata",
-        ]
-        rows = [
-            {
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "description": a.description,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
-            for a in self.actions
-        ]
-        result = pd.DataFrame(rows, columns=cols)
+        rows = [_action_row(a) for a in self.actions]
+        result = pd.DataFrame(rows, columns=_ACTION_COLS)
         object.__setattr__(self, "_actions_df_cache", result)
         return result
 
@@ -14071,8 +14090,6 @@ class Replay(ResultWithDataFrame):
             replay had no console errors.
         """
         df = self.actions_df
-        if df.empty:
-            return df
         filtered: pd.DataFrame = df[df["action"] == "console_error"].reset_index(
             drop=True
         )
@@ -14089,31 +14106,10 @@ class Replay(ResultWithDataFrame):
             DataFrame projection (``actions_df``-shaped) of the click
             actions for which ``predicate`` returned True.
         """
-        cols = [
-            "t",
-            "action",
-            "target_node_id",
-            "target_desc",
-            "description",
-            "url",
-            "metadata",
-        ]
-        if not self.actions:
-            return pd.DataFrame(columns=cols)
-        keep = [a for a in self.actions if a.action == "click" and predicate(a)]
         rows = [
-            {
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "description": a.description,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
-            for a in keep
+            _action_row(a) for a in self.actions if a.action == "click" and predicate(a)
         ]
-        return pd.DataFrame(rows, columns=cols)
+        return pd.DataFrame(rows, columns=_ACTION_COLS)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serializable representation.
@@ -14293,31 +14289,12 @@ class ReplayBundle(ResultWithDataFrame):
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
-        cols = [
-            "replay_id",
-            "t",
-            "action",
-            "target_node_id",
-            "target_desc",
-            "description",
-            "url",
-            "metadata",
-        ]
         rows = [
-            {
-                "replay_id": r.replay_id,
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "description": a.description,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
+            {"replay_id": r.replay_id, **_action_row(a)}
             for r in self.replays
             for a in r.actions
         ]
-        result = pd.DataFrame(rows, columns=cols)
+        result = pd.DataFrame(rows, columns=["replay_id", *_ACTION_COLS])
         object.__setattr__(self, "_actions_df_cache", result)
         return result
 
@@ -14666,7 +14643,7 @@ class ReplayBundle(ResultWithDataFrame):
             ```
         """
         return ReplayBundle(
-            replays=list(self.replays[:n]),
+            replays=self.replays[:n],
             computed_at=self.computed_at,
             project_id=self.project_id,
         )
@@ -14736,13 +14713,17 @@ class ReplayBundle(ResultWithDataFrame):
         """
         if not self.replays:
             return "# No replays in bundle\n"
-        sections = ["# Bundle summary", "", f"- replays: {len(self.replays)}"]
+        # sessions_df has one row per replay, so it is non-empty here.
         df = self.sessions_df
-        if not df.empty:
-            sections.append(f"- total events: {int(df['n_events'].sum())}")
-            sections.append(f"- total actions: {int(df['n_actions'].sum())}")
-            sections.append(f"- total errors: {int(df['n_errors'].sum())}")
-        sections.append("")
+        sections = [
+            "# Bundle summary",
+            "",
+            f"- replays: {len(self.replays)}",
+            f"- total events: {int(df['n_events'].sum())}",
+            f"- total actions: {int(df['n_actions'].sum())}",
+            f"- total errors: {int(df['n_errors'].sum())}",
+            "",
+        ]
         for r in self.replays:
             try:
                 sections.append(r.summary_markdown)
@@ -14761,16 +14742,8 @@ class ReplayBundle(ResultWithDataFrame):
             DataFrame with columns ``action``, ``self_count``,
             ``other_count``, ``delta`` (self - other).
         """
-        a = (
-            self.actions_df["action"].value_counts()
-            if not self.actions_df.empty
-            else pd.Series(dtype=int)
-        )
-        b = (
-            other.actions_df["action"].value_counts()
-            if not other.actions_df.empty
-            else pd.Series(dtype=int)
-        )
+        a = self.actions_df["action"].value_counts()
+        b = other.actions_df["action"].value_counts()
         keys = sorted(set(a.index) | set(b.index))
         rows = [
             {

@@ -514,12 +514,12 @@ def replays_for_user(
                     replay.summary_markdown
                 )
         # index.json mirrors bundle.sessions_df for downstream consumers.
-        index_path = out_dir / "index.json"
-        index_path.write_text(bundle.sessions_df.to_json(orient="records"))
+        # bundle.replays is non-empty here, so sessions_df has rows.
         df = bundle.sessions_df
-        total_actions = int(df["n_actions"].sum()) if not df.empty else 0
-        total_clicks = int(df["n_clicks"].sum()) if not df.empty else 0
-        total_errors = int(df["n_errors"].sum()) if not df.empty else 0
+        (out_dir / "index.json").write_text(df.to_json(orient="records"))
+        total_actions = int(df["n_actions"].sum())
+        total_clicks = int(df["n_clicks"].sum())
+        total_errors = int(df["n_errors"].sum())
         console.print(
             f"wrote {len(bundle.replays)} replays to {out_dir}/\n"
             f"total: {total_actions} actions, {total_clicks} clicks, "
