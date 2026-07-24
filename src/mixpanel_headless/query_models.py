@@ -25,7 +25,7 @@ an MCP "Run-Query" tool that generates its request schema from
   than the caller wrote (e.g. ``cohort: "5"`` querying saved cohort 5
   after a typo). Strict fields reject those inputs with the same
   structured ``BookmarkValidationError`` the builders raise.
-- Numeric bounds are annotated per union arm (e.g.
+- Numeric bounds are annotated per union alternative (e.g.
   ``Annotated[int, Field(strict=True, ge=0, le=100)]``) so they render
   as standard JSON-Schema ``minimum``/``maximum`` keywords instead of
   pydantic's literal ``ge``/``le`` keys, which external validators
@@ -112,14 +112,12 @@ from mixpanel_headless.types import (
 )
 
 # =============================================================================
-# Discriminated item types for the query models' union-typed list fields
+# Discriminated item types for the query models' union list fields
 #
-# Each ambiguous union (a ``str`` shorthand plus model arms, or several
-# model arms) is a callable-``Discriminator`` union: only the arm the value
-# structurally matches is validated, so a malformed entry yields one located
-# error instead of every sibling arm's shape noise, and an unroutable entry
-# gets the ``custom_error_message`` located at the item. See
-# ``types._union_discriminator`` / ``types._str_or`` for the routing rules.
+# Each ambiguous union is a callable-Discriminator union, so pydantic validates
+# only the alternative a value structurally matches — one located error on a bad
+# entry (or the custom_error_message on an unroutable one), never every
+# alternative's shape noise. Routing lives in types._union_discriminator / _str_or.
 # =============================================================================
 
 _EventItem = Annotated[
@@ -166,7 +164,7 @@ _InsightsBreakdownItem = Annotated[
         ),
     ),
 ]
-"""One insights ``group_by`` entry (adds the frequency-breakdown arm)."""
+"""One insights ``group_by`` entry (adds the frequency-breakdown alternative)."""
 
 _BreakdownItem = Annotated[
     Annotated[str, Tag("str")]
@@ -186,7 +184,7 @@ _BreakdownItem = Annotated[
         ),
     ),
 ]
-"""One funnel / retention ``group_by`` entry (no frequency arm)."""
+"""One funnel / retention ``group_by`` entry (no frequency alternative)."""
 
 _WhereItem = Annotated[
     Annotated[Filter, Tag("Filter")]
@@ -206,7 +204,7 @@ _WhereItem = Annotated[
         ),
     ),
 ]
-"""One insights ``where`` entry: ``Filter`` · ``FrequencyFilter`` (no string arm)."""
+"""One insights ``where`` entry: ``Filter`` · ``FrequencyFilter`` (no string alternative)."""
 
 _StepItem = Annotated[
     Annotated[str, Tag("str")] | Annotated[FunnelStep, Tag("FunnelStep")],
@@ -263,14 +261,13 @@ _SegmentItem = Annotated[
 
 
 def _flow_event_discriminator(v: Any) -> str:
-    """Route a flow ``event`` value: string, single step, or list of steps.
+    """Route the flow ``event`` union: string → "str", list/tuple → the list, else → one FlowStep.
 
-    Total (never returns ``None``): strings route to ``"str"``, lists /
-    tuples to the list arm, and any other value to the single-``FlowStep``
-    arm so a malformed dict reports that model's field errors.
+    Total (never None): a non-list, non-string value goes to the single
+    ``FlowStep`` alternative so a bad dict shows that model's own field errors.
 
     Args:
-        v: The candidate value (str, FlowStep, dict, or list).
+        v: The ``event`` value (str, FlowStep, dict, or list).
 
     Returns:
         ``"str"``, ``"FlowStepList"``, or ``"FlowStep"``.
@@ -861,7 +858,7 @@ class FlowQuery(_BaseQuery):
 
         Extends the base checks (lone ``to_date`` rejection) with an
         empty-event-list rule: ``event=[]`` is schema-representable (the
-        list union arm has no minItems) but meaningless, so it is
+        list union alternative has no minItems) but meaningless, so it is
         rejected with a distinct code. A lone ``from_date`` is accepted
         like the other models — ``build_date_range`` fills today's date
         for the missing ``to_date``.

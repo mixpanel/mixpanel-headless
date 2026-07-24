@@ -13,7 +13,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from mixpanel_headless._internal.bookmark_schema import _is_union_arm_label
+from mixpanel_headless._internal.bookmark_schema import _is_union_alternative_label
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import (
     FlowQuery,
@@ -864,7 +864,7 @@ class TestFilterDictConstruction:
             )
 
     def test_equals_mixed_list_rejected_by_field_typing(self) -> None:
-        """Mixed-type lists match no _value union arm and are rejected."""
+        """Mixed-type lists match no _value union alternative and are rejected."""
         with pytest.raises(ValidationError):
             self._adapter.validate_python(
                 {"property": "plan_tier", "operator": "equals", "value": [5, "a"]}
@@ -1775,7 +1775,7 @@ class TestFilterOperatorValueShape:
 
         Regression for finding ``filter-list-position-bools-still-coerce``:
         booleans INSIDE list values hit pydantic's lax ``list[int | float]``
-        arm and coerced to 0/1 before ``__post_init__`` ran.
+        alternative and coerced to 0/1 before ``__post_init__`` ran.
         """
         with pytest.raises(ValidationError, match="numeric"):
             self._adapter.validate_python(
@@ -1971,15 +1971,15 @@ class TestFilterCohortPropertyGuard:
 
 
 class TestUnionArmErrorTranslation:
-    """Union-typed fields surface clean errors, not sibling-arm noise.
+    """Union-typed fields surface clean errors, not sibling-alternative noise.
 
-    Regression tests for finding ``union-arm-error-noise-for-invalid-filters``:
+    Regression tests for finding ``union-alternative-error-noise-for-invalid-filters``:
     one invalid ``Filter`` in ``InsightsQuery.where`` (typed
     ``list[Filter | FrequencyFilter]``) surfaced FIVE errors — the real
-    value error plus misleading FrequencyFilter-arm errors
+    value error plus misleading FrequencyFilter-alternative errors
     (``where[0].event: Field required``) — and a bad ``Metric`` dict in
     ``events`` produced exact duplicate (path, message) pairs from
-    sibling arms. ``translate_pydantic_exception`` now prefers the arm
+    sibling alternatives. ``translate_pydantic_exception`` now prefers the alternative
     that pinpointed the failure (a ``value_error``) and deduplicates
     identical errors.
     """
@@ -2005,7 +2005,7 @@ class TestUnionArmErrorTranslation:
         assert "numeric" in errors[0].message
 
     def test_bad_frequency_filter_yields_single_error(self) -> None:
-        """A FrequencyFilter value_error is not buried under Filter-arm noise."""
+        """A FrequencyFilter value_error is not buried under Filter-alternative noise."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 {"events": ["Login"], "where": [{"event": "Login", "value": -1}]}
@@ -2030,14 +2030,14 @@ class TestUnionArmErrorTranslation:
 
 
 class TestConstrainedArmPathTranslation:
-    """Per-arm ``constrained-int``/``constrained-float`` labels never leak.
+    """Per-alternative ``constrained-int``/``constrained-float`` labels never leak.
 
     Regression tests for finding
-    ``constrained-arm-labels-leak-into-error-paths``: the per-arm bound
+    ``constrained-alternative-labels-leak-into-error-paths``: the per-alternative bound
     annotations (``Annotated[int, Field(strict=True, ge=0, le=100)]`` on
     ``InsightsQuery.percentile_value`` and ``GroupBy.bucket_size``) make
-    pydantic label those union arms ``constrained-int`` /
-    ``constrained-float`` in error ``loc``. Those labels are internal
+    pydantic label those union alternatives ``constrained-int`` /
+    ``constrained-float`` in ``error_location``. Those labels are internal
     schema artifacts — they must be stripped from the translated path
     (like discriminator tags) so out-of-range input yields ONE error at
     the field's clean JSONPath instead of two near-duplicates at
@@ -2148,7 +2148,7 @@ class TestMetricPercentileValueBounds:
 
     Regression tests for finding
     ``metric-percentile-value-unbounded-everywhere``: the top-level
-    ``InsightsQuery.percentile_value`` enforced 0 <= x <= 100 per arm,
+    ``InsightsQuery.percentile_value`` enforced 0 <= x <= 100 per alternative,
     but the per-metric field had no bound anywhere — ``Metric("E",
     math="percentile", property="p", percentile_value=150)`` was
     accepted and shipped ``custom_percentile`` 150 to the server.
@@ -2185,7 +2185,7 @@ class TestMetricPercentileValueBounds:
         assert err.code == "B0_OUT_OF_RANGE"
 
     def test_float_arm_bounded_too(self) -> None:
-        """The float arm carries the same 0-100 bound."""
+        """The float alternative carries the same 0-100 bound."""
         with pytest.raises(ValidationError, match="percentile_value"):
             Metric("E", math="percentile", property="p", percentile_value=100.5)
 
@@ -2203,22 +2203,22 @@ class TestMetricPercentileValueBounds:
 
 
 class TestDataclassArmTypeErrorCode:
-    """Dataclass-arm wrong-type errors carry the stable B0_WRONG_TYPE code.
+    """Dataclass-alternative wrong-type errors carry the stable B0_WRONG_TYPE code.
 
     Regression tests for finding
     ``dataclass-type-error-unmapped-to-generic-code``: pydantic emits
-    ``dataclass_type`` for the pydantic-dataclass union arms (Metric,
-    CohortMetric, Formula, ...) where a ``BaseModel`` arm emits
+    ``dataclass_type`` for the pydantic-dataclass union alternatives (Metric,
+    CohortMetric, Formula, ...) where a ``BaseModel`` alternative emits
     ``model_type`` — the same conceptual wrong-type failure got
-    ``B0_WRONG_TYPE`` on one arm kind and the generic
+    ``B0_WRONG_TYPE`` on one alternative kind and the generic
     ``VALIDATION_ERROR`` fallback on the other.
     """
 
     def test_dataclass_arm_type_error_carries_wrong_type(self) -> None:
-        """A non-str routed to a dataclass arm yields B0_WRONG_TYPE.
+        """A non-str routed to a dataclass alternative yields B0_WRONG_TYPE.
 
         In a ``str | FunnelStep`` union, a scalar like ``3.14`` routes to
-        the ``FunnelStep`` arm (see ``_str_or``); pydantic emits
+        the ``FunnelStep`` alternative (see ``_str_or``); pydantic emits
         ``dataclass_type``, which must map to the stable wrong-type code
         rather than the generic ``VALIDATION_ERROR`` fallback.
         """
@@ -2231,7 +2231,7 @@ class TestDataclassArmTypeErrorCode:
         ]
 
     def test_dataclass_arm_message_present_with_stable_code(self) -> None:
-        """The dataclass-arm message survives with the mapped code."""
+        """The dataclass-alternative message survives with the mapped code."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             FunnelQuery.model_validate({"steps": ["Signup", 3.14]})
         dataclass_errors = [
@@ -2242,10 +2242,10 @@ class TestDataclassArmTypeErrorCode:
 
 
 class TestPropertySpecArmPathTranslation:
-    """``PropertySpec`` union-arm class names never leak into error paths.
+    """``PropertySpec`` union-alternative class names never leak into error paths.
 
     Regression tests for finding
-    ``property-spec-union-arm-labels-leak-into-error-paths``: the
+    ``property-spec-union-alternative-labels-leak-into-error-paths``: the
     ``PropertySpec`` union members ``CustomPropertyRef`` and
     ``InlineCustomProperty`` (``property: str | CustomPropertyRef |
     InlineCustomProperty`` on ``Filter``, ``GroupBy``, and ``Metric``)
@@ -2253,7 +2253,7 @@ class TestPropertySpecArmPathTranslation:
     dict surfaced raw class-name path segments like
     ``where[0].property.CustomPropertyRef.id``. ``PropertySpec`` is now a
     callable-``Discriminator`` union, so a malformed dict routes to a
-    single arm (clean ``where[0].property.id`` path) and an unroutable
+    single alternative (clean ``where[0].property.id`` path) and an unroutable
     one gets the located ``custom_error_message`` — no class name leaks
     into the path or message either way.
     """
@@ -2261,7 +2261,7 @@ class TestPropertySpecArmPathTranslation:
     def test_routed_property_dict_in_where_yields_clean_path(self) -> None:
         """A malformed custom-property ref in a Filter reports a clean path.
 
-        ``{"id": "x"}`` routes to the ``CustomPropertyRef`` arm; the strict
+        ``{"id": "x"}`` routes to the ``CustomPropertyRef`` alternative; the strict
         int rejection must surface at ``where[0].property.id`` with no
         ``CustomPropertyRef`` class name in the path.
         """
@@ -2279,7 +2279,7 @@ class TestPropertySpecArmPathTranslation:
         assert "where[0].property.id" in paths
 
     def test_unroutable_property_dict_yields_custom_error_at_property(self) -> None:
-        """A property dict matching no arm gets the custom message at the field.
+        """A property dict matching no alternative gets the custom message at the field.
 
         ``{"custom_property_id": True}`` has neither ``id`` nor ``formula``,
         so the discriminator cannot place it: one located error at
@@ -2341,17 +2341,17 @@ def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
 
 
 def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
-    """Collect every union-arm label pydantic can insert into error ``loc``.
+    """Collect every union-alternative label pydantic can insert into ``error_location``.
 
     Walks ``model_cls.__pydantic_core_schema__`` and, for every ``union``
     and ``tagged-union`` node, records two kinds of labels:
 
-    - For every arm, the arm's class name when the arm is a ``BaseModel``
+    - For every alternative, the alternative's class name when the alternative is a ``BaseModel``
       (``model`` schema) or pydantic dataclass (``dataclass`` schema),
       resolving ``definition-ref`` indirection. Smart unions insert these
-      bare class names into error ``loc`` tuples.
+      bare class names into ``error_location`` tuples.
     - For ``tagged-union`` nodes, the choice *keys*: pydantic inserts the
-      matched tag into ``loc`` for errors inside the chosen arm. With a
+      matched tag into ``error_location`` for errors inside the chosen alternative. With a
       callable ``Discriminator(...)`` these keys are ``Tag(...)`` names
       (class names); with a declarative ``Field(discriminator=...)`` they
       are the raw tag values (e.g. ``"property"``), which are NOT
@@ -2364,7 +2364,7 @@ def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
         model_cls: The pydantic model whose core schema to walk.
 
     Returns:
-        The set of union-arm labels reachable from ``model_cls``.
+        The set of union-alternative labels reachable from ``model_cls``.
     """
     schema: Any = model_cls.__pydantic_core_schema__
     refs: dict[str, dict[str, Any]] = {
@@ -2379,36 +2379,42 @@ def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
         choices = node.get("choices")
         if node.get("type") == "tagged-union" and isinstance(choices, dict):
             names.update(str(key) for key in choices)
-        arms: list[Any] = (
+        alternatives: list[Any] = (
             list(choices.values()) if isinstance(choices, dict) else list(choices or ())
         )
-        for arm in arms:
-            if isinstance(arm, tuple):
-                arm = arm[0]
+        for alternative in alternatives:
+            if isinstance(alternative, tuple):
+                alternative = alternative[0]
             seen_refs: set[str] = set()
-            while isinstance(arm, dict) and arm.get("type") == "definition-ref":
-                ref = str(arm.get("schema_ref"))
+            while (
+                isinstance(alternative, dict)
+                and alternative.get("type") == "definition-ref"
+            ):
+                ref = str(alternative.get("schema_ref"))
                 if ref in seen_refs:
                     break
                 seen_refs.add(ref)
-                arm = refs.get(ref, {})
-            if isinstance(arm, dict) and arm.get("type") in ("model", "dataclass"):
-                names.add(arm["cls"].__name__)
+                alternative = refs.get(ref, {})
+            if isinstance(alternative, dict) and alternative.get("type") in (
+                "model",
+                "dataclass",
+            ):
+                names.add(alternative["cls"].__name__)
     return names
 
 
 class TestUnionArmLabelRegistry:
-    """Every reachable union-arm class name is a strippable arm label.
+    """Every reachable union-alternative class name is a strippable alternative label.
 
     Structural guard for finding
-    ``property-spec-union-arm-labels-leak-into-error-paths``:
+    ``property-spec-union-alternative-labels-leak-into-error-paths``:
     ``_DISCRIMINATOR_TAGS`` is hand-maintained, and each newly added
     union member that is not registered leaks its raw class name into
     caller-facing error paths (Metric/Filter/FlowStep in earlier rounds,
     CustomPropertyRef/InlineCustomProperty in round 5). This test walks
     the pydantic core schema of all four query models, collects every
-    ``BaseModel`` / pydantic-dataclass union arm, and asserts each class
-    name is caught by ``_is_union_arm_label`` — so adding a union member
+    ``BaseModel`` / pydantic-dataclass union alternative, and asserts each class
+    name is caught by ``_is_union_alternative_label`` — so adding a union member
     without registering it fails CI instead of shipping a path leak.
     """
 
@@ -2416,24 +2422,24 @@ class TestUnionArmLabelRegistry:
     def test_every_union_arm_class_name_is_strippable(
         self, model_cls: type[BaseModel]
     ) -> None:
-        """All model/dataclass union arms reachable from the model are registered."""
+        """All model/dataclass union alternatives reachable from the model are registered."""
         unregistered = {
             name
             for name in _union_arm_model_names(model_cls)
-            if not _is_union_arm_label(name)
+            if not _is_union_alternative_label(name)
         }
         assert unregistered == set(), (
-            f"Union arm class names not registered in _DISCRIMINATOR_TAGS "
+            f"Union alternative class names not registered in _DISCRIMINATOR_TAGS "
             f"(their raw class names will leak into error paths): "
             f"{sorted(unregistered)}"
         )
 
     def test_walker_finds_known_union_arms(self) -> None:
-        """The schema walk is not vacuous — known arms are discovered.
+        """The schema walk is not vacuous — known alternatives are discovered.
 
         Guards the guard: if the core-schema walker silently broke (e.g.
         a pydantic upgrade renames schema keys), the registry test above
-        would pass on an empty set. Pin a few arms that must be found.
+        would pass on an empty set. Pin a few alternatives that must be found.
         """
         names = _union_arm_model_names(InsightsQuery)
         assert {
@@ -2449,7 +2455,7 @@ class TestUnionArmLabelRegistry:
 
         Regression guard for finding
         ``cohort-criteria-kind-tag-leaks-into-error-paths``: the
-        ``InlineCohort.criteria`` tagged union must surface its ``loc``
+        ``InlineCohort.criteria`` tagged union must surface its ``error_location``
         labels (the tagged-union choice keys) to the registry test.
         With the callable ``Discriminator`` + ``Tag`` pattern those keys
         are the criterion class names; a regression to the declarative
@@ -2472,14 +2478,14 @@ class TestCohortCriteriaKindTagPathTranslation:
     Regression tests for finding
     ``cohort-criteria-kind-tag-leaks-into-error-paths``: the declarative
     ``Field(discriminator="kind")`` on the cohort-node union made
-    pydantic insert the *kind tag value* into error ``loc`` tuples,
+    pydantic insert the *kind tag value* into ``error_location`` tuples,
     producing phantom path segments like
     ``group_by[0].cohort.criteria[0].property.value`` — where
     ``property`` is the union tag, not a field, and collides with
     ``PropertyCriterion``'s real ``property`` field. The union now uses
     the callable ``Discriminator(...)`` + ``Tag(<ClassName>)`` pattern
     (like the sorting models) so the inserted labels are registered
-    class names that ``_loc_to_jsonpath`` strips.
+    class names that ``_error_location_to_json_path`` strips.
     """
 
     def test_property_criterion_missing_value_path_clean(self) -> None:
@@ -2632,7 +2638,7 @@ class TestCohortNodeTagErrorMessages:
     Regression tests for finding
     ``cohort-node-union-tag-errors-leak-class-names-and-private-fn``: the
     callable ``Discriminator`` + ``Tag(<ClassName>)`` switch fixed the
-    ``loc`` leak but let pydantic's default ``union_tag_invalid`` /
+    ``error_location`` leak but let pydantic's default ``union_tag_invalid`` /
     ``union_tag_not_found`` MESSAGES through — leaking all four criterion
     class names plus the private ``_cohort_node_discriminator()`` function
     name, and pointing self-correcting agents at ``kind="BehavioralCriterion"``
@@ -2863,8 +2869,8 @@ class TestCohortMetricHiddenArmErrorConsistency:
     """CohortMetric.cohort errors never contradict its integer-only schema.
 
     Regression tests for finding
-    ``cohort-metric-hidden-arm-error-contradicts-integer-only-schema``:
-    the ``SkipJsonSchema[CohortDefinition]`` arm correctly hides the
+    ``cohort-metric-hidden-alternative-error-contradicts-integer-only-schema``:
+    the ``SkipJsonSchema[CohortDefinition]`` alternative correctly hides the
     inline shape from the JSON schema, but its ``model_type`` error
     (``"Input should be a valid dictionary or instance of InlineCohort"``)
     still reached dict/JSON callers — telling a schema-driven agent to
@@ -2908,12 +2914,12 @@ class TestCohortMetricHiddenArmErrorConsistency:
             )
 
     def test_cohort_breakdown_inline_arm_is_reachable(self) -> None:
-        """CohortBreakdown.cohort routes a structured dict to the inline arm.
+        """CohortBreakdown.cohort routes a structured dict to the inline alternative.
 
         The breakdown schema advertises the ``InlineCohort`` ``$ref``, and
-        the shared discriminator routes a dict to that arm — so a malformed
+        the shared discriminator routes a dict to that alternative — so a malformed
         inline cohort reports field-level errors under the cohort path
-        (proving the arm is reachable) with no ``InlineCohort`` class name
+        (proving the alternative is reachable) with no ``InlineCohort`` class name
         leaked into any message.
         """
         with pytest.raises(BookmarkValidationError) as exc_info:
@@ -2938,7 +2944,7 @@ class TestCohortMetricHiddenArmErrorConsistency:
             assert "InlineCohort" not in e.message, e.message
 
     def test_cohort_breakdown_scalar_gets_integer_diagnosis(self) -> None:
-        """A non-structured value routes only to the integer arm (like CohortMetric)."""
+        """A non-structured value routes only to the integer alternative (like CohortMetric)."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 {"events": ["Login"], "group_by": [{"cohort": "5"}]}
@@ -3012,11 +3018,11 @@ class TestPropertyCriterionNoValueOperatorValueRejected:
 
 
 class TestDiscriminatedUnionRouting:
-    """Callable-``Discriminator`` unions route to one arm across every field.
+    """Callable-``Discriminator`` unions route to one alternative across every field.
 
     Locks the discriminated-union behavior that replaced the hand-rolled
     prune pipeline: a malformed entry yields ONE located error (only the
-    matched arm validates), an unroutable entry gets the union's
+    matched alternative validates), an unroutable entry gets the union's
     ``custom_error_message`` located at the item, string shorthands still
     validate, and the discriminators route model instances on the
     serialization path (``model_dump`` round-trips).
@@ -3074,12 +3080,12 @@ class TestDiscriminatedUnionRouting:
         assert isinstance(build(), BaseModel)
 
     def test_flow_event_list_of_strings_validates(self) -> None:
-        """The flow ``event`` list-of-strings arm routes and validates."""
+        """The flow ``event`` list-of-strings alternative routes and validates."""
         q = FlowQuery(event=["Login", "Purchase"])
         assert q.event == ["Login", "Purchase"]
 
     def test_serialization_routes_every_model_instance_arm(self) -> None:
-        """model_dump() routes a model instance through every discriminator arm.
+        """model_dump() routes a model instance through every discriminator alternative.
 
         The discriminators run on the serialization path too — pydantic
         passes the model instance, not a dict. If any discriminator's
@@ -3142,7 +3148,7 @@ class TestDiscriminatedUnionRouting:
     def test_model_instance_dump_revalidate_round_trip(self, query: BaseModel) -> None:
         """A model built from instances dumps and re-validates to an equal model.
 
-        Covers every discriminated arm whose serialized form re-routes on
+        Covers every discriminated alternative whose serialized form re-routes on
         validation (``where`` uses ``FrequencyFilter`` — ``Filter`` dumps
         private field names and is covered by the dump-only test above,
         matching ``TestRoundTrip``'s handling).

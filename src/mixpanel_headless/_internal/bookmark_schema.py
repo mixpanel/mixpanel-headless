@@ -91,7 +91,7 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
     "model_type": "B0_WRONG_TYPE",
     # Same failure at a pydantic dataclass (Metric, Filter, FlowStep, ...)
     "dataclass_type": "B0_WRONG_TYPE",
-    # Builder-instance union arms (a Python caller passed the wrong
+    # Builder-instance union alternatives (a Python caller passed the wrong
     # object entirely)
     "is_instance_of": "B0_WRONG_TYPE",
     # Discriminated-union failures (e.g. behavior.type missing/unknown)
@@ -111,11 +111,11 @@ _DEFAULT_CODE_MAP: dict[str, str] = {
 
 
 CodeMapper = Callable[[str, tuple[Any, ...]], str]
-"""Path-aware code mapper: ``(pydantic_error_type, loc) -> package_code``.
+"""Path-aware code mapper: ``(pydantic_error_type, error_location) -> package_code``.
 
 Lets a caller produce different package codes for the same Pydantic error
 type depending on where in the model the error fired. The default mapper
-(``_default_code_mapper``) ignores ``loc`` and looks up
+(``_default_code_mapper``) ignores ``error_location`` and looks up
 ``_DEFAULT_CODE_MAP`` — preserving the original behavior. Sorting-aware
 callers pass ``_sorting_code_mapper`` to recover the granular ``S*`` codes
 that the hand-written Layer 2 validator used to produce.
@@ -123,11 +123,11 @@ that the hand-written Layer 2 validator used to produce.
 
 
 def _default_code_mapper(err_type: str, _loc: tuple[Any, ...]) -> str:
-    """Default ``CodeMapper`` — ignores ``loc``, falls back to ``_DEFAULT_CODE_MAP``.
+    """Default ``CodeMapper`` — ignores ``error_location``, falls back to ``_DEFAULT_CODE_MAP``.
 
     Args:
         err_type: Pydantic error ``type`` (e.g. ``"missing"``, ``"literal_error"``).
-        _loc: Pydantic ``loc`` tuple (unused by the default mapper; the
+        _loc: Pydantic ``error_location`` tuple (unused by the default mapper; the
             ``CodeMapper`` protocol requires it for path-aware mappers).
 
     Returns:
@@ -136,11 +136,11 @@ def _default_code_mapper(err_type: str, _loc: tuple[Any, ...]) -> str:
     return _DEFAULT_CODE_MAP.get(err_type, "VALIDATION_ERROR")
 
 
-def _sorting_code_mapper(err_type: str, loc: tuple[Any, ...]) -> str:
+def _sorting_code_mapper(err_type: str, error_location: tuple[Any, ...]) -> str:
     """Path-aware code mapper for sorting-block validation errors.
 
     Recovers the granular ``S*`` codes the hand-written Layer 2 sorting
-    validator used to produce, using the ``loc`` tuple to disambiguate
+    validator used to produce, using the ``error_location`` tuple to disambiguate
     e.g. ``missing`` at ``colSortAttrs`` (S2) vs ``sortBy`` (S8) vs
     ``sortOrder`` (S9).
 
@@ -149,14 +149,14 @@ def _sorting_code_mapper(err_type: str, loc: tuple[Any, ...]) -> str:
             ``"extra_forbidden"``, ``"list_type"``, ``"dict_type"``,
             ``"model_type"``, ``"union_tag_invalid"``, ``"union_tag_not_found"``,
             and the primitive-type variants).
-        loc: Pydantic ``loc`` tuple. The last element typically names the
+        error_location: Pydantic ``error_location`` tuple. The last element typically names the
             field; intermediate elements are list indices or model tags.
 
     Returns:
         A package ``S*`` code when the path identifies a sorting-specific
         rule, otherwise the default mapping (``B*`` or ``"VALIDATION_ERROR"``).
     """
-    last = loc[-1] if loc else None
+    last = error_location[-1] if error_location else None
     if err_type == "missing":
         if last == "colSortAttrs":
             return "S2_MISSING_COL_SORT_ATTRS"
@@ -199,7 +199,7 @@ def validate_with_pydantic(
         model_cls: The Pydantic model class to validate against.
         raw: The raw dict (or any value) to validate.
         code_mapper: Optional path-aware mapper from
-            ``(pydantic_error_type, loc)`` to a package error code.
+            ``(pydantic_error_type, error_location)`` to a package error code.
             Defaults to a mapper that consults ``_DEFAULT_CODE_MAP`` and
             falls back to ``"VALIDATION_ERROR"``. Sorting-block callers
             pass ``_sorting_code_mapper`` to recover the granular ``S*``
@@ -211,7 +211,7 @@ def validate_with_pydantic(
     Returns:
         Empty list if validation passed. Otherwise, one
         ``ValidationError`` per Pydantic error, with ``path`` translated
-        from Pydantic's ``loc`` tuple to a dotted JSONPath.
+        from Pydantic's ``error_location`` tuple to a dotted JSONPath.
 
     Example:
         ```python
@@ -239,36 +239,26 @@ def translate_pydantic_exception(
     path_prefix: str = "",
     code_mapper: CodeMapper | None = None,
 ) -> list[ValidationError]:
-    """Translate a caught ``pydantic.ValidationError`` into package errors.
+    """Turn a caught ``pydantic.ValidationError`` into our ``ValidationError`` list.
 
-    Shared adapter for callers that already hold the exception (query-model
-    wrap validators, component-normalization backstops) rather than a raw
-    dict to validate. Produces the same path grammar and stable codes as
-    ``validate_with_pydantic``, so pydantic-layer failures are
-    indistinguishable from the hand-written validators' output.
+    For callers that already hold the exception (the query-model wrap
+    validators, component backstops). Output is indistinguishable from
+    ``validate_with_pydantic`` — same path grammar and stable codes.
 
-    Every ambiguous union in the query models is a discriminated
-    (callable-``Discriminator``) union, so pydantic validates only the
-    arm the value structurally matches — the sibling-arm shape noise a
-    smart union would emit is never produced, and an unroutable value
-    yields the union's ``custom_error_message`` located at the item.
-    This function therefore only translates each raw error and
-    deduplicates exact duplicates (same translated path, message, and
-    code — produced when two arms of a non-discriminated union share a
-    field name).
+    It stays this simple because every query-model union is discriminated:
+    pydantic validates only the matched alternative, so there's no
+    sibling-alternative noise to prune — we just translate each error and drop
+    exact duplicates (two alternatives of a non-discriminated union can report
+    the same field).
 
     Args:
         exc: The caught ``pydantic.ValidationError``.
-        path_prefix: JSONPath-like prefix prepended to every error's
-            ``path`` (e.g. ``"steps"``).
-        code_mapper: Optional path-aware mapper from
-            ``(pydantic_error_type, loc)`` to a package error code.
-            Defaults to the ``_DEFAULT_CODE_MAP`` lookup.
+        path_prefix: Prefix prepended to every error path (e.g. ``"steps"``).
+        code_mapper: Optional ``(error_type, error_location) -> code`` mapper;
+            defaults to ``_DEFAULT_CODE_MAP``.
 
     Returns:
-        One ``ValidationError`` per (deduplicated) Pydantic error, with
-        ``path`` translated from Pydantic's ``loc`` tuple and a stable
-        code.
+        One ``ValidationError`` per (deduplicated) pydantic error.
     """
     mapper = code_mapper or _default_code_mapper
     raw_errors = exc.errors(include_url=False, include_input=False)
@@ -288,22 +278,22 @@ def translate_pydantic_exception(
     return translated
 
 
-def _is_union_arm_label(item: Any) -> bool:
-    """Return whether one ``loc`` element is a union-arm label.
+def _is_union_alternative_label(item: Any) -> bool:
+    """Return whether one ``error_location`` element is a union-alternative label.
 
-    Pydantic inserts three kinds of arm labels into ``loc``: class /
+    Pydantic inserts three kinds of alternative labels into ``error_location``: class /
     primitive names from ``_DISCRIMINATOR_TAGS``, parameterized labels
     like ``list[union[...]]`` (real field names are Python identifiers
     and never contain brackets), and ``constrained-int`` /
-    ``constrained-float`` for ``Annotated`` arms carrying strict
+    ``constrained-float`` for ``Annotated`` alternatives carrying strict
     numeric bounds. All are internal schema artifacts, never part of
     the user-facing JSONPath.
 
     Args:
-        item: A single element of a Pydantic error ``loc`` tuple.
+        item: A single element of a Pydantic ``error_location`` tuple.
 
     Returns:
-        ``True`` when the element is a union-arm label to strip.
+        ``True`` when the element is a union-alternative label to strip.
     """
     return isinstance(item, str) and (
         item in _DISCRIMINATOR_TAGS or "[" in item or item.startswith("constrained-")
@@ -321,35 +311,38 @@ def _translate_pydantic_error(
     discriminators carry a ``custom_error_message`` (set on each
     ``Discriminator``), so the caller-facing message is already clean —
     no ``Tag`` class names or private function names to scrub here. The
-    ``Tag`` class names pydantic inserts into ``loc`` are stripped by
-    ``_loc_to_jsonpath``.
+    ``Tag`` class names pydantic inserts into the error location are
+    stripped by ``_error_location_to_json_path``.
 
     Args:
         err: A single error dict from Pydantic's ``.errors()`` output
             (contains ``loc``, ``type``, ``msg``, ``input``).
-        code_mapper: Path-aware mapper from ``(err_type, loc)`` to package code.
-        path_prefix: JSONPath-like prefix to prepend to the translated path.
+        code_mapper: Path-aware mapper from ``(err_type,
+            error_location)`` to a package code.
+        path_prefix: JSONPath-like prefix to prepend to the rendered
+            ``json_path``.
 
     Returns:
-        A ``ValidationError`` with translated path and mapped code.
+        A ``ValidationError`` with a rendered ``json_path`` and mapped
+        code.
     """
-    loc: tuple[Any, ...] = tuple(err.get("loc", ()))
+    error_location: tuple[Any, ...] = tuple(err.get("loc", ()))
     err_type: str = str(err.get("type", "validation_error"))
     msg: str = str(err.get("msg", "Validation failed"))
 
-    path = _loc_to_jsonpath(loc, path_prefix)
-    code = code_mapper(err_type, loc)
+    json_path = _error_location_to_json_path(error_location, path_prefix)
+    code = code_mapper(err_type, error_location)
 
     return ValidationError(
-        path=path,
+        path=json_path,
         message=msg,
         code=code,
     )
 
 
 # Tag names from `Discriminator(...) + Tag(...)` annotations that Pydantic
-# inserts into `loc` for discriminated-union failures. These are model
-# class names (and the "str"/"FlowStepList" primitive/list arm tags) —
+# inserts into `error_location` for discriminated-union failures. These are model
+# class names (and the "str"/"FlowStepList" primitive/list alternative tags) —
 # they aren't part of the user-facing JSONPath and would leak as
 # `sorting.line.FlatLabelSortConfig.sortOrder` if not filtered.
 _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
@@ -366,7 +359,7 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "FormulaShowClause",
         "BehaviorShowClause",
         # Query-model union members (query_models.py callable-Discriminator
-        # unions put the selected arm's Tag name into loc)
+        # unions put the selected alternative's Tag name into error_location)
         "Metric",
         "CohortMetric",
         "Formula",
@@ -380,7 +373,7 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "HoldingConstant",
         "RetentionEvent",
         "FlowStep",
-        # The list arm of the flow ``event`` union
+        # The list alternative of the flow ``event`` union
         # (``str | FlowStep | list[str | FlowStep]``)
         "FlowStepList",
         "TimeComparison",
@@ -401,12 +394,12 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         "PropertyCriterion",
         "BehavioralCriterion",
         "CohortReferenceCriterion",
-        # The runtime-only builder arm of ``CohortMetric.cohort``
+        # The runtime-only builder alternative of ``CohortMetric.cohort``
         # (``Tag("CohortDefinition")`` on its discriminated union)
         "CohortDefinition",
-        # Primitive union-arm labels (e.g. the ``str`` arm of
-        # ``str | Metric``); parameterized arms like ``list[union[...]]``
-        # are caught by the bracket heuristic in ``_loc_to_jsonpath``
+        # Primitive union-alternative labels (e.g. the ``str`` alternative of
+        # ``str | Metric``); parameterized alternatives like ``list[union[...]]``
+        # are caught by the bracket heuristic in ``_error_location_to_json_path``
         "str",
         "int",
         "float",
@@ -416,8 +409,8 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
 )
 
 
-def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:
-    """Convert a Pydantic ``loc`` tuple to a dotted JSONPath string.
+def _error_location_to_json_path(error_location: tuple[Any, ...], prefix: str) -> str:
+    """Convert a Pydantic ``error_location`` tuple to a dotted JSONPath string.
 
     Pydantic represents nested paths as tuples of strings (field names)
     and ints (list indices). This helper renders them in the same dotted
@@ -428,7 +421,7 @@ def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:
     stripped (they're internal to the schema, not part of the JSONPath).
 
     Args:
-        loc: Pydantic location tuple (e.g. ``("sections", "show", 0,
+        error_location: Pydantic location tuple (e.g. ``("sections", "show", 0,
             "behavior", "type")``).
         prefix: Optional dotted prefix to prepend (without trailing dot).
 
@@ -438,20 +431,20 @@ def _loc_to_jsonpath(loc: tuple[Any, ...], prefix: str) -> str:
 
     Example:
         ```python
-        _loc_to_jsonpath(("sorting", "bar", "sortBy"), "")
+        _error_location_to_json_path(("sorting", "bar", "sortBy"), "")
         # returns: "sorting.bar.sortBy"
-        _loc_to_jsonpath(("show", 0, "behavior", "type"), "sections")
+        _error_location_to_json_path(("show", 0, "behavior", "type"), "sections")
         # returns: "sections.show[0].behavior.type"
         ```
     """
     parts: list[str] = []
     if prefix:
         parts.append(prefix)
-    for item in loc:
-        # Union-arm labels: known tag/class names, parameterized arms
+    for item in error_location:
+        # Union-alternative labels: known tag/class names, parameterized alternatives
         # like ``list[union[str,FlowStep]]``, and constrained-scalar
-        # arms like ``constrained-int`` (see ``_is_union_arm_label``).
-        if _is_union_arm_label(item):
+        # alternatives like ``constrained-int`` (see ``_is_union_alternative_label``).
+        if _is_union_alternative_label(item):
             continue
         if isinstance(item, int):
             if not parts:
@@ -576,7 +569,7 @@ def _flat_sort_discriminator(v: Any) -> str:
     Routes by ``sortBy``: ``"label"`` selects ``FlatLabelSortConfig``;
     everything else (``"value"`` / ``"liftComparisonValue"``) selects
     ``FlatValueSortConfig``. Using a callable + ``Tag(...)`` (rather than
-    ``Field(discriminator="sortBy")``) means error ``loc`` carries the
+    ``Field(discriminator="sortBy")``) means ``error_location`` carries the
     Tag name, which ``_DISCRIMINATOR_TAGS`` filters out — keeping the
     user-facing JSONPath free of internal model names.
 
@@ -651,7 +644,7 @@ def _sort_config_discriminator(v: Any) -> str:
     Routes by ``sortBy``: ``"column"`` selects ``SortByColumnsConfig``;
     everything else (``"value"`` / ``"liftComparisonValue"``) selects
     ``SortByValueConfig``. Callable + ``Tag(...)`` (rather than declarative
-    ``Field(discriminator=...)``) so error ``loc`` carries Tag names that
+    ``Field(discriminator=...)``) so ``error_location`` carries Tag names that
     ``_DISCRIMINATOR_TAGS`` strips — keeping the user-facing JSONPath
     free of internal model class names.
 
@@ -783,7 +776,7 @@ def _table_sort_discriminator(v: Any) -> str:
     return "SortByValueConfig"
 
 
-# 3-way union for the ``table`` field. Callable + Tag(...) so loc carries
+# 3-way union for the ``table`` field. Callable + Tag(...) so error_location carries
 # Tag names that ``_DISCRIMINATOR_TAGS`` filters out.
 TableSortConfig = Annotated[
     Annotated[SortByColumnsConfig, Tag("SortByColumnsConfig")]

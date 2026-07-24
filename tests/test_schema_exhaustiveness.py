@@ -173,19 +173,22 @@ class TestNoOpaqueHoles:
     def test_no_empty_subschema_in_defs(self, model_cls: type[BaseModel]) -> None:
         """No ``$defs`` entry is an empty ``{}`` (matches-anything hole).
 
-        An ``is_instance`` core-schema arm renders as ``{}`` in JSON schema;
+        An ``is_instance`` core-schema alternative renders as ``{}`` in JSON schema;
         the declarative bridge must keep such holes out of the output.
         """
         schema = model_cls.model_json_schema()
-        # anyOf / oneOf arms that are literally {} are the tell-tale
+        # anyOf / oneOf alternatives that are literally {} are the tell-tale
         # is_instance holes (converted unions render as oneOf).
         offenders = [
             (path, keyword)
             for path, node in _walk(schema)
             for keyword in ("anyOf", "oneOf")
-            if keyword in node and any(arm == {} for arm in node[keyword])
+            if keyword in node
+            and any(alternative == {} for alternative in node[keyword])
         ]
-        assert not offenders, f"{model_cls.__name__}: empty union arm at {offenders}"
+        assert not offenders, (
+            f"{model_cls.__name__}: empty union alternative at {offenders}"
+        )
 
 
 # =============================================================================
@@ -201,30 +204,34 @@ class TestNumericConstraintRendering:
     ``ge``/``le`` keys that standard validators ignore, so a
     schema-conforming payload like ``percentile_value: 150`` passed
     external validation and failed at runtime. Bounds must be annotated
-    per-arm so ``minimum``/``maximum``/``exclusiveMinimum`` appear.
+    per-alternative so ``minimum``/``maximum``/``exclusiveMinimum`` appear.
     """
 
     def test_percentile_value_bounds_rendered(self) -> None:
-        """InsightsQuery.percentile_value arms carry minimum/maximum 0..100."""
+        """InsightsQuery.percentile_value alternatives carry minimum/maximum 0..100."""
         prop = InsightsQuery.model_json_schema()["properties"]["percentile_value"]
         numeric_arms = [
             node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
         ]
-        assert numeric_arms, f"no numeric arms found in {prop}"
-        for arm in numeric_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
-            assert arm.get("maximum") == 100, f"missing maximum in {arm}"
+        assert numeric_arms, f"no numeric alternatives found in {prop}"
+        for alternative in numeric_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
+            assert alternative.get("maximum") == 100, (
+                f"missing maximum in {alternative}"
+            )
 
     def test_group_by_bucket_size_bound_rendered(self) -> None:
-        """GroupBy.bucket_size arms carry exclusiveMinimum 0."""
+        """GroupBy.bucket_size alternatives carry exclusiveMinimum 0."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["GroupBy"]["properties"]["bucket_size"]
         numeric_arms = [
             node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
         ]
-        assert numeric_arms, f"no numeric arms found in {prop}"
-        for arm in numeric_arms:
-            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+        assert numeric_arms, f"no numeric alternatives found in {prop}"
+        for alternative in numeric_arms:
+            assert alternative.get("exclusiveMinimum") == 0, (
+                f"missing bound in {alternative}"
+            )
 
     @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
     def test_no_raw_constraint_keys(self, model_cls: type[BaseModel]) -> None:
@@ -239,11 +246,11 @@ class TestNumericConstraintRendering:
         )
 
     def test_metric_percentile_value_bounds_rendered(self) -> None:
-        """Metric.percentile_value arms carry minimum/maximum 0..100.
+        """Metric.percentile_value alternatives carry minimum/maximum 0..100.
 
         Regression for finding ``metric-percentile-value-unbounded-everywhere``:
         the top-level ``InsightsQuery.percentile_value`` was bounded but the
-        per-metric field rendered as bare integer/number arms, so a
+        per-metric field rendered as bare integer/number alternatives, so a
         schema-conforming ``percentile_value: 150`` built and shipped
         ``custom_percentile`` 150 to the server.
         """
@@ -252,39 +259,43 @@ class TestNumericConstraintRendering:
         numeric_arms = [
             node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
         ]
-        assert numeric_arms, f"no numeric arms found in {prop}"
-        for arm in numeric_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
-            assert arm.get("maximum") == 100, f"missing maximum in {arm}"
+        assert numeric_arms, f"no numeric alternatives found in {prop}"
+        for alternative in numeric_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
+            assert alternative.get("maximum") == 100, (
+                f"missing maximum in {alternative}"
+            )
 
     def test_frequency_filter_value_minimum_rendered(self) -> None:
-        """FrequencyFilter.value arms carry minimum 0 (runtime rule FF3)."""
+        """FrequencyFilter.value alternatives carry minimum 0 (runtime rule FF3)."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["FrequencyFilter"]["properties"]["value"]
         numeric_arms = [
             node for _, node in _walk(prop) if node.get("type") in ("integer", "number")
         ]
-        assert numeric_arms, f"no numeric arms found in {prop}"
-        for arm in numeric_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+        assert numeric_arms, f"no numeric alternatives found in {prop}"
+        for alternative in numeric_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
 
     def test_frequency_filter_date_range_value_bound_rendered(self) -> None:
         """FrequencyFilter.date_range_value carries exclusiveMinimum 0 (FF5)."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["FrequencyFilter"]["properties"]["date_range_value"]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("exclusiveMinimum") == 0, (
+                f"missing bound in {alternative}"
+            )
 
     def test_exclusion_from_step_minimum_rendered(self) -> None:
         """Exclusion.from_step carries minimum 0 (runtime >= 0 rule)."""
         defs = FunnelQuery.model_json_schema()["$defs"]
         prop = defs["Exclusion"]["properties"]["from_step"]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
 
     @pytest.mark.parametrize("field_name", ["forward", "reverse"])
     def test_flow_step_direction_bounds_rendered(self, field_name: str) -> None:
@@ -292,10 +303,10 @@ class TestNumericConstraintRendering:
         defs = FlowQuery.model_json_schema()["$defs"]
         prop = defs["FlowStep"]["properties"][field_name]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
-            assert arm.get("maximum") == 5, f"missing maximum in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
+            assert alternative.get("maximum") == 5, f"missing maximum in {alternative}"
 
     def test_retention_bucket_sizes_items_bound_rendered(self) -> None:
         """RetentionQuery.bucket_sizes items carry exclusiveMinimum 0 (R5)."""
@@ -305,20 +316,22 @@ class TestNumericConstraintRendering:
             for _, node in _walk(prop)
             if node.get("type") == "array" and isinstance(node.get("items"), dict)
         ]
-        assert item_schemas, f"no array arms found in {prop}"
+        assert item_schemas, f"no array alternatives found in {prop}"
         for items in item_schemas:
             assert items.get("type") == "integer", f"non-integer items in {items}"
             assert items.get("exclusiveMinimum") == 0, f"missing bound in {items}"
 
     @pytest.mark.parametrize("def_name", ["CohortBreakdown", "CohortMetric"])
     def test_cohort_int_arm_bound_rendered(self, def_name: str) -> None:
-        """Saved-cohort-ID arms carry exclusiveMinimum 0 (positive-ID rule)."""
+        """Saved-cohort-ID alternatives carry exclusiveMinimum 0 (positive-ID rule)."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs[def_name]["properties"]["cohort"]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("exclusiveMinimum") == 0, (
+                f"missing bound in {alternative}"
+            )
 
     def test_cohort_reference_criterion_id_bound_rendered(self) -> None:
         """CohortReferenceCriterion.cohort_id carries exclusiveMinimum 0.
@@ -335,37 +348,39 @@ class TestNumericConstraintRendering:
 
     @pytest.mark.parametrize("field_name", ["at_least", "at_most", "exactly"])
     def test_behavioral_count_bounds_rendered(self, field_name: str) -> None:
-        """BehavioralCriterion count arms carry minimum 0.
+        """BehavioralCriterion count alternatives carry minimum 0.
 
         Regression guard for finding
         ``declarative-cohort-criterion-models-lax-coerce-int-bool``:
         making the frequency-bound fields strict must keep the
-        non-negative count bound rendered per integer arm.
+        non-negative count bound rendered per integer alternative.
         """
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["BehavioralCriterion"]["properties"][field_name]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("minimum") == 0, f"missing minimum in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("minimum") == 0, f"missing minimum in {alternative}"
 
     @pytest.mark.parametrize(
         "field_name", ["within_days", "within_weeks", "within_months"]
     )
     def test_behavioral_window_bounds_rendered(self, field_name: str) -> None:
-        """BehavioralCriterion window arms carry exclusiveMinimum 0.
+        """BehavioralCriterion window alternatives carry exclusiveMinimum 0.
 
         Regression guard for finding
         ``declarative-cohort-criterion-models-lax-coerce-int-bool``:
         making the rolling-window fields strict must keep the positive
-        bound rendered per integer arm.
+        bound rendered per integer alternative.
         """
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["BehavioralCriterion"]["properties"][field_name]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("exclusiveMinimum") == 0, (
+                f"missing bound in {alternative}"
+            )
 
     def test_custom_property_ref_id_bound_rendered(self) -> None:
         """CustomPropertyRef.id carries exclusiveMinimum 0 (CP1 positive rule)."""
@@ -402,10 +417,10 @@ class TestNumericConstraintRendering:
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["TimeComparison"]["properties"]["date"]
         string_arms = [node for _, node in _walk(prop) if node.get("type") == "string"]
-        assert string_arms, f"no string arms found in {prop}"
-        for arm in string_arms:
-            assert arm.get("pattern") == r"^\d{4}-\d{2}-\d{2}$", (
-                f"missing pattern in {arm}"
+        assert string_arms, f"no string alternatives found in {prop}"
+        for alternative in string_arms:
+            assert alternative.get("pattern") == r"^\d{4}-\d{2}-\d{2}$", (
+                f"missing pattern in {alternative}"
             )
 
     # -------------------------------------------------------------------
@@ -441,18 +456,24 @@ class TestNumericConstraintRendering:
         """InsightsQuery.rolling carries maximum 365 (runtime V23)."""
         prop = InsightsQuery.model_json_schema()["properties"]["rolling"]
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"no integer arms found in {prop}"
-        for arm in int_arms:
-            assert arm.get("exclusiveMinimum") == 0, f"missing bound in {arm}"
-            assert arm.get("maximum") == 365, f"missing maximum in {arm}"
+        assert int_arms, f"no integer alternatives found in {prop}"
+        for alternative in int_arms:
+            assert alternative.get("exclusiveMinimum") == 0, (
+                f"missing bound in {alternative}"
+            )
+            assert alternative.get("maximum") == 365, (
+                f"missing maximum in {alternative}"
+            )
 
     def test_retention_bucket_sizes_max_items_rendered(self) -> None:
         """RetentionQuery.bucket_sizes carries maxItems 730 (runtime R5c)."""
         prop = RetentionQuery.model_json_schema()["properties"]["bucket_sizes"]
         array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
-        assert array_arms, f"no array arms found in {prop}"
-        for arm in array_arms:
-            assert arm.get("maxItems") == 730, f"missing maxItems in {arm}"
+        assert array_arms, f"no array alternatives found in {prop}"
+        for alternative in array_arms:
+            assert alternative.get("maxItems") == 730, (
+                f"missing maxItems in {alternative}"
+            )
 
     def test_funnel_steps_max_items_rendered(self) -> None:
         """FunnelQuery.steps carries maxItems 100 (runtime F1_MAX_STEPS)."""
@@ -464,9 +485,11 @@ class TestNumericConstraintRendering:
         """FunnelQuery.holding_constant carries maxItems 3 (runtime F8)."""
         prop = FunnelQuery.model_json_schema()["properties"]["holding_constant"]
         array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
-        assert array_arms, f"no array arms found in {prop}"
-        for arm in array_arms:
-            assert arm.get("maxItems") == 3, f"missing maxItems in {arm}"
+        assert array_arms, f"no array alternatives found in {prop}"
+        for alternative in array_arms:
+            assert alternative.get("maxItems") == 3, (
+                f"missing maxItems in {alternative}"
+            )
 
     # -------------------------------------------------------------------
     # Non-empty-string and filter-value item bounds render too.
@@ -475,23 +498,29 @@ class TestNumericConstraintRendering:
     # -------------------------------------------------------------------
 
     def test_filter_value_array_arm_item_bounds_rendered(self) -> None:
-        """Filter.value array arms carry minItems 1 / maxItems 1000 (B20/B21)."""
+        """Filter.value array alternatives carry minItems 1 / maxItems 1000 (B20/B21)."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["Filter"]["properties"]["value"]
         array_arms = [node for _, node in _walk(prop) if node.get("type") == "array"]
-        assert array_arms, f"no array arms found in {prop}"
-        for arm in array_arms:
-            assert arm.get("minItems") == 1, f"missing minItems in {arm}"
-            assert arm.get("maxItems") == 1000, f"missing maxItems in {arm}"
+        assert array_arms, f"no array alternatives found in {prop}"
+        for alternative in array_arms:
+            assert alternative.get("minItems") == 1, (
+                f"missing minItems in {alternative}"
+            )
+            assert alternative.get("maxItems") == 1000, (
+                f"missing maxItems in {alternative}"
+            )
 
     def test_group_by_property_str_arm_min_length_rendered(self) -> None:
-        """GroupBy.property's string arm carries minLength 1 (post-init rule)."""
+        """GroupBy.property's string alternative carries minLength 1 (post-init rule)."""
         defs = InsightsQuery.model_json_schema()["$defs"]
         prop = defs["GroupBy"]["properties"]["property"]
         string_arms = [node for _, node in _walk(prop) if node.get("type") == "string"]
-        assert string_arms, f"no string arms found in {prop}"
-        for arm in string_arms:
-            assert arm.get("minLength") == 1, f"missing minLength in {arm}"
+        assert string_arms, f"no string alternatives found in {prop}"
+        for alternative in string_arms:
+            assert alternative.get("minLength") == 1, (
+                f"missing minLength in {alternative}"
+            )
 
     def test_frequency_filter_event_min_length_rendered(self) -> None:
         """FrequencyFilter.event carries minLength 1 (runtime FF1)."""
@@ -556,34 +585,36 @@ class TestCohortMetricSchemaMatchesRuntime:
     """CohortMetric's schema advertises exactly the inputs its runtime accepts.
 
     Regression tests for finding
-    ``cohort-metric-schema-advertises-unsupported-inline-cohort-arm``:
-    ``model_json_schema()`` rendered an ``InlineCohort`` arm on
+    ``cohort-metric-schema-advertises-unsupported-inline-cohort-alternative``:
+    ``model_json_schema()`` rendered an ``InlineCohort`` alternative on
     ``CohortMetric.cohort`` although ``__post_init__`` unconditionally
     rejects inline definitions (server returns 500) — a schema-valid
-    payload was guaranteed to fail at validation. The definition arm is
+    payload was guaranteed to fail at validation. The definition alternative is
     now hidden from the JSON schema (``SkipJsonSchema``) while the
-    runtime arm stays so Python builder callers keep the targeted
+    runtime alternative stays so Python builder callers keep the targeted
     500-warning message.
     """
 
     def test_cohort_metric_schema_is_integer_only(self) -> None:
-        """The schema for CohortMetric.cohort has no InlineCohort arm."""
+        """The schema for CohortMetric.cohort has no InlineCohort alternative."""
         prop = InsightsQuery.model_json_schema()["$defs"]["CohortMetric"]["properties"][
             "cohort"
         ]
         refs = [node["$ref"] for _, node in _walk(prop) if "$ref" in node]
-        assert not refs, f"CohortMetric.cohort advertises non-integer arms: {refs}"
+        assert not refs, (
+            f"CohortMetric.cohort advertises non-integer alternatives: {refs}"
+        )
         int_arms = [node for _, node in _walk(prop) if node.get("type") == "integer"]
-        assert int_arms, f"integer arm missing from {prop}"
+        assert int_arms, f"integer alternative missing from {prop}"
 
     def test_cohort_breakdown_schema_keeps_inline_arm(self) -> None:
-        """CohortBreakdown.cohort (which accepts inline) keeps its schema arm."""
+        """CohortBreakdown.cohort (which accepts inline) keeps its schema alternative."""
         prop = InsightsQuery.model_json_schema()["$defs"]["CohortBreakdown"][
             "properties"
         ]["cohort"]
         refs = [node["$ref"] for _, node in _walk(prop) if "$ref" in node]
         assert any("InlineCohort" in ref for ref in refs), (
-            f"CohortBreakdown.cohort lost its inline arm: {prop}"
+            f"CohortBreakdown.cohort lost its inline alternative: {prop}"
         )
 
     def test_cohort_metric_runtime_still_rejects_inline_definition(self) -> None:

@@ -6643,7 +6643,7 @@ _PercentileValue = (
 
 Shared by ``Metric.percentile_value`` and
 ``InsightsQuery.percentile_value`` so the two fields cannot drift. The
-bound is annotated per union arm so it renders as standard JSON-Schema
+bound is annotated per union alternative so it renders as standard JSON-Schema
 ``minimum``/``maximum`` keywords AND rejects out-of-range values at
 construction.
 """
@@ -6855,56 +6855,30 @@ def _union_discriminator(
     *,
     allow_str: bool = True,
 ) -> Callable[[Any], str | None]:
-    """Build a callable ``Discriminator`` that routes a union value by structure.
+    """Pick which union alternative a value is, by its shape, so pydantic validates only that one.
 
-    The returned callable inspects one union value and returns the
-    ``Tag`` name of the arm it belongs to, for use with
-    ``Annotated[<union>, Discriminator(...)]``. It handles all three
-    input forms pydantic passes a discriminator:
-
-    - a ``str`` (the shorthand arm) routes to ``"str"`` when
-      ``allow_str`` is set;
-    - a ``dict`` (the JSON / LLM path) routes to the first arm whose
-      distinguishing key is present;
-    - a model instance (pydantic runs the discriminator on the
-      serialization path too, where the value is already a model)
-      routes by ``isinstance``.
-
-    When nothing matches it returns ``None`` — the owning
-    ``Discriminator``'s ``custom_error_message`` then produces a single,
-    clean, located error instead of the sibling-arm noise an untagged
-    smart union would emit.
+    Pydantic calls this on dicts (JSON/LLM input) AND on model instances
+    (serialization), so we check both dict keys and ``isinstance``.
 
     Args:
-        specs: Ordered ``(model_class, distinguishing_key, tag)`` triples.
-            Dict inputs are matched against ``distinguishing_key`` in this
-            order; model instances are matched against ``model_class``.
-        allow_str: Whether a bare ``str`` input routes to the ``"str"``
-            arm. Set ``False`` for unions with no string shorthand.
+        specs: ``(model, distinguishing_key, tag)`` triples, tried in order — a
+            dict matches on the key, a model on ``isinstance``.
+        allow_str: ``False`` for unions with no bare-string shorthand.
 
     Returns:
-        A discriminator callable returning the selected arm's ``Tag``
-        name, or ``None`` when the value matches no arm.
-
-    Example:
-        ```python
-        disc = _union_discriminator(
-            ((Formula, "expression", "Formula"), (Metric, "event", "Metric"))
-        )
-        disc("Login")                 # "str"
-        disc({"event": "Login"})      # "Metric"
-        disc({"nope": 1})             # None -> custom_error_message fires
-        ```
+        A callable returning the matching alternative's ``Tag``, or ``None``
+        (unroutable) — which fires the ``Discriminator``'s
+        ``custom_error_message`` instead of every alternative's shape noise.
     """
 
     def _discriminate(v: Any) -> str | None:
-        """Route one union value to its ``Tag`` name (see factory docstring).
+        """Return ``v``'s alternative Tag, or None if nothing matches.
 
         Args:
-            v: The candidate union value (str, dict, or model instance).
+            v: A candidate union value (str, dict, or model instance).
 
         Returns:
-            The selected arm's ``Tag`` name, or ``None`` when unroutable.
+            The matching ``Tag`` name, or ``None`` when unroutable.
         """
         if allow_str and isinstance(v, str):
             return "str"
@@ -6922,37 +6896,28 @@ def _union_discriminator(
 
 
 def _str_or(tag: str) -> Callable[[Any], str]:
-    """Build a discriminator for a ``str | <single model>`` union.
+    """Discriminator for ``str | <one model>``: a string is the string, anything else is the model.
 
-    Non-string values route to the model arm so a malformed dict reports
-    that arm's own field errors (e.g. ``steps[0].bogus``) instead of a
-    spurious ``"Input should be a valid string"`` from the string arm.
-    The callable is total — it always returns a tag — so the owning
-    ``Discriminator``'s ``custom_error_message`` never fires.
+    Routing non-strings to the model (rather than a smart union) means a bad
+    dict shows that model's own field errors (``steps[0].bogus``), not a
+    useless "should be a string".
 
     Args:
-        tag: The ``Tag`` name of the model arm.
+        tag: The model alternative's ``Tag`` name.
 
     Returns:
-        A discriminator callable returning ``"str"`` for string inputs
-        and ``tag`` for everything else.
-
-    Example:
-        ```python
-        disc = _str_or("FunnelStep")
-        disc("Signup")            # "str"
-        disc({"event": "Signup"}) # "FunnelStep"
-        ```
+        A total callable — ``"str"`` for strings, ``tag`` otherwise — so this
+        union's ``custom_error_message`` never fires.
     """
 
     def _discriminate(v: Any) -> str:
-        """Route to ``"str"`` for strings and ``tag`` otherwise.
+        """Return ``"str"`` for a string, else ``tag``.
 
         Args:
-            v: The candidate union value.
+            v: A candidate union value.
 
         Returns:
-            ``"str"`` when ``v`` is a string, else ``tag``.
+            ``"str"`` or the model's ``tag``.
         """
         return "str" if isinstance(v, str) else tag
 
@@ -6989,7 +6954,7 @@ Accepted wherever a property can be specified: ``Metric.property``,
 ``GroupBy.property`` (via ``_PropertySpecNonEmpty``), and ``Filter``
 class method ``property`` parameters. Discriminated by structure so a
 malformed property dict yields one located error rather than every
-arm's shape noise.
+alternative's shape noise.
 """
 
 _PropertySpecNonEmpty = Annotated[
@@ -7002,7 +6967,7 @@ _PropertySpecNonEmpty = Annotated[
         custom_error_message=_PROPERTY_SPEC_ERROR_MESSAGE,
     ),
 ]
-"""``PropertySpec`` whose string arm carries ``minLength: 1``.
+"""``PropertySpec`` whose string alternative carries ``minLength: 1``.
 
 Used by ``GroupBy.property`` so the breakdown property keeps its
 schema-visible non-empty bound; shares one discriminator with
@@ -7623,7 +7588,7 @@ class Filter:
         # contract is int | float); anything else built a
         # self-contradictory wire entry (filterType "number" with a
         # non-numeric operand). Raw booleans never reach this check —
-        # _reject_bool_value refuses them before the int-arm coercion.
+        # _reject_bool_value refuses them before the int-alternative coercion.
         if self._operator in self._NUMERIC_SCALAR_OPS and not isinstance(
             self._value, (int, float)
         ):
@@ -7697,7 +7662,7 @@ class Filter:
         # (Filter.between/not_between contract is list[int | float]); the
         # date pair ("was between"/"was not between") is validated below.
         # Boolean endpoints never reach this check — _reject_bool_value
-        # scans list items before the int-arm coercion can turn
+        # scans list items before the int-alternative coercion can turn
         # True/False into 1/0.
         if (
             self._operator in ("is between", "not between")
@@ -7760,7 +7725,7 @@ class Filter:
         """Reject boolean values (scalar or list item) before lax int coercion.
 
         Pydantic's lax mode coerces ``True``/``False`` into ``1``/``0``
-        via the ``int`` arm (and the ``list[int | float]`` arm) of the
+        via the ``int`` alternative (and the ``list[int | float]`` alternative) of the
         ``_value`` union *before* ``__post_init__`` runs, so
         operator/value-shape checks there would see integers and accept
         a query the caller never wrote — ``Filter.between("amount",
@@ -8924,7 +8889,7 @@ class GroupBy:
     property: _PropertySpecNonEmpty
     """Property to break down by (name, ref, or inline).
 
-    The string arm's ``minLength`` keyword mirrors the runtime
+    The string alternative's ``minLength`` keyword mirrors the runtime
     non-empty rule into the JSON schema; enforcement stays in
     ``__post_init__`` (which also rejects whitespace-only names) so
     callers keep its message.
@@ -8945,7 +8910,7 @@ class GroupBy:
     ) = None
     """Bucket width for numeric properties.
 
-    The ``gt=0`` bound is annotated per union arm so it renders as
+    The ``gt=0`` bound is annotated per union alternative so it renders as
     JSON-Schema ``exclusiveMinimum`` (a constraint on the union itself
     would emit a non-standard literal ``gt`` key that schema-driven
     consumers ignore). Strict mode — bool/str inputs are rejected.
@@ -9854,7 +9819,7 @@ class CohortDefinition:
         ``CohortDefinition`` is constructed via classmethods, not from
         JSON, so its own fields are private and useless to a schema
         consumer. This hook makes any pydantic field typed
-        ``int | CohortDefinition`` render its inline arm as the fully
+        ``int | CohortDefinition`` render its inline alternative as the fully
         self-describing :class:`InlineCohort` model while keeping the
         builder API working at runtime:
 
@@ -10194,35 +10159,22 @@ _COHORT_NODE_TAGS_BY_KIND: dict[str, str] = {
 
 
 def _cohort_node_discriminator(v: Any) -> str | None:
-    """Discriminator callable for the declarative cohort-node union.
+    """Route a cohort node by its ``kind``; a missing or unknown ``kind`` returns None (clean error).
 
-    Routes by the ``kind`` field ONLY. Using a callable +
-    ``Tag(<ClassName>)`` (rather than the declarative
-    ``Field(discriminator="kind")``) means error ``loc`` carries the Tag
-    name — a class name registered in ``_DISCRIMINATOR_TAGS`` and
-    stripped from user-facing JSONPaths — instead of the raw ``kind``
-    value. The kind values themselves are unregistrable as arm labels:
-    ``"property"`` is also a real field name everywhere, so stripping it
-    would destroy paths like ``where[0].property``.
-
-    A missing, non-string, or non-dict input returns ``None``, so the
-    owning ``Discriminator``'s ``custom_error_message`` surfaces the
-    caller-facing "kind must be one of ..." message. The ``kind`` field
-    keeps a default on each criterion model for ergonomic Python
-    construction (``PropertyCriterion(property=..., value=...)``); the
-    discriminator reads the raw dict's ``kind`` before any default
-    applies, so a kind-less dict at the union still errors cleanly.
+    Callable + ``Tag(<ClassName>)`` rather than ``Field(discriminator="kind")``
+    on purpose: the class name goes into ``error_location`` (strippable),
+    whereas the raw ``"property"`` kind value collides with the real
+    ``property`` field and would corrupt paths like ``where[0].property``.
+    ``kind`` keeps a per-model default so ``PropertyCriterion(property=...,
+    value=...)`` stays terse — this reads the raw dict's ``kind`` first, so a
+    kind-less dict still returns None and hits the ``custom_error_message``.
 
     Args:
-        v: The candidate value (dict during validation, criterion model
-            instance during Python-side validation/serialization).
+        v: A cohort-node value (dict, or a criterion model on the Python path).
 
     Returns:
-        The ``Tag`` name for an explicit valid ``kind``; the raw ``kind``
-        string when an explicit kind matches no variant (pydantic
-        reports the ``custom_error_message`` via ``union_tag_invalid``);
-        or ``None`` when ``kind`` is missing / non-string / the input is
-        not a dict (``custom_error_message`` via ``union_tag_not_found``).
+        The ``Tag`` for a valid ``kind``, else ``None`` → the
+        ``custom_error_message``.
     """
     kind = v.get("kind") if isinstance(v, dict) else getattr(v, "kind", None)
     if isinstance(kind, str):
@@ -10338,19 +10290,16 @@ InlineCohort.model_rebuild()
 
 
 def _cohort_int_or_definition_discriminator(v: Any) -> str:
-    """Route an ``int | CohortDefinition`` cohort field by structure.
+    """Route ``int | CohortDefinition`` (shared by CohortBreakdown/CohortMetric).
 
-    Shared by ``CohortBreakdown.cohort`` and ``CohortMetric.cohort``.
-    Structured inputs (dict, ``CohortDefinition``, ``InlineCohort``) go
-    to the definition arm; everything else to the saved-cohort-ID arm.
-    Total, so a non-dict wrong-type value is judged only by the integer
-    arm — matching each field's advertised schema.
+    Total, so a wrong-typed scalar is judged only by the int alternative —
+    matching the integer-only schema each field advertises.
 
     Args:
-        v: The candidate value (scalar, dict, or builder instance).
+        v: A cohort value (int, dict, or a builder / ``InlineCohort`` instance).
 
     Returns:
-        ``"CohortDefinition"`` for structured inputs, else ``"int"``.
+        ``"CohortDefinition"`` for structured input, else ``"int"``.
     """
     if isinstance(v, (dict, CohortDefinition, InlineCohort)):
         return "CohortDefinition"
@@ -10402,9 +10351,9 @@ class CohortBreakdown:
     ]
     """Saved cohort ID or inline definition.
 
-    Discriminated like ``CohortMetric.cohort``, but the definition arm is
+    Discriminated like ``CohortMetric.cohort``, but the definition alternative is
     advertised in the schema (no ``SkipJsonSchema``) because inline
-    cohorts are accepted here. The ID arm is a strict integer — bool/str
+    cohorts are accepted here. The ID alternative is a strict integer — bool/str
     inputs are rejected instead of coerced into a different saved-cohort
     ID — and its ``exclusiveMinimum`` mirrors the runtime positive-ID
     rule (enforced in ``__post_init__``).
@@ -10439,7 +10388,7 @@ class CohortMetric:
 
     Inline ``CohortDefinition`` is not supported (server returns
     500). Use a saved cohort ID instead. This is enforced at
-    construction, and the JSON schema advertises only the integer arm
+    construction, and the JSON schema advertises only the integer alternative
     so schema-driven consumers cannot synthesize the unsupported
     inline shape.
 
@@ -10474,17 +10423,17 @@ class CohortMetric:
     ]
     """Saved cohort ID (the only shape the server accepts here).
 
-    The ID arm is a strict integer — bool/str inputs are rejected
+    The ID alternative is a strict integer — bool/str inputs are rejected
     instead of being coerced into a (different) saved-cohort ID — and
     carries ``exclusiveMinimum`` mirroring the runtime positive-ID rule
-    (``_validate_cohort_args``). The ``CohortDefinition`` arm exists
+    (``_validate_cohort_args``). The ``CohortDefinition`` alternative exists
     only at runtime (``SkipJsonSchema``) so Python builder callers get
     the targeted server-returns-500 rejection from ``__post_init__``
     instead of a generic type error; it is hidden from the JSON schema
     because the server rejects inline definitions for cohort metrics.
     The union is discriminated (``_cohort_int_or_definition_discriminator``)
     so non-structured wrong-type inputs surface ONLY the schema-
-    consistent integer diagnosis — never the hidden arm's
+    consistent integer diagnosis — never the hidden alternative's
     dictionary/``InlineCohort`` message.
     """
 
@@ -10642,7 +10591,7 @@ class FrequencyFilter:
     """Threshold value for the comparison.
 
     Strict — bool/str inputs are rejected instead of being coerced
-    to a threshold number. The per-arm ``minimum`` keyword mirrors the
+    to a threshold number. The per-alternative ``minimum`` keyword mirrors the
     runtime FF3 rule (value >= 0) into the JSON schema; enforcement
     stays in ``__post_init__`` so callers keep its message.
     """
@@ -13473,7 +13422,7 @@ class AccountTestResult(BaseModel):
             ValueError: When ``ok``/``error`` disagree, or when
                 ``ok=True`` is paired with a non-None error_code /
                 error_details (those fields belong to the failure
-                arm only).
+                alternative only).
         """
         if self.ok and self.error is not None:
             raise ValueError("AccountTestResult: ok=True implies error is None.")
