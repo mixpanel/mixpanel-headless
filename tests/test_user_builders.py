@@ -58,6 +58,23 @@ class TestFilterToSelectorEquals:
         result = filter_to_selector(f)
         assert result == 'properties["plan"] == "premium"'
 
+    def test_scalar_numeric_value_wrapped(self) -> None:
+        """Equals with a scalar numeric value emits one term, not a crash.
+
+        Numeric/bool-typed equals leaves ``_value`` scalar (the bookmark
+        and segfilter paths accept it); the selector wraps the scalar
+        rather than raising "Expected list for 'equals'".
+        """
+        f = Filter(
+            _property="count",
+            _operator="equals",
+            _value=42,
+            _property_type="number",
+            _resource_type="events",
+        )
+        result = filter_to_selector(f)
+        assert result == 'properties["count"] == 42'
+
 
 class TestFilterToSelectorNotEquals:
     """Tests for does-not-equal operator translation."""
@@ -75,6 +92,18 @@ class TestFilterToSelectorNotEquals:
         # Each value must not match -- AND semantics for not-equals
         assert 'properties["status"] != "banned"' in result
         assert 'properties["status"] != "deleted"' in result
+
+    def test_scalar_numeric_value_wrapped(self) -> None:
+        """Not-equals with a scalar numeric value emits one term, not a crash."""
+        f = Filter(
+            _property="count",
+            _operator="does not equal",
+            _value=42,
+            _property_type="number",
+            _resource_type="events",
+        )
+        result = filter_to_selector(f)
+        assert result == 'properties["count"] != 42'
 
 
 class TestFilterToSelectorContains:
