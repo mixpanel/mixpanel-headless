@@ -387,7 +387,7 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         # so tagged-union locs carry these class names — NOT the raw
         # ``kind`` values ("property"/"behavioral"/...), which are
         # unregistrable because "property" is also a real field name
-        # everywhere. Enforced by ``TestUnionArmLabelRegistry`` in
+        # everywhere. Enforced by ``TestUnionAlternativeLabelRegistry`` in
         # test_query_models.py, which walks every union reachable from
         # the four query models and collects tagged-union choice keys.
         "InlineCohort",

@@ -1970,7 +1970,7 @@ class TestFilterCohortPropertyGuard:
             self._adapter.validate_python({"property": "$cohorts", "operator": "true"})
 
 
-class TestUnionArmErrorTranslation:
+class TestUnionAlternativeErrorTranslation:
     """Union-typed fields surface clean errors, not sibling-alternative noise.
 
     Regression tests for finding ``union-alternative-error-noise-for-invalid-filters``:
@@ -2029,7 +2029,7 @@ class TestUnionArmErrorTranslation:
         assert {"last", "rolling"} <= paths
 
 
-class TestConstrainedArmPathTranslation:
+class TestConstrainedAlternativePathTranslation:
     """Per-alternative ``constrained-int``/``constrained-float`` labels never leak.
 
     Regression tests for finding
@@ -2184,7 +2184,7 @@ class TestMetricPercentileValueBounds:
         )
         assert err.code == "B0_OUT_OF_RANGE"
 
-    def test_float_arm_bounded_too(self) -> None:
+    def test_float_alternative_bounded_too(self) -> None:
         """The float alternative carries the same 0-100 bound."""
         with pytest.raises(ValidationError, match="percentile_value"):
             Metric("E", math="percentile", property="p", percentile_value=100.5)
@@ -2202,7 +2202,7 @@ class TestMetricPercentileValueBounds:
         ).percentile_value == 99.9
 
 
-class TestDataclassArmTypeErrorCode:
+class TestDataclassAlternativeTypeErrorCode:
     """Dataclass-alternative wrong-type errors carry the stable B0_WRONG_TYPE code.
 
     Regression tests for finding
@@ -2214,7 +2214,7 @@ class TestDataclassArmTypeErrorCode:
     ``VALIDATION_ERROR`` fallback on the other.
     """
 
-    def test_dataclass_arm_type_error_carries_wrong_type(self) -> None:
+    def test_dataclass_alternative_type_error_carries_wrong_type(self) -> None:
         """A non-str routed to a dataclass alternative yields B0_WRONG_TYPE.
 
         In a ``str | FunnelStep`` union, a scalar like ``3.14`` routes to
@@ -2230,7 +2230,7 @@ class TestDataclassArmTypeErrorCode:
             (e.code, e.message) for e in errors
         ]
 
-    def test_dataclass_arm_message_present_with_stable_code(self) -> None:
+    def test_dataclass_alternative_message_present_with_stable_code(self) -> None:
         """The dataclass-alternative message survives with the mapped code."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             FunnelQuery.model_validate({"steps": ["Signup", 3.14]})
@@ -2241,7 +2241,7 @@ class TestDataclassArmTypeErrorCode:
         assert dataclass_errors[0].code == "B0_WRONG_TYPE"
 
 
-class TestPropertySpecArmPathTranslation:
+class TestPropertySpecAlternativePathTranslation:
     """``PropertySpec`` union-alternative class names never leak into error paths.
 
     Regression tests for finding
@@ -2340,7 +2340,7 @@ def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
             yield from _iter_schema_nodes(item)
 
 
-def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
+def _union_alternative_model_names(model_cls: type[BaseModel]) -> set[str]:
     """Collect every union-alternative label pydantic can insert into ``error_location``.
 
     Walks ``model_cls.__pydantic_core_schema__`` and, for every ``union``
@@ -2403,7 +2403,7 @@ def _union_arm_model_names(model_cls: type[BaseModel]) -> set[str]:
     return names
 
 
-class TestUnionArmLabelRegistry:
+class TestUnionAlternativeLabelRegistry:
     """Every reachable union-alternative class name is a strippable alternative label.
 
     Structural guard for finding
@@ -2419,13 +2419,13 @@ class TestUnionArmLabelRegistry:
     """
 
     @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
-    def test_every_union_arm_class_name_is_strippable(
+    def test_every_union_alternative_class_name_is_strippable(
         self, model_cls: type[BaseModel]
     ) -> None:
         """All model/dataclass union alternatives reachable from the model are registered."""
         unregistered = {
             name
-            for name in _union_arm_model_names(model_cls)
+            for name in _union_alternative_model_names(model_cls)
             if not _is_union_alternative_label(name)
         }
         assert unregistered == set(), (
@@ -2434,14 +2434,14 @@ class TestUnionArmLabelRegistry:
             f"{sorted(unregistered)}"
         )
 
-    def test_walker_finds_known_union_arms(self) -> None:
+    def test_walker_finds_known_union_alternatives(self) -> None:
         """The schema walk is not vacuous — known alternatives are discovered.
 
         Guards the guard: if the core-schema walker silently broke (e.g.
         a pydantic upgrade renames schema keys), the registry test above
         would pass on an empty set. Pin a few alternatives that must be found.
         """
-        names = _union_arm_model_names(InsightsQuery)
+        names = _union_alternative_model_names(InsightsQuery)
         assert {
             "Filter",
             "FrequencyFilter",
@@ -2461,9 +2461,9 @@ class TestUnionArmLabelRegistry:
         are the criterion class names; a regression to the declarative
         ``Field(discriminator="kind")`` form would surface the raw kind
         values (``"property"`` — unregistrable, it is a real field name
-        everywhere) and fail ``test_every_union_arm_class_name_is_strippable``.
+        everywhere) and fail ``test_every_union_alternative_class_name_is_strippable``.
         """
-        names = _union_arm_model_names(InsightsQuery)
+        names = _union_alternative_model_names(InsightsQuery)
         assert {
             "PropertyCriterion",
             "BehavioralCriterion",
@@ -2865,7 +2865,7 @@ class TestCustomPropertyExtraKeySchemaRuntimeParity:
         assert definition.get("additionalProperties") is False, definition
 
 
-class TestCohortMetricHiddenArmErrorConsistency:
+class TestCohortMetricHiddenAlternativeErrorConsistency:
     """CohortMetric.cohort errors never contradict its integer-only schema.
 
     Regression tests for finding
@@ -2913,7 +2913,7 @@ class TestCohortMetricHiddenArmErrorConsistency:
                 }
             )
 
-    def test_cohort_breakdown_inline_arm_is_reachable(self) -> None:
+    def test_cohort_breakdown_inline_alternative_is_reachable(self) -> None:
         """CohortBreakdown.cohort routes a structured dict to the inline alternative.
 
         The breakdown schema advertises the ``InlineCohort`` ``$ref``, and
@@ -3084,7 +3084,7 @@ class TestDiscriminatedUnionRouting:
         q = FlowQuery(event=["Login", "Purchase"])
         assert q.event == ["Login", "Purchase"]
 
-    def test_serialization_routes_every_model_instance_arm(self) -> None:
+    def test_serialization_routes_every_model_instance_alternative(self) -> None:
         """model_dump() routes a model instance through every discriminator alternative.
 
         The discriminators run on the serialization path too — pydantic

@@ -181,11 +181,11 @@ hand-maintaining AI types.
 
 Declarative cohort inputs (exported from the package root):
 - `PropertyCriterion`, `BehavioralCriterion`, `CohortReferenceCriterion`
-  — the criterion arms of an inline cohort definition.
+  — the criterion alternatives of an inline cohort definition.
 - `InlineCohort` — a fully declarative cohort (`{operator, criteria}`)
   accepted anywhere a `CohortDefinition` is; `.to_dict()` matches the
   builder wire format. Builder instances (`CohortDefinition`, `CohortCriteria`)
-  still work at runtime; the schema renders the declarative `InlineCohort` arm.
+  still work at runtime; the schema renders the declarative `InlineCohort` alternative.
 
 ## Type Aliases
 

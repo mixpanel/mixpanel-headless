@@ -75,12 +75,12 @@ class TestShowFieldsPydanticDataclass:
         assert "(required)" in out
         assert "FieldInfo(" not in out
 
-    def test_annotated_union_arms_render_clean(
+    def test_annotated_union_alternatives_render_clean(
         self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Per-arm ``Annotated[int, Field(...)]`` unions render as bare types.
+        """Per-alternative ``Annotated[int, Field(...)]`` unions render as bare types.
 
-        The strict per-arm bound annotations (``Annotated[int,
+        The strict per-alternative bound annotations (``Annotated[int,
         Field(strict=True, gt=0)] | ...`` on ``GroupBy.bucket_size``)
         must not leak ``Annotated[...]`` / ``FieldInfo(...)`` reprs
         into the field listing an LLM reads.
@@ -112,13 +112,13 @@ class TestShowFieldsPydanticDataclass:
         assert "bucket_sizes: list[int] | None" in out
 
 
-class TestPerArmConstraintRendering:
-    """Numeric bounds declared per union arm still show in the listing.
+class TestPerAlternativeConstraintRendering:
+    """Numeric bounds declared per union alternative still show in the listing.
 
-    Moving ``ge``/``le``/``gt`` bounds from the field into per-arm
+    Moving ``ge``/``le``/``gt`` bounds from the field into per-alternative
     ``Annotated[..., Field(...)]`` metadata removed them from
     ``FieldInfo.metadata``; the help listing must collect them from the
-    union arms so LLM callers still see the valid range.
+    union alternatives so LLM callers still see the valid range.
     """
 
     def test_percentile_value_bounds_shown(

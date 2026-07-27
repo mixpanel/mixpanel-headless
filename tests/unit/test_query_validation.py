@@ -901,7 +901,7 @@ class TestValidateGroupByArgs:
 class TestNormalizationErrorContract:
     """Schema-valid model inputs never leak raw pydantic errors from build.
 
-    The bare-``str`` union arms on the query models carry no length or
+    The bare-``str`` union alternatives on the query models carry no length or
     range constraints (that is what the published JSON schema advertises),
     so empty strings and out-of-range top-level values reach the build
     methods. The documented contract is ``BookmarkValidationError`` with
