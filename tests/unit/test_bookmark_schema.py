@@ -364,20 +364,37 @@ class TestPydanticAdapter:
         assert _error_location_to_json_path((0, "name"), "") == "[0].name"
 
     def test_error_location_to_json_path_strips_discriminator_tags(self) -> None:
-        """Pydantic ``Tag`` names are filtered out of the JSONPath.
+        """Marked ``Tag`` names are filtered out of the JSONPath.
 
-        ``Discriminator(...)+Tag(...)`` causes Pydantic to insert the Tag
-        name into ``error_location`` for discriminated-union failures. Those names
-        are internal model class names and shouldn't leak to callers.
+        Pydantic inserts the matched tag into ``error_location`` for
+        discriminated-union failures. ``discriminated_union`` marks every tag
+        with ``MarkedTag.PREFIX``, so it is recognisable by shape and never
+        reaches callers — unlike the field names beside it.
         """
         from mixpanel_headless._internal.bookmark_schema import (
             _error_location_to_json_path,
         )
 
-        error_location = ("line", "FlatLabelSortConfig", "sortOrder")
+        error_location = ("line", "#FlatLabelSortConfig", "sortOrder")
         assert (
             _error_location_to_json_path(error_location, "sorting")
             == "sorting.line.sortOrder"
+        )
+
+    def test_error_location_keeps_an_unmarked_field_named_like_a_tag(self) -> None:
+        """A real field is kept even when it shares a tag's name.
+
+        The prefix is what distinguishes them: ``property`` is both a cohort
+        ``kind`` value and a real field on four models, so only the marked form
+        may be stripped.
+        """
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
+
+        assert (
+            _error_location_to_json_path(("group_by", 0, "property", "formula"), "")
+            == "group_by[0].property.formula"
         )
 
     def test_unmapped_error_falls_through_to_validation_error(self) -> None:

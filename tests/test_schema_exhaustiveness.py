@@ -653,6 +653,7 @@ class TestCohortMetricSchemaMatchesRuntime:
                     "events": [
                         {
                             "cohort": {
+                                "kind": "group",
                                 "operator": "and",
                                 "criteria": [
                                     {
@@ -718,9 +719,10 @@ class TestInlineCohortWireParity:
     def test_property_criterion_parity(self) -> None:
         """A property criterion serializes identically to the builder."""
         inline = InlineCohort(
+            kind="group",
             criteria=[
-                PropertyCriterion(property="plan", value="premium"),
-            ]
+                PropertyCriterion(kind="property", property="plan", value="premium"),
+            ],
         )
         builder = CohortDefinition.all_of(
             CohortCriteria.has_property("plan", "premium"),
@@ -730,9 +732,12 @@ class TestInlineCohortWireParity:
     def test_behavioral_criterion_parity(self) -> None:
         """A behavioral criterion serializes identically to the builder."""
         inline = InlineCohort(
+            kind="group",
             criteria=[
-                BehavioralCriterion(event="Purchase", at_least=3, within_days=30),
-            ]
+                BehavioralCriterion(
+                    kind="behavioral", event="Purchase", at_least=3, within_days=30
+                ),
+            ],
         )
         builder = CohortDefinition.all_of(
             CohortCriteria.did_event("Purchase", at_least=3, within_days=30),
@@ -742,7 +747,8 @@ class TestInlineCohortWireParity:
     def test_cohort_reference_parity(self) -> None:
         """A cohort-reference criterion serializes identically to the builder."""
         inline = InlineCohort(
-            criteria=[CohortReferenceCriterion(cohort_id=456)],
+            kind="group",
+            criteria=[CohortReferenceCriterion(kind="cohort_reference", cohort_id=456)],
         )
         builder = CohortDefinition.all_of(CohortCriteria.in_cohort(456))
         assert inline.to_dict() == builder.to_dict()
@@ -750,7 +756,12 @@ class TestInlineCohortWireParity:
     def test_negated_cohort_reference_parity(self) -> None:
         """A negated cohort reference matches ``not_in_cohort``."""
         inline = InlineCohort(
-            criteria=[CohortReferenceCriterion(cohort_id=456, negated=True)],
+            kind="group",
+            criteria=[
+                CohortReferenceCriterion(
+                    kind="cohort_reference", cohort_id=456, negated=True
+                )
+            ],
         )
         builder = CohortDefinition.all_of(CohortCriteria.not_in_cohort(456))
         assert inline.to_dict() == builder.to_dict()
@@ -758,10 +769,11 @@ class TestInlineCohortWireParity:
     def test_any_of_parity(self) -> None:
         """``operator='or'`` matches ``CohortDefinition.any_of``."""
         inline = InlineCohort(
+            kind="group",
             operator="or",
             criteria=[
-                PropertyCriterion(property="plan", value="premium"),
-                CohortReferenceCriterion(cohort_id=7),
+                PropertyCriterion(kind="property", property="plan", value="premium"),
+                CohortReferenceCriterion(kind="cohort_reference", cohort_id=7),
             ],
         )
         builder = CohortDefinition.any_of(
@@ -773,16 +785,24 @@ class TestInlineCohortWireParity:
     def test_nested_parity_and_behavior_reindex(self) -> None:
         """Nested groups and multi-behavior keys re-index identically."""
         inline = InlineCohort(
+            kind="group",
             criteria=[
-                BehavioralCriterion(event="A", at_least=1, within_days=7),
+                BehavioralCriterion(
+                    kind="behavioral", event="A", at_least=1, within_days=7
+                ),
                 InlineCohort(
+                    kind="group",
                     operator="or",
                     criteria=[
-                        BehavioralCriterion(event="B", exactly=0, within_days=7),
-                        PropertyCriterion(property="country", value="US"),
+                        BehavioralCriterion(
+                            kind="behavioral", event="B", exactly=0, within_days=7
+                        ),
+                        PropertyCriterion(
+                            kind="property", property="country", value="US"
+                        ),
                     ],
                 ),
-            ]
+            ],
         )
         builder = CohortDefinition.all_of(
             CohortCriteria.did_event("A", at_least=1, within_days=7),
@@ -841,6 +861,7 @@ class TestQueryFieldCoercion:
             "group_by": [
                 {
                     "cohort": {
+                        "kind": "group",
                         "operator": "and",
                         "criteria": [
                             {"kind": "property", "property": "plan", "value": "premium"}

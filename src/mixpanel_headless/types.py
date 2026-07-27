@@ -44,6 +44,7 @@ from mixpanel_headless._internal.bookmark_enums import (
     _MAX_FILTER_VALUES,
     _MAX_FLOW_STEPS_DIRECTION,
 )
+from mixpanel_headless._internal.pydantic_utils import discriminated_union
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -95,13 +96,11 @@ from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
-    Discriminator,
     Field,
     GetCoreSchemaHandler,
     StrictBool,
     StrictFloat,
     StrictInt,
-    Tag,
     WithJsonSchema,
     computed_field,
     field_validator,
@@ -6851,7 +6850,7 @@ class CustomPropertyRef:
 
 
 def _union_discriminator(
-    specs: tuple[tuple[type, str, str], ...],
+    specs: tuple[tuple[type, str], ...],
     *,
     allow_str: bool = True,
 ) -> Callable[[Any], str | None]:
@@ -6861,41 +6860,43 @@ def _union_discriminator(
     (serialization), so we check both dict keys and ``isinstance``.
 
     Args:
-        specs: ``(model, distinguishing_key, tag)`` triples, tried in order — a
-            dict matches on the key, a model on ``isinstance``.
+        specs: ``(model, distinguishing_key)`` pairs, tried in order — a dict
+            matches on the key, a model on ``isinstance``.
         allow_str: ``False`` for unions with no bare-string shorthand.
 
     Returns:
-        A callable returning the matching alternative's ``Tag``, or ``None``
-        (unroutable) — which fires the ``Discriminator``'s
-        ``custom_error_message`` instead of every alternative's shape noise.
+        A callable naming the matching alternative, or ``None`` (unroutable) —
+        which fires the ``Discriminator``'s ``custom_error_message`` instead of
+        every alternative's shape noise. Names come from ``__name__``, the same
+        source ``discriminated_union`` tags each member from, so the two cannot
+        drift.
     """
 
     def _discriminate(v: Any) -> str | None:
-        """Return ``v``'s alternative Tag, or None if nothing matches.
+        """Return ``v``'s alternative name, or None if nothing matches.
 
         Args:
             v: A candidate union value (str, dict, or model instance).
 
         Returns:
-            The matching ``Tag`` name, or ``None`` when unroutable.
+            The matching alternative's name, or ``None`` when unroutable.
         """
         if allow_str and isinstance(v, str):
             return "str"
         if isinstance(v, dict):
-            for _model, key, tag in specs:
+            for model, key in specs:
                 if key in v:
-                    return tag
+                    return model.__name__
             return None
-        for model, _key, tag in specs:
+        for model, _key in specs:
             if isinstance(v, model):
-                return tag
+                return model.__name__
         return None
 
     return _discriminate
 
 
-def _str_or(tag: str) -> Callable[[Any], str]:
+def _str_or(model: type) -> Callable[[Any], str]:
     """Discriminator for ``str | <one model>``: a string is the string, anything else is the model.
 
     Routing non-strings to the model (rather than a smart union) means a bad
@@ -6903,32 +6904,31 @@ def _str_or(tag: str) -> Callable[[Any], str]:
     useless "should be a string".
 
     Args:
-        tag: The model alternative's ``Tag`` name.
+        model: The non-string alternative. Named by its ``__name__``, the same
+            source ``discriminated_union`` tags it from, so the two cannot drift.
 
     Returns:
-        A total callable — ``"str"`` for strings, ``tag`` otherwise — so this
-        union's ``custom_error_message`` never fires.
+        A total callable — ``"str"`` for strings, the model's name otherwise —
+        so this union's ``custom_error_message`` never fires.
     """
+    name = model.__name__
 
     def _discriminate(v: Any) -> str:
-        """Return ``"str"`` for a string, else ``tag``.
+        """Return ``"str"`` for a string, else the model's name.
 
         Args:
             v: A candidate union value.
 
         Returns:
-            ``"str"`` or the model's ``tag``.
+            ``"str"`` or the model's ``__name__``.
         """
-        return "str" if isinstance(v, str) else tag
+        return "str" if isinstance(v, str) else name
 
     return _discriminate
 
 
 _property_spec_discriminator = _union_discriminator(
-    (
-        (CustomPropertyRef, "id", "CustomPropertyRef"),
-        (InlineCustomProperty, "formula", "InlineCustomProperty"),
-    )
+    ((CustomPropertyRef, "id"), (InlineCustomProperty, "formula"))
 )
 """Route a property spec: ``id`` -> ref, ``formula`` -> inline, str -> ``"str"``."""
 
@@ -6938,16 +6938,16 @@ _PROPERTY_SPEC_ERROR_MESSAGE = (
 )
 """Caller-facing message for an unroutable property spec (no class names)."""
 
-PropertySpec = Annotated[
-    Annotated[str, Tag("str")]
-    | Annotated[CustomPropertyRef, Tag("CustomPropertyRef")]
-    | Annotated[InlineCustomProperty, Tag("InlineCustomProperty")],
-    Discriminator(
+# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
+if TYPE_CHECKING:
+    PropertySpec = str | CustomPropertyRef | InlineCustomProperty
+else:
+    PropertySpec = discriminated_union(
+        [str, CustomPropertyRef, InlineCustomProperty],
         _property_spec_discriminator,
-        custom_error_type="invalid_property_spec",
-        custom_error_message=_PROPERTY_SPEC_ERROR_MESSAGE,
-    ),
-]
+        error_type="invalid_property_spec",
+        message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    )
 """Union type for property specifications in query parameters.
 
 Accepted wherever a property can be specified: ``Metric.property``,
@@ -6957,16 +6957,19 @@ malformed property dict yields one located error rather than every
 alternative's shape noise.
 """
 
-_PropertySpecNonEmpty = Annotated[
-    Annotated[_NonEmptyStrSchema, Tag("str")]
-    | Annotated[CustomPropertyRef, Tag("CustomPropertyRef")]
-    | Annotated[InlineCustomProperty, Tag("InlineCustomProperty")],
-    Discriminator(
+if TYPE_CHECKING:
+    _PropertySpecNonEmpty = str | CustomPropertyRef | InlineCustomProperty
+else:
+    _PropertySpecNonEmpty = discriminated_union(
+        {
+            "str": _NonEmptyStrSchema,
+            "CustomPropertyRef": CustomPropertyRef,
+            "InlineCustomProperty": InlineCustomProperty,
+        },
         _property_spec_discriminator,
-        custom_error_type="invalid_property_spec",
-        custom_error_message=_PROPERTY_SPEC_ERROR_MESSAGE,
-    ),
-]
+        error_type="invalid_property_spec",
+        message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    )
 """``PropertySpec`` whose string alternative carries ``minLength: 1``.
 
 Used by ``GroupBy.property`` so the breakdown property keeps its
@@ -9873,7 +9876,7 @@ class PropertyCriterion(BaseModel):
     user-property value.
 
     Attributes:
-        kind: Discriminator tag (always ``"property"``).
+        kind: Discriminator tag. Required; always ``"property"``.
         property: Property name (must be non-empty).
         value: Value to compare against. The presence operators
             (``is_set`` / ``is_not_set``) take no value — pass ``""``;
@@ -9886,14 +9889,14 @@ class PropertyCriterion(BaseModel):
         ```python
         from mixpanel_headless import PropertyCriterion
 
-        c = PropertyCriterion(property="plan", value="premium")
+        c = PropertyCriterion(kind="property", property="plan", value="premium")
         ```
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["property"] = "property"
-    """Discriminator tag."""
+    kind: Literal["property"]
+    """Discriminator tag. Required."""
 
     property: str = Field(min_length=1, description="User property name.")
     """Property name (must be non-empty)."""
@@ -9971,7 +9974,7 @@ class BehavioralCriterion(BaseModel):
     at conversion time by ``did_event``.
 
     Attributes:
-        kind: Discriminator tag (always ``"behavioral"``).
+        kind: Discriminator tag. Required; always ``"behavioral"``.
         event: Event name (must be non-empty).
         at_least: Minimum event count (``>=``).
         at_most: Maximum event count (``<=``).
@@ -9991,14 +9994,16 @@ class BehavioralCriterion(BaseModel):
         ```python
         from mixpanel_headless import BehavioralCriterion
 
-        c = BehavioralCriterion(event="Purchase", at_least=3, within_days=30)
+        c = BehavioralCriterion(
+            kind="behavioral", event="Purchase", at_least=3, within_days=30
+        )
         ```
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["behavioral"] = "behavioral"
-    """Discriminator tag."""
+    kind: Literal["behavioral"]
+    """Discriminator tag. Required."""
 
     event: str = Field(min_length=1, description="Event name.")
     """Event name (must be non-empty)."""
@@ -10099,7 +10104,7 @@ class CohortReferenceCriterion(BaseModel):
     :meth:`CohortCriteria.not_in_cohort`.
 
     Attributes:
-        kind: Discriminator tag (always ``"cohort_reference"``).
+        kind: Discriminator tag. Required; always ``"cohort_reference"``.
         cohort_id: Saved cohort ID (positive integer).
         negated: When ``True``, selects users **not** in the cohort.
             Default: ``False``.
@@ -10108,15 +10113,17 @@ class CohortReferenceCriterion(BaseModel):
         ```python
         from mixpanel_headless import CohortReferenceCriterion
 
-        c = CohortReferenceCriterion(cohort_id=456)
-        c_not = CohortReferenceCriterion(cohort_id=456, negated=True)
+        c = CohortReferenceCriterion(kind="cohort_reference", cohort_id=456)
+        c_not = CohortReferenceCriterion(
+            kind="cohort_reference", cohort_id=456, negated=True
+        )
         ```
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["cohort_reference"] = "cohort_reference"
-    """Discriminator tag."""
+    kind: Literal["cohort_reference"]
+    """Discriminator tag. Required."""
 
     cohort_id: int = Field(
         gt=0, strict=True, description="Saved cohort ID (positive integer)."
@@ -10149,58 +10156,6 @@ class CohortReferenceCriterion(BaseModel):
         return CohortCriteria.in_cohort(self.cohort_id)
 
 
-_COHORT_NODE_TAGS_BY_KIND: dict[str, str] = {
-    "property": "PropertyCriterion",
-    "behavioral": "BehavioralCriterion",
-    "cohort_reference": "CohortReferenceCriterion",
-    "group": "InlineCohort",
-}
-"""Maps each cohort-node ``kind`` value to its ``Tag`` (class) name."""
-
-
-def _cohort_node_discriminator(v: Any) -> str | None:
-    """Route a cohort node by its ``kind``; a missing or unknown ``kind`` returns None (clean error).
-
-    Callable + ``Tag(<ClassName>)`` rather than ``Field(discriminator="kind")``
-    on purpose: the class name goes into ``error_location`` (strippable),
-    whereas the raw ``"property"`` kind value collides with the real
-    ``property`` field and would corrupt paths like ``where[0].property``.
-    ``kind`` keeps a per-model default so ``PropertyCriterion(property=...,
-    value=...)`` stays terse — this reads the raw dict's ``kind`` first, so a
-    kind-less dict still returns None and hits the ``custom_error_message``.
-
-    Args:
-        v: A cohort-node value (dict, or a criterion model on the Python path).
-
-    Returns:
-        The ``Tag`` for a valid ``kind``, else ``None`` → the
-        ``custom_error_message``.
-    """
-    kind = v.get("kind") if isinstance(v, dict) else getattr(v, "kind", None)
-    if isinstance(kind, str):
-        return _COHORT_NODE_TAGS_BY_KIND.get(kind, kind)
-    return None
-
-
-_COHORT_NODE_ERROR_MESSAGE = "kind must be one of " + ", ".join(
-    repr(kind) for kind in _COHORT_NODE_TAGS_BY_KIND
-)
-"""Caller-facing message for an unroutable cohort node (no class names)."""
-
-_CohortNode = Annotated[
-    Annotated["PropertyCriterion", Tag("PropertyCriterion")]
-    | Annotated["BehavioralCriterion", Tag("BehavioralCriterion")]
-    | Annotated["CohortReferenceCriterion", Tag("CohortReferenceCriterion")]
-    | Annotated["InlineCohort", Tag("InlineCohort")],
-    Discriminator(
-        _cohort_node_discriminator,
-        custom_error_type="invalid_cohort_node",
-        custom_error_message=_COHORT_NODE_ERROR_MESSAGE,
-    ),
-]
-"""Discriminated union of every declarative cohort node, routed by ``kind``."""
-
-
 class InlineCohort(BaseModel):
     """Declarative, JSON-schema-exhaustive cohort definition.
 
@@ -10215,7 +10170,7 @@ class InlineCohort(BaseModel):
     coerces it to a :class:`CohortDefinition` at validation time.
 
     Attributes:
-        kind: Discriminator tag (always ``"group"``).
+        kind: Discriminator tag. Required; always ``"group"``.
         operator: Boolean combinator for ``criteria``. Default:
             ``"and"``.
         criteria: One or more child criteria or nested groups.
@@ -10227,10 +10182,13 @@ class InlineCohort(BaseModel):
         )
 
         cohort = InlineCohort(
+            kind="group",
             criteria=[
-                PropertyCriterion(property="plan", value="premium"),
-                BehavioralCriterion(event="Purchase", at_least=3, within_days=30),
-            ]
+                PropertyCriterion(kind="property", property="plan", value="premium"),
+                BehavioralCriterion(
+                    kind="behavioral", event="Purchase", at_least=3, within_days=30
+                ),
+            ],
         )
         wire = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
         ```
@@ -10238,8 +10196,8 @@ class InlineCohort(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    kind: Literal["group"] = "group"
-    """Discriminator tag."""
+    kind: Literal["group"]
+    """Discriminator tag. Required."""
 
     operator: Literal["and", "or"] = Field(
         "and", description="Boolean combinator for criteria."
@@ -10286,6 +10244,34 @@ class InlineCohort(BaseModel):
         return self.to_definition().to_dict()
 
 
+if TYPE_CHECKING:
+    _CohortNode = (
+        PropertyCriterion
+        | BehavioralCriterion
+        | CohortReferenceCriterion
+        | InlineCohort
+    )
+else:
+    _CohortNode = discriminated_union(
+        [
+            PropertyCriterion,
+            BehavioralCriterion,
+            CohortReferenceCriterion,
+            InlineCohort,
+        ],
+        "kind",
+        error_type="invalid_cohort_node",
+    )
+"""Declarative cohort nodes, routed by ``kind``.
+
+Declared after :class:`InlineCohort` because every member is a real class here
+— ``criteria: list[_CohortNode]`` in the class body stays a lazy annotation
+(``from __future__ import annotations``) until ``model_rebuild`` below.
+
+``kind`` is required on every alternative, so the generated schema marks it
+required too — a schema-valid payload always routes.
+"""
+
 InlineCohort.model_rebuild()
 
 
@@ -10304,6 +10290,31 @@ def _cohort_int_or_definition_discriminator(v: Any) -> str:
     if isinstance(v, (dict, CohortDefinition, InlineCohort)):
         return "CohortDefinition"
     return "int"
+
+
+# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
+if TYPE_CHECKING:
+    _CohortIdOrDefinition = int | CohortDefinition
+    _CohortIdOrHiddenDefinition = int | CohortDefinition
+else:
+    _CohortIdOrDefinition = discriminated_union(
+        {"int": _PositiveStrictIntSchema, "CohortDefinition": CohortDefinition},
+        _cohort_int_or_definition_discriminator,
+    )
+    _CohortIdOrHiddenDefinition = discriminated_union(
+        {
+            "int": _PositiveStrictIntSchema,
+            "CohortDefinition": SkipJsonSchema[CohortDefinition],
+        },
+        _cohort_int_or_definition_discriminator,
+    )
+"""Saved cohort ID or inline definition, in schema-visible and hidden forms.
+
+Both accept the same values; they differ only in whether the definition
+alternative is advertised in the generated JSON schema. ``CohortBreakdown``
+takes inline cohorts, so it uses the visible form; ``CohortMetric`` accepts
+only an ID on the wire, so its definition alternative is ``SkipJsonSchema``.
+"""
 
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -10344,11 +10355,7 @@ class CohortBreakdown:
         ```
     """
 
-    cohort: Annotated[
-        Annotated[_PositiveStrictIntSchema, Tag("int")]
-        | Annotated[CohortDefinition, Tag("CohortDefinition")],
-        Discriminator(_cohort_int_or_definition_discriminator),
-    ]
+    cohort: _CohortIdOrDefinition
     """Saved cohort ID or inline definition.
 
     Discriminated like ``CohortMetric.cohort``, but the definition alternative is
@@ -10416,11 +10423,7 @@ class CohortMetric:
         ```
     """
 
-    cohort: Annotated[
-        Annotated[_PositiveStrictIntSchema, Tag("int")]
-        | Annotated[SkipJsonSchema[CohortDefinition], Tag("CohortDefinition")],
-        Discriminator(_cohort_int_or_definition_discriminator),
-    ]
+    cohort: _CohortIdOrHiddenDefinition
     """Saved cohort ID (the only shape the server accepts here).
 
     The ID alternative is a strict integer — bool/str inputs are rejected

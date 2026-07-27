@@ -13,7 +13,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from mixpanel_headless._internal.bookmark_schema import _is_union_alternative_label
+from mixpanel_headless._internal.pydantic_utils import is_meta_key
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import (
     FlowQuery,
@@ -1564,65 +1564,106 @@ class TestDeclarativeCriterionStrictCoercion:
     def test_cohort_reference_cohort_id_str_rejected(self) -> None:
         """CohortReferenceCriterion cohort_id='456' must not become 456."""
         with pytest.raises(ValidationError, match="cohort_id"):
-            CohortReferenceCriterion.model_validate({"cohort_id": "456"})
+            CohortReferenceCriterion.model_validate(
+                {"kind": "cohort_reference", "cohort_id": "456"}
+            )
 
     def test_cohort_reference_cohort_id_bool_rejected(self) -> None:
         """CohortReferenceCriterion cohort_id=True must not become 1."""
         with pytest.raises(ValidationError, match="cohort_id"):
-            CohortReferenceCriterion.model_validate({"cohort_id": True})
+            CohortReferenceCriterion.model_validate(
+                {"kind": "cohort_reference", "cohort_id": True}
+            )
 
     def test_cohort_reference_negated_int_rejected(self) -> None:
         """CohortReferenceCriterion negated=1 must not become True."""
         with pytest.raises(ValidationError, match="negated"):
-            CohortReferenceCriterion.model_validate({"cohort_id": 456, "negated": 1})
+            CohortReferenceCriterion.model_validate(
+                {"kind": "cohort_reference", "cohort_id": 456, "negated": 1}
+            )
 
     def test_behavioral_at_least_bool_rejected(self) -> None:
         """BehavioralCriterion at_least=True must not become count 1."""
         with pytest.raises(ValidationError, match="at_least"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_least": True, "within_days": 30}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_least": True,
+                    "within_days": 30,
+                }
             )
 
     def test_behavioral_at_least_str_rejected(self) -> None:
         """BehavioralCriterion at_least='3' must not become count 3."""
         with pytest.raises(ValidationError, match="at_least"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_least": "3", "within_days": 30}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_least": "3",
+                    "within_days": 30,
+                }
             )
 
     def test_behavioral_at_most_str_rejected(self) -> None:
         """BehavioralCriterion at_most='5' must not become count 5."""
         with pytest.raises(ValidationError, match="at_most"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_most": "5", "within_days": 30}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_most": "5",
+                    "within_days": 30,
+                }
             )
 
     def test_behavioral_exactly_bool_rejected(self) -> None:
         """BehavioralCriterion exactly=False must not become count 0."""
         with pytest.raises(ValidationError, match="exactly"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "exactly": False, "within_days": 30}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "exactly": False,
+                    "within_days": 30,
+                }
             )
 
     def test_behavioral_within_days_str_rejected(self) -> None:
         """BehavioralCriterion within_days='30' must not become 30."""
         with pytest.raises(ValidationError, match="within_days"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_least": 3, "within_days": "30"}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_least": 3,
+                    "within_days": "30",
+                }
             )
 
     def test_behavioral_within_weeks_bool_rejected(self) -> None:
         """BehavioralCriterion within_weeks=True must not become 1."""
         with pytest.raises(ValidationError, match="within_weeks"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_least": 3, "within_weeks": True}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_least": 3,
+                    "within_weeks": True,
+                }
             )
 
     def test_behavioral_within_months_str_rejected(self) -> None:
         """BehavioralCriterion within_months='6' must not become 6."""
         with pytest.raises(ValidationError, match="within_months"):
             BehavioralCriterion.model_validate(
-                {"event": "Purchase", "at_least": 3, "within_months": "6"}
+                {
+                    "kind": "behavioral",
+                    "event": "Purchase",
+                    "at_least": 3,
+                    "within_months": "6",
+                }
             )
 
     def test_cohort_reference_str_id_rejected_via_query_dict_path(self) -> None:
@@ -1634,9 +1675,10 @@ class TestDeclarativeCriterionStrictCoercion:
                     "group_by": [
                         {
                             "cohort": {
+                                "kind": "group",
                                 "criteria": [
                                     {"kind": "cohort_reference", "cohort_id": "456"}
-                                ]
+                                ],
                             }
                         }
                     ],
@@ -1652,6 +1694,7 @@ class TestDeclarativeCriterionStrictCoercion:
                     "group_by": [
                         {
                             "cohort": {
+                                "kind": "group",
                                 "criteria": [
                                     {
                                         "kind": "behavioral",
@@ -1659,7 +1702,7 @@ class TestDeclarativeCriterionStrictCoercion:
                                         "at_least": True,
                                         "within_days": 30,
                                     }
-                                ]
+                                ],
                             }
                         }
                     ],
@@ -1669,22 +1712,32 @@ class TestDeclarativeCriterionStrictCoercion:
     def test_valid_criterion_values_still_accepted(self) -> None:
         """Genuine ints/bools still construct on every strict field."""
         ref = CohortReferenceCriterion.model_validate(
-            {"cohort_id": 456, "negated": True}
+            {"kind": "cohort_reference", "cohort_id": 456, "negated": True}
         )
         assert (ref.cohort_id, ref.negated) == (456, True)
-        ref_default = CohortReferenceCriterion.model_validate({"cohort_id": 7})
+        ref_default = CohortReferenceCriterion.model_validate(
+            {"kind": "cohort_reference", "cohort_id": 7}
+        )
         assert ref_default.negated is False
         b = BehavioralCriterion.model_validate(
-            {"event": "Purchase", "at_least": 3, "within_days": 30}
+            {
+                "kind": "behavioral",
+                "event": "Purchase",
+                "at_least": 3,
+                "within_days": 30,
+            }
         )
         assert (b.at_least, b.within_days) == (3, 30)
         b_full = BehavioralCriterion(
+            kind="behavioral",
             event="Purchase",
             at_most=5,
             within_weeks=2,
         )
         assert (b_full.at_most, b_full.within_weeks) == (5, 2)
-        b_exact = BehavioralCriterion(event="Purchase", exactly=0, within_months=6)
+        b_exact = BehavioralCriterion(
+            kind="behavioral", event="Purchase", exactly=0, within_months=6
+        )
         assert (b_exact.exactly, b_exact.within_months) == (0, 6)
 
 
@@ -2249,13 +2302,12 @@ class TestPropertySpecAlternativePathTranslation:
     ``PropertySpec`` union members ``CustomPropertyRef`` and
     ``InlineCustomProperty`` (``property: str | CustomPropertyRef |
     InlineCustomProperty`` on ``Filter``, ``GroupBy``, and ``Metric``)
-    were missing from ``_DISCRIMINATOR_TAGS``, so a malformed property
-    dict surfaced raw class-name path segments like
-    ``where[0].property.CustomPropertyRef.id``. ``PropertySpec`` is now a
-    callable-``Discriminator`` union, so a malformed dict routes to a
-    single alternative (clean ``where[0].property.id`` path) and an unroutable
-    one gets the located ``custom_error_message`` — no class name leaks
-    into the path or message either way.
+    once surfaced raw class-name path segments like
+    ``where[0].property.CustomPropertyRef.id``. Their tags are now marked, so a
+    malformed dict routes to a single alternative (clean
+    ``where[0].property.id`` path) and an unroutable one gets the located
+    ``custom_error_message`` — no class name leaks into the path or message
+    either way.
     """
 
     def test_routed_property_dict_in_where_yields_clean_path(self) -> None:
@@ -2340,31 +2392,24 @@ def _iter_schema_nodes(node: Any) -> Iterator[dict[str, Any]]:
             yield from _iter_schema_nodes(item)
 
 
-def _union_alternative_model_names(model_cls: type[BaseModel]) -> set[str]:
-    """Collect every union-alternative label pydantic can insert into ``error_location``.
+def _union_alternative_labels(model_cls: type[BaseModel]) -> set[str]:
+    """Collect every union label pydantic can insert into ``error_location``.
 
-    Walks ``model_cls.__pydantic_core_schema__`` and, for every ``union``
-    and ``tagged-union`` node, records two kinds of labels:
+    Walks ``model_cls.__pydantic_core_schema__`` and records what pydantic
+    actually puts in the loc for each union kind:
 
-    - For every alternative, the alternative's class name when the alternative is a ``BaseModel``
-      (``model`` schema) or pydantic dataclass (``dataclass`` schema),
-      resolving ``definition-ref`` indirection. Smart unions insert these
-      bare class names into ``error_location`` tuples.
-    - For ``tagged-union`` nodes, the choice *keys*: pydantic inserts the
-      matched tag into ``error_location`` for errors inside the chosen alternative. With a
-      callable ``Discriminator(...)`` these keys are ``Tag(...)`` names
-      (class names); with a declarative ``Field(discriminator=...)`` they
-      are the raw tag values (e.g. ``"property"``), which are NOT
-      strippable — registering them would destroy real field paths.
-
-    Every collected label must be registered in ``_DISCRIMINATOR_TAGS``
-    (or otherwise strippable) or it leaks into caller-facing error paths.
+    - ``tagged-union`` — the choice *keys*. Pydantic inserts the matched tag
+      for errors inside the chosen alternative. Built by
+      ``discriminated_union``, these are :class:`MarkedTag` names (``#Metric``).
+    - plain ``union`` — each alternative's class name, for ``BaseModel`` and
+      pydantic-dataclass alternatives, resolving ``definition-ref``
+      indirection. Smart unions insert bare class names, which nothing strips.
 
     Args:
         model_cls: The pydantic model whose core schema to walk.
 
     Returns:
-        The set of union-alternative labels reachable from ``model_cls``.
+        The set of union labels reachable from ``model_cls``.
     """
     schema: Any = model_cls.__pydantic_core_schema__
     refs: dict[str, dict[str, Any]] = {
@@ -2379,10 +2424,8 @@ def _union_alternative_model_names(model_cls: type[BaseModel]) -> set[str]:
         choices = node.get("choices")
         if node.get("type") == "tagged-union" and isinstance(choices, dict):
             names.update(str(key) for key in choices)
-        alternatives: list[Any] = (
-            list(choices.values()) if isinstance(choices, dict) else list(choices or ())
-        )
-        for alternative in alternatives:
+            continue
+        for alternative in list(choices or ()):
             if isinstance(alternative, tuple):
                 alternative = alternative[0]
             seen_refs: set[str] = set()
@@ -2404,71 +2447,65 @@ def _union_alternative_model_names(model_cls: type[BaseModel]) -> set[str]:
 
 
 class TestUnionAlternativeLabelRegistry:
-    """Every reachable union-alternative class name is a strippable alternative label.
+    """Every reachable union label is strippable from caller-facing paths.
 
     Structural guard for finding
-    ``property-spec-union-alternative-labels-leak-into-error-paths``:
-    ``_DISCRIMINATOR_TAGS`` is hand-maintained, and each newly added
-    union member that is not registered leaks its raw class name into
-    caller-facing error paths (Metric/Filter/FlowStep in earlier rounds,
-    CustomPropertyRef/InlineCustomProperty in round 5). This test walks
-    the pydantic core schema of all four query models, collects every
-    ``BaseModel`` / pydantic-dataclass union alternative, and asserts each class
-    name is caught by ``_is_union_alternative_label`` — so adding a union member
-    without registering it fails CI instead of shipping a path leak.
+    ``property-spec-union-alternative-labels-leak-into-error-paths``. It used
+    to check membership of a hand-maintained ``_DISCRIMINATOR_TAGS`` frozenset;
+    since every union is built by ``discriminated_union``, the check is now
+    structural — each label must satisfy ``is_meta_key``, which is true of a
+    :class:`MarkedTag` by construction.
+
+    A failure means a union was declared without ``discriminated_union`` (a
+    plain union contributes bare class names, an undiscriminated one
+    contributes type labels), and its label would leak into an error path.
     """
 
     @pytest.mark.parametrize("model_cls", ALL_MODELS, ids=lambda m: m.__name__)
-    def test_every_union_alternative_class_name_is_strippable(
-        self, model_cls: type[BaseModel]
-    ) -> None:
-        """All model/dataclass union alternatives reachable from the model are registered."""
-        unregistered = {
+    def test_every_union_label_is_strippable(self, model_cls: type[BaseModel]) -> None:
+        """All union labels reachable from the model are marked or otherwise meta."""
+        leaking = {
             name
-            for name in _union_alternative_model_names(model_cls)
-            if not _is_union_alternative_label(name)
+            for name in _union_alternative_labels(model_cls)
+            if not is_meta_key(name)
         }
-        assert unregistered == set(), (
-            f"Union alternative class names not registered in _DISCRIMINATOR_TAGS "
-            f"(their raw class names will leak into error paths): "
-            f"{sorted(unregistered)}"
+        assert leaking == set(), (
+            f"Union labels that are not strippable — declare the union with "
+            f"discriminated_union() so its tags are marked: {sorted(leaking)}"
         )
 
     def test_walker_finds_known_union_alternatives(self) -> None:
         """The schema walk is not vacuous — known alternatives are discovered.
 
-        Guards the guard: if the core-schema walker silently broke (e.g.
-        a pydantic upgrade renames schema keys), the registry test above
-        would pass on an empty set. Pin a few alternatives that must be found.
+        Guards the guard: if the core-schema walker silently broke (e.g. a
+        pydantic upgrade renames schema keys), the test above would pass on an
+        empty set. Pin a few tags that must be found.
         """
-        names = _union_alternative_model_names(InsightsQuery)
+        names = _union_alternative_labels(InsightsQuery)
         assert {
-            "Filter",
-            "FrequencyFilter",
-            "Metric",
-            "CustomPropertyRef",
-            "InlineCustomProperty",
+            "#Filter",
+            "#FrequencyFilter",
+            "#Metric",
+            "#CustomPropertyRef",
+            "#InlineCustomProperty",
         } <= names
 
     def test_walker_covers_cohort_criteria_tagged_union(self) -> None:
-        """The declarative cohort-node union is covered by the walk.
+        """The cohort-node union surfaces marked tags, not raw ``kind`` values.
 
         Regression guard for finding
-        ``cohort-criteria-kind-tag-leaks-into-error-paths``: the
-        ``InlineCohort.criteria`` tagged union must surface its ``error_location``
-        labels (the tagged-union choice keys) to the registry test.
-        With the callable ``Discriminator`` + ``Tag`` pattern those keys
-        are the criterion class names; a regression to the declarative
-        ``Field(discriminator="kind")`` form would surface the raw kind
-        values (``"property"`` — unregistrable, it is a real field name
-        everywhere) and fail ``test_every_union_alternative_class_name_is_strippable``.
+        ``cohort-criteria-kind-tag-leaks-into-error-paths``: routing
+        ``InlineCohort.criteria`` with a declarative ``Field(discriminator="kind")``
+        would put the raw values (``"property"`` — a real field name
+        everywhere) into ``error_location``, where nothing can safely strip
+        them. Marked tags carry a prefix no field name can have.
         """
-        names = _union_alternative_model_names(InsightsQuery)
+        names = _union_alternative_labels(InsightsQuery)
         assert {
-            "PropertyCriterion",
-            "BehavioralCriterion",
-            "CohortReferenceCriterion",
-            "InlineCohort",
+            "#property",
+            "#behavioral",
+            "#cohort_reference",
+            "#group",
         } <= names
 
 
@@ -2497,7 +2534,8 @@ class TestCohortCriteriaKindTagPathTranslation:
                     "group_by": [
                         {
                             "cohort": {
-                                "criteria": [{"kind": "property", "property": "plan"}]
+                                "kind": "group",
+                                "criteria": [{"kind": "property", "property": "plan"}],
                             }
                         }
                     ],
@@ -2516,6 +2554,7 @@ class TestCohortCriteriaKindTagPathTranslation:
                     "group_by": [
                         {
                             "cohort": {
+                                "kind": "group",
                                 "criteria": [
                                     {
                                         "kind": "behavioral",
@@ -2523,7 +2562,7 @@ class TestCohortCriteriaKindTagPathTranslation:
                                         "at_least": -1,
                                         "within_days": 30,
                                     }
-                                ]
+                                ],
                             }
                         }
                     ],
@@ -2543,7 +2582,8 @@ class TestCohortCriteriaKindTagPathTranslation:
                     "group_by": [
                         {
                             "cohort": {
-                                "criteria": [{"kind": "property", "property": "plan"}]
+                                "kind": "group",
+                                "criteria": [{"kind": "property", "property": "plan"}],
                             }
                         }
                     ],
@@ -2561,6 +2601,7 @@ class TestCohortCriteriaKindTagPathTranslation:
                 "group_by": [
                     {
                         "cohort": {
+                            "kind": "group",
                             "operator": "or",
                             "criteria": [
                                 {
@@ -2636,14 +2677,13 @@ class TestCohortNodeTagErrorMessages:
     """Cohort-node union tag failures surface kind values, not internals.
 
     Regression tests for finding
-    ``cohort-node-union-tag-errors-leak-class-names-and-private-fn``: the
-    callable ``Discriminator`` + ``Tag(<ClassName>)`` switch fixed the
-    ``error_location`` leak but let pydantic's default ``union_tag_invalid`` /
-    ``union_tag_not_found`` MESSAGES through — leaking all four criterion
-    class names plus the private ``_cohort_node_discriminator()`` function
-    name, and pointing self-correcting agents at ``kind="BehavioralCriterion"``
-    (which then fails the ``Literal``). The translator must rewrite these
-    messages in terms of the caller-facing ``kind`` values.
+    ``cohort-node-union-tag-errors-leak-class-names-and-private-fn``: marking
+    the tags fixed the ``error_location`` leak, but pydantic's default
+    ``union_tag_invalid`` / ``union_tag_not_found`` MESSAGES would still leak
+    all four criterion class names plus the routing callable's name, pointing
+    self-correcting agents at ``kind="BehavioralCriterion"`` (which then fails
+    the ``Literal``). The union's ``custom_error_message`` replaces them with
+    the caller-facing ``kind`` values.
     """
 
     def test_bogus_kind_message_names_kind_values(self) -> None:
@@ -2691,7 +2731,7 @@ class TestCohortNodeTagErrorMessages:
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(_cohort_criteria_payload(criterion))
         for e in exc_info.value.errors:
-            assert "_cohort_node_discriminator" not in e.message, e.message
+            assert "by_field_kind" not in e.message, e.message
             for cls_name in (
                 "PropertyCriterion",
                 "BehavioralCriterion",
@@ -2760,7 +2800,8 @@ class TestCohortNodeTagErrorMessages:
         """The structural guard above is not vacuous.
 
         Guards the guard: the cohort-node union's callable discriminator
-        must be discovered by the tagged-union walk.
+        must be discovered by the tagged-union walk. It routes by reading the
+        ``kind`` field, so its name is ``by_field_kind``.
         """
         names = {
             node["discriminator"].__name__
@@ -2769,7 +2810,7 @@ class TestCohortNodeTagErrorMessages:
             if node.get("type") == "tagged-union"
             and callable(node.get("discriminator"))
         }
-        assert "_cohort_node_discriminator" in names
+        assert "by_field_kind" in names
 
 
 class TestCustomPropertyExtraKeySchemaRuntimeParity:
@@ -2929,6 +2970,7 @@ class TestCohortMetricHiddenAlternativeErrorConsistency:
                     "group_by": [
                         {
                             "cohort": {
+                                "kind": "group",
                                 "operator": "bogus",
                                 "criteria": [
                                     {"kind": "cohort_reference", "cohort_id": 7}
@@ -2962,7 +3004,7 @@ class TestPropertyCriterionNoValueOperatorValueRejected:
     ``property-criterion-silently-ignores-value-on-is-set-operators``:
     mirrors ``TestFilterNoValueOperatorValueRejected`` — ``Filter`` now
     rejects a supplied value on ``is set`` / ``is not set``, but
-    ``PropertyCriterion(property="country", value="US", operator="is_set")``
+    ``PropertyCriterion(kind="property", property="country", value="US", operator="is_set")``
     was accepted, ran a bare existence check, and shipped the ignored
     operand into the wire selector. Because ``value`` is a required field
     (the schema keeps it required for the comparison operators), the
@@ -2973,33 +3015,43 @@ class TestPropertyCriterionNoValueOperatorValueRejected:
     def test_presence_operator_with_value_rejected(self, operator: str) -> None:
         """Each presence operator rejects a caller-supplied value."""
         with pytest.raises(ValidationError, match="does not take a value"):
-            PropertyCriterion(property="country", value="US", operator=operator)
+            PropertyCriterion(
+                kind="property", property="country", value="US", operator=operator
+            )
 
     def test_is_set_error_suggests_equals(self) -> None:
         """The is_set rejection points the caller at operator 'equals'."""
         with pytest.raises(ValidationError, match="did you mean operator 'equals'"):
-            PropertyCriterion(property="country", value="US", operator="is_set")
+            PropertyCriterion(
+                kind="property", property="country", value="US", operator="is_set"
+            )
 
     def test_error_reports_original_value(self) -> None:
         """The rejection message echoes the discarded value."""
         with pytest.raises(ValidationError, match="'US'"):
-            PropertyCriterion(property="country", value="US", operator="is_set")
+            PropertyCriterion(
+                kind="property", property="country", value="US", operator="is_set"
+            )
 
     @pytest.mark.parametrize("operator", ["is_set", "is_not_set"])
     def test_empty_string_sentinel_still_accepted(self, operator: str) -> None:
         """The documented '' sentinel keeps presence criteria constructible."""
-        c = PropertyCriterion(property="country", value="", operator=operator)
+        c = PropertyCriterion(
+            kind="property", property="country", value="", operator=operator
+        )
         assert c.value == ""
         assert c.to_criteria() is not None
 
     def test_non_string_value_also_rejected(self) -> None:
         """Non-string junk values (e.g. 0) are rejected too."""
         with pytest.raises(ValidationError, match="does not take a value"):
-            PropertyCriterion(property="country", value=0, operator="is_set")
+            PropertyCriterion(
+                kind="property", property="country", value=0, operator="is_set"
+            )
 
     def test_comparison_operators_unaffected(self) -> None:
         """Comparison operators keep requiring and accepting real values."""
-        c = PropertyCriterion(property="plan", value="premium")
+        c = PropertyCriterion(kind="property", property="plan", value="premium")
         assert c.value == "premium"
 
     def test_insights_model_path_raises_bookmark_error(self) -> None:
@@ -3158,13 +3210,82 @@ class TestDiscriminatedUnionRouting:
         assert reparsed == query
 
 
+class TestCohortNodeKindSchemaRuntimeParity:
+    """``kind`` is required by BOTH the generated schema and the runtime.
+
+    Regression tests for finding
+    ``cohort-kind-optional-in-schema-required-at-runtime``: every
+    criterion arm rendered ``kind`` as a *defaulted* (non-required)
+    property, so a schema-driven consumer that omitted it produced a
+    payload with zero JSON Schema errors that ``model_validate`` then
+    rejected — the discriminator routes by ``kind`` alone and returns
+    ``None`` for a kind-less dict. ``kind`` is now required everywhere,
+    so the advertised contract and the validator agree in both
+    directions.
+    """
+
+    ARM_DEFS: ClassVar[tuple[str, ...]] = (
+        "PropertyCriterion",
+        "BehavioralCriterion",
+        "CohortReferenceCriterion",
+        "InlineCohort",
+    )
+    """Every ``$def`` participating in the cohort-node union."""
+
+    KINDLESS_CRITERIA: ClassVar[dict[str, dict[str, Any]]] = {
+        "PropertyCriterion": {"property": "plan", "value": "premium"},
+        "BehavioralCriterion": {"event": "Purchase", "at_least": 3, "within_days": 30},
+        "CohortReferenceCriterion": {"cohort_id": 456},
+        "InlineCohort": {
+            "criteria": [{"kind": "property", "property": "p", "value": 1}]
+        },
+    }
+    """One otherwise-valid, ``kind``-less criterion per arm."""
+
+    @pytest.mark.parametrize("def_name", ARM_DEFS, ids=str)
+    def test_def_requires_kind(self, def_name: str) -> None:
+        """Each criterion ``$def`` lists ``kind`` in ``required``."""
+        definition = InsightsQuery.model_json_schema()["$defs"][def_name]
+        assert "kind" in definition["required"], (
+            f"{def_name}: schema advertises kind as optional, "
+            f"but the discriminator requires it"
+        )
+
+    @pytest.mark.parametrize("arm", sorted(KINDLESS_CRITERIA), ids=str)
+    def test_kindless_criterion_rejected_by_schema_and_runtime(self, arm: str) -> None:
+        """A ``kind``-less criterion fails schema validation AND model_validate."""
+        payload = _cohort_criteria_payload(self.KINDLESS_CRITERIA[arm])
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors != [], (
+            f"{arm}: schema accepted a kind-less criterion the runtime rejects"
+        )
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery.model_validate(payload)
+
+    @pytest.mark.parametrize("arm", sorted(KINDLESS_CRITERIA), ids=str)
+    def test_kinded_criterion_accepted_by_schema_and_runtime(self, arm: str) -> None:
+        """The same criterion WITH its ``kind`` passes both layers."""
+        kind = InsightsQuery.model_json_schema()["$defs"][arm]["properties"]["kind"][
+            "const"
+        ]
+        payload = _cohort_criteria_payload(
+            {**self.KINDLESS_CRITERIA[arm], "kind": kind}
+        )
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors == [], [e.message for e in schema_errors]
+        assert isinstance(InsightsQuery.model_validate(payload), InsightsQuery)
+
+
 class TestCohortNodeMissingOrBogusKind:
     """Cohort criteria with a missing or bogus ``kind`` fail cleanly.
 
     Routing is by ``kind`` only, so a criterion without a valid string
     ``kind`` is unroutable and gets the ``custom_error_message`` — with no
-    discriminator function name or criterion class name leaked. Direct
-    Python construction (which supplies the ``kind`` default) keeps working.
+    discriminator function name or criterion class name leaked.
     """
 
     @pytest.mark.parametrize(
@@ -3184,7 +3305,7 @@ class TestCohortNodeMissingOrBogusKind:
             if e.path == "group_by[0].cohort.criteria[0]"
         ]
         assert "kind must be one of" in err.message, err.message
-        assert "_cohort_node_discriminator" not in err.message
+        assert "by_field_kind" not in err.message
         for cls_name in (
             "PropertyCriterion",
             "BehavioralCriterion",
@@ -3193,10 +3314,10 @@ class TestCohortNodeMissingOrBogusKind:
         ):
             assert cls_name not in err.message, err.message
 
-    def test_direct_construction_supplies_kind_default(self) -> None:
-        """PropertyCriterion / InlineCohort still construct without a kind arg."""
-        crit = PropertyCriterion(property="plan", value="pro")
+    def test_direct_construction_takes_kind_explicitly(self) -> None:
+        """PropertyCriterion / InlineCohort take kind explicitly on the Python path."""
+        crit = PropertyCriterion(kind="property", property="plan", value="pro")
         assert crit.kind == "property"
-        cohort = InlineCohort(criteria=[crit])
+        cohort = InlineCohort(kind="group", criteria=[crit])
         assert cohort.kind == "group"
         assert cohort.criteria[0] is crit

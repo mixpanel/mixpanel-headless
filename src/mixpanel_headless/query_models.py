@@ -34,16 +34,14 @@ an MCP "Run-Query" tool that generates its request schema from
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import (
     BaseModel,
     ConfigDict,
-    Discriminator,
     Field,
     ModelWrapValidatorHandler,
     StrictInt,
-    Tag,
     ValidationError,
     model_validator,
 )
@@ -60,6 +58,7 @@ from mixpanel_headless._internal.bookmark_enums import (
 from mixpanel_headless._internal.bookmark_schema import (
     translate_pydantic_exception,
 )
+from mixpanel_headless._internal.pydantic_utils import discriminated_union
 from mixpanel_headless._internal.validation import (
     v9_to_requires_from,
     v26_percentile_requires_value,
@@ -120,143 +119,144 @@ from mixpanel_headless.types import (
 # alternative's shape noise. Routing lives in types._union_discriminator / _str_or.
 # =============================================================================
 
-_EventItem = Annotated[
-    Annotated[str, Tag("str")]
-    | Annotated[Metric, Tag("Metric")]
-    | Annotated[CohortMetric, Tag("CohortMetric")]
-    | Annotated[Formula, Tag("Formula")],
-    Discriminator(
+# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
+if TYPE_CHECKING:
+    _EventItem = str | Metric | CohortMetric | Formula
+else:
+    _EventItem = discriminated_union(
+        [str, Metric, CohortMetric, Formula],
         _union_discriminator(
             (
-                (Formula, "expression", "Formula"),
-                (CohortMetric, "cohort", "CohortMetric"),
-                (Metric, "event", "Metric"),
+                (Formula, "expression"),
+                (CohortMetric, "cohort"),
+                (Metric, "event"),
             )
         ),
-        custom_error_type="invalid_event_item",
-        custom_error_message=(
+        error_type="invalid_event_item",
+        message=(
             "each event must be an event-name string or an object with "
             "'event' (a metric), 'cohort' (a cohort metric), or 'expression' "
             "(a formula)"
         ),
-    ),
-]
+    )
 """One ``events`` entry: string · ``Metric`` · ``CohortMetric`` · ``Formula``."""
 
-_InsightsBreakdownItem = Annotated[
-    Annotated[str, Tag("str")]
-    | Annotated[GroupBy, Tag("GroupBy")]
-    | Annotated[CohortBreakdown, Tag("CohortBreakdown")]
-    | Annotated[FrequencyBreakdown, Tag("FrequencyBreakdown")],
-    Discriminator(
+if TYPE_CHECKING:
+    _InsightsBreakdownItem = str | GroupBy | CohortBreakdown | FrequencyBreakdown
+else:
+    _InsightsBreakdownItem = discriminated_union(
+        [str, GroupBy, CohortBreakdown, FrequencyBreakdown],
         _union_discriminator(
             (
-                (CohortBreakdown, "cohort", "CohortBreakdown"),
-                (FrequencyBreakdown, "event", "FrequencyBreakdown"),
-                (GroupBy, "property", "GroupBy"),
+                (CohortBreakdown, "cohort"),
+                (FrequencyBreakdown, "event"),
+                (GroupBy, "property"),
             )
         ),
-        custom_error_type="invalid_group_by_item",
-        custom_error_message=(
+        error_type="invalid_group_by_item",
+        message=(
             "each group_by must be a property-name string or an object with "
             "'property' (a property breakdown), 'cohort' (a cohort breakdown), "
             "or 'event' (a frequency breakdown)"
         ),
-    ),
-]
+    )
 """One insights ``group_by`` entry (adds the frequency-breakdown alternative)."""
 
-_BreakdownItem = Annotated[
-    Annotated[str, Tag("str")]
-    | Annotated[GroupBy, Tag("GroupBy")]
-    | Annotated[CohortBreakdown, Tag("CohortBreakdown")],
-    Discriminator(
+if TYPE_CHECKING:
+    _BreakdownItem = str | GroupBy | CohortBreakdown
+else:
+    _BreakdownItem = discriminated_union(
+        [str, GroupBy, CohortBreakdown],
         _union_discriminator(
             (
-                (CohortBreakdown, "cohort", "CohortBreakdown"),
-                (GroupBy, "property", "GroupBy"),
+                (CohortBreakdown, "cohort"),
+                (GroupBy, "property"),
             )
         ),
-        custom_error_type="invalid_group_by_item",
-        custom_error_message=(
+        error_type="invalid_group_by_item",
+        message=(
             "each group_by must be a property-name string or an object with "
             "'property' (a property breakdown) or 'cohort' (a cohort breakdown)"
         ),
-    ),
-]
+    )
 """One funnel / retention ``group_by`` entry (no frequency alternative)."""
 
-_WhereItem = Annotated[
-    Annotated[Filter, Tag("Filter")]
-    | Annotated[FrequencyFilter, Tag("FrequencyFilter")],
-    Discriminator(
+if TYPE_CHECKING:
+    _WhereItem = Filter | FrequencyFilter
+else:
+    _WhereItem = discriminated_union(
+        [Filter, FrequencyFilter],
         _union_discriminator(
             (
-                (FrequencyFilter, "event", "FrequencyFilter"),
-                (Filter, "property", "Filter"),
+                (FrequencyFilter, "event"),
+                (Filter, "property"),
             ),
             allow_str=False,
         ),
-        custom_error_type="invalid_where_item",
-        custom_error_message=(
+        error_type="invalid_where_item",
+        message=(
             "each where entry must be an object with 'property' (a property "
             "filter) or 'event' (a frequency filter)"
         ),
-    ),
-]
+    )
 """One insights ``where`` entry: ``Filter`` · ``FrequencyFilter`` (no string alternative)."""
 
-_StepItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[FunnelStep, Tag("FunnelStep")],
-    Discriminator(
-        _str_or("FunnelStep"),
-        custom_error_type="invalid_funnel_step",
-        custom_error_message="each step must be an event-name string or a FunnelStep object",
-    ),
-]
+if TYPE_CHECKING:
+    _StepItem = str | FunnelStep
+else:
+    _StepItem = discriminated_union(
+        [str, FunnelStep],
+        _str_or(FunnelStep),
+        error_type="invalid_funnel_step",
+        message="each step must be an event-name string or a FunnelStep object",
+    )
 """One funnel ``steps`` entry: string · ``FunnelStep``."""
 
-_ExclusionItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[Exclusion, Tag("Exclusion")],
-    Discriminator(
-        _str_or("Exclusion"),
-        custom_error_type="invalid_exclusion",
-        custom_error_message="each exclusion must be an event-name string or an Exclusion object",
-    ),
-]
+if TYPE_CHECKING:
+    _ExclusionItem = str | Exclusion
+else:
+    _ExclusionItem = discriminated_union(
+        [str, Exclusion],
+        _str_or(Exclusion),
+        error_type="invalid_exclusion",
+        message="each exclusion must be an event-name string or an Exclusion object",
+    )
 """One funnel ``exclusions`` entry: string · ``Exclusion``."""
 
-_HoldingConstantItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[HoldingConstant, Tag("HoldingConstant")],
-    Discriminator(
-        _str_or("HoldingConstant"),
-        custom_error_type="invalid_holding_constant",
-        custom_error_message=(
+if TYPE_CHECKING:
+    _HoldingConstantItem = str | HoldingConstant
+else:
+    _HoldingConstantItem = discriminated_union(
+        [str, HoldingConstant],
+        _str_or(HoldingConstant),
+        error_type="invalid_holding_constant",
+        message=(
             "each holding_constant must be a property-name string or a "
             "HoldingConstant object"
         ),
-    ),
-]
+    )
 """One funnel ``holding_constant`` entry: string · ``HoldingConstant``."""
 
-_RetentionEventItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[RetentionEvent, Tag("RetentionEvent")],
-    Discriminator(
-        _str_or("RetentionEvent"),
-        custom_error_type="invalid_retention_event",
-        custom_error_message="must be an event-name string or a RetentionEvent object",
-    ),
-]
+if TYPE_CHECKING:
+    _RetentionEventItem = str | RetentionEvent
+else:
+    _RetentionEventItem = discriminated_union(
+        [str, RetentionEvent],
+        _str_or(RetentionEvent),
+        error_type="invalid_retention_event",
+        message="must be an event-name string or a RetentionEvent object",
+    )
 """A retention ``born_event`` / ``return_event``: string · ``RetentionEvent``."""
 
-_SegmentItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[GroupBy, Tag("GroupBy")],
-    Discriminator(
-        _str_or("GroupBy"),
-        custom_error_type="invalid_segment",
-        custom_error_message="each segment must be a property-name string or a GroupBy object",
-    ),
-]
+if TYPE_CHECKING:
+    _SegmentItem = str | GroupBy
+else:
+    _SegmentItem = discriminated_union(
+        [str, GroupBy],
+        _str_or(GroupBy),
+        error_type="invalid_segment",
+        message="each segment must be a property-name string or a GroupBy object",
+    )
 """One flow ``segments`` entry: string · ``GroupBy``."""
 
 
@@ -270,7 +270,8 @@ def _flow_event_discriminator(v: Any) -> str:
         v: The ``event`` value (str, FlowStep, dict, or list).
 
     Returns:
-        ``"str"``, ``"FlowStepList"``, or ``"FlowStep"``.
+        ``"str"``, ``"FlowStepList"``, or ``"FlowStep"`` — unmarked; the tag
+        prefix is applied by ``discriminated_union``.
     """
     if isinstance(v, str):
         return "str"
@@ -279,29 +280,29 @@ def _flow_event_discriminator(v: Any) -> str:
     return "FlowStep"
 
 
-_FlowStepItem = Annotated[
-    Annotated[str, Tag("str")] | Annotated[FlowStep, Tag("FlowStep")],
-    Discriminator(
-        _str_or("FlowStep"),
-        custom_error_type="invalid_flow_step",
-        custom_error_message="each flow step must be an event-name string or a FlowStep object",
-    ),
-]
+if TYPE_CHECKING:
+    _FlowStepItem = str | FlowStep
+else:
+    _FlowStepItem = discriminated_union(
+        [str, FlowStep],
+        _str_or(FlowStep),
+        error_type="invalid_flow_step",
+        message="each flow step must be an event-name string or a FlowStep object",
+    )
 """One item inside a flow ``event`` list: string · ``FlowStep``."""
 
-_FlowEvent = Annotated[
-    Annotated[str, Tag("str")]
-    | Annotated[FlowStep, Tag("FlowStep")]
-    | Annotated[list[_FlowStepItem], Tag("FlowStepList")],
-    Discriminator(
+if TYPE_CHECKING:
+    _FlowEvent = str | FlowStep | list[_FlowStepItem]
+else:
+    _FlowEvent = discriminated_union(
+        {"str": str, "FlowStep": FlowStep, "FlowStepList": list[_FlowStepItem]},
         _flow_event_discriminator,
-        custom_error_type="invalid_flow_event",
-        custom_error_message=(
+        error_type="invalid_flow_event",
+        message=(
             "event must be an event-name string, a FlowStep object, or a list "
             "of event-name strings / FlowStep objects"
         ),
-    ),
-]
+    )
 """The flow ``event`` field: string · ``FlowStep`` · list of either."""
 
 

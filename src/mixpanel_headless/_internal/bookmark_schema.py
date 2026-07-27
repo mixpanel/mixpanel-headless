@@ -18,12 +18,16 @@ of truth, no Layer 1 vs Layer 2 drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, JsonValue, Tag
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
+from mixpanel_headless._internal.pydantic_utils import (
+    discriminated_union,
+    is_meta_key,
+)
 from mixpanel_headless.exceptions import ValidationError
 
 # =============================================================================
@@ -278,28 +282,6 @@ def translate_pydantic_exception(
     return translated
 
 
-def _is_union_alternative_label(item: Any) -> bool:
-    """Return whether one ``error_location`` element is a union-alternative label.
-
-    Pydantic inserts three kinds of alternative labels into ``error_location``: class /
-    primitive names from ``_DISCRIMINATOR_TAGS``, parameterized labels
-    like ``list[union[...]]`` (real field names are Python identifiers
-    and never contain brackets), and ``constrained-int`` /
-    ``constrained-float`` for ``Annotated`` alternatives carrying strict
-    numeric bounds. All are internal schema artifacts, never part of
-    the user-facing JSONPath.
-
-    Args:
-        item: A single element of a Pydantic ``error_location`` tuple.
-
-    Returns:
-        ``True`` when the element is a union-alternative label to strip.
-    """
-    return isinstance(item, str) and (
-        item in _DISCRIMINATOR_TAGS or "[" in item or item.startswith("constrained-")
-    )
-
-
 def _translate_pydantic_error(
     err: dict[str, Any],
     code_mapper: CodeMapper,
@@ -340,75 +322,6 @@ def _translate_pydantic_error(
     )
 
 
-# Tag names from `Discriminator(...) + Tag(...)` annotations that Pydantic
-# inserts into `error_location` for discriminated-union failures. These are model
-# class names (and the "str"/"FlowStepList" primitive/list alternative tags) —
-# they aren't part of the user-facing JSONPath and would leak as
-# `sorting.line.FlatLabelSortConfig.sortOrder` if not filtered.
-_DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
-    {
-        # FlatSortConfig (colSortAttrs[i])
-        "FlatLabelSortConfig",
-        "FlatValueSortConfig",
-        # SortConfig (per-chart-type sort)
-        "SortByColumnsConfig",
-        "SortByValueConfig",
-        # TableSortConfig (table chart only)
-        "OldTableSortByValue",
-        # ShowClause
-        "FormulaShowClause",
-        "BehaviorShowClause",
-        # Query-model union members (query_models.py callable-Discriminator
-        # unions put the selected alternative's Tag name into error_location)
-        "Metric",
-        "CohortMetric",
-        "Formula",
-        "Filter",
-        "FrequencyFilter",
-        "GroupBy",
-        "CohortBreakdown",
-        "FrequencyBreakdown",
-        "FunnelStep",
-        "Exclusion",
-        "HoldingConstant",
-        "RetentionEvent",
-        "FlowStep",
-        # The list alternative of the flow ``event`` union
-        # (``str | FlowStep | list[str | FlowStep]``)
-        "FlowStepList",
-        "TimeComparison",
-        # PropertySpec union members (``property: str | CustomPropertyRef |
-        # InlineCustomProperty`` on Filter / GroupBy / Metric)
-        "CustomPropertyRef",
-        "InlineCustomProperty",
-        # Declarative cohort nodes (the ``InlineCohort.criteria``
-        # union). Routed by a callable ``Discriminator`` +
-        # ``Tag(<ClassName>)`` (types.py ``_cohort_node_discriminator``)
-        # so tagged-union locs carry these class names — NOT the raw
-        # ``kind`` values ("property"/"behavioral"/...), which are
-        # unregistrable because "property" is also a real field name
-        # everywhere. Enforced by ``TestUnionAlternativeLabelRegistry`` in
-        # test_query_models.py, which walks every union reachable from
-        # the four query models and collects tagged-union choice keys.
-        "InlineCohort",
-        "PropertyCriterion",
-        "BehavioralCriterion",
-        "CohortReferenceCriterion",
-        # The runtime-only builder alternative of ``CohortMetric.cohort``
-        # (``Tag("CohortDefinition")`` on its discriminated union)
-        "CohortDefinition",
-        # Primitive union-alternative labels (e.g. the ``str`` alternative of
-        # ``str | Metric``); parameterized alternatives like ``list[union[...]]``
-        # are caught by the bracket heuristic in ``_error_location_to_json_path``
-        "str",
-        "int",
-        "float",
-        "bool",
-        "NoneType",
-    }
-)
-
-
 def _error_location_to_json_path(error_location: tuple[Any, ...], prefix: str) -> str:
     """Convert a Pydantic ``error_location`` tuple to a dotted JSONPath string.
 
@@ -441,10 +354,7 @@ def _error_location_to_json_path(error_location: tuple[Any, ...], prefix: str) -
     if prefix:
         parts.append(prefix)
     for item in error_location:
-        # Union-alternative labels: known tag/class names, parameterized alternatives
-        # like ``list[union[str,FlowStep]]``, and constrained-scalar
-        # alternatives like ``constrained-int`` (see ``_is_union_alternative_label``).
-        if _is_union_alternative_label(item):
+        if is_meta_key(item):
             continue
         if isinstance(item, int):
             if not parts:
@@ -568,10 +478,10 @@ def _flat_sort_discriminator(v: Any) -> str:
 
     Routes by ``sortBy``: ``"label"`` selects ``FlatLabelSortConfig``;
     everything else (``"value"`` / ``"liftComparisonValue"``) selects
-    ``FlatValueSortConfig``. Using a callable + ``Tag(...)`` (rather than
-    ``Field(discriminator="sortBy")``) means ``error_location`` carries the
-    Tag name, which ``_DISCRIMINATOR_TAGS`` filters out — keeping the
-    user-facing JSONPath free of internal model names.
+    ``FlatValueSortConfig``. Using a callable (rather than
+    ``Field(discriminator="sortBy")``) means ``error_location`` carries a
+    marked Tag name, which ``is_meta_key`` strips — keeping the user-facing
+    JSONPath free of internal model names.
 
     Args:
         v: The candidate value (dict during validation).
@@ -586,11 +496,14 @@ def _flat_sort_discriminator(v: Any) -> str:
 
 
 # Mirrors sorting.py ``FlatSortConfig`` — discriminated by ``sortBy``.
-FlatSortConfig = Annotated[
-    Annotated[FlatLabelSortConfig, Tag("FlatLabelSortConfig")]
-    | Annotated[FlatValueSortConfig, Tag("FlatValueSortConfig")],
-    Discriminator(_flat_sort_discriminator),
-]
+# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
+if TYPE_CHECKING:
+    FlatSortConfig = FlatLabelSortConfig | FlatValueSortConfig
+else:
+    FlatSortConfig = discriminated_union(
+        [FlatLabelSortConfig, FlatValueSortConfig],
+        _flat_sort_discriminator,
+    )
 
 
 class SortByColumnsConfig(BaseModel):
@@ -643,9 +556,9 @@ def _sort_config_discriminator(v: Any) -> str:
 
     Routes by ``sortBy``: ``"column"`` selects ``SortByColumnsConfig``;
     everything else (``"value"`` / ``"liftComparisonValue"``) selects
-    ``SortByValueConfig``. Callable + ``Tag(...)`` (rather than declarative
-    ``Field(discriminator=...)``) so ``error_location`` carries Tag names that
-    ``_DISCRIMINATOR_TAGS`` strips — keeping the user-facing JSONPath
+    ``SortByValueConfig``. A callable (rather than declarative
+    ``Field(discriminator=...)``) so ``error_location`` carries marked Tag
+    names that ``is_meta_key`` strips — keeping the user-facing JSONPath
     free of internal model class names.
 
     Args:
@@ -661,11 +574,13 @@ def _sort_config_discriminator(v: Any) -> str:
 
 
 # Mirrors sorting.py ``SortConfig`` — discriminated by ``sortBy``.
-SortConfig = Annotated[
-    Annotated[SortByColumnsConfig, Tag("SortByColumnsConfig")]
-    | Annotated[SortByValueConfig, Tag("SortByValueConfig")],
-    Discriminator(_sort_config_discriminator),
-]
+if TYPE_CHECKING:
+    SortConfig = SortByColumnsConfig | SortByValueConfig
+else:
+    SortConfig = discriminated_union(
+        [SortByColumnsConfig, SortByValueConfig],
+        _sort_config_discriminator,
+    )
 
 
 class OldTableSortByValue(BaseModel):
@@ -738,13 +653,23 @@ def _flat_or_column_sort_discriminator(v: Any) -> str:
 # flat sort or the new column/value sort). Discriminated by
 # ``_flat_or_column_sort_discriminator`` so a single bad config produces
 # one targeted error per field rather than 6-8 smart-mode errors.
-FlatOrColumnSortConfig = Annotated[
-    Annotated[FlatLabelSortConfig, Tag("FlatLabelSortConfig")]
-    | Annotated[FlatValueSortConfig, Tag("FlatValueSortConfig")]
-    | Annotated[SortByColumnsConfig, Tag("SortByColumnsConfig")]
-    | Annotated[SortByValueConfig, Tag("SortByValueConfig")],
-    Discriminator(_flat_or_column_sort_discriminator),
-]
+if TYPE_CHECKING:
+    FlatOrColumnSortConfig = (
+        FlatLabelSortConfig
+        | FlatValueSortConfig
+        | SortByColumnsConfig
+        | SortByValueConfig
+    )
+else:
+    FlatOrColumnSortConfig = discriminated_union(
+        [
+            FlatLabelSortConfig,
+            FlatValueSortConfig,
+            SortByColumnsConfig,
+            SortByValueConfig,
+        ],
+        _flat_or_column_sort_discriminator,
+    )
 
 
 def _table_sort_discriminator(v: Any) -> str:
@@ -776,14 +701,15 @@ def _table_sort_discriminator(v: Any) -> str:
     return "SortByValueConfig"
 
 
-# 3-way union for the ``table`` field. Callable + Tag(...) so error_location carries
-# Tag names that ``_DISCRIMINATOR_TAGS`` filters out.
-TableSortConfig = Annotated[
-    Annotated[SortByColumnsConfig, Tag("SortByColumnsConfig")]
-    | Annotated[SortByValueConfig, Tag("SortByValueConfig")]
-    | Annotated[OldTableSortByValue, Tag("OldTableSortByValue")],
-    Discriminator(_table_sort_discriminator),
-]
+# 3-way union for the ``table`` field. ``discriminated_union`` marks the tags so
+# ``is_meta_key`` strips them from error_location.
+if TYPE_CHECKING:
+    TableSortConfig = SortByColumnsConfig | SortByValueConfig | OldTableSortByValue
+else:
+    TableSortConfig = discriminated_union(
+        [SortByColumnsConfig, SortByValueConfig, OldTableSortByValue],
+        _table_sort_discriminator,
+    )
 
 
 class InsightsBookmarkSortConfig(BaseModel):
@@ -1358,11 +1284,13 @@ def _show_clause_discriminator(v: Any) -> str:
 
 
 # Mirrors show.py ``ShowClause`` discriminated union.
-ShowClause = Annotated[
-    Annotated[FormulaShowClause, Tag("FormulaShowClause")]
-    | Annotated[BehaviorShowClause, Tag("BehaviorShowClause")],
-    Discriminator(_show_clause_discriminator),
-]
+if TYPE_CHECKING:
+    ShowClause = FormulaShowClause | BehaviorShowClause
+else:
+    ShowClause = discriminated_union(
+        [FormulaShowClause, BehaviorShowClause],
+        _show_clause_discriminator,
+    )
 
 
 # =============================================================================
