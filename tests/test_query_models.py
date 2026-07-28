@@ -943,6 +943,148 @@ class TestFilterDictConstruction:
         assert f._property_type == "boolean"
 
 
+class TestFilterEqualityPropertyTypeCompatibility:
+    """Equality operands must match an explicitly declared property_type.
+
+    A scalar string was wrapped into a list before ``_property_type`` was
+    consulted, so a filter declared ``number`` kept a string operand and
+    reached the wire as ``filterType: "number"`` with
+    ``filterValue: ["oops"]`` — a self-contradictory query the API cannot
+    answer meaningfully.
+    """
+
+    _adapter: ClassVar[TypeAdapter[Filter]]
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Create a shared TypeAdapter for Filter."""
+        cls._adapter = TypeAdapter(Filter)
+
+    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
+    def test_number_type_rejects_scalar_string(self, operator: str) -> None:
+        """A number-typed equality rejects a scalar string operand.
+
+        Args:
+            operator: The equality operator under test.
+        """
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {
+                    "property": "amount",
+                    "operator": operator,
+                    "value": "oops",
+                    "property_type": "number",
+                }
+            )
+
+    def test_number_type_rejects_string_list(self) -> None:
+        """A number-typed equality rejects a list of string operands."""
+        with pytest.raises(ValidationError, match="numeric"):
+            self._adapter.validate_python(
+                {
+                    "property": "amount",
+                    "operator": "equals",
+                    "value": ["10", "20"],
+                    "property_type": "number",
+                }
+            )
+
+    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
+    def test_number_type_keeps_scalar_numeric_value(self, operator: str) -> None:
+        """A number-typed equality keeps a numeric scalar unwrapped.
+
+        Pinned by ``filter_to_selector``: the scalar numeric form is the
+        schema-driven equality path through ``query_user``.
+
+        Args:
+            operator: The equality operator under test.
+        """
+        f = self._adapter.validate_python(
+            {
+                "property": "count",
+                "operator": operator,
+                "value": 42,
+                "property_type": "number",
+            }
+        )
+        assert f._value == 42
+        assert f._property_type == "number"
+
+    def test_number_type_accepts_numeric_list(self) -> None:
+        """A number-typed equality accepts a list of numeric operands."""
+        f = self._adapter.validate_python(
+            {
+                "property": "count",
+                "operator": "equals",
+                "value": [1, 2.5],
+                "property_type": "number",
+            }
+        )
+        assert f._value == [1, 2.5]
+
+    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
+    def test_boolean_type_rejects_equality(self, operator: str) -> None:
+        """A boolean-typed property cannot be tested with equality.
+
+        Boolean properties are tested with the value-less ``true`` /
+        ``false`` operators, so no operand is compatible here.
+
+        Args:
+            operator: The equality operator under test.
+        """
+        with pytest.raises(ValidationError, match="is_true"):
+            self._adapter.validate_python(
+                {
+                    "property": "active",
+                    "operator": operator,
+                    "value": "oops",
+                    "property_type": "boolean",
+                }
+            )
+
+    def test_string_type_still_wraps_scalar(self) -> None:
+        """The default string-typed equality keeps wrapping a scalar."""
+        f = self._adapter.validate_python(
+            {"property": "country", "operator": "equals", "value": "US"}
+        )
+        assert f._value == ["US"]
+
+    def test_explicit_string_type_still_wraps_scalar(self) -> None:
+        """An explicitly string-typed equality keeps wrapping a scalar."""
+        f = self._adapter.validate_python(
+            {
+                "property": "country",
+                "operator": "equals",
+                "value": "US",
+                "property_type": "string",
+            }
+        )
+        assert f._value == ["US"]
+
+    def test_datetime_type_still_wraps_scalar(self) -> None:
+        """A datetime-typed equality is unaffected by the number rule."""
+        f = self._adapter.validate_python(
+            {
+                "property": "$time",
+                "operator": "equals",
+                "value": "2024-01-01",
+                "property_type": "datetime",
+            }
+        )
+        assert f._value == ["2024-01-01"]
+
+    def test_classmethod_number_equality_still_builds(self) -> None:
+        """Direct construction with a numeric operand is unaffected."""
+        f = Filter(
+            _property="count",
+            _operator="equals",
+            _value=42,
+            _property_type="number",
+            _resource_type="events",
+        )
+        assert f._value == 42
+
+
 class TestFilterDictDateValidation:
     """Dict-constructed Filters validate dates exactly like the classmethods.
 

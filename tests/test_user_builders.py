@@ -526,15 +526,16 @@ class TestNotEqualsErrorMessage:
     def test_error_references_correct_method_name(self) -> None:
         """Error message references Filter.not_equals(), not does_not_equal().
 
-        Uses an explicitly numeric-typed filter — string-typed equals now
-        rejects non-string list elements at construction, so this
-        downstream guard is only reachable for exotic typed shapes.
+        Uses an explicitly list-typed filter — string-typed equals rejects
+        non-string list elements at construction and numeric-typed equals
+        rejects non-numeric ones, so this downstream guard is only
+        reachable for the typed shapes that admit ``list[dict]``.
         """
         f = Filter(
             "prop",
             "does not equal",
             [{"nested": True}],
-            _property_type="number",
+            _property_type="list",
         )
         import pytest
 

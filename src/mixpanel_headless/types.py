@@ -7647,17 +7647,55 @@ class Filter:
                 f"(got {self._value!r}){hint}"
             )
 
+        # TODO(AIE): none of the operator -> value rules below are mirrored in
+        # the generated schema, so it stays a strict superset of this runtime:
+        # `{"operator": "equals", "value": "oops", "property_type": "number"}`
+        # and `{"operator": "is greater than", "value": "abc"}` both
+        # schema-accept and runtime-reject. Expressing the coupling natively
+        # needs a discriminated union over (operator x property_type), and the
+        # legal space does not partition yet — `equals` carries both list[str]
+        # and scalar numeric, `contains` carries the schema-hidden cohort wire
+        # under property_type "list", and an explicit "string" is
+        # indistinguishable from an omitted one. Deferred: agreeing a narrowed
+        # legal table is a behavior change, measured at ~10-12 union members,
+        # property shims for segfilter.py / bookmark_schema.py /
+        # bookmark_builders.py, and ~25 test sites. Own PR, whole rule set at
+        # once — a hand-written if/then in the schema would just drift.
+        #
         # Wrap scalar string to list for equals/not_equals (matches classmethod
         # behavior); for string-typed filters (the default, and the LLM dict
         # path) reject non-string scalars and non-string list elements — the
         # classmethod contract is str | list[str], and a bare scalar
-        # filterValue is rejected by the API. Explicitly numeric/boolean-typed
-        # filters keep their scalar values (the segfilter engine stringifies
-        # them downstream).
+        # filterValue is rejected by the API. Explicitly numeric-typed filters
+        # keep their scalar values (the segfilter engine stringifies them
+        # downstream); boolean-typed ones have no compatible operand at all.
         if self._operator in ("equals", "does not equal"):
             if self._value is None:
                 raise ValueError(f"Filter operator '{self._operator}' requires a value")
-            if isinstance(self._value, str):
+            # An explicit non-string _property_type has to be honoured before
+            # the scalar-string wrap below, which would otherwise turn "oops"
+            # into ["oops"] and emit filterType "number" holding a string.
+            # Type inference runs at the end of __post_init__, so a "number"
+            # or "boolean" type seen here was always supplied by the caller.
+            if self._property_type == "number":
+                operands = (
+                    self._value if isinstance(self._value, list) else [self._value]
+                )
+                if not all(isinstance(v, (int, float)) for v in operands):
+                    raise ValueError(
+                        self._MSG_NEEDS_NUMERIC.format(
+                            op=self._operator, got=self._value
+                        )
+                    )
+            elif self._property_type == "boolean":
+                # Boolean properties are tested with the value-less
+                # true/false operators, so no operand is compatible.
+                raise ValueError(
+                    f"Filter operator '{self._operator}' is not valid for a "
+                    f"boolean property (got {self._value!r}); use "
+                    "Filter.is_true()/Filter.is_false() for boolean property tests"
+                )
+            elif isinstance(self._value, str):
                 object.__setattr__(self, "_value", [self._value])
             elif self._property_type == "string":
                 if not isinstance(self._value, list):
