@@ -18,7 +18,7 @@ Run: uv run pytest tests/unit/_internal/test_pydantic_utils.py -v
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import Annotated, Any, Literal
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, Tag, ValidationError
@@ -26,11 +26,10 @@ from pydantic.dataclasses import dataclass as pyd_dataclass
 
 from mixpanel_headless._internal.bookmark_schema import _error_location_to_json_path
 from mixpanel_headless._internal.pydantic_utils import (
-    DiscriminatedUnion,
+    MarkedDiscriminator,
     MarkedTag,
     alternative_name,
     by_field,
-    discriminated_union,
     is_meta_key,
 )
 
@@ -38,6 +37,25 @@ from mixpanel_headless._internal.pydantic_utils import (
 def to_json_path(error_location: tuple[object, ...]) -> str:
     """Render an error location the way callers see it (no prefix)."""
     return _error_location_to_json_path(error_location, "")
+
+
+def _tagged_union_nodes(node: object) -> Iterator[dict[str, Any]]:
+    """Yield every ``tagged-union`` node in a core-schema tree.
+
+    Args:
+        node: Any fragment of a ``__pydantic_core_schema__`` tree.
+
+    Yields:
+        Each dict whose ``type`` is ``"tagged-union"``, in traversal order.
+    """
+    if isinstance(node, dict):
+        if node.get("type") == "tagged-union":
+            yield node
+        for value in node.values():
+            yield from _tagged_union_nodes(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _tagged_union_nodes(value)
 
 
 # ---------------------------------------------------------------------------
@@ -94,25 +112,12 @@ class InlineCohort(BaseModel):
     criteria: list[CohortNode] = Field(min_length=1)
 
 
-# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
-if TYPE_CHECKING:
-    CohortNode = (
-        PropertyCriterion
-        | BehavioralCriterion
-        | CohortReferenceCriterion
-        | InlineCohort
-    )
-else:
-    CohortNode = discriminated_union(
-        [
-            PropertyCriterion,
-            BehavioralCriterion,
-            CohortReferenceCriterion,
-            InlineCohort,
-        ],
-        discriminator="kind",
-        error_type="invalid_cohort_node",
-    )
+# One declaration serves both readers: mypy reads the plain union off the
+# ``Annotated``; pydantic asks ``MarkedDiscriminator`` for the tagged union.
+CohortNode = Annotated[
+    PropertyCriterion | BehavioralCriterion | CohortReferenceCriterion | InlineCohort,
+    MarkedDiscriminator("kind", error_type="invalid_cohort_node"),
+]
 
 InlineCohort.model_rebuild()
 
@@ -125,14 +130,13 @@ class Metric(BaseModel):
     name: str = Field(min_length=1)
 
 
-if TYPE_CHECKING:
-    EventItem = str | Metric
-else:
-    EventItem = discriminated_union(
-        [str, Metric],
-        discriminator=lambda v: "str" if isinstance(v, str) else "Metric",
+EventItem = Annotated[
+    str | Metric,
+    MarkedDiscriminator(
+        lambda v: "str" if isinstance(v, str) else "Metric",
         error_type="invalid_event",
-    )
+    ),
+]
 
 
 class Query(BaseModel):
@@ -448,8 +452,8 @@ def test_alternative_name_reads_a_pydantic_dataclass() -> None:
     assert alternative_name(DataclassCat, None) == "DataclassCat"
 
 
-def test_dataclass_members_route_by_field_in_list_form() -> None:
-    """The list form works for dataclasses, so callers need no dict of names."""
+def test_dataclass_members_route_by_field() -> None:
+    """Dataclass members name themselves too, so callers need no dict of names."""
 
     @pyd_dataclass(frozen=True)
     class StringLeg:
@@ -462,9 +466,10 @@ def test_dataclass_members_route_by_field_in_list_form() -> None:
         value: float = 0.0
 
     class Holder(BaseModel):
-        leg: discriminated_union(  # type: ignore[valid-type]
-            [StringLeg, NumberLeg], "kind", error_type="invalid_leg"
-        )
+        leg: Annotated[
+            StringLeg | NumberLeg,
+            MarkedDiscriminator("kind", error_type="invalid_leg"),
+        ]
 
     assert Holder(leg={"kind": "number", "value": 3.0}).leg.value == 3.0
 
@@ -473,66 +478,18 @@ def test_dataclass_members_route_by_field_in_list_form() -> None:
     assert exc_info.value.errors()[0]["loc"][:2] == ("leg", "#number")
 
 
-def test_dict_members_name_an_alternative_that_cannot_name_itself() -> None:
-    """``Annotated`` aliases have no ``__name__``, so the dict form supplies one."""
-    NonEmpty = Annotated[str, Field(min_length=1)]
-    union = discriminated_union(
-        {"str": NonEmpty, "Cat": Cat},
-        lambda v: "str" if isinstance(v, str) else "Cat",
-        error_type="invalid_entry",
-    )
-
-    class Holder(BaseModel):
-        entry: union  # type: ignore[valid-type]
-
-    with pytest.raises(ValidationError) as exc_info:
-        Holder.model_validate({"entry": ""})
-    err = exc_info.value.errors()[0]
-
-    assert err["loc"] == ("entry", "#str")
-    assert to_json_path(err["loc"]) == "entry"
-
-
-def test_generated_message_lists_the_member_names() -> None:
-    """Omitting ``message`` derives it from the members, so it cannot drift."""
-    union = discriminated_union([Cat, Dog], "kind", error_type="invalid_pet")
-
-    class Holder(BaseModel):
-        pet: union  # type: ignore[valid-type]
-
-    with pytest.raises(ValidationError) as exc_info:
-        Holder.model_validate({"pet": {"kind": "bogus"}})
-
-    assert exc_info.value.errors()[0]["msg"] == "kind must be one of 'cat', 'dog'"
-
-
-def test_explicit_message_overrides_the_generated_one() -> None:
-    """Prose wins where a bare name list would not help the caller."""
-    union = discriminated_union(
-        [Cat, Dog],
-        "kind",
-        error_type="invalid_pet",
-        message="pet must be a cat or a dog",
-    )
-
-    class Holder(BaseModel):
-        pet: union  # type: ignore[valid-type]
-
-    with pytest.raises(ValidationError) as exc_info:
-        Holder.model_validate({"pet": {"kind": "bogus"}})
-
-    assert exc_info.value.errors()[0]["msg"] == "pet must be a cat or a dog"
-
-
 def test_omitting_error_type_leaves_pydantic_errors_untouched() -> None:
     """A total discriminator needs no custom error, so none is attached."""
     # No discriminator field, so members name themselves from their type.
-    union = discriminated_union(
-        [Cat, Dog], lambda v: "Cat" if v.get("kind") == "cat" else "Dog"
-    )
+    TotalNode = Annotated[
+        Cat | Dog,
+        MarkedDiscriminator(lambda v: "Cat" if v.get("kind") == "cat" else "Dog"),
+    ]
 
     class Holder(BaseModel):
-        pet: union  # type: ignore[valid-type]
+        """Holder for the total-router alias."""
+
+        pet: TotalNode
 
     with pytest.raises(ValidationError) as exc_info:
         Holder.model_validate({"pet": {"kind": "dog", "name": 1}})
@@ -556,8 +513,13 @@ def test_wrapper_adopts_the_routing_callables_identity() -> None:
         """Total router — never returns None."""
         return "cat"
 
-    union = discriminated_union([Cat, Dog], route_pet)
-    discriminator = union.__metadata__[0].discriminator
+    class Holder(BaseModel):
+        """Holder whose union routes through ``route_pet``."""
+
+        pet: Annotated[Cat | Dog, MarkedDiscriminator(route_pet)]
+
+    (node,) = _tagged_union_nodes(Holder.__pydantic_core_schema__)
+    discriminator = node["discriminator"]
 
     assert discriminator.__name__ == "route_pet"
     # `from __future__ import annotations` keeps annotations as strings.
@@ -565,23 +527,22 @@ def test_wrapper_adopts_the_routing_callables_identity() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DiscriminatedUnion — one declaration serving mypy and runtime
+# MarkedDiscriminator — one declaration serving mypy and runtime
 # ---------------------------------------------------------------------------
 
 
 # The single-declaration form: mypy reads the plain union straight off the
 # ``Annotated`` (metadata is never type-evaluated); pydantic asks the marker
-# for the schema and gets the tagged union ``discriminated_union`` builds.
-PetNode = Annotated[Cat | Dog, DiscriminatedUnion("kind", error_type="invalid_pet")]
-
-# The dual-declaration equivalent, kept for schema-parity assertions.
-_PET_NODE_DUAL = discriminated_union([Cat, Dog], "kind", error_type="invalid_pet")
+# for the schema and gets the marked tagged union.
+PetNode = Annotated[Cat | Dog, MarkedDiscriminator("kind", error_type="invalid_pet")]
 
 # ``str`` alone cannot carry the ``min_length`` constraint, so the runtime
-# members are supplied explicitly while the static union stays honest.
+# members are supplied explicitly while the static union stays honest. The
+# dict form also names members that cannot name themselves (``Annotated``
+# aliases have no ``__name__``).
 NonEmptyEntry = Annotated[
     str | Cat,
-    DiscriminatedUnion(
+    MarkedDiscriminator(
         lambda v: "str" if isinstance(v, str) else "Cat",
         members={"str": Annotated[str, Field(min_length=1)], "Cat": Cat},
         error_type="invalid_entry",
@@ -596,13 +557,6 @@ class PetHolder(BaseModel):
     pet: PetNode
 
 
-class DualPetHolder(BaseModel):
-    """Holder for the dual-declaration twin of ``PetNode``."""
-
-    model_config = ConfigDict(extra="forbid")
-    pet: _PET_NODE_DUAL  # type: ignore[valid-type]
-
-
 class EntryHolder(BaseModel):
     """Holder for the ``members=``-override alias."""
 
@@ -610,27 +564,8 @@ class EntryHolder(BaseModel):
     entry: NonEmptyEntry
 
 
-def _tagged_union_nodes(node: object) -> Iterator[dict[str, Any]]:
-    """Yield every ``tagged-union`` node in a core-schema tree.
-
-    Args:
-        node: Any fragment of a ``__pydantic_core_schema__`` tree.
-
-    Yields:
-        Each dict whose ``type`` is ``"tagged-union"``, in traversal order.
-    """
-    if isinstance(node, dict):
-        if node.get("type") == "tagged-union":
-            yield node
-        for value in node.values():
-            yield from _tagged_union_nodes(value)
-    elif isinstance(node, list):
-        for value in node:
-            yield from _tagged_union_nodes(value)
-
-
-def test_single_declaration_routes_like_the_dual_declaration() -> None:
-    """The alias validates, routes, and marks tags exactly like the old form.
+def test_single_declaration_routes_and_marks_tags() -> None:
+    """The alias validates, routes, and marks tags from one declaration.
 
     The typed assignment below is the static half of the claim: mypy sees
     ``Cat | Dog`` through the ``Annotated``, so this line type-checks without
@@ -674,11 +609,11 @@ def test_explicit_members_override_the_annotated_union() -> None:
     assert to_json_path(err["loc"]) == "entry"
 
 
-def test_marker_error_type_and_message_pass_through() -> None:
-    """``error_type`` and an explicit ``message`` reach the built union."""
+def test_explicit_message_overrides_the_generated_one() -> None:
+    """Prose wins where a bare name list would not help the caller."""
     ProseNode = Annotated[
         Cat | Dog,
-        DiscriminatedUnion(
+        MarkedDiscriminator(
             "kind", error_type="invalid_pet", message="pet must be a cat or a dog"
         ),
     ]
@@ -696,64 +631,37 @@ def test_marker_error_type_and_message_pass_through() -> None:
     assert err["msg"] == "pet must be a cat or a dog"
 
 
-def test_marker_without_error_type_leaves_pydantic_errors() -> None:
-    """Omitting ``error_type`` keeps pydantic's own tag errors, as before."""
-    PlainNode = Annotated[Cat | Dog, DiscriminatedUnion("kind")]
+def test_core_schema_is_a_tagged_union_with_marked_choices() -> None:
+    """The built core schema carries marked choices and the router's identity.
 
-    class Holder(BaseModel):
-        """Holder for the no-custom-error alias."""
-
-        pet: PlainNode
-
-    with pytest.raises(ValidationError) as exc_info:
-        Holder.model_validate({"pet": {"kind": "dog", "name": 1}})
-    err = exc_info.value.errors()[0]
-
-    assert err["loc"] == ("pet", "#dog", "name")
-    assert err["type"] == "string_type"
-
-
-def test_core_schema_matches_the_dual_declaration() -> None:
-    """Both forms produce the same tagged-union node.
-
-    Choice keys and the discriminator's ``__name__`` must match — the guards
-    in ``tests/test_query_models.py`` walk core schemas and read exactly
-    these, so equality here keeps them meaningful after migration.
+    The guards in ``tests/test_query_models.py`` walk core schemas and read
+    exactly these — the choice keys and the discriminator's ``__name__`` —
+    so this pins what they depend on.
     """
-    (new_node,) = _tagged_union_nodes(PetHolder.__pydantic_core_schema__)
-    (old_node,) = _tagged_union_nodes(DualPetHolder.__pydantic_core_schema__)
+    (node,) = _tagged_union_nodes(PetHolder.__pydantic_core_schema__)
 
-    assert (
-        sorted(new_node["choices"])
-        == sorted(old_node["choices"])
-        == [
-            "#cat",
-            "#dog",
-        ]
-    )
-    assert new_node["discriminator"].__name__ == "by_field_kind"
-    assert old_node["discriminator"].__name__ == "by_field_kind"
+    assert sorted(node["choices"]) == ["#cat", "#dog"]
+    assert node["discriminator"].__name__ == "by_field_kind"
 
 
-def test_json_schema_matches_the_dual_declaration() -> None:
-    """Both forms emit identical JSON schema apart from the holder's title.
+def test_json_schema_renders_the_plain_union() -> None:
+    """The marker leaves no trace in JSON schema — just a ``oneOf`` of members.
 
     Other repositories drive MCP request schemas off ``model_json_schema()``,
-    so the marker must not change a single byte of the union's rendering.
+    so the tags and the discriminator must stay out of the rendering.
     """
-    new_schema = PetHolder.model_json_schema()
-    old_schema = DualPetHolder.model_json_schema()
+    schema = PetHolder.model_json_schema()
 
-    # The holders themselves differ by name and docstring; nothing else may.
-    assert new_schema.pop("title") == "PetHolder"
-    assert old_schema.pop("title") == "DualPetHolder"
-    del new_schema["description"], old_schema["description"]
-    assert new_schema == old_schema
+    assert schema["properties"]["pet"] == {
+        "oneOf": [{"$ref": "#/$defs/Cat"}, {"$ref": "#/$defs/Dog"}],
+        "title": "Pet",
+    }
+    assert set(schema["$defs"]) == {"Cat", "Dog"}
 
 
 def test_marker_rejects_a_non_union_source() -> None:
     """Annotating a single type fails at model build with a pointed message."""
-    NotAUnion = Annotated[Cat, DiscriminatedUnion("kind")]
+    NotAUnion = Annotated[Cat, MarkedDiscriminator("kind")]
 
     with pytest.raises(TypeError, match="members="):
 

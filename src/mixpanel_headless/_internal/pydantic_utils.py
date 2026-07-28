@@ -54,7 +54,7 @@ class MarkedTag(Tag):
     How it works with ``MarkedTag``:
         ```python
         class Home(BaseModel):
-            pet: discriminated_union([Cat, Dog], "kind", error_type="bad_pet")
+            pet: Annotated[Cat | Dog, MarkedDiscriminator("kind", error_type="bad_pet")]
 
         Home.model_validate({"pet": {"kind": "cat", "name": 1}})
         # ValidationError, loc = ("pet", "#cat", "name")
@@ -175,108 +175,43 @@ def alternative_name(member: Any, field: str | None) -> str:
     return str(values[0])
 
 
-def discriminated_union(
-    members: list[Any] | dict[str, Any],
-    discriminator: str | Callable[[Any], str | None],
-    *,
-    error_type: str | None = None,
-    message: str | None = None,
-) -> Any:
-    """Build a discriminated union whose tags and error message cannot drift.
+class MarkedDiscriminator:
+    """``Annotated`` metadata that turns a plain union into a marked tagged union.
+
+    A union built by hand with ``Field(discriminator=...)`` puts bare tags in
+    error ``loc``s (see :class:`MarkedTag`), and a union built by a function
+    call is invisible to mypy as a type. This marker solves both with one
+    declaration: mypy reads the plain union straight off the ``Annotated``
+    (metadata is never type-evaluated), and pydantic asks the marker for the
+    schema, which builds the tagged union with :class:`MarkedTag` tags.
 
     Each member names itself — see :func:`alternative_name`. That one name
-    becomes the member's :class:`MarkedTag` and the value the discriminator
-    returns to select it, so the two cannot disagree.
-
-    The ``discriminator`` callable returns **unmarked** names; marking happens
-    here, so existing routing functions need no changes.
-
-    Args:
-        members: The union members in order, or ``{name: member}`` when a member
-            cannot name itself.
-        discriminator: A field name holding each member's name (read from dicts
-            and instances alike), or a callable returning that name.
-        error_type: ``custom_error_type`` for an unroutable value. Omit when
-            the discriminator is total (it can never fail to route), leaving
-            pydantic's own tag errors in place.
-        message: ``custom_error_message``, only used with ``error_type``.
-            Defaults to a generated ``"<field> must be one of ..."`` listing
-            the member names; pass caller-facing prose when the generated list
-            would not help.
-
-    Returns:
-        An ``Annotated`` union ready to use as a field type — a *value*, not a
-        type expression, so mypy cannot use the name it is bound to as a type.
-        Module-level aliases that must stay mypy-visible reach this through
-        :class:`DiscriminatedUnion` instead of calling it directly.
-
-    Example:
-        ```python
-        Pet = discriminated_union([Cat, Dog], "kind", error_type="invalid_pet")
-        # tags:    "#cat", "#dog"
-        # routing: {"kind": "cat", ...} -> Cat
-        # message: "kind must be one of 'cat', 'dog'"
-
-        # A member that cannot name itself, plus prose instead of a name list
-        Step = discriminated_union(
-            {"str": NonEmptyStr, "FlowStep": FlowStep},
-            _str_or("FlowStep"),
-            error_type="invalid_flow_step",
-            message="each flow step must be an event name or a FlowStep",
-        )
-        ```
-    """
-    field, read = (
-        (discriminator, by_field(discriminator))
-        if isinstance(discriminator, str)
-        else (None, discriminator)
-    )
-    if isinstance(members, dict):
-        named = list(members.items())
-    else:
-        named = [(alternative_name(member, field), member) for member in members]
-    tags: dict[str | None, str] = {name: MarkedTag.of(name) for name, _member in named}
-
-    def to_tag(value: Any) -> str | None:
-        """Return ``value``'s marked tag, or None when it cannot be routed."""
-        return tags.get(read(value))
-
-    # Adopt the routing callable's identity: pydantic prints the discriminator's
-    # `__name__` in a default tag error, and two guards in test_query_models.py
-    # read that name and the return annotation through `__wrapped__`.
-    functools.update_wrapper(to_tag, read)
-
-    if error_type is not None and message is None:
-        message = f"{field or 'value'} must be one of " + ", ".join(
-            repr(name) for name, _member in named
-        )
-    routing = Discriminator(
-        to_tag, custom_error_type=error_type, custom_error_message=message
-    )
-    return Annotated[
-        Union[  # noqa: UP007 — subscripted with a tuple, `|` cannot express this
-            tuple(Annotated[member, MarkedTag(name)] for name, member in named)
-        ],
-        routing,
-    ]
-
-
-class DiscriminatedUnion:
-    """``Annotated`` metadata that turns a plain-union alias into a tagged union.
-
-    :func:`discriminated_union` returns a *value*, so a module-level alias
-    bound to it is invisible to mypy as a type — which forced every alias into
-    an ``if TYPE_CHECKING:`` twin declaration. Attaching this marker to an
-    ``Annotated`` plain union collapses the two: mypy reads the union straight
-    off the annotation (metadata is never type-evaluated), and pydantic asks
-    the marker for the schema, which delegates to :func:`discriminated_union`
-    — same tags, routing, custom errors, and JSON schema.
+    becomes the member's tag and the value the discriminator returns to select
+    it, so the two cannot disagree. The ``discriminator`` callable returns
+    **unmarked** names; marking happens here, so routing functions stay plain.
 
     Example:
         ```python
         FlatSortConfig = Annotated[
             FlatLabelSortConfig | FlatValueSortConfig,
-            DiscriminatedUnion(_flat_sort_discriminator),
+            MarkedDiscriminator(_flat_sort_discriminator),
+        ]
+        # mypy sees:  FlatLabelSortConfig | FlatValueSortConfig
+        # runtime:    tags "#FlatLabelSortConfig" / "#FlatValueSortConfig"
+
+        Pet = Annotated[Cat | Dog, MarkedDiscriminator("kind", error_type="invalid_pet")]
+        # routing: {"kind": "cat", ...} -> Cat
+        # message: "kind must be one of 'cat', 'dog'"
+
+        # A member that cannot name itself, plus prose instead of a name list
+        Step = Annotated[
+            str | FlowStep,
+            MarkedDiscriminator(
+                _str_or("FlowStep"),
+                members={"str": NonEmptyStr, "FlowStep": FlowStep},
+                error_type="invalid_flow_step",
+                message="each flow step must be an event name or a FlowStep",
+            ),
         ]
         ```
     """
@@ -292,15 +227,19 @@ class DiscriminatedUnion:
         """Store the union recipe; the schema is built when pydantic asks.
 
         Args:
-            discriminator: A field name holding each member's name, or a
-                callable returning it — passed through to
-                :func:`discriminated_union` unchanged.
+            discriminator: A field name holding each member's name (read from
+                dicts and instances alike), or a callable returning that name.
             members: Override for the runtime members when they differ from
-                the annotated union's args (constrained aliases, members that
-                cannot name themselves). Defaults to the union's args.
-            error_type: ``custom_error_type`` for an unroutable value; see
-                :func:`discriminated_union`.
+                the annotated union's args — constrained aliases, hidden
+                schema wrappers, or ``{name: member}`` when a member cannot
+                name itself. Defaults to the union's args, in order.
+            error_type: ``custom_error_type`` for an unroutable value. Omit
+                when the discriminator is total (it can never fail to route),
+                leaving pydantic's own tag errors in place.
             message: ``custom_error_message``, only used with ``error_type``.
+                Defaults to a generated ``"<field> must be one of ..."``
+                listing the member names; pass caller-facing prose when the
+                generated list would not help.
         """
         self.discriminator = discriminator
         self.members = members
@@ -318,22 +257,53 @@ class DiscriminatedUnion:
             handler: Pydantic's schema-generation handler.
 
         Returns:
-            The core schema of ``discriminated_union(members, ...)``.
+            The core schema of the marked tagged union.
 
         Raises:
             TypeError: If ``source`` is not a union and no ``members``
                 override was given — there is nothing to discriminate.
         """
+        field, read = (
+            (self.discriminator, by_field(self.discriminator))
+            if isinstance(self.discriminator, str)
+            else (None, self.discriminator)
+        )
         members = self.members if self.members is not None else list(get_args(source))
         if not members:
             raise TypeError(
-                "DiscriminatedUnion must annotate a union, or be given members="
+                "MarkedDiscriminator must annotate a union, or be given members="
             )
+        if isinstance(members, dict):
+            named = list(members.items())
+        else:
+            named = [(alternative_name(member, field), member) for member in members]
+        tags: dict[str | None, str] = {
+            name: MarkedTag.of(name) for name, _member in named
+        }
+
+        def to_tag(value: Any) -> str | None:
+            """Return ``value``'s marked tag, or None when it cannot be routed."""
+            return tags.get(read(value))
+
+        # Adopt the routing callable's identity: pydantic prints the
+        # discriminator's `__name__` in a default tag error, and two guards in
+        # test_query_models.py read that name and the return annotation
+        # through `__wrapped__`.
+        functools.update_wrapper(to_tag, read)
+
+        message = self.message
+        if self.error_type is not None and message is None:
+            message = f"{field or 'value'} must be one of " + ", ".join(
+                repr(name) for name, _member in named
+            )
+        routing = Discriminator(
+            to_tag, custom_error_type=self.error_type, custom_error_message=message
+        )
         return handler.generate_schema(
-            discriminated_union(
-                members,
-                self.discriminator,
-                error_type=self.error_type,
-                message=self.message,
-            )
+            Annotated[
+                Union[  # noqa: UP007 — subscripted with a tuple, `|` can't do this
+                    tuple(Annotated[member, MarkedTag(name)] for name, member in named)
+                ],
+                routing,
+            ]
         )

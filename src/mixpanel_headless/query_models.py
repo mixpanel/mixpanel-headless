@@ -34,7 +34,7 @@ an MCP "Run-Query" tool that generates its request schema from
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from pydantic import (
     BaseModel,
@@ -58,7 +58,7 @@ from mixpanel_headless._internal.bookmark_enums import (
 from mixpanel_headless._internal.bookmark_schema import (
     translate_pydantic_exception,
 )
-from mixpanel_headless._internal.pydantic_utils import discriminated_union
+from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
 from mixpanel_headless._internal.validation import (
     v9_to_requires_from,
     v26_percentile_requires_value,
@@ -119,12 +119,9 @@ from mixpanel_headless.types import (
 # alternative's shape noise. Routing lives in types._union_discriminator / _str_or.
 # =============================================================================
 
-# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
-if TYPE_CHECKING:
-    _EventItem = str | Metric | CohortMetric | Formula
-else:
-    _EventItem = discriminated_union(
-        [str, Metric, CohortMetric, Formula],
+_EventItem = Annotated[
+    str | Metric | CohortMetric | Formula,
+    MarkedDiscriminator(
         _union_discriminator(
             (
                 (Formula, "expression"),
@@ -138,14 +135,13 @@ else:
             "'event' (a metric), 'cohort' (a cohort metric), or 'expression' "
             "(a formula)"
         ),
-    )
+    ),
+]
 """One ``events`` entry: string · ``Metric`` · ``CohortMetric`` · ``Formula``."""
 
-if TYPE_CHECKING:
-    _InsightsBreakdownItem = str | GroupBy | CohortBreakdown | FrequencyBreakdown
-else:
-    _InsightsBreakdownItem = discriminated_union(
-        [str, GroupBy, CohortBreakdown, FrequencyBreakdown],
+_InsightsBreakdownItem = Annotated[
+    str | GroupBy | CohortBreakdown | FrequencyBreakdown,
+    MarkedDiscriminator(
         _union_discriminator(
             (
                 (CohortBreakdown, "cohort"),
@@ -159,14 +155,13 @@ else:
             "'property' (a property breakdown), 'cohort' (a cohort breakdown), "
             "or 'event' (a frequency breakdown)"
         ),
-    )
+    ),
+]
 """One insights ``group_by`` entry (adds the frequency-breakdown alternative)."""
 
-if TYPE_CHECKING:
-    _BreakdownItem = str | GroupBy | CohortBreakdown
-else:
-    _BreakdownItem = discriminated_union(
-        [str, GroupBy, CohortBreakdown],
+_BreakdownItem = Annotated[
+    str | GroupBy | CohortBreakdown,
+    MarkedDiscriminator(
         _union_discriminator(
             (
                 (CohortBreakdown, "cohort"),
@@ -178,14 +173,13 @@ else:
             "each group_by must be a property-name string or an object with "
             "'property' (a property breakdown) or 'cohort' (a cohort breakdown)"
         ),
-    )
+    ),
+]
 """One funnel / retention ``group_by`` entry (no frequency alternative)."""
 
-if TYPE_CHECKING:
-    _WhereItem = Filter | FrequencyFilter
-else:
-    _WhereItem = discriminated_union(
-        [Filter, FrequencyFilter],
+_WhereItem = Annotated[
+    Filter | FrequencyFilter,
+    MarkedDiscriminator(
         _union_discriminator(
             (
                 (FrequencyFilter, "event"),
@@ -198,65 +192,61 @@ else:
             "each where entry must be an object with 'property' (a property "
             "filter) or 'event' (a frequency filter)"
         ),
-    )
+    ),
+]
 """One insights ``where`` entry: ``Filter`` · ``FrequencyFilter`` (no string alternative)."""
 
-if TYPE_CHECKING:
-    _StepItem = str | FunnelStep
-else:
-    _StepItem = discriminated_union(
-        [str, FunnelStep],
+_StepItem = Annotated[
+    str | FunnelStep,
+    MarkedDiscriminator(
         _str_or(FunnelStep),
         error_type="invalid_funnel_step",
         message="each step must be an event-name string or a FunnelStep object",
-    )
+    ),
+]
 """One funnel ``steps`` entry: string · ``FunnelStep``."""
 
-if TYPE_CHECKING:
-    _ExclusionItem = str | Exclusion
-else:
-    _ExclusionItem = discriminated_union(
-        [str, Exclusion],
+_ExclusionItem = Annotated[
+    str | Exclusion,
+    MarkedDiscriminator(
         _str_or(Exclusion),
         error_type="invalid_exclusion",
         message="each exclusion must be an event-name string or an Exclusion object",
-    )
+    ),
+]
 """One funnel ``exclusions`` entry: string · ``Exclusion``."""
 
-if TYPE_CHECKING:
-    _HoldingConstantItem = str | HoldingConstant
-else:
-    _HoldingConstantItem = discriminated_union(
-        [str, HoldingConstant],
+_HoldingConstantItem = Annotated[
+    str | HoldingConstant,
+    MarkedDiscriminator(
         _str_or(HoldingConstant),
         error_type="invalid_holding_constant",
         message=(
             "each holding_constant must be a property-name string or a "
             "HoldingConstant object"
         ),
-    )
+    ),
+]
 """One funnel ``holding_constant`` entry: string · ``HoldingConstant``."""
 
-if TYPE_CHECKING:
-    _RetentionEventItem = str | RetentionEvent
-else:
-    _RetentionEventItem = discriminated_union(
-        [str, RetentionEvent],
+_RetentionEventItem = Annotated[
+    str | RetentionEvent,
+    MarkedDiscriminator(
         _str_or(RetentionEvent),
         error_type="invalid_retention_event",
         message="must be an event-name string or a RetentionEvent object",
-    )
+    ),
+]
 """A retention ``born_event`` / ``return_event``: string · ``RetentionEvent``."""
 
-if TYPE_CHECKING:
-    _SegmentItem = str | GroupBy
-else:
-    _SegmentItem = discriminated_union(
-        [str, GroupBy],
+_SegmentItem = Annotated[
+    str | GroupBy,
+    MarkedDiscriminator(
         _str_or(GroupBy),
         error_type="invalid_segment",
         message="each segment must be a property-name string or a GroupBy object",
-    )
+    ),
+]
 """One flow ``segments`` entry: string · ``GroupBy``."""
 
 
@@ -271,7 +261,7 @@ def _flow_event_discriminator(v: Any) -> str:
 
     Returns:
         ``"str"``, ``"FlowStepList"``, or ``"FlowStep"`` — unmarked; the tag
-        prefix is applied by ``discriminated_union``.
+        prefix is applied by ``MarkedDiscriminator``.
     """
     if isinstance(v, str):
         return "str"
@@ -280,22 +270,21 @@ def _flow_event_discriminator(v: Any) -> str:
     return "FlowStep"
 
 
-if TYPE_CHECKING:
-    _FlowStepItem = str | FlowStep
-else:
-    _FlowStepItem = discriminated_union(
-        [str, FlowStep],
+_FlowStepItem = Annotated[
+    str | FlowStep,
+    MarkedDiscriminator(
         _str_or(FlowStep),
         error_type="invalid_flow_step",
         message="each flow step must be an event-name string or a FlowStep object",
-    )
+    ),
+]
 """One item inside a flow ``event`` list: string · ``FlowStep``."""
 
-if TYPE_CHECKING:
-    _FlowEvent = str | FlowStep | list[_FlowStepItem]
-else:
-    _FlowEvent = discriminated_union(
-        {
+_FlowEvent = Annotated[
+    str | FlowStep | list[_FlowStepItem],
+    MarkedDiscriminator(
+        _flow_event_discriminator,
+        members={
             "str": str,
             "FlowStep": FlowStep,
             # ``min_length`` renders as ``minItems`` on this alternative, so
@@ -303,13 +292,13 @@ else:
             # to be a cross-field-only rule, i.e. a schema/runtime gap.
             "FlowStepList": Annotated[list[_FlowStepItem], Field(min_length=1)],
         },
-        _flow_event_discriminator,
         error_type="invalid_flow_event",
         message=(
             "event must be an event-name string, a FlowStep object, or a list "
             "of event-name strings / FlowStep objects"
         ),
-    )
+    ),
+]
 """The flow ``event`` field: string · ``FlowStep`` · list of either."""
 
 

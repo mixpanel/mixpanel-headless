@@ -367,7 +367,7 @@ class TestPydanticAdapter:
         """Marked ``Tag`` names are filtered out of the JSONPath.
 
         Pydantic inserts the matched tag into ``error_location`` for
-        discriminated-union failures. ``discriminated_union`` marks every tag
+        discriminated-union failures. ``MarkedDiscriminator`` marks every tag
         with ``MarkedTag.PREFIX``, so it is recognisable by shape and never
         reaches callers — unlike the field names beside it.
         """

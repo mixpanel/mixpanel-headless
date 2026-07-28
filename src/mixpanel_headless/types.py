@@ -44,7 +44,7 @@ from mixpanel_headless._internal.bookmark_enums import (
     _MAX_FILTER_VALUES,
     _MAX_FLOW_STEPS_DIRECTION,
 )
-from mixpanel_headless._internal.pydantic_utils import discriminated_union
+from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -6889,7 +6889,7 @@ def _union_discriminator(
         A callable naming the matching alternative, or ``None`` (unroutable) —
         which fires the ``Discriminator``'s ``custom_error_message`` instead of
         every alternative's shape noise. Names come from ``__name__``, the same
-        source ``discriminated_union`` tags each member from, so the two cannot
+        source ``MarkedDiscriminator`` tags each member from, so the two cannot
         drift.
     """
 
@@ -6926,7 +6926,7 @@ def _str_or(model: type) -> Callable[[Any], str]:
 
     Args:
         model: The non-string alternative. Named by its ``__name__``, the same
-            source ``discriminated_union`` tags it from, so the two cannot drift.
+            source ``MarkedDiscriminator`` tags it from, so the two cannot drift.
 
     Returns:
         A total callable — ``"str"`` for strings, the model's name otherwise —
@@ -6959,16 +6959,14 @@ _PROPERTY_SPEC_ERROR_MESSAGE = (
 )
 """Caller-facing message for an unroutable property spec (no class names)."""
 
-# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
-if TYPE_CHECKING:
-    PropertySpec = str | CustomPropertyRef | InlineCustomProperty
-else:
-    PropertySpec = discriminated_union(
-        [str, CustomPropertyRef, InlineCustomProperty],
+PropertySpec = Annotated[
+    str | CustomPropertyRef | InlineCustomProperty,
+    MarkedDiscriminator(
         _property_spec_discriminator,
         error_type="invalid_property_spec",
         message=_PROPERTY_SPEC_ERROR_MESSAGE,
-    )
+    ),
+]
 """Union type for property specifications in query parameters.
 
 Accepted wherever a property can be specified: ``Metric.property``,
@@ -6978,19 +6976,19 @@ malformed property dict yields one located error rather than every
 alternative's shape noise.
 """
 
-if TYPE_CHECKING:
-    _PropertySpecNonEmpty = str | CustomPropertyRef | InlineCustomProperty
-else:
-    _PropertySpecNonEmpty = discriminated_union(
-        {
+_PropertySpecNonEmpty = Annotated[
+    str | CustomPropertyRef | InlineCustomProperty,
+    MarkedDiscriminator(
+        _property_spec_discriminator,
+        members={
             "str": _NonEmptyStrSchema,
             "CustomPropertyRef": CustomPropertyRef,
             "InlineCustomProperty": InlineCustomProperty,
         },
-        _property_spec_discriminator,
         error_type="invalid_property_spec",
         message=_PROPERTY_SPEC_ERROR_MESSAGE,
-    )
+    ),
+]
 """``PropertySpec`` whose string alternative carries ``minLength: 1``.
 
 Used by ``GroupBy.property`` so the breakdown property keeps its
@@ -10316,24 +10314,10 @@ class InlineCohort(BaseModel):
         return self.to_definition().to_dict()
 
 
-if TYPE_CHECKING:
-    _CohortNode = (
-        PropertyCriterion
-        | BehavioralCriterion
-        | CohortReferenceCriterion
-        | InlineCohort
-    )
-else:
-    _CohortNode = discriminated_union(
-        [
-            PropertyCriterion,
-            BehavioralCriterion,
-            CohortReferenceCriterion,
-            InlineCohort,
-        ],
-        "kind",
-        error_type="invalid_cohort_node",
-    )
+_CohortNode = Annotated[
+    PropertyCriterion | BehavioralCriterion | CohortReferenceCriterion | InlineCohort,
+    MarkedDiscriminator("kind", error_type="invalid_cohort_node"),
+]
 """Declarative cohort nodes, routed by ``kind``.
 
 Declared after :class:`InlineCohort` because every member is a real class here
@@ -10364,28 +10348,34 @@ def _cohort_int_or_definition_discriminator(v: Any) -> str:
     return "int"
 
 
-# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
-if TYPE_CHECKING:
-    _CohortIdOrDefinition = int | CohortDefinition
-    _CohortIdOrHiddenDefinition = int | CohortDefinition
-else:
-    _CohortIdOrDefinition = discriminated_union(
-        {"int": _PositiveStrictIntSchema, "CohortDefinition": CohortDefinition},
+_CohortIdOrDefinition = Annotated[
+    int | CohortDefinition,
+    MarkedDiscriminator(
         _cohort_int_or_definition_discriminator,
-    )
-    _CohortIdOrHiddenDefinition = discriminated_union(
-        {
+        members={"int": _PositiveStrictIntSchema, "CohortDefinition": CohortDefinition},
+    ),
+]
+"""Saved cohort ID or inline definition, schema-visible form.
+
+``CohortBreakdown`` takes inline cohorts, so both alternatives are
+advertised in the generated JSON schema.
+"""
+
+_CohortIdOrHiddenDefinition = Annotated[
+    int | CohortDefinition,
+    MarkedDiscriminator(
+        _cohort_int_or_definition_discriminator,
+        members={
             "int": _PositiveStrictIntSchema,
             "CohortDefinition": SkipJsonSchema[CohortDefinition],
         },
-        _cohort_int_or_definition_discriminator,
-    )
-"""Saved cohort ID or inline definition, in schema-visible and hidden forms.
+    ),
+]
+"""Saved cohort ID or inline definition, definition hidden from the schema.
 
-Both accept the same values; they differ only in whether the definition
-alternative is advertised in the generated JSON schema. ``CohortBreakdown``
-takes inline cohorts, so it uses the visible form; ``CohortMetric`` accepts
-only an ID on the wire, so its definition alternative is ``SkipJsonSchema``.
+Accepts the same values as :data:`_CohortIdOrDefinition`; ``CohortMetric``
+accepts only an ID on the wire, so its definition alternative is
+``SkipJsonSchema``.
 """
 
 

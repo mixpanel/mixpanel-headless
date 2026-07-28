@@ -2550,7 +2550,7 @@ def _union_alternative_labels(model_cls: type[BaseModel]) -> set[str]:
 
     - ``tagged-union`` — the choice *keys*. Pydantic inserts the matched tag
       for errors inside the chosen alternative. Built by
-      ``discriminated_union``, these are :class:`MarkedTag` names (``#Metric``).
+      ``MarkedDiscriminator``, these are :class:`MarkedTag` names (``#Metric``).
     - plain ``union`` — each alternative's class name, for ``BaseModel`` and
       pydantic-dataclass alternatives, resolving ``definition-ref``
       indirection. Smart unions insert bare class names, which nothing strips.
@@ -2602,11 +2602,11 @@ class TestUnionAlternativeLabelRegistry:
     Structural guard for finding
     ``property-spec-union-alternative-labels-leak-into-error-paths``. It used
     to check membership of a hand-maintained ``_DISCRIMINATOR_TAGS`` frozenset;
-    since every union is built by ``discriminated_union``, the check is now
+    since every union is built by ``MarkedDiscriminator``, the check is now
     structural — each label must satisfy ``is_meta_key``, which is true of a
     :class:`MarkedTag` by construction.
 
-    A failure means a union was declared without ``discriminated_union`` (a
+    A failure means a union was declared without ``MarkedDiscriminator`` (a
     plain union contributes bare class names, an undiscriminated one
     contributes type labels), and its label would leak into an error path.
     """
@@ -2621,7 +2621,7 @@ class TestUnionAlternativeLabelRegistry:
         }
         assert leaking == set(), (
             f"Union labels that are not strippable — declare the union with "
-            f"discriminated_union() so its tags are marked: {sorted(leaking)}"
+            f"MarkedDiscriminator so its tags are marked: {sorted(leaking)}"
         )
 
     def test_walker_finds_known_union_alternatives(self) -> None:

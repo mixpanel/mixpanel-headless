@@ -18,15 +18,14 @@ of truth, no Layer 1 vs Layer 2 drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
 from mixpanel_headless._internal.pydantic_utils import (
-    DiscriminatedUnion,
-    discriminated_union,
+    MarkedDiscriminator,
     is_meta_key,
 )
 from mixpanel_headless.exceptions import ValidationError
@@ -499,7 +498,7 @@ def _flat_sort_discriminator(v: Any) -> str:
 # Mirrors sorting.py ``FlatSortConfig`` — discriminated by ``sortBy``.
 FlatSortConfig = Annotated[
     FlatLabelSortConfig | FlatValueSortConfig,
-    DiscriminatedUnion(_flat_sort_discriminator),
+    MarkedDiscriminator(_flat_sort_discriminator),
 ]
 
 
@@ -571,13 +570,10 @@ def _sort_config_discriminator(v: Any) -> str:
 
 
 # Mirrors sorting.py ``SortConfig`` — discriminated by ``sortBy``.
-if TYPE_CHECKING:
-    SortConfig = SortByColumnsConfig | SortByValueConfig
-else:
-    SortConfig = discriminated_union(
-        [SortByColumnsConfig, SortByValueConfig],
-        _sort_config_discriminator,
-    )
+SortConfig = Annotated[
+    SortByColumnsConfig | SortByValueConfig,
+    MarkedDiscriminator(_sort_config_discriminator),
+]
 
 
 class OldTableSortByValue(BaseModel):
@@ -650,23 +646,10 @@ def _flat_or_column_sort_discriminator(v: Any) -> str:
 # flat sort or the new column/value sort). Discriminated by
 # ``_flat_or_column_sort_discriminator`` so a single bad config produces
 # one targeted error per field rather than 6-8 smart-mode errors.
-if TYPE_CHECKING:
-    FlatOrColumnSortConfig = (
-        FlatLabelSortConfig
-        | FlatValueSortConfig
-        | SortByColumnsConfig
-        | SortByValueConfig
-    )
-else:
-    FlatOrColumnSortConfig = discriminated_union(
-        [
-            FlatLabelSortConfig,
-            FlatValueSortConfig,
-            SortByColumnsConfig,
-            SortByValueConfig,
-        ],
-        _flat_or_column_sort_discriminator,
-    )
+FlatOrColumnSortConfig = Annotated[
+    FlatLabelSortConfig | FlatValueSortConfig | SortByColumnsConfig | SortByValueConfig,
+    MarkedDiscriminator(_flat_or_column_sort_discriminator),
+]
 
 
 def _table_sort_discriminator(v: Any) -> str:
@@ -698,15 +681,12 @@ def _table_sort_discriminator(v: Any) -> str:
     return "SortByValueConfig"
 
 
-# 3-way union for the ``table`` field. ``discriminated_union`` marks the tags so
-# ``is_meta_key`` strips them from error_location.
-if TYPE_CHECKING:
-    TableSortConfig = SortByColumnsConfig | SortByValueConfig | OldTableSortByValue
-else:
-    TableSortConfig = discriminated_union(
-        [SortByColumnsConfig, SortByValueConfig, OldTableSortByValue],
-        _table_sort_discriminator,
-    )
+# 3-way union for the ``table`` field. ``MarkedDiscriminator`` marks the tags
+# so ``is_meta_key`` strips them from error_location.
+TableSortConfig = Annotated[
+    SortByColumnsConfig | SortByValueConfig | OldTableSortByValue,
+    MarkedDiscriminator(_table_sort_discriminator),
+]
 
 
 class InsightsBookmarkSortConfig(BaseModel):
@@ -1281,13 +1261,10 @@ def _show_clause_discriminator(v: Any) -> str:
 
 
 # Mirrors show.py ``ShowClause`` discriminated union.
-if TYPE_CHECKING:
-    ShowClause = FormulaShowClause | BehaviorShowClause
-else:
-    ShowClause = discriminated_union(
-        [FormulaShowClause, BehaviorShowClause],
-        _show_clause_discriminator,
-    )
+ShowClause = Annotated[
+    FormulaShowClause | BehaviorShowClause,
+    MarkedDiscriminator(_show_clause_discriminator),
+]
 
 
 # =============================================================================
