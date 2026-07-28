@@ -1352,6 +1352,25 @@ class TestFilterListContains:
                 _list_item_quantifier=None,
             )
 
+    def test_post_init_rejects_list_contains_with_value(self) -> None:
+        """Direct construction with a non-None ``_value`` on list_contains raises.
+
+        ``_build_list_contains_entry`` emits a hard-coded
+        ``filterValue: True`` and never reads ``_value``, so a supplied
+        value is silently discarded — the query would run semantics the
+        caller never wrote. Reject it instead.
+        """
+        with pytest.raises(ValueError, match="_value"):
+            Filter(
+                _property="cart",
+                _operator="list_contains",
+                _value="nike",
+                _property_type="object",
+                _resource_type="events",
+                _list_item_filters=(Filter.equals("Brand", "adidas"),),
+                _list_item_quantifier="any",
+            )
+
     def test_quantifier_runtime_rejects_invalid(self) -> None:
         """Filter.list_contains rejects quantifier values outside any/all."""
         with pytest.raises(ValueError, match="quantifier"):

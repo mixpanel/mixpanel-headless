@@ -7553,7 +7553,8 @@ class Filter:
         Raises:
             ValueError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``; if a ``$cohorts`` filter was hand-rolled
+                ``None``, or ``_value`` is not ``None`` (the builder
+                ignores it); if a ``$cohorts`` filter was hand-rolled
                 instead of built via ``Filter.in_cohort()`` /
                 ``Filter.not_in_cohort()`` (the value-less ``is set`` /
                 ``is not set`` operators are exempt); if a scalar numeric
@@ -7583,6 +7584,16 @@ class Filter:
                         "Nested list_contains is not supported; "
                         "list_item_filters cannot themselves be list_contains"
                     )
+            # The wire entry hard-codes filterValue: True and carries the
+            # real conditions in listItemFilters, so _value is never read.
+            # Accepting one would silently run semantics the caller did
+            # not write.
+            if self._value is not None:
+                raise ValueError(
+                    "list_contains Filter does not accept _value; the "
+                    "conditions belong in _list_item_filters (the value "
+                    "would be silently ignored)"
+                )
 
         # Cohort-membership filters carry an internal wire structure in
         # _value ([{"cohort": {...}}]) that only the constructors build.
@@ -7647,11 +7658,13 @@ class Filter:
                 f"(got {self._value!r}){hint}"
             )
 
-        # TODO(AIE): none of the operator -> value rules below are mirrored in
-        # the generated schema, so it stays a strict superset of this runtime:
-        # `{"operator": "equals", "value": "oops", "property_type": "number"}`
-        # and `{"operator": "is greater than", "value": "abc"}` both
-        # schema-accept and runtime-reject. Expressing the coupling natively
+        # TODO(AIE): none of the operator -> value rules in this method are
+        # mirrored in the generated schema, so it stays a strict superset of
+        # this runtime:
+        # `{"operator": "equals", "value": "oops", "property_type": "number"}`,
+        # `{"operator": "is greater than", "value": "abc"}` and
+        # `{"operator": "list_contains", "value": "nike"}` all schema-accept
+        # and runtime-reject. Expressing the coupling natively
         # needs a discriminated union over (operator x property_type), and the
         # legal space does not partition yet — `equals` carries both list[str]
         # and scalar numeric, `contains` carries the schema-hidden cohort wire
