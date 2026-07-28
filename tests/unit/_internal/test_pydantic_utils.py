@@ -429,6 +429,48 @@ def test_alternative_name_rejects_a_non_singular_literal() -> None:
         alternative_name(Ambiguous, "kind")
 
 
+def test_alternative_name_reads_a_pydantic_dataclass() -> None:
+    """A pydantic dataclass names itself too, though it has no ``model_fields``.
+
+    Dataclasses keep their fields on ``__pydantic_fields__``. Most of the
+    package's union members — ``Filter``, ``Metric``, ``GroupBy`` — are
+    dataclasses, so the string-discriminator path has to read both.
+    """
+
+    @pyd_dataclass(frozen=True)
+    class DataclassCat:
+        kind: Literal["cat"] = "cat"
+
+    assert not hasattr(DataclassCat, "model_fields")
+    assert alternative_name(DataclassCat, "kind") == "cat"
+    assert alternative_name(DataclassCat, None) == "DataclassCat"
+
+
+def test_dataclass_members_route_by_field_in_list_form() -> None:
+    """The list form works for dataclasses, so callers need no dict of names."""
+
+    @pyd_dataclass(frozen=True)
+    class StringLeg:
+        kind: Literal["string"] = "string"
+        value: str = ""
+
+    @pyd_dataclass(frozen=True)
+    class NumberLeg:
+        kind: Literal["number"] = "number"
+        value: float = 0.0
+
+    class Holder(BaseModel):
+        leg: discriminated_union(  # type: ignore[valid-type]
+            [StringLeg, NumberLeg], "kind", error_type="invalid_leg"
+        )
+
+    assert Holder(leg={"kind": "number", "value": 3.0}).leg.value == 3.0
+
+    with pytest.raises(ValidationError) as exc_info:
+        Holder(leg={"kind": "number", "value": "woof"})
+    assert exc_info.value.errors()[0]["loc"][:2] == ("leg", "#number")
+
+
 def test_dict_members_name_an_alternative_that_cannot_name_itself() -> None:
     """``Annotated`` aliases have no ``__name__``, so the dict form supplies one."""
     NonEmpty = Annotated[str, Field(min_length=1)]

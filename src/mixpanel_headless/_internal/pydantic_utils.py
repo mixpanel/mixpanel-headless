@@ -138,8 +138,9 @@ def alternative_name(member: Any, field: str | None) -> str:
     """Name a union member: its discriminator literal, or its type name.
 
     Args:
-        member: A union member. With a ``field``, it must declare that field as
-            a single-valued ``Literal``.
+        member: A union member — a ``BaseModel`` or a pydantic dataclass. With
+            a ``field``, it must declare that field as a single-valued
+            ``Literal``.
         field: The discriminator field name, or None when routing is by shape.
 
     Returns:
@@ -159,7 +160,15 @@ def alternative_name(member: Any, field: str | None) -> str:
     """
     if field is None:
         return str(member.__name__)
-    values = get_args(member.model_fields[field].annotation)
+    # A BaseModel keeps its fields on `model_fields`, a pydantic dataclass on
+    # `__pydantic_fields__`; both map to `FieldInfo`. Most union members in this
+    # package are dataclasses, so the string-discriminator path must read both.
+    fields = getattr(member, "model_fields", None) or getattr(
+        member, "__pydantic_fields__", None
+    )
+    if fields is None or field not in fields:
+        raise TypeError(f"{member.__name__} has no pydantic field {field!r}")
+    values = get_args(fields[field].annotation)
     if len(values) != 1:
         raise TypeError(f"{member.__name__}.{field} must be a single-valued Literal")
     return str(values[0])
