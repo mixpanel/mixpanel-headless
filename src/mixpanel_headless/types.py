@@ -6622,16 +6622,32 @@ stays with each owning field's validator so callers keep its
 domain-specific error message.
 """
 
+# TODO(AIE): `Annotated[int, Field(strict=True, gt=0)]` would enforce the bound
+# at validation time and *generate* `exclusiveMinimum`, retiring the
+# hand-written keyword below. Deferred because it moves the rejection into the
+# constructor for all four owning fields: each domain rule (CP1 on custom
+# properties, FF5 on `date_range_value`, the cohort-ID checks) becomes
+# unreachable, and its code becomes the generic `B0_OUT_OF_RANGE`. Measured
+# cost — 30 tests across the four fields, 4 if only `CustomPropertyRef.id`
+# moves. Worth doing as its own change, with those rules deleted deliberately.
 _PositiveStrictIntSchema = Annotated[
     StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})
 ]
 """Strict integer annotated with ``exclusiveMinimum: 0`` for JSON-schema
 consumers.
 
-Strict mode rejects bool/float/str coercion at construction; the
-positivity bound is schema-only — runtime enforcement stays with each
-owning field's validator so callers keep its domain-specific error
-message.
+Strict mode rejects bool/str coercion at construction, so a bool never
+silently becomes the ID ``1``; the positivity bound is schema-only — runtime
+enforcement stays with each owning field's validator so callers keep its
+domain-specific error message.
+
+Two divergences from the generated schema follow from that split, both
+shared by every field using this alias:
+
+- a non-positive value passes ``model_validate`` and is caught later by the
+  owning validator (see the ``TODO`` above);
+- ``42.0`` is schema-valid, because JSON Schema counts a whole float as an
+  integer, but strict mode rejects it.
 """
 
 _PercentileValue = (
@@ -6839,13 +6855,18 @@ class CustomPropertyRef:
         ```
     """
 
-    id: Annotated[int, Field(json_schema_extra={"exclusiveMinimum": 0})]
+    id: _PositiveStrictIntSchema
     """The custom property's server-assigned ID.
 
-    The ``exclusiveMinimum`` keyword mirrors the build-time CP1 rule
-    (positive integer) into the JSON schema; runtime enforcement stays
-    in ``_validate_custom_property`` so callers keep its
-    ``CP1_INVALID_ID`` error.
+    Strict, so a bool or numeric string is rejected rather than coerced into
+    a *different* real property (``id=True`` used to become custom property
+    ``1``). CP1 could never catch that: coercion runs first, and by the time
+    it sees the value the bool is a legitimate positive integer.
+
+    A non-positive ID is still enforced at build time by
+    ``_validate_custom_property``, so callers keep its ``CP1_INVALID_ID``
+    error — see :data:`_PositiveStrictIntSchema` for why the bound lives
+    there rather than here.
     """
 
 

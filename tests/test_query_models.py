@@ -26,6 +26,7 @@ from mixpanel_headless.types import (
     CohortBreakdown,
     CohortMetric,
     CohortReferenceCriterion,
+    CustomPropertyRef,
     Exclusion,
     Filter,
     FlowStep,
@@ -2904,6 +2905,135 @@ class TestCustomPropertyExtraKeySchemaRuntimeParity:
         """Each of the three ``$defs`` renders ``additionalProperties: false``."""
         definition = InsightsQuery.model_json_schema()["$defs"][def_name]
         assert definition.get("additionalProperties") is False, definition
+
+
+class TestCustomPropertyRefIdSchemaRuntimeParity:
+    """A coercible ``CustomPropertyRef.id`` is rejected by BOTH layers.
+
+    Regression tests for finding ``reject-coerced-custom-property-ids``:
+    ``id`` was a plain ``int``, so pydantic coerced before the positive-ID
+    rule ever ran. ``id=True`` became custom property ``1`` and ``id="42"``
+    became ``42`` — both real, unrelated properties — while the generated
+    schema rejected the same inputs as not-an-integer. That is the silent
+    kind of divergence: the query succeeds and answers the wrong question.
+    CP1 cannot catch it either, because by the time it sees the value the
+    coercion has already produced a legitimate positive ID.
+
+    ``id`` is now ``_PositiveStrictIntSchema``, whose ``StrictInt`` refuses
+    the coercion outright.
+    """
+
+    COERCIBLE_IDS: ClassVar[dict[str, Any]] = {
+        "bool": True,
+        "numeric string": "42",
+    }
+    """Inputs the schema calls non-integers and pydantic used to convert.
+
+    ``42.0`` is deliberately absent: JSON Schema counts a whole float as an
+    integer, so it is not a both-layers-reject case. It has its own test.
+    """
+
+    @staticmethod
+    def _payload(id_value: Any) -> dict[str, Any]:
+        """Build an insights payload whose group_by references a custom property.
+
+        Args:
+            id_value: The value to place at ``group_by[0].property.id``.
+
+        Returns:
+            A payload valid apart from the ``id`` under test.
+        """
+        return {
+            "events": ["Login"],
+            "group_by": [{"property": {"id": id_value}, "property_type": "number"}],
+        }
+
+    @staticmethod
+    def _stored_id(query: InsightsQuery) -> int:
+        """Read back the custom-property ID a validated query kept.
+
+        Args:
+            query: A query built from :meth:`_payload`.
+
+        Returns:
+            The ``id`` stored at ``group_by[0].property``.
+        """
+        assert query.group_by is not None
+        breakdown = query.group_by[0]
+        assert isinstance(breakdown, GroupBy)
+        prop = breakdown.property
+        assert isinstance(prop, CustomPropertyRef)
+        return prop.id
+
+    @pytest.mark.parametrize("kind", sorted(COERCIBLE_IDS), ids=str)
+    def test_coercible_id_rejected_by_schema_and_runtime(self, kind: str) -> None:
+        """A non-integer id fails schema validation AND model_validate."""
+        payload = self._payload(self.COERCIBLE_IDS[kind])
+
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors != [], f"{kind}: schema accepted a non-integer id"
+
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            InsightsQuery.model_validate(payload)
+        assert any(
+            e.path == "group_by[0].property.id" for e in exc_info.value.errors
+        ), [e.path for e in exc_info.value.errors]
+
+    def test_positive_id_accepted_by_schema_and_runtime(self) -> None:
+        """A genuine positive integer still passes both layers (positive control)."""
+        payload = self._payload(42)
+
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors == [], [e.message for e in schema_errors]
+        query = InsightsQuery.model_validate(payload)
+        assert self._stored_id(query) == 42
+
+    @pytest.mark.parametrize("id_value", [0, -5], ids=["zero", "negative"])
+    def test_non_positive_id_is_the_known_remaining_gap(self, id_value: int) -> None:
+        """A non-positive id still passes ``model_validate``; CP1 catches it later.
+
+        Pins the gap the ``TODO`` on ``CustomPropertyRef.id`` describes, so
+        closing it is a deliberate edit here rather than a silent change.
+        ``StrictInt`` fixes the *type*; ``exclusiveMinimum`` on the shared
+        alias is still schema-only, so the *range* is enforced by CP1 at
+        ``build_params`` instead of by the model.
+
+        Unlike the coercion cases this is not silent — the caller does get a
+        ``CP1_INVALID_ID`` error, just from a later layer.
+        """
+        payload = self._payload(id_value)
+
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors != [], "schema should reject a non-positive id"
+
+        query = InsightsQuery.model_validate(payload)
+        assert self._stored_id(query) == id_value
+
+    def test_whole_float_id_diverges_the_other_way(self) -> None:
+        """``42.0`` is schema-valid but ``StrictInt`` rejects it.
+
+        JSON Schema treats a float with no fractional part as an integer, so
+        the schema accepts ``42.0`` while strict mode does not. This is the
+        divergence pointing the opposite way, and it is not new: every field
+        already using ``_PositiveStrictIntSchema`` behaves the same — see
+        ``CohortBreakdown.cohort``. Pinned so the shared contract is visible
+        rather than folklore.
+        """
+        payload = self._payload(42.0)
+
+        schema_errors = list(
+            Draft202012Validator(InsightsQuery.model_json_schema()).iter_errors(payload)
+        )
+        assert schema_errors == [], "JSON Schema counts a whole float as an integer"
+
+        with pytest.raises(BookmarkValidationError):
+            InsightsQuery.model_validate(payload)
 
 
 class TestCohortMetricHiddenAlternativeErrorConsistency:
