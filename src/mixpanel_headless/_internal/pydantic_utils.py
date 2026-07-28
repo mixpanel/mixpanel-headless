@@ -21,7 +21,8 @@ import functools
 from collections.abc import Callable
 from typing import Annotated, Any, Union, get_args
 
-from pydantic import Discriminator, Tag
+from pydantic import Discriminator, GetCoreSchemaHandler, Tag
+from pydantic_core import CoreSchema
 
 
 class MarkedTag(Tag):
@@ -206,8 +207,8 @@ def discriminated_union(
     Returns:
         An ``Annotated`` union ready to use as a field type — a *value*, not a
         type expression, so mypy cannot use the name it is bound to as a type.
-        Call sites declare the plain union under ``if TYPE_CHECKING:`` and this
-        one under ``else:``; only the member list is repeated.
+        Module-level aliases that must stay mypy-visible reach this through
+        :class:`DiscriminatedUnion` instead of calling it directly.
 
     Example:
         ```python
@@ -258,3 +259,81 @@ def discriminated_union(
         ],
         routing,
     ]
+
+
+class DiscriminatedUnion:
+    """``Annotated`` metadata that turns a plain-union alias into a tagged union.
+
+    :func:`discriminated_union` returns a *value*, so a module-level alias
+    bound to it is invisible to mypy as a type — which forced every alias into
+    an ``if TYPE_CHECKING:`` twin declaration. Attaching this marker to an
+    ``Annotated`` plain union collapses the two: mypy reads the union straight
+    off the annotation (metadata is never type-evaluated), and pydantic asks
+    the marker for the schema, which delegates to :func:`discriminated_union`
+    — same tags, routing, custom errors, and JSON schema.
+
+    Example:
+        ```python
+        FlatSortConfig = Annotated[
+            FlatLabelSortConfig | FlatValueSortConfig,
+            DiscriminatedUnion(_flat_sort_discriminator),
+        ]
+        ```
+    """
+
+    def __init__(
+        self,
+        discriminator: str | Callable[[Any], str | None],
+        *,
+        members: list[Any] | dict[str, Any] | None = None,
+        error_type: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        """Store the union recipe; the schema is built when pydantic asks.
+
+        Args:
+            discriminator: A field name holding each member's name, or a
+                callable returning it — passed through to
+                :func:`discriminated_union` unchanged.
+            members: Override for the runtime members when they differ from
+                the annotated union's args (constrained aliases, members that
+                cannot name themselves). Defaults to the union's args.
+            error_type: ``custom_error_type`` for an unroutable value; see
+                :func:`discriminated_union`.
+            message: ``custom_error_message``, only used with ``error_type``.
+        """
+        self.discriminator = discriminator
+        self.members = members
+        self.error_type = error_type
+        self.message = message
+
+    def __get_pydantic_core_schema__(
+        self, source: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        """Build the tagged-union core schema for the annotated plain union.
+
+        Args:
+            source: The type this marker annotates — the plain union, unless
+                ``members`` overrides it.
+            handler: Pydantic's schema-generation handler.
+
+        Returns:
+            The core schema of ``discriminated_union(members, ...)``.
+
+        Raises:
+            TypeError: If ``source`` is not a union and no ``members``
+                override was given — there is nothing to discriminate.
+        """
+        members = self.members if self.members is not None else list(get_args(source))
+        if not members:
+            raise TypeError(
+                "DiscriminatedUnion must annotate a union, or be given members="
+            )
+        return handler.generate_schema(
+            discriminated_union(
+                members,
+                self.discriminator,
+                error_type=self.error_type,
+                message=self.message,
+            )
+        )

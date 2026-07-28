@@ -17,7 +17,8 @@ Run: uv run pytest tests/unit/_internal/test_pydantic_utils.py -v
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, Tag, ValidationError
@@ -25,6 +26,7 @@ from pydantic.dataclasses import dataclass as pyd_dataclass
 
 from mixpanel_headless._internal.bookmark_schema import _error_location_to_json_path
 from mixpanel_headless._internal.pydantic_utils import (
+    DiscriminatedUnion,
     MarkedTag,
     alternative_name,
     by_field,
@@ -560,3 +562,202 @@ def test_wrapper_adopts_the_routing_callables_identity() -> None:
     assert discriminator.__name__ == "route_pet"
     # `from __future__ import annotations` keeps annotations as strings.
     assert inspect.signature(discriminator).return_annotation == "str"
+
+
+# ---------------------------------------------------------------------------
+# DiscriminatedUnion — one declaration serving mypy and runtime
+# ---------------------------------------------------------------------------
+
+
+# The single-declaration form: mypy reads the plain union straight off the
+# ``Annotated`` (metadata is never type-evaluated); pydantic asks the marker
+# for the schema and gets the tagged union ``discriminated_union`` builds.
+PetNode = Annotated[Cat | Dog, DiscriminatedUnion("kind", error_type="invalid_pet")]
+
+# The dual-declaration equivalent, kept for schema-parity assertions.
+_PET_NODE_DUAL = discriminated_union([Cat, Dog], "kind", error_type="invalid_pet")
+
+# ``str`` alone cannot carry the ``min_length`` constraint, so the runtime
+# members are supplied explicitly while the static union stays honest.
+NonEmptyEntry = Annotated[
+    str | Cat,
+    DiscriminatedUnion(
+        lambda v: "str" if isinstance(v, str) else "Cat",
+        members={"str": Annotated[str, Field(min_length=1)], "Cat": Cat},
+        error_type="invalid_entry",
+    ),
+]
+
+
+class PetHolder(BaseModel):
+    """Holder for the single-declaration ``PetNode`` alias."""
+
+    model_config = ConfigDict(extra="forbid")
+    pet: PetNode
+
+
+class DualPetHolder(BaseModel):
+    """Holder for the dual-declaration twin of ``PetNode``."""
+
+    model_config = ConfigDict(extra="forbid")
+    pet: _PET_NODE_DUAL  # type: ignore[valid-type]
+
+
+class EntryHolder(BaseModel):
+    """Holder for the ``members=``-override alias."""
+
+    model_config = ConfigDict(extra="forbid")
+    entry: NonEmptyEntry
+
+
+def _tagged_union_nodes(node: object) -> Iterator[dict[str, Any]]:
+    """Yield every ``tagged-union`` node in a core-schema tree.
+
+    Args:
+        node: Any fragment of a ``__pydantic_core_schema__`` tree.
+
+    Yields:
+        Each dict whose ``type`` is ``"tagged-union"``, in traversal order.
+    """
+    if isinstance(node, dict):
+        if node.get("type") == "tagged-union":
+            yield node
+        for value in node.values():
+            yield from _tagged_union_nodes(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _tagged_union_nodes(value)
+
+
+def test_single_declaration_routes_like_the_dual_declaration() -> None:
+    """The alias validates, routes, and marks tags exactly like the old form.
+
+    The typed assignment below is the static half of the claim: mypy sees
+    ``Cat | Dog`` through the ``Annotated``, so this line type-checks without
+    any ``TYPE_CHECKING`` twin (``just typecheck`` covers this file).
+    """
+    holder = PetHolder.model_validate({"pet": {"kind": "dog", "name": "Rex"}})
+    pet: Cat | Dog = holder.pet
+
+    assert isinstance(pet, Dog)
+    assert pet.name == "Rex"
+
+    with pytest.raises(ValidationError) as exc_info:
+        PetHolder.model_validate({"pet": {"kind": "dog", "name": 1}})
+    err = exc_info.value.errors()[0]
+
+    assert err["loc"] == ("pet", "#dog", "name")
+    assert to_json_path(err["loc"]) == "pet.name"
+
+
+def test_members_default_from_the_annotated_union() -> None:
+    """With no ``members=``, the list and its order come from the union args."""
+    with pytest.raises(ValidationError) as exc_info:
+        PetHolder.model_validate({"pet": {"kind": "bogus"}})
+    err = exc_info.value.errors()[0]
+
+    assert err["type"] == "invalid_pet"
+    assert err["msg"] == "kind must be one of 'cat', 'dog'"
+
+
+def test_explicit_members_override_the_annotated_union() -> None:
+    """``members=`` wins over the union args when the runtime types differ.
+
+    The empty string fails ``min_length=1``, which only the runtime member
+    carries — the static ``str`` in the union would have accepted it.
+    """
+    with pytest.raises(ValidationError) as exc_info:
+        EntryHolder.model_validate({"entry": ""})
+    err = exc_info.value.errors()[0]
+
+    assert err["loc"] == ("entry", "#str")
+    assert to_json_path(err["loc"]) == "entry"
+
+
+def test_marker_error_type_and_message_pass_through() -> None:
+    """``error_type`` and an explicit ``message`` reach the built union."""
+    ProseNode = Annotated[
+        Cat | Dog,
+        DiscriminatedUnion(
+            "kind", error_type="invalid_pet", message="pet must be a cat or a dog"
+        ),
+    ]
+
+    class Holder(BaseModel):
+        """Holder for the prose-message alias."""
+
+        pet: ProseNode
+
+    with pytest.raises(ValidationError) as exc_info:
+        Holder.model_validate({"pet": {"kind": "bogus"}})
+    err = exc_info.value.errors()[0]
+
+    assert err["type"] == "invalid_pet"
+    assert err["msg"] == "pet must be a cat or a dog"
+
+
+def test_marker_without_error_type_leaves_pydantic_errors() -> None:
+    """Omitting ``error_type`` keeps pydantic's own tag errors, as before."""
+    PlainNode = Annotated[Cat | Dog, DiscriminatedUnion("kind")]
+
+    class Holder(BaseModel):
+        """Holder for the no-custom-error alias."""
+
+        pet: PlainNode
+
+    with pytest.raises(ValidationError) as exc_info:
+        Holder.model_validate({"pet": {"kind": "dog", "name": 1}})
+    err = exc_info.value.errors()[0]
+
+    assert err["loc"] == ("pet", "#dog", "name")
+    assert err["type"] == "string_type"
+
+
+def test_core_schema_matches_the_dual_declaration() -> None:
+    """Both forms produce the same tagged-union node.
+
+    Choice keys and the discriminator's ``__name__`` must match — the guards
+    in ``tests/test_query_models.py`` walk core schemas and read exactly
+    these, so equality here keeps them meaningful after migration.
+    """
+    (new_node,) = _tagged_union_nodes(PetHolder.__pydantic_core_schema__)
+    (old_node,) = _tagged_union_nodes(DualPetHolder.__pydantic_core_schema__)
+
+    assert (
+        sorted(new_node["choices"])
+        == sorted(old_node["choices"])
+        == [
+            "#cat",
+            "#dog",
+        ]
+    )
+    assert new_node["discriminator"].__name__ == "by_field_kind"
+    assert old_node["discriminator"].__name__ == "by_field_kind"
+
+
+def test_json_schema_matches_the_dual_declaration() -> None:
+    """Both forms emit identical JSON schema apart from the holder's title.
+
+    Other repositories drive MCP request schemas off ``model_json_schema()``,
+    so the marker must not change a single byte of the union's rendering.
+    """
+    new_schema = PetHolder.model_json_schema()
+    old_schema = DualPetHolder.model_json_schema()
+
+    # The holders themselves differ by name and docstring; nothing else may.
+    assert new_schema.pop("title") == "PetHolder"
+    assert old_schema.pop("title") == "DualPetHolder"
+    del new_schema["description"], old_schema["description"]
+    assert new_schema == old_schema
+
+
+def test_marker_rejects_a_non_union_source() -> None:
+    """Annotating a single type fails at model build with a pointed message."""
+    NotAUnion = Annotated[Cat, DiscriminatedUnion("kind")]
+
+    with pytest.raises(TypeError, match="members="):
+
+        class Holder(BaseModel):
+            """Holder that should never finish building."""
+
+            pet: NotAUnion

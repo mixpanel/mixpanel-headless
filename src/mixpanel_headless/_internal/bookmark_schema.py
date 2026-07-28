@@ -25,6 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
 from mixpanel_headless._internal.pydantic_utils import (
+    DiscriminatedUnion,
     discriminated_union,
     is_meta_key,
 )
@@ -496,14 +497,10 @@ def _flat_sort_discriminator(v: Any) -> str:
 
 
 # Mirrors sorting.py ``FlatSortConfig`` — discriminated by ``sortBy``.
-# Runtime tagged union; plain union for mypy — see ``discriminated_union``.
-if TYPE_CHECKING:
-    FlatSortConfig = FlatLabelSortConfig | FlatValueSortConfig
-else:
-    FlatSortConfig = discriminated_union(
-        [FlatLabelSortConfig, FlatValueSortConfig],
-        _flat_sort_discriminator,
-    )
+FlatSortConfig = Annotated[
+    FlatLabelSortConfig | FlatValueSortConfig,
+    DiscriminatedUnion(_flat_sort_discriminator),
+]
 
 
 class SortByColumnsConfig(BaseModel):
