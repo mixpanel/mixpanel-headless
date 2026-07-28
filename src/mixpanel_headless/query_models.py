@@ -295,7 +295,14 @@ if TYPE_CHECKING:
     _FlowEvent = str | FlowStep | list[_FlowStepItem]
 else:
     _FlowEvent = discriminated_union(
-        {"str": str, "FlowStep": FlowStep, "FlowStepList": list[_FlowStepItem]},
+        {
+            "str": str,
+            "FlowStep": FlowStep,
+            # ``min_length`` renders as ``minItems`` on this alternative, so
+            # ``event=[]`` fails the schema and the runtime alike — it used
+            # to be a cross-field-only rule, i.e. a schema/runtime gap.
+            "FlowStepList": Annotated[list[_FlowStepItem], Field(min_length=1)],
+        },
         _flow_event_discriminator,
         error_type="invalid_flow_event",
         message=(
@@ -854,26 +861,7 @@ class FlowQuery(_BaseQuery):
         description="Event names to exclude from flow paths.",
     )
 
-    def _get_cross_field_errors(self) -> list[InternalValidationError]:
-        """Validate cross-field constraints for flow queries.
-
-        Extends the base checks (lone ``to_date`` rejection) with an
-        empty-event-list rule: ``event=[]`` is schema-representable (the
-        list union alternative has no minItems) but meaningless, so it is
-        rejected with a distinct code. A lone ``from_date`` is accepted
-        like the other models — ``build_date_range`` fills today's date
-        for the missing ``to_date``.
-
-        Returns:
-            List of validation errors (empty when the model is valid).
-        """
-        errors = super()._get_cross_field_errors()
-        if isinstance(self.event, list) and len(self.event) == 0:
-            errors.append(
-                InternalValidationError(
-                    path="event",
-                    message="event list must not be empty",
-                    code="EMPTY_EVENT_LIST",
-                )
-            )
-        return errors
+    # No ``_get_cross_field_errors`` override: the empty-``event``-list rule
+    # is a field constraint (``min_length=1`` on the list alternative of
+    # ``_FlowEvent``), so it is enforced before cross-field checks run and
+    # is visible in the generated schema as ``minItems``.

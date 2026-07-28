@@ -639,11 +639,18 @@ class TestCrossFieldValidation:
     """Cross-field constraints must be enforced by model validators."""
 
     def test_flow_empty_event_list_rejected(self) -> None:
-        """FlowQuery(event=[]) is rejected."""
+        """FlowQuery(event=[]) is rejected.
+
+        The rule lives on the list union alternative as ``min_length=1``
+        (so the schema advertises ``minItems``), and ``_BaseQuery``'s wrap
+        validator keeps the caller-facing exception type unchanged.
+        """
         from mixpanel_headless.exceptions import BookmarkValidationError
 
-        with pytest.raises(BookmarkValidationError):
+        with pytest.raises(BookmarkValidationError) as exc_info:
             FlowQuery(event=[])
+        err = next(e for e in exc_info.value.errors if e.path == "event")
+        assert err.code == "B0_MIN_LENGTH"
 
     def test_to_date_without_from_date_rejected(self) -> None:
         """to_date without from_date is rejected."""

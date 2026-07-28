@@ -511,6 +511,22 @@ class TestNumericConstraintRendering:
                 f"missing maxItems in {alternative}"
             )
 
+    def test_flow_event_list_alternative_min_items_rendered(self) -> None:
+        """FlowQuery.event's list alternative carries minItems 1.
+
+        Without it, ``event=[]`` validates against the schema but is
+        rejected at runtime — the parity gap this suite exists to close.
+        """
+        prop = FlowQuery.model_json_schema()["properties"]["event"]
+        array_alternatives = [
+            node for _, node in _walk(prop) if node.get("type") == "array"
+        ]
+        assert array_alternatives, f"no array alternatives found in {prop}"
+        for alternative in array_alternatives:
+            assert alternative.get("minItems") == 1, (
+                f"missing minItems in {alternative}"
+            )
+
     # -------------------------------------------------------------------
     # Non-empty-string and filter-value item bounds render too.
     # Regression tests for finding
