@@ -36,6 +36,7 @@ from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     CohortBreakdown,
     Filter,
+    FilterFactory,
     Formula,
     FrequencyBreakdown,
     GroupBy,
@@ -193,16 +194,16 @@ class TestFilterInvariant:
 
     @given(prop=event_names, value=st.text(min_size=1, max_size=20))
     def test_equals_always_produces_list(self, prop: str, value: str) -> None:
-        """Filter.equals always wraps single string in a list."""
-        f = Filter.equals(prop, value)
-        assert isinstance(f._value, list)
-        assert len(f._value) == 1
+        """FilterFactory.equals always wraps single string in a list."""
+        f = FilterFactory.equals(prop, value)
+        assert isinstance(f.value, list)
+        assert len(f.value) == 1
 
     @given(prop=event_names, value=st.integers(min_value=-1000, max_value=1000))
     def test_greater_than_always_produces_scalar(self, prop: str, value: int) -> None:
-        """Filter.greater_than always produces scalar numeric value."""
-        f = Filter.greater_than(prop, value)
-        assert isinstance(f._value, (int, float))
+        """FilterFactory.greater_than always produces scalar numeric value."""
+        f = FilterFactory.greater_than(prop, value)
+        assert isinstance(f.value, (int, float))
 
     @given(
         prop=event_names,
@@ -215,10 +216,10 @@ class TestFilterInvariant:
         min_val: int,
         max_val: int,
     ) -> None:
-        """Filter.between always produces [min, max] list."""
-        f = Filter.between(prop, min_val, max_val)
-        assert isinstance(f._value, list)
-        assert len(f._value) == 2
+        """FilterFactory.between always produces [min, max] list."""
+        f = FilterFactory.between(prop, min_val, max_val)
+        assert isinstance(f.value, list)
+        assert len(f.value) == 2
 
 
 class TestValidationExhaustiveness:
@@ -349,27 +350,27 @@ class TestDateFilterInvariant:
     def test_in_the_last_always_has_date_unit(
         self, prop: str, quantity: int, unit: str
     ) -> None:
-        """Filter.in_the_last always sets _date_unit."""
-        f = Filter.in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
-        assert f._date_unit == unit
-        assert f._value == quantity
-        assert f._property_type == "datetime"
+        """FilterFactory.in_the_last always sets _date_unit."""
+        f = FilterFactory.in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
+        assert f.date_unit == unit
+        assert f.value == quantity
+        assert f.property_type == "datetime"
 
     @given(prop=event_names, quantity=positive_quantity, unit=date_units)
     def test_not_in_the_last_always_has_date_unit(
         self, prop: str, quantity: int, unit: str
     ) -> None:
-        """Filter.not_in_the_last always sets _date_unit."""
-        f = Filter.not_in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
-        assert f._date_unit == unit
-        assert f._property_type == "datetime"
+        """FilterFactory.not_in_the_last always sets _date_unit."""
+        f = FilterFactory.not_in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
+        assert f.date_unit == unit
+        assert f.property_type == "datetime"
 
     @given(prop=event_names, quantity=positive_quantity, unit=date_units)
     def test_relative_date_filter_serializes_date_unit(
         self, prop: str, quantity: int, unit: str
     ) -> None:
         """Relative date filters always emit filterDateUnit in bookmark."""
-        f = Filter.in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
+        f = FilterFactory.in_the_last(prop, quantity, unit)  # type: ignore[arg-type]
         entry = build_filter_entry(f)
         assert entry["filterDateUnit"] == unit
         assert entry["filterValue"] == quantity
@@ -438,21 +439,23 @@ class TestHistogramInvariant:
 # Strategies for comprehensive bookmark generation
 filter_strategies = st.one_of(
     st.builds(
-        Filter.equals, property=event_names, value=st.text(min_size=1, max_size=10)
+        FilterFactory.equals,
+        property=event_names,
+        value=st.text(min_size=1, max_size=10),
     ),
     st.builds(
-        Filter.greater_than,
+        FilterFactory.greater_than,
         property=event_names,
         value=st.integers(min_value=-1000, max_value=1000),
     ),
     st.builds(
-        Filter.between,
+        FilterFactory.between,
         property=event_names,
         min_val=st.integers(min_value=-100, max_value=0),
         max_val=st.integers(min_value=1, max_value=100),
     ),
-    st.builds(Filter.is_set, property=event_names),
-    st.builds(Filter.is_true, property=event_names),
+    st.builds(FilterFactory.is_set, property=event_names),
+    st.builds(FilterFactory.is_true, property=event_names),
 )
 
 group_by_strategies = st.one_of(
@@ -593,7 +596,7 @@ class TestBuildParamsBookmarkConsistency:
 class TestFilterSerializationEnumConsistency:
     """Every Filter factory method serializes to bookmark-valid enum values.
 
-    Catches drift between Filter._operator / _property_type / _resource_type
+    Catches drift between Filter.operator / _property_type / _resource_type
     and the authoritative enum sets in bookmark_enums.py.
 
     Date filter operators ("was on", "was in the", etc.) are intentionally
@@ -605,8 +608,8 @@ class TestFilterSerializationEnumConsistency:
 
     @given(prop=event_names, value=st.text(min_size=1, max_size=20))
     def test_equals_produces_valid_enums(self, prop: str, value: str) -> None:
-        """Filter.equals serializes with valid operator, type, and resourceType."""
-        f = Filter.equals(prop, value)
+        """FilterFactory.equals serializes with valid operator, type, and resourceType."""
+        f = FilterFactory.equals(prop, value)
         entry = build_filter_entry(f)
         assert entry["filterOperator"] in VALID_FILTER_OPERATORS
         assert entry["filterType"] in VALID_PROPERTY_TYPES
@@ -614,8 +617,8 @@ class TestFilterSerializationEnumConsistency:
 
     @given(prop=event_names, value=st.integers(min_value=-1000, max_value=1000))
     def test_numeric_filters_produce_valid_enums(self, prop: str, value: int) -> None:
-        """Filter.greater_than and less_than serialize with valid enums."""
-        for factory in [Filter.greater_than, Filter.less_than]:
+        """FilterFactory.greater_than and less_than serialize with valid enums."""
+        for factory in [FilterFactory.greater_than, FilterFactory.less_than]:
             f = factory(prop, value)
             entry = build_filter_entry(f)
             assert entry["filterOperator"] in VALID_FILTER_OPERATORS
@@ -630,16 +633,16 @@ class TestFilterSerializationEnumConsistency:
     def test_between_produces_valid_enums(
         self, prop: str, min_val: int, max_val: int
     ) -> None:
-        """Filter.between serializes with valid operator enum."""
-        f = Filter.between(prop, min_val, max_val)
+        """FilterFactory.between serializes with valid operator enum."""
+        f = FilterFactory.between(prop, min_val, max_val)
         entry = build_filter_entry(f)
         assert entry["filterOperator"] in VALID_FILTER_OPERATORS
         assert entry["filterType"] in VALID_PROPERTY_TYPES
 
     @given(prop=event_names)
     def test_existence_filters_produce_valid_enums(self, prop: str) -> None:
-        """Filter.is_set/is_not_set serialize with valid enums."""
-        for factory in [Filter.is_set, Filter.is_not_set]:
+        """FilterFactory.is_set/is_not_set serialize with valid enums."""
+        for factory in [FilterFactory.is_set, FilterFactory.is_not_set]:
             f = factory(prop)
             entry = build_filter_entry(f)
             assert entry["filterOperator"] in VALID_FILTER_OPERATORS
@@ -647,8 +650,8 @@ class TestFilterSerializationEnumConsistency:
 
     @given(prop=event_names)
     def test_boolean_filters_produce_valid_enums(self, prop: str) -> None:
-        """Filter.is_true/is_false serialize with valid enums."""
-        for factory in [Filter.is_true, Filter.is_false]:
+        """FilterFactory.is_true/is_false serialize with valid enums."""
+        for factory in [FilterFactory.is_true, FilterFactory.is_false]:
             f = factory(prop)
             entry = build_filter_entry(f)
             assert entry["filterOperator"] in VALID_FILTER_OPERATORS

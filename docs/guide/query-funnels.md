@@ -82,7 +82,7 @@ result = ws.query_funnel(FunnelQuery(steps=[
     FunnelStep(
         "Purchase",
         label="High-Value Purchase",
-        filters=[Filter.greater_than("amount", 50)],
+        filters=[FilterFactory.greater_than("amount", 50)],
     ),
 ]))
 ```
@@ -102,7 +102,7 @@ Plain strings and `FunnelStep` objects can be mixed freely:
 ```python
 result = ws.query_funnel(FunnelQuery(steps=[
     "Signup",  # plain string — no filters needed
-    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+    FunnelStep("Purchase", filters=[FilterFactory.greater_than("amount", 50)]),
 ]))
 ```
 
@@ -114,10 +114,10 @@ Apply filters to individual steps using `FunnelStep.filters`. These restrict whi
 from mixpanel_headless import FunnelStep, Filter, FunnelQuery
 
 result = ws.query_funnel(FunnelQuery(steps=[
-    FunnelStep("Signup", filters=[Filter.equals("source", "organic")]),
+    FunnelStep("Signup", filters=[FilterFactory.equals("source", "organic")]),
     FunnelStep("Purchase", filters=[
-        Filter.equals("country", "US"),
-        Filter.greater_than("amount", 25),
+        FilterFactory.equals("country", "US"),
+        FilterFactory.greater_than("amount", 25),
     ]),
 ]))
 ```
@@ -130,8 +130,8 @@ result = ws.query_funnel(FunnelQuery(steps=[
     FunnelStep(
         "Purchase",
         filters=[
-            Filter.equals("country", "US"),
-            Filter.equals("country", "CA"),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.equals("country", "CA"),
         ],
         filters_combinator="any",  # match US OR CA
     ),
@@ -289,15 +289,15 @@ from mixpanel_headless import Filter, FunnelQuery
 # Filter the entire funnel
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.equals("country", "US")],
+    where=[FilterFactory.equals("country", "US")],
 ))
 
 # Multiple global filters (AND logic)
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
     where=[
-        Filter.equals("platform", "web"),
-        Filter.is_true("is_premium"),
+        FilterFactory.equals("platform", "web"),
+        FilterFactory.is_true("is_premium"),
     ],
 ))
 ```
@@ -316,7 +316,7 @@ from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, FunnelQu
 # Saved cohort
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.in_cohort(123, "Power Users")],
+    where=[FilterFactory.in_cohort(123, "Power Users")],
 ))
 
 # Inline cohort — no pre-saved cohort needed
@@ -325,7 +325,7 @@ active_users = CohortDefinition(
 )
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.in_cohort(active_users, name="Active Users")],
+    where=[FilterFactory.in_cohort(active_users, name="Active Users")],
 ))
 ```
 
@@ -340,7 +340,7 @@ from mixpanel_headless import Filter, CustomPropertyRef, FunnelQuery
 
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+    where=[FilterFactory.greater_than(property=CustomPropertyRef(42), value=100)],
 ))
 ```
 
@@ -711,13 +711,13 @@ result = ws.query_funnel(FunnelQuery(
         FunnelStep("Add to Cart"),
         FunnelStep(
             "Purchase",
-            filters=[Filter.greater_than("amount", 0)],
+            filters=[FilterFactory.greater_than("amount", 0)],
         ),
     ],
     conversion_window=7,
     exclusions=[Exclusion("Remove from Cart", from_step=1, to_step=2)],
     holding_constant=["platform"],
-    where=[Filter.equals("country", "US")],
+    where=[FilterFactory.equals("country", "US")],
     group_by=["platform"],
     last=90,
 ))

@@ -24,7 +24,7 @@ import pytest
 
 from mixpanel_headless import (
     BookmarkValidationError,
-    Filter,
+    FilterFactory,
     Workspace,
 )
 from mixpanel_headless.types import UserQueryResult
@@ -154,7 +154,7 @@ class TestProfilesCore:
             ws: Workspace fixture.
         """
         unfiltered = ws.query_user(mode="aggregate")
-        filtered = ws.query_user(mode="aggregate", where=Filter.is_set("$email"))
+        filtered = ws.query_user(mode="aggregate", where=FilterFactory.is_set("$email"))
         assert filtered.value is not None
         assert unfiltered.value is not None
         assert filtered.value < unfiltered.value
@@ -167,7 +167,7 @@ class TestProfilesCore:
         """
         result = ws.query_user(
             mode="profiles",
-            where=Filter.equals("$browser", "Chrome"),
+            where=FilterFactory.equals("$browser", "Chrome"),
             properties=["$browser"],
             limit=5,
         )
@@ -289,7 +289,7 @@ class TestProfilesSorting:
             mode="profiles",
             sort_by="$email",
             sort_order="ascending",
-            where=Filter.is_set("$email"),
+            where=FilterFactory.is_set("$email"),
             properties=["$email"],
             limit=10,
         )
@@ -352,7 +352,7 @@ class TestCohortFiltering:
         cohort_only = ws.query_user(cohort=cohort_id, limit=1)
         combined = ws.query_user(
             cohort=cohort_id,
-            where=Filter.is_set("$email"),
+            where=FilterFactory.is_set("$email"),
             limit=1,
         )
         assert combined.total <= cohort_only.total
@@ -438,7 +438,7 @@ class TestAggregateMode:
             ws: Workspace fixture.
         """
         all_count = ws.query_user(mode="aggregate")
-        filtered = ws.query_user(mode="aggregate", where=Filter.is_set("$email"))
+        filtered = ws.query_user(mode="aggregate", where=FilterFactory.is_set("$email"))
         assert filtered.value is not None
         assert all_count.value is not None
         assert filtered.value < all_count.value
@@ -624,7 +624,7 @@ class TestCrossEngineComposition:
         """
         kwargs = {
             "mode": "profiles",
-            "where": Filter.is_set("$email"),
+            "where": FilterFactory.is_set("$email"),
             "properties": ["$email"],
         }
         build_params = ws.build_user_params(**kwargs)  # type: ignore[arg-type]

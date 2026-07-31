@@ -6,7 +6,7 @@ T020 covers US3 (behavioral filtering via CohortDefinition):
 - CohortDefinition.any_of produces correct OR structure
 - Saved cohort by ID routes to filter_by_cohort with id
 - Combined cohort + where filters work together
-- cohort + Filter.in_cohort() in where produces validation error U2
+- cohort + FilterFactory.in_cohort() in where produces validation error U2
 - CohortDefinition serialization failure produces validation error U24
 
 T024 covers US5 (cross-engine composition):
@@ -29,7 +29,7 @@ from pydantic import SecretStr
 from mixpanel_headless import (
     CohortCriteria,
     CohortDefinition,
-    Filter,
+    FilterFactory,
     Workspace,
 )
 from mixpanel_headless._internal.auth.account import ServiceAccount
@@ -430,7 +430,7 @@ class TestBehavioralFilteringCombinedCohortAndWhere:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,  # noqa: ARG002
     ) -> None:
-        """cohort + where=Filter.equals() sends both filter_by_cohort and where selector."""
+        """cohort + where=FilterFactory.equals() sends both filter_by_cohort and where selector."""
         mock_api_client.export_profiles_page.return_value = _make_page_result(
             profiles=[RAW_PROFILE_PREMIUM],
             total=1,
@@ -441,7 +441,7 @@ class TestBehavioralFilteringCombinedCohortAndWhere:
             ws.query_user(
                 mode="profiles",
                 cohort=12345,
-                where=Filter.equals("plan", "premium", resource_type="people"),
+                where=FilterFactory.equals("plan", "premium", resource_type="people"),
                 limit=1,
             )
 
@@ -472,7 +472,7 @@ class TestBehavioralFilteringCombinedCohortAndWhere:
             ws.query_user(
                 mode="profiles",
                 cohort=cohort,
-                where=Filter.equals("plan", "premium", resource_type="people"),
+                where=FilterFactory.equals("plan", "premium", resource_type="people"),
                 limit=1,
             )
 
@@ -500,8 +500,8 @@ class TestBehavioralFilteringCombinedCohortAndWhere:
                 mode="profiles",
                 cohort=12345,
                 where=[
-                    Filter.equals("plan", "premium", resource_type="people"),
-                    Filter.greater_than("revenue", 100, resource_type="people"),
+                    FilterFactory.equals("plan", "premium", resource_type="people"),
+                    FilterFactory.greater_than("revenue", 100, resource_type="people"),
                 ],
                 limit=1,
             )
@@ -514,21 +514,21 @@ class TestBehavioralFilteringCombinedCohortAndWhere:
 
 
 class TestBehavioralFilteringCohortPlusInCohortError:
-    """Tests for cohort + Filter.in_cohort() producing validation error U2."""
+    """Tests for cohort + FilterFactory.in_cohort() producing validation error U2."""
 
     def test_cohort_param_plus_in_cohort_filter_raises_u2(
         self,
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,  # noqa: ARG002
     ) -> None:
-        """Using both cohort= param and Filter.in_cohort() in where raises U2."""
+        """Using both cohort= param and FilterFactory.in_cohort() in where raises U2."""
         ws = workspace_factory()
         try:
             with pytest.raises(BookmarkValidationError) as exc_info:
                 ws.query_user(
                     mode="profiles",
                     cohort=12345,
-                    where=Filter.in_cohort(67890),
+                    where=FilterFactory.in_cohort(67890),
                     limit=1,
                 )
 
@@ -542,7 +542,7 @@ class TestBehavioralFilteringCohortPlusInCohortError:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,  # noqa: ARG002
     ) -> None:
-        """Using CohortDefinition + Filter.in_cohort() in where raises U2."""
+        """Using CohortDefinition + FilterFactory.in_cohort() in where raises U2."""
         cohort = CohortDefinition.all_of(
             CohortCriteria.did_event("Purchase", at_least=1, within_days=30),
         )
@@ -553,7 +553,7 @@ class TestBehavioralFilteringCohortPlusInCohortError:
                 ws.query_user(
                     mode="profiles",
                     cohort=cohort,
-                    where=Filter.in_cohort(67890),
+                    where=FilterFactory.in_cohort(67890),
                     limit=1,
                 )
 
@@ -574,7 +574,7 @@ class TestBehavioralFilteringCohortPlusInCohortError:
                 ws.query_user(
                     mode="profiles",
                     cohort=12345,
-                    where=Filter.in_cohort(67890),
+                    where=FilterFactory.in_cohort(67890),
                     limit=1,
                 )
 
@@ -897,7 +897,7 @@ class TestCrossEngineFilterConsistency:
         workspace_factory: Callable[..., Workspace],
         mock_api_client: MagicMock,  # noqa: ARG002
     ) -> None:
-        """Filter.equals() can be passed to query_user(where=) without error."""
+        """FilterFactory.equals() can be passed to query_user(where=) without error."""
         mock_api_client.export_profiles_page.return_value = _make_page_result(
             profiles=[RAW_PROFILE_PREMIUM],
             total=1,
@@ -907,7 +907,7 @@ class TestCrossEngineFilterConsistency:
         try:
             result = ws.query_user(
                 mode="profiles",
-                where=Filter.equals("plan", "premium", resource_type="people"),
+                where=FilterFactory.equals("plan", "premium", resource_type="people"),
                 limit=1,
             )
 
@@ -932,8 +932,8 @@ class TestCrossEngineFilterConsistency:
             result = ws.query_user(
                 mode="profiles",
                 where=[
-                    Filter.equals("plan", "premium", resource_type="people"),
-                    Filter.greater_than("revenue", 100, resource_type="people"),
+                    FilterFactory.equals("plan", "premium", resource_type="people"),
+                    FilterFactory.greater_than("revenue", 100, resource_type="people"),
                 ],
                 limit=1,
             )
@@ -946,11 +946,11 @@ class TestCrossEngineFilterConsistency:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """Filter.equals() is valid syntax for build_user_params(where=)."""
+        """FilterFactory.equals() is valid syntax for build_user_params(where=)."""
         ws = workspace_factory()
         try:
             params = ws.build_user_params(
-                where=Filter.equals("plan", "premium", resource_type="people"),
+                where=FilterFactory.equals("plan", "premium", resource_type="people"),
             )
 
             assert isinstance(params, dict)
@@ -967,8 +967,8 @@ class TestCrossEngineFilterConsistency:
         try:
             params = ws.build_user_params(
                 where=[
-                    Filter.equals("plan", "premium", resource_type="people"),
-                    Filter.greater_than("revenue", 100, resource_type="people"),
+                    FilterFactory.equals("plan", "premium", resource_type="people"),
+                    FilterFactory.greater_than("revenue", 100, resource_type="people"),
                 ],
             )
 
@@ -992,7 +992,7 @@ class TestCrossEngineFilterConsistency:
         try:
             ws.query_user(
                 mode="profiles",
-                where=Filter.equals("plan", "premium", resource_type="people"),
+                where=FilterFactory.equals("plan", "premium", resource_type="people"),
                 limit=1,
             )
 

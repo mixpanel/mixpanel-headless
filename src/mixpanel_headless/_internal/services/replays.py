@@ -38,6 +38,7 @@ from mixpanel_headless.exceptions import (
 from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     Filter,
+    FilterFactory,
     ReplayEvent,
     ReplaySummary,
     SignedReplay,
@@ -582,9 +583,9 @@ class ReplaysService:
             )
 
         if distinct_id is not None:
-            where: list[Filter] = [Filter.equals("$distinct_id", distinct_id)]
+            where: list[Filter] = [FilterFactory.equals("$distinct_id", distinct_id)]
         elif replay_ids:
-            where = [Filter.equals("$mp_replay_id", list(replay_ids))]
+            where = [FilterFactory.equals("$mp_replay_id", list(replay_ids))]
         else:
             return []
 
@@ -758,8 +759,8 @@ class ReplaysService:
         # event list would have an N-second-resolution duplicate of the
         # recording-start event.
         where = [
-            Filter.equals("$mp_replay_id", list(replay_ids)),
-            Filter.not_equals("$event_name", "$mp_session_record"),
+            FilterFactory.equals("$mp_replay_id", list(replay_ids)),
+            FilterFactory.not_equals("$event_name", "$mp_session_record"),
         ]
         # Scope the events scan. With an explicit window (callers that know the
         # replay's time — e.g. fetch_replay) the query is tight and precise.

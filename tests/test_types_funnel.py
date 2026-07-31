@@ -10,7 +10,7 @@ import pytest
 
 from mixpanel_headless.types import (
     Exclusion,
-    Filter,
+    FilterFactory,
     FunnelQueryResult,
     FunnelStep,
     HoldingConstant,
@@ -41,7 +41,7 @@ class TestFunnelStep:
 
     def test_construction_with_all_fields(self) -> None:
         """FunnelStep accepts all fields explicitly."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         step = FunnelStep(
             event="Purchase",
             label="High-Value Purchase",
@@ -65,8 +65,8 @@ class TestFunnelStep:
 
     def test_construction_with_multiple_filters(self) -> None:
         """FunnelStep accepts multiple filters in a list."""
-        f1 = Filter.equals("country", "US")
-        f2 = Filter.greater_than("amount", 50)
+        f1 = FilterFactory.equals("country", "US")
+        f2 = FilterFactory.greater_than("amount", 50)
         step = FunnelStep("Purchase", filters=[f1, f2])
 
         assert step.filters is not None
@@ -128,7 +128,7 @@ class TestFunnelStep:
 
     def test_filters_combinator_defaults_to_all(self) -> None:
         """FunnelStep filters_combinator defaults to 'all' (AND logic)."""
-        step = FunnelStep("Purchase", filters=[Filter.equals("country", "US")])
+        step = FunnelStep("Purchase", filters=[FilterFactory.equals("country", "US")])
 
         assert step.filters_combinator == "all"
 

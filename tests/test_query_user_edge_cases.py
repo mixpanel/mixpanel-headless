@@ -31,7 +31,13 @@ from mixpanel_headless._internal.query.user_validators import (
     validate_user_params,
 )
 from mixpanel_headless.exceptions import BookmarkValidationError
-from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
+from mixpanel_headless.types import (
+    EqualityFilter,
+    FilterFactory,
+    NumericRangeFilter,
+    ProfilePageResult,
+    UserQueryResult,
+)
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -593,36 +599,12 @@ class TestTier1DataCorruption:
 class TestTier2CrashPaths:
     """Tests for code paths that crash with unhelpful errors."""
 
-    def test_t2_01_cohort_extraction_raises_validation_error_on_malformed_filter(
-        self,
-        workspace_factory: Callable[..., Workspace],
-    ) -> None:
-        """Malformed cohort filter value raises BookmarkValidationError.
-
-        When a Filter passes ``_is_cohort_filter`` (value is a list of
-        dicts) but the dict is missing the ``"cohort"`` key, the
-        extraction raises ``BookmarkValidationError`` with code
-        ``U_COHORT``.
-
-        ``Filter.__post_init__`` now rejects hand-rolled ``$cohorts``
-        filters at construction time, so the malformed shape can no
-        longer be built through the public constructor. The test
-        corrupts a validly constructed cohort filter via
-        ``object.__setattr__`` (the frozen-bypass pattern) to keep the
-        downstream extraction defense exercised.
-        """
-        # Corrupt a valid cohort filter so it still passes
-        # _is_cohort_filter (list of dicts) but lacks the "cohort" key
-        malformed_filter = Filter.in_cohort(123, "Power Users")
-        object.__setattr__(malformed_filter, "_value", [{"not_cohort": True}])
-
-        ws = workspace_factory()
-        try:
-            with pytest.raises(BookmarkValidationError) as exc_info:
-                ws.build_user_params(where=malformed_filter)
-            assert any(e.code == "U_COHORT" for e in exc_info.value.errors)
-        finally:
-            ws.close()
+    # `test_t2_01_cohort_extraction_...` was removed with the FilterFactory
+    # port. It corrupted a cohort filter into a list of bare dicts to reach the
+    # extraction's shape checks; `ContainmentFilter.value` is now
+    # `str | list[CohortRef]`, so that shape cannot be built, and the string
+    # half is filtered out by `_is_cohort_filter` before extraction sees it.
+    # The checks it covered are gone from `workspace.py` for the same reason.
 
     def test_t2_02_json_loads_malformed_output_properties_sequential(
         self,
@@ -687,32 +669,33 @@ class TestTier2CrashPaths:
     def test_t2_05_filter_to_selector_unsupported_operator(
         self,
     ) -> None:
-        """Unsupported filter operator is rejected at construction by Pydantic."""
+        """An unsupported operator routes to no union member and is rejected."""
+        from pydantic import TypeAdapter
         from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(PydanticValidationError, match="literal_error"):
-            Filter(
-                _property="fake",
-                _operator="unknown_op",  # type: ignore[arg-type]
-                _value=None,
-                _property_type="string",
+        from mixpanel_headless.types import Filter
+
+        with pytest.raises(PydanticValidationError, match="invalid_filter_operator"):
+            TypeAdapter(Filter).validate_python(
+                {"property": "fake", "operator": "unknown_op"}
             )
 
     def test_t2_06_filter_to_selector_equals_scalar_auto_wrapped(
         self,
     ) -> None:
-        """Equals operator with scalar string is auto-wrapped by __post_init__.
+        """Equals operator with a scalar string is auto-wrapped to a list.
 
-        Filter's ``__post_init__`` normalizes scalar strings for
-        equals/does-not-equal to ``[value]``.
+        ``EqualityFilter._check_value_matches_property_type`` normalizes
+        a scalar string for equals/does-not-equal to ``[value]``, because
+        the segmentation API rejects a scalar ``filterValue``.
         """
-        f = Filter(
-            _property="plan",
-            _operator="equals",
-            _value="string_not_list",
-            _property_type="string",
+        f = EqualityFilter(
+            property="plan",
+            operator="equals",
+            value="string_not_list",
+            property_type="string",
         )
-        assert f._value == ["string_not_list"]
+        assert f.value == ["string_not_list"]
         result = filter_to_selector(f)
         assert result is not None
 
@@ -721,16 +704,17 @@ class TestTier2CrashPaths:
     ) -> None:
         """Between operator with wrong list length rejected at construction.
 
-        Filter's ``__post_init__`` now validates that two-value operators
-        receive exactly a 2-element list.
+        ``NumericRangeFilter.value`` carries ``min_length``/``max_length``
+        of 2, so the arity is enforced by the annotation and rendered in
+        the schema rather than checked in Python.
         """
         between_val: list[int | float] = [1, 2, 3]
-        with pytest.raises(ValueError, match="2-element list"):
-            Filter(
-                _property="amount",
-                _operator="is between",
-                _value=between_val,
-                _property_type="number",
+        with pytest.raises(ValueError, match="at most 2 items"):
+            NumericRangeFilter(
+                property="amount",
+                operator="is between",
+                value=between_val,
+                property_type="number",
             )
 
     def test_t2_08_aggregate_response_missing_results_key(
@@ -871,17 +855,17 @@ class TestTier3ValidationGaps:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """include_all_users + Filter.in_cohort does not raise U7.
+        """include_all_users + FilterFactory.in_cohort does not raise U7.
 
         U7 now checks both ``cohort is None`` and ``in_cohort_count == 0``,
-        so ``Filter.in_cohort(42)`` satisfies the cohort requirement
+        so ``FilterFactory.in_cohort(42)`` satisfies the cohort requirement
         without needing the ``cohort`` param.
         """
         ws = workspace_factory()
         try:
             # Should NOT raise — in_cohort filter satisfies the cohort requirement
             params = ws.build_user_params(
-                where=Filter.in_cohort(42),
+                where=FilterFactory.in_cohort(42),
                 include_all_users=True,
             )
             assert "include_all_users" in params

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless import Workspace
+from mixpanel_headless import FilterFactory, Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.query_models import RetentionQuery
@@ -244,9 +244,11 @@ class TestBuildRetentionParamsPerEventFilters:
 
     def test_retention_event_with_filters(self, ws: Workspace) -> None:
         """RetentionEvent with filters must populate behavior[0].filters as non-empty list."""
-        from mixpanel_headless.types import Filter, RetentionEvent
+        from mixpanel_headless.types import RetentionEvent
 
-        born = RetentionEvent("Signup", filters=[Filter.equals("source", "organic")])
+        born = RetentionEvent(
+            "Signup", filters=[FilterFactory.equals("source", "organic")]
+        )
         result = ws.build_retention_params(
             RetentionQuery(born_event=born, return_event=RetentionEvent("Login"))
         )
@@ -256,11 +258,11 @@ class TestBuildRetentionParamsPerEventFilters:
 
     def test_filters_combinator_maps_to_determiner(self, ws: Workspace) -> None:
         """filters_combinator='any' must map to filtersDeterminer='any' in behavior."""
-        from mixpanel_headless.types import Filter, RetentionEvent
+        from mixpanel_headless.types import RetentionEvent
 
         born = RetentionEvent(
             "Signup",
-            filters=[Filter.equals("source", "organic")],
+            filters=[FilterFactory.equals("source", "organic")],
             filters_combinator="any",
         )
         result = ws.build_retention_params(
@@ -293,14 +295,13 @@ class TestBuildRetentionParamsGlobalFilters:
     """Tests for global where filter and group_by in retention bookmark params."""
 
     def test_where_filter_populates_filter_section(self, ws: Workspace) -> None:
-        """Passing where=Filter.equals(...) must populate sections.filter as non-empty."""
-        from mixpanel_headless.types import Filter
+        """Passing where=FilterFactory.equals(...) must populate sections.filter as non-empty."""
 
         result = ws.build_retention_params(
             RetentionQuery(
                 born_event="Signup",
                 return_event="Login",
-                where=[Filter.equals("platform", "iOS")],
+                where=[FilterFactory.equals("platform", "iOS")],
             )
         )
         assert len(result["sections"]["filter"]) > 0

@@ -194,7 +194,7 @@ def inspect_subproperties(
     each as JSON, and infers a scalar type per discovered subproperty.
     Use this when an event property like ``cart`` is a list of objects
     (e.g. ``[{"Brand": "nike", "Price": 50}, ...]``) — the discovered
-    subproperty names and types feed directly into ``Filter.list_contains``
+    subproperty names and types feed directly into ``FilterFactory.list_contains``
     and ``GroupBy.list_item`` (Python API).
 
     Output Structure (JSON):

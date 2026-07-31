@@ -29,7 +29,11 @@ from mixpanel_headless._internal.query.user_builders import (
     filters_to_selector,
 )
 from mixpanel_headless._internal.transforms import transform_profile
-from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
+from mixpanel_headless.types import (
+    FilterFactory,
+    ProfilePageResult,
+    UserQueryResult,
+)
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -464,17 +468,17 @@ class TestFiltersToSelectorOrAndPrecedence:
     def test_filters_to_selector_or_and_precedence(self) -> None:
         """Multi-value equals combined with AND produces correct precedence.
 
-        ``Filter.equals("plan", ["free", "trial"])`` translates to
+        ``FilterFactory.equals("plan", ["free", "trial"])`` translates to
         ``(properties["plan"] == "free" or properties["plan"] == "trial")``.
 
-        Combined with ``Filter.is_set("email")`` via AND, the result is:
+        Combined with ``FilterFactory.is_set("email")`` via AND, the result is:
         ``(...) and defined(...)``
 
         The parentheses ensure correct semantics:
         ``("free" OR "trial") AND has email``
         """
-        f1 = Filter.equals("plan", ["free", "trial"])
-        f2 = Filter.is_set("email")
+        f1 = FilterFactory.equals("plan", ["free", "trial"])
+        f2 = FilterFactory.is_set("email")
 
         result = filters_to_selector([f1, f2])
 

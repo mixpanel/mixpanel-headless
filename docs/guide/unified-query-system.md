@@ -11,7 +11,7 @@ ws.query(InsightsQuery(events=["Login"]))                           # Insights
 ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))      # Funnels
 ws.query_retention(RetentionQuery(born_event="Signup", return_event="Login"))        # Retention
 ws.query_flow(FlowQuery(event="Purchase"))                    # Flows
-ws.query_user(where=Filter.is_set("$email")) # Users
+ws.query_user(where=FilterFactory.is_set("$email")) # Users
 ```
 
 Each method returns a typed result with a lazy `.df` property. Each method validates every parameter before making an API call. And the keyword arguments you learn for one method work in all the others.
@@ -25,7 +25,7 @@ Every query method shares the same vocabulary:
 ```python
 # These keywords mean the same thing everywhere
 result = ws.query(InsightsQuery(
-    events=["Login"], where=[Filter.equals("country", "US")],  # filter
+    events=["Login"], where=[FilterFactory.equals("country", "US")],  # filter
     group_by=["platform"],                    # breakdown
     last=90,                                # time range
     time_comparison=TimeComparison.relative("month"),      # compare periods
@@ -34,7 +34,7 @@ result = ws.query(InsightsQuery(
 
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.equals("country", "US")],  # same
+    where=[FilterFactory.equals("country", "US")],  # same
     group_by=["platform"],                    # same
     last=90,                                # same
     time_comparison=TimeComparison.relative("month"),      # same
@@ -42,7 +42,7 @@ result = ws.query_funnel(FunnelQuery(
 ))
 
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Login", where=[Filter.equals("country", "US")],  # same
+    born_event="Signup", return_event="Login", where=[FilterFactory.equals("country", "US")],  # same
     group_by=["platform"],                    # same
     last=90,                                # same
     time_comparison=TimeComparison.relative("month"),      # same
@@ -50,7 +50,7 @@ result = ws.query_retention(RetentionQuery(
 ))
 
 result = ws.query_flow(FlowQuery(
-    event="Purchase", where=[Filter.equals("country", "US")],  # property filters supported
+    event="Purchase", where=[FilterFactory.equals("country", "US")],  # property filters supported
     last=90,                                # same
     data_group_id=42,                       # same
 ))
@@ -85,7 +85,7 @@ ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 # FunnelStep objects — when you need per-step filters
 ws.query_funnel(FunnelQuery(steps=[
     FunnelStep("Signup"),
-    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+    FunnelStep("Purchase", filters=[FilterFactory.greater_than("amount", 50)]),
 ]))
 ```
 
@@ -95,7 +95,7 @@ ws.query_retention(RetentionQuery(born_event="Signup", return_event="Login"))
 
 # RetentionEvent objects — when you need per-event filters
 ws.query_retention(RetentionQuery(
-    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    born_event=RetentionEvent("Signup", filters=[FilterFactory.equals("source", "organic")]),
     return_event="Login",
 ))
 ```
@@ -110,14 +110,14 @@ ws.query_flow(FlowQuery(
         "Purchase",
         forward=5,
         reverse=2,
-        filters=[Filter.greater_than("amount", 50)],
+        filters=[FilterFactory.greater_than("amount", 50)],
     ),
 ))
 ```
 
 Mix freely. Strings and objects can appear in the same query.
 
-**Note:** `FlowStep.filters` accepts any `Filter` type for per-step filtering. The query-level `where=` parameter on `query_flow()` accepts both cohort filters (`Filter.in_cohort` / `Filter.not_in_cohort`) and property filters (`Filter.equals()`, `Filter.greater_than()`, etc.).
+**Note:** `FlowStep.filters` accepts any `Filter` type for per-step filtering. The query-level `where=` parameter on `query_flow()` accepts both cohort filters (`FilterFactory.in_cohort` / `FilterFactory.not_in_cohort`) and property filters (`FilterFactory.equals()`, `FilterFactory.greater_than()`, etc.).
 
 ---
 
@@ -129,31 +129,31 @@ Every filter is a class method on `Filter`. Autocomplete shows you every option:
 from mixpanel_headless import Filter
 
 # String comparisons
-Filter.equals("country", "US")
-Filter.equals("country", ["US", "CA", "UK"])  # multi-value
-Filter.not_equals("status", "banned")
-Filter.contains("email", "@company.com")
+FilterFactory.equals("country", "US")
+FilterFactory.equals("country", ["US", "CA", "UK"])  # multi-value
+FilterFactory.not_equals("status", "banned")
+FilterFactory.contains("email", "@company.com")
 
 # Numeric comparisons
-Filter.greater_than("amount", 100)
-Filter.less_than("age", 18)
-Filter.between("revenue", 50, 500)
+FilterFactory.greater_than("amount", 100)
+FilterFactory.less_than("age", 18)
+FilterFactory.between("revenue", 50, 500)
 
 # Existence
-Filter.is_set("utm_source")
-Filter.is_not_set("phone")
+FilterFactory.is_set("utm_source")
+FilterFactory.is_not_set("phone")
 
 # Boolean
-Filter.is_true("is_premium")
-Filter.is_false("opted_out")
+FilterFactory.is_true("is_premium")
+FilterFactory.is_false("opted_out")
 
 # Dates
-Filter.in_the_last("created", 30, "day")
-Filter.before("signup_date", "2025-01-01")
+FilterFactory.in_the_last("created", 30, "day")
+FilterFactory.before("signup_date", "2025-01-01")
 
 # Cohorts (see "Cohort scoping" below)
-Filter.in_cohort(123, "Power Users")
-Filter.not_in_cohort(456, "Bots")
+FilterFactory.in_cohort(123, "Power Users")
+FilterFactory.not_in_cohort(456, "Bots")
 ```
 
 Combine multiple filters with `where=`:
@@ -161,9 +161,9 @@ Combine multiple filters with `where=`:
 ```python
 # AND logic (default) — all conditions must match
 result = ws.query(InsightsQuery(events=["Purchase"], where=[
-    Filter.equals("country", "US"),
-    Filter.greater_than("amount", 25),
-    Filter.is_true("is_premium"),
+    FilterFactory.equals("country", "US"),
+    FilterFactory.greater_than("amount", 25),
+    FilterFactory.is_true("is_premium"),
 ]))
 ```
 
@@ -281,7 +281,7 @@ result = ws.query(InsightsQuery(events=[
     Metric(
         "Support Ticket",
         math="unique",
-        filters=[Filter.equals("priority", "high")],
+        filters=[FilterFactory.equals("priority", "high")],
     ),
 ]))
 ```
@@ -312,7 +312,7 @@ result = ws.query_funnel(FunnelQuery(steps=[
     FunnelStep("Signup"),
     FunnelStep(
         "Add to Cart",
-        filters=[Filter.greater_than("item_count", 0)],
+        filters=[FilterFactory.greater_than("item_count", 0)],
     ),
     FunnelStep("Checkout"),
     FunnelStep("Purchase", label="Completed Purchase"),
@@ -383,11 +383,11 @@ result = ws.query_retention(RetentionQuery(
 result = ws.query_retention(RetentionQuery(
     born_event=RetentionEvent(
         "Signup",
-        filters=[Filter.equals("source", "organic")],
+        filters=[FilterFactory.equals("source", "organic")],
     ),
     return_event=RetentionEvent(
         "Purchase",
-        filters=[Filter.greater_than("amount", 0)],
+        filters=[FilterFactory.greater_than("amount", 0)],
     ),
     retention_unit="month",
     last=180,
@@ -550,7 +550,7 @@ from mixpanel_headless import Filter
 # Find premium users, sorted by lifetime value
 result = ws.query_user(
     mode="profiles",
-    where=Filter.equals("plan", "premium"),
+    where=FilterFactory.equals("plan", "premium"),
     properties=["$email", "$name", "ltv"],
     sort_by="ltv",
     sort_order="descending",
@@ -560,7 +560,7 @@ print(f"{result.total} premium users")
 print(result.df)
 
 # Count profiles matching a condition (aggregate is the default mode)
-count = ws.query_user(where=Filter.is_set("$email"))
+count = ws.query_user(where=FilterFactory.is_set("$email"))
 print(f"Users with email: {count.value}")
 ```
 
@@ -578,7 +578,7 @@ These features work across multiple engines through the same parameters.
 |---|---|---|
 | `time_comparison=` | Insights, Funnels, Retention | Compare the current period against a previous period |
 | `data_group_id=` | Insights, Funnels, Retention, Flows | Scope queries to a specific data group |
-| Property filters in `where=` | Flows | Flows now support property filters (e.g., `Filter.equals()`) in addition to cohort filters |
+| Property filters in `where=` | Flows | Flows now support property filters (e.g., `FilterFactory.equals()`) in addition to cohort filters |
 | `segments=` | Flows | Break down flow paths by property, cohort, or frequency |
 | `exclusions=` | Flows | Hide specific events from flow paths |
 
@@ -603,29 +603,29 @@ power_users = CohortDefinition(
 ```python
 # Saved cohort
 result = ws.query(InsightsQuery(
-    events=["Login"], where=[Filter.in_cohort(123, "Power Users")],
+    events=["Login"], where=[FilterFactory.in_cohort(123, "Power Users")],
 ))
 
 # Inline cohort
 result = ws.query(InsightsQuery(
-    events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")],
+    events=["Login"], where=[FilterFactory.in_cohort(power_users, name="Power Users")],
 ))
 
 # Exclude a cohort
 result = ws.query(InsightsQuery(
-    events=["Login"], where=[Filter.not_in_cohort(456, "Bots")],
+    events=["Login"], where=[FilterFactory.not_in_cohort(456, "Bots")],
 ))
 
 # Works in all five engines
 result = ws.query_funnel(FunnelQuery(
     steps=["Signup", "Purchase"],
-    where=[Filter.in_cohort(power_users, name="PU")],
+    where=[FilterFactory.in_cohort(power_users, name="PU")],
 ))
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Login", where=[Filter.in_cohort(123, "PU")],
+    born_event="Signup", return_event="Login", where=[FilterFactory.in_cohort(123, "PU")],
 ))
 result = ws.query_flow(FlowQuery(
-    event="Purchase", where=[Filter.in_cohort(123, "PU")],
+    event="Purchase", where=[FilterFactory.in_cohort(123, "PU")],
 ))
 ```
 
@@ -718,7 +718,7 @@ result = ws.query(InsightsQuery(
 
 # Filter
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.greater_than(property=ref, value=100)],
+    events=["Purchase"], where=[FilterFactory.greater_than(property=ref, value=100)],
 ))
 
 # Measurement
@@ -737,8 +737,8 @@ result = ws.query(InsightsQuery(
         ),
     ],
     where=[
-        Filter.equals("platform", "iOS"),
-        Filter.greater_than(property=ref, value=100),
+        FilterFactory.equals("platform", "iOS"),
+        FilterFactory.greater_than(property=ref, value=100),
     ],
 ))
 ```
@@ -947,7 +947,7 @@ result = ws.query(InsightsQuery(
     ],
     formula="(A / B)",              # ARPU formula
     formula_label="ARPU",
-    where=[Filter.in_cohort(         # inline cohort filter
+    where=[FilterFactory.in_cohort(         # inline cohort filter
         activated, name="Activated",
     )],
     group_by=["plan"],                # breakdown by plan tier
@@ -982,7 +982,7 @@ What each line proves:
 | `Metric(..., property=revenue)` | Custom properties plug into standard params |
 | Two `Metric` objects | Different aggregation per metric |
 | `formula="(A / B)"` | Derived KPIs from multiple metrics |
-| `Filter.in_cohort(activated, ...)` | Scope to a programmatic segment |
+| `FilterFactory.in_cohort(activated, ...)` | Scope to a programmatic segment |
 | `group_by="plan"` | Segment by the dimension that matters |
 | `rolling=4` | Smooth weekly noise into a trend |
 
@@ -1043,7 +1043,7 @@ conversion = ws.query(InsightsQuery(
     ],
     formula="(B / A) * 100",
     formula_label="Conversion Rate",
-    where=[Filter.in_cohort(
+    where=[FilterFactory.in_cohort(
         premium_users, name="Premium",
     )],
     unit="week",
@@ -1059,7 +1059,7 @@ checkout = ws.query_funnel(FunnelQuery(
         FunnelStep("Browse"),
         FunnelStep(
             "Add to Cart",
-            filters=[Filter.greater_than("item_count", 0)],
+            filters=[FilterFactory.greater_than("item_count", 0)],
         ),
         FunnelStep("Checkout"),
         FunnelStep("Purchase"),
@@ -1081,7 +1081,7 @@ bucket_sizes = [1, 3, 7, 14, 30]
 organic_retention = ws.query_retention(RetentionQuery(
     born_event=RetentionEvent(
         "Signup",
-        filters=[Filter.equals("source", "organic")],
+        filters=[FilterFactory.equals("source", "organic")],
     ),
     return_event="Login",
     retention_unit="day",

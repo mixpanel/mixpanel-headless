@@ -267,7 +267,7 @@ from mixpanel_headless import Filter, GroupBy, InsightsQuery
 result = ws.query(InsightsQuery(
     events=["Purchase"], math="total",
     math_property="amount",
-    where=[Filter.equals("country", "US")],
+    where=[FilterFactory.equals("country", "US")],
     group_by=["plan_type"],
     last=30,
 ))
@@ -314,7 +314,7 @@ from mixpanel_headless import Filter
 
 # Pull profile fields for high-value users
 result = ws.query_user(
-    where=Filter.greater_than("purchase_count", 10),
+    where=FilterFactory.greater_than("purchase_count", 10),
     properties=["$name", "$email", "plan"],
     limit=None,                      # fetch every match (None = no cap)
 )

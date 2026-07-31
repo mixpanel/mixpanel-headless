@@ -260,7 +260,7 @@ result = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["platfor
 result = ws.query(InsightsQuery(
     events=["Purchase"], math="total",
     math_property="amount",
-    where=[Filter.equals("country", "US")],
+    where=[FilterFactory.equals("country", "US")],
 ))
 
 # Multi-metric formula
@@ -284,7 +284,7 @@ power_users = CohortDefinition(
 )
 
 # Filter to that cohort
-result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
+result = ws.query(InsightsQuery(events=["Login"], where=[FilterFactory.in_cohort(power_users, name="Power Users")]))
 
 # Compare cohort vs. everyone else
 result = ws.query(InsightsQuery(events=["Login"], group_by=[CohortBreakdown(power_users, name="Power Users")]))
@@ -307,7 +307,7 @@ print(f"Conversion: {result.overall_conversion_rate:.1%}")
 result = ws.query_funnel(FunnelQuery(
     steps=[
         FunnelStep("Signup"),
-        FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+        FunnelStep("Purchase", filters=[FilterFactory.greater_than("amount", 50)]),
     ],
     conversion_window=7,
     last=90,
@@ -333,7 +333,7 @@ print(result.df.head())
 
 # With per-event filters and custom buckets
 result = ws.query_retention(RetentionQuery(
-    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    born_event=RetentionEvent("Signup", filters=[FilterFactory.equals("source", "organic")]),
     return_event="Login",
     retention_unit="day",
     bucket_sizes=[1, 3, 7, 14, 30],
@@ -355,7 +355,7 @@ print(result.top_transitions(5))
 
 # With per-step filters and reverse analysis
 result = ws.query_flow(FlowQuery(
-    event=FlowStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+    event=FlowStep("Purchase", filters=[FilterFactory.greater_than("amount", 50)]),
     forward=3,
     reverse=2,
 ))
@@ -374,7 +374,7 @@ from mixpanel_headless import Filter
 
 # Query user profiles
 result = ws.query_user(
-    where=Filter.equals("plan", "premium"),
+    where=FilterFactory.equals("plan", "premium"),
     properties=["$email", "$name", "ltv"],
     sort_by="ltv",
     sort_order="descending",
@@ -384,7 +384,7 @@ print(f"{result.total} premium users")
 print(result.df)
 
 # Count matching profiles
-count = ws.query_user(mode="aggregate", where=Filter.is_set("$email"))
+count = ws.query_user(mode="aggregate", where=FilterFactory.is_set("$email"))
 print(f"Users with email: {count.value}")
 ```
 

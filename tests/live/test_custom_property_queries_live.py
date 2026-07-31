@@ -16,7 +16,7 @@ import pytest
 
 from mixpanel_headless import (
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     GroupBy,
     InlineCustomProperty,
     Metric,
@@ -371,7 +371,7 @@ class TestInlineCustomPropertyFilter:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=7,
             )
         )
@@ -384,7 +384,7 @@ class TestInlineCustomPropertyFilter:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.greater_than(property=simple_inline_cp, value=0)],
+                where=[FilterFactory.greater_than(property=simple_inline_cp, value=0)],
                 last=7,
             )
         )
@@ -398,7 +398,9 @@ class TestInlineCustomPropertyFilter:
             InsightsQuery(
                 events=[Metric(real_event)],
                 where=[
-                    Filter.between(property=simple_inline_cp, min_val=0, max_val=999999)
+                    FilterFactory.between(
+                        property=simple_inline_cp, min_val=0, max_val=999999
+                    )
                 ],
                 last=7,
             )
@@ -412,7 +414,7 @@ class TestInlineCustomPropertyFilter:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.equals(property=string_inline_cp, value="Chrome")],
+                where=[FilterFactory.equals(property=string_inline_cp, value="Chrome")],
                 last=7,
             )
         )
@@ -425,7 +427,7 @@ class TestInlineCustomPropertyFilter:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=7,
             )
         )
@@ -445,7 +447,7 @@ class TestCustomPropertyRefFilter:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                where=[FilterFactory.is_set(property=CustomPropertyRef(saved_cp_id))],
                 last=7,
             )
         )
@@ -458,7 +460,7 @@ class TestCustomPropertyRefFilter:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                where=[FilterFactory.is_set(property=CustomPropertyRef(saved_cp_id))],
                 last=7,
             )
         )
@@ -603,7 +605,7 @@ class TestCustomPropertyFunnels:
         result = ws.query_funnel(
             FunnelQuery(
                 steps=[e1, e2],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=30,
             )
         )
@@ -620,7 +622,9 @@ class TestCustomPropertyFunnels:
         result = ws.query_funnel(
             FunnelQuery(
                 steps=[
-                    FunnelStep(e1, filters=[Filter.is_set(property=simple_inline_cp)]),
+                    FunnelStep(
+                        e1, filters=[FilterFactory.is_set(property=simple_inline_cp)]
+                    ),
                     e2,
                 ],
                 last=30,
@@ -690,7 +694,7 @@ class TestCustomPropertyRetention:
             RetentionQuery(
                 born_event=e1,
                 return_event=e2,
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=30,
             )
         )
@@ -732,7 +736,7 @@ class TestCustomPropertyRetention:
             RetentionQuery(
                 born_event=e1,
                 return_event=e2,
-                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                where=[FilterFactory.is_set(property=CustomPropertyRef(saved_cp_id))],
                 last=30,
             )
         )
@@ -756,7 +760,7 @@ class TestPerMetricFilterCustomProperty:
                 events=[
                     Metric(
                         real_event,
-                        filters=[Filter.is_set(property=simple_inline_cp)],
+                        filters=[FilterFactory.is_set(property=simple_inline_cp)],
                     )
                 ],
                 last=7,
@@ -774,7 +778,9 @@ class TestPerMetricFilterCustomProperty:
                     Metric(
                         real_event,
                         filters=[
-                            Filter.is_set(property=CustomPropertyRef(saved_cp_id))
+                            FilterFactory.is_set(
+                                property=CustomPropertyRef(saved_cp_id)
+                            )
                         ],
                     )
                 ],
@@ -793,7 +799,9 @@ class TestPerMetricFilterCustomProperty:
                     events=[
                         Metric(
                             real_event,
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         )
                     ],
                     last=7,
@@ -867,7 +875,7 @@ class TestCustomPropertyEdgeCases:
             InsightsQuery(
                 events=[Metric(real_event)],
                 group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=7,
             )
         )
@@ -937,7 +945,7 @@ class TestCustomPropertyEdgeCases:
             result = ws.query(
                 InsightsQuery(
                     events=[Metric(real_event)],
-                    where=[Filter.is_set(property=CustomPropertyRef(99999))],
+                    where=[FilterFactory.is_set(property=CustomPropertyRef(99999))],
                     last=7,
                 )
             )
@@ -977,12 +985,12 @@ class TestCustomPropertyEdgeCases:
         string_inline_cp: InlineCustomProperty,
     ) -> None:
         """EDGE CASE #3: greater_than on string ICP — no client-side error."""
-        # greater_than hard-codes _property_type="number" but string_inline_cp
+        # greater_than hard-codes property_type="number" but string_inline_cp
         # has property_type=None. No validation catches this mismatch.
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.greater_than(property=string_inline_cp, value=5)],
+                where=[FilterFactory.greater_than(property=string_inline_cp, value=5)],
                 last=7,
             )
         )
@@ -1157,7 +1165,7 @@ class TestValidationInFilterPosition:
             ws.build_params(
                 InsightsQuery(
                     events=[Metric(real_event)],
-                    where=[Filter.is_set(property=CustomPropertyRef(0))],
+                    where=[FilterFactory.is_set(property=CustomPropertyRef(0))],
                 )
             )
 
@@ -1168,7 +1176,7 @@ class TestValidationInFilterPosition:
             ws.build_params(
                 InsightsQuery(
                     events=[Metric(real_event)],
-                    where=[Filter.is_set(property=icp)],
+                    where=[FilterFactory.is_set(property=icp)],
                 )
             )
 
@@ -1210,7 +1218,9 @@ class TestValidationGaps:
                     events=[
                         Metric(
                             real_event,
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         )
                     ],
                 )
@@ -1227,7 +1237,9 @@ class TestValidationGaps:
                     steps=[
                         FunnelStep(
                             e1,
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         ),
                         e2,
                     ],
@@ -1244,7 +1256,7 @@ class TestValidationGaps:
                 RetentionQuery(
                     born_event=e1,
                     return_event=e2,
-                    where=[Filter.is_set(property=CustomPropertyRef(0))],
+                    where=[FilterFactory.is_set(property=CustomPropertyRef(0))],
                 )
             )
 
@@ -1265,7 +1277,7 @@ class TestCrossEngine:
             InsightsQuery(
                 events=[Metric(real_event, math="average", property=simple_inline_cp)],
                 group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=7,
             )
         )
@@ -1283,7 +1295,7 @@ class TestCrossEngine:
             FunnelQuery(
                 steps=[e1, e2],
                 group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=30,
             )
         )
@@ -1302,7 +1314,7 @@ class TestCrossEngine:
                 born_event=e1,
                 return_event=e2,
                 group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
                 last=30,
             )
         )
@@ -1371,7 +1383,7 @@ class TestBuildParamsStructure:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=simple_inline_cp)],
+                where=[FilterFactory.is_set(property=simple_inline_cp)],
             )
         )
         f = params["sections"]["filter"][0]
@@ -1405,7 +1417,7 @@ class TestBuildParamsStructure:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                where=[FilterFactory.is_set(property=CustomPropertyRef(saved_cp_id))],
             )
         )
         f = params["sections"]["filter"][0]
@@ -1482,7 +1494,7 @@ class TestBackwardCompatibility:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.is_set(real_string_property)],
+                where=[FilterFactory.is_set(real_string_property)],
                 last=7,
             )
         )

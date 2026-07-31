@@ -142,6 +142,7 @@ from mixpanel_headless.query_models import (
 )
 from mixpanel_headless.types import (
     BUSINESS_CONTEXT_MAX_CHARS,
+    AbstractFilter,
     ActivityFeedResult,
     AlertCount,
     AlertHistoryResponse,
@@ -171,6 +172,7 @@ from mixpanel_headless.types import (
     CohortBreakdown,
     CohortDefinition,
     CohortMetric,
+    ContainmentFilter,
     CreateAlertParams,
     CreateAnnotationParams,
     CreateAnnotationTagParams,
@@ -205,7 +207,6 @@ from mixpanel_headless.types import (
     ExperimentConcludeParams,
     ExperimentDecideParams,
     FeatureFlag,
-    Filter,
     FlagHistoryResponse,
     FlagLimitsResponse,
     FlowQueryResult,
@@ -1120,13 +1121,13 @@ class Workspace:
         subproperty. Designed for properties like ``cart`` whose values
         are objects with subkeys (``Brand``, ``Category``, ``Price``,
         ``Item ID``). The returned ``name`` and ``type`` plug directly
-        into :meth:`GroupBy.list_item` and :meth:`Filter.list_contains`.
+        into :meth:`GroupBy.list_item` and :meth:`FilterFactory.list_contains`.
 
         Scope: only **scalar** subproperty values (string / number /
         boolean / ISO datetime string) are reported. Subproperties whose
         values are themselves dicts or lists are silently skipped — they
         cannot be used by ``GroupBy.list_item`` or
-        ``Filter.list_contains`` anyway.
+        ``FilterFactory.list_contains`` anyway.
 
         Args:
             property_name: Top-level list-of-object property name (e.g.
@@ -2039,7 +2040,10 @@ class Workspace:
         | FrequencyBreakdown
         | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
         | None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None,
+        where: AbstractFilter
+        | FrequencyFilter
+        | Sequence[AbstractFilter | FrequencyFilter]
+        | None,
         formulas: Sequence[Formula],
         rolling: int | None,
         cumulative: bool,
@@ -2437,7 +2441,7 @@ class Workspace:
         | CohortBreakdown
         | list[str | GroupBy | CohortBreakdown]
         | None,
-        where: Filter | list[Filter] | None,
+        where: AbstractFilter | Sequence[AbstractFilter] | None,
         exclusions: list[Exclusion],
         holding_constant: list[HoldingConstant],
         mode: str,
@@ -2771,7 +2775,7 @@ class Workspace:
         | CohortBreakdown
         | list[str | GroupBy | CohortBreakdown]
         | None,
-        where: Filter | list[Filter] | None,
+        where: AbstractFilter | Sequence[AbstractFilter] | None,
         mode: RetentionMode,
         unbounded_mode: RetentionUnboundedMode | None = None,
         retention_cumulative: bool = False,
@@ -2939,7 +2943,7 @@ class Workspace:
         collapse_repeated: bool,
         hidden_events: list[str] | None,
         mode: str,
-        where: Filter | list[Filter] | None = None,
+        where: AbstractFilter | Sequence[AbstractFilter] | None = None,
         data_group_id: int | None = None,
         segments: str | GroupBy | list[str | GroupBy] | None = None,
         exclusions: list[str] | None = None,
@@ -2967,8 +2971,8 @@ class Workspace:
             hidden_events: Events to hide from the flow visualization.
             mode: Display mode (``"sankey"``, ``"paths"``, or ``"tree"``).
             where: Filter results by cohort membership or property
-                conditions. Cohort filters (``Filter.in_cohort`` /
-                ``Filter.not_in_cohort``) produce ``filter_by_cohort``.
+                conditions. Cohort filters (``FilterFactory.in_cohort`` /
+                ``FilterFactory.not_in_cohort``) produce ``filter_by_cohort``.
                 Property filters produce ``where`` entries.
                 Default: ``None``.
             data_group_id: Optional data group ID for group-level
@@ -3047,9 +3051,11 @@ class Workspace:
         # simple ``{property, operator, value}`` entries for property
         # filters, and a ``filter_by_cohort`` dict for cohort filters.
         if where is not None:
-            filter_list = where if isinstance(where, list) else [where]
-            cohort_filters = [f for f in filter_list if f._property == "$cohorts"]
-            property_filters = [f for f in filter_list if f._property != "$cohorts"]
+            filter_list: Sequence[AbstractFilter] = (
+                [where] if isinstance(where, AbstractFilter) else where
+            )
+            cohort_filters = [f for f in filter_list if f.property == "$cohorts"]
+            property_filters = [f for f in filter_list if f.property != "$cohorts"]
 
             if cohort_filters:
                 cohort_filter = build_flow_cohort_filter(cohort_filters)
@@ -3158,15 +3164,15 @@ class Workspace:
         for i, s in enumerate(raw_steps):
             if isinstance(s, FlowStep) and s.filters:
                 for fi, f in enumerate(s.filters):
-                    if isinstance(f._property, str) and contains_control_chars(
-                        f._property
+                    if isinstance(f.property, str) and contains_control_chars(
+                        f.property
                     ):
                         step_errors.append(
                             ValidationError(
                                 path=f"steps[{i}].filters[{fi}]",
                                 message=(
                                     f"Filter property name contains "
-                                    f"control characters: {f._property!r}"
+                                    f"control characters: {f.property!r}"
                                 ),
                                 code="FL_FILTER_CONTROL_CHAR",
                             )
@@ -8018,7 +8024,7 @@ class Workspace:
     def _resolve_and_build_user_params(
         self,
         *,
-        where: Filter | list[Filter] | str | None = None,
+        where: AbstractFilter | Sequence[AbstractFilter] | str | None = None,
         cohort: int | CohortDefinition | None = None,
         properties: list[str] | None = None,
         sort_by: str | None = None,
@@ -8092,7 +8098,7 @@ class Workspace:
             ```python
             ws = Workspace()
             params = ws._resolve_and_build_user_params(
-                where=Filter.equals("plan", "premium"),
+                where=FilterFactory.equals("plan", "premium"),
                 sort_by="ltv",
             )
             # {"where": 'properties["plan"] == "premium"',
@@ -8100,14 +8106,19 @@ class Workspace:
             #  "sort_order": "descending"}
             ```
         """
-        # Type guard for where
-        if where is not None and not isinstance(where, (Filter, list, str)):
+        # Type guard for where. Any sequence of filters is fine — the
+        # factories return narrow members, so a caller's list is often
+        # `list[EqualityFilter]`, and `build_flow_params` already takes a
+        # tuple. `str` is itself a `Sequence`, but it is a legal raw
+        # selector, so it is admitted explicitly rather than by shape.
+        if where is not None and not isinstance(where, (AbstractFilter, Sequence)):
             raise BookmarkValidationError(
                 errors=[
                     ValidationError(
                         path="where",
                         message=(
-                            f"where must be a Filter, list[Filter], str, or None "
+                            f"where must be a Filter, a sequence of Filters, "
+                            f"a selector string, or None "
                             f"(got {type(where).__name__})"
                         ),
                         code="U9",
@@ -8145,11 +8156,18 @@ class Workspace:
         params: dict[str, Any] = {}
 
         # --- where handling ---
-        cohort_from_filter: Filter | None = None
+        cohort_from_filter: ContainmentFilter | None = None
         if isinstance(where, str):
+            # Ahead of the filter branch: `str` is a `Sequence` too, and a
+            # positive `isinstance(where, Sequence)` test would re-admit it
+            # even after this branch excluded it. Testing `is not None`
+            # instead keeps the exclusion, and the type guard above has
+            # already rejected anything that is neither.
             params["where"] = where
-        elif isinstance(where, (Filter, list)):
-            filters_list = [where] if isinstance(where, Filter) else where
+        elif where is not None:
+            filters_list: Sequence[AbstractFilter] = (
+                [where] if isinstance(where, AbstractFilter) else where
+            )
             remaining, cohort_from_filter = extract_cohort_filter(filters_list)
             if remaining:
                 try:
@@ -8176,68 +8194,30 @@ class Workspace:
                     {"raw_cohort": _sanitize_raw_cohort(cohort.to_dict())}
                 )
         elif cohort_from_filter is not None:
-            # Extract cohort ID from the Filter.in_cohort() value
-            # Structure: [{"cohort": {"id": N, "negated": bool, "name": str}}]
-            raw_value = cohort_from_filter._value
-            if not isinstance(raw_value, list) or len(raw_value) == 0:
+            # `extract_cohort_filter` returns a `ContainmentFilter`, and the
+            # $cohorts pairing is enforced at construction, so the structure is
+            # a type here rather than four hand-written shape checks. Only the
+            # `str | list[CohortRef]` half of the value union is left to narrow.
+            value = cohort_from_filter.value
+            if not isinstance(value, list):
                 raise BookmarkValidationError(
                     errors=[
                         ValidationError(
                             path="where",
                             message=(
-                                "Expected non-empty list from Filter.in_cohort() "
-                                f"value, got {type(raw_value).__name__}"
+                                "Expected a cohort filter from "
+                                f"FilterFactory.in_cohort(); got value {value!r}"
                             ),
                             code="U_COHORT",
                         )
                     ]
                 )
-            first_item = raw_value[0]
-            if not isinstance(first_item, dict):
-                raise BookmarkValidationError(
-                    errors=[
-                        ValidationError(
-                            path="where",
-                            message=(
-                                "Expected dict in Filter.in_cohort() value, "
-                                f"got {type(first_item).__name__}"
-                            ),
-                            code="U_COHORT",
-                        )
-                    ]
-                )
-            if "cohort" not in first_item:
-                raise BookmarkValidationError(
-                    errors=[
-                        ValidationError(
-                            path="where",
-                            message=(
-                                "Filter.in_cohort() value missing 'cohort' "
-                                f"key: {first_item!r}"
-                            ),
-                            code="U_COHORT",
-                        )
-                    ]
-                )
-            cohort_wrapper: dict[str, Any] = first_item["cohort"]
-            if "id" in cohort_wrapper:
-                params["filter_by_cohort"] = json.dumps({"id": cohort_wrapper["id"]})
-            elif "raw_cohort" in cohort_wrapper:
-                params["filter_by_cohort"] = json.dumps(
-                    {"raw_cohort": cohort_wrapper["raw_cohort"]}
-                )
+            payload = value[0].cohort
+            if payload.id is not None:
+                params["filter_by_cohort"] = json.dumps({"id": payload.id})
             else:
-                raise BookmarkValidationError(
-                    errors=[
-                        ValidationError(
-                            path="where",
-                            message=(
-                                "Filter.in_cohort() value has no 'id' or "
-                                f"'raw_cohort' key: {cohort_wrapper!r}"
-                            ),
-                            code="U_COHORT",
-                        )
-                    ]
+                params["filter_by_cohort"] = json.dumps(
+                    {"raw_cohort": payload.raw_cohort}
                 )
 
         # --- properties → output_properties ---
@@ -8346,7 +8326,7 @@ class Workspace:
         Example:
             ```python
             params = ws._resolve_and_build_user_params(
-                where=Filter.equals("plan", "premium"),
+                where=FilterFactory.equals("plan", "premium"),
             )
             profiles, total, computed_at, meta = (
                 ws._execute_user_query_sequential(params, limit=10)
@@ -8404,7 +8384,7 @@ class Workspace:
     def query_user(
         self,
         *,
-        where: Filter | list[Filter] | str | None = None,
+        where: AbstractFilter | Sequence[AbstractFilter] | str | None = None,
         cohort: int | CohortDefinition | None = None,
         properties: list[str] | None = None,
         sort_by: str | None = None,
@@ -8488,7 +8468,7 @@ class Workspace:
 
             # Filter premium users, sorted by LTV
             result = ws.query_user(
-                where=Filter.equals("plan", "premium"),
+                where=FilterFactory.equals("plan", "premium"),
                 sort_by="ltv",
                 sort_order="descending",
                 limit=100,
@@ -8565,7 +8545,7 @@ class Workspace:
     def build_user_params(
         self,
         *,
-        where: Filter | list[Filter] | str | None = None,
+        where: AbstractFilter | Sequence[AbstractFilter] | str | None = None,
         cohort: int | CohortDefinition | None = None,
         properties: list[str] | None = None,
         sort_by: str | None = None,
@@ -8646,7 +8626,7 @@ class Workspace:
             ```python
             ws = Workspace()
             params = ws.build_user_params(
-                where=Filter.equals("plan", "premium"),
+                where=FilterFactory.equals("plan", "premium"),
                 sort_by="ltv",
             )
             print(params)

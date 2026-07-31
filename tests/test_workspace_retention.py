@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless import Workspace
+from mixpanel_headless import FilterFactory, Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
@@ -237,14 +237,14 @@ class TestQueryRetentionWithFilters:
         mock_api_client: MagicMock,
     ) -> None:
         """Per-event filters on RetentionEvent must appear in bookmark behaviors."""
-        from mixpanel_headless.types import Filter, RetentionEvent
+        from mixpanel_headless.types import RetentionEvent
 
         mock_api_client.insights_query.return_value = MOCK_RETENTION_RESPONSE
         ws = workspace_factory()
         try:
             born = RetentionEvent(
                 "Signup",
-                filters=[Filter.equals("source", "organic")],
+                filters=[FilterFactory.equals("source", "organic")],
             )
             ws.query_retention(RetentionQuery(born_event=born, return_event="Login"))
 

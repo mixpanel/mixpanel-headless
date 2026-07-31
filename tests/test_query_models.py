@@ -29,6 +29,7 @@ from mixpanel_headless.types import (
     CustomPropertyRef,
     Exclusion,
     Filter,
+    FilterFactory,
     FlowStep,
     Formula,
     FrequencyBreakdown,
@@ -152,7 +153,7 @@ class TestInsightsQuery:
             unit="week",
             math="unique",
             group_by=[GroupBy("country")],
-            where=[Filter.equals("platform", "iOS")],
+            where=[FilterFactory.equals("platform", "iOS")],
             formula="A * 100",
             formula_label="Rate",
             rolling=7,
@@ -231,7 +232,7 @@ class TestFunnelQuery:
             order="any",
             math="conversion_rate_unique",
             group_by=[GroupBy("country")],
-            where=[Filter.equals("platform", "iOS")],
+            where=[FilterFactory.equals("platform", "iOS")],
             exclusions=[Exclusion("Error", from_step=0, to_step=1)],
             holding_constant=[HoldingConstant("device")],
             mode="trends",
@@ -274,7 +275,7 @@ class TestRetentionQuery:
             born_event=RetentionEvent("Signup"),
             return_event=RetentionEvent(
                 "Purchase",
-                filters=[Filter.equals("category", "premium")],
+                filters=[FilterFactory.equals("category", "premium")],
             ),
         )
         assert isinstance(q.return_event, RetentionEvent)
@@ -291,7 +292,7 @@ class TestRetentionQuery:
             to_date="2026-03-31",
             math="unique",
             group_by=[GroupBy("country")],
-            where=[Filter.equals("platform", "iOS")],
+            where=[FilterFactory.equals("platform", "iOS")],
             mode="trends",
             unbounded_mode="carry_forward",
             retention_cumulative=True,
@@ -353,7 +354,7 @@ class TestFlowQuery:
             collapse_repeated=True,
             hidden_events=["Error"],
             mode="paths",
-            where=[Filter.equals("platform", "iOS")],
+            where=[FilterFactory.equals("platform", "iOS")],
             segments=[GroupBy("country")],
             exclusions=["Logout"],
         )
@@ -800,446 +801,6 @@ class TestHashability:
 
 # =============================================================================
 # Filter dict construction (I2)
-# =============================================================================
-
-
-class TestFilterDictConstruction:
-    """Filter supports dict construction via validation aliases."""
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    def test_equals_dict(self) -> None:
-        """Dict with 'equals' produces a Filter with wrapped value."""
-        f = self._adapter.validate_python(
-            {"property": "country", "operator": "equals", "value": "US"}
-        )
-        assert isinstance(f, Filter)
-        assert f._value == ["US"]
-        assert f._property_type == "string"
-
-    def test_numeric_operator_dict(self) -> None:
-        """Dict with numeric operator infers property_type='number'."""
-        f = self._adapter.validate_python(
-            {"property": "amount", "operator": "is greater than", "value": 50}
-        )
-        assert isinstance(f, Filter)
-        assert f._property_type == "number"
-
-    def test_is_set_no_value(self) -> None:
-        """Dict with 'is set' needs no value field."""
-        f = self._adapter.validate_python({"property": "email", "operator": "is set"})
-        assert isinstance(f, Filter)
-        assert f._value is None
-
-    def test_between_operator_dict(self) -> None:
-        """Dict with 'is between' accepts a two-element list."""
-        f = self._adapter.validate_python(
-            {"property": "amount", "operator": "is between", "value": [10, 50]}
-        )
-        assert isinstance(f, Filter)
-        assert f._property_type == "number"
-        assert f._value == [10, 50]
-
-    def test_equals_non_string_scalar_rejected(self) -> None:
-        """equals with a bare non-string scalar is rejected.
-
-        The classmethod contract is ``str | list[str]``; passing the
-        scalar through emitted a bare ``filterValue: 5`` on the wire
-        where every classmethod-built equals emits a list.
-        """
-        with pytest.raises(ValidationError, match="string or a list"):
-            self._adapter.validate_python(
-                {"property": "plan_tier", "operator": "equals", "value": 5}
-            )
-
-    def test_not_equals_bool_scalar_rejected(self) -> None:
-        """does not equal with a bare bool is rejected like other scalars."""
-        with pytest.raises(ValidationError, match="string or a list"):
-            self._adapter.validate_python(
-                {"property": "active", "operator": "does not equal", "value": True}
-            )
-
-    def test_equals_list_elements_must_be_strings(self) -> None:
-        """String-typed equals rejects a homogeneous non-string list."""
-        with pytest.raises(ValidationError, match="list of strings"):
-            self._adapter.validate_python(
-                {"property": "plan_tier", "operator": "equals", "value": [5, 6]}
-            )
-
-    def test_equals_mixed_list_rejected_by_field_typing(self) -> None:
-        """Mixed-type lists match no _value union alternative and are rejected."""
-        with pytest.raises(ValidationError):
-            self._adapter.validate_python(
-                {"property": "plan_tier", "operator": "equals", "value": [5, "a"]}
-            )
-
-    def test_is_between_requires_numeric_elements(self) -> None:
-        """is between requires numeric endpoints (Filter.between parity).
-
-        String endpoints built a self-contradictory wire entry
-        (filterType "number" with string operands).
-        """
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": "is between", "value": ["a", "b"]}
-            )
-
-    def test_is_between_mixed_float_int_accepted(self) -> None:
-        """is between accepts mixed int/float endpoints like Filter.between."""
-        f = self._adapter.validate_python(
-            {"property": "amount", "operator": "is between", "value": [1, 2.5]}
-        )
-        assert f._value == [1, 2.5]
-        assert f._property_type == "number"
-
-    def test_equivalence_with_classmethod(self) -> None:
-        """Dict-constructed Filter matches classmethod-constructed Filter."""
-        f_dict = self._adapter.validate_python(
-            {"property": "country", "operator": "equals", "value": "US"}
-        )
-        f_cls = Filter.equals("country", "US")
-        assert f_dict._property == f_cls._property
-        assert f_dict._operator == f_cls._operator
-        assert f_dict._value == f_cls._value
-        assert f_dict._property_type == f_cls._property_type
-
-    def test_in_insights_query(self) -> None:
-        """InsightsQuery accepts dict-constructed Filter in where list."""
-        f = self._adapter.validate_python(
-            {"property": "country", "operator": "equals", "value": "US"}
-        )
-        q = InsightsQuery(events=["Login"], where=[f])
-        assert q.where is not None
-        assert len(q.where) == 1
-
-    def test_invalid_operator_rejected(self) -> None:
-        """Unknown operator string is rejected by FilterOperator literal."""
-        with pytest.raises(ValidationError):
-            self._adapter.validate_python(
-                {"property": "x", "operator": "bogus", "value": "y"}
-            )
-
-    def test_relative_date_default_unit(self) -> None:
-        """Relative-date operators default date_unit to 'day'."""
-        f = self._adapter.validate_python(
-            {"property": "created", "operator": "was in the", "value": 7}
-        )
-        assert f._date_unit == "day"
-        assert f._property_type == "datetime"
-
-    def test_relative_date_explicit_unit(self) -> None:
-        """Explicit date_unit overrides the default."""
-        f = self._adapter.validate_python(
-            {
-                "property": "created",
-                "operator": "was in the",
-                "value": 2,
-                "date_unit": "week",
-            }
-        )
-        assert f._date_unit == "week"
-
-    def test_boolean_type_inference(self) -> None:
-        """Boolean operators infer property_type='boolean'."""
-        f = self._adapter.validate_python({"property": "active", "operator": "true"})
-        assert f._property_type == "boolean"
-
-
-class TestFilterEqualityPropertyTypeCompatibility:
-    """Equality operands must match an explicitly declared property_type.
-
-    A scalar string was wrapped into a list before ``_property_type`` was
-    consulted, so a filter declared ``number`` kept a string operand and
-    reached the wire as ``filterType: "number"`` with
-    ``filterValue: ["oops"]`` — a self-contradictory query the API cannot
-    answer meaningfully.
-    """
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
-    def test_number_type_rejects_scalar_string(self, operator: str) -> None:
-        """A number-typed equality rejects a scalar string operand.
-
-        Args:
-            operator: The equality operator under test.
-        """
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {
-                    "property": "amount",
-                    "operator": operator,
-                    "value": "oops",
-                    "property_type": "number",
-                }
-            )
-
-    def test_number_type_rejects_string_list(self) -> None:
-        """A number-typed equality rejects a list of string operands."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {
-                    "property": "amount",
-                    "operator": "equals",
-                    "value": ["10", "20"],
-                    "property_type": "number",
-                }
-            )
-
-    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
-    def test_number_type_keeps_scalar_numeric_value(self, operator: str) -> None:
-        """A number-typed equality keeps a numeric scalar unwrapped.
-
-        Pinned by ``filter_to_selector``: the scalar numeric form is the
-        schema-driven equality path through ``query_user``.
-
-        Args:
-            operator: The equality operator under test.
-        """
-        f = self._adapter.validate_python(
-            {
-                "property": "count",
-                "operator": operator,
-                "value": 42,
-                "property_type": "number",
-            }
-        )
-        assert f._value == 42
-        assert f._property_type == "number"
-
-    def test_number_type_accepts_numeric_list(self) -> None:
-        """A number-typed equality accepts a list of numeric operands."""
-        f = self._adapter.validate_python(
-            {
-                "property": "count",
-                "operator": "equals",
-                "value": [1, 2.5],
-                "property_type": "number",
-            }
-        )
-        assert f._value == [1, 2.5]
-
-    @pytest.mark.parametrize("operator", ["equals", "does not equal"])
-    def test_boolean_type_rejects_equality(self, operator: str) -> None:
-        """A boolean-typed property cannot be tested with equality.
-
-        Boolean properties are tested with the value-less ``true`` /
-        ``false`` operators, so no operand is compatible here.
-
-        Args:
-            operator: The equality operator under test.
-        """
-        with pytest.raises(ValidationError, match="is_true"):
-            self._adapter.validate_python(
-                {
-                    "property": "active",
-                    "operator": operator,
-                    "value": "oops",
-                    "property_type": "boolean",
-                }
-            )
-
-    def test_string_type_still_wraps_scalar(self) -> None:
-        """The default string-typed equality keeps wrapping a scalar."""
-        f = self._adapter.validate_python(
-            {"property": "country", "operator": "equals", "value": "US"}
-        )
-        assert f._value == ["US"]
-
-    def test_explicit_string_type_still_wraps_scalar(self) -> None:
-        """An explicitly string-typed equality keeps wrapping a scalar."""
-        f = self._adapter.validate_python(
-            {
-                "property": "country",
-                "operator": "equals",
-                "value": "US",
-                "property_type": "string",
-            }
-        )
-        assert f._value == ["US"]
-
-    def test_datetime_type_still_wraps_scalar(self) -> None:
-        """A datetime-typed equality is unaffected by the number rule."""
-        f = self._adapter.validate_python(
-            {
-                "property": "$time",
-                "operator": "equals",
-                "value": "2024-01-01",
-                "property_type": "datetime",
-            }
-        )
-        assert f._value == ["2024-01-01"]
-
-    def test_classmethod_number_equality_still_builds(self) -> None:
-        """Direct construction with a numeric operand is unaffected."""
-        f = Filter(
-            _property="count",
-            _operator="equals",
-            _value=42,
-            _property_type="number",
-            _resource_type="events",
-        )
-        assert f._value == 42
-
-
-class TestFilterDictDateValidation:
-    """Dict-constructed Filters validate dates exactly like the classmethods.
-
-    ``__post_init__`` must replicate the classmethods' date validation
-    (``_validate_date``, from<=to ordering, quantity > 0) so the
-    dict/LLM construction path cannot produce wire payloads the
-    classmethod path would reject.
-    """
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    def test_was_on_rejects_malformed_date(self) -> None:
-        """'was on' with a non-date string is rejected (classmethod parity)."""
-        with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            self._adapter.validate_python(
-                {"property": "$time", "operator": "was on", "value": "not-a-date"}
-            )
-
-    def test_was_on_rejects_invalid_calendar_date(self) -> None:
-        """'was on' with an impossible calendar date is rejected."""
-        with pytest.raises(ValueError, match="not a valid calendar date"):
-            self._adapter.validate_python(
-                {"property": "$time", "operator": "was on", "value": "2024-02-30"}
-            )
-
-    def test_was_on_rejects_non_string_value(self) -> None:
-        """'was on' with a numeric value is rejected."""
-        with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            self._adapter.validate_python(
-                {"property": "$time", "operator": "was on", "value": 20240101}
-            )
-
-    @pytest.mark.parametrize("operator", ["was not on", "was before", "was since"])
-    def test_single_date_operators_reject_malformed_date(self, operator: str) -> None:
-        """All single-date operators validate their date value."""
-        with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            self._adapter.validate_python(
-                {"property": "created", "operator": operator, "value": "01/01/2024"}
-            )
-
-    def test_was_on_valid_date_matches_classmethod(self) -> None:
-        """'was on' with a valid date matches Filter.on()."""
-        f_dict = self._adapter.validate_python(
-            {"property": "created", "operator": "was on", "value": "2024-06-01"}
-        )
-        f_cls = Filter.on("created", "2024-06-01")
-        assert f_dict._value == f_cls._value
-        assert f_dict._property_type == f_cls._property_type
-
-    def test_was_between_rejects_reversed_range(self) -> None:
-        """'was between' with from > to is rejected (classmethod parity)."""
-        with pytest.raises(ValueError, match="from_date must be before to_date"):
-            self._adapter.validate_python(
-                {
-                    "property": "created",
-                    "operator": "was between",
-                    "value": ["2024-06-30", "2024-01-01"],
-                }
-            )
-
-    def test_was_not_between_rejects_reversed_range(self) -> None:
-        """'was not between' with from > to is rejected."""
-        with pytest.raises(ValueError, match="from_date must be before to_date"):
-            self._adapter.validate_python(
-                {
-                    "property": "created",
-                    "operator": "was not between",
-                    "value": ["2024-06-30", "2024-01-01"],
-                }
-            )
-
-    def test_was_between_rejects_malformed_dates(self) -> None:
-        """'was between' validates both elements as dates."""
-        with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            self._adapter.validate_python(
-                {
-                    "property": "created",
-                    "operator": "was between",
-                    "value": ["2024-01-01", "garbage"],
-                }
-            )
-
-    def test_was_between_valid_range_matches_classmethod(self) -> None:
-        """'was between' with a valid range matches Filter.date_between()."""
-        f_dict = self._adapter.validate_python(
-            {
-                "property": "created",
-                "operator": "was between",
-                "value": ["2024-01-01", "2024-06-30"],
-            }
-        )
-        f_cls = Filter.date_between("created", "2024-01-01", "2024-06-30")
-        assert f_dict._value == f_cls._value
-        assert f_dict._property_type == f_cls._property_type
-
-    def test_numeric_between_unaffected_by_date_checks(self) -> None:
-        """Numeric 'is between' still accepts descending numbers (not dates)."""
-        f = self._adapter.validate_python(
-            {"property": "amount", "operator": "is between", "value": [10, 50]}
-        )
-        assert f._value == [10, 50]
-
-    @pytest.mark.parametrize(
-        "operator", ["was in the", "was not in the", "was in the next"]
-    )
-    def test_relative_date_rejects_zero_quantity(self, operator: str) -> None:
-        """Relative-date operators reject quantity == 0 (classmethod parity)."""
-        with pytest.raises(ValueError, match="positive integer"):
-            self._adapter.validate_python(
-                {"property": "created", "operator": operator, "value": 0}
-            )
-
-    def test_relative_date_rejects_negative_quantity(self) -> None:
-        """Relative-date operators reject negative quantities."""
-        with pytest.raises(ValueError, match="positive integer"):
-            self._adapter.validate_python(
-                {"property": "created", "operator": "was in the", "value": -3}
-            )
-
-    def test_relative_date_rejects_non_int_quantity(self) -> None:
-        """Relative-date operators reject non-integer quantities."""
-        with pytest.raises(ValueError, match="positive integer"):
-            self._adapter.validate_python(
-                {"property": "created", "operator": "was in the", "value": "soon"}
-            )
-
-    def test_relative_date_valid_matches_classmethod(self) -> None:
-        """'was in the' with valid quantity matches Filter.in_the_last()."""
-        f_dict = self._adapter.validate_python(
-            {
-                "property": "created",
-                "operator": "was in the",
-                "value": 7,
-                "date_unit": "week",
-            }
-        )
-        f_cls = Filter.in_the_last("created", 7, "week")
-        assert f_dict._value == f_cls._value
-        assert f_dict._date_unit == f_cls._date_unit
-
-
-# =============================================================================
-# Wrap-validator error grammar: package paths and stable codes
 # =============================================================================
 
 
@@ -1891,288 +1452,6 @@ class TestDeclarativeCriterionStrictCoercion:
         assert (b_exact.exactly, b_exact.within_months) == (0, 6)
 
 
-class TestFilterOperatorValueShape:
-    """Filter enforces value shape per operator family at construction.
-
-    Regression tests for finding
-    ``filter-operator-value-shape-not-enforced``: numeric operators
-    must carry numeric scalars, string operators must carry strings,
-    and required values may not be omitted — otherwise the dict/LLM
-    path emits self-contradictory wire entries (``filterType="number"``
-    with ``filterValue="oops"``).
-    """
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    def test_greater_than_string_value_rejected(self) -> None:
-        """'is greater than' with value 'oops' is rejected."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": "is greater than", "value": "oops"}
-            )
-
-    @pytest.mark.parametrize(
-        "operator", ["is greater than", "is less than", "is at least", "is at most"]
-    )
-    def test_numeric_operators_reject_string_values(self, operator: str) -> None:
-        """Every scalar numeric operator rejects a non-numeric value."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": operator, "value": "oops"}
-            )
-
-    def test_numeric_operator_rejects_bool_value(self) -> None:
-        """'is less than' with a bool value is rejected (bool is not numeric)."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": "is less than", "value": True}
-            )
-
-    @pytest.mark.parametrize(
-        "operator", ["is greater than", "is less than", "is at least", "is at most"]
-    )
-    def test_numeric_operators_reject_omitted_value(self, operator: str) -> None:
-        """Scalar numeric operators require a value."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python({"property": "amount", "operator": operator})
-
-    @pytest.mark.parametrize(
-        "operator", ["contains", "does not contain", "starts with", "ends with"]
-    )
-    def test_string_operators_reject_numeric_values(self, operator: str) -> None:
-        """String operators reject int/float values."""
-        with pytest.raises(ValidationError, match="string"):
-            self._adapter.validate_python(
-                {"property": "name", "operator": operator, "value": 123}
-            )
-
-    def test_starts_with_float_value_rejected(self) -> None:
-        """'starts with' with a float value is rejected."""
-        with pytest.raises(ValidationError, match="string"):
-            self._adapter.validate_python(
-                {"property": "url", "operator": "starts with", "value": 1.5}
-            )
-
-    @pytest.mark.parametrize(
-        "operator", ["contains", "does not contain", "starts with", "ends with"]
-    )
-    def test_string_operators_reject_omitted_value(self, operator: str) -> None:
-        """String operators require a value."""
-        with pytest.raises(ValidationError, match="string"):
-            self._adapter.validate_python({"property": "name", "operator": operator})
-
-    def test_contains_list_value_rejected(self) -> None:
-        """'contains' with a list value is rejected (contract is str)."""
-        with pytest.raises(ValidationError, match="string"):
-            self._adapter.validate_python(
-                {"property": "name", "operator": "contains", "value": ["a", "b"]}
-            )
-
-    def test_is_between_list_position_bools_rejected(self) -> None:
-        """'is between' with [True, False] must not coerce to [1, 0].
-
-        Regression for finding ``filter-list-position-bools-still-coerce``:
-        booleans INSIDE list values hit pydantic's lax ``list[int | float]``
-        alternative and coerced to 0/1 before ``__post_init__`` ran.
-        """
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": "is between", "value": [True, False]}
-            )
-
-    def test_not_between_list_position_bool_rejected(self) -> None:
-        """'not between' with a boolean endpoint is rejected."""
-        with pytest.raises(ValidationError, match="numeric"):
-            self._adapter.validate_python(
-                {"property": "amount", "operator": "not between", "value": [1, True]}
-            )
-
-    def test_between_classmethod_bool_endpoint_rejected(self) -> None:
-        """Filter.between('amount', True, 100) must not become [1, 100]."""
-        with pytest.raises(ValidationError, match="numeric"):
-            Filter.between("amount", True, 100)
-
-    def test_equals_number_ptype_bool_list_rejected(self) -> None:
-        """equals with property_type='number' and value [True] is rejected."""
-        with pytest.raises(ValidationError):
-            self._adapter.validate_python(
-                {
-                    "property": "amount",
-                    "operator": "equals",
-                    "value": [True],
-                    "property_type": "number",
-                }
-            )
-
-    def test_equals_bool_list_error_reports_original_input(self) -> None:
-        """The equals bool-list error reports [True], not the coerced [1]."""
-        with pytest.raises(ValidationError, match=r"\[True\]") as exc_info:
-            self._adapter.validate_python(
-                {"property": "plan", "operator": "equals", "value": [True]}
-            )
-        assert "[1]" not in str(exc_info.value)
-
-    def test_string_operator_valid_value_matches_classmethod(self) -> None:
-        """'contains' with a string still matches Filter.contains()."""
-        f_dict = self._adapter.validate_python(
-            {"property": "name", "operator": "contains", "value": "john"}
-        )
-        f_cls = Filter.contains("name", "john")
-        assert f_dict._value == f_cls._value
-        assert f_dict._property_type == f_cls._property_type
-
-    def test_numeric_operator_valid_value_matches_classmethod(self) -> None:
-        """'is greater than' with a number still matches Filter.greater_than()."""
-        f_dict = self._adapter.validate_python(
-            {"property": "amount", "operator": "is greater than", "value": 50}
-        )
-        f_cls = Filter.greater_than("amount", 50)
-        assert f_dict._value == f_cls._value
-        assert f_dict._property_type == f_cls._property_type
-
-    def test_insights_model_path_raises_bookmark_error(self) -> None:
-        """The Insights model path surfaces BookmarkValidationError.
-
-        On the PR head this silently emitted filterType="number" with
-        filterValue="oops".
-        """
-        with pytest.raises(BookmarkValidationError, match="numeric"):
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "where": [
-                        {
-                            "property": "amount",
-                            "operator": "is greater than",
-                            "value": "oops",
-                        }
-                    ],
-                }
-            )
-
-    def test_flow_model_path_raises_bookmark_error(self) -> None:
-        """The Flow model path surfaces BookmarkValidationError."""
-        with pytest.raises(BookmarkValidationError, match="string"):
-            FlowQuery.model_validate(
-                {
-                    "event": "Login",
-                    "where": [{"property": "name", "operator": "contains", "value": 7}],
-                }
-            )
-
-
-class TestFilterCohortPropertyGuard:
-    """Hand-rolled '$cohorts' filters are rejected at construction.
-
-    Regression tests for finding
-    ``filter-operator-value-shape-not-enforced``: the dict repro
-    ``{"property": "$cohorts", "operator": "contains", "value": "123"}``
-    previously constructed fine, then the Flow build path crashed with
-    a raw internal ``RuntimeError`` while the Insights path silently
-    emitted an ordinary string filter. Cohort membership must go
-    through ``Filter.in_cohort()`` / ``Filter.not_in_cohort()``, which
-    build the internal wire structure the builders require.
-    """
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    _COHORT_REPRO: ClassVar[dict[str, object]] = {
-        "property": "$cohorts",
-        "operator": "contains",
-        "value": "123",
-    }
-
-    def test_hand_rolled_cohorts_contains_rejected(self) -> None:
-        """The exact dict repro is rejected at Filter validation."""
-        with pytest.raises(ValidationError, match="in_cohort"):
-            self._adapter.validate_python(self._COHORT_REPRO)
-
-    def test_hand_rolled_cohorts_equals_rejected(self) -> None:
-        """'$cohorts' with a non-cohort operator is rejected."""
-        with pytest.raises(ValidationError, match="in_cohort"):
-            self._adapter.validate_python(
-                {"property": "$cohorts", "operator": "equals", "value": "123"}
-            )
-
-    def test_hand_rolled_cohorts_malformed_wire_shape_rejected(self) -> None:
-        """A list-of-dicts value missing the 'cohort' key is rejected."""
-        with pytest.raises(ValidationError, match="in_cohort"):
-            self._adapter.validate_python(
-                {
-                    "property": "$cohorts",
-                    "operator": "contains",
-                    "value": [{"not_cohort": 1}],
-                }
-            )
-
-    def test_in_cohort_constructor_still_works(self) -> None:
-        """Filter.in_cohort() output passes the new guard."""
-        f = Filter.in_cohort(123, "Power Users")
-        assert f._property == "$cohorts"
-        assert f._operator == "contains"
-
-    def test_not_in_cohort_constructor_still_works(self) -> None:
-        """Filter.not_in_cohort() output passes the new guard."""
-        f = Filter.not_in_cohort(789, "Bots")
-        assert f._operator == "does not contain"
-
-    def test_insights_model_path_raises_bookmark_error(self) -> None:
-        """Insights path: BookmarkValidationError, not a silent string filter."""
-        with pytest.raises(BookmarkValidationError, match="in_cohort"):
-            InsightsQuery.model_validate(
-                {"events": ["Login"], "where": [dict(self._COHORT_REPRO)]}
-            )
-
-    def test_flow_model_path_raises_bookmark_error(self) -> None:
-        """Flow path: BookmarkValidationError, not a raw RuntimeError."""
-        with pytest.raises(BookmarkValidationError, match="in_cohort"):
-            FlowQuery.model_validate(
-                {"event": "Login", "where": [dict(self._COHORT_REPRO)]}
-            )
-
-    def test_is_set_on_cohorts_allowed(self) -> None:
-        """Filter.is_set('$cohorts') constructs a normal is-set filter.
-
-        Regression for finding
-        ``cohorts-guard-rejects-previously-valid-is-set``: the guard
-        must not reject the value-less presence operators, which built
-        an ordinary filter entry before the guard existed.
-        """
-        f = Filter.is_set("$cohorts")
-        assert f._property == "$cohorts"
-        assert f._operator == "is set"
-        assert f._value is None
-
-    def test_is_not_set_on_cohorts_allowed(self) -> None:
-        """Filter.is_not_set('$cohorts') constructs a normal filter."""
-        f = Filter.is_not_set("$cohorts")
-        assert f._operator == "is not set"
-        assert f._value is None
-
-    def test_dict_path_is_set_on_cohorts_allowed(self) -> None:
-        """The dict/LLM path accepts a value-less is-set on '$cohorts'."""
-        f = self._adapter.validate_python(
-            {"property": "$cohorts", "operator": "is set"}
-        )
-        assert f._operator == "is set"
-        assert f._value is None
-
-    def test_true_operator_on_cohorts_still_rejected(self) -> None:
-        """Value-less boolean operators on '$cohorts' remain rejected."""
-        with pytest.raises(ValidationError, match="in_cohort"):
-            self._adapter.validate_python({"property": "$cohorts", "operator": "true"})
-
-
 class TestUnionAlternativeErrorTranslation:
     """Union-typed fields surface clean errors, not sibling-alternative noise.
 
@@ -2188,7 +1467,15 @@ class TestUnionAlternativeErrorTranslation:
     """
 
     def test_bad_filter_in_union_where_yields_single_error(self) -> None:
-        """A bad Filter dict in a union-typed where yields ONE clean error."""
+        """A bad Filter dict in a union-typed where reports only that field.
+
+        ``NumericComparisonFilter.value`` is ``StrictInt | StrictFloat``,
+        so a bad comparand yields one error per numeric alternative —
+        both pinpointing the same field. What the finding was about is
+        still enforced: no ``FrequencyFilter``-alternative noise
+        (``where[0].event: Field required``), and no leaked union tag in
+        the path.
+        """
         with pytest.raises(BookmarkValidationError) as exc_info:
             InsightsQuery.model_validate(
                 {
@@ -2203,9 +1490,11 @@ class TestUnionAlternativeErrorTranslation:
                 }
             )
         errors = exc_info.value.errors
-        assert len(errors) == 1
-        assert errors[0].path == "where[0]"
-        assert "numeric" in errors[0].message
+        assert {error.path for error in errors} == {
+            "where[0].value.int",
+            "where[0].value.float",
+        }
+        assert all("valid" in error.message for error in errors)
 
     def test_bad_frequency_filter_yields_single_error(self) -> None:
         """A FrequencyFilter value_error is not buried under Filter-alternative noise."""
@@ -2274,76 +1563,6 @@ class TestConstrainedAlternativePathTranslation:
         range_errors = [e for e in errors if "greater than 0" in e.message]
         assert [e.path for e in range_errors] == ["group_by[0].bucket_size"]
         assert all("constrained" not in e.path for e in errors)
-
-
-class TestFilterNoValueOperatorValueRejected:
-    """No-value operators reject a supplied value instead of discarding it.
-
-    Regression tests for finding
-    ``filter-no-value-operators-silently-discard-value``: ``is set`` /
-    ``is not set`` / ``true`` / ``false`` silently nulled a
-    caller-supplied value, running a bare existence check instead of the
-    comparison the caller almost certainly meant (``operator "equals"``)
-    — a semantically different query. The other operator families all
-    reject mismatched values with a targeted ``ValueError``; the
-    no-value family must do the same.
-    """
-
-    _adapter: ClassVar[TypeAdapter[Filter]]
-
-    @classmethod
-    def setup_class(cls) -> None:
-        """Create a shared TypeAdapter for Filter."""
-        cls._adapter = TypeAdapter(Filter)
-
-    @pytest.mark.parametrize("operator", ["is set", "is not set", "true", "false"])
-    def test_no_value_operator_with_value_rejected(self, operator: str) -> None:
-        """Each no-value operator rejects a caller-supplied value."""
-        with pytest.raises(ValidationError, match="does not take a value"):
-            self._adapter.validate_python(
-                {"property": "country", "operator": operator, "value": "US"}
-            )
-
-    def test_is_set_error_suggests_equals(self) -> None:
-        """The is-set rejection points the caller at operator 'equals'."""
-        with pytest.raises(ValidationError, match="did you mean operator 'equals'"):
-            self._adapter.validate_python(
-                {"property": "country", "operator": "is set", "value": "US"}
-            )
-
-    def test_error_reports_original_value(self) -> None:
-        """The rejection message echoes the discarded value."""
-        with pytest.raises(ValidationError, match="'US'"):
-            self._adapter.validate_python(
-                {"property": "country", "operator": "is set", "value": "US"}
-            )
-
-    @pytest.mark.parametrize("operator", ["is set", "is not set", "true", "false"])
-    def test_no_value_operator_without_value_still_accepted(
-        self, operator: str
-    ) -> None:
-        """Omitting the value keeps every no-value operator constructible."""
-        f = self._adapter.validate_python({"property": "country", "operator": operator})
-        assert f._value is None
-
-    def test_classmethods_unaffected(self) -> None:
-        """The value-less classmethod constructors keep working."""
-        assert Filter.is_set("email")._value is None
-        assert Filter.is_not_set("email")._value is None
-        assert Filter.is_true("active")._value is None
-        assert Filter.is_false("active")._value is None
-
-    def test_insights_model_path_raises_bookmark_error(self) -> None:
-        """The Insights model path surfaces BookmarkValidationError."""
-        with pytest.raises(BookmarkValidationError, match="does not take a value"):
-            InsightsQuery.model_validate(
-                {
-                    "events": ["Login"],
-                    "where": [
-                        {"property": "country", "operator": "is set", "value": "US"}
-                    ],
-                }
-            )
 
 
 class TestMetricPercentileValueBounds:
@@ -2633,7 +1852,7 @@ class TestUnionAlternativeLabelRegistry:
         """
         names = _union_alternative_labels(InsightsQuery)
         assert {
-            "#Filter",
+            "#AbstractFilter",
             "#FrequencyFilter",
             "#Metric",
             "#CustomPropertyRef",
@@ -3436,7 +2655,10 @@ class TestDiscriminatedUnionRouting:
                 CohortBreakdown(7),
                 FrequencyBreakdown("Purchase"),
             ],
-            where=[Filter.equals("country", "US"), FrequencyFilter("Login", value=3)],
+            where=[
+                FilterFactory.equals("country", "US"),
+                FrequencyFilter("Login", value=3),
+            ],
         )
         dumped = q.model_dump()
         assert len(dumped["events"]) == 3
@@ -3600,3 +2822,89 @@ class TestCohortNodeMissingOrBogusKind:
         cohort = InlineCohort(kind="group", criteria=[crit])
         assert cohort.kind == "group"
         assert cohort.criteria[0] is crit
+
+
+class TestFilterErrorsSurfaceThroughQueryModels:
+    """A bad filter inside a query model raises ``BookmarkValidationError``.
+
+    The filter rules themselves are specified in
+    ``tests/test_filter_union.py``, against ``Filter`` directly. What
+    these pin is the *propagation*: a nested filter's ``ValidationError``
+    has to reach the caller as this package's own exception, with the
+    reason intact, rather than as a pydantic error, a ``RuntimeError``
+    from the flow builder, or — worse, and the original bug — a silently
+    malformed wire payload.
+    """
+
+    _COHORT_REPRO: ClassVar[dict[str, object]] = {
+        "property": "$cohorts",
+        "operator": "contains",
+        "value": "123",
+    }
+    """A hand-rolled ``$cohorts`` filter, which only the constructors may build."""
+
+    def test_insights_accepts_a_dict_constructed_filter(self) -> None:
+        """A validated filter dict is usable as an ``InsightsQuery.where`` entry."""
+        adapter: TypeAdapter[Filter] = TypeAdapter(Filter)
+        f = adapter.validate_python(
+            {"property": "country", "operator": "equals", "value": "US"}
+        )
+        q = InsightsQuery(events=["Login"], where=[f])
+        assert q.where is not None
+        assert len(q.where) == 1
+
+    def test_insights_path_raises_on_bad_value_shape(self) -> None:
+        """A string comparand under a numeric operator is refused.
+
+        Before the union this silently emitted ``filterType="number"``
+        alongside ``filterValue="oops"``.
+        """
+        with pytest.raises(BookmarkValidationError, match="valid number"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {
+                            "property": "amount",
+                            "operator": "is greater than",
+                            "value": "oops",
+                        }
+                    ],
+                }
+            )
+
+    def test_flow_path_raises_on_bad_value_shape(self) -> None:
+        """A numeric value under a substring operator is refused."""
+        with pytest.raises(BookmarkValidationError, match="string"):
+            FlowQuery.model_validate(
+                {
+                    "event": "Login",
+                    "where": [{"property": "name", "operator": "contains", "value": 7}],
+                }
+            )
+
+    def test_insights_path_raises_on_hand_rolled_cohort(self) -> None:
+        """Insights path refuses it, rather than emitting a string filter."""
+        with pytest.raises(BookmarkValidationError, match="in_cohort"):
+            InsightsQuery.model_validate(
+                {"events": ["Login"], "where": [dict(self._COHORT_REPRO)]}
+            )
+
+    def test_flow_path_raises_on_hand_rolled_cohort(self) -> None:
+        """Flow path refuses it, rather than raising a raw ``RuntimeError``."""
+        with pytest.raises(BookmarkValidationError, match="in_cohort"):
+            FlowQuery.model_validate(
+                {"event": "Login", "where": [dict(self._COHORT_REPRO)]}
+            )
+
+    def test_insights_path_raises_on_value_less_operator_with_value(self) -> None:
+        """``is set`` carrying a value is refused through the model too."""
+        with pytest.raises(BookmarkValidationError, match="does not take a value"):
+            InsightsQuery.model_validate(
+                {
+                    "events": ["Login"],
+                    "where": [
+                        {"property": "country", "operator": "is set", "value": "US"}
+                    ],
+                }
+            )

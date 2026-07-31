@@ -6,7 +6,10 @@ objects into the legacy segfilter dict format used by flows step filters.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
+from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
 from mixpanel_headless._internal.segfilter import (
@@ -14,9 +17,19 @@ from mixpanel_headless._internal.segfilter import (
     _convert_date_format,
     build_segfilter_entry,
 )
-from mixpanel_headless.types import Filter
+from mixpanel_headless.types import (
+    EqualityFilter,
+    Filter,
+    FilterFactory,
+    NumericComparisonFilter,
+    NumericRangeFilter,
+    PresenceFilter,
+)
 
 _INVALID_OPERATOR = (ValueError, PydanticValidationError)
+
+_ADAPTER: TypeAdapter[Any] = TypeAdapter(Filter)
+"""Routes a raw payload to its union member — the dict/LLM entry point."""
 
 # =============================================================================
 # String Operators
@@ -27,56 +40,56 @@ class TestSegfilterStringOperators:
     """Conversion of string-typed Filter operators to segfilter format."""
 
     def test_equals(self) -> None:
-        """Filter.equals produces operator '==' with list operand."""
-        f = Filter.equals("country", "US")
+        """FilterFactory.equals produces operator '==' with list operand."""
+        f = FilterFactory.equals("country", "US")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "=="
         assert result["filter"]["operand"] == ["US"]
 
     def test_equals_multi_value(self) -> None:
-        """Filter.equals with a list produces operator '==' with list operand."""
-        f = Filter.equals("country", ["US", "UK"])
+        """FilterFactory.equals with a list produces operator '==' with list operand."""
+        f = FilterFactory.equals("country", ["US", "UK"])
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "=="
         assert result["filter"]["operand"] == ["US", "UK"]
 
     def test_not_equals(self) -> None:
-        """Filter.not_equals produces operator '!=' with list operand."""
-        f = Filter.not_equals("country", "US")
+        """FilterFactory.not_equals produces operator '!=' with list operand."""
+        f = FilterFactory.not_equals("country", "US")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "!="
         assert result["filter"]["operand"] == ["US"]
 
     def test_contains(self) -> None:
-        """Filter.contains produces operator 'in' with string operand."""
-        f = Filter.contains("name", "john")
+        """FilterFactory.contains produces operator 'in' with string operand."""
+        f = FilterFactory.contains("name", "john")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "in"
         assert result["filter"]["operand"] == "john"
 
     def test_not_contains(self) -> None:
-        """Filter.not_contains produces operator 'not in' with string operand."""
-        f = Filter.not_contains("name", "john")
+        """FilterFactory.not_contains produces operator 'not in' with string operand."""
+        f = FilterFactory.not_contains("name", "john")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "not in"
         assert result["filter"]["operand"] == "john"
 
     def test_is_set(self) -> None:
-        """Filter.is_set produces operator 'set' with empty string operand."""
-        f = Filter.is_set("email")
+        """FilterFactory.is_set produces operator 'set' with empty string operand."""
+        f = FilterFactory.is_set("email")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "set"
         assert result["filter"]["operand"] == ""
 
     def test_is_not_set(self) -> None:
-        """Filter.is_not_set produces operator 'not set' with empty string operand."""
-        f = Filter.is_not_set("email")
+        """FilterFactory.is_not_set produces operator 'not set' with empty string operand."""
+        f = FilterFactory.is_not_set("email")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "not set"
@@ -92,16 +105,16 @@ class TestSegfilterNumberOperators:
     """Conversion of number-typed Filter operators to segfilter format."""
 
     def test_greater_than(self) -> None:
-        """Filter.greater_than produces operator '>' with stringified operand."""
-        f = Filter.greater_than("amount", 50)
+        """FilterFactory.greater_than produces operator '>' with stringified operand."""
+        f = FilterFactory.greater_than("amount", 50)
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == ">"
         assert result["filter"]["operand"] == "50"
 
     def test_less_than(self) -> None:
-        """Filter.less_than produces operator '<' with stringified operand."""
-        f = Filter.less_than("amount", 50)
+        """FilterFactory.less_than produces operator '<' with stringified operand."""
+        f = FilterFactory.less_than("amount", 50)
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "<"
@@ -109,7 +122,7 @@ class TestSegfilterNumberOperators:
 
     def test_operand_stringified_int(self) -> None:
         """Numeric integer values are stringified in segfilter output."""
-        f = Filter.greater_than("count", 100)
+        f = FilterFactory.greater_than("count", 100)
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operand"] == "100"
@@ -117,15 +130,15 @@ class TestSegfilterNumberOperators:
 
     def test_operand_stringified_float(self) -> None:
         """Numeric float values are stringified in segfilter output."""
-        f = Filter.greater_than("price", 9.99)
+        f = FilterFactory.greater_than("price", 9.99)
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operand"] == "9.99"
         assert isinstance(result["filter"]["operand"], str)
 
     def test_between(self) -> None:
-        """Filter.between produces operator '><' with stringified list operand."""
-        f = Filter.between("amount", 10, 100)
+        """FilterFactory.between produces operator '><' with stringified list operand."""
+        f = FilterFactory.between("amount", 10, 100)
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "><"
@@ -134,16 +147,16 @@ class TestSegfilterNumberOperators:
     def test_number_is_set(self) -> None:
         """Number is_set uses 'is set' operator with empty string operand.
 
-        Note: Filter.is_set always creates a string-typed filter, so this
+        Note: FilterFactory.is_set always creates a string-typed filter, so this
         test constructs a number-typed filter directly to verify the number
         operator mapping handles is_set correctly.
         """
-        f = Filter(
-            _property="score",
-            _operator="is set",
-            _value=None,
-            _property_type="number",
-            _resource_type="events",
+        f = PresenceFilter(
+            property="score",
+            operator="is set",
+            value=None,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -152,12 +165,12 @@ class TestSegfilterNumberOperators:
 
     def test_number_is_not_set(self) -> None:
         """Number is_not_set uses 'is not set' operator with empty string operand."""
-        f = Filter(
-            _property="score",
-            _operator="is not set",
-            _value=None,
-            _property_type="number",
-            _resource_type="events",
+        f = PresenceFilter(
+            property="score",
+            operator="is not set",
+            value=None,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -166,12 +179,12 @@ class TestSegfilterNumberOperators:
 
     def test_equals_number(self) -> None:
         """Number 'equals' maps to '==' with stringified operand."""
-        f = Filter(
-            _property="count",
-            _operator="equals",
-            _value=42,
-            _property_type="number",
-            _resource_type="events",
+        f = EqualityFilter(
+            property="count",
+            operator="equals",
+            value=42,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -181,22 +194,23 @@ class TestSegfilterNumberOperators:
     def test_is_equal_to_number_rejected(self) -> None:
         """'is equal to' is not a valid FilterOperator and is rejected."""
         with pytest.raises(_INVALID_OPERATOR):
-            Filter(
-                _property="count",
-                _operator="is equal to",  # type: ignore[arg-type]
-                _value=42,
-                _property_type="number",
-                _resource_type="events",
+            _ADAPTER.validate_python(
+                {
+                    "property": "count",
+                    "operator": "is equal to",
+                    "value": 42,
+                    "property_type": "number",
+                }
             )
 
     def test_not_equals_number(self) -> None:
         """Number 'does not equal' maps to '!=' with stringified operand."""
-        f = Filter(
-            _property="count",
-            _operator="does not equal",
-            _value=7,
-            _property_type="number",
-            _resource_type="events",
+        f = EqualityFilter(
+            property="count",
+            operator="does not equal",
+            value=7,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -205,12 +219,12 @@ class TestSegfilterNumberOperators:
 
     def test_is_at_least(self) -> None:
         """Number 'is at least' maps to '>=' with stringified operand."""
-        f = Filter(
-            _property="count",
-            _operator="is at least",
-            _value=5,
-            _property_type="number",
-            _resource_type="events",
+        f = NumericComparisonFilter(
+            property="count",
+            operator="is at least",
+            value=5,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -219,12 +233,12 @@ class TestSegfilterNumberOperators:
 
     def test_is_at_most(self) -> None:
         """Number 'is at most' maps to '<=' with stringified operand."""
-        f = Filter(
-            _property="count",
-            _operator="is at most",
-            _value=10,
-            _property_type="number",
-            _resource_type="events",
+        f = NumericComparisonFilter(
+            property="count",
+            operator="is at most",
+            value=10,
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -233,12 +247,12 @@ class TestSegfilterNumberOperators:
 
     def test_not_between(self) -> None:
         """Number 'not between' maps to '!><' with stringified list operand."""
-        f = Filter(
-            _property="amount",
-            _operator="not between",
-            _value=[10, 100],  # type: ignore[arg-type]  # testing runtime int list
-            _property_type="number",
-            _resource_type="events",
+        f = NumericRangeFilter(
+            property="amount",
+            operator="not between",
+            value=[10, 100],
+            property_type="number",
+            resource_type="events",
         )
         result = build_segfilter_entry(f)
 
@@ -255,16 +269,16 @@ class TestSegfilterBooleanOperators:
     """Conversion of boolean-typed Filter operators to segfilter format."""
 
     def test_is_true(self) -> None:
-        """Filter.is_true produces operand 'true' with NO 'operator' key."""
-        f = Filter.is_true("verified")
+        """FilterFactory.is_true produces operand 'true' with NO 'operator' key."""
+        f = FilterFactory.is_true("verified")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operand"] == "true"
         assert "operator" not in result["filter"]
 
     def test_is_false(self) -> None:
-        """Filter.is_false produces operand 'false' with NO 'operator' key."""
-        f = Filter.is_false("verified")
+        """FilterFactory.is_false produces operand 'false' with NO 'operator' key."""
+        f = FilterFactory.is_false("verified")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operand"] == "false"
@@ -280,40 +294,40 @@ class TestSegfilterDatetimeOperators:
     """Conversion of datetime-typed Filter operators to segfilter format."""
 
     def test_on(self) -> None:
-        """Filter.on produces operator '==' with MM/DD/YYYY operand."""
-        f = Filter.on("$time", "2026-01-15")
+        """FilterFactory.on produces operator '==' with MM/DD/YYYY operand."""
+        f = FilterFactory.on("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "=="
         assert result["filter"]["operand"] == "01/15/2026"
 
     def test_not_on(self) -> None:
-        """Filter.not_on produces operator '!=' with MM/DD/YYYY operand."""
-        f = Filter.not_on("$time", "2026-01-15")
+        """FilterFactory.not_on produces operator '!=' with MM/DD/YYYY operand."""
+        f = FilterFactory.not_on("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "!="
         assert result["filter"]["operand"] == "01/15/2026"
 
     def test_before(self) -> None:
-        """Filter.before produces operator '>' with MM/DD/YYYY operand."""
-        f = Filter.before("$time", "2026-01-15")
+        """FilterFactory.before produces operator '>' with MM/DD/YYYY operand."""
+        f = FilterFactory.before("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == ">"
         assert result["filter"]["operand"] == "01/15/2026"
 
     def test_since(self) -> None:
-        """Filter.since produces operator '<' with MM/DD/YYYY operand."""
-        f = Filter.since("$time", "2026-01-15")
+        """FilterFactory.since produces operator '<' with MM/DD/YYYY operand."""
+        f = FilterFactory.since("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "<"
         assert result["filter"]["operand"] == "01/15/2026"
 
     def test_in_the_last(self) -> None:
-        """Filter.in_the_last produces operator '>' with quantity and unit."""
-        f = Filter.in_the_last("$time", 7, "day")
+        """FilterFactory.in_the_last produces operator '>' with quantity and unit."""
+        f = FilterFactory.in_the_last("$time", 7, "day")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == ">"
@@ -321,8 +335,8 @@ class TestSegfilterDatetimeOperators:
         assert result["filter"]["unit"] == "days"
 
     def test_not_in_the_last(self) -> None:
-        """Filter.not_in_the_last produces operator '>' with quantity and unit."""
-        f = Filter.not_in_the_last("$time", 3, "week")
+        """FilterFactory.not_in_the_last produces operator '>' with quantity and unit."""
+        f = FilterFactory.not_in_the_last("$time", 3, "week")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == ">"
@@ -330,8 +344,8 @@ class TestSegfilterDatetimeOperators:
         assert result["filter"]["unit"] == "weeks"
 
     def test_date_between(self) -> None:
-        """Filter.date_between produces operator '><' with MM/DD/YYYY list."""
-        f = Filter.date_between("$time", "2026-01-01", "2026-01-31")
+        """FilterFactory.date_between produces operator '><' with MM/DD/YYYY list."""
+        f = FilterFactory.date_between("$time", "2026-01-01", "2026-01-31")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "><"
@@ -339,28 +353,28 @@ class TestSegfilterDatetimeOperators:
 
     def test_date_format_conversion(self) -> None:
         """YYYY-MM-DD dates are converted to MM/DD/YYYY in output."""
-        f = Filter.on("$time", "2026-03-05")
+        f = FilterFactory.on("$time", "2026-03-05")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operand"] == "03/05/2026"
 
     def test_no_unit_for_absolute_dates(self) -> None:
         """Absolute date filters do NOT have a 'unit' key in filter dict."""
-        f = Filter.on("$time", "2026-01-15")
+        f = FilterFactory.on("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert "unit" not in result["filter"]
 
     def test_in_the_last_hour_unit(self) -> None:
         """Relative date with hour unit pluralizes to 'hours'."""
-        f = Filter.in_the_last("$time", 24, "hour")
+        f = FilterFactory.in_the_last("$time", 24, "hour")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["unit"] == "hours"
 
     def test_in_the_last_month_unit(self) -> None:
         """Relative date with month unit pluralizes to 'months'."""
-        f = Filter.in_the_last("$time", 3, "month")
+        f = FilterFactory.in_the_last("$time", 3, "month")
         result = build_segfilter_entry(f)
 
         assert result["filter"]["unit"] == "months"
@@ -372,18 +386,18 @@ class TestSegfilterDatetimeOperators:
 
 
 class TestSegfilterResourceTypeMapping:
-    """Mapping of Filter._resource_type to segfilter property.source."""
+    """Mapping of Filter.resource_type to segfilter property.source."""
 
     def test_events_maps_to_properties(self) -> None:
         """resource_type 'events' maps to property.source 'properties'."""
-        f = Filter.equals("country", "US", resource_type="events")
+        f = FilterFactory.equals("country", "US", resource_type="events")
         result = build_segfilter_entry(f)
 
         assert result["property"]["source"] == "properties"
 
     def test_people_maps_to_user(self) -> None:
         """resource_type 'people' maps to property.source 'user'."""
-        f = Filter.equals("plan", "premium", resource_type="people")
+        f = FilterFactory.equals("plan", "premium", resource_type="people")
         result = build_segfilter_entry(f)
 
         assert result["property"]["source"] == "user"
@@ -404,7 +418,7 @@ class TestSegfilterStructure:
 
     def test_top_level_keys(self) -> None:
         """Output dict has 'property', 'type', 'selected_property_type', 'filter'."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         result = build_segfilter_entry(f)
 
         assert "property" in result
@@ -414,7 +428,7 @@ class TestSegfilterStructure:
 
     def test_property_structure(self) -> None:
         """property dict contains 'name', 'source', 'type'."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         result = build_segfilter_entry(f)
 
         prop = result["property"]
@@ -424,7 +438,7 @@ class TestSegfilterStructure:
 
     def test_type_consistency(self) -> None:
         """type, selected_property_type, and property.type are all the same."""
-        f = Filter.greater_than("amount", 50)
+        f = FilterFactory.greater_than("amount", 50)
         result = build_segfilter_entry(f)
 
         assert result["type"] == "number"
@@ -433,7 +447,7 @@ class TestSegfilterStructure:
 
     def test_boolean_type_consistency(self) -> None:
         """Boolean filters have 'boolean' in all type fields."""
-        f = Filter.is_true("verified")
+        f = FilterFactory.is_true("verified")
         result = build_segfilter_entry(f)
 
         assert result["type"] == "boolean"
@@ -442,7 +456,7 @@ class TestSegfilterStructure:
 
     def test_datetime_type_consistency(self) -> None:
         """Datetime filters have 'datetime' in all type fields."""
-        f = Filter.on("$time", "2026-01-15")
+        f = FilterFactory.on("$time", "2026-01-15")
         result = build_segfilter_entry(f)
 
         assert result["type"] == "datetime"
@@ -451,7 +465,7 @@ class TestSegfilterStructure:
 
     def test_property_name_preserved(self) -> None:
         """The property name from the Filter is used as-is."""
-        f = Filter.equals("$browser", "Chrome")
+        f = FilterFactory.equals("$browser", "Chrome")
         result = build_segfilter_entry(f)
 
         assert result["property"]["name"] == "$browser"
@@ -489,44 +503,42 @@ class TestSegfilterEdgeCases:
     def test_unknown_operator_raises(self) -> None:
         """Unknown string operator is rejected."""
         with pytest.raises(_INVALID_OPERATOR):
-            Filter(
-                _property="x",
-                _operator="magical_unicorn",  # type: ignore[arg-type]
-                _value="y",
-                _property_type="string",
-                _resource_type="events",
+            _ADAPTER.validate_python(
+                {"property": "x", "operator": "magical_unicorn", "value": "y"}
             )
 
     def test_unknown_number_operator_raises(self) -> None:
         """Unknown number operator is rejected."""
         with pytest.raises(_INVALID_OPERATOR):
-            Filter(
-                _property="x",
-                _operator="magical_unicorn",  # type: ignore[arg-type]
-                _value=1,
-                _property_type="number",
-                _resource_type="events",
+            _ADAPTER.validate_python(
+                {
+                    "property": "x",
+                    "operator": "magical_unicorn",
+                    "value": 1,
+                    "property_type": "number",
+                }
             )
 
     def test_unknown_datetime_operator_raises(self) -> None:
         """Unknown datetime operator is rejected."""
         with pytest.raises(_INVALID_OPERATOR):
-            Filter(
-                _property="x",
-                _operator="magical_unicorn",  # type: ignore[arg-type]
-                _value="2026-01-01",
-                _property_type="datetime",
-                _resource_type="events",
+            _ADAPTER.validate_python(
+                {
+                    "property": "x",
+                    "operator": "magical_unicorn",
+                    "value": "2026-01-01",
+                    "property_type": "datetime",
+                }
             )
 
     def test_unknown_property_type_raises(self) -> None:
         """Unknown property type raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="equals",
-            _value="y",
-            _property_type="list",
-            _resource_type="events",
+        f = EqualityFilter(
+            property="x",
+            operator="equals",
+            value="y",
+            property_type="list",
+            resource_type="events",
         )
         with pytest.raises(ValueError, match="Unsupported property type"):
             build_segfilter_entry(f)

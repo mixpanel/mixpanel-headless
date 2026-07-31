@@ -11,10 +11,10 @@ structural layout (nested ``property``/``filter`` dicts).
 
 Example:
     ```python
-    from mixpanel_headless.types import Filter
+    from mixpanel_headless import FilterFactory
     from mixpanel_headless._internal.segfilter import build_segfilter_entry
 
-    f = Filter.equals("country", "US")
+    f = FilterFactory.equals("country", "US")
     entry = build_segfilter_entry(f)
     # {
     #     "property": {"name": "country", "source": "properties", "type": "string"},
@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mixpanel_headless.types import Filter
+from mixpanel_headless.types import AbstractFilter, RelativeDateFilter
 
 # =============================================================================
 # Constants
@@ -41,7 +41,7 @@ RESOURCE_TYPE_MAP: dict[str, str] = {
     "cohorts": "cohort",
     "other": "other",
 }
-"""Maps ``Filter._resource_type`` to segfilter ``property.source``."""
+"""Maps ``Filter.resource_type`` to segfilter ``property.source``."""
 
 STRING_OPERATOR_MAP: dict[str, str] = {
     "equals": "==",
@@ -130,8 +130,8 @@ def _build_string_filter(operator: str, value: Any) -> dict[str, Any]:
     """Build the ``filter`` dict for a string-typed property.
 
     Args:
-        operator: The ``Filter._operator`` value (e.g. ``"equals"``).
-        value: The ``Filter._value`` (list, str, or None).
+        operator: The ``Filter.operator`` value (e.g. ``"equals"``).
+        value: The ``Filter.value`` (list, str, or None).
 
     Returns:
         Dict with ``operator`` and ``operand`` keys.
@@ -159,8 +159,8 @@ def _build_number_filter(operator: str, value: Any) -> dict[str, Any]:
     """Build the ``filter`` dict for a number-typed property.
 
     Args:
-        operator: The ``Filter._operator`` value (e.g. ``"is greater than"``).
-        value: The ``Filter._value`` (numeric, list, or None).
+        operator: The ``Filter.operator`` value (e.g. ``"is greater than"``).
+        value: The ``Filter.value`` (numeric, list, or None).
 
     Returns:
         Dict with ``operator`` and ``operand`` keys.
@@ -192,7 +192,7 @@ def _build_boolean_filter(operator: str) -> dict[str, Any]:
     Boolean segfilters have NO ``operator`` key -- only ``operand``.
 
     Args:
-        operator: The ``Filter._operator`` value (``"true"`` or ``"false"``).
+        operator: The ``Filter.operator`` value (``"true"`` or ``"false"``).
 
     Returns:
         Dict with only an ``operand`` key (no ``operator``).
@@ -211,10 +211,10 @@ def _build_datetime_filter(
     - Relative date: operand is integer quantity, plus ``unit`` key
 
     Args:
-        operator: The ``Filter._operator`` value (e.g. ``"was on"``).
-        value: The ``Filter._value`` (date string, list of date strings,
+        operator: The ``Filter.operator`` value (e.g. ``"was on"``).
+        value: The ``Filter.value`` (date string, list of date strings,
             or integer quantity for relative dates).
-        date_unit: The ``Filter._date_unit`` (e.g. ``"day"``), or ``None``
+        date_unit: The ``Filter.date_unit`` (e.g. ``"day"``), or ``None``
             for absolute date filters.
 
     Returns:
@@ -249,7 +249,7 @@ def _build_datetime_filter(
 # =============================================================================
 
 
-def build_segfilter_entry(f: Filter) -> dict[str, Any]:
+def build_segfilter_entry(f: AbstractFilter) -> dict[str, Any]:
     """Convert a Filter to segfilter format for flows step filters.
 
     Transforms a typed ``Filter`` object into the legacy segfilter dict
@@ -259,7 +259,7 @@ def build_segfilter_entry(f: Filter) -> dict[str, Any]:
 
     Args:
         f: A ``Filter`` instance created via one of its class methods
-            (e.g. ``Filter.equals()``, ``Filter.greater_than()``).
+            (e.g. ``FilterFactory.equals()``, ``FilterFactory.greater_than()``).
 
     Returns:
         A dict with the segfilter structure:
@@ -278,23 +278,24 @@ def build_segfilter_entry(f: Filter) -> dict[str, Any]:
         from mixpanel_headless.types import Filter
         from mixpanel_headless._internal.segfilter import build_segfilter_entry
 
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         entry = build_segfilter_entry(f)
         assert entry["filter"]["operator"] == "=="
         assert entry["filter"]["operand"] == ["US"]
         ```
     """
-    prop_type = f._property_type
-    source = RESOURCE_TYPE_MAP.get(f._resource_type, f._resource_type)
+    prop_type = f.property_type
+    source = RESOURCE_TYPE_MAP.get(f.resource_type, f.resource_type)
 
     if prop_type == "string":
-        filter_dict = _build_string_filter(f._operator, f._value)
+        filter_dict = _build_string_filter(f.operator, f.value)
     elif prop_type == "number":
-        filter_dict = _build_number_filter(f._operator, f._value)
+        filter_dict = _build_number_filter(f.operator, f.value)
     elif prop_type == "boolean":
-        filter_dict = _build_boolean_filter(f._operator)
+        filter_dict = _build_boolean_filter(f.operator)
     elif prop_type == "datetime":
-        filter_dict = _build_datetime_filter(f._operator, f._value, f._date_unit)
+        unit = f.date_unit if isinstance(f, RelativeDateFilter) else None
+        filter_dict = _build_datetime_filter(f.operator, f.value, unit)
     else:
         raise ValueError(
             f"Unsupported property type '{prop_type}'. "
@@ -303,7 +304,7 @@ def build_segfilter_entry(f: Filter) -> dict[str, Any]:
 
     return {
         "property": {
-            "name": f._property,
+            "name": f.property,
             "source": source,
             "type": prop_type,
         },

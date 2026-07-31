@@ -23,7 +23,7 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_group_section,
     build_time_section,
 )
-from mixpanel_headless.types import Filter, GroupBy
+from mixpanel_headless.types import FilterFactory, GroupBy
 from tests.conftest import make_session
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -173,7 +173,7 @@ class TestFilterSectionEquivalence:
             prop: Property name.
             value: Filter value.
         """
-        f = Filter.equals(prop, value)
+        f = FilterFactory.equals(prop, value)
         ws = _make_workspace()
         params = ws._build_query_params(
             events=["TestEvent"],
@@ -338,7 +338,7 @@ class TestGroupSectionEquivalence:
 
 
 # =============================================================================
-# Round-trip invariants for Filter.list_contains
+# Round-trip invariants for FilterFactory.list_contains
 # =============================================================================
 
 
@@ -352,7 +352,7 @@ _subprop_names = st.text(
 
 
 class TestListContainsRoundTrip:
-    """Round-trip invariants for ``Filter.list_contains`` serialization."""
+    """Round-trip invariants for ``FilterFactory.list_contains`` serialization."""
 
     @given(
         prop=property_names,
@@ -369,7 +369,7 @@ class TestListContainsRoundTrip:
         self, prop: str, pairs: dict[str, str], quantifier: str
     ) -> None:
         """Kwargs shorthand always emits the listItemFilters wire shape."""
-        f = Filter.list_contains(prop, quantifier=quantifier, **pairs)  # type: ignore[arg-type]
+        f = FilterFactory.list_contains(prop, quantifier=quantifier, **pairs)  # type: ignore[arg-type]
         entry = build_filter_entry(f)
         assert entry["filterType"] == "object"
         assert entry["defaultType"] == "object"

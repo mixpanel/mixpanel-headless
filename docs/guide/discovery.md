@@ -105,7 +105,7 @@ Some Mixpanel event properties are **lists of objects** — for example, a `cart
 
 Results are alphabetically sorted by `name`. Subproperties whose values are themselves dicts/lists are silently skipped (only scalar sub-values are reportable). When a sub-key is observed with mixed scalar shapes, with both scalar and dict shapes, or with only `null` values, the call emits a `UserWarning`.
 
-The discovered names and types feed directly into [`Filter.list_contains`](query.md#list-of-object-filters) and [`GroupBy.list_item`](query.md#list-of-object-breakdowns) for filtering and breaking down by subproperty values.
+The discovered names and types feed directly into [`FilterFactory.list_contains`](query.md#list-of-object-filters) and [`GroupBy.list_item`](query.md#list-of-object-breakdowns) for filtering and breaking down by subproperty values.
 
 ### SubPropertyInfo
 

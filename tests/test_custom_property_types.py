@@ -23,7 +23,7 @@ from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import FunnelQuery, InsightsQuery, RetentionQuery
 from mixpanel_headless.types import (
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     GroupBy,
     InlineCustomProperty,
     Metric,
@@ -268,23 +268,23 @@ class TestTypeWidening:
         assert isinstance(g.property, InlineCustomProperty)
 
     def test_filter_equals_accepts_custom_property_ref(self) -> None:
-        """Filter.equals() accepts CustomPropertyRef in property position."""
-        f = Filter.equals(property=CustomPropertyRef(42), value="Enterprise")
+        """FilterFactory.equals() accepts CustomPropertyRef in property position."""
+        f = FilterFactory.equals(property=CustomPropertyRef(42), value="Enterprise")
 
-        assert isinstance(f._property, CustomPropertyRef)
+        assert isinstance(f.property, CustomPropertyRef)
 
     def test_filter_greater_than_accepts_inline(self) -> None:
-        """Filter.greater_than() accepts InlineCustomProperty."""
+        """FilterFactory.greater_than() accepts InlineCustomProperty."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="qty")
-        f = Filter.greater_than(property=icp, value=100)
+        f = FilterFactory.greater_than(property=icp, value=100)
 
-        assert isinstance(f._property, InlineCustomProperty)
+        assert isinstance(f.property, InlineCustomProperty)
 
     def test_filter_is_set_accepts_custom_property_ref(self) -> None:
-        """Filter.is_set() accepts CustomPropertyRef."""
-        f = Filter.is_set(property=CustomPropertyRef(42))
+        """FilterFactory.is_set() accepts CustomPropertyRef."""
+        f = FilterFactory.is_set(property=CustomPropertyRef(42))
 
-        assert isinstance(f._property, CustomPropertyRef)
+        assert isinstance(f.property, CustomPropertyRef)
 
 
 # =============================================================================
@@ -491,7 +491,9 @@ class TestCustomPropertyValidationFilterPosition:
                 InsightsQuery(
                     events=[Metric("Purchase")],
                     where=[
-                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                        FilterFactory.greater_than(
+                            property=CustomPropertyRef(0), value=100
+                        )
                     ],
                 )
             )
@@ -549,7 +551,9 @@ class TestCustomPropertyValidationFunnelRetention:
                 FunnelQuery(
                     steps=["Signup", "Purchase"],
                     where=[
-                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                        FilterFactory.greater_than(
+                            property=CustomPropertyRef(0), value=100
+                        )
                     ],
                 )
             )
@@ -562,7 +566,9 @@ class TestCustomPropertyValidationFunnelRetention:
                     born_event="Signup",
                     return_event="Login",
                     where=[
-                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                        FilterFactory.greater_than(
+                            property=CustomPropertyRef(0), value=100
+                        )
                     ],
                 )
             )

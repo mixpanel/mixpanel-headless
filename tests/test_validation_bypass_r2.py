@@ -23,7 +23,7 @@ from mixpanel_headless.exceptions import BookmarkValidationError, ValidationErro
 from mixpanel_headless.query_models import FlowQuery, InsightsQuery, RetentionQuery
 from mixpanel_headless.types import (
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     FlowStep,
     InlineCustomProperty,
     Metric,
@@ -75,7 +75,7 @@ class TestR2V1FlowStepFiltersCPFixed:
                 FlowQuery(
                     event=FlowStep(
                         "Purchase",
-                        filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(0))],
                     ),
                     last=7,
                 )
@@ -88,7 +88,7 @@ class TestR2V1FlowStepFiltersCPFixed:
                 FlowQuery(
                     event=FlowStep(
                         "Purchase",
-                        filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(-1))],
                     ),
                     last=7,
                 )
@@ -105,7 +105,7 @@ class TestR2V1FlowStepFiltersCPFixed:
                 FlowQuery(
                     event=FlowStep(
                         "Purchase",
-                        filters=[Filter.is_set(property=bad_cp)],
+                        filters=[FilterFactory.is_set(property=bad_cp)],
                     ),
                     last=7,
                 )
@@ -117,7 +117,7 @@ class TestR2V1FlowStepFiltersCPFixed:
             FlowQuery(
                 event=FlowStep(
                     "Purchase",
-                    filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                    filters=[FilterFactory.is_set(property=CustomPropertyRef(42))],
                 ),
                 last=7,
             )
@@ -140,7 +140,7 @@ class TestR2V2RetentionEventFiltersCPFixed:
                 RetentionQuery(
                     born_event=RetentionEvent(
                         "Signup",
-                        filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(0))],
                     ),
                     return_event="Login",
                     last=7,
@@ -155,7 +155,7 @@ class TestR2V2RetentionEventFiltersCPFixed:
                     born_event="Signup",
                     return_event=RetentionEvent(
                         "Login",
-                        filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(0))],
                     ),
                     last=7,
                 )
@@ -172,7 +172,7 @@ class TestR2V2RetentionEventFiltersCPFixed:
                 RetentionQuery(
                     born_event=RetentionEvent(
                         "Signup",
-                        filters=[Filter.is_set(property=bad_cp)],
+                        filters=[FilterFactory.is_set(property=bad_cp)],
                     ),
                     return_event="Login",
                     last=7,
@@ -185,7 +185,7 @@ class TestR2V2RetentionEventFiltersCPFixed:
             RetentionQuery(
                 born_event=RetentionEvent(
                     "Signup",
-                    filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                    filters=[FilterFactory.is_set(property=CustomPropertyRef(42))],
                 ),
                 return_event="Login",
                 last=7,
@@ -208,7 +208,7 @@ class TestR2V3NaNFilterFixed:
             ws.build_params(
                 InsightsQuery(
                     events=[Metric("AnyEvent")],
-                    where=[Filter.greater_than("age", float("nan"))],
+                    where=[FilterFactory.greater_than("age", float("nan"))],
                     last=7,
                 )
             )
@@ -221,7 +221,7 @@ class TestR2V3NaNFilterFixed:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.greater_than("age", float("nan"))],
+                            filters=[FilterFactory.greater_than("age", float("nan"))],
                         ),
                     ],
                     last=7,
@@ -233,7 +233,7 @@ class TestR2V3NaNFilterFixed:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("AnyEvent")],
-                where=[Filter.greater_than("age", 18)],
+                where=[FilterFactory.greater_than("age", 18)],
                 last=7,
             )
         )
@@ -254,7 +254,7 @@ class TestR2V4InfFilterFixed:
             ws.build_params(
                 InsightsQuery(
                     events=[Metric("AnyEvent")],
-                    where=[Filter.greater_than("age", float("inf"))],
+                    where=[FilterFactory.greater_than("age", float("inf"))],
                     last=7,
                 )
             )
@@ -265,7 +265,7 @@ class TestR2V4InfFilterFixed:
             ws.build_params(
                 InsightsQuery(
                     events=[Metric("AnyEvent")],
-                    where=[Filter.greater_than("age", float("-inf"))],
+                    where=[FilterFactory.greater_than("age", float("-inf"))],
                     last=7,
                 )
             )
@@ -275,7 +275,7 @@ class TestR2V4InfFilterFixed:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("AnyEvent")],
-                where=[Filter.greater_than("age", 1e15)],
+                where=[FilterFactory.greater_than("age", 1e15)],
                 last=7,
             )
         )
@@ -298,8 +298,8 @@ class TestR2CombinedFixes:
                     event=FlowStep(
                         "Purchase",
                         filters=[
-                            Filter.is_set(property=CustomPropertyRef(0)),
-                            Filter.greater_than("amount", float("nan")),
+                            FilterFactory.is_set(property=CustomPropertyRef(0)),
+                            FilterFactory.greater_than("amount", float("nan")),
                         ],
                     ),
                     last=7,
@@ -313,10 +313,10 @@ class TestR2CombinedFixes:
                 RetentionQuery(
                     born_event=RetentionEvent(
                         "Signup",
-                        filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(-1))],
                     ),
                     return_event="Login",
-                    where=[Filter.greater_than("age", float("inf"))],
+                    where=[FilterFactory.greater_than("age", float("inf"))],
                     last=7,
                 )
             )

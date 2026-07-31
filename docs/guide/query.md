@@ -19,7 +19,7 @@ Build typed analytics queries against Mixpanel's Insights engine — the same en
 | Per-user aggregation | Not available | `per_user="average"` |
 | Rolling / cumulative analysis | Not available | `rolling=7` |
 | Percentiles (p25/p75/p90/p99) | Not available | `math="p90"` |
-| Typed filters | Expression strings | `Filter.equals("country", "US")` |
+| Typed filters | Expression strings | `FilterFactory.equals("country", "US")` |
 | Numeric bucketed breakdowns | Not available | `GroupBy("revenue", property_type="number")` |
 | Save query as a report | N/A | `result.params` → `create_bookmark()` |
 
@@ -222,14 +222,14 @@ from mixpanel_headless import Filter, InsightsQuery
 
 # Single filter
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.equals("country", "US")],
+    events=["Purchase"], where=[FilterFactory.equals("country", "US")],
 ))
 
 # Multiple filters (combined with AND)
 result = ws.query(InsightsQuery(
     events=["Purchase"], where=[
-        Filter.equals("country", "US"),
-        Filter.greater_than("amount", 50),
+        FilterFactory.equals("country", "US"),
+        FilterFactory.greater_than("amount", 50),
     ],
 ))
 ```
@@ -239,50 +239,50 @@ result = ws.query(InsightsQuery(
 **String filters:**
 
 ```python
-Filter.equals("browser", "Chrome")           # equals value
-Filter.equals("browser", ["Chrome", "Firefox"])  # equals any in list
-Filter.not_equals("browser", "Safari")        # does not equal
-Filter.contains("email", "@company.com")      # contains substring
-Filter.not_contains("url", "staging")         # does not contain
-Filter.starts_with("email", "admin")          # prefix match
-Filter.ends_with("email", "@company.com")     # suffix match
+FilterFactory.equals("browser", "Chrome")           # equals value
+FilterFactory.equals("browser", ["Chrome", "Firefox"])  # equals any in list
+FilterFactory.not_equals("browser", "Safari")        # does not equal
+FilterFactory.contains("email", "@company.com")      # contains substring
+FilterFactory.not_contains("url", "staging")         # does not contain
+FilterFactory.starts_with("email", "admin")          # prefix match
+FilterFactory.ends_with("email", "@company.com")     # suffix match
 ```
 
 **Numeric filters:**
 
 ```python
-Filter.greater_than("amount", 100)            # > 100
-Filter.less_than("age", 65)                   # < 65
-Filter.between("amount", 10, 100)             # 10 <= x <= 100
-Filter.not_between("age", 18, 65)             # outside a range
-Filter.at_least("score", 80)                  # >= 80
-Filter.at_most("errors", 5)                   # <= 5
+FilterFactory.greater_than("amount", 100)            # > 100
+FilterFactory.less_than("age", 65)                   # < 65
+FilterFactory.between("amount", 10, 100)             # 10 <= x <= 100
+FilterFactory.not_between("age", 18, 65)             # outside a range
+FilterFactory.at_least("score", 80)                  # >= 80
+FilterFactory.at_most("errors", 5)                   # <= 5
 ```
 
 **Existence filters:**
 
 ```python
-Filter.is_set("phone_number")                 # property exists
-Filter.is_not_set("email")                    # property is null
+FilterFactory.is_set("phone_number")                 # property exists
+FilterFactory.is_not_set("email")                    # property is null
 ```
 
 **Boolean filters:**
 
 ```python
-Filter.is_true("is_premium")                  # boolean true
-Filter.is_false("is_trial")                   # boolean false
+FilterFactory.is_true("is_premium")                  # boolean true
+FilterFactory.is_false("is_trial")                   # boolean false
 ```
 
 ### List-of-object filters
 
-When a property's value is a list of objects (e.g. `cart` is a list of `{Brand, Category, Price}` items), use `Filter.list_contains` to filter on a subproperty. Discover valid subproperty names and types via [`Workspace.subproperties()`](discovery.md#subproperties) first.
+When a property's value is a list of objects (e.g. `cart` is a list of `{Brand, Category, Price}` items), use `FilterFactory.list_contains` to filter on a subproperty. Discover valid subproperty names and types via [`Workspace.subproperties()`](discovery.md#subproperties) first.
 
 **Keyword shorthand** for the common equality case — each `key=value` becomes an inner equality filter. All inner conditions must match the same item:
 
 ```python
 # Cart contains a nike-branded hat
 result = ws.query(InsightsQuery(
-    events=["Cart Viewed"], where=[Filter.list_contains("cart", Brand="nike", Category="hats")],
+    events=["Cart Viewed"], where=[FilterFactory.list_contains("cart", Brand="nike", Category="hats")],
 ))
 ```
 
@@ -291,7 +291,7 @@ result = ws.query(InsightsQuery(
 ```python
 # Cart contains an item costing more than $50
 result = ws.query(InsightsQuery(
-    events=["Cart Viewed"], where=[Filter.list_contains("cart", Filter.greater_than("Price", 50))],
+    events=["Cart Viewed"], where=[FilterFactory.list_contains("cart", FilterFactory.greater_than("Price", 50))],
 ))
 ```
 
@@ -299,18 +299,18 @@ result = ws.query(InsightsQuery(
 
 ```python
 # Every cart item costs more than $50
-where = Filter.list_contains(
+where = FilterFactory.list_contains(
     "cart",
-    Filter.greater_than("Price", 50),
+    FilterFactory.greater_than("Price", 50),
     quantifier="all",
 )
 ```
 
-**Resource type** — `Filter.list_contains` accepts `resource_type="people"` for list-of-object people properties (e.g. `addresses`). When using kwarg shorthand, the inner equality filters inherit the outer `resource_type`. When passing positional `Filter` instances, each carries its own `resource_type` from its own factory call — pass `resource_type=` explicitly on each inner factory if you want them to match the outer.
+**Resource type** — `FilterFactory.list_contains` accepts `resource_type="people"` for list-of-object people properties (e.g. `addresses`). When using kwarg shorthand, the inner equality filters inherit the outer `resource_type`. When passing positional `Filter` instances, each carries its own `resource_type` from its own factory call — pass `resource_type=` explicitly on each inner factory if you want them to match the outer.
 
 ```python
 # Filter people by a list-of-object property
-where = Filter.list_contains("addresses", resource_type="people", City="Brooklyn")
+where = FilterFactory.list_contains("addresses", resource_type="people", City="Brooklyn")
 ```
 
 Cannot be nested (a `list_contains` cannot appear inside another `list_contains`). Mixing the kwarg and positional shapes in one call raises `ValueError`.
@@ -328,7 +328,7 @@ result = ws.query(InsightsQuery(events=[
     Metric(
         "Purchase",
         math="unique",
-        filters=[Filter.equals("plan", "premium")],
+        filters=[FilterFactory.equals("plan", "premium")],
     ),
 ]))
 ```
@@ -340,8 +340,8 @@ result = ws.query(InsightsQuery(events=[Metric(
     "Purchase",
     math="unique",
     filters=[
-        Filter.equals("country", "US"),
-        Filter.equals("country", "CA"),
+        FilterFactory.equals("country", "US"),
+        FilterFactory.equals("country", "CA"),
     ],
     filters_combinator="any",  # match US OR CA
 )]))
@@ -355,18 +355,18 @@ Filter by datetime properties using purpose-built factory methods:
 from mixpanel_headless import Filter
 
 # Absolute date filters
-Filter.on("created", "2025-01-15")              # exact date match
-Filter.not_on("created", "2025-01-15")           # not on date
-Filter.before("created", "2025-01-01")           # before a date
-Filter.since("created", "2025-01-01")            # on or after a date
-Filter.date_between("created", "2025-01-01", "2025-06-30")  # date range
+FilterFactory.on("created", "2025-01-15")              # exact date match
+FilterFactory.not_on("created", "2025-01-15")           # not on date
+FilterFactory.before("created", "2025-01-01")           # before a date
+FilterFactory.since("created", "2025-01-01")            # on or after a date
+FilterFactory.date_between("created", "2025-01-01", "2025-06-30")  # date range
 
 # Relative date filters — "in the last N units"
-Filter.in_the_last("created", 30, "day")         # last 30 days
-Filter.in_the_last("last_seen", 2, "week")       # last 2 weeks
-Filter.not_in_the_last("created", 90, "day")     # NOT in last 90 days
-Filter.date_not_between("created", "2025-01-01", "2025-06-30")  # dates outside a range
-Filter.in_the_next("renewal_date", 30, "day")    # relative future date
+FilterFactory.in_the_last("created", 30, "day")         # last 30 days
+FilterFactory.in_the_last("last_seen", 2, "week")       # last 2 weeks
+FilterFactory.not_in_the_last("created", 90, "day")     # NOT in last 90 days
+FilterFactory.date_not_between("created", "2025-01-01", "2025-06-30")  # dates outside a range
+FilterFactory.in_the_next("renewal_date", 30, "day")    # relative future date
 ```
 
 The relative date methods accept a `FilterDateUnit`: `"hour"`, `"day"`, `"week"`, or `"month"`.
@@ -376,7 +376,7 @@ from mixpanel_headless import FilterDateUnit  # Literal["hour", "day", "week", "
 
 # Example: recent signups with purchases
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.in_the_last("signup_date", 7, "day")],
+    events=["Purchase"], where=[FilterFactory.in_the_last("signup_date", 7, "day")],
     last=30,
 ))
 ```
@@ -429,7 +429,7 @@ result = ws.query(InsightsQuery(
 
 ### List-of-object breakdowns
 
-Mirror `Filter.list_contains` for breakdowns: when a property is a list of objects, break down by one of its subproperties via `GroupBy.list_item`. Discover valid subproperty names and types via [`Workspace.subproperties()`](discovery.md#subproperties).
+Mirror `FilterFactory.list_contains` for breakdowns: when a property is a list of objects, break down by one of its subproperties via `GroupBy.list_item`. Discover valid subproperty names and types via [`Workspace.subproperties()`](discovery.md#subproperties).
 
 ```python
 from mixpanel_headless import GroupBy, InsightsQuery
@@ -450,8 +450,8 @@ result = ws.query(InsightsQuery(
 
 `sub_type` accepts the four scalar values from `CustomPropertyType` (`"string"`, `"number"`, `"boolean"`, `"datetime"`). Bucketing (`bucket_size`/`bucket_min`/`bucket_max`) is incompatible with list-item breakdowns.
 
-!!! note "Asymmetric with `Filter.list_contains`"
-    `GroupBy.list_item` is **events-only** — there is no `resource_type` parameter, because Mixpanel's UI does not support list-of-object breakdowns for people properties. `Filter.list_contains` accepts `resource_type="people"` because the wire format permits list-object filters on people properties (just not breakdowns).
+!!! note "Asymmetric with `FilterFactory.list_contains`"
+    `GroupBy.list_item` is **events-only** — there is no `resource_type` parameter, because Mixpanel's UI does not support list-of-object breakdowns for people properties. `FilterFactory.list_contains` accepts `resource_type="people"` because the wire format permits list-object filters on people properties (just not breakdowns).
 
 ## Formulas
 
@@ -836,7 +836,7 @@ conversion = ws.query(InsightsQuery(
         Metric(
             "Purchase",
             math="unique",
-            filters=[Filter.equals("plan", "premium")],
+            filters=[FilterFactory.equals("plan", "premium")],
         ),
     ],
     formula="(B / A) * 100",
@@ -868,7 +868,7 @@ sessions = ws.query(InsightsQuery(
 # WAU trend for premium users
 wau = ws.query(InsightsQuery(
     events=["Login"], math="wau",
-    where=[Filter.is_true("is_premium")],
+    where=[FilterFactory.is_true("is_premium")],
     last=6,
     unit="month",
 ))
@@ -883,7 +883,7 @@ Use `build_params()` to generate bookmark params without making an API call — 
 params = ws.build_params(InsightsQuery(
     events=["Login"], math="dau",
     group_by=["platform"],
-    where=[Filter.in_the_last("created", 30, "day")],
+    where=[FilterFactory.in_the_last("created", 30, "day")],
     last=90,
 ))
 
@@ -913,26 +913,26 @@ Scope any query to a user segment — filter by cohort membership, break down by
 
 ### Cohort Filters
 
-Restrict queries to users in (or not in) a cohort using `Filter.in_cohort()` and `Filter.not_in_cohort()`:
+Restrict queries to users in (or not in) a cohort using `FilterFactory.in_cohort()` and `FilterFactory.not_in_cohort()`:
 
 ```python
 from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, InsightsQuery
 
 # Saved cohort
-result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.in_cohort(123, "Power Users")]))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[FilterFactory.in_cohort(123, "Power Users")]))
 
 # Inline cohort — define the segment right where you use it
 power_users = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=3, within_days=30)
 )
-result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
+result = ws.query(InsightsQuery(events=["Login"], where=[FilterFactory.in_cohort(power_users, name="Power Users")]))
 
 # Exclude a cohort
-result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.not_in_cohort(789, "Bots")]))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[FilterFactory.not_in_cohort(789, "Bots")]))
 
 # Combine with property filters
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.in_cohort(power_users, name="PU"), Filter.equals("platform", "iOS")],
+    events=["Purchase"], where=[FilterFactory.in_cohort(power_users, name="PU"), FilterFactory.equals("platform", "iOS")],
 ))
 ```
 
@@ -1016,7 +1016,7 @@ ref = CustomPropertyRef(42)
 result = ws.query(InsightsQuery(events=["Purchase"], group_by=[GroupBy(property=ref, property_type="number")]))
 
 # Filter by saved custom property
-result = ws.query(InsightsQuery(events=["Purchase"], where=[Filter.greater_than(property=ref, value=100)]))
+result = ws.query(InsightsQuery(events=["Purchase"], where=[FilterFactory.greater_than(property=ref, value=100)]))
 
 # Aggregate a saved custom property
 result = ws.query(InsightsQuery(events=[Metric("Purchase", math="average", property=ref)]))
@@ -1093,12 +1093,12 @@ from mixpanel_headless import Filter, CustomPropertyRef, InlineCustomProperty, I
 
 # Saved custom property
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+    events=["Purchase"], where=[FilterFactory.greater_than(property=CustomPropertyRef(42), value=100)],
 ))
 
 # Inline computed property
 result = ws.query(InsightsQuery(
-    events=["Purchase"], where=[Filter.between(
+    events=["Purchase"], where=[FilterFactory.between(
         property=InlineCustomProperty.numeric("A * B", A="price", B="quantity"),
         value=[100, 1000],
     )],
@@ -1107,8 +1107,8 @@ result = ws.query(InsightsQuery(
 # Combine with regular filters
 result = ws.query(InsightsQuery(
     events=["Purchase"], where=[
-        Filter.equals("country", "US"),
-        Filter.greater_than(property=CustomPropertyRef(42), value=50),
+        FilterFactory.equals("country", "US"),
+        FilterFactory.greater_than(property=CustomPropertyRef(42), value=50),
     ],
 ))
 ```

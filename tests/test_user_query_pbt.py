@@ -24,7 +24,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from mixpanel_headless._internal.query.user_builders import filter_to_selector
-from mixpanel_headless.types import Filter, UserQueryResult
+from mixpanel_headless.types import Filter, FilterFactory, UserQueryResult
 
 # =============================================================================
 # Custom Strategies
@@ -97,32 +97,32 @@ def filter_strategy(draw: st.DrawFn) -> Filter:
         val = draw(
             st.one_of(string_values, st.lists(string_values, min_size=1, max_size=3))
         )
-        return Filter.equals(prop, val)
+        return FilterFactory.equals(prop, val)
     elif op == "not_equals":
         val = draw(
             st.one_of(string_values, st.lists(string_values, min_size=1, max_size=3))
         )
-        return Filter.not_equals(prop, val)
+        return FilterFactory.not_equals(prop, val)
     elif op == "contains":
-        return Filter.contains(prop, draw(string_values))
+        return FilterFactory.contains(prop, draw(string_values))
     elif op == "not_contains":
-        return Filter.not_contains(prop, draw(string_values))
+        return FilterFactory.not_contains(prop, draw(string_values))
     elif op == "greater_than":
-        return Filter.greater_than(prop, draw(numeric_values))
+        return FilterFactory.greater_than(prop, draw(numeric_values))
     elif op == "less_than":
-        return Filter.less_than(prop, draw(numeric_values))
+        return FilterFactory.less_than(prop, draw(numeric_values))
     elif op == "between":
         lo = draw(numeric_values)
         hi = draw(numeric_values)
-        return Filter.between(prop, lo, hi)
+        return FilterFactory.between(prop, lo, hi)
     elif op == "is_set":
-        return Filter.is_set(prop)
+        return FilterFactory.is_set(prop)
     elif op == "is_not_set":
-        return Filter.is_not_set(prop)
+        return FilterFactory.is_not_set(prop)
     elif op == "is_true":
-        return Filter.is_true(prop)
+        return FilterFactory.is_true(prop)
     else:  # is_false
-        return Filter.is_false(prop)
+        return FilterFactory.is_false(prop)
 
 
 @st.composite
@@ -293,7 +293,7 @@ class TestFilterToSelectorPBT:
 
         The engage API equality check uses ``==`` syntax.
         """
-        f = Filter.equals(prop, val)
+        f = FilterFactory.equals(prop, val)
         result = filter_to_selector(f)
         assert "==" in result
 
@@ -304,7 +304,7 @@ class TestFilterToSelectorPBT:
 
         The engage API inequality check uses ``!=`` syntax.
         """
-        f = Filter.not_equals(prop, val)
+        f = FilterFactory.not_equals(prop, val)
         result = filter_to_selector(f)
         assert "!=" in result
 
@@ -315,7 +315,7 @@ class TestFilterToSelectorPBT:
 
         The engage API substring check uses ``"value" in properties["name"]``.
         """
-        f = Filter.contains(prop, val)
+        f = FilterFactory.contains(prop, val)
         result = filter_to_selector(f)
         assert " in " in result
 
@@ -326,7 +326,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses ``not "value" in properties["name"]``.
         """
-        f = Filter.not_contains(prop, val)
+        f = FilterFactory.not_contains(prop, val)
         result = filter_to_selector(f)
         assert "not " in result
         assert " in " in result
@@ -340,7 +340,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses standard comparison operator syntax.
         """
-        f = Filter.greater_than(prop, val)
+        f = FilterFactory.greater_than(prop, val)
         result = filter_to_selector(f)
         assert " > " in result
 
@@ -351,7 +351,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses standard comparison operator syntax.
         """
-        f = Filter.less_than(prop, val)
+        f = FilterFactory.less_than(prop, val)
         result = filter_to_selector(f)
         assert " < " in result
 
@@ -364,7 +364,7 @@ class TestFilterToSelectorPBT:
 
         The engage API between check uses ``prop >= lo and prop <= hi``.
         """
-        f = Filter.between(prop, lo, hi)
+        f = FilterFactory.between(prop, lo, hi)
         result = filter_to_selector(f)
         assert ">=" in result
         assert "<=" in result
@@ -377,7 +377,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses ``defined(properties["name"])`` syntax.
         """
-        f = Filter.is_set(prop)
+        f = FilterFactory.is_set(prop)
         result = filter_to_selector(f)
         assert "defined(" in result
 
@@ -388,7 +388,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses ``not defined(properties["name"])`` syntax.
         """
-        f = Filter.is_not_set(prop)
+        f = FilterFactory.is_not_set(prop)
         result = filter_to_selector(f)
         assert "not defined(" in result
 
@@ -399,7 +399,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses ``properties["name"] == true`` syntax.
         """
-        f = Filter.is_true(prop)
+        f = FilterFactory.is_true(prop)
         result = filter_to_selector(f)
         assert "== true" in result
 
@@ -410,7 +410,7 @@ class TestFilterToSelectorPBT:
 
         The engage API uses ``properties["name"] == false`` syntax.
         """
-        f = Filter.is_false(prop)
+        f = FilterFactory.is_false(prop)
         result = filter_to_selector(f)
         assert "== false" in result
 
@@ -422,7 +422,7 @@ class TestFilterToSelectorPBT:
         Regardless of operator, the property name must be embedded in
         the ``properties["<name>"]`` reference.
         """
-        f = Filter.equals(prop, val)
+        f = FilterFactory.equals(prop, val)
         result = filter_to_selector(f)
         assert prop in result
 
@@ -436,10 +436,10 @@ class TestFilterToSelectorPBT:
     ) -> None:
         """Multi-value equals filter produces 'or'-joined selector parts.
 
-        When ``Filter.equals()`` receives a list of values, each value
+        When ``FilterFactory.equals()`` receives a list of values, each value
         generates a separate ``==`` clause joined with `` or ``.
         """
-        f = Filter.equals(prop, vals)
+        f = FilterFactory.equals(prop, vals)
         result = filter_to_selector(f)
         assert " or " in result
         assert result.count("==") == len(vals)
@@ -454,10 +454,10 @@ class TestFilterToSelectorPBT:
     ) -> None:
         """Multi-value not-equals filter produces 'and'-joined selector parts.
 
-        When ``Filter.not_equals()`` receives a list of values, each
+        When ``FilterFactory.not_equals()`` receives a list of values, each
         value generates a separate ``!=`` clause joined with `` and ``.
         """
-        f = Filter.not_equals(prop, vals)
+        f = FilterFactory.not_equals(prop, vals)
         result = filter_to_selector(f)
         assert " and " in result
         assert result.count("!=") == len(vals)

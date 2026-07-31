@@ -80,7 +80,7 @@ for tree in result.trees:
 from mixpanel_headless import Filter
 
 result = ws.query_user(
-    filters=Filter.greater_than("purchase_count", 10),
+    filters=FilterFactory.greater_than("purchase_count", 10),
     properties=["$name", "$email", "plan"],
 )
 print(result.df)  # distinct_id, $name, $email, plan

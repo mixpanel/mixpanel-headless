@@ -30,7 +30,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless import BookmarkValidationError, Filter, Workspace
+from mixpanel_headless import BookmarkValidationError, FilterFactory, Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.types import CohortCriteria, CohortDefinition
@@ -114,9 +114,9 @@ class TestFilterTranslation:
     """Tests for Filter objects being translated to engage selector strings."""
 
     def test_single_equals_filter(self, ws: Workspace) -> None:
-        """A single Filter.equals() produces a selector string in the where param."""
+        """A single FilterFactory.equals() produces a selector string in the where param."""
         params = ws.build_user_params(
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
         )
         assert "where" in params
         assert 'properties["plan"] == "premium"' in params["where"]
@@ -125,8 +125,8 @@ class TestFilterTranslation:
         """Multiple Filter objects in a list are AND-combined in the selector."""
         params = ws.build_user_params(
             where=[
-                Filter.equals("plan", "premium"),
-                Filter.is_set("email"),
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.is_set("email"),
             ],
         )
         where = params["where"]
@@ -135,74 +135,87 @@ class TestFilterTranslation:
         assert " and " in where
 
     def test_greater_than_filter(self, ws: Workspace) -> None:
-        """Filter.greater_than() translates to > selector syntax."""
+        """FilterFactory.greater_than() translates to > selector syntax."""
         params = ws.build_user_params(
-            where=Filter.greater_than("ltv", 100),
+            where=FilterFactory.greater_than("ltv", 100),
         )
         assert 'properties["ltv"] > 100' in params["where"]
 
     def test_less_than_filter(self, ws: Workspace) -> None:
-        """Filter.less_than() translates to < selector syntax."""
+        """FilterFactory.less_than() translates to < selector syntax."""
         params = ws.build_user_params(
-            where=Filter.less_than("age", 30),
+            where=FilterFactory.less_than("age", 30),
         )
         assert 'properties["age"] < 30' in params["where"]
 
     def test_contains_filter(self, ws: Workspace) -> None:
-        """Filter.contains() translates to 'in' selector syntax."""
+        """FilterFactory.contains() translates to 'in' selector syntax."""
         params = ws.build_user_params(
-            where=Filter.contains("email", "corp"),
+            where=FilterFactory.contains("email", "corp"),
         )
         assert '"corp" in properties["email"]' in params["where"]
 
     def test_not_contains_filter(self, ws: Workspace) -> None:
-        """Filter.not_contains() translates to 'not in' selector syntax."""
+        """FilterFactory.not_contains() translates to 'not in' selector syntax."""
         params = ws.build_user_params(
-            where=Filter.not_contains("email", "gmail"),
+            where=FilterFactory.not_contains("email", "gmail"),
         )
         assert 'not "gmail" in properties["email"]' in params["where"]
 
     def test_between_filter(self, ws: Workspace) -> None:
-        """Filter.between() translates to >= and <= selector syntax."""
+        """FilterFactory.between() translates to >= and <= selector syntax."""
         params = ws.build_user_params(
-            where=Filter.between("age", 18, 65),
+            where=FilterFactory.between("age", 18, 65),
         )
         where = params["where"]
         assert 'properties["age"] >= 18' in where
         assert 'properties["age"] <= 65' in where
 
+    def test_between_filter_value_stays_a_list(self, ws: Workspace) -> None:
+        """A range filter's value must remain a ``list``, not a ``tuple``.
+
+        ``filter_to_selector()`` gates the ``is between`` branch on
+        ``isinstance(value, list)``, so a fixed-length ``tuple`` value —
+        tempting because it renders ``prefixItems`` in the JSON schema —
+        would make every range filter raise instead of translating.
+        """
+        f = FilterFactory.between("age", 18, 65)
+        assert isinstance(f.value, list)
+        params = ws.build_user_params(where=f)
+        assert params["where"] == 'properties["age"] >= 18 and properties["age"] <= 65'
+
     def test_is_set_filter(self, ws: Workspace) -> None:
-        """Filter.is_set() translates to defined() selector syntax."""
+        """FilterFactory.is_set() translates to defined() selector syntax."""
         params = ws.build_user_params(
-            where=Filter.is_set("email"),
+            where=FilterFactory.is_set("email"),
         )
         assert 'defined(properties["email"])' in params["where"]
 
     def test_is_not_set_filter(self, ws: Workspace) -> None:
-        """Filter.is_not_set() translates to not defined() selector syntax."""
+        """FilterFactory.is_not_set() translates to not defined() selector syntax."""
         params = ws.build_user_params(
-            where=Filter.is_not_set("phone"),
+            where=FilterFactory.is_not_set("phone"),
         )
         assert 'not defined(properties["phone"])' in params["where"]
 
     def test_is_true_filter(self, ws: Workspace) -> None:
-        """Filter.is_true() translates to == true selector syntax."""
+        """FilterFactory.is_true() translates to == true selector syntax."""
         params = ws.build_user_params(
-            where=Filter.is_true("active"),
+            where=FilterFactory.is_true("active"),
         )
         assert 'properties["active"] == true' in params["where"]
 
     def test_is_false_filter(self, ws: Workspace) -> None:
-        """Filter.is_false() translates to == false selector syntax."""
+        """FilterFactory.is_false() translates to == false selector syntax."""
         params = ws.build_user_params(
-            where=Filter.is_false("churned"),
+            where=FilterFactory.is_false("churned"),
         )
         assert 'properties["churned"] == false' in params["where"]
 
     def test_multi_value_equals_filter(self, ws: Workspace) -> None:
-        """Filter.equals() with multiple values produces OR-chained selector."""
+        """FilterFactory.equals() with multiple values produces OR-chained selector."""
         params = ws.build_user_params(
-            where=Filter.equals("plan", ["premium", "enterprise"]),
+            where=FilterFactory.equals("plan", ["premium", "enterprise"]),
         )
         where = params["where"]
         assert 'properties["plan"] == "premium"' in where
@@ -217,7 +230,7 @@ class TestFilterTranslation:
     def test_single_filter_not_in_list(self, ws: Workspace) -> None:
         """A single Filter (not wrapped in list) is accepted directly."""
         params = ws.build_user_params(
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
         )
         assert 'properties["plan"] == "premium"' in params["where"]
 
@@ -274,11 +287,11 @@ class TestCohortRouting:
         assert fbc["raw_cohort"] == expected
 
     def test_filter_in_cohort_extracts_to_filter_by_cohort(self, ws: Workspace) -> None:
-        """Filter.in_cohort() in where list extracts to filter_by_cohort."""
+        """FilterFactory.in_cohort() in where list extracts to filter_by_cohort."""
         params = ws.build_user_params(
             where=[
-                Filter.in_cohort(789),
-                Filter.equals("plan", "premium"),
+                FilterFactory.in_cohort(789),
+                FilterFactory.equals("plan", "premium"),
             ],
         )
         # The cohort filter should be extracted to filter_by_cohort
@@ -293,7 +306,7 @@ class TestCohortRouting:
     def test_no_cohort_omits_filter_by_cohort(self, ws: Workspace) -> None:
         """When no cohort is provided, filter_by_cohort should be absent."""
         params = ws.build_user_params(
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
         )
         assert "filter_by_cohort" not in params
 
@@ -521,11 +534,11 @@ class TestValidationErrors:
         assert "U1" in codes
 
     def test_cohort_and_filter_in_cohort_conflict(self, ws: Workspace) -> None:
-        """Providing both cohort param and Filter.in_cohort() raises error (U2)."""
+        """Providing both cohort param and FilterFactory.in_cohort() raises error (U2)."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             ws.build_user_params(
                 cohort=123,
-                where=Filter.in_cohort(456),
+                where=FilterFactory.in_cohort(456),
             )
         errors = exc_info.value.errors
         codes = [e.code for e in errors]
@@ -556,20 +569,20 @@ class TestValidationErrors:
         assert "U7" in codes
 
     def test_not_in_cohort_filter_raises_error(self, ws: Workspace) -> None:
-        """Filter.not_in_cohort() in where raises BookmarkValidationError (U12)."""
+        """FilterFactory.not_in_cohort() in where raises BookmarkValidationError (U12)."""
         with pytest.raises(BookmarkValidationError) as exc_info:
-            ws.build_user_params(where=Filter.not_in_cohort(123))
+            ws.build_user_params(where=FilterFactory.not_in_cohort(123))
         errors = exc_info.value.errors
         codes = [e.code for e in errors]
         assert "U12" in codes
 
     def test_multiple_in_cohort_filters_raises_error(self, ws: Workspace) -> None:
-        """Multiple Filter.in_cohort() in where list raises BookmarkValidationError (U13)."""
+        """Multiple FilterFactory.in_cohort() in where list raises BookmarkValidationError (U13)."""
         with pytest.raises(BookmarkValidationError) as exc_info:
             ws.build_user_params(
                 where=[
-                    Filter.in_cohort(100),
-                    Filter.in_cohort(200),
+                    FilterFactory.in_cohort(100),
+                    FilterFactory.in_cohort(200),
                 ],
             )
         errors = exc_info.value.errors
@@ -745,8 +758,8 @@ class TestCombinedScenarios:
         params = ws.build_user_params(
             mode="profiles",
             where=[
-                Filter.equals("plan", "premium"),
-                Filter.greater_than("ltv", 100),
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.greater_than("ltv", 100),
             ],
             properties=["$email", "$name", "plan", "ltv"],
             sort_by="ltv",
@@ -772,7 +785,7 @@ class TestCombinedScenarios:
         """cohort param combined with property where filters both appear."""
         params = ws.build_user_params(
             cohort=12345,
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
         )
         assert "filter_by_cohort" in params
         assert 'properties["plan"] == "premium"' in params["where"]
@@ -790,7 +803,7 @@ class TestCombinedScenarios:
         params = ws.build_user_params(
             mode="profiles",
             group_id="companies",
-            where=Filter.greater_than("arr", 50000),
+            where=FilterFactory.greater_than("arr", 50000),
             sort_by="arr",
             sort_order="descending",
         )
@@ -813,7 +826,7 @@ class TestCombinedScenarios:
         # Should not raise
         ws.build_user_params(
             mode="profiles",
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
             properties=["$email"],
             sort_by="ltv",
             sort_order="ascending",
@@ -823,3 +836,49 @@ class TestCombinedScenarios:
         """Calling build_user_params() with no arguments returns a dict."""
         params = ws.build_user_params()
         assert isinstance(params, dict)
+
+
+class TestFilterSequenceAcceptance:
+    """The engage surface accepts any filter sequence, not only ``list[Filter]``.
+
+    Every ``Filter`` factory returns its own union member
+    (``FilterFactory.equals(...) -> EqualityFilter``), so a caller who binds the
+    list to a variable before passing it gets ``list[EqualityFilter]``.
+    ``list`` is invariant, so that is not assignable to ``list[Filter]``
+    — the annotation has to be the covariant ``Sequence[Filter]``. These
+    tests are checked twice: by pytest at runtime, and by ``mypy --strict``,
+    which runs over ``tests/`` as well as ``src/``.
+    """
+
+    def test_variable_bound_filter_list_is_accepted(self, ws: Workspace) -> None:
+        """A list bound to a name first infers as ``list[EqualityFilter]``."""
+        filters = [FilterFactory.equals("plan", "premium")]
+        params = ws.build_user_params(where=filters)
+        assert 'properties["plan"] == "premium"' in params["where"]
+
+    def test_tuple_of_filters_is_accepted(self, ws: Workspace) -> None:
+        """A tuple is a filter sequence too, and must not be an error.
+
+        ``build_flow_params`` already accepts one; rejecting it here made
+        the two halves of the library disagree, and reported a Python
+        type mistake as Mixpanel validation error ``U9``.
+        """
+        params = ws.build_user_params(
+            where=(
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.is_set("email"),
+            )
+        )
+        assert 'properties["plan"] == "premium"' in params["where"]
+        assert 'defined(properties["email"])' in params["where"]
+
+    def test_non_sequence_where_still_rejected(self, ws: Workspace) -> None:
+        """Widening to ``Sequence`` must not let a scalar through."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_user_params(where=42)  # type: ignore[arg-type]
+        assert any(e.code == "U9" for e in exc_info.value.errors)
+
+    def test_string_where_is_not_treated_as_a_sequence(self, ws: Workspace) -> None:
+        """``str`` is a ``Sequence``, so the raw-selector branch must win."""
+        params = ws.build_user_params(where='properties["plan"] == "premium"')
+        assert params["where"] == 'properties["plan"] == "premium"'

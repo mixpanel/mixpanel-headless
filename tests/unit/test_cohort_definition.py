@@ -19,7 +19,7 @@ from mixpanel_headless.types import (
     CohortCriteria,
     CohortDefinition,
     CreateCohortParams,
-    Filter,
+    FilterFactory,
 )
 
 # =============================================================================
@@ -45,7 +45,7 @@ class TestOperatorMaps:
         assert expected == _PROPERTY_OPERATOR_MAP
 
     def test_filter_to_selector_supported_has_all_operators(self) -> None:
-        """_FILTER_TO_SELECTOR_SUPPORTED contains all expected Filter._operator strings."""
+        """_FILTER_TO_SELECTOR_SUPPORTED contains all expected Filter.operator strings."""
         expected = {
             "equals",
             "does not equal",
@@ -130,7 +130,7 @@ class TestCohortCriteriaDidEvent:
             "Purchase",
             at_least=1,
             within_days=30,
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
         )
         assert c._behavior is not None
         selector = c._behavior["count"]["event_selector"]["selector"]
@@ -152,8 +152,8 @@ class TestCohortCriteriaDidEvent:
             at_least=1,
             within_days=30,
             where=[
-                Filter.equals("plan", "premium"),
-                Filter.greater_than("amount", 100),
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.greater_than("amount", 100),
             ],
         )
         assert c._behavior is not None
@@ -257,7 +257,7 @@ class TestCohortCriteriaDidEventValidation:
                 "Login",
                 at_least=1,
                 within_days=30,
-                where=Filter.is_true("flag"),
+                where=FilterFactory.is_true("flag"),
             )
 
     def test_cd6_invalid_calendar_date(self) -> None:
@@ -674,7 +674,7 @@ class TestCohortDefinitionCRUDIntegration:
                 "Purchase",
                 at_least=3,
                 within_days=30,
-                where=Filter.greater_than("amount", 100),
+                where=FilterFactory.greater_than("amount", 100),
             ),
             CohortCriteria.in_cohort(456),
         )

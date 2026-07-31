@@ -75,12 +75,12 @@ from mixpanel_headless._literal_types import (
 )
 from mixpanel_headless.exceptions import ValidationError
 from mixpanel_headless.types import (
+    AbstractFilter,
     CohortBreakdown,
     CohortDefinition,
     CohortMetric,
     CustomPropertyRef,
     Exclusion,
-    Filter,
     FlowStep,
     Formula,
     FrequencyBreakdown,
@@ -195,7 +195,7 @@ def _validate_custom_property(
 
 
 def _scan_filters_for_custom_properties(
-    filters: list[Filter],
+    filters: Sequence[AbstractFilter],
     base_path: str,
 ) -> list[ValidationError]:
     """Scan a list of Filter objects for custom property references.
@@ -215,9 +215,9 @@ def _scan_filters_for_custom_properties(
     """
     errors: list[ValidationError] = []
     for i, f in enumerate(filters):
-        if isinstance(f._property, (CustomPropertyRef, InlineCustomProperty)):
+        if isinstance(f.property, (CustomPropertyRef, InlineCustomProperty)):
             fpath = f"{base_path}.filters[{i}]"
-            errors.extend(_validate_custom_property(f._property, fpath))
+            errors.extend(_validate_custom_property(f.property, fpath))
     return errors
 
 
@@ -229,7 +229,10 @@ def _scan_custom_properties(
     | FrequencyBreakdown
     | Sequence[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
     | None = None,
-    where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
+    where: AbstractFilter
+    | FrequencyFilter
+    | Sequence[AbstractFilter | FrequencyFilter]
+    | None = None,
     events: Sequence[str | Metric | CohortMetric] | None = None,
     funnel_steps: Sequence[str | FunnelStep] | None = None,
     flow_steps: Sequence[str | FlowStep] | None = None,
@@ -286,18 +289,16 @@ def _scan_custom_properties(
                 if f.event_filters:
                     for fi, ef in enumerate(f.event_filters):
                         if isinstance(
-                            ef._property, (CustomPropertyRef, InlineCustomProperty)
+                            ef.property, (CustomPropertyRef, InlineCustomProperty)
                         ):
                             fpath = f"where[{i}].event_filters[{fi}]"
-                            errors.extend(
-                                _validate_custom_property(ef._property, fpath)
-                            )
+                            errors.extend(_validate_custom_property(ef.property, fpath))
                 continue
-            if isinstance(f, Filter) and isinstance(
-                f._property, (CustomPropertyRef, InlineCustomProperty)
+            if isinstance(f, AbstractFilter) and isinstance(
+                f.property, (CustomPropertyRef, InlineCustomProperty)
             ):
                 fpath = f"where[{i}]" if len(filters) > 1 else "where"
-                errors.extend(_validate_custom_property(f._property, fpath))
+                errors.extend(_validate_custom_property(f.property, fpath))
 
     # Scan events (Metric.property AND Metric.filters)
     if events is not None:

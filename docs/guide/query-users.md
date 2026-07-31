@@ -11,8 +11,8 @@ Use `query_user()` when you need to work with **user profiles** rather than even
 
 | Use Case | Example |
 |----------|---------|
-| Filter profiles by property | `query_user(mode="profiles", where=Filter.equals("plan", "premium"))` |
-| Count matching profiles | `query_user(where=Filter.is_set("$email"))` |
+| Filter profiles by property | `query_user(mode="profiles", where=FilterFactory.equals("plan", "premium"))` |
+| Count matching profiles | `query_user(where=FilterFactory.is_set("$email"))` |
 | Get top users by a metric | `query_user(mode="profiles", sort_by="ltv", sort_order="descending", limit=50)` |
 | Look up specific users | `query_user(mode="profiles", distinct_id="user_abc123")` |
 | Profile a behavioral cohort | `query_user(mode="profiles", cohort=CohortDefinition.all_of(...))` |
@@ -40,7 +40,7 @@ print(result.df)
 # Filter and select properties
 result = ws.query_user(
     mode="profiles",
-    where=Filter.equals("plan", "premium"),
+    where=FilterFactory.equals("plan", "premium"),
     properties=["$email", "$name", "ltv"],
     sort_by="ltv",
     sort_order="descending",
@@ -55,7 +55,7 @@ Aggregate mode is the default (`mode="aggregate"`). Compute statistics across ma
 
 ```python
 # Count users with email (aggregate is the default mode)
-count = ws.query_user(where=Filter.is_set("$email"))
+count = ws.query_user(where=FilterFactory.is_set("$email"))
 print(f"Users with email: {count.value}")
 
 # Total users (all)
@@ -120,7 +120,7 @@ For large result sets, enable concurrent page retrieval:
 ```python
 result = ws.query_user(
     mode="profiles",
-    where=Filter.is_set("$email"),
+    where=FilterFactory.is_set("$email"),
     properties=["$email", "plan", "ltv"],
     limit=5000,
     parallel=True,
@@ -142,7 +142,7 @@ top_plan = dau.df.sort_values("count", ascending=False).iloc[0]["event"]
 # Step 2: Profile users from that plan
 users = ws.query_user(
     mode="profiles",
-    where=Filter.equals("plan", top_plan),
+    where=FilterFactory.equals("plan", top_plan),
     properties=["$email", "company", "ltv"],
     sort_by="ltv",
     sort_order="descending",
@@ -173,7 +173,7 @@ Inspect the generated Engage API params without executing:
 
 ```python
 params = ws.build_user_params(
-    where=Filter.equals("plan", "premium"),
+    where=FilterFactory.equals("plan", "premium"),
     properties=["$email", "ltv"],
     sort_by="ltv",
 )

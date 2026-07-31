@@ -643,9 +643,9 @@ for window, unit in [(14, 'day'), (7, 'day'), (1, 'day'), (12, 'hour'), (6, 'hou
 result = ws.query_funnel(FunnelQuery(steps=steps, last=90, math='median'))
 
 # Compare segments with filtered funnels + tight window
-ios = ws.query_funnel(FunnelQuery(steps=steps, where=[Filter.equals('platform', 'iOS')],
+ios = ws.query_funnel(FunnelQuery(steps=steps, where=[FilterFactory.equals('platform', 'iOS')],
     last=90, conversion_window=6, conversion_window_unit='hour'))
-android = ws.query_funnel(FunnelQuery(steps=steps, where=[Filter.equals('platform', 'Android')],
+android = ws.query_funnel(FunnelQuery(steps=steps, where=[FilterFactory.equals('platform', 'Android')],
     last=90, conversion_window=6, conversion_window_unit='hour'))
 # Compare avg_time_from_start on matching steps
 ```
@@ -667,7 +667,7 @@ for ord in ['loose', 'any']:
 
 **Exclusions disqualify tainted journeys.** `exclusions=["Logout"]` removes users who logged out between funnel steps — unlike flow `hidden_events`, exclusions completely remove users from the funnel. Use for support escalation events, churn signals, or any action that taints the conversion path. Control which steps the exclusion applies to with `Exclusion("Logout", from_step=0, to_step=2)` (0-indexed).
 
-**Per-step filters narrow individual steps without affecting others.** `FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)])` restricts which Purchase events count, but doesn't filter Signup events. Global `where` filters ALL steps. This distinction is subtle but powerful: filter the population with `where`, filter the definition of a step with per-step filters.
+**Per-step filters narrow individual steps without affecting others.** `FunnelStep("Purchase", filters=[FilterFactory.greater_than("amount", 50)])` restricts which Purchase events count, but doesn't filter Signup events. Global `where` filters ALL steps. This distinction is subtle but powerful: filter the population with `where`, filter the definition of a step with per-step filters.
 
 **Session windows are a distinct paradigm.** `conversion_window_unit='session'` constrains the entire funnel to a single engagement session — no multi-session hops. This reveals true in-session conversion behavior, separate from users who spread a journey across days. The third counting mode, `math='conversion_rate_session'`, counts sessions rather than users or events (requires `conversion_window_unit='session'`).
 
@@ -770,9 +770,9 @@ for agg in ['count', 'extremes', 'percentile', 'numeric_summary']:
 
 # Point-in-time comparison with as_of
 today_count = ws.query_user(mode='aggregate', aggregate='count',
-    where=Filter.equals('plan', 'premium'))
+    where=FilterFactory.equals('plan', 'premium'))
 past_count = ws.query_user(mode='aggregate', aggregate='count',
-    where=Filter.equals('plan', 'premium'), as_of='2025-01-01')
+    where=FilterFactory.equals('plan', 'premium'), as_of='2025-01-01')
 print(f"Premium users: {past_count.value} (Jan 1) → {today_count.value} (today)")
 ```
 
@@ -819,7 +819,7 @@ result = ws.query(InsightsQuery(events=["Signup"], group_by=[GroupBy(property=do
 
 Use `InlineCustomProperty` for ad-hoc exploration. When a formula proves valuable, persist it with `ws.create_custom_property()` and reference it via `CustomPropertyRef(id)` across reports.
 
-**Inline Cohorts — define complex populations on-the-fly.** Every analytical question starts with "among WHICH users?" Simple property filters (`where=Filter.equals(...)`) answer "users with attribute X." Inline cohorts answer harder questions: "users who did X at least N times in the last D days AND did NOT do Y AND have property Z." Compose criteria with AND/OR logic:
+**Inline Cohorts — define complex populations on-the-fly.** Every analytical question starts with "among WHICH users?" Simple property filters (`where=FilterFactory.equals(...)`) answer "users with attribute X." Inline cohorts answer harder questions: "users who did X at least N times in the last D days AND did NOT do Y AND have property Z." Compose criteria with AND/OR logic:
 
 ```python
 from mixpanel_headless import CohortDefinition, CohortCriteria, CohortBreakdown, CohortMetric

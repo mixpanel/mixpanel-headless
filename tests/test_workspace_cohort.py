@@ -26,7 +26,7 @@ from mixpanel_headless.types import (
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
-    Filter,
+    FilterFactory,
     Formula,
     GroupBy,
     Metric,
@@ -128,7 +128,9 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
+                FlowQuery(
+                    event="Login", where=[FilterFactory.in_cohort(123, "Power Users")]
+                )
             )
             assert "filter_by_cohort" in result
         finally:
@@ -142,7 +144,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.in_cohort(456, "Active")])
+                FlowQuery(event="Login", where=[FilterFactory.in_cohort(456, "Active")])
             )
             assert result["filter_by_cohort"]["id"] == 456
         finally:
@@ -156,7 +158,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.in_cohort(456, "Active")])
+                FlowQuery(event="Login", where=[FilterFactory.in_cohort(456, "Active")])
             )
             assert result["filter_by_cohort"]["name"] == "Active"
         finally:
@@ -170,7 +172,9 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.not_in_cohort(789, "Bots")])
+                FlowQuery(
+                    event="Login", where=[FilterFactory.not_in_cohort(789, "Bots")]
+                )
             )
             assert result["filter_by_cohort"]["negated"] is True
         finally:
@@ -184,7 +188,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             result = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+                FlowQuery(event="Login", where=[FilterFactory.equals("country", "US")])
             )
             assert "where" in result
             assert len(result["where"]) == 1
@@ -203,8 +207,8 @@ class TestQueryFlowWhere:
                 FlowQuery(
                     event="Login",
                     where=[
-                        Filter.in_cohort(123, "PU"),
-                        Filter.equals("country", "US"),
+                        FilterFactory.in_cohort(123, "PU"),
+                        FilterFactory.equals("country", "US"),
                     ],
                 )
             )
@@ -236,7 +240,7 @@ class TestQueryFlowWhere:
         ws = workspace_factory()
         try:
             ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.in_cohort(123)])
+                FlowQuery(event="Login", where=[FilterFactory.in_cohort(123)])
             )
             mock_api_client.request.assert_not_called()
         finally:
@@ -400,7 +404,7 @@ class TestResolveAndBuildParamsCohortMetric:
             result = ws.build_params(
                 InsightsQuery(
                     events=[CohortMetric(123, "PU")],
-                    where=[Filter.in_cohort(456, "Other")],
+                    where=[FilterFactory.in_cohort(456, "Other")],
                 )
             )
             assert len(result["sections"]["show"]) > 0

@@ -19,7 +19,8 @@ from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.query_models import FlowQuery
 from mixpanel_headless.types import (
-    Filter,
+    EqualityFilter,
+    FilterFactory,
     FlowQueryResult,
     FlowStep,
     FlowTreeNode,
@@ -372,7 +373,7 @@ class TestBuildFlowParamsFilters:
                 "Purchase",
                 forward=3,
                 reverse=0,
-                filters=[Filter.greater_than("amount", 50)],
+                filters=[FilterFactory.greater_than("amount", 50)],
             )
             params = ws._build_flow_params(
                 steps=[step],
@@ -407,8 +408,8 @@ class TestBuildFlowParamsFilters:
                 forward=3,
                 reverse=0,
                 filters=[
-                    Filter.equals("country", "US"),
-                    Filter.equals("country", "UK"),
+                    FilterFactory.equals("country", "US"),
+                    FilterFactory.equals("country", "UK"),
                 ],
                 filters_combinator="any",
             )
@@ -857,14 +858,14 @@ class TestFlowStepDatetimeFilters:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """Filter.before() produces segfilter operator '>' (not '<')."""
+        """FilterFactory.before() produces segfilter operator '>' (not '<')."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
                 FlowQuery(
                     event=FlowStep(
                         "Login",
-                        filters=[Filter.before("$time", "2026-01-15")],
+                        filters=[FilterFactory.before("$time", "2026-01-15")],
                     )
                 )
             )
@@ -879,14 +880,14 @@ class TestFlowStepDatetimeFilters:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """Filter.in_the_last() produces segfilter with operator, operand, and unit."""
+        """FilterFactory.in_the_last() produces segfilter with operator, operand, and unit."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
                 FlowQuery(
                     event=FlowStep(
                         "Login",
-                        filters=[Filter.in_the_last("$time", 7, "day")],
+                        filters=[FilterFactory.in_the_last("$time", 7, "day")],
                     )
                 )
             )
@@ -1188,16 +1189,65 @@ class TestFlowPropertyFilters:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with where=Filter.equals produces where key."""
+        """build_flow_params with where=FilterFactory.equals produces where key."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+                FlowQuery(event="Login", where=[FilterFactory.equals("country", "US")])
             )
             assert "where" in params
             assert params["where"] == [
                 {"property": "country", "operator": "equals", "value": ["US"]}
             ]
+        finally:
+            ws.close()
+
+    def test_date_filter_value_reaches_the_wire_as_a_string(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """A date filter's value must stay a ``str`` all the way to the payload.
+
+        ``build_flow_where_entries()`` copies ``f.value`` straight into the
+        outgoing entry, so if the filter's value type were ever "improved"
+        from ``str`` into ``datetime.date`` the request body would silently
+        change from ``"2025-01-05"`` to a Python object.
+        """
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(
+                FlowQuery(
+                    event="Login", where=[FilterFactory.on("$time", "2025-01-05")]
+                )
+            )
+            value = params["where"][0]["value"]
+            assert isinstance(value, str)
+            assert value == "2025-01-05"
+        finally:
+            ws.close()
+
+    def test_date_range_filter_values_reach_the_wire_as_strings(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """The two endpoints of a date range are copied verbatim too.
+
+        The range path takes the same raw ``f.value`` copy as the single
+        date, so both endpoints have to survive as strings.
+        """
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(
+                FlowQuery(
+                    event="Login",
+                    where=[
+                        FilterFactory.date_between("$time", "2025-01-01", "2025-01-31")
+                    ],
+                )
+            )
+            value = params["where"][0]["value"]
+            assert list(value) == ["2025-01-01", "2025-01-31"]
+            assert all(isinstance(endpoint, str) for endpoint in value)
         finally:
             ws.close()
 
@@ -1212,8 +1262,8 @@ class TestFlowPropertyFilters:
                 FlowQuery(
                     event="Login",
                     where=[
-                        Filter.equals("country", "US"),
-                        Filter.greater_than("age", 18),
+                        FilterFactory.equals("country", "US"),
+                        FilterFactory.greater_than("age", 18),
                     ],
                 )
             )
@@ -1239,7 +1289,7 @@ class TestFlowPropertyFilters:
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
-                        where=[Filter.list_contains("cart", Brand="nike")],
+                        where=[FilterFactory.list_contains("cart", Brand="nike")],
                     )
                 )
             err = exc_info.value.errors[0]
@@ -1258,12 +1308,12 @@ class TestFlowPropertyFilters:
 
         ws = workspace_factory()
         try:
-            f = Filter(
-                _property=CustomPropertyRef(id=42),
-                _operator="equals",
-                _value=["US"],
-                _property_type="string",
-                _resource_type="events",
+            f = EqualityFilter(
+                property=CustomPropertyRef(id=42),
+                operator="equals",
+                value=["US"],
+                property_type="string",
+                resource_type="events",
             )
             with pytest.raises(
                 BookmarkValidationError, match="custom property refs"
@@ -1289,7 +1339,7 @@ class TestFlowPropertyFilters:
                 ws.build_flow_params(
                     FlowQuery(
                         event="Login",
-                        where=[Filter.in_the_last("created", 2, "week")],
+                        where=[FilterFactory.in_the_last("created", 2, "week")],
                     )
                 )
             err = exc_info.value.errors[0]
@@ -1306,7 +1356,9 @@ class TestFlowPropertyFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
+                FlowQuery(
+                    event="Login", where=[FilterFactory.in_cohort(123, "Power Users")]
+                )
             )
             assert "filter_by_cohort" in params
             assert "where" not in params
