@@ -791,11 +791,25 @@ class MixpanelAPIClient:
         form_data: dict[str, Any] | None = None,
         timeout: float | None = None,
         inject_project_id: bool = True,
+        inject_workspace_id: bool = True,
     ) -> Any:
-        """Make an authenticated request with optional project_id injection.
+        """Make an authenticated request with project/workspace param injection.
 
         Used internally by API methods. Handles rate limiting with exponential
         backoff.
+
+        Workspace scoping: when a workspace is explicitly pinned
+        (``Session.workspace`` at construction, ``set_workspace_id()``, or
+        ``use(workspace=...)``) and the URL is on the Query API host
+        (``/api/query``, which includes the engage/user-profile base), the pin
+        is injected as a ``workspace_id`` query parameter via ``setdefault`` —
+        a caller-supplied ``workspace_id`` in ``params`` always wins. This
+        makes Mixpanel data view filters apply to query and discovery calls.
+        The injection is EXPLICIT-ONLY: no pin means nothing is injected and
+        no workspace auto-resolution is triggered. The App API host scopes via
+        ``/workspaces/{id}/`` URL paths instead, and the raw export host
+        (``data.mixpanel.com``) stays project-scoped by design — data view
+        filters never apply to raw export streaming.
 
         Args:
             method: HTTP method (GET, POST, etc.).
@@ -807,6 +821,10 @@ class MixpanelAPIClient:
             inject_project_id: If True (default), automatically adds project_id
                 to query params. Set to False for APIs where project_id is
                 already in the URL path (e.g., Lexicon Schemas API).
+            inject_workspace_id: If True (default), adds the explicitly pinned
+                workspace ID as ``workspace_id`` on Query-host requests. Set
+                to False to force a project-scoped query even when a
+                workspace is pinned.
 
         Returns:
             Parsed JSON response.
@@ -822,6 +840,12 @@ class MixpanelAPIClient:
             params = {}
         if inject_project_id:
             params["project_id"] = self._session.project.id
+        if (
+            inject_workspace_id
+            and self._workspace_id is not None
+            and url.startswith(ENDPOINTS[self._session.account.region]["query"])
+        ):
+            params.setdefault("workspace_id", self._workspace_id)
 
         logger.debug(
             "_request - method: %s, url: %s, final params: %s",
@@ -973,6 +997,14 @@ class MixpanelAPIClient:
         The underlying ``httpx.Client`` instance is preserved; only the
         ``_credentials`` shim and per-axis caches change.
 
+        Workspace scoping: ``use(workspace=W)`` pins the workspace, so
+        subsequent Query-host requests carry ``workspace_id=W`` and Mixpanel
+        data view filters apply (see :meth:`_request`); raw export streaming
+        stays project-scoped. Any call that does not supply ``workspace=``
+        (including a zero-axis ``use()``) clears both ``session.workspace``
+        and the pin, reverting queries to unscoped — the pin always tracks
+        the session's workspace axis.
+
         Args:
             account: Replacement account.
             project: Replacement project (``Project`` object or numeric-string
@@ -1012,13 +1044,15 @@ class MixpanelAPIClient:
         if account is not None or project is not None:
             self._resolved_workspace = new_session.workspace
             self._cached_workspace_id = None
-            # Sync the int-id pin with the new session — without this,
-            # `maybe_scoped_path()` keeps emitting `/workspaces/<old>/…`
-            # and routes requests to a workspace that may not exist under
-            # the new project / account.
-            self._workspace_id = (
-                new_session.workspace.id if new_session.workspace else None
-            )
+        # Sync the int-id pin with the new session unconditionally —
+        # without this, `maybe_scoped_path()` keeps emitting
+        # `/workspaces/<old>/…` (routing requests to a workspace that may
+        # not exist under the new project / account), and `_request()`
+        # keeps injecting a stale `workspace_id` on Query-host calls.
+        # The unconditional sync also covers the zero-axis case
+        # (`use()` with no arguments), where `Session.replace` clears
+        # `session.workspace` — the pin must follow it to None.
+        self._workspace_id = new_session.workspace.id if new_session.workspace else None
         if workspace_obj is not None:
             self._workspace_id = workspace_obj.id
             self._resolved_workspace = workspace_obj
@@ -1297,9 +1331,13 @@ class MixpanelAPIClient:
     def set_workspace_id(self, workspace_id: int | None) -> None:
         """Set or clear the explicit workspace ID for scoped requests.
 
-        When set, ``maybe_scoped_path()`` will use workspace-scoped paths.
-        Setting to ``None`` clears both the explicit ID and the cached
-        auto-discovered ID, reverting to project-scoped paths.
+        When set, ``maybe_scoped_path()`` will use workspace-scoped paths,
+        AND every Query-host request (queries, discovery, engage) carries a
+        ``workspace_id`` parameter so Mixpanel data view filters apply (see
+        :meth:`_request`). Raw export streaming remains project-scoped by
+        design. Setting to ``None`` clears both the explicit ID and the
+        cached auto-discovered ID, reverting to project-scoped paths and
+        unscoped queries.
 
         Args:
             workspace_id: Workspace ID to use, or None to clear.
