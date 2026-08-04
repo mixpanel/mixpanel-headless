@@ -835,6 +835,18 @@ class MixpanelAPIClient:
             QueryError: Invalid parameters (400).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
+
+        Example:
+            ```python
+            client.set_workspace_id(84)
+            url = client._build_url("query", "/events/names")
+            # Pin + Query host → workspace_id=84 injected alongside project_id
+            client._request("GET", url, params={"type": "general"})
+            # Opt out to force a project-wide query despite the pin
+            client._request(
+                "GET", url, params={"type": "general"}, inject_workspace_id=False
+            )
+            ```
         """
         if params is None:
             params = {}
