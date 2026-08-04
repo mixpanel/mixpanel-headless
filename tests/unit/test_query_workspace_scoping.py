@@ -317,7 +317,7 @@ class TestNonQueryHostsUnaffected:
         assert len(events) == 1
         assert len(captured) == 1
         request = captured[0]
-        assert "data.mixpanel.com" in str(request.url)
+        assert request.url.host == "data.mixpanel.com"
         assert "workspace_id" not in request.url.params
 
 
