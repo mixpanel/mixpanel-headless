@@ -548,10 +548,11 @@ class Workspace:
         ``workspace=``. The HTTP transport is preserved across all switches
         (per Research R5).
 
-        ``use(workspace=N)`` explicitly pins the workspace: subsequent Query
-        API and discovery calls carry ``workspace_id=N`` so Mixpanel data
-        view filters apply, and App API calls scope via
-        ``/workspaces/N/...`` paths. Raw export streaming
+        ``use(workspace=<workspace_id>)`` explicitly pins the workspace:
+        subsequent Query API and discovery calls carry that workspace ID as
+        the ``workspace_id`` parameter so Mixpanel data view filters apply,
+        and App API calls scope via ``/workspaces/{workspace_id}/...``
+        paths. Raw export streaming
         (``stream_events()`` / ``stream_profiles()``) remains project-scoped
         by design. Swapping the account or project axis clears the pin
         (unless a new workspace is supplied), and the lazy discovery service

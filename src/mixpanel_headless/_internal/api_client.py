@@ -852,12 +852,16 @@ class MixpanelAPIClient:
             params = {}
         if inject_project_id:
             params["project_id"] = self._session.project.id
-        if (
-            inject_workspace_id
-            and self._workspace_id is not None
-            and url.startswith(ENDPOINTS[self._session.account.region]["query"])
+        if inject_workspace_id and url.startswith(
+            ENDPOINTS[self._session.account.region]["query"]
         ):
-            params.setdefault("workspace_id", self._workspace_id)
+            if self._workspace_id is not None:
+                params.setdefault("workspace_id", self._workspace_id)
+            else:
+                logger.debug(
+                    "_request - no workspace pinned; Query API call runs "
+                    "project-wide (data view filters do not apply)"
+                )
 
         logger.debug(
             "_request - method: %s, url: %s, final params: %s",
