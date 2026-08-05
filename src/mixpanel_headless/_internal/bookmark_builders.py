@@ -18,8 +18,6 @@ from mixpanel_headless.exceptions import BookmarkValidationError, ValidationErro
 from mixpanel_headless.types import (
     AbstractFilter,
     CohortBreakdown,
-    CohortRef,
-    CompoundFilter,
     ContainmentFilter,
     CustomPropertyRef,
     Filter,
@@ -27,10 +25,12 @@ from mixpanel_headless.types import (
     FrequencyFilter,
     GroupBy,
     InlineCustomProperty,
-    PropertyInput,
-    RelativeDateFilter,
     TimeComparison,
+    WireFormatError,
     _sanitize_raw_cohort,
+)
+from mixpanel_headless.types import (
+    _build_composed_properties as _build_composed_properties,  # re-export
 )
 
 
@@ -53,46 +53,6 @@ def _reject(path: str, message: str, code: str) -> NoReturn:
     raise BookmarkValidationError(
         [ValidationError(path=path, message=message, code=code)]
     )
-
-
-def _build_composed_properties(
-    inputs: dict[str, PropertyInput],
-) -> dict[str, dict[str, str]]:
-    """Convert a PropertyInput mapping to bookmark composedProperties format.
-
-    Transforms the user-facing ``inputs`` dict (letter → PropertyInput)
-    into the JSON structure expected by Mixpanel's ``customProperty``
-    bookmark schema.
-
-    Args:
-        inputs: Mapping from single uppercase letters (A-Z) to
-            ``PropertyInput`` objects.
-
-    Returns:
-        Dict mapping each letter to a dict with ``value``, ``type``,
-        and ``resourceType`` keys.
-
-    Example:
-        ```python
-        from mixpanel_headless._internal.bookmark_builders import (
-            _build_composed_properties,
-        )
-        from mixpanel_headless.types import PropertyInput
-
-        result = _build_composed_properties({
-            "A": PropertyInput("price", type="number"),
-        })
-        # {"A": {"value": "price", "type": "number", "resourceType": "event"}}
-        ```
-    """
-    return {
-        key: {
-            "value": prop.name,
-            "type": prop.type,
-            "resourceType": prop.resource_type,
-        }
-        for key, prop in inputs.items()
-    }
 
 
 def build_time_section(
@@ -501,139 +461,26 @@ def _build_cohort_group_entry(
     }
 
 
-def _wire_value(value: Any) -> Any:
-    """Render a filter's ``value`` as plain JSON for the wire.
-
-    Every value is already JSON-native except cohort membership, whose
-    entries are :class:`~mixpanel_headless.types.CohortRef` models —
-    typed so the schema can describe them, but the bookmark payload
-    still has to be a dict. ``exclude_none`` drops whichever of
-    ``id`` / ``raw_cohort`` is unset, reproducing the shape the untyped
-    builder emitted.
-
-    Args:
-        value: A filter's ``value``.
-
-    Returns:
-        ``value`` unchanged, or its dict form when it carries cohorts.
-    """
-    if isinstance(value, list) and value and isinstance(value[0], CohortRef):
-        return [item.model_dump(exclude_none=True) for item in value]
-    return value
-
-
 def build_filter_entry(f: AbstractFilter) -> dict[str, Any]:
     """Convert a Filter object to a bookmark filter dict.
 
-    Maps the internal Filter fields to the key names expected by the
-    Mixpanel bookmark API. Includes ``filterDateUnit`` only for
-    relative date filters that have a date unit set.
+    The rendering lives on the model — see ``AbstractFilter._dump_bookmark``
+    and the overrides on ``ContainmentFilter``, ``RelativeDateFilter`` and
+    ``CompoundFilter`` in ``mixpanel_headless.types``.
 
     Args:
-        f: A ``Filter`` object constructed via its class methods.
+        f: The filter to render.
 
     Returns:
-        Bookmark filter dict with keys: ``resourceType``, ``filterType``,
-        ``defaultType``, ``value``, ``filterValue``, ``filterOperator``,
-        and optionally ``filterDateUnit``.  For ``CustomPropertyRef``
-        properties the dict also contains ``customPropertyId`` and
-        ``dataset``.  For ``InlineCustomProperty`` properties it contains
-        ``customProperty`` (nested definition) and ``dataset``, and the
-        ``filterType``/``defaultType`` are overridden from the inline
-        property's ``property_type``.
+        The bookmark filter entry.
 
     Example:
         ```python
-        entry = build_filter_entry(FilterFactory.equals("country", "US"))
-        # {"resourceType": "events", "filterType": "string",
-        #  "defaultType": "string", "value": "country",
-        #  "filterValue": ["US"], "filterOperator": "equals"}
+        build_filter_entry(FilterFactory.equals("country", "US"))
+        # {"resourceType": "events", "filterType": "string", ...}
         ```
     """
-    if isinstance(f, CompoundFilter):
-        return _build_list_contains_entry(f)
-    prop = f.property
-    entry: dict[str, Any] = {
-        "resourceType": f.resource_type,
-        "filterType": f.property_type,
-        "defaultType": f.property_type,
-        "filterValue": _wire_value(f.value),
-        "filterOperator": f.operator,
-    }
-    if isinstance(prop, CustomPropertyRef):
-        entry["customPropertyId"] = prop.id
-        entry["dataset"] = "$mixpanel"
-    elif isinstance(prop, InlineCustomProperty):
-        effective_type = (
-            prop.property_type if prop.property_type is not None else f.property_type
-        )
-        entry["customProperty"] = {
-            "displayFormula": prop.formula,
-            "composedProperties": _build_composed_properties(prop.inputs),
-            "name": "",
-            "description": "",
-            "propertyType": effective_type,
-            "resourceType": prop.resource_type,
-        }
-        entry["filterType"] = effective_type
-        entry["defaultType"] = effective_type
-        entry["dataset"] = "$mixpanel"
-        entry["resourceType"] = prop.resource_type
-    else:
-        entry["value"] = prop
-    # Only the rolling-window filters carry a unit. The grouped models make
-    # that exact, where the flat Filter needed a wide attribute defaulting
-    # to None on every member.
-    if isinstance(f, RelativeDateFilter):
-        entry["filterDateUnit"] = f.date_unit
-    return entry
-
-
-def _build_list_contains_entry(f: CompoundFilter) -> dict[str, Any]:
-    """Build the bookmark entry for a ``FilterFactory.list_contains`` filter.
-
-    Emits the ``listItemFilters`` wire structure used by Mixpanel
-    Insights to filter on subproperties of objects nested inside a list
-    property (e.g. ``cart`` is a list of ``{"Brand": str, ...}``
-    items). Each inner ``Filter`` is serialized via the same
-    :func:`build_filter_entry` recursively, then ``dataset`` is
-    backfilled to ``"$mixpanel"`` since the wire format requires it on
-    inner items even for plain string properties.
-
-    Trusts ``CompoundFilter``'s own field types: it is the only
-    union member carrying ``list_item_filters`` / ``list_item_quantifier``,
-    and it declares both non-optional, so a ``list_contains`` filter
-    missing either is rejected at construction and this builder never
-    sees ``None``.
-
-    Args:
-        f: A ``Filter`` constructed via ``FilterFactory.list_contains(...)``.
-
-    Returns:
-        Bookmark filter dict carrying ``listItemFilters``,
-        ``listQuantifier``, and the constant outer wrapper
-        (``filterOperator: "true"``, ``filterValue: True``,
-        ``filterType: "object"``, ``filterJoinType: "list"``).
-    """
-    list_item_filters = f.list_item_filters
-    list_item_quantifier = f.list_item_quantifier
-    inner: list[dict[str, Any]] = []
-    for sub in list_item_filters:
-        sub_entry = build_filter_entry(sub)
-        sub_entry.setdefault("dataset", "$mixpanel")
-        inner.append(sub_entry)
-    return {
-        "dataset": "$mixpanel",
-        "value": f.property,
-        "resourceType": f.resource_type,
-        "filterType": "object",
-        "defaultType": "object",
-        "filterJoinType": "list",
-        "listQuantifier": list_item_quantifier,
-        "listItemFilters": inner,
-        "filterOperator": "true",
-        "filterValue": True,
-    }
+    return f.mixpanel_model_dump("bookmark")
 
 
 def build_flow_where_entries(
@@ -685,45 +532,25 @@ def build_flow_where_entries(
         )
     entries: list[dict[str, Any]] = []
     for i, f in enumerate(filters):
-        prop = f.property
-        if not isinstance(prop, str):
+        # A property check, not a filter one: it applies to every member, and
+        # the model cannot see whether its own property is a plain name.
+        if not isinstance(f.property, str):
             _reject(
                 path=f"where[{i}]",
                 message=(
                     f"flow where filters only support string "
-                    f"property names; got {type(prop).__name__} — "
+                    f"property names; got {type(f.property).__name__} — "
                     f"custom property refs are not supported in "
                     f"flow filters"
                 ),
                 code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
             )
-        if f.operator == "list_contains":
-            _reject(
-                path=f"where[{i}]",
-                message=(
-                    "flow where filters cannot express "
-                    "list_contains — the flat where format has "
-                    "no key for nested sub-filters"
-                ),
-                code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
-            )
-        if isinstance(f, RelativeDateFilter):
-            _reject(
-                path=f"where[{i}]",
-                message=(
-                    f"flow where filters cannot express the "
-                    f"relative-date operator '{f.operator}' — the "
-                    f"flat where format has no key for the date "
-                    f"unit. Use an absolute date filter instead "
-                    f"(FilterFactory.date_between / FilterFactory.before / "
-                    f"FilterFactory.since)"
-                ),
-                code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
-            )
-        entry: dict[str, Any] = {"property": prop, "operator": f.operator}
-        if f.value is not None:
-            entry["value"] = f.value
-        entries.append(entry)
+        # Members the flat format cannot express refuse themselves. Only the
+        # position is added here, since only this loop knows the index.
+        try:
+            entries.append(f.mixpanel_model_dump("flow_where"))
+        except WireFormatError as exc:
+            _reject(path=f"where[{i}]", message=exc.message, code=exc.code)
     return entries
 
 

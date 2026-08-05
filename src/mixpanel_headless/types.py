@@ -6846,6 +6846,84 @@ class InlineCustomProperty:
             property_type="number",
         )
 
+    # TODO: fold into `AbstractMixpanelModel` once this is a `BaseModel`.
+    # It is a `@pydantic_dataclass`, so it cannot extend the base and gets a
+    # plain method instead — same result, no inheritance. Converting this and
+    # `CustomPropertyRef` is its own port: both are reachable from
+    # `PropertySpec`, so the schema they contribute to `Filter` is part of the
+    # published contract and has to be diffed on its own.
+    def _bookmark_filter_keys(self, default_type: FilterPropertyType) -> dict[str, Any]:
+        """Bookmark keys a filter gains from targeting this property.
+
+        An inline property overrides the filter's own type and resource
+        type: the formula's result type is what the filter is comparing
+        against, not whatever the filter declared.
+
+        Args:
+            default_type: The filter's ``property_type``, used when this
+                property declares none. The fallback lives in the
+                caller's argument rather than here because only the
+                filter knows it.
+
+        Returns:
+            Keys to merge into the filter's bookmark entry.
+        """
+        effective = (
+            self.property_type if self.property_type is not None else default_type
+        )
+        return {
+            "customProperty": {
+                "displayFormula": self.formula,
+                "composedProperties": _build_composed_properties(self.inputs),
+                "name": "",
+                "description": "",
+                "propertyType": effective,
+                "resourceType": self.resource_type,
+            },
+            "filterType": effective,
+            "defaultType": effective,
+            "dataset": "$mixpanel",
+            "resourceType": self.resource_type,
+        }
+
+
+def _build_composed_properties(
+    inputs: dict[str, PropertyInput],
+) -> dict[str, dict[str, str]]:
+    """Convert a PropertyInput mapping to bookmark composedProperties format.
+
+    Transforms the user-facing ``inputs`` dict (letter → PropertyInput)
+    into the JSON structure expected by Mixpanel's ``customProperty``
+    bookmark schema.
+
+    Lives here rather than in the bookmark builders because
+    :meth:`InlineCustomProperty._bookmark_filter_keys` needs it and
+    ``types.py`` cannot import them — they import it. The builders
+    re-export this name, so their callers are unaffected.
+
+    Args:
+        inputs: Mapping from single uppercase letters (A-Z) to
+            ``PropertyInput`` objects.
+
+    Returns:
+        Dict mapping each letter to a dict with ``value``, ``type``,
+        and ``resourceType`` keys.
+
+    Example:
+        ```python
+        _build_composed_properties({"A": PropertyInput("price", type="number")})
+        # {"A": {"value": "price", "type": "number", "resourceType": "event"}}
+        ```
+    """
+    return {
+        key: {
+            "value": prop.name,
+            "type": prop.type,
+            "resourceType": prop.resource_type,
+        }
+        for key, prop in inputs.items()
+    }
+
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CustomPropertyRef:
@@ -6884,6 +6962,27 @@ class CustomPropertyRef:
     error — see :data:`_PositiveStrictIntSchema` for why the bound lives
     there rather than here.
     """
+
+    # TODO: fold into `AbstractMixpanelModel` once this is a `BaseModel` —
+    # see the note on `InlineCustomProperty._bookmark_filter_keys`.
+    def _bookmark_filter_keys(
+        self, _default_type: FilterPropertyType
+    ) -> dict[str, Any]:
+        """Bookmark keys a filter gains from targeting this property.
+
+        A saved custom property is referenced by id; the server already
+        knows its type, so unlike an inline definition this contributes
+        no type override.
+
+        Args:
+            _default_type: The filter's ``property_type``. Unused —
+                accepted so both property models present the same call
+                shape to :meth:`AbstractFilter._dump_bookmark`.
+
+        Returns:
+            Keys to merge into the filter's bookmark entry.
+        """
+        return {"customPropertyId": self.id, "dataset": "$mixpanel"}
 
 
 def _union_discriminator(
@@ -7477,7 +7576,218 @@ class Formula:
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-class AbstractFilter(BaseModel):
+# =============================================================================
+# Segfilter tables
+#
+# Moved here from `_internal/segfilter.py` so the models can render themselves;
+# they cannot import that module, which imports them. What did *not* come with
+# them is the four operator frozensets (`_SETNESS_OPS`, `_NUMBER_RANGE_OPS`,
+# `_DATETIME_RELATIVE_OPS`, `_DATETIME_RANGE_OPS`) that used to sit alongside.
+# Each restated a member grouping the models already encode, and one had
+# drifted — `_NUMBER_RANGE_OPS` listed `"between"`, which is not a
+# `FilterOperator`. "Which operators behave this way" is now "which model
+# overrides `_segfilter_operand`".
+# =============================================================================
+
+RESOURCE_TYPE_MAP: dict[str, str] = {
+    "events": "properties",
+    "people": "user",
+    "cohorts": "cohort",
+    "other": "other",
+}
+"""Maps a filter's ``resource_type`` to the segfilter ``property.source``."""
+
+STRING_OPERATOR_MAP: dict[str, str] = {
+    "equals": "==",
+    "does not equal": "!=",
+    "contains": "in",
+    "does not contain": "not in",
+    "is set": "set",
+    "is not set": "not set",
+}
+"""Maps string-typed filter operators to segfilter operators."""
+
+NUMBER_OPERATOR_MAP: dict[str, str] = {
+    "is greater than": ">",
+    "is less than": "<",
+    "equals": "==",
+    "does not equal": "!=",
+    "is at least": ">=",
+    "is at most": "<=",
+    "is between": "><",
+    "not between": "!><",
+    "is set": "is set",
+    "is not set": "is not set",
+}
+"""Maps number-typed filter operators to segfilter operators.
+
+Every key is a real :data:`FilterOperator`. Two that were not —
+``"between"`` and ``"is equal to"`` — are gone: ``operator`` is
+``Literal``-constrained, so no filter could ever carry them, and listing
+them made the "Valid operators" message advertise spellings that would
+be rejected at construction.
+"""
+
+DATETIME_OPERATOR_MAP: dict[str, str] = {
+    "was on": "==",
+    "was not on": "!=",
+    # Segfilter operators describe the operand's relation to matching values,
+    # not the event's relation to the operand. So "was before <date>" becomes
+    # ">" because the operand date is greater than the matching event dates.
+    "was before": ">",
+    "was since": "<",
+    "was in the": ">",
+    "was not in the": ">",
+    "was between": "><",
+    "was not between": "!><",
+}
+"""Maps datetime-typed filter operators to segfilter operators."""
+
+_SEGFILTER_OPERATORS: dict[str, dict[str, str]] = {
+    "string": STRING_OPERATOR_MAP,
+    "number": NUMBER_OPERATOR_MAP,
+    "boolean": {},
+    "datetime": DATETIME_OPERATOR_MAP,
+}
+"""Which operator table each property type uses.
+
+``boolean`` is empty: a boolean segfilter carries no ``operator`` key at
+all, so :class:`BooleanStateFilter` never looks one up.
+"""
+
+
+def _convert_date_format(date_str: str) -> str:
+    """Convert a date string from YYYY-MM-DD to MM/DD/YYYY format.
+
+    Args:
+        date_str: Date in YYYY-MM-DD format (e.g. ``"2026-01-15"``).
+
+    Returns:
+        Date in MM/DD/YYYY format (e.g. ``"01/15/2026"``).
+
+    Example:
+        ```python
+        _convert_date_format("2026-01-15")
+        # "01/15/2026"
+        ```
+    """
+    year, month, day = date_str.split("-")
+    return f"{month.zfill(2)}/{day.zfill(2)}/{year}"
+
+
+# =============================================================================
+# Wire rendering
+#
+# These models are two things at once: the schema an AI/MCP consumer generates
+# against, and the translation layer into Mixpanel's payload formats. Knowing
+# every dialect is therefore their job, and each renders itself rather than
+# being taken apart from outside by a builder that re-derives, imperfectly,
+# groupings the models already encode.
+# =============================================================================
+
+WireFormat = Literal["default", "bookmark", "segfilter", "flow_where"]
+"""A Mixpanel payload dialect.
+
+``default`` is plain :meth:`~pydantic.BaseModel.model_dump`. The other
+three name endpoint formats that differ in key names, operator spelling
+and value encoding — see :class:`AbstractMixpanelModel`.
+"""
+
+
+class WireFormatError(Exception):
+    """A model cannot be expressed in the requested dialect.
+
+    Carries a code and a message but no path: the position of the
+    offending input (``where[2]``) is known only to the caller iterating
+    them, which catches this and re-raises with the location attached.
+
+    Attributes:
+        code: Stable error code, e.g. ``"FL_WHERE_LIST_CONTAINS_UNSUPPORTED"``.
+        message: Human-readable explanation.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        """Store the code and message.
+
+        Args:
+            code: Stable error code.
+            message: Human-readable explanation.
+        """
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class AbstractMixpanelModel(BaseModel):
+    """A model that can render itself into Mixpanel's payload dialects.
+
+    One public entry point, :meth:`mixpanel_model_dump`, dispatching to a
+    per-dialect hook. Subclasses override only the hooks whose output
+    differs from a plain ``model_dump()``, so a model that has no wire
+    form of its own inherits sensible behaviour and declares nothing.
+
+    The dispatch is a typed ``if``-ladder here rather than a lookup by
+    name (``getattr(self, f"_dump_{fmt}")``), which ``mypy --strict``
+    cannot check, and rather than each subclass switching on ``fmt``
+    itself, which repeats the ladder once per member.
+
+    Example:
+        ```python
+        f = FilterFactory.equals("plan", "pro")
+        f.mixpanel_model_dump("bookmark")
+        # {"resourceType": "events", "filterType": "string", ...}
+        ```
+    """
+
+    def mixpanel_model_dump(self, fmt: WireFormat = "default") -> dict[str, Any]:
+        """Render this model in the given Mixpanel dialect.
+
+        Args:
+            fmt: Which dialect to emit. Defaults to ``"default"``, plain
+                ``model_dump()``.
+
+        Returns:
+            The payload dict for ``fmt``.
+
+        Raises:
+            WireFormatError: If this model has no representation in
+                ``fmt`` — the flat flow format cannot express nested or
+                relative-date filters, for instance.
+        """
+        if fmt == "bookmark":
+            return self._dump_bookmark()
+        if fmt == "segfilter":
+            return self._dump_segfilter()
+        if fmt == "flow_where":
+            return self._dump_flow_where()
+        return self.model_dump()
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render for the bookmark/report format.
+
+        Returns:
+            ``model_dump()`` unless a subclass overrides.
+        """
+        return self.model_dump()
+
+    def _dump_segfilter(self) -> dict[str, Any]:
+        """Render for the flows segfilter format.
+
+        Returns:
+            ``model_dump()`` unless a subclass overrides.
+        """
+        return self.model_dump()
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Render for the flat flow ``where`` format.
+
+        Returns:
+            ``model_dump()`` unless a subclass overrides.
+        """
+        return self.model_dump()
+
+
+class AbstractFilter(AbstractMixpanelModel):
     """Fields and configuration shared by every filter model.
 
     Named ``Abstract`` so that :data:`Filter` — the name callers type in
@@ -7553,6 +7863,118 @@ class AbstractFilter(BaseModel):
         """
         check_cohort_property(self.property, self.operator, self.value)
         return self
+
+    # --- wire rendering -----------------------------------------------------
+
+    def _bookmark_value(self) -> Any:
+        """The ``filterValue`` payload.
+
+        Every member's ``value`` is already JSON-native except cohort
+        membership, so this is the identity and
+        :class:`ContainmentFilter` overrides it.
+
+        Returns:
+            ``self.value``, ready for JSON.
+        """
+        return self.value
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render the bookmark/report filter entry.
+
+        Returns:
+            The entry dict, including whatever keys the property
+            contributes.
+        """
+        entry: dict[str, Any] = {
+            "resourceType": self.resource_type,
+            "filterType": self.property_type,
+            "defaultType": self.property_type,
+            "filterValue": self._bookmark_value(),
+            "filterOperator": self.operator,
+        }
+        prop = self.property
+        if isinstance(prop, str):
+            entry["value"] = prop
+        else:
+            entry.update(prop._bookmark_filter_keys(self.property_type))
+        return entry
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Render the flat flow ``where`` entry.
+
+        The property is checked by the caller, which owns the position
+        in the list and so can report ``where[i]``.
+
+        Returns:
+            ``{property, operator}``, plus ``value`` when the operator
+            takes one.
+        """
+        entry: dict[str, Any] = {
+            "property": self.property,
+            "operator": self.operator,
+        }
+        if self.value is not None:
+            entry["value"] = self.value
+        return entry
+
+    def _segfilter_operand(self) -> Any:
+        """The segfilter ``operand``, in the common scalar case.
+
+        Numbers go out stringified; strings go out as-is, which for the
+        equality operators means the list their ``value`` already holds.
+        Members whose operand is shaped differently — ranges, dates,
+        the value-less operators — override this.
+
+        Returns:
+            The operand for this filter's value.
+        """
+        return str(self.value) if self.property_type == "number" else self.value
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """The segfilter ``filter`` sub-dict.
+
+        Returns:
+            ``{operator, operand}``.
+
+        Raises:
+            ValueError: If the operator has no segfilter spelling for
+                this property type.
+        """
+        table = _SEGFILTER_OPERATORS[self.property_type]
+        if self.operator not in table:
+            raise ValueError(
+                f"Unknown {self.property_type} operator '{self.operator}'. "
+                f"Valid operators: {sorted(table)}"
+            )
+        return {"operator": table[self.operator], "operand": self._segfilter_operand()}
+
+    def _dump_segfilter(self) -> dict[str, Any]:
+        """Render the flows segfilter entry.
+
+        Returns:
+            The segfilter dict: a ``property`` descriptor, the type
+            twice, and the ``filter`` sub-dict.
+
+        Raises:
+            ValueError: If the property type has no segfilter form
+                (``list`` and ``object`` do not), or the operator has no
+                spelling for the type.
+        """
+        if self.property_type not in _SEGFILTER_OPERATORS:
+            raise ValueError(
+                f"Unsupported property type '{self.property_type}'. "
+                f"Supported types: string, number, boolean, datetime"
+            )
+        return {
+            "property": {
+                "name": self.property,
+                "source": RESOURCE_TYPE_MAP.get(self.resource_type, self.resource_type),
+                "type": self.property_type,
+            },
+            "type": self.property_type,
+            "selected_property_type": self.property_type,
+            "filter": self._segfilter_filter(),
+        }
 
 
 # =============================================================================
@@ -7693,6 +8115,14 @@ class PresenceFilter(AbstractFilter):
     operator: Literal["is set", "is not set"]
     value: None = None
 
+    def _segfilter_operand(self) -> Any:
+        """No comparand, so the operand is empty.
+
+        Returns:
+            ``""``.
+        """
+        return ""
+
     @model_validator(mode="after")
     def _guard_cohort_property(self) -> PresenceFilter:
         """Allowed against ``$cohorts``; the base guard does not apply.
@@ -7709,6 +8139,17 @@ class BooleanStateFilter(AbstractFilter):
     operator: Literal["true", "false"]
     value: None = None
     property_type: Literal["boolean"] = "boolean"
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """The boolean segfilter, which carries no ``operator``.
+
+        The truth value rides in ``operand`` instead, so this is the one
+        member that replaces the sub-dict rather than the operand.
+
+        Returns:
+            ``{"operand": <operator>}``.
+        """
+        return {"operand": self.operator}
 
 
 class SubstringFilter(AbstractFilter):
@@ -7758,6 +8199,20 @@ class ContainmentFilter(AbstractFilter):
         check_cohort_value_pairing(self.property, self.operator, self.value)
         return self
 
+    def _bookmark_value(self) -> Any:
+        """Render cohort entries as plain dicts.
+
+        The only member whose ``value`` can hold models, so the only one
+        that has to say anything here. ``exclude_none`` drops whichever
+        of ``id`` / ``raw_cohort`` is unset.
+
+        Returns:
+            A list of cohort dicts, or the substring unchanged.
+        """
+        if isinstance(self.value, str):
+            return self.value
+        return [entry.model_dump(exclude_none=True) for entry in self.value]
+
 
 class EqualityFilter(AbstractFilter):
     """Tests a property for equality against one operand or a list.
@@ -7804,6 +8259,15 @@ class NumericRangeFilter(AbstractFilter):
 
     operator: Literal["is between", "not between"]
     value: _NumberPair
+
+    def _segfilter_operand(self) -> list[str]:
+        """Both bounds, stringified.
+
+        Returns:
+            The two bounds as strings.
+        """
+        return [str(v) for v in self.value]
+
     property_type: Literal["number"] = "number"
 
 
@@ -7812,6 +8276,15 @@ class AbsoluteDateFilter(AbstractFilter):
 
     operator: Literal["was on", "was not on", "was before", "was since"]
     value: _DateStr
+
+    def _segfilter_operand(self) -> str:
+        """The date in the segfilter's MM/DD/YYYY spelling.
+
+        Returns:
+            The reformatted date.
+        """
+        return _convert_date_format(str(self.value))
+
     property_type: Literal["datetime"] = "datetime"
 
 
@@ -7820,6 +8293,15 @@ class DateRangeFilter(AbstractFilter):
 
     operator: Literal["was between", "was not between"]
     value: _DatePair
+
+    def _segfilter_operand(self) -> list[str]:
+        """Both endpoints in the segfilter's MM/DD/YYYY spelling.
+
+        Returns:
+            The two reformatted dates.
+        """
+        return [_convert_date_format(d) for d in self.value]
+
     property_type: Literal["datetime"] = "datetime"
 
     @model_validator(mode="after")
@@ -7840,6 +8322,50 @@ class RelativeDateFilter(AbstractFilter):
     value: _Quantity
     date_unit: FilterDateUnit = "day"
     property_type: Literal["datetime"] = "datetime"
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Add the rolling-window unit to the shared entry.
+
+        Returns:
+            The bookmark entry, plus ``filterDateUnit``.
+        """
+        entry = super()._dump_bookmark()
+        entry["filterDateUnit"] = self.date_unit
+        return entry
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """Add the pluralised unit beside the quantity.
+
+        The operand is the bare quantity — a rolling window, not a date
+        — so the unit has to travel with it.
+
+        ``was in the next`` has no segfilter spelling and is rejected by
+        the table lookup in the base. That gap predates this method;
+        preserve it rather than inventing an operator.
+
+        Returns:
+            ``{operator, operand, unit}``.
+        """
+        entry = super()._segfilter_filter()
+        entry["unit"] = f"{self.date_unit}s"
+        return entry
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Refuse: the flat flow format has no key for the date unit.
+
+        Raises:
+            WireFormatError: Always.
+        """
+        raise WireFormatError(
+            code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
+            message=(
+                f"flow where filters cannot express the relative-date "
+                f"operator '{self.operator}' — the flat where format has "
+                f"no key for the date unit. Use an absolute date filter "
+                f"instead (FilterFactory.date_between / FilterFactory.before / "
+                f"FilterFactory.since)"
+            ),
+        )
 
 
 class CompoundFilter(AbstractFilter):
@@ -7862,6 +8388,50 @@ class CompoundFilter(AbstractFilter):
     property_type: Literal["object"] = "object"
     list_item_filters: Annotated[tuple[AtomicFilter, ...], Field(min_length=1)]
     list_item_quantifier: Literal["any", "all"] = "any"
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render the nested ``listItemFilters`` entry.
+
+        Shares nothing with the shared entry — the outer wrapper is a
+        constant (``filterOperator: "true"``, ``filterValue: True``) and
+        the real content is the inner filters. ``dataset`` is backfilled
+        onto each inner entry because the wire format requires it there
+        even for plain string properties.
+
+        Returns:
+            The ``list_contains`` bookmark entry.
+        """
+        inner: list[dict[str, Any]] = []
+        for sub in self.list_item_filters:
+            sub_entry = sub._dump_bookmark()
+            sub_entry.setdefault("dataset", "$mixpanel")
+            inner.append(sub_entry)
+        return {
+            "dataset": "$mixpanel",
+            "value": self.property,
+            "resourceType": self.resource_type,
+            "filterType": "object",
+            "defaultType": "object",
+            "filterJoinType": "list",
+            "listQuantifier": self.list_item_quantifier,
+            "listItemFilters": inner,
+            "filterOperator": "true",
+            "filterValue": True,
+        }
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Refuse: the flat flow format cannot nest.
+
+        Raises:
+            WireFormatError: Always.
+        """
+        raise WireFormatError(
+            code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
+            message=(
+                "flow where filters cannot express list_contains — the "
+                "flat where format has no key for nested sub-filters"
+            ),
+        )
 
 
 # =============================================================================

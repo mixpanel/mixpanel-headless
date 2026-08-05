@@ -86,7 +86,28 @@ Grouping is free at the routing layer — `MarkedDiscriminator` maps every liter
 
 **Public field names.** `property`, not `_property` + `validation_alias`. `BaseModel` rejects leading-underscore field names outright, so the underscore convention is what forces a model to stay a pydantic dataclass. Public names also fix serialization: with only a `validation_alias`, `model_dump(by_alias=True)` emits the *field name*, so such models do not round-trip through their own schema.
 
-**Logic out of the models.** A model is field declarations, `model_config`, and at most a one-line validator hook. Rules are plain functions over primitives in a module that imports **no model** — that is what keeps the import acyclic.
+**Validation logic out of the models.** A model is field declarations, `model_config`, and at most a one-line validator hook. Rules are plain functions over primitives in a module that imports **no model** — that is what keeps the import acyclic.
+
+**Serialization logic belongs on the model.** The rule above is about *validation*, and its whole justification is that acyclicity constraint: a rule needs helpers, and helpers must not import models. Rendering a model into a wire format only reads `self`, so it has no such problem — and pushing it outside means a builder re-deriving, from the outside, groupings the models already encode. That is how this repo ended up with four hand-written operator frozensets restating the filter member split, one of which had silently drifted out of sync.
+
+So: give the base an overridable renderer, and let each model override only where its shape differs.
+
+```python
+class AbstractMixpanelModel(BaseModel):
+    def mixpanel_model_dump(self, fmt: WireFormat = "default") -> dict[str, Any]:
+        if fmt == "bookmark":
+            return self._dump_bookmark()          # one typed ladder, in the base
+        return self.model_dump()
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        return self.model_dump()                  # subclasses override as needed
+```
+
+Two things this buys, both of which the outside-in version cannot: "which operators behave this way" becomes "which class overrides the hook", so it cannot drift; and a member that *cannot* be expressed in a dialect says so itself rather than being caught by an `isinstance` check in someone else's loop.
+
+Dispatch in the base, not `getattr(self, f"_dump_{fmt}")` — stringly-typed lookup is unverifiable under `mypy --strict` — and not a `fmt` switch inside every subclass, which repeats the ladder once per member. Where the rendering needs data (operator tables, format helpers), move that next to the models too; a model cannot import the builder module that imports it.
+
+Anything a caller supplies that the model cannot know — a list index for an error path, a fallback from a sibling object — stays with the caller. Raise a small carrier exception and let it attach the position.
 
 **Naming.** `AbstractX` for a base that is not a union member. `XFilter` / `XCriterion` for members. The short, unqualified name for the union annotation, because that is what appears in signatures:
 

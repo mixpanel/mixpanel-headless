@@ -12,6 +12,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `me.py` | `MeService` + per-account `MeCache` (`~/.mp/accounts/{name}/me.json`) |
 | `pagination.py` | Cursor-based App API pagination |
 | `io_utils.py` | `atomic_write_bytes` — `O_EXCL` + `os.replace` writes with explicit mode bits |
+| `segfilter.py` | `build_segfilter_entry` — a delegation to `AbstractFilter._dump_segfilter`; the conversion and its operator tables live with the models in `types.py`, which this module cannot import from the other direction |
 | `pydantic_utils.py` | `MarkedTag` (`#`-prefixed union tags), `MarkedDiscriminator` (`Annotated` metadata turning a plain union into a marked tagged union), `is_meta_key` — keeps pydantic's union tags out of caller-facing error paths without a registry of tag names |
 | `auth/` | The auth subsystem — see [`../auth_types.py`](../auth_types.py) for the public re-export and [`../../../context/auth-architecture-redesign.md`](../../../context/auth-architecture-redesign.md) for the design |
 | `auth/account.py` | `Account` discriminated union (`ServiceAccount` / `OAuthBrowserAccount` / `OAuthTokenAccount`) + `TokenResolver` protocol |

@@ -259,6 +259,37 @@ both layers agree. `tests/test_filter_union_pbt.py` asserts schema-valid
 ⟺ runtime-valid across the operator × property_type × value-kind grid,
 exempting exactly the residuals above.
 
+### Wire rendering — `mixpanel_model_dump`
+
+These models are two things at once: the schema an AI/MCP consumer
+generates against, and the translation layer into Mixpanel's payload
+formats. So they render themselves, rather than being taken apart from
+outside by a builder.
+
+`AbstractMixpanelModel` is the base; `mixpanel_model_dump(fmt)` is the entry
+point. `fmt="default"` is a plain `model_dump()`; the other three name
+endpoint dialects:
+
+| `fmt` | consumer | notes |
+|-------|----------|-------|
+| `bookmark` | bookmarks / reports | `filterValue`, `filterOperator`, …; `property_type` becomes two keys |
+| `segfilter` | flows step filters | operator symbols, `MM/DD/YYYY` dates, stringified numbers |
+| `flow_where` | flat flow `where` | **lossy** — `CompoundFilter` and `RelativeDateFilter` raise `WireFormatError` |
+
+Subclasses override only the hook whose output differs
+(`_dump_bookmark`, `_segfilter_operand`, …), so shape differences live
+with the shape. That is what removed the four operator frozensets
+`segfilter.py` used to keep in parallel with the member split — one of
+which listed `"between"`, an operator that does not exist.
+
+`build_filter_entry`, `build_segfilter_entry` and
+`build_flow_where_entries` remain as the call-site API. They now
+delegate, and keep only what a single filter cannot know: the `where[i]`
+position, the empty-list guard, and the `listItemFilters` backfill.
+
+`filter_to_selector` is deliberately not a dialect — it compiles an
+expression string, not a payload.
+
 When adding or changing any of this, follow `.claude/skills/pydantify/`.
 
 Declarative cohort inputs (exported from the package root):

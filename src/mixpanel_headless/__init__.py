@@ -95,6 +95,7 @@ from mixpanel_headless.types import (
     BUSINESS_CONTEXT_MAX_CHARS,
     AbsoluteDateFilter,
     AbstractFilter,
+    AbstractMixpanelModel,
     # Auth redesign (042) types
     AccountSummary,
     AccountTestResult,
@@ -312,6 +313,8 @@ from mixpanel_headless.types import (
     WebhookMutationResult,
     WebhookTestParams,
     WebhookTestResult,
+    WireFormat,
+    WireFormatError,
 )
 from mixpanel_headless.workspace import Workspace
 
@@ -613,6 +616,9 @@ __all__ = [
     "SubstringFilter",
     "CohortRef",
     "CohortPayload",
+    "AbstractMixpanelModel",
+    "WireFormat",
+    "WireFormatError",
     "Formula",
     "GroupBy",
     "ListItemGroupMode",
