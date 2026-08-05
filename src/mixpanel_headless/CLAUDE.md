@@ -236,9 +236,15 @@ caller-facing error paths. It also emits the OpenAPI `discriminator`
 block: `operator` mapped onto all 26 values.
 
 Rules a field type cannot state live in
-`_internal/filter_logic.py` as plain functions over primitives — the
-module imports no model, which is what keeps the import acyclic. Models
-are field declarations, `model_config`, and one-line validator hooks.
+`_internal/pydantic_validators.py` as plain functions over primitives — the
+module imports no model, which is what lets `types.py` import it for the
+bodies of its validator hooks. Models are field declarations,
+`model_config`, and one-line hooks.
+
+Not to be confused with `_internal/validation.py`, at the other end of the
+lifecycle: that one validates objects that already exist
+(`validate_bookmark()`, `validate_query_args()`), so it imports `types`
+rather than being imported by it.
 
 **Residuals**, in two directions — see the `Filter` docstring:
 

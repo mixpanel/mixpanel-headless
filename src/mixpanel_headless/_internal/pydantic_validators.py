@@ -1,16 +1,24 @@
-"""Filter rules that field types cannot express.
+"""Bodies for the Pydantic validators in ``types.py``.
 
 Plain functions and constants over primitives. **Nothing here imports a
-model** — that is what keeps the import acyclic, since ``types.py``
-imports this module to give its validators a body.
+model** — that is what lets ``types.py`` import this module to give its
+``model_validator`` and ``AfterValidator`` hooks a body.
 
-Only rules that a field type cannot state live here. A shape belongs in
-the annotation, where both the validator and the JSON schema can see it;
-see ``.claude/skills/pydantify/``. What is left is the cross-field
-pairings and the semantic checks JSON Schema has no form for.
+Not to be confused with ``_internal/validation.py``, which sits at the
+other end of the lifecycle: that module validates objects that already
+exist — ``validate_bookmark()`` takes the assembled payload,
+``validate_query_args()`` takes built ``Metric`` / ``GroupBy`` /
+``Filter`` instances — so it imports ``types`` rather than being imported
+by it. This module runs *during* construction, when there is no model
+yet, only primitives.
 
-Each function raises, returning nothing, so a caller reads as a single
-line inside a ``model_validator``:
+Only rules a field type cannot state live here. A shape belongs in the
+annotation, where both the validator and the JSON schema can see it; see
+``.claude/skills/pydantify/``. What is left is the cross-field pairings
+and the semantic checks JSON Schema has no form for.
+
+Almost every function raises and returns nothing, so a caller reads as a
+single line inside a hook:
 
     ```python
     @model_validator(mode="after")
@@ -18,6 +26,12 @@ line inside a ``model_validator``:
         check_dates_ordered(self.value)
         return self
     ```
+
+The exception is :func:`normalize_equality_value`, which coerces rather
+than rejects. It belongs here anyway — a ``BeforeValidator`` is Pydantic
+validation machinery. What does *not* belong here is schema data: the
+``if``/``then`` fragment stating the equality pairing lives beside the
+model it annotates, in ``types.py``, because it is inert at runtime.
 """
 
 from __future__ import annotations
@@ -58,49 +72,6 @@ MSG_HAND_ROLLED_COHORT = (
 ``$cohorts`` at all; :func:`check_cohort_value_pairing` catches the one
 that may, but only with the cohort payload shape. Both refuse the same
 mistake and must say so identically.
-"""
-
-
-# =============================================================================
-# Schema fragments
-# =============================================================================
-
-EQUALITY_VALUE_RULE: dict[str, Any] = {
-    "if": {
-        "properties": {"property_type": {"const": "number"}},
-        "required": ["property_type"],
-    },
-    "then": {
-        "properties": {
-            "value": {
-                "anyOf": [
-                    {"type": "number"},
-                    {"type": "array", "items": {"type": "number"}},
-                ]
-            }
-        }
-    },
-    "else": {
-        "properties": {
-            "value": {
-                "anyOf": [
-                    {"type": "string"},
-                    {"type": "array", "items": {"type": "string"}},
-                ]
-            }
-        }
-    },
-}
-"""Schema half of the equality ``property_type``/``value`` pairing.
-
-The pairing is cross-field, so no field type states it — but JSON Schema
-can, via ``if``/``then``, which stops a schema-driven consumer generating
-``{"property_type": "number", "value": "oops"}``.
-
-``json_schema_extra`` is inert at validation time, so
-:func:`check_value_matches_property_type` is the runtime half. The two
-must agree; changing one without the other reintroduces the parity gap
-this closes.
 """
 
 
@@ -264,8 +235,10 @@ def check_value_matches_property_type(
 ) -> None:
     """Enforce the equality ``property_type``/``value`` pairing at runtime.
 
-    Runtime half of :data:`EQUALITY_VALUE_RULE`. A ``number`` property
-    takes numeric operands; anything else takes strings.
+    Runtime half of ``types.EQUALITY_VALUE_RULE``, which states the same
+    rule in the schema. A ``number`` property takes numeric operands;
+    anything else takes strings. Changing one without the other
+    reintroduces the parity gap they exist to close.
 
     Args:
         operator: The filter's operator, for the message.

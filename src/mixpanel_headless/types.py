@@ -45,9 +45,9 @@ from mixpanel_headless._internal.bookmark_enums import (
     _MAX_FILTER_VALUES,
     _MAX_FLOW_STEPS_DIRECTION,
 )
-from mixpanel_headless._internal.filter_logic import (
+from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
+from mixpanel_headless._internal.pydantic_validators import (
     _DATE_PATTERN,
-    EQUALITY_VALUE_RULE,
     check_cohort_property,
     check_cohort_source,
     check_cohort_value_pairing,
@@ -58,7 +58,6 @@ from mixpanel_headless._internal.filter_logic import (
     reject_hand_rolled_cohort,
     reject_stray_value,
 )
-from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -7798,7 +7797,7 @@ class AbstractFilter(AbstractMixpanelModel):
     Constructors live on :class:`FilterFactory`, not here, so a model
     stays field declarations, configuration, and at most a one-line
     validator hook. Rules with a body live in
-    ``mixpanel_headless._internal.filter_logic``.
+    ``mixpanel_headless._internal.pydantic_validators``.
 
     "Abstract" is aspirational, not enforced: constructing one succeeds
     and yields a base instance no builder understands. Nothing points a
@@ -8214,14 +8213,54 @@ class ContainmentFilter(AbstractFilter):
         return [entry.model_dump(exclude_none=True) for entry in self.value]
 
 
+EQUALITY_VALUE_RULE: dict[str, Any] = {
+    "if": {
+        "properties": {"property_type": {"const": "number"}},
+        "required": ["property_type"],
+    },
+    "then": {
+        "properties": {
+            "value": {
+                "anyOf": [
+                    {"type": "number"},
+                    {"type": "array", "items": {"type": "number"}},
+                ]
+            }
+        }
+    },
+    "else": {
+        "properties": {
+            "value": {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "array", "items": {"type": "string"}},
+                ]
+            }
+        }
+    },
+}
+"""Schema half of the equality ``property_type``/``value`` pairing.
+
+The pairing is cross-field, so no field type states it — but JSON Schema
+can, via ``if``/``then``, which stops a schema-driven consumer generating
+``{"property_type": "number", "value": "oops"}``.
+
+``json_schema_extra`` is inert at validation time, so
+``pydantic_validators.check_value_matches_property_type`` is the runtime
+half. The two
+must agree; changing one without the other reintroduces the parity gap
+this closes.
+"""
+
+
 class EqualityFilter(AbstractFilter):
     """Tests a property for equality against one operand or a list.
 
     The one model whose rule a field type cannot state: ``value`` must
     agree with ``property_type``, and they are siblings.
-    :data:`~mixpanel_headless._internal.filter_logic.EQUALITY_VALUE_RULE`
-    states it in the schema as ``if``/``then``; the validator below
-    states it at runtime. The two must agree.
+    :data:`EQUALITY_VALUE_RULE` just above states it in the schema as
+    ``if``/``then``; the validator below states it at runtime. The two
+    must agree.
     """
 
     model_config = ConfigDict(
