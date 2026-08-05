@@ -5,6 +5,23 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Fixed
+
+- Declared `click>=8.0` as a direct dependency. `cli/options.py` and
+  `cli/commands/business_context.py` import Click for `click.Choice` option
+  types, but Click previously arrived only transitively through Typer — and
+  Typer 0.27.0 dropped its Click dependency, so fresh (unlocked) installs
+  resolved a broken `mp` CLI (`ModuleNotFoundError: No module named 'click'`
+  on every invocation, including the `mp login` that setup guidance
+  recommends first).
+- The plugin setup script no longer executes `mp login` as a side effect of
+  printing credential guidance: the guidance text sat in backticks inside the
+  double-quoted `python -c` string, and bash command-substitutes backticks
+  inside double quotes on every run. The backticks are gone and the script is
+  now shellcheck-clean.
+
 ## 0.2.0 — 2026-06-05
 
 Headline feature: **session replay (044)** — discovery, signing, CDN fetch,
