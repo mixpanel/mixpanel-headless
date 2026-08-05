@@ -38,7 +38,7 @@ from mixpanel_headless.exceptions import ValidationError
 # ``analytics/lib/common/mxpnl/pydantic/base_pydantic_model.py`` —
 # ``extra="forbid"`` matches the server's strict acceptance policy.
 # ``populate_by_name=True`` lets us keep snake_case Python field names
-# while accepting camelCase / kebab-case wire keys via ``alias=...``.
+# while accepting camelCase / kebab-case payload keys via ``alias=...``.
 _BASE_CONFIG: ConfigDict = ConfigDict(
     populate_by_name=True,
     extra="forbid",
@@ -693,12 +693,12 @@ class InsightsBookmarkSortConfig(BaseModel):
     """Mirrors sorting.py ``InsightsBookmarkSortConfig``.
 
     The wrapper at ``params['sorting']``. Keys are chart-type strings in
-    kebab-case wire form (``funnel-steps``, ``retention-curve``,
+    kebab-case payload form (``funnel-steps``, ``retention-curve``,
     ``insights-metric``); Python field names use snake_case via
     ``alias_generator`` so ``populate_by_name`` accepts both forms.
     """
 
-    # Mirrors sorting.py — kebab-case wire keys, snake_case Python.
+    # Mirrors sorting.py — kebab-case payload keys, snake_case Python.
     model_config = ConfigDict(
         populate_by_name=True,
         extra="forbid",
@@ -1398,7 +1398,7 @@ class SegmentId(BaseModel):
 class FunnelStepsSelectedTableColumns(BaseModel):
     """Mirrors display_options.py ``FunnelStepsSelectedTableColumns``.
 
-    Kebab-case wire keys (``conv-first-step``) map to snake_case Python
+    Kebab-case payload keys (``conv-first-step``) map to snake_case Python
     fields (``conv_first_step``) via ``alias_generator``.
     """
 

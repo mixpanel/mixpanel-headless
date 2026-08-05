@@ -374,14 +374,14 @@ class TestFlowQuery:
         assert q.mode == "tree"
 
     def test_segments_with_frequency_breakdown_rejected(self) -> None:
-        """FrequencyBreakdown is rejected — the flow segment_by wire format
+        """FrequencyBreakdown is rejected — the flow segment_by payload format
         only carries plain property names, so accepting it would produce
         silently empty results."""
         with pytest.raises(BookmarkValidationError):
             FlowQuery(event="Login", segments=[FrequencyBreakdown("Purchase")])
 
     def test_segments_with_cohort_breakdown_rejected(self) -> None:
-        """CohortBreakdown is rejected — the flow segment_by wire format
+        """CohortBreakdown is rejected — the flow segment_by payload format
         only carries plain property names."""
         with pytest.raises(BookmarkValidationError):
             FlowQuery(event="Login", segments=[CohortBreakdown(cohort=123)])
@@ -2504,7 +2504,7 @@ class TestPropertyCriterionNoValueOperatorValueRejected:
     rejects a supplied value on ``is set`` / ``is not set``, but
     ``PropertyCriterion(kind="property", property="country", value="US", operator="is_set")``
     was accepted, ran a bare existence check, and shipped the ignored
-    operand into the wire selector. Because ``value`` is a required field
+    operand into the payload selector. Because ``value`` is a required field
     (the schema keeps it required for the comparison operators), the
     presence operators accept only the documented ``""`` sentinel.
     """
@@ -2833,7 +2833,7 @@ class TestFilterErrorsSurfaceThroughQueryModels:
     has to reach the caller as this package's own exception, with the
     reason intact, rather than as a pydantic error, a ``RuntimeError``
     from the flow builder, or — worse, and the original bug — a silently
-    malformed wire payload.
+    malformed payload.
     """
 
     _COHORT_REPRO: ClassVar[dict[str, object]] = {

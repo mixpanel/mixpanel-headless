@@ -128,7 +128,7 @@ def _payload_for(operator: str) -> dict[str, Any]:
         operator: Any operator the union accepts.
 
     Returns:
-        A dict using the public wire names, ready for ``validate_python``.
+        A dict using the public payload names, ready for ``validate_python``.
     """
     if operator == "list_contains":
         return {
@@ -370,7 +370,7 @@ class TestEqualityFilterValidation:
         """``{"operator": "equals", "value": "x"}`` validates with no ``property_type``.
 
         The scalar is wrapped into a single-element list, matching the
-        flat ``Filter`` and the wire format the segmentation API expects.
+        flat ``Filter`` and the payload format the segmentation API expects.
         """
         parsed = _ADAPTER.validate_python(
             {"property": "country", "operator": "equals", "value": "US"}
@@ -531,7 +531,7 @@ class TestSubstringFilterValidation:
         )
         assert parsed.value == "@mixpanel.com"
 
-    def test_accepts_cohort_wire_shape(self) -> None:
+    def test_accepts_cohort_payload_shape(self) -> None:
         """The ``$cohorts`` builder artifact parses into ``CohortRef``.
 
         ``FilterFactory.in_cohort()`` emits this shape. It routes to
@@ -721,7 +721,7 @@ class TestAbsoluteDateFilterValidation:
         assert parsed.property_type == "datetime"
 
     def test_value_stays_a_string(self) -> None:
-        """Wire-format guard — the single most important test in M3.
+        """Payload-format guard — the single most important test in M3.
 
         ``bookmark_builders`` copies ``_value`` straight onto the outgoing
         payload, so promoting ``_DateStr`` to ``datetime.date`` would
@@ -950,7 +950,7 @@ class TestCohortPropertyGuard:
     """``$cohorts`` stays reserved for the cohort constructors.
 
     The flat ``Filter.__post_init__`` refused any hand-rolled ``$cohorts``
-    filter that did not carry the ``[{"cohort": {...}}]`` wire structure,
+    filter that did not carry the ``[{"cohort": {...}}]`` payload structure,
     exempting only the value-less presence operators. These tests pin that
     behaviour so the union reproduces it exactly rather than approximately.
     """
@@ -960,7 +960,7 @@ class TestCohortPropertyGuard:
         """The two value-less operators stay allowed on ``$cohorts``.
 
         They emit an ordinary filter entry that never touches the cohort
-        wire structure, and were constructible before the guard existed.
+        payload structure, and were constructible before the guard existed.
         """
         parsed = _ADAPTER.validate_python(
             {"property": "$cohorts", "operator": operator}
@@ -990,7 +990,7 @@ class TestCohortPropertyGuard:
             _ADAPTER.validate_python(payload)
 
     @pytest.mark.parametrize("operator", ["contains", "does not contain"])
-    def test_accepts_the_constructor_wire_shape(self, operator: str) -> None:
+    def test_accepts_the_constructor_payload_shape(self, operator: str) -> None:
         """The shape ``FilterFactory.in_cohort()`` emits validates unchanged."""
         parsed = _ADAPTER.validate_python(
             {
@@ -1010,8 +1010,8 @@ class TestCohortPropertyGuard:
         [[], [{"id": 123}], [{"cohort": 123}], [{"cohort": {"id": 1}}, {"x": 1}]],
         ids=["empty", "no-cohort-key", "cohort-not-a-dict", "one-bad-item"],
     )
-    def test_rejects_malformed_cohort_wire_shape(self, value: list[Any]) -> None:
-        """A near-miss of the wire structure is refused, not coerced."""
+    def test_rejects_malformed_cohort_payload_shape(self, value: list[Any]) -> None:
+        """A near-miss of the payload structure is refused, not coerced."""
         with pytest.raises(ValidationError):
             _ADAPTER.validate_python(
                 {
@@ -1022,7 +1022,7 @@ class TestCohortPropertyGuard:
                 }
             )
 
-    def test_rejects_cohort_wire_shape_on_another_property(self) -> None:
+    def test_rejects_cohort_payload_shape_on_another_property(self) -> None:
         """The ``list[dict]`` value is legal only on ``$cohorts``.
 
         The flat filter raised ``_MSG_NEEDS_STRING`` here; the union has
@@ -1239,7 +1239,7 @@ class TestFilterDictConstruction:
         """equals with a bare non-string scalar is rejected.
 
         The classmethod contract is ``str | list[str]``; passing the
-        scalar through emitted a bare ``filterValue: 5`` on the wire
+        scalar through emitted a bare ``filterValue: 5`` in the payload
         where every classmethod-built equals emits a list.
         """
         with pytest.raises(ValidationError, match="string or a list"):
@@ -1276,7 +1276,7 @@ class TestFilterDictConstruction:
     def test_is_between_requires_numeric_elements(self) -> None:
         """is between requires numeric endpoints (FilterFactory.between parity).
 
-        String endpoints built a self-contradictory wire entry
+        String endpoints built a self-contradictory payload entry
         (filterType "number" with string operands).
         """
         with pytest.raises(ValidationError, match="valid number"):
@@ -1341,7 +1341,7 @@ class TestFilterEqualityPropertyTypeCompatibility:
 
     A scalar string was wrapped into a list before ``_property_type`` was
     consulted, so a filter declared ``number`` kept a string operand and
-    reached the wire as ``filterType: "number"`` with
+    reached the payload as ``filterType: "number"`` with
     ``filterValue: ["oops"]`` — a self-contradictory query the API cannot
     answer meaningfully.
     """
@@ -1479,7 +1479,7 @@ class TestFilterDictDateValidation:
 
     ``__post_init__`` must replicate the classmethods' date validation
     (``_validate_date``, from<=to ordering, quantity > 0) so the
-    dict/LLM construction path cannot produce wire payloads the
+    dict/LLM construction path cannot produce payloads the
     classmethod path would reject.
     """
 
@@ -1633,7 +1633,7 @@ class TestFilterOperatorValueShape:
     ``filter-operator-value-shape-not-enforced``: numeric operators
     must carry numeric scalars, string operators must carry strings,
     and required values may not be omitted — otherwise the dict/LLM
-    path emits self-contradictory wire entries (``filterType="number"``
+    path emits self-contradictory payload entries (``filterType="number"``
     with ``filterValue="oops"``).
     """
 
@@ -1784,7 +1784,7 @@ class TestFilterCohortPropertyGuard:
     a raw internal ``RuntimeError`` while the Insights path silently
     emitted an ordinary string filter. Cohort membership must go
     through ``FilterFactory.in_cohort()`` / ``FilterFactory.not_in_cohort()``, which
-    build the internal wire structure the builders require.
+    build the internal payload structure the builders require.
     """
 
     _COHORT_REPRO: ClassVar[dict[str, object]] = {
@@ -1805,7 +1805,7 @@ class TestFilterCohortPropertyGuard:
                 {"property": "$cohorts", "operator": "equals", "value": "123"}
             )
 
-    def test_hand_rolled_cohorts_malformed_wire_shape_rejected(self) -> None:
+    def test_hand_rolled_cohorts_malformed_payload_shape_rejected(self) -> None:
         """A list-of-dicts value missing the 'cohort' key is rejected."""
         with pytest.raises(ValidationError, match="in_cohort"):
             _ADAPTER.validate_python(

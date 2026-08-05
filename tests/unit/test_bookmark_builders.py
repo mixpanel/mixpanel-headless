@@ -1237,7 +1237,7 @@ class TestFilterListContains:
             assert sub["filterType"] == "string"
 
     def test_positional_filter_instances_preserve_operators(self) -> None:
-        """Explicit Filter args support any operator the wire format allows."""
+        """Explicit Filter args support any operator the payload format allows."""
         f = FilterFactory.list_contains(
             "cart",
             FilterFactory.equals("Brand", "nike"),
@@ -1261,14 +1261,14 @@ class TestFilterListContains:
         assert entry["listQuantifier"] == "all"
 
     def test_inner_items_have_dataset(self) -> None:
-        """The wire format requires dataset='$mixpanel' on each inner filter."""
+        """The payload format requires dataset='$mixpanel' on each inner filter."""
         f = FilterFactory.list_contains("cart", Brand="nike", Category="hats")
         entry = build_filter_entry(f)
         for sub in entry["listItemFilters"]:
             assert sub["dataset"] == "$mixpanel"
 
     def test_outer_constants(self) -> None:
-        """Outer dict carries fixed wire-format constants for list-contains filters."""
+        """Outer dict carries fixed payload-format constants for list-contains filters."""
         f = FilterFactory.list_contains("cart", Brand="nike")
         entry = build_filter_entry(f)
         assert entry["dataset"] == "$mixpanel"
@@ -1407,7 +1407,7 @@ class TestGroupByListItem:
     """Tests for GroupBy.list_item — break down by a list-item subproperty."""
 
     def test_basic_string_sub_emits_listItemGroup(self) -> None:
-        """list_item('cart','Brand') produces the listItemGroup wire shape."""
+        """list_item('cart','Brand') produces the listItemGroup payload shape."""
         g = GroupBy.list_item("cart", "Brand")
         section = build_group_section(g)
         assert len(section) == 1
@@ -1437,7 +1437,9 @@ class TestGroupByListItem:
         assert g._list_item_mode is not None
         assert g._list_item_mode.sub == "Brand"
         assert g._list_item_mode.sub_type == "string"
-        assert g.property_type == "string"  # default; wire builder hardcodes "object"
+        assert (
+            g.property_type == "string"
+        )  # default; payload builder hardcodes "object"
 
     def test_rejects_bucketing(self) -> None:
         """list_item with bucket_size raises in __post_init__."""

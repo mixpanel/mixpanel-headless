@@ -25,8 +25,8 @@ from mixpanel_headless.types import (
     FrequencyFilter,
     GroupBy,
     InlineCustomProperty,
+    PayloadFormatError,
     TimeComparison,
-    WireFormatError,
     _sanitize_raw_cohort,
 )
 from mixpanel_headless.types import (
@@ -37,7 +37,7 @@ from mixpanel_headless.types import (
 def _reject(path: str, message: str, code: str) -> NoReturn:
     """Raise a single-error ``BookmarkValidationError``.
 
-    Shared scaffolding for builder-level rejections of inputs the wire
+    Shared scaffolding for builder-level rejections of inputs the payload
     format cannot express, so each call site reads as just the rule
     (path, message, code).
 
@@ -351,7 +351,7 @@ def build_group_section(
                 # breakdowns for people properties, so the classmethod
                 # exposes no resource_type parameter. Asymmetric with
                 # FilterFactory.list_contains, which DOES accept
-                # resource_type="people" because the wire format permits
+                # resource_type="people" because the payload format permits
                 # list-object filters on people properties (just not
                 # breakdowns).
                 mode = g._list_item_mode
@@ -549,7 +549,7 @@ def build_flow_where_entries(
         # position is added here, since only this loop knows the index.
         try:
             entries.append(f.mixpanel_model_dump("flow_where"))
-        except WireFormatError as exc:
+        except PayloadFormatError as exc:
             _reject(path=f"where[{i}]", message=exc.message, code=exc.code)
     return entries
 

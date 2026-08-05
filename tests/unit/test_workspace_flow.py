@@ -1202,7 +1202,7 @@ class TestFlowPropertyFilters:
         finally:
             ws.close()
 
-    def test_date_filter_value_reaches_the_wire_as_a_string(
+    def test_date_filter_value_reaches_the_payload_as_a_string(
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
@@ -1226,7 +1226,7 @@ class TestFlowPropertyFilters:
         finally:
             ws.close()
 
-    def test_date_range_filter_values_reach_the_wire_as_strings(
+    def test_date_range_filter_values_reach_the_payload_as_strings(
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
@@ -1431,7 +1431,7 @@ class TestFlowDateAndEmptyListHandling:
         workspace_factory: Callable[..., Workspace],
     ) -> None:
         """GroupBy.list_item in segments raises a structured error instead
-        of silently dropping the sub-property from the wire payload."""
+        of silently dropping the sub-property from the payload."""
         ws = workspace_factory()
         try:
             with pytest.raises(BookmarkValidationError, match="list_item") as exc_info:

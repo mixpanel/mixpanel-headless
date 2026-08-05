@@ -3241,7 +3241,7 @@ class Workspace:
 
         # Build bookmark params. The flow builders raise structured
         # BookmarkValidationError (FL_WHERE_* / FL_SEGMENT_* codes with
-        # where[i]/segments[i] paths) for inputs the flat wire format
+        # where[i]/segments[i] paths) for inputs the flat payload format
         # cannot express; internal invariant violations crash as
         # RuntimeError instead of masquerading as user input errors.
         params = self._build_flow_params(

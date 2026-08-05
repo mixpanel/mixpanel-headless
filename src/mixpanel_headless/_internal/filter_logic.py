@@ -30,7 +30,7 @@ COHORT_PROPERTY = "$cohorts"
 """The pseudo-property cohort-membership filters target."""
 
 _DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
-"""Shape of a wire date. Calendar validity is a separate, runtime-only check."""
+"""Shape of a payload date. Calendar validity is a separate, runtime-only check."""
 
 
 # =============================================================================
@@ -56,7 +56,7 @@ MSG_HAND_ROLLED_COHORT = (
 
 :func:`check_cohort_property` catches the models that may not touch
 ``$cohorts`` at all; :func:`check_cohort_value_pairing` catches the one
-that may, but only with the cohort wire shape. Both refuse the same
+that may, but only with the cohort payload shape. Both refuse the same
 mistake and must say so identically.
 """
 
@@ -140,7 +140,7 @@ def check_is_real_date(value: str) -> str:
         value: A ``YYYY-MM-DD`` string that already matched the pattern.
 
     Returns:
-        ``value``, unchanged — the wire format is a string, and parsing
+        ``value``, unchanged — the payload format is a string, and parsing
         it to a ``date`` here would change the outgoing payload.
 
     Raises:
@@ -173,8 +173,8 @@ def check_dates_ordered(value: list[str]) -> None:
 # =============================================================================
 
 
-def has_cohort_wire_shape(operator: str, value: Any) -> bool:
-    """Check whether a filter carries the cohort wire structure.
+def has_cohort_payload_shape(operator: str, value: Any) -> bool:
+    """Check whether a filter carries the cohort payload structure.
 
     The cohort constructors produce ``operator`` in
     ``{"contains", "does not contain"}`` and ``value`` shaped as a
@@ -197,7 +197,7 @@ def has_cohort_wire_shape(operator: str, value: Any) -> bool:
 
 
 def _cohort_of(item: Any) -> Any:
-    """Read the ``cohort`` payload off a wire entry.
+    """Read the ``cohort`` payload off a payload entry.
 
     Called on both sides of validation, so it accepts the raw mapping and
     the parsed ``CohortRef`` alike.
@@ -217,7 +217,7 @@ def check_cohort_property(property_: Any, operator: str, value: Any) -> None:
     """Refuse a ``$cohorts`` filter the cohort constructors did not build.
 
     For the models that may not target ``$cohorts`` at all. The one that
-    may, but only with the wire shape, uses
+    may, but only with the payload shape, uses
     :func:`check_cohort_value_pairing`.
 
     Args:
@@ -233,7 +233,7 @@ def check_cohort_property(property_: Any, operator: str, value: Any) -> None:
 
 
 def check_cohort_value_pairing(property_: Any, operator: str, value: Any) -> None:
-    """Tie the cohort wire shape to the ``$cohorts`` property, both ways.
+    """Tie the cohort payload shape to the ``$cohorts`` property, both ways.
 
     A ``$cohorts`` filter must carry the structure the constructors
     build, and that structure must not be aimed at any other property.
@@ -248,7 +248,7 @@ def check_cohort_value_pairing(property_: Any, operator: str, value: Any) -> Non
             cohort-shaped value was aimed at another property.
     """
     if property_ == COHORT_PROPERTY:
-        if not has_cohort_wire_shape(operator, value):
+        if not has_cohort_payload_shape(operator, value):
             raise ValueError(MSG_HAND_ROLLED_COHORT.format(op=operator, got=value))
     elif not isinstance(value, str):
         raise ValueError(MSG_NEEDS_STRING.format(op=operator, got=value))
@@ -388,7 +388,7 @@ def normalize_equality_value(value: Any) -> Any:
 
     ``{"operator": "equals", "value": "premium"}`` is the commonest
     payload there is, and the schema accepts it, so the runtime has to
-    as well. The wire wants a list for strings.
+    as well. The payload wants a list for strings.
 
     **Strings only.** Numeric equality goes out as a bare number, so
     wrapping one here would change the outgoing payload.

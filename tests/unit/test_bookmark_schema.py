@@ -220,7 +220,7 @@ class TestInsightsBookmarkSortConfig:
     """Tests mirroring sorting.py ``InsightsBookmarkSortConfig``.
 
     The wrapper at ``params['sorting']`` — keys are chart-type strings
-    (kebab-case wire form, snake_case Python field). Each key holds an
+    (kebab-case payload form, snake_case Python field). Each key holds an
     optional ``SortConfig`` (discriminated union).
     """
 
@@ -246,7 +246,7 @@ class TestInsightsBookmarkSortConfig:
         assert m.bar.sortBy == "column"
 
     def test_funnel_steps_kebab_alias_accepted(self) -> None:
-        """``funnel-steps`` (kebab-case wire) maps to ``funnel_steps`` field."""
+        """``funnel-steps`` (kebab-case payload) maps to ``funnel_steps`` field."""
         from mixpanel_headless._internal.bookmark_schema import (
             InsightsBookmarkSortConfig,
         )
@@ -596,7 +596,7 @@ class TestFlowsBookmarkParams:
 
         FlowsBookmarkParams uses ``extra='allow'`` (not ``'forbid'``)
         because the canonical MCP source itself doesn't forbid extras
-        and the wire format carries many UI-only fields. Tightening
+        and the payload format carries many UI-only fields. Tightening
         requires corpus-driven enumeration (see TODO in source).
 
         This test fails if someone changes the model_config without

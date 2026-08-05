@@ -557,7 +557,7 @@ FilterOperator = Literal[
 """All recognized values of ``Filter.operator``.
 
 Centralized so additions/removals stay in lockstep with the bookmark
-wire format and so mypy catches typos at every Filter classmethod
+payload format and so mypy catches typos at every Filter classmethod
 factory call site.
 """
 

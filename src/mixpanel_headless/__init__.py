@@ -246,6 +246,8 @@ from mixpanel_headless.types import (
     NumericSumResult,
     OAuthLoginResult,
     PaginatedResponse,
+    PayloadFormat,
+    PayloadFormatError,
     PresenceFilter,
     PreviewDeletionFiltersParams,
     ProfilePageResult,
@@ -313,8 +315,6 @@ from mixpanel_headless.types import (
     WebhookMutationResult,
     WebhookTestParams,
     WebhookTestResult,
-    WireFormat,
-    WireFormatError,
 )
 from mixpanel_headless.workspace import Workspace
 
@@ -617,8 +617,8 @@ __all__ = [
     "CohortRef",
     "CohortPayload",
     "AbstractMixpanelModel",
-    "WireFormat",
-    "WireFormatError",
+    "PayloadFormat",
+    "PayloadFormatError",
     "Formula",
     "GroupBy",
     "ListItemGroupMode",

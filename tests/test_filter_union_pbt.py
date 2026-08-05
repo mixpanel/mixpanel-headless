@@ -32,7 +32,7 @@ has to surface that rather than assume schema-valid is sufficient:
 
 The third runs the other way:
 
-- **The ``$cohorts`` wire shape**, which ``SkipJsonSchema`` hides from
+- **The ``$cohorts`` payload shape**, which ``SkipJsonSchema`` hides from
   the schema on purpose — the one place the runtime is *looser*. A
   schema-driven consumer never generates it, so it cannot surprise one.
 
@@ -130,7 +130,7 @@ date_like = st.sampled_from(
     ]
 )
 
-cohort_wire_values = st.sampled_from(
+cohort_payload_values = st.sampled_from(
     [
         [{"cohort": {"id": 1, "name": "PU", "negated": False}}],
         [{"cohort": {}}],
@@ -154,7 +154,7 @@ filter_values = st.one_of(
         max_size=3,
     ),
     st.lists(date_like, max_size=3),
-    cohort_wire_values,
+    cohort_payload_values,
 )
 """Every value shape any operator might plausibly receive, valid or not."""
 
@@ -189,7 +189,7 @@ _VALUE_BY_OPERATOR: dict[str, st.SearchStrategy[Any]] = {
     ),
     **dict.fromkeys(
         _ops(SubstringFilter, ContainmentFilter),
-        st.one_of(st.text(max_size=6), numbers, cohort_wire_values),
+        st.one_of(st.text(max_size=6), numbers, cohort_payload_values),
     ),
     **dict.fromkeys(
         _ops(NumericComparisonFilter),
@@ -230,7 +230,7 @@ def coherent_payloads(draw: st.DrawFn, operator: str) -> dict[str, Any]:
         operator: The operator to build for.
 
     Returns:
-        A dict of wire-named keys.
+        A dict of payload-named keys.
     """
     payload: dict[str, Any] = {
         "property": draw(
@@ -269,7 +269,7 @@ def chaotic_payloads(draw: st.DrawFn, operator: str) -> dict[str, Any]:
         operator: The operator to build for.
 
     Returns:
-        A dict of wire-named keys, very often invalid.
+        A dict of payload-named keys, very often invalid.
     """
     payload: dict[str, Any] = {
         "property": draw(property_names),
@@ -305,7 +305,7 @@ def filter_payloads(operator: str) -> st.SearchStrategy[dict[str, Any]]:
         operator: The operator every drawn payload will carry.
 
     Returns:
-        A strategy over wire-named filter dicts.
+        A strategy over payload-named filter dicts.
     """
     return st.one_of(
         coherent_payloads(operator),
@@ -336,7 +336,7 @@ def _schema_accepts(payload: dict[str, Any]) -> bool:
     """Return whether the generated JSON Schema accepts *payload*.
 
     Args:
-        payload: A wire-named filter dict.
+        payload: A payload-named filter dict.
 
     Returns:
         True when the payload satisfies the schema.
@@ -348,7 +348,7 @@ def _runtime_error(payload: dict[str, Any]) -> ValidationError | None:
     """Validate *payload* at runtime and return the error, if any.
 
     Args:
-        payload: A wire-named filter dict.
+        payload: A payload-named filter dict.
 
     Returns:
         The raised ``ValidationError``, or ``None`` when it validated.
@@ -379,7 +379,7 @@ def _is_documented_stricter_rejection(
     payload is a real parity gap.
 
     Args:
-        payload: The wire-named filter dict that was validated.
+        payload: The payload-named filter dict that was validated.
         error: The runtime ``ValidationError``.
 
     Returns:
@@ -395,7 +395,7 @@ def _is_documented_stricter_rejection(
 def _is_hidden_raw_cohort_shape(payload: dict[str, Any]) -> bool:
     """Return whether *payload* carries an inline ``raw_cohort`` definition.
 
-    The ``$cohorts`` wire shape itself is now typed and public —
+    The ``$cohorts`` payload shape itself is now typed and public —
     ``ContainmentFilter.value`` is ``str | list[CohortRef]``. What stays
     hidden is one field: ``CohortPayload.raw_cohort``, the selector tree
     ``CohortDefinition.to_dict()`` emits, whose dynamically-named
@@ -406,7 +406,7 @@ def _is_hidden_raw_cohort_shape(payload: dict[str, Any]) -> bool:
     schema, narrowed from the whole cohort value down to this field.
 
     Args:
-        payload: A wire-named filter dict.
+        payload: A payload-named filter dict.
 
     Returns:
         True when any cohort entry carries ``raw_cohort``.
@@ -472,7 +472,7 @@ class TestParityProbesAreNotVacuous:
         assert _is_documented_stricter_rejection(payload, error)
 
     def test_public_cohort_shape_is_no_longer_hidden(self) -> None:
-        """The saved-cohort wire shape is now in the schema, not exempt."""
+        """The saved-cohort payload shape is now in the schema, not exempt."""
         payload = {
             "property": "$cohorts",
             "operator": "contains",
@@ -629,7 +629,7 @@ class TestFactoryOutputMatchesSchema:
         """``FilterFactory.in_cohort`` output survives a round trip.
 
         Its value is the shape hidden from the schema, so this is the
-        runtime-only half of the ``$cohorts`` wire-shape exemption.
+        runtime-only half of the ``$cohorts`` payload-shape exemption.
         """
         built = FilterFactory.in_cohort(cohort_id)
         assert _ADAPTER.validate_python(built) == built

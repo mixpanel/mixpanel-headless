@@ -368,7 +368,7 @@ class TestListContainsRoundTrip:
     def test_kwargs_shape_invariants(
         self, prop: str, pairs: dict[str, str], quantifier: str
     ) -> None:
-        """Kwargs shorthand always emits the listItemFilters wire shape."""
+        """Kwargs shorthand always emits the listItemFilters payload shape."""
         f = FilterFactory.list_contains(prop, quantifier=quantifier, **pairs)  # type: ignore[arg-type]
         entry = build_filter_entry(f)
         assert entry["filterType"] == "object"

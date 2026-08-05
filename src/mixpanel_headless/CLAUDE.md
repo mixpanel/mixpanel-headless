@@ -259,7 +259,7 @@ both layers agree. `tests/test_filter_union_pbt.py` asserts schema-valid
 ⟺ runtime-valid across the operator × property_type × value-kind grid,
 exempting exactly the residuals above.
 
-### Wire rendering — `mixpanel_model_dump`
+### Payload rendering — `mixpanel_model_dump`
 
 These models are two things at once: the schema an AI/MCP consumer
 generates against, and the translation layer into Mixpanel's payload
@@ -274,7 +274,7 @@ endpoint dialects:
 |-------|----------|-------|
 | `bookmark` | bookmarks / reports | `filterValue`, `filterOperator`, …; `property_type` becomes two keys |
 | `segfilter` | flows step filters | operator symbols, `MM/DD/YYYY` dates, stringified numbers |
-| `flow_where` | flat flow `where` | **lossy** — `CompoundFilter` and `RelativeDateFilter` raise `WireFormatError` |
+| `flow_where` | flat flow `where` | **lossy** — `CompoundFilter` and `RelativeDateFilter` raise `PayloadFormatError` |
 
 Subclasses override only the hook whose output differs
 (`_dump_bookmark`, `_segfilter_operand`, …), so shape differences live
@@ -297,7 +297,7 @@ Declarative cohort inputs (exported from the package root):
   — the criterion alternatives of an inline cohort definition.
 - `InlineCohort` — a fully declarative cohort (`{operator, criteria}`)
   accepted anywhere a `CohortDefinition` is; `.to_dict()` matches the
-  builder wire format. Builder instances (`CohortDefinition`, `CohortCriteria`)
+  builder payload format. Builder instances (`CohortDefinition`, `CohortCriteria`)
   still work at runtime; the schema renders the declarative `InlineCohort` alternative.
 
 ## Type Aliases

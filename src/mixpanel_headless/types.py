@@ -4652,7 +4652,7 @@ class PropertyResourceType(str, Enum):
     Values:
         EVENT: Event property.
         USER: User profile property.
-        GROUPPROFILE: Group profile property (wire format: ``groupprofile``).
+        GROUPPROFILE: Group profile property (payload format: ``groupprofile``).
     """
 
     EVENT = "event"
@@ -4801,11 +4801,11 @@ class PropertyDefinition(BaseModel):
 
 # Lexicon write-param alias convention:
 #   ``UpdateEventDefinitionParams``, ``UpdatePropertyDefinitionParams`` and
-#   ``BulkPropertyUpdate`` camelCase their wire keys via a model-wide
+#   ``BulkPropertyUpdate`` camelCase their payload keys via a model-wide
 #   ``alias_generator=to_camel``. ``BulkEventUpdate`` deliberately does NOT —
 #   it uses a per-field alias on ``display_name`` because a model-wide generator
 #   would re-case its ``team_contacts`` field to ``teamContacts`` and break that
-#   established snake_case wire shape. When adding a two-word field, follow the
+#   established snake_case payload shape. When adding a two-word field, follow the
 #   strategy already on the model you are editing.
 class UpdateEventDefinitionParams(BaseModel):
     """Parameters for updating an event definition (PATCH semantics).
@@ -5086,11 +5086,11 @@ class BulkEventUpdate(BaseModel):
     )
     """Human-readable name. Always emitted as ``displayName`` via an explicit
     serialization alias (rather than a model-wide ``alias_generator``) so the
-    established ``team_contacts`` wire shape stays snake_case. Accepts either
+    established ``team_contacts`` payload shape stays snake_case. Accepts either
     ``display_name`` or ``displayName`` on input, so a camelCase payload echoed
     by ``lexicon events get`` round-trips instead of silently dropping the
     field. (``contacts`` / ``team_contacts`` remain snake_case on input and the
-    wire by design.)"""
+    payload by design.)"""
 
     contacts: list[str] | None = None
     """Contact emails."""
@@ -7676,7 +7676,7 @@ def _convert_date_format(date_str: str) -> str:
 
 
 # =============================================================================
-# Wire rendering
+# Payload rendering
 #
 # These models are two things at once: the schema an AI/MCP consumer generates
 # against, and the translation layer into Mixpanel's payload formats. Knowing
@@ -7685,7 +7685,7 @@ def _convert_date_format(date_str: str) -> str:
 # groupings the models already encode.
 # =============================================================================
 
-WireFormat = Literal["default", "bookmark", "segfilter", "flow_where"]
+PayloadFormat = Literal["default", "bookmark", "segfilter", "flow_where"]
 """A Mixpanel payload dialect.
 
 ``default`` is plain :meth:`~pydantic.BaseModel.model_dump`. The other
@@ -7694,7 +7694,7 @@ and value encoding — see :class:`AbstractMixpanelModel`.
 """
 
 
-class WireFormatError(Exception):
+class PayloadFormatError(Exception):
     """A model cannot be expressed in the requested dialect.
 
     Carries a code and a message but no path: the position of the
@@ -7723,7 +7723,7 @@ class AbstractMixpanelModel(BaseModel):
 
     One public entry point, :meth:`mixpanel_model_dump`, dispatching to a
     per-dialect hook. Subclasses override only the hooks whose output
-    differs from a plain ``model_dump()``, so a model that has no wire
+    differs from a plain ``model_dump()``, so a model that has no payload
     form of its own inherits sensible behaviour and declares nothing.
 
     The dispatch is a typed ``if``-ladder here rather than a lookup by
@@ -7739,7 +7739,7 @@ class AbstractMixpanelModel(BaseModel):
         ```
     """
 
-    def mixpanel_model_dump(self, fmt: WireFormat = "default") -> dict[str, Any]:
+    def mixpanel_model_dump(self, fmt: PayloadFormat = "default") -> dict[str, Any]:
         """Render this model in the given Mixpanel dialect.
 
         Args:
@@ -7750,7 +7750,7 @@ class AbstractMixpanelModel(BaseModel):
             The payload dict for ``fmt``.
 
         Raises:
-            WireFormatError: If this model has no representation in
+            PayloadFormatError: If this model has no representation in
                 ``fmt`` — the flat flow format cannot express nested or
                 relative-date filters, for instance.
         """
@@ -7864,7 +7864,7 @@ class AbstractFilter(AbstractMixpanelModel):
         check_cohort_property(self.property, self.operator, self.value)
         return self
 
-    # --- wire rendering -----------------------------------------------------
+    # --- payload rendering -----------------------------------------------------
 
     def _bookmark_value(self) -> Any:
         """The ``filterValue`` payload.
@@ -8005,7 +8005,7 @@ should match pattern". One ``AfterValidator`` covering both shape and
 calendar validity keeps the message that names the format.
 
 Deliberately a ``str``, not a ``datetime.date``: the bookmark builders
-write ``value`` straight onto the wire, so a parsed date object would
+write ``value`` straight into the payload, so a parsed date object would
 silently change the outgoing payload.
 """
 
@@ -8109,7 +8109,7 @@ class PresenceFilter(AbstractFilter):
     to a runtime check.
 
     May target ``$cohorts`` directly: the value-less operators emit an
-    ordinary filter entry that never touches the cohort wire structure.
+    ordinary filter entry that never touches the cohort payload structure.
     """
 
     operator: Literal["is set", "is not set"]
@@ -8162,7 +8162,7 @@ class SubstringFilter(AbstractFilter):
 class ContainmentFilter(AbstractFilter):
     """Matches a substring — or, against ``$cohorts``, cohort membership.
 
-    ``contains`` carries double duty on the wire: aimed at the
+    ``contains`` carries double duty in the payload: aimed at the
     ``$cohorts`` pseudo-property it holds the structure
     :meth:`FilterFactory.in_cohort` builds. That is why containment is
     its own model rather than sharing :class:`SubstringFilter` — only
@@ -8191,7 +8191,7 @@ class ContainmentFilter(AbstractFilter):
 
     @model_validator(mode="after")
     def _guard_cohort_property(self) -> ContainmentFilter:
-        """Tie the cohort wire shape to ``$cohorts``, in both directions.
+        """Tie the cohort payload shape to ``$cohorts``, in both directions.
 
         Returns:
             ``self``, unchanged.
@@ -8354,9 +8354,9 @@ class RelativeDateFilter(AbstractFilter):
         """Refuse: the flat flow format has no key for the date unit.
 
         Raises:
-            WireFormatError: Always.
+            PayloadFormatError: Always.
         """
-        raise WireFormatError(
+        raise PayloadFormatError(
             code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
             message=(
                 f"flow where filters cannot express the relative-date "
@@ -8395,7 +8395,7 @@ class CompoundFilter(AbstractFilter):
         Shares nothing with the shared entry — the outer wrapper is a
         constant (``filterOperator: "true"``, ``filterValue: True``) and
         the real content is the inner filters. ``dataset`` is backfilled
-        onto each inner entry because the wire format requires it there
+        onto each inner entry because the payload format requires it there
         even for plain string properties.
 
         Returns:
@@ -8423,9 +8423,9 @@ class CompoundFilter(AbstractFilter):
         """Refuse: the flat flow format cannot nest.
 
         Raises:
-            WireFormatError: Always.
+            PayloadFormatError: Always.
         """
-        raise WireFormatError(
+        raise PayloadFormatError(
             code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
             message=(
                 "flow where filters cannot express list_contains — the "
@@ -9384,7 +9384,7 @@ class FilterFactory:
         - **Keyword shorthand** for the common equality case:
           ``FilterFactory.list_contains("cart", Brand="nike", Category="hats")``.
           Inner equality filters inherit the outer ``resource_type``.
-        - **Explicit Filter instances** for any wire-format operator:
+        - **Explicit Filter instances** for any payload-format operator:
           ``FilterFactory.list_contains("cart", FilterFactory.equals("Brand", "nike"),
           FilterFactory.greater_than("Price", 50))``. Each inner Filter carries
           its own ``resource_type`` from its own factory call — pass
@@ -9417,7 +9417,7 @@ class FilterFactory:
                 conditions are given, or if any inner filter is itself
                 a ``list_contains`` (nesting is not supported).
             TypeError: If a ``**equals`` value is not ``str`` or
-                ``list[str]`` (the wire format only supports string
+                ``list[str]`` (the payload format only supports string
                 equality; numeric/boolean comparisons require explicit
                 ``FilterFactory.equals(...)`` / ``FilterFactory.greater_than(...)``
                 positional inner filters).
@@ -9581,7 +9581,7 @@ class GroupBy:
     """Data type of the property. One of the four scalar types.
 
     Note: list-item breakdowns set ``_list_item_mode`` instead — the
-    wire builder hardcodes ``propertyType: "object"`` for that branch
+    payload builder hardcodes ``propertyType: "object"`` for that branch
     independently of this field.
     """
 
@@ -10605,7 +10605,7 @@ class PropertyCriterion(BaseModel):
         ``is_not_set`` with a real value almost certainly meant
         ``equals``, and silently discarding the operand would run a
         semantically different query than the caller wrote (and ship
-        the ignored operand into the wire selector). ``value`` stays a
+        the ignored operand into the payload selector). ``value`` stays a
         required field for the comparison operators, so the presence
         operators accept only the documented ``""`` sentinel.
 
@@ -10869,7 +10869,7 @@ class InlineCohort(BaseModel):
                 ),
             ],
         )
-        wire = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
+        payload = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
         ```
     """
 
@@ -10983,7 +10983,7 @@ _CohortIdOrHiddenDefinition = Annotated[
 """Saved cohort ID or inline definition, definition hidden from the schema.
 
 Accepts the same values as :data:`_CohortIdOrDefinition`; ``CohortMetric``
-accepts only an ID on the wire, so its definition alternative is
+accepts only an ID in the payload, so its definition alternative is
 ``SkipJsonSchema``.
 """
 
@@ -14128,7 +14128,7 @@ class Target(BaseModel):
     """Local config name of the referenced account (must exist)."""
 
     project: Annotated[ProjectId, Field(min_length=1, pattern=r"^\d+$")]
-    """Numeric project ID (Mixpanel's wire format)."""
+    """Numeric project ID (Mixpanel's payload format)."""
 
     workspace: Annotated[WorkspaceId, Field(gt=0)] | None = None
     """Optional workspace ID (must be a positive integer when set);

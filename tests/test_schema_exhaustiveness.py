@@ -12,7 +12,7 @@ so the output must contain:
 - no ``"type": "object"`` without ``properties`` (untyped object holes).
 
 The declarative cohort input models (``InlineCohort`` and its criterion
-union) provide the clean, exhaustive shape that replaces the wire-format
+union) provide the clean, exhaustive shape that replaces the payload-format
 builder types in the schema, while the builder API keeps working at runtime.
 """
 
@@ -733,11 +733,11 @@ class TestDeclarativeModelsExported:
 
 
 # =============================================================================
-# Wire-format parity: declarative == builder
+# Payload-format parity: declarative == builder
 # =============================================================================
 
 
-class TestInlineCohortWireParity:
+class TestInlineCohortPayloadParity:
     """``InlineCohort.to_dict()`` matches the equivalent builder output."""
 
     def test_property_criterion_parity(self) -> None:
