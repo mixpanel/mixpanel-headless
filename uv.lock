@@ -18,7 +18,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-05-22T06:36:59.531145Z"
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -1300,6 +1300,7 @@ name = "mixpanel-headless"
 source = { editable = "." }
 dependencies = [
     { name = "anytree" },
+    { name = "click" },
     { name = "httpx" },
     { name = "jq" },
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1352,6 +1353,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anytree", specifier = ">=2.12" },
+    { name = "click", specifier = ">=8.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "hypothesis", extras = ["cli"], marker = "extra == 'dev'", specifier = ">=6.151.13" },
     { name = "interrogate", marker = "extra == 'dev'", specifier = ">=1.7" },
