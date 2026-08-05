@@ -12,7 +12,7 @@ so the output must contain:
 - no ``"type": "object"`` without ``properties`` (untyped object holes).
 
 The declarative cohort input models (``InlineCohort`` and its criterion
-union) provide the clean, exhaustive shape that replaces the wire-format
+union) provide the clean, exhaustive shape that replaces the payload-format
 builder types in the schema, while the builder API keeps working at runtime.
 """
 
@@ -30,13 +30,14 @@ from mixpanel_headless.query_models import (
     RetentionQuery,
 )
 from mixpanel_headless.types import (
+    AbstractFilter,
     BehavioralCriterion,
     CohortBreakdown,
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
     CohortReferenceCriterion,
-    Filter,
+    FilterFactory,
     InlineCohort,
     Metric,
     PropertyCriterion,
@@ -534,9 +535,16 @@ class TestNumericConstraintRendering:
     # -------------------------------------------------------------------
 
     def test_filter_value_array_alternative_item_bounds_rendered(self) -> None:
-        """Filter.value array alternatives carry minItems 1 / maxItems 1000 (B20/B21)."""
+        """EqualityFilter.value array alternatives carry minItems 1 / maxItems 1000.
+
+        Scoped to ``EqualityFilter``, the one member whose value is a
+        variable-length list of comparands (B20/B21). The claim is not a
+        global one: ``NumericRangeFilter`` and ``DateRangeFilter``
+        legitimately render arrays bounded at exactly 2, and
+        ``CompoundFilter.list_item_filters`` has no upper bound.
+        """
         defs = InsightsQuery.model_json_schema()["$defs"]
-        prop = defs["Filter"]["properties"]["value"]
+        prop = defs["EqualityFilter"]["properties"]["value"]
         array_alternatives = [
             node for _, node in _walk(prop) if node.get("type") == "array"
         ]
@@ -725,11 +733,11 @@ class TestDeclarativeModelsExported:
 
 
 # =============================================================================
-# Wire-format parity: declarative == builder
+# Payload-format parity: declarative == builder
 # =============================================================================
 
 
-class TestInlineCohortWireParity:
+class TestInlineCohortPayloadParity:
     """``InlineCohort.to_dict()`` matches the equivalent builder output."""
 
     def test_property_criterion_parity(self) -> None:
@@ -856,10 +864,10 @@ class TestBuilderBackwardCompat:
         assert cm.cohort == 123
 
     def test_filter_in_cohort_accepts_definition(self) -> None:
-        """``Filter.in_cohort`` still accepts a builder ``CohortDefinition``."""
+        """``FilterFactory.in_cohort`` still accepts a builder ``CohortDefinition``."""
         cd = CohortDefinition.all_of(CohortCriteria.in_cohort(9))
-        f = Filter.in_cohort(cd, name="Ref")
-        assert isinstance(f, Filter)
+        f = FilterFactory.in_cohort(cd, name="Ref")
+        assert isinstance(f, AbstractFilter)
 
 
 # =============================================================================

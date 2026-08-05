@@ -16,12 +16,13 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+from collections.abc import Sequence
 from datetime import date
 from typing import Any, Literal
 
 from mixpanel_headless._internal.query.user_builders import _is_cohort_filter
 from mixpanel_headless.exceptions import ValidationError
-from mixpanel_headless.types import CohortDefinition, Filter
+from mixpanel_headless.types import AbstractFilter, CohortDefinition
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ACTION_RE = re.compile(
@@ -35,12 +36,14 @@ _ACTION_RE = re.compile(
 
 
 def _normalize_filters(
-    where: Filter | list[Filter] | str | None,
-) -> list[Filter]:
+    where: AbstractFilter | Sequence[AbstractFilter] | str | None,
+) -> list[AbstractFilter]:
     """Normalize the where argument into a flat list of Filter objects.
 
     String expressions and None are returned as an empty list since
-    they don't contain Filter objects to inspect.
+    they don't contain Filter objects to inspect. The ``str`` check runs
+    before the sequence conversion because ``str`` is itself a
+    ``Sequence``.
 
     Args:
         where: Raw where argument from the caller.
@@ -50,14 +53,14 @@ def _normalize_filters(
     """
     if where is None or isinstance(where, str):
         return []
-    if isinstance(where, Filter):
+    if isinstance(where, AbstractFilter):
         return [where]
     return list(where)
 
 
 def validate_user_args(
     *,
-    where: Filter | list[Filter] | str | None = None,
+    where: AbstractFilter | Sequence[AbstractFilter] | str | None = None,
     cohort: int | CohortDefinition | None = None,
     properties: list[str] | None = None,
     sort_by: str | None = None,
@@ -135,7 +138,7 @@ def validate_user_args(
 
     # U0: where list items must be Filter instances
     for i, item in enumerate(filters):
-        if not isinstance(item, Filter):
+        if not isinstance(item, AbstractFilter):
             errors.append(
                 ValidationError(
                     path=f"where[{i}]",
@@ -144,18 +147,18 @@ def validate_user_args(
                 )
             )
     # Filter down to valid Filter instances for subsequent checks
-    filters = [f for f in filters if isinstance(f, Filter)]
+    filters = [f for f in filters if isinstance(f, AbstractFilter)]
 
-    # U2: cohort param and Filter.in_cohort() in where mutually exclusive
+    # U2: cohort param and FilterFactory.in_cohort() in where mutually exclusive
     in_cohort_count = sum(
-        1 for f in filters if _is_cohort_filter(f) and f._operator == "contains"
+        1 for f in filters if _is_cohort_filter(f) and f.operator == "contains"
     )
     if cohort is not None and in_cohort_count > 0:
         errors.append(
             ValidationError(
                 path="cohort",
                 message=(
-                    "cohort param and Filter.in_cohort() in where are "
+                    "cohort param and FilterFactory.in_cohort() in where are "
                     "mutually exclusive; use one or the other"
                 ),
                 code="U2",
@@ -220,7 +223,7 @@ def validate_user_args(
                 )
             )
 
-    # U7: include_all_users requires cohort (param or Filter.in_cohort in where)
+    # U7: include_all_users requires cohort (param or FilterFactory.in_cohort in where)
     if include_all_users and cohort is None and in_cohort_count == 0:
         errors.append(
             ValidationError(
@@ -234,10 +237,10 @@ def validate_user_args(
 
     # U10: Filter property names must be non-empty
     for i, f in enumerate(filters):
-        if isinstance(f._property, str) and f._property.strip() == "":
+        if isinstance(f.property, str) and f.property.strip() == "":
             errors.append(
                 ValidationError(
-                    path=f"where[{i}]._property",
+                    path=f"where[{i}].property",
                     message="filter property name must be a non-empty string",
                     code="U10",
                 )
@@ -245,13 +248,13 @@ def validate_user_args(
 
     # U25: Filter property must be a string for engage queries
     for i, f in enumerate(filters):
-        if not _is_cohort_filter(f) and not isinstance(f._property, str):
+        if not _is_cohort_filter(f) and not isinstance(f.property, str):
             errors.append(
                 ValidationError(
-                    path=f"where[{i}]._property",
+                    path=f"where[{i}].property",
                     message=(
                         f"filter property must be a string for query_user() "
-                        f"(got {type(f._property).__name__})"
+                        f"(got {type(f.property).__name__})"
                     ),
                     code="U25",
                 )
@@ -279,27 +282,27 @@ def validate_user_args(
                     )
                 )
 
-    # U12: Filter.not_in_cohort() not supported
+    # U12: FilterFactory.not_in_cohort() not supported
     for i, f in enumerate(filters):
-        if _is_cohort_filter(f) and f._operator == "does not contain":
+        if _is_cohort_filter(f) and f.operator == "does not contain":
             errors.append(
                 ValidationError(
                     path=f"where[{i}]",
                     message=(
-                        "Filter.not_in_cohort() is not supported in "
+                        "FilterFactory.not_in_cohort() is not supported in "
                         "query_user() where clauses"
                     ),
                     code="U12",
                 )
             )
 
-    # U13: At most one Filter.in_cohort() in where list
+    # U13: At most one FilterFactory.in_cohort() in where list
     if in_cohort_count > 1:
         errors.append(
             ValidationError(
                 path="where",
                 message=(
-                    f"at most one Filter.in_cohort() is allowed in where "
+                    f"at most one FilterFactory.in_cohort() is allowed in where "
                     f"(found {in_cohort_count})"
                 ),
                 code="U13",

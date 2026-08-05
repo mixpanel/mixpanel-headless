@@ -179,12 +179,131 @@ fields. This lets **other repositories import them directly** and drive
 an LLM/MCP request schema off the generated JSON schema instead of
 hand-maintaining AI types.
 
+### Filters — `Filter`, `AbstractFilter`, `FilterFactory`
+
+Three names, three jobs:
+
+- **`Filter`** — the discriminated union routed on `operator`. This is
+  what you annotate with.
+- **`AbstractFilter`** — the `BaseModel` base holding the shared fields
+  and config. The `isinstance` target. Not usable as an annotation for
+  a specific filter, and it carries no factories.
+- **`FilterFactory`** — a plain class (no fields, no instances) holding
+  the 28 `FilterFactory.equals(...)`-style constructors. They exist
+  because `operator` is the discriminator and so cannot carry a default:
+  giving it one would make it optional in the schema while routing still
+  required it. Without the factories every construction would spell out
+  `operator="equals"`.
+
+Eleven members, one per *shape* rather than per operator:
+
+| Member | Operators |
+|--------|-----------|
+| `EqualityFilter` | `equals`, `does not equal` |
+| `SubstringFilter` | `starts with`, `ends with` |
+| `ContainmentFilter` | `contains`, `does not contain` |
+| `NumericComparisonFilter` | `is greater than`, `is less than`, `is at least`, `is at most` |
+| `NumericRangeFilter` | `is between`, `not between` |
+| `PresenceFilter` | `is set`, `is not set` |
+| `BooleanStateFilter` | `true`, `false` |
+| `AbsoluteDateFilter` | `was on`, `was not on`, `was before`, `was since` |
+| `DateRangeFilter` | `was between`, `was not between` |
+| `RelativeDateFilter` | `was in the`, `was not in the`, `was in the next` |
+| `CompoundFilter` | `list_contains` |
+
+Containment is split from substring because only `contains` /
+`does not contain` carry cohort membership: against the `$cohorts`
+pseudo-property their value is `list[CohortRef]`, the structure
+`FilterFactory.in_cohort()` builds. Splitting means `starts with` against
+`$cohorts` is now rejected.
+
+Each factory returns its member (`FilterFactory.equals(...) ->
+EqualityFilter`), and every member subclasses `AbstractFilter`, so
+`isinstance(f, AbstractFilter)` holds throughout. Functions that
+*consume* filters take `Sequence[Filter]` (covariant), not
+`list[Filter]`.
+
+Per-shape members put the rules in the schema rather than in Python:
+`PresenceFilter.value` is `null`-typed, `RelativeDateFilter.value`
+carries `exclusiveMinimum: 0`, the range members bound their arrays at
+exactly 2, and `CompoundFilter.list_item_filters` points at
+**`AtomicFilter`** — a ten-member union that omits `CompoundFilter`,
+making nested `list_contains` structurally impossible.
+
+Routing goes through `MarkedDiscriminator`, like every other union in
+the package, so the chosen member's tag stays strippable from
+caller-facing error paths. It also emits the OpenAPI `discriminator`
+block: `operator` mapped onto all 26 values.
+
+Rules a field type cannot state live in
+`_internal/pydantic_validators.py` as plain functions over primitives — the
+module imports no model, which is what lets `types.py` import it for the
+bodies of its validator hooks. Models are field declarations,
+`model_config`, and one-line hooks.
+
+Not to be confused with `_internal/validation.py`, at the other end of the
+lifecycle: that one validates objects that already exist
+(`validate_bookmark()`, `validate_query_args()`), so it imports `types`
+rather than being imported by it.
+
+**Residuals**, in two directions — see the `Filter` docstring:
+
+- **Runtime ⊃ schema** (the direction to eliminate; the library's own
+  output can be schema-invalid): one field, `CohortPayload.raw_cohort`.
+  It holds the selector tree `CohortDefinition.to_dict()` emits, whose
+  dynamically-named `bhvr_N` keys would render as an untyped open
+  object. Schema-side `CohortPayload` therefore requires `id`.
+- **Schema ⊃ runtime** (a generator can emit it, so the runtime error
+  must be legible): endpoint ordering on the range members, calendar
+  validity of dates, and integral floats on `RelativeDateFilter.value`
+  (`StrictInt` refuses `1.0`, which JSON Schema's `"type": "integer"`
+  accepts).
+
+The equality `value` / `property_type` pairing used to sit in the second
+group; `EqualityFilter` now states it as an `if`/`then` in its schema, so
+both layers agree. `tests/test_filter_union_pbt.py` asserts schema-valid
+⟺ runtime-valid across the operator × property_type × value-kind grid,
+exempting exactly the residuals above.
+
+### Payload rendering — `mixpanel_model_dump`
+
+These models are two things at once: the schema an AI/MCP consumer
+generates against, and the translation layer into Mixpanel's payload
+formats. So they render themselves, rather than being taken apart from
+outside by a builder.
+
+`AbstractMixpanelModel` is the base; `mixpanel_model_dump(fmt)` is the entry
+point. `fmt="default"` is a plain `model_dump()`; the other three name
+endpoint dialects:
+
+| `fmt` | consumer | notes |
+|-------|----------|-------|
+| `bookmark` | bookmarks / reports | `filterValue`, `filterOperator`, …; `property_type` becomes two keys |
+| `segfilter` | flows step filters | operator symbols, `MM/DD/YYYY` dates, stringified numbers |
+| `flow_where` | flat flow `where` | **lossy** — `CompoundFilter` and `RelativeDateFilter` raise `PayloadFormatError` |
+
+Subclasses override only the hook whose output differs
+(`_dump_bookmark`, `_segfilter_operand`, …), so shape differences live
+with the shape. That is what removed the four operator frozensets
+`segfilter.py` used to keep in parallel with the member split — one of
+which listed `"between"`, an operator that does not exist.
+
+`build_filter_entry`, `build_segfilter_entry` and
+`build_flow_where_entries` remain as the call-site API. They now
+delegate, and keep only what a single filter cannot know: the `where[i]`
+position, the empty-list guard, and the `listItemFilters` backfill.
+
+`filter_to_selector` is deliberately not a dialect — it compiles an
+expression string, not a payload.
+
+When adding or changing any of this, follow `.claude/skills/pydantify/`.
+
 Declarative cohort inputs (exported from the package root):
 - `PropertyCriterion`, `BehavioralCriterion`, `CohortReferenceCriterion`
   — the criterion alternatives of an inline cohort definition.
 - `InlineCohort` — a fully declarative cohort (`{operator, criteria}`)
   accepted anywhere a `CohortDefinition` is; `.to_dict()` matches the
-  builder wire format. Builder instances (`CohortDefinition`, `CohortCriteria`)
+  builder payload format. Builder instances (`CohortDefinition`, `CohortCriteria`)
   still work at runtime; the schema renders the declarative `InlineCohort` alternative.
 
 ## Type Aliases

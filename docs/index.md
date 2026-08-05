@@ -79,7 +79,7 @@ result = ws.query(InsightsQuery(
 result = ws.query(InsightsQuery(
     events=["Purchase"], math="total",
     math_property="amount",
-    where=[Filter.equals("country", "US"), Filter.greater_than("amount", 50)],
+    where=[FilterFactory.equals("country", "US"), FilterFactory.greater_than("amount", 50)],
     group_by=["platform"],
 ))
 
@@ -108,7 +108,7 @@ print(flow_result.top_transitions(5))
 # Typed user profile query — search and aggregate user profiles
 from mixpanel_headless import Filter
 result = ws.query_user(
-    where=Filter.equals("plan", "premium"),
+    where=FilterFactory.equals("plan", "premium"),
     properties=["$email", "$name", "ltv"],
     sort_by="ltv",
     sort_order="descending",
@@ -124,7 +124,7 @@ from mixpanel_headless import CohortCriteria, CohortDefinition, CohortBreakdown,
 power_users = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=3, within_days=30)
 )
-result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
+result = ws.query(InsightsQuery(events=["Login"], where=[FilterFactory.in_cohort(power_users, name="Power Users")]))
 result = ws.query(InsightsQuery(events=["Login"], group_by=[CohortBreakdown(power_users, name="Power Users")]))
 result = ws.query(InsightsQuery(events=[CohortMetric(123, "Power Users")], last=90, unit="week"))
 
@@ -222,7 +222,7 @@ Discovery commands let you survey what exists before writing queries—no guessi
 - Per-user aggregation (average purchases per user)
 - Rolling and cumulative analysis modes
 - Percentiles (p25, p75, p90, p99, custom percentiles, histogram distributions)
-- Typed filters (`Filter.equals()`, `Filter.greater_than()`, date filters like `Filter.in_the_last()`, etc.)
+- Typed filters (`FilterFactory.equals()`, `FilterFactory.greater_than()`, date filters like `FilterFactory.in_the_last()`, etc.)
 - Cohort-scoped queries — filter by cohort, break down by cohort membership, or track cohort size over time, using saved cohort IDs or inline `CohortDefinition` objects
 - Property breakdowns with numeric bucketing
 - Results as DataFrames, persistable as saved reports

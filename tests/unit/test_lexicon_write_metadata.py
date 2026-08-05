@@ -3,7 +3,7 @@
 The Mixpanel data-definitions API reads and writes these fields in camelCase
 (``displayName``, ``exampleValue``, ``resourceType``). Before this change the
 update parameter models lacked the fields and the facade dumped snake_case, so
-``display_name`` writes were silently dropped. These tests lock the wire format
+``display_name`` writes were silently dropped. These tests lock the payload format
 end to end:
 
 - the parameter models emit camelCase under ``model_dump(by_alias=True)`` while
@@ -89,7 +89,7 @@ class TestParamSerialization:
 
         The field is constrained to the capitalized ``"Event"`` / ``"User"`` the
         data-definitions API accepts (also what mixpanel-power-tools sends); the
-        chosen value is forwarded to the wire key unchanged.
+        chosen value is forwarded to the payload key unchanged.
         """
         values: tuple[Literal["Event", "User"], ...] = ("Event", "User")
         for value in values:
@@ -106,7 +106,7 @@ class TestParamSerialization:
         body = entry.model_dump(exclude_none=True, by_alias=True)
         assert body["displayName"] == "Purchase"
         assert body["name"] == "purchase"
-        # Existing fields keep their established wire shape (not silently re-cased).
+        # Existing fields keep their established payload shape (not silently re-cased).
         assert body["team_contacts"] == ["t@x.io"]
         assert "displayName" in body and "display_name" not in body
 
@@ -381,7 +381,7 @@ class TestCli:
         assert result.exit_code == 0
         params = mock_ws.update_property_definition.call_args[0][1]
         assert params.resource_type is None
-        # exclude_none keeps resourceType out of the wire body entirely
+        # exclude_none keeps resourceType out of the payload body entirely
         assert "resourceType" not in params.model_dump(exclude_none=True, by_alias=True)
 
     @patch("mixpanel_headless.cli.commands.lexicon.get_workspace")

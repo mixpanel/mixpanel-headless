@@ -21,7 +21,7 @@ from mixpanel_headless.exceptions import QueryError
 from mixpanel_headless.query_models import FunnelQuery, InsightsQuery, RetentionQuery
 from mixpanel_headless.types import (
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     GroupBy,
     InlineCustomProperty,
     Metric,
@@ -144,7 +144,11 @@ class TestFilterCustomPropertyE2E:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("Purchase")],
-                where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+                where=[
+                    FilterFactory.greater_than(
+                        property=CustomPropertyRef(42), value=100
+                    )
+                ],
             )
         )
 
@@ -159,7 +163,7 @@ class TestFilterCustomPropertyE2E:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("Purchase")],
-                where=[Filter.greater_than(property=icp, value=1000)],
+                where=[FilterFactory.greater_than(property=icp, value=1000)],
             )
         )
 
@@ -245,7 +249,7 @@ class TestCombinedPositions:
                 group_by=[
                     GroupBy(property=CustomPropertyRef(42), property_type="number")
                 ],
-                where=[Filter.greater_than(property=icp, value=100)],
+                where=[FilterFactory.greater_than(property=icp, value=100)],
             )
         )
 
@@ -271,7 +275,7 @@ class TestCombinedPositions:
                         bucket_max=1000,
                     )
                 ],
-                where=[Filter.greater_than(property=revenue, value=50)],
+                where=[FilterFactory.greater_than(property=revenue, value=50)],
             )
         )
 

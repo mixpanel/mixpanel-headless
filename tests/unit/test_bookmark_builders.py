@@ -26,8 +26,10 @@ from mixpanel_headless._internal.bookmark_builders import (
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
+    CompoundFilter,
     CustomPropertyRef,
-    Filter,
+    EqualityFilter,
+    FilterFactory,
     GroupBy,
     InlineCustomProperty,
     ListItemGroupMode,
@@ -175,7 +177,7 @@ class TestBuildFilterSection:
 
     def test_single_filter(self) -> None:
         """Single Filter produces one-element list."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         result = build_filter_section(f)
         assert len(result) == 1
         assert result[0]["value"] == "country"
@@ -184,8 +186,8 @@ class TestBuildFilterSection:
     def test_multiple_filters(self) -> None:
         """List of Filters produces matching-length list."""
         filters = [
-            Filter.equals("country", "US"),
-            Filter.greater_than("age", 18),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.greater_than("age", 18),
         ]
         result = build_filter_section(filters)
         assert len(result) == 2
@@ -196,7 +198,7 @@ class TestBuildFilterSection:
 
     def test_single_filter_entry_structure(self) -> None:
         """Filter entry has all required keys."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         result = build_filter_section(f)
         entry = result[0]
         assert "resourceType" in entry
@@ -298,7 +300,7 @@ class TestBuildFilterEntry:
 
     def test_string_filter(self) -> None:
         """String equals filter produces correct entry."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         entry = build_filter_entry(f)
         assert entry["resourceType"] == "events"
         assert entry["filterType"] == "string"
@@ -310,7 +312,7 @@ class TestBuildFilterEntry:
 
     def test_number_filter(self) -> None:
         """Numeric greater-than filter produces correct entry."""
-        f = Filter.greater_than("age", 18)
+        f = FilterFactory.greater_than("age", 18)
         entry = build_filter_entry(f)
         assert entry["filterType"] == "number"
         assert entry["defaultType"] == "number"
@@ -321,7 +323,7 @@ class TestBuildFilterEntry:
 
     def test_boolean_filter(self) -> None:
         """Boolean true filter produces correct entry."""
-        f = Filter.is_true("verified")
+        f = FilterFactory.is_true("verified")
         entry = build_filter_entry(f)
         assert entry["filterType"] == "boolean"
         assert entry["defaultType"] == "boolean"
@@ -332,7 +334,7 @@ class TestBuildFilterEntry:
 
     def test_datetime_filter_with_date_unit(self) -> None:
         """Relative date filter includes filterDateUnit."""
-        f = Filter.in_the_last("$time", 7, "day")
+        f = FilterFactory.in_the_last("$time", 7, "day")
         entry = build_filter_entry(f)
         assert entry["filterType"] == "datetime"
         assert entry["defaultType"] == "datetime"
@@ -343,7 +345,7 @@ class TestBuildFilterEntry:
 
     def test_datetime_filter_without_date_unit(self) -> None:
         """Absolute date filter does not include filterDateUnit."""
-        f = Filter.on("created", "2025-01-15")
+        f = FilterFactory.on("created", "2025-01-15")
         entry = build_filter_entry(f)
         assert entry["filterType"] == "datetime"
         assert entry["filterOperator"] == "was on"
@@ -351,14 +353,14 @@ class TestBuildFilterEntry:
 
     def test_people_resource_type(self) -> None:
         """Filter with resource_type='people' sets resourceType correctly."""
-        f = Filter.equals("plan", "premium", resource_type="people")
+        f = FilterFactory.equals("plan", "premium", resource_type="people")
         entry = build_filter_entry(f)
         assert entry["resourceType"] == "people"
 
     def test_custom_property_ref_omits_value(self) -> None:
         """CustomPropertyRef filter does not include 'value' by default."""
         ref = CustomPropertyRef(90553)
-        f = Filter.is_set(ref)
+        f = FilterFactory.is_set(ref)
         entry = build_filter_entry(f)
         assert entry["customPropertyId"] == 90553
         assert "value" not in entry
@@ -371,7 +373,7 @@ class TestBuildFilterEntry:
             inputs={"A": PropertyInput(name="price", type="number")},
             property_type="number",
         )
-        f = Filter.greater_than(icp, 1000)
+        f = FilterFactory.greater_than(icp, 1000)
         entry = build_filter_entry(f)
         assert "customProperty" in entry
         assert "value" not in entry
@@ -383,7 +385,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_not_between_filter_operator(self) -> None:
         """not_between filter produces 'not between' filterOperator."""
-        f = Filter.not_between("age", 18, 65)
+        f = FilterFactory.not_between("age", 18, 65)
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "not between"
         assert entry["filterType"] == "number"
@@ -391,7 +393,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_starts_with_filter_operator(self) -> None:
         """starts_with filter produces 'starts with' filterOperator."""
-        f = Filter.starts_with("url", "https://")
+        f = FilterFactory.starts_with("url", "https://")
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "starts with"
         assert entry["filterType"] == "string"
@@ -399,7 +401,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_ends_with_filter_operator(self) -> None:
         """ends_with filter produces 'ends with' filterOperator."""
-        f = Filter.ends_with("email", "@example.com")
+        f = FilterFactory.ends_with("email", "@example.com")
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "ends with"
         assert entry["filterType"] == "string"
@@ -407,7 +409,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_date_not_between_filter_operator(self) -> None:
         """date_not_between filter produces 'was not between' filterOperator."""
-        f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
+        f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "was not between"
         assert entry["filterType"] == "datetime"
@@ -416,7 +418,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_in_the_next_filter_operator(self) -> None:
         """in_the_next filter produces 'was in the next' filterOperator."""
-        f = Filter.in_the_next("expires", 7, "day")
+        f = FilterFactory.in_the_next("expires", 7, "day")
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "was in the next"
         assert entry["filterType"] == "datetime"
@@ -425,7 +427,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_at_least_filter_operator(self) -> None:
         """at_least filter produces 'is at least' filterOperator."""
-        f = Filter.at_least("score", 80)
+        f = FilterFactory.at_least("score", 80)
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "is at least"
         assert entry["filterType"] == "number"
@@ -433,7 +435,7 @@ class TestNewFilterOperatorsInBuilder:
 
     def test_at_most_filter_operator(self) -> None:
         """at_most filter produces 'is at most' filterOperator."""
-        f = Filter.at_most("errors", 5)
+        f = FilterFactory.at_most("errors", 5)
         entry = build_filter_entry(f)
         assert entry["filterOperator"] == "is at most"
         assert entry["filterType"] == "number"
@@ -801,7 +803,7 @@ class TestBuildFrequencyFilterEntry:
         ff = FrequencyFilter(
             "Purchase",
             value=1,
-            event_filters=[Filter.equals("country", "US")],
+            event_filters=[FilterFactory.equals("country", "US")],
         )
         result = build_frequency_filter_entry(ff)
         behavior = result["customProperty"]["behavior"]
@@ -855,8 +857,8 @@ class TestBuildFrequencyFilterEntry:
             "Purchase",
             value=3,
             event_filters=[
-                Filter.equals("country", "US"),
-                Filter.greater_than("amount", 10),
+                FilterFactory.equals("country", "US"),
+                FilterFactory.greater_than("amount", 10),
             ],
         )
         result = build_frequency_filter_entry(ff)
@@ -924,7 +926,7 @@ class TestBuildFilterSectionFrequency:
         from mixpanel_headless.types import FrequencyFilter
 
         result = build_filter_section(
-            [Filter.equals("country", "US"), FrequencyFilter("Login", value=5)]
+            [FilterFactory.equals("country", "US"), FrequencyFilter("Login", value=5)]
         )
         assert len(result) == 2
         assert result[0]["value"] == "country"
@@ -1012,7 +1014,7 @@ class TestBuildFlowWhereEntries:
             build_flow_where_entries,
         )
 
-        result = build_flow_where_entries([Filter.equals("country", "US")])
+        result = build_flow_where_entries([FilterFactory.equals("country", "US")])
         assert result == [
             {"property": "country", "operator": "equals", "value": ["US"]}
         ]
@@ -1025,8 +1027,8 @@ class TestBuildFlowWhereEntries:
 
         result = build_flow_where_entries(
             [
-                Filter.equals("country", "US"),
-                Filter.greater_than("age", 18),
+                FilterFactory.equals("country", "US"),
+                FilterFactory.greater_than("age", 18),
             ]
         )
         assert result == [
@@ -1040,7 +1042,7 @@ class TestBuildFlowWhereEntries:
             build_flow_where_entries,
         )
 
-        result = build_flow_where_entries([Filter.is_set("email")])
+        result = build_flow_where_entries([FilterFactory.is_set("email")])
         assert result == [{"property": "email", "operator": "is set"}]
 
     def test_absolute_date_range_keeps_both_dates(self) -> None:
@@ -1050,7 +1052,7 @@ class TestBuildFlowWhereEntries:
         )
 
         result = build_flow_where_entries(
-            [Filter.date_between("created", "2024-01-01", "2024-06-30")]
+            [FilterFactory.date_between("created", "2024-01-01", "2024-06-30")]
         )
         assert result == [
             {
@@ -1065,12 +1067,12 @@ class TestBuildFlowWhereEntries:
         build time, not a crash at json.dumps."""
         from mixpanel_headless.types import CustomPropertyRef
 
-        f = Filter(
-            _property=CustomPropertyRef(id=123),
-            _operator="equals",
-            _value=["high"],
-            _property_type="string",
-            _resource_type="events",
+        f = EqualityFilter(
+            property=CustomPropertyRef(id=123),
+            operator="equals",
+            value=["high"],
+            property_type="string",
+            resource_type="events",
         )
         with pytest.raises(
             BookmarkValidationError, match="custom property refs"
@@ -1083,7 +1085,7 @@ class TestBuildFlowWhereEntries:
     def test_list_contains_rejected(self) -> None:
         """list_contains cannot be expressed in the flat format — rejected
         with a structured error naming the offending filter."""
-        f = Filter.list_contains("cart", Brand="nike")
+        f = FilterFactory.list_contains("cart", Brand="nike")
         with pytest.raises(BookmarkValidationError, match="list_contains") as exc_info:
             build_flow_where_entries([f])
         err = exc_info.value.errors[0]
@@ -1093,7 +1095,7 @@ class TestBuildFlowWhereEntries:
     def test_relative_date_rejected(self) -> None:
         """Relative-date operators lose their date unit in the flat format —
         rejected with a pointer to the absolute-date alternatives."""
-        f = Filter.in_the_last("created", 2, "week")
+        f = FilterFactory.in_the_last("created", 2, "week")
         with pytest.raises(BookmarkValidationError, match="absolute date") as exc_info:
             build_flow_where_entries([f])
         err = exc_info.value.errors[0]
@@ -1103,8 +1105,8 @@ class TestBuildFlowWhereEntries:
     def test_rejection_reports_offending_index(self) -> None:
         """A rejection names the offending filter's position, not where[0]."""
         filters = [
-            Filter.equals("country", "US"),
-            Filter.list_contains("cart", Brand="nike"),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.list_contains("cart", Brand="nike"),
         ]
         with pytest.raises(BookmarkValidationError) as exc_info:
             build_flow_where_entries(filters)
@@ -1217,11 +1219,11 @@ class TestBuildFlowSegmentEntries:
 
 
 class TestFilterListContains:
-    """Tests for Filter.list_contains — list-of-object subproperty filters."""
+    """Tests for FilterFactory.list_contains — list-of-object subproperty filters."""
 
     def test_kwargs_shorthand_produces_two_inner_equals(self) -> None:
         """Keyword arguments expand to one equals sub-filter per pair."""
-        f = Filter.list_contains("cart", Brand="nike", Category="hats")
+        f = FilterFactory.list_contains("cart", Brand="nike", Category="hats")
         entry = build_filter_entry(f)
         assert entry["filterType"] == "object"
         assert entry["filterJoinType"] == "list"
@@ -1235,11 +1237,11 @@ class TestFilterListContains:
             assert sub["filterType"] == "string"
 
     def test_positional_filter_instances_preserve_operators(self) -> None:
-        """Explicit Filter args support any operator the wire format allows."""
-        f = Filter.list_contains(
+        """Explicit Filter args support any operator the payload format allows."""
+        f = FilterFactory.list_contains(
             "cart",
-            Filter.equals("Brand", "nike"),
-            Filter.greater_than("Price", 50),
+            FilterFactory.equals("Brand", "nike"),
+            FilterFactory.greater_than("Price", 50),
         )
         entry = build_filter_entry(f)
         assert len(entry["listItemFilters"]) == 2
@@ -1248,26 +1250,26 @@ class TestFilterListContains:
 
     def test_default_quantifier_is_any(self) -> None:
         """Quantifier defaults to 'any' (≥1 list item must match)."""
-        f = Filter.list_contains("cart", Brand="nike")
+        f = FilterFactory.list_contains("cart", Brand="nike")
         entry = build_filter_entry(f)
         assert entry["listQuantifier"] == "any"
 
     def test_quantifier_all(self) -> None:
         """quantifier='all' propagates to listQuantifier."""
-        f = Filter.list_contains("cart", Brand="nike", quantifier="all")
+        f = FilterFactory.list_contains("cart", Brand="nike", quantifier="all")
         entry = build_filter_entry(f)
         assert entry["listQuantifier"] == "all"
 
     def test_inner_items_have_dataset(self) -> None:
-        """The wire format requires dataset='$mixpanel' on each inner filter."""
-        f = Filter.list_contains("cart", Brand="nike", Category="hats")
+        """The payload format requires dataset='$mixpanel' on each inner filter."""
+        f = FilterFactory.list_contains("cart", Brand="nike", Category="hats")
         entry = build_filter_entry(f)
         for sub in entry["listItemFilters"]:
             assert sub["dataset"] == "$mixpanel"
 
     def test_outer_constants(self) -> None:
-        """Outer dict carries fixed wire-format constants for list-contains filters."""
-        f = Filter.list_contains("cart", Brand="nike")
+        """Outer dict carries fixed payload-format constants for list-contains filters."""
+        f = FilterFactory.list_contains("cart", Brand="nike")
         entry = build_filter_entry(f)
         assert entry["dataset"] == "$mixpanel"
         assert entry["value"] == "cart"
@@ -1280,31 +1282,31 @@ class TestFilterListContains:
 
     def test_resource_type_propagates(self) -> None:
         """resource_type='people' overrides the default 'events'."""
-        f = Filter.list_contains("attrs", role="admin", resource_type="people")
+        f = FilterFactory.list_contains("attrs", role="admin", resource_type="people")
         entry = build_filter_entry(f)
         assert entry["resourceType"] == "people"
 
     def test_zero_conditions_raises(self) -> None:
         """No sub-conditions raises ValueError."""
         with pytest.raises(ValueError, match="at least one"):
-            Filter.list_contains("cart")
+            FilterFactory.list_contains("cart")
 
     def test_mixing_kwargs_and_positional_raises(self) -> None:
         """Mixing positional Filter args and keyword equals raises ValueError."""
         with pytest.raises(ValueError, match="either"):
-            Filter.list_contains(
-                "cart", Filter.equals("Brand", "nike"), Category="hats"
+            FilterFactory.list_contains(
+                "cart", FilterFactory.equals("Brand", "nike"), Category="hats"
             )
 
     def test_nested_list_contains_raises(self) -> None:
         """A list_contains filter inside another list_contains raises ValueError."""
-        inner = Filter.list_contains("inner", X="y")
+        inner = FilterFactory.list_contains("inner", X="y")
         with pytest.raises(ValueError, match="nested"):
-            Filter.list_contains("cart", inner)
+            FilterFactory.list_contains("cart", inner)
 
     def test_via_build_filter_section(self) -> None:
         """End-to-end through dispatch in build_filter_section."""
-        f = Filter.list_contains("cart", Brand="nike")
+        f = FilterFactory.list_contains("cart", Brand="nike")
         section = build_filter_section(f)
         assert len(section) == 1
         assert section[0]["filterType"] == "object"
@@ -1317,39 +1319,46 @@ class TestFilterListContains:
         with no resource_type override, hardcoding inner filters to
         ``"events"`` even when the outer filter targeted ``"people"``.
         """
-        f = Filter.list_contains("addresses", resource_type="people", City="Brooklyn")
-        assert f._resource_type == "people"
-        assert f._list_item_filters is not None
-        assert all(sub._resource_type == "people" for sub in f._list_item_filters)
+        f = FilterFactory.list_contains(
+            "addresses", resource_type="people", City="Brooklyn"
+        )
+        assert f.resource_type == "people"
+        assert f.list_item_filters is not None
+        assert all(sub.resource_type == "people" for sub in f.list_item_filters)
         section = build_filter_section(f)
         assert section[0]["resourceType"] == "people"
         for sub_entry in section[0]["listItemFilters"]:
             assert sub_entry["resourceType"] == "people"
 
     def test_post_init_rejects_list_contains_without_filters(self) -> None:
-        """Direct construction with _operator='list_contains' but no filters raises."""
-        with pytest.raises(ValueError, match="_list_item_filters"):
-            Filter(
-                _property="cart",
-                _operator="list_contains",
-                _value=None,
-                _property_type="object",
-                _resource_type="events",
-                _list_item_filters=None,
-                _list_item_quantifier="any",
+        """Direct construction of a list_contains without sub-filters raises.
+
+        ``list_item_filters`` is required on the member, so the omission
+        is a stock ``missing``/``tuple_type`` error rather than a
+        hand-written check.
+        """
+        with pytest.raises(ValueError, match="list_item_filters"):
+            CompoundFilter(
+                property="cart",
+                operator="list_contains",
+                value=None,
+                property_type="object",
+                resource_type="events",
+                list_item_filters=None,
+                list_item_quantifier="any",
             )
 
     def test_post_init_rejects_list_contains_without_quantifier(self) -> None:
-        """Direct construction with _operator='list_contains' but no quantifier raises."""
-        with pytest.raises(ValueError, match="_list_item_quantifier"):
-            Filter(
-                _property="cart",
-                _operator="list_contains",
-                _value=None,
-                _property_type="object",
-                _resource_type="events",
-                _list_item_filters=(Filter.equals("Brand", "nike"),),
-                _list_item_quantifier=None,
+        """Direct construction of a list_contains with a null quantifier raises."""
+        with pytest.raises(ValueError, match="list_item_quantifier"):
+            CompoundFilter(
+                property="cart",
+                operator="list_contains",
+                value=None,
+                property_type="object",
+                resource_type="events",
+                list_item_filters=(FilterFactory.equals("Brand", "nike"),),
+                list_item_quantifier=None,
             )
 
     def test_post_init_rejects_list_contains_with_value(self) -> None:
@@ -1361,28 +1370,28 @@ class TestFilterListContains:
         caller never wrote. Reject it instead.
         """
         with pytest.raises(ValueError, match="_value"):
-            Filter(
-                _property="cart",
-                _operator="list_contains",
-                _value="nike",
-                _property_type="object",
-                _resource_type="events",
-                _list_item_filters=(Filter.equals("Brand", "adidas"),),
-                _list_item_quantifier="any",
+            CompoundFilter(
+                property="cart",
+                operator="list_contains",
+                value="nike",
+                property_type="object",
+                resource_type="events",
+                list_item_filters=(FilterFactory.equals("Brand", "adidas"),),
+                list_item_quantifier="any",
             )
 
     def test_quantifier_runtime_rejects_invalid(self) -> None:
-        """Filter.list_contains rejects quantifier values outside any/all."""
+        """FilterFactory.list_contains rejects quantifier values outside any/all."""
         with pytest.raises(ValueError, match="quantifier"):
-            Filter.list_contains("cart", quantifier="nope", X="y")  # type: ignore[arg-type]
+            FilterFactory.list_contains("cart", quantifier="nope", X="y")  # type: ignore[arg-type]
 
     def test_kwargs_value_must_be_str_or_list(self) -> None:
-        """Filter.list_contains rejects non-str/list kwarg values at construction."""
+        """FilterFactory.list_contains rejects non-str/list kwarg values at construction."""
         with pytest.raises(TypeError, match="Price"):
-            Filter.list_contains("cart", Price=99.99)  # type: ignore[arg-type]
+            FilterFactory.list_contains("cart", Price=99.99)  # type: ignore[arg-type]
 
     def test_kwargs_empty_key_rejected(self) -> None:
-        """Filter.list_contains rejects empty kwarg keys.
+        """FilterFactory.list_contains rejects empty kwarg keys.
 
         Uses a dynamically-typed dict + ``# type: ignore`` because mypy
         sees the empty key as a potential overlap with the
@@ -1391,14 +1400,14 @@ class TestFilterListContains:
         """
         bad_kwargs: dict[str, str | list[str]] = {"": "value"}
         with pytest.raises(ValueError, match="non-empty"):
-            Filter.list_contains("cart", **bad_kwargs)  # type: ignore[arg-type]
+            FilterFactory.list_contains("cart", **bad_kwargs)  # type: ignore[arg-type]
 
 
 class TestGroupByListItem:
     """Tests for GroupBy.list_item — break down by a list-item subproperty."""
 
     def test_basic_string_sub_emits_listItemGroup(self) -> None:
-        """list_item('cart','Brand') produces the listItemGroup wire shape."""
+        """list_item('cart','Brand') produces the listItemGroup payload shape."""
         g = GroupBy.list_item("cart", "Brand")
         section = build_group_section(g)
         assert len(section) == 1
@@ -1428,7 +1437,9 @@ class TestGroupByListItem:
         assert g._list_item_mode is not None
         assert g._list_item_mode.sub == "Brand"
         assert g._list_item_mode.sub_type == "string"
-        assert g.property_type == "string"  # default; wire builder hardcodes "object"
+        assert (
+            g.property_type == "string"
+        )  # default; payload builder hardcodes "object"
 
     def test_rejects_bucketing(self) -> None:
         """list_item with bucket_size raises in __post_init__."""

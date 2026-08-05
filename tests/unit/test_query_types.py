@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from mixpanel_headless._internal.bookmark_enums import (
     MATH_NO_PER_USER,
@@ -16,7 +17,7 @@ from mixpanel_headless._internal.bookmark_enums import (
     MATH_REQUIRING_PROPERTY,
 )
 from mixpanel_headless.types import (
-    Filter,
+    FilterFactory,
     Formula,
     Metric,
     QueryResult,
@@ -521,120 +522,111 @@ class TestFilterConstruction:
     """Tests for Filter class method construction."""
 
     def test_equals_string(self) -> None:
-        """Filter.equals creates correct filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.equals creates correct filter."""
 
-        f = Filter.equals("country", "US")
-        assert f._property == "country"
-        assert f._operator == "equals"
-        assert f._value == ["US"]
-        assert f._property_type == "string"
+        f = FilterFactory.equals("country", "US")
+        assert f.property == "country"
+        assert f.operator == "equals"
+        assert f.value == ["US"]
+        assert f.property_type == "string"
 
     def test_equals_list(self) -> None:
-        """Filter.equals with list preserves list."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.equals with list preserves list."""
 
-        f = Filter.equals("country", ["US", "CA"])
-        assert f._value == ["US", "CA"]
+        f = FilterFactory.equals("country", ["US", "CA"])
+        assert f.value == ["US", "CA"]
 
     def test_not_equals(self) -> None:
-        """Filter.not_equals creates correct filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.not_equals creates correct filter."""
 
-        f = Filter.not_equals("browser", "IE")
-        assert f._operator == "does not equal"
+        f = FilterFactory.not_equals("browser", "IE")
+        assert f.operator == "does not equal"
 
     def test_contains(self) -> None:
-        """Filter.contains uses plain string value."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.contains uses plain string value."""
 
-        f = Filter.contains("browser", "Chrome")
-        assert f._operator == "contains"
-        assert f._value == "Chrome"
+        f = FilterFactory.contains("browser", "Chrome")
+        assert f.operator == "contains"
+        assert f.value == "Chrome"
 
     def test_not_contains(self) -> None:
-        """Filter.not_contains creates correct filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.not_contains creates correct filter."""
 
-        f = Filter.not_contains("url", "test")
-        assert f._operator == "does not contain"
+        f = FilterFactory.not_contains("url", "test")
+        assert f.operator == "does not contain"
 
     def test_greater_than(self) -> None:
-        """Filter.greater_than creates numeric filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.greater_than creates numeric filter."""
 
-        f = Filter.greater_than("age", 18)
-        assert f._operator == "is greater than"
-        assert f._value == 18
-        assert f._property_type == "number"
+        f = FilterFactory.greater_than("age", 18)
+        assert f.operator == "is greater than"
+        assert f.value == 18
+        assert f.property_type == "number"
 
     def test_less_than(self) -> None:
-        """Filter.less_than creates numeric filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.less_than creates numeric filter."""
 
-        f = Filter.less_than("amount", 100)
-        assert f._operator == "is less than"
-        assert f._value == 100
+        f = FilterFactory.less_than("amount", 100)
+        assert f.operator == "is less than"
+        assert f.value == 100
 
     def test_between(self) -> None:
-        """Filter.between creates range filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.between creates range filter."""
 
-        f = Filter.between("age", 18, 65)
-        assert f._operator == "is between"
-        assert f._value == [18, 65]
+        f = FilterFactory.between("age", 18, 65)
+        assert f.operator == "is between"
+        assert f.value == [18, 65]
 
     def test_is_set(self) -> None:
-        """Filter.is_set creates existence filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.is_set creates existence filter."""
 
-        f = Filter.is_set("email")
-        assert f._operator == "is set"
-        assert f._value is None
+        f = FilterFactory.is_set("email")
+        assert f.operator == "is set"
+        assert f.value is None
 
     def test_is_not_set(self) -> None:
-        """Filter.is_not_set creates non-existence filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.is_not_set creates non-existence filter."""
 
-        f = Filter.is_not_set("phone")
-        assert f._operator == "is not set"
+        f = FilterFactory.is_not_set("phone")
+        assert f.operator == "is not set"
 
     def test_is_true(self) -> None:
-        """Filter.is_true creates boolean filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.is_true creates boolean filter."""
 
-        f = Filter.is_true("verified")
-        assert f._operator == "true"
-        assert f._property_type == "boolean"
+        f = FilterFactory.is_true("verified")
+        assert f.operator == "true"
+        assert f.property_type == "boolean"
 
     def test_is_false(self) -> None:
-        """Filter.is_false creates boolean filter."""
-        from mixpanel_headless.types import Filter
+        """FilterFactory.is_false creates boolean filter."""
 
-        f = Filter.is_false("opted_out")
-        assert f._operator == "false"
+        f = FilterFactory.is_false("opted_out")
+        assert f.operator == "false"
 
     def test_immutability(self) -> None:
-        """Filter is frozen."""
-        from mixpanel_headless.types import Filter
+        """Filter is frozen.
 
-        f = Filter.equals("country", "US")
-        with pytest.raises(AttributeError):
-            f._property = "browser"  # type: ignore[misc]
+        ``frozen=True`` on a ``BaseModel`` reports through the normal
+        validation channel, so the error is a ``ValidationError`` with
+        type ``frozen_instance`` — not the ``FrozenInstanceError`` a
+        frozen dataclass raised.
+        """
+
+        f = FilterFactory.equals("country", "US")
+        with pytest.raises(PydanticValidationError, match="frozen"):
+            f.property = "browser"  # type: ignore[misc]
 
     def test_resource_type_default(self) -> None:
         """Default resource_type is 'events'."""
-        from mixpanel_headless.types import Filter
 
-        f = Filter.equals("country", "US")
-        assert f._resource_type == "events"
+        f = FilterFactory.equals("country", "US")
+        assert f.resource_type == "events"
 
     def test_resource_type_people(self) -> None:
         """resource_type='people' is supported."""
-        from mixpanel_headless.types import Filter
 
-        f = Filter.equals("city", "SF", resource_type="people")
-        assert f._resource_type == "people"
+        f = FilterFactory.equals("city", "SF", resource_type="people")
+        assert f.resource_type == "people"
 
 
 # =============================================================================
@@ -758,85 +750,93 @@ class TestDateFilterConstruction:
     """T055: Date filter factory methods on Filter class."""
 
     def test_on_creates_datetime_filter(self) -> None:
-        """Filter.on() creates absolute date equality filter."""
-        f = Filter.on("created", "2024-06-15")
-        assert f._property == "created"
-        assert f._operator == "was on"
-        assert f._value == "2024-06-15"
-        assert f._property_type == "datetime"
-        assert f._date_unit is None
+        """FilterFactory.on() creates absolute date equality filter."""
+        f = FilterFactory.on("created", "2024-06-15")
+        assert f.property == "created"
+        assert f.operator == "was on"
+        assert f.value == "2024-06-15"
+        assert f.property_type == "datetime"
+        # `date_unit` lives only on RelativeDateFilter now — the grouped
+        # models make its absence structural rather than a None default.
+        assert not hasattr(f, "date_unit")
 
     def test_not_on(self) -> None:
-        """Filter.not_on() creates date inequality filter."""
-        f = Filter.not_on("created", "2024-06-15")
-        assert f._operator == "was not on"
-        assert f._value == "2024-06-15"
-        assert f._property_type == "datetime"
+        """FilterFactory.not_on() creates date inequality filter."""
+        f = FilterFactory.not_on("created", "2024-06-15")
+        assert f.operator == "was not on"
+        assert f.value == "2024-06-15"
+        assert f.property_type == "datetime"
 
     def test_before(self) -> None:
-        """Filter.before() creates date before filter."""
-        f = Filter.before("created", "2024-01-01")
-        assert f._operator == "was before"
-        assert f._value == "2024-01-01"
-        assert f._property_type == "datetime"
-        assert f._date_unit is None
+        """FilterFactory.before() creates date before filter."""
+        f = FilterFactory.before("created", "2024-01-01")
+        assert f.operator == "was before"
+        assert f.value == "2024-01-01"
+        assert f.property_type == "datetime"
+        # `date_unit` lives only on RelativeDateFilter now — the grouped
+        # models make its absence structural rather than a None default.
+        assert not hasattr(f, "date_unit")
 
     def test_since(self) -> None:
-        """Filter.since() creates date since filter."""
-        f = Filter.since("created", "2024-01-01")
-        assert f._operator == "was since"
-        assert f._value == "2024-01-01"
-        assert f._property_type == "datetime"
+        """FilterFactory.since() creates date since filter."""
+        f = FilterFactory.since("created", "2024-01-01")
+        assert f.operator == "was since"
+        assert f.value == "2024-01-01"
+        assert f.property_type == "datetime"
 
     def test_in_the_last(self) -> None:
-        """Filter.in_the_last() creates relative date filter with date_unit."""
-        f = Filter.in_the_last("created", 7, "day")
-        assert f._operator == "was in the"
-        assert f._value == 7
-        assert f._date_unit == "day"
-        assert f._property_type == "datetime"
+        """FilterFactory.in_the_last() creates relative date filter with date_unit."""
+        f = FilterFactory.in_the_last("created", 7, "day")
+        assert f.operator == "was in the"
+        assert f.value == 7
+        assert f.date_unit == "day"
+        assert f.property_type == "datetime"
 
     def test_not_in_the_last(self) -> None:
-        """Filter.not_in_the_last() creates relative negation filter."""
-        f = Filter.not_in_the_last("created", 30, "day")
-        assert f._operator == "was not in the"
-        assert f._value == 30
-        assert f._date_unit == "day"
-        assert f._property_type == "datetime"
+        """FilterFactory.not_in_the_last() creates relative negation filter."""
+        f = FilterFactory.not_in_the_last("created", 30, "day")
+        assert f.operator == "was not in the"
+        assert f.value == 30
+        assert f.date_unit == "day"
+        assert f.property_type == "datetime"
 
     def test_date_between(self) -> None:
-        """Filter.date_between() creates date range filter."""
-        f = Filter.date_between("created", "2024-01-01", "2024-06-30")
-        assert f._operator == "was between"
-        assert f._value == ["2024-01-01", "2024-06-30"]
-        assert f._property_type == "datetime"
-        assert f._date_unit is None
+        """FilterFactory.date_between() creates date range filter."""
+        f = FilterFactory.date_between("created", "2024-01-01", "2024-06-30")
+        assert f.operator == "was between"
+        assert f.value == ["2024-01-01", "2024-06-30"]
+        assert f.property_type == "datetime"
+        # `date_unit` lives only on RelativeDateFilter now — the grouped
+        # models make its absence structural rather than a None default.
+        assert not hasattr(f, "date_unit")
 
     def test_in_the_last_hour_unit(self) -> None:
-        """Filter.in_the_last() supports hour unit."""
-        f = Filter.in_the_last("ts", 24, "hour")
-        assert f._date_unit == "hour"
+        """FilterFactory.in_the_last() supports hour unit."""
+        f = FilterFactory.in_the_last("ts", 24, "hour")
+        assert f.date_unit == "hour"
 
     def test_in_the_last_month_unit(self) -> None:
-        """Filter.in_the_last() supports month unit."""
-        f = Filter.in_the_last("ts", 3, "month")
-        assert f._date_unit == "month"
+        """FilterFactory.in_the_last() supports month unit."""
+        f = FilterFactory.in_the_last("ts", 3, "month")
+        assert f.date_unit == "month"
 
     def test_in_the_last_week_unit(self) -> None:
-        """Filter.in_the_last() supports week unit."""
-        f = Filter.in_the_last("ts", 2, "week")
-        assert f._date_unit == "week"
+        """FilterFactory.in_the_last() supports week unit."""
+        f = FilterFactory.in_the_last("ts", 2, "week")
+        assert f.date_unit == "week"
 
     def test_immutability_date_filter(self) -> None:
         """Date filter is frozen."""
-        f = Filter.on("created", "2024-01-01")
-        with pytest.raises(AttributeError):
-            f._date_unit = "day"  # type: ignore[misc]
+        f = FilterFactory.on("created", "2024-01-01")
+        with pytest.raises(ValueError):
+            # AbsoluteDateFilter declares no `date_unit` at all now, and the
+            # model is frozen, so pydantic rejects the assignment outright.
+            f.date_unit = "day"  # type: ignore[attr-defined]
 
     def test_resource_type_on_date_filter(self) -> None:
         """Date filters support resource_type parameter."""
-        f = Filter.on("$created", "2024-01-01", resource_type="people")
-        assert f._resource_type == "people"
+        f = FilterFactory.on("$created", "2024-01-01", resource_type="people")
+        assert f.resource_type == "people"
 
 
 # =============================================================================
@@ -848,54 +848,54 @@ class TestDateFilterValidation:
     """T056: Date filter factory method input validation."""
 
     def test_on_rejects_invalid_date_format(self) -> None:
-        """Filter.on() rejects non-YYYY-MM-DD date string."""
+        """FilterFactory.on() rejects non-YYYY-MM-DD date string."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.on("created", "06/15/2024")
+            FilterFactory.on("created", "06/15/2024")
 
     def test_on_rejects_invalid_calendar_date(self) -> None:
-        """Filter.on() rejects impossible calendar date."""
+        """FilterFactory.on() rejects impossible calendar date."""
         with pytest.raises(ValueError, match="valid calendar date"):
-            Filter.on("created", "2024-02-30")
+            FilterFactory.on("created", "2024-02-30")
 
     def test_before_rejects_invalid_date(self) -> None:
-        """Filter.before() rejects invalid date string."""
+        """FilterFactory.before() rejects invalid date string."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.before("created", "bad-date")
+            FilterFactory.before("created", "bad-date")
 
     def test_since_rejects_invalid_date(self) -> None:
-        """Filter.since() rejects invalid date string."""
+        """FilterFactory.since() rejects invalid date string."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.since("created", "2024/01/01")
+            FilterFactory.since("created", "2024/01/01")
 
     def test_date_between_rejects_invalid_from(self) -> None:
-        """Filter.date_between() rejects invalid from_date."""
+        """FilterFactory.date_between() rejects invalid from_date."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.date_between("created", "bad", "2024-06-30")
+            FilterFactory.date_between("created", "bad", "2024-06-30")
 
     def test_date_between_rejects_invalid_to(self) -> None:
-        """Filter.date_between() rejects invalid to_date."""
+        """FilterFactory.date_between() rejects invalid to_date."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.date_between("created", "2024-01-01", "bad")
+            FilterFactory.date_between("created", "2024-01-01", "bad")
 
     def test_date_between_rejects_reversed_dates(self) -> None:
-        """Filter.date_between() rejects from > to."""
+        """FilterFactory.date_between() rejects from > to."""
         with pytest.raises(ValueError, match="must be before"):
-            Filter.date_between("created", "2024-12-31", "2024-01-01")
+            FilterFactory.date_between("created", "2024-12-31", "2024-01-01")
 
     def test_in_the_last_rejects_zero(self) -> None:
-        """Filter.in_the_last() rejects non-positive quantity."""
-        with pytest.raises(ValueError, match="positive"):
-            Filter.in_the_last("created", 0, "day")
+        """FilterFactory.in_the_last() rejects non-positive quantity."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            FilterFactory.in_the_last("created", 0, "day")
 
     def test_in_the_last_rejects_negative(self) -> None:
-        """Filter.in_the_last() rejects negative quantity."""
-        with pytest.raises(ValueError, match="positive"):
-            Filter.in_the_last("created", -5, "day")
+        """FilterFactory.in_the_last() rejects negative quantity."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            FilterFactory.in_the_last("created", -5, "day")
 
     def test_not_in_the_last_rejects_zero(self) -> None:
-        """Filter.not_in_the_last() rejects non-positive quantity."""
-        with pytest.raises(ValueError, match="positive"):
-            Filter.not_in_the_last("created", 0, "week")
+        """FilterFactory.not_in_the_last() rejects non-positive quantity."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            FilterFactory.not_in_the_last("created", 0, "week")
 
 
 # =============================================================================
@@ -1338,7 +1338,7 @@ class TestFrequencyFilterConstruction:
             value=10,
             date_range_value=30,
             date_range_unit="day",
-            event_filters=[Filter.equals("country", "US")],
+            event_filters=[FilterFactory.equals("country", "US")],
             label="Active Users",
         )
         assert ff.event == "Login"
@@ -1381,8 +1381,8 @@ class TestFrequencyFilterConstruction:
             "Purchase",
             value=1,
             event_filters=[
-                Filter.equals("country", "US"),
-                Filter.greater_than("amount", 10),
+                FilterFactory.equals("country", "US"),
+                FilterFactory.greater_than("amount", 10),
             ],
         )
         assert ff.event_filters is not None
@@ -1502,225 +1502,227 @@ class TestNewFilterFactoryMethods:
     # --- not_between ---
 
     def test_not_between_operator(self) -> None:
-        """Filter.not_between() uses 'not between' operator."""
-        f = Filter.not_between("age", 18, 65)
-        assert f._operator == "not between"
+        """FilterFactory.not_between() uses 'not between' operator."""
+        f = FilterFactory.not_between("age", 18, 65)
+        assert f.operator == "not between"
 
     def test_not_between_property_type(self) -> None:
-        """Filter.not_between() sets property_type to 'number'."""
-        f = Filter.not_between("age", 18, 65)
-        assert f._property_type == "number"
+        """FilterFactory.not_between() sets property_type to 'number'."""
+        f = FilterFactory.not_between("age", 18, 65)
+        assert f.property_type == "number"
 
     def test_not_between_value(self) -> None:
-        """Filter.not_between() stores [min, max] as value."""
-        f = Filter.not_between("amount", 10, 100)
-        assert f._value == [10, 100]
+        """FilterFactory.not_between() stores [min, max] as value."""
+        f = FilterFactory.not_between("amount", 10, 100)
+        assert f.value == [10, 100]
 
     def test_not_between_property(self) -> None:
-        """Filter.not_between() stores property name."""
-        f = Filter.not_between("age", 18, 65)
-        assert f._property == "age"
+        """FilterFactory.not_between() stores property name."""
+        f = FilterFactory.not_between("age", 18, 65)
+        assert f.property == "age"
 
     def test_not_between_resource_type_default(self) -> None:
-        """Filter.not_between() defaults to resource_type='events'."""
-        f = Filter.not_between("age", 18, 65)
-        assert f._resource_type == "events"
+        """FilterFactory.not_between() defaults to resource_type='events'."""
+        f = FilterFactory.not_between("age", 18, 65)
+        assert f.resource_type == "events"
 
     def test_not_between_resource_type_people(self) -> None:
-        """Filter.not_between() accepts resource_type='people'."""
-        f = Filter.not_between("age", 18, 65, resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.not_between() accepts resource_type='people'."""
+        f = FilterFactory.not_between("age", 18, 65, resource_type="people")
+        assert f.resource_type == "people"
 
     # --- starts_with ---
 
     def test_starts_with_operator(self) -> None:
-        """Filter.starts_with() uses 'starts with' operator."""
-        f = Filter.starts_with("url", "https://")
-        assert f._operator == "starts with"
+        """FilterFactory.starts_with() uses 'starts with' operator."""
+        f = FilterFactory.starts_with("url", "https://")
+        assert f.operator == "starts with"
 
     def test_starts_with_property_type(self) -> None:
-        """Filter.starts_with() sets property_type to 'string'."""
-        f = Filter.starts_with("url", "https://")
-        assert f._property_type == "string"
+        """FilterFactory.starts_with() sets property_type to 'string'."""
+        f = FilterFactory.starts_with("url", "https://")
+        assert f.property_type == "string"
 
     def test_starts_with_value(self) -> None:
-        """Filter.starts_with() stores prefix as value."""
-        f = Filter.starts_with("url", "https://")
-        assert f._value == "https://"
+        """FilterFactory.starts_with() stores prefix as value."""
+        f = FilterFactory.starts_with("url", "https://")
+        assert f.value == "https://"
 
     def test_starts_with_resource_type_people(self) -> None:
-        """Filter.starts_with() accepts resource_type='people'."""
-        f = Filter.starts_with("email", "admin@", resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.starts_with() accepts resource_type='people'."""
+        f = FilterFactory.starts_with("email", "admin@", resource_type="people")
+        assert f.resource_type == "people"
 
     # --- ends_with ---
 
     def test_ends_with_operator(self) -> None:
-        """Filter.ends_with() uses 'ends with' operator."""
-        f = Filter.ends_with("email", "@example.com")
-        assert f._operator == "ends with"
+        """FilterFactory.ends_with() uses 'ends with' operator."""
+        f = FilterFactory.ends_with("email", "@example.com")
+        assert f.operator == "ends with"
 
     def test_ends_with_property_type(self) -> None:
-        """Filter.ends_with() sets property_type to 'string'."""
-        f = Filter.ends_with("email", "@example.com")
-        assert f._property_type == "string"
+        """FilterFactory.ends_with() sets property_type to 'string'."""
+        f = FilterFactory.ends_with("email", "@example.com")
+        assert f.property_type == "string"
 
     def test_ends_with_value(self) -> None:
-        """Filter.ends_with() stores suffix as value."""
-        f = Filter.ends_with("email", "@example.com")
-        assert f._value == "@example.com"
+        """FilterFactory.ends_with() stores suffix as value."""
+        f = FilterFactory.ends_with("email", "@example.com")
+        assert f.value == "@example.com"
 
     def test_ends_with_resource_type_people(self) -> None:
-        """Filter.ends_with() accepts resource_type='people'."""
-        f = Filter.ends_with("email", ".edu", resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.ends_with() accepts resource_type='people'."""
+        f = FilterFactory.ends_with("email", ".edu", resource_type="people")
+        assert f.resource_type == "people"
 
     # --- date_not_between ---
 
     def test_date_not_between_operator(self) -> None:
-        """Filter.date_not_between() uses 'was not between' operator."""
-        f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
-        assert f._operator == "was not between"
+        """FilterFactory.date_not_between() uses 'was not between' operator."""
+        f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
+        assert f.operator == "was not between"
 
     def test_date_not_between_property_type(self) -> None:
-        """Filter.date_not_between() sets property_type to 'datetime'."""
-        f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
-        assert f._property_type == "datetime"
+        """FilterFactory.date_not_between() sets property_type to 'datetime'."""
+        f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
+        assert f.property_type == "datetime"
 
     def test_date_not_between_value(self) -> None:
-        """Filter.date_not_between() stores [from, to] as value."""
-        f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
-        assert f._value == ["2024-01-01", "2024-06-30"]
+        """FilterFactory.date_not_between() stores [from, to] as value."""
+        f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
+        assert f.value == ["2024-01-01", "2024-06-30"]
 
     def test_date_not_between_no_date_unit(self) -> None:
-        """Filter.date_not_between() has no date_unit."""
-        f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
-        assert f._date_unit is None
+        """FilterFactory.date_not_between() has no date_unit."""
+        f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
+        # `date_unit` lives only on RelativeDateFilter now — the grouped
+        # models make its absence structural rather than a None default.
+        assert not hasattr(f, "date_unit")
 
     def test_date_not_between_resource_type_people(self) -> None:
-        """Filter.date_not_between() accepts resource_type='people'."""
-        f = Filter.date_not_between(
+        """FilterFactory.date_not_between() accepts resource_type='people'."""
+        f = FilterFactory.date_not_between(
             "$created", "2024-01-01", "2024-06-30", resource_type="people"
         )
-        assert f._resource_type == "people"
+        assert f.resource_type == "people"
 
     def test_date_not_between_rejects_invalid_from(self) -> None:
-        """Filter.date_not_between() rejects invalid from_date."""
+        """FilterFactory.date_not_between() rejects invalid from_date."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.date_not_between("created", "bad", "2024-06-30")
+            FilterFactory.date_not_between("created", "bad", "2024-06-30")
 
     def test_date_not_between_rejects_invalid_to(self) -> None:
-        """Filter.date_not_between() rejects invalid to_date."""
+        """FilterFactory.date_not_between() rejects invalid to_date."""
         with pytest.raises(ValueError, match="YYYY-MM-DD"):
-            Filter.date_not_between("created", "2024-01-01", "bad")
+            FilterFactory.date_not_between("created", "2024-01-01", "bad")
 
     def test_date_not_between_rejects_reversed_dates(self) -> None:
-        """Filter.date_not_between() rejects from > to."""
+        """FilterFactory.date_not_between() rejects from > to."""
         with pytest.raises(ValueError, match="must be before"):
-            Filter.date_not_between("created", "2024-12-31", "2024-01-01")
+            FilterFactory.date_not_between("created", "2024-12-31", "2024-01-01")
 
     # --- in_the_next ---
 
     def test_in_the_next_operator(self) -> None:
-        """Filter.in_the_next() uses 'was in the next' operator."""
-        f = Filter.in_the_next("expires", 7, "day")
-        assert f._operator == "was in the next"
+        """FilterFactory.in_the_next() uses 'was in the next' operator."""
+        f = FilterFactory.in_the_next("expires", 7, "day")
+        assert f.operator == "was in the next"
 
     def test_in_the_next_property_type(self) -> None:
-        """Filter.in_the_next() sets property_type to 'datetime'."""
-        f = Filter.in_the_next("expires", 7, "day")
-        assert f._property_type == "datetime"
+        """FilterFactory.in_the_next() sets property_type to 'datetime'."""
+        f = FilterFactory.in_the_next("expires", 7, "day")
+        assert f.property_type == "datetime"
 
     def test_in_the_next_value(self) -> None:
-        """Filter.in_the_next() stores quantity as value."""
-        f = Filter.in_the_next("expires", 7, "day")
-        assert f._value == 7
+        """FilterFactory.in_the_next() stores quantity as value."""
+        f = FilterFactory.in_the_next("expires", 7, "day")
+        assert f.value == 7
 
     def test_in_the_next_date_unit(self) -> None:
-        """Filter.in_the_next() sets _date_unit correctly."""
-        f = Filter.in_the_next("expires", 7, "day")
-        assert f._date_unit == "day"
+        """FilterFactory.in_the_next() sets _date_unit correctly."""
+        f = FilterFactory.in_the_next("expires", 7, "day")
+        assert f.date_unit == "day"
 
     def test_in_the_next_hour_unit(self) -> None:
-        """Filter.in_the_next() supports hour unit."""
-        f = Filter.in_the_next("expires", 24, "hour")
-        assert f._date_unit == "hour"
+        """FilterFactory.in_the_next() supports hour unit."""
+        f = FilterFactory.in_the_next("expires", 24, "hour")
+        assert f.date_unit == "hour"
 
     def test_in_the_next_week_unit(self) -> None:
-        """Filter.in_the_next() supports week unit."""
-        f = Filter.in_the_next("expires", 2, "week")
-        assert f._date_unit == "week"
+        """FilterFactory.in_the_next() supports week unit."""
+        f = FilterFactory.in_the_next("expires", 2, "week")
+        assert f.date_unit == "week"
 
     def test_in_the_next_month_unit(self) -> None:
-        """Filter.in_the_next() supports month unit."""
-        f = Filter.in_the_next("expires", 3, "month")
-        assert f._date_unit == "month"
+        """FilterFactory.in_the_next() supports month unit."""
+        f = FilterFactory.in_the_next("expires", 3, "month")
+        assert f.date_unit == "month"
 
     def test_in_the_next_resource_type_people(self) -> None:
-        """Filter.in_the_next() accepts resource_type='people'."""
-        f = Filter.in_the_next("renewal", 30, "day", resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.in_the_next() accepts resource_type='people'."""
+        f = FilterFactory.in_the_next("renewal", 30, "day", resource_type="people")
+        assert f.resource_type == "people"
 
     def test_in_the_next_rejects_zero(self) -> None:
-        """Filter.in_the_next() rejects non-positive quantity."""
-        with pytest.raises(ValueError, match="positive"):
-            Filter.in_the_next("expires", 0, "day")
+        """FilterFactory.in_the_next() rejects non-positive quantity."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            FilterFactory.in_the_next("expires", 0, "day")
 
     def test_in_the_next_rejects_negative(self) -> None:
-        """Filter.in_the_next() rejects negative quantity."""
-        with pytest.raises(ValueError, match="positive"):
-            Filter.in_the_next("expires", -5, "day")
+        """FilterFactory.in_the_next() rejects negative quantity."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            FilterFactory.in_the_next("expires", -5, "day")
 
     # --- at_least ---
 
     def test_at_least_operator(self) -> None:
-        """Filter.at_least() uses 'is at least' operator."""
-        f = Filter.at_least("score", 80)
-        assert f._operator == "is at least"
+        """FilterFactory.at_least() uses 'is at least' operator."""
+        f = FilterFactory.at_least("score", 80)
+        assert f.operator == "is at least"
 
     def test_at_least_property_type(self) -> None:
-        """Filter.at_least() sets property_type to 'number'."""
-        f = Filter.at_least("score", 80)
-        assert f._property_type == "number"
+        """FilterFactory.at_least() sets property_type to 'number'."""
+        f = FilterFactory.at_least("score", 80)
+        assert f.property_type == "number"
 
     def test_at_least_value(self) -> None:
-        """Filter.at_least() stores numeric value."""
-        f = Filter.at_least("score", 80)
-        assert f._value == 80
+        """FilterFactory.at_least() stores numeric value."""
+        f = FilterFactory.at_least("score", 80)
+        assert f.value == 80
 
     def test_at_least_float_value(self) -> None:
-        """Filter.at_least() accepts float value."""
-        f = Filter.at_least("score", 79.5)
-        assert f._value == 79.5
+        """FilterFactory.at_least() accepts float value."""
+        f = FilterFactory.at_least("score", 79.5)
+        assert f.value == 79.5
 
     def test_at_least_resource_type_people(self) -> None:
-        """Filter.at_least() accepts resource_type='people'."""
-        f = Filter.at_least("purchases", 10, resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.at_least() accepts resource_type='people'."""
+        f = FilterFactory.at_least("purchases", 10, resource_type="people")
+        assert f.resource_type == "people"
 
     # --- at_most ---
 
     def test_at_most_operator(self) -> None:
-        """Filter.at_most() uses 'is at most' operator."""
-        f = Filter.at_most("errors", 5)
-        assert f._operator == "is at most"
+        """FilterFactory.at_most() uses 'is at most' operator."""
+        f = FilterFactory.at_most("errors", 5)
+        assert f.operator == "is at most"
 
     def test_at_most_property_type(self) -> None:
-        """Filter.at_most() sets property_type to 'number'."""
-        f = Filter.at_most("errors", 5)
-        assert f._property_type == "number"
+        """FilterFactory.at_most() sets property_type to 'number'."""
+        f = FilterFactory.at_most("errors", 5)
+        assert f.property_type == "number"
 
     def test_at_most_value(self) -> None:
-        """Filter.at_most() stores numeric value."""
-        f = Filter.at_most("errors", 5)
-        assert f._value == 5
+        """FilterFactory.at_most() stores numeric value."""
+        f = FilterFactory.at_most("errors", 5)
+        assert f.value == 5
 
     def test_at_most_float_value(self) -> None:
-        """Filter.at_most() accepts float value."""
-        f = Filter.at_most("latency", 99.9)
-        assert f._value == 99.9
+        """FilterFactory.at_most() accepts float value."""
+        f = FilterFactory.at_most("latency", 99.9)
+        assert f.value == 99.9
 
     def test_at_most_resource_type_people(self) -> None:
-        """Filter.at_most() accepts resource_type='people'."""
-        f = Filter.at_most("complaints", 3, resource_type="people")
-        assert f._resource_type == "people"
+        """FilterFactory.at_most() accepts resource_type='people'."""
+        f = FilterFactory.at_most("complaints", 3, resource_type="people")
+        assert f.resource_type == "people"

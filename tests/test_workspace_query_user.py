@@ -31,7 +31,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
+from mixpanel_headless.types import ProfilePageResult, UserQueryResult
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -1338,11 +1338,16 @@ class TestQueryUserValueErrorWrapping:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """Unsupported filter operator is rejected at construction by Pydantic."""
+        """An unsupported operator routes to no union member and is rejected."""
+        from pydantic import TypeAdapter
         from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(PydanticValidationError, match="literal_error"):
-            Filter("prop", "unsupported_op", "val")  # type: ignore[arg-type]
+        from mixpanel_headless.types import Filter
+
+        with pytest.raises(PydanticValidationError, match="invalid_filter_operator"):
+            TypeAdapter(Filter).validate_python(
+                {"property": "prop", "operator": "unsupported_op", "value": "val"}
+            )
 
 
 class TestQueryUserAggregatePropertyEscaping:

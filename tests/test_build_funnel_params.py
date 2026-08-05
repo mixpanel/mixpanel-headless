@@ -20,7 +20,7 @@ from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.query_models import FunnelQuery
 from mixpanel_headless.types import (
     Exclusion,
-    Filter,
+    FilterFactory,
     FunnelStep,
     GroupBy,
     HoldingConstant,
@@ -439,7 +439,9 @@ class TestBuildFunnelParamsPerStepFilters:
             FunnelQuery(
                 steps=[
                     FunnelStep("Signup"),
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -452,7 +454,9 @@ class TestBuildFunnelParamsPerStepFilters:
             FunnelQuery(
                 steps=[
                     FunnelStep("Signup"),
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -465,7 +469,9 @@ class TestBuildFunnelParamsPerStepFilters:
             FunnelQuery(
                 steps=[
                     FunnelStep("Signup"),
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -479,7 +485,9 @@ class TestBuildFunnelParamsPerStepFilters:
             FunnelQuery(
                 steps=[
                     FunnelStep("Signup"),
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -493,7 +501,9 @@ class TestBuildFunnelParamsPerStepFilters:
             FunnelQuery(
                 steps=[
                     FunnelStep("Signup"),
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -508,7 +518,7 @@ class TestBuildFunnelParamsPerStepFilters:
                     FunnelStep("Signup"),
                     FunnelStep(
                         "Purchase",
-                        filters=[Filter.greater_than("amount", 50)],
+                        filters=[FilterFactory.greater_than("amount", 50)],
                         filters_combinator="any",
                     ),
                 ]
@@ -584,7 +594,7 @@ class TestBuildFunnelParamsGlobalFilterGroupBy:
         result = ws.build_funnel_params(
             FunnelQuery(
                 steps=["Signup", "Purchase"],
-                where=[Filter.equals("country", "US")],
+                where=[FilterFactory.equals("country", "US")],
             )
         )
         filter_section = result["sections"]["filter"]
@@ -606,7 +616,7 @@ class TestBuildFunnelParamsGlobalFilterGroupBy:
         result = ws.build_funnel_params(
             FunnelQuery(
                 steps=["Signup", "Purchase"],
-                where=[Filter.equals("country", "US")],
+                where=[FilterFactory.equals("country", "US")],
                 group_by=[GroupBy("platform")],
             )
         )
@@ -618,7 +628,7 @@ class TestBuildFunnelParamsGlobalFilterGroupBy:
         result = ws.build_funnel_params(
             FunnelQuery(
                 steps=["Signup", "Purchase"],
-                where=[Filter.equals("country", "US")],
+                where=[FilterFactory.equals("country", "US")],
             )
         )
         filter_entry = result["sections"]["filter"][0]
@@ -654,7 +664,9 @@ class TestBuildFunnelParamsMixedSteps:
             FunnelQuery(
                 steps=[
                     "Signup",
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -667,7 +679,9 @@ class TestBuildFunnelParamsMixedSteps:
             FunnelQuery(
                 steps=[
                     "Signup",
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )
@@ -680,7 +694,9 @@ class TestBuildFunnelParamsMixedSteps:
             FunnelQuery(
                 steps=[
                     "Signup",
-                    FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
+                    FunnelStep(
+                        "Purchase", filters=[FilterFactory.greater_than("amount", 50)]
+                    ),
                 ]
             )
         )

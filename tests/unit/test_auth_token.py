@@ -561,7 +561,7 @@ class TestTokenPayloadBytes:
         """
         original = _make_tokens(refresh_token=None)
         raw = token_payload_bytes(original)
-        # Wire shape: no ``refresh_token`` key at all.
+        # Payload shape: no ``refresh_token`` key at all.
         import json as _json
 
         payload = _json.loads(raw.decode("utf-8"))

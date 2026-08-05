@@ -1,4 +1,4 @@
-"""Unit tests for cohort behavior types: Filter.in_cohort/not_in_cohort,
+"""Unit tests for cohort behavior types: FilterFactory.in_cohort/not_in_cohort,
 CohortBreakdown, and CohortMetric.
 
 Covers type construction (T002, T004, T019, T037) and validation rules
@@ -13,11 +13,13 @@ from typing import Any
 import pytest
 
 from mixpanel_headless.types import (
+    AbstractFilter,
     CohortBreakdown,
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
-    Filter,
+    CohortRef,
+    FilterFactory,
 )
 
 # =============================================================================
@@ -36,57 +38,58 @@ def _simple_cohort_def() -> CohortDefinition:
     )
 
 
-def _cohort_value(f: Filter) -> dict[str, Any]:
-    """Extract the cohort dict from a cohort filter's _value.
+def _cohort_value(f: AbstractFilter) -> dict[str, Any]:
+    """Extract the cohort payload from a cohort filter's value, as a dict.
 
-    Type-narrows _value from its union type and returns the inner
-    ``{"cohort": {...}}`` dict.
+    The value is now a list of :class:`CohortRef` models rather than raw
+    dicts — the container is typed, so this asserts the type and dumps
+    the payload, leaving the assertions below about the cohort *data*.
 
     Args:
-        f: A cohort Filter (from in_cohort/not_in_cohort).
+        f: A cohort filter (from in_cohort / not_in_cohort).
 
     Returns:
-        The first element of _value (a dict with "cohort" key).
+        The first entry, shaped ``{"cohort": {...}}``.
     """
-    assert isinstance(f._value, list), f"Expected list, got {type(f._value)}"
-    entry = f._value[0]
-    assert isinstance(entry, dict), f"Expected dict, got {type(entry)}"
-    return entry
+    assert isinstance(f.value, list), f"Expected list, got {type(f.value)}"
+    entry = f.value[0]
+    assert isinstance(entry, CohortRef), f"Expected CohortRef, got {type(entry)}"
+    return entry.model_dump(exclude_none=True)
 
 
 # =============================================================================
-# US1: Filter.in_cohort() — T002
+# US1: FilterFactory.in_cohort() — T002
 # =============================================================================
 
 
 class TestFilterInCohort:
-    """Tests for Filter.in_cohort() construction with saved and inline cohorts."""
+    """Tests for FilterFactory.in_cohort() construction with saved and inline cohorts."""
 
     def test_saved_cohort_sets_property(self) -> None:
         """Verify _property is '$cohorts' for a saved cohort filter."""
-        f = Filter.in_cohort(123, "Power Users")
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(123, "Power Users")
+        assert f.property == "$cohorts"
 
     def test_saved_cohort_sets_operator_contains(self) -> None:
         """Verify _operator is 'contains' for in_cohort."""
-        f = Filter.in_cohort(123, "Power Users")
-        assert f._operator == "contains"
+        f = FilterFactory.in_cohort(123, "Power Users")
+        assert f.operator == "contains"
 
     def test_saved_cohort_sets_property_type_list(self) -> None:
         """Verify _property_type is 'list' for cohort filters."""
-        f = Filter.in_cohort(123)
-        assert f._property_type == "list"
+        f = FilterFactory.in_cohort(123)
+        assert f.property_type == "list"
 
     def test_saved_cohort_sets_resource_type_events(self) -> None:
         """Verify _resource_type is 'events' for cohort filters."""
-        f = Filter.in_cohort(123)
-        assert f._resource_type == "events"
+        f = FilterFactory.in_cohort(123)
+        assert f.resource_type == "events"
 
     def test_saved_cohort_value_structure(self) -> None:
         """Verify _value has correct structure for saved cohort."""
-        f = Filter.in_cohort(123, "Power Users")
-        assert isinstance(f._value, list)
-        assert len(f._value) == 1
+        f = FilterFactory.in_cohort(123, "Power Users")
+        assert isinstance(f.value, list)
+        assert len(f.value) == 1
         entry = _cohort_value(f)
         assert "cohort" in entry
         cohort = entry["cohort"]
@@ -96,7 +99,7 @@ class TestFilterInCohort:
 
     def test_saved_cohort_without_name(self) -> None:
         """Verify _value structure when name is not provided."""
-        f = Filter.in_cohort(123)
+        f = FilterFactory.in_cohort(123)
         cohort = _cohort_value(f)["cohort"]
         assert cohort["id"] == 123
         assert cohort["name"] == ""
@@ -104,14 +107,14 @@ class TestFilterInCohort:
     def test_inline_cohort_sets_property(self) -> None:
         """Verify _property is '$cohorts' for an inline cohort filter."""
         cohort_def = _simple_cohort_def()
-        f = Filter.in_cohort(cohort_def, name="Buyers")
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(cohort_def, name="Buyers")
+        assert f.property == "$cohorts"
 
     def test_inline_cohort_value_has_raw_cohort(self) -> None:
         """Verify _value has raw_cohort instead of id for inline definition."""
         cohort_def = _simple_cohort_def()
-        f = Filter.in_cohort(cohort_def, name="Buyers")
-        assert isinstance(f._value, list)
+        f = FilterFactory.in_cohort(cohort_def, name="Buyers")
+        assert isinstance(f.value, list)
         cohort = _cohort_value(f)["cohort"]
         assert "raw_cohort" in cohort
         assert "id" not in cohort
@@ -125,7 +128,7 @@ class TestFilterInCohort:
         event_selector.selector keys removed for API compatibility.
         """
         cohort_def = _simple_cohort_def()
-        f = Filter.in_cohort(cohort_def, name="Buyers")
+        f = FilterFactory.in_cohort(cohort_def, name="Buyers")
         cohort = _cohort_value(f)["cohort"]
         raw = cohort["raw_cohort"]
         assert "selector" in raw
@@ -135,31 +138,31 @@ class TestFilterInCohort:
     def test_inline_cohort_operator_contains(self) -> None:
         """Verify _operator is 'contains' for inline in_cohort."""
         cohort_def = _simple_cohort_def()
-        f = Filter.in_cohort(cohort_def)
-        assert f._operator == "contains"
+        f = FilterFactory.in_cohort(cohort_def)
+        assert f.operator == "contains"
 
 
 # =============================================================================
-# US1: Filter.not_in_cohort() — T002
+# US1: FilterFactory.not_in_cohort() — T002
 # =============================================================================
 
 
 class TestFilterNotInCohort:
-    """Tests for Filter.not_in_cohort() construction with saved and inline cohorts."""
+    """Tests for FilterFactory.not_in_cohort() construction with saved and inline cohorts."""
 
     def test_saved_cohort_sets_operator_does_not_contain(self) -> None:
         """Verify _operator is 'does not contain' for not_in_cohort."""
-        f = Filter.not_in_cohort(789, "Bots")
-        assert f._operator == "does not contain"
+        f = FilterFactory.not_in_cohort(789, "Bots")
+        assert f.operator == "does not contain"
 
     def test_saved_cohort_sets_property(self) -> None:
         """Verify _property is '$cohorts' for not_in_cohort."""
-        f = Filter.not_in_cohort(789)
-        assert f._property == "$cohorts"
+        f = FilterFactory.not_in_cohort(789)
+        assert f.property == "$cohorts"
 
     def test_saved_cohort_value_negated_true(self) -> None:
         """Verify _value cohort entry has negated=True."""
-        f = Filter.not_in_cohort(789, "Bots")
+        f = FilterFactory.not_in_cohort(789, "Bots")
         cohort = _cohort_value(f)["cohort"]
         assert cohort["negated"] is True
         assert cohort["id"] == 789
@@ -167,13 +170,13 @@ class TestFilterNotInCohort:
 
     def test_saved_cohort_sets_property_type_list(self) -> None:
         """Verify _property_type is 'list' for not_in_cohort."""
-        f = Filter.not_in_cohort(789)
-        assert f._property_type == "list"
+        f = FilterFactory.not_in_cohort(789)
+        assert f.property_type == "list"
 
     def test_inline_cohort_negated(self) -> None:
         """Verify inline CohortDefinition produces negated=True."""
         cohort_def = _simple_cohort_def()
-        f = Filter.not_in_cohort(cohort_def, name="Inactive")
+        f = FilterFactory.not_in_cohort(cohort_def, name="Inactive")
         cohort = _cohort_value(f)["cohort"]
         assert "raw_cohort" in cohort
         assert cohort["negated"] is True
@@ -182,8 +185,8 @@ class TestFilterNotInCohort:
     def test_inline_cohort_operator_does_not_contain(self) -> None:
         """Verify _operator is 'does not contain' for inline not_in_cohort."""
         cohort_def = _simple_cohort_def()
-        f = Filter.not_in_cohort(cohort_def)
-        assert f._operator == "does not contain"
+        f = FilterFactory.not_in_cohort(cohort_def)
+        assert f.operator == "does not contain"
 
 
 # =============================================================================
@@ -192,70 +195,70 @@ class TestFilterNotInCohort:
 
 
 class TestFilterCohortValidation:
-    """Tests for CF1 and CF2 validation on Filter.in_cohort/not_in_cohort."""
+    """Tests for CF1 and CF2 validation on FilterFactory.in_cohort/not_in_cohort."""
 
     def test_cf1_zero_cohort_id_raises(self) -> None:
         """CF1: Zero cohort ID raises ValueError."""
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.in_cohort(0, "Bad")
+            FilterFactory.in_cohort(0, "Bad")
 
     def test_cf1_negative_cohort_id_raises(self) -> None:
         """CF1: Negative cohort ID raises ValueError."""
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.in_cohort(-5, "Bad")
+            FilterFactory.in_cohort(-5, "Bad")
 
     def test_cf1_not_in_cohort_zero_raises(self) -> None:
         """CF1: Zero cohort ID on not_in_cohort raises ValueError."""
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.not_in_cohort(0)
+            FilterFactory.not_in_cohort(0)
 
     def test_cf1_not_in_cohort_negative_raises(self) -> None:
         """CF1: Negative cohort ID on not_in_cohort raises ValueError."""
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.not_in_cohort(-1)
+            FilterFactory.not_in_cohort(-1)
 
     def test_cf2_empty_name_raises(self) -> None:
         """CF2: Empty name string raises ValueError."""
         with pytest.raises(
             ValueError, match="cohort name must be non-empty when provided"
         ):
-            Filter.in_cohort(123, "")
+            FilterFactory.in_cohort(123, "")
 
     def test_cf2_whitespace_only_name_raises(self) -> None:
         """CF2: Whitespace-only name raises ValueError."""
         with pytest.raises(
             ValueError, match="cohort name must be non-empty when provided"
         ):
-            Filter.in_cohort(123, "   ")
+            FilterFactory.in_cohort(123, "   ")
 
     def test_cf2_not_in_cohort_empty_name_raises(self) -> None:
         """CF2: Empty name on not_in_cohort raises ValueError."""
         with pytest.raises(
             ValueError, match="cohort name must be non-empty when provided"
         ):
-            Filter.not_in_cohort(123, "")
+            FilterFactory.not_in_cohort(123, "")
 
     def test_cf1_positive_id_no_error(self) -> None:
         """CF1: Positive ID does not raise."""
-        f = Filter.in_cohort(1)
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(1)
+        assert f.property == "$cohorts"
 
     def test_cf2_none_name_no_error(self) -> None:
         """CF2: None name does not raise."""
-        f = Filter.in_cohort(123)
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(123)
+        assert f.property == "$cohorts"
 
     def test_cf2_valid_name_no_error(self) -> None:
         """CF2: Valid non-empty name does not raise."""
-        f = Filter.in_cohort(123, "Power Users")
+        f = FilterFactory.in_cohort(123, "Power Users")
         cohort = _cohort_value(f)["cohort"]
         assert cohort["name"] == "Power Users"
 
     def test_cf1_inline_cohort_definition_no_id_check(self) -> None:
         """CF1: CohortDefinition argument skips positive-int check."""
         cohort_def = _simple_cohort_def()
-        f = Filter.in_cohort(cohort_def)
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(cohort_def)
+        assert f.property == "$cohorts"
 
 
 # =============================================================================

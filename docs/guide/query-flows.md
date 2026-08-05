@@ -94,7 +94,7 @@ result = ws.query_flow(FlowQuery(
         "Purchase",
         forward=5,
         reverse=2,
-        filters=[Filter.greater_than("amount", 50)],
+        filters=[FilterFactory.greater_than("amount", 50)],
     ),
 ))
 ```
@@ -115,7 +115,7 @@ Plain strings and `FlowStep` objects can be mixed freely:
 ```python
 result = ws.query_flow(FlowQuery(event=[
     "Signup",  # plain string — no overrides needed
-    FlowStep("Purchase", filters=[Filter.equals("country", "US")], ),
+    FlowStep("Purchase", filters=[FilterFactory.equals("country", "US")], ),
 ]))
 ```
 
@@ -130,8 +130,8 @@ result = ws.query_flow(FlowQuery(
     event=FlowStep(
         "Purchase",
         filters=[
-            Filter.equals("country", "US"),
-            Filter.greater_than("amount", 25),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.greater_than("amount", 25),
         ],
     ),
 ))
@@ -144,8 +144,8 @@ result = ws.query_flow(FlowQuery(
     event=FlowStep(
         "Purchase",
         filters=[
-            Filter.equals("country", "US"),
-            Filter.equals("country", "CA"),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.equals("country", "CA"),
         ],
         filters_combinator="any",  # match US OR CA
     ),
@@ -164,12 +164,12 @@ from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, FlowQuer
 # Cohort filter — what do power users do after purchasing?
 result = ws.query_flow(FlowQuery(
     event="Purchase", forward=3,
-    where=[Filter.in_cohort(123, "Power Users")],
+    where=[FilterFactory.in_cohort(123, "Power Users")],
 ))
 
 # Property filter — iOS users only
 result = ws.query_flow(FlowQuery(
-    event="Purchase", where=[Filter.equals("platform", "iOS")],
+    event="Purchase", where=[FilterFactory.equals("platform", "iOS")],
     last=30,
 ))
 
@@ -178,7 +178,7 @@ frequent_buyers = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=5, within_days=30)
 )
 result = ws.query_flow(FlowQuery(
-    event="Purchase", where=[Filter.in_cohort(frequent_buyers, name="Frequent Buyers")],
+    event="Purchase", where=[FilterFactory.in_cohort(frequent_buyers, name="Frequent Buyers")],
 ))
 ```
 
@@ -746,7 +746,7 @@ result = ws.query_flow(FlowQuery(
     event=FlowStep(
         "Add to Cart",
         forward=4,
-        filters=[Filter.greater_than("item_price", 10)],
+        filters=[FilterFactory.greater_than("item_price", 10)],
     ),
     conversion_window=7,
     last=90,

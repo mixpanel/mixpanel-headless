@@ -20,7 +20,12 @@ import networkx as nx
 import pandas as pd
 import pytest
 
-from mixpanel_headless.types import Filter, FlowQueryResult, FlowStep, _safe_int
+from mixpanel_headless.types import (
+    FilterFactory,
+    FlowQueryResult,
+    FlowStep,
+    _safe_int,
+)
 
 # =============================================================================
 # T012: FlowStep
@@ -42,7 +47,7 @@ class TestFlowStepConstruction:
 
     def test_construct_with_all_fields(self) -> None:
         """FlowStep with all fields preserves them."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         s = FlowStep(
             "Purchase",
             forward=5,
@@ -91,8 +96,8 @@ class TestFlowStepConstruction:
 
     def test_filters_list_preserved(self) -> None:
         """Filters list contents are preserved."""
-        f1 = Filter.equals("country", "US")
-        f2 = Filter.equals("platform", "iOS")
+        f1 = FilterFactory.equals("country", "US")
+        f2 = FilterFactory.equals("platform", "iOS")
         s = FlowStep("Signup", filters=[f1, f2])
         assert s.filters is not None
         assert len(s.filters) == 2

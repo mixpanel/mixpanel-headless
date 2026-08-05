@@ -89,6 +89,7 @@ from mixpanel_headless.exceptions import (
     ValidationError as InternalValidationError,
 )
 from mixpanel_headless.types import (
+    AbstractFilter,
     CohortBreakdown,
     CohortMetric,
     Exclusion,
@@ -183,10 +184,16 @@ _WhereItem = Annotated[
         _union_discriminator(
             (
                 (FrequencyFilter, "event"),
-                (Filter, "property"),
+                (AbstractFilter, "property"),
             ),
             allow_str=False,
         ),
+        # ``Filter`` is the union alias, so it has no ``__name__`` to tag
+        # itself with and cannot be an ``isinstance`` target. Routing tests
+        # against ``AbstractFilter`` — the base every member subclasses — and
+        # tags with that same name, so the two cannot drift. Order mirrors
+        # the specs above.
+        members={"FrequencyFilter": FrequencyFilter, "AbstractFilter": Filter},
         error_type="invalid_where_item",
         message=(
             "each where entry must be an object with 'property' (a property "
@@ -437,7 +444,7 @@ class InsightsQuery(_TimeComparableQuery):
 
         q = InsightsQuery(
             events=[Metric("Login", math="unique")],
-            where=[Filter.equals("country", "US")],
+            where=[FilterFactory.equals("country", "US")],
             last=7,
         )
         params = ws.build_params(q)
@@ -548,7 +555,7 @@ class FunnelQuery(_TimeComparableQuery):
         q = FunnelQuery(
             steps=[FunnelStep("Signup"), FunnelStep("Purchase")],
             conversion_window=7,
-            where=[Filter.equals("country", "US")],
+            where=[FilterFactory.equals("country", "US")],
         )
         params = ws.build_funnel_params(q)
         result = ws.query_funnel(q)

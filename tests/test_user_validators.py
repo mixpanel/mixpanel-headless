@@ -20,7 +20,12 @@ from mixpanel_headless._internal.query.user_validators import (
     validate_user_params,
 )
 from mixpanel_headless.exceptions import ValidationError
-from mixpanel_headless.types import CohortCriteria, CohortDefinition, Filter
+from mixpanel_headless.types import (
+    CohortCriteria,
+    CohortDefinition,
+    EqualityFilter,
+    FilterFactory,
+)
 
 # =============================================================================
 # Helpers
@@ -92,7 +97,7 @@ class TestValidateUserArgsValid:
     def test_profiles_mode_with_filter(self) -> None:
         """Profiles mode with a Filter where clause is valid."""
         errors = validate_user_args(
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
             mode="profiles",
         )
         assert errors == []
@@ -109,8 +114,8 @@ class TestValidateUserArgsValid:
         """Profiles mode with a list of Filters is valid."""
         errors = validate_user_args(
             where=[
-                Filter.equals("plan", "premium"),
-                Filter.greater_than("age", 18),
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.greater_than("age", 18),
             ],
             mode="profiles",
         )
@@ -249,9 +254,9 @@ class TestValidateUserArgsValid:
             assert errors == [], f"workers={n} should be valid"
 
     def test_single_in_cohort_filter_in_where(self) -> None:
-        """A single Filter.in_cohort() in where list is valid."""
+        """A single FilterFactory.in_cohort() in where list is valid."""
         errors = validate_user_args(
-            where=[Filter.in_cohort(123)],
+            where=[FilterFactory.in_cohort(123)],
             mode="profiles",
         )
         assert errors == []
@@ -288,10 +293,10 @@ class TestValidateUserArgsMutualExclusion:
         assert not _has_code(errors, "U1")
 
     def test_u2_cohort_and_in_cohort_filter_mutually_exclusive(self) -> None:
-        """U2: cohort param and Filter.in_cohort() in where are exclusive."""
+        """U2: cohort param and FilterFactory.in_cohort() in where are exclusive."""
         errors = validate_user_args(
             cohort=123,
-            where=[Filter.in_cohort(456)],
+            where=[FilterFactory.in_cohort(456)],
             mode="profiles",
         )
         assert _has_code(errors, "U2")
@@ -300,24 +305,24 @@ class TestValidateUserArgsMutualExclusion:
         """U2: cohort param alone (no in_cohort in where) is valid."""
         errors = validate_user_args(
             cohort=123,
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
             mode="profiles",
         )
         assert not _has_code(errors, "U2")
 
     def test_u2_in_cohort_filter_without_cohort_is_valid(self) -> None:
-        """U2: Filter.in_cohort() in where without cohort param is valid."""
+        """U2: FilterFactory.in_cohort() in where without cohort param is valid."""
         errors = validate_user_args(
-            where=[Filter.in_cohort(456)],
+            where=[FilterFactory.in_cohort(456)],
             mode="profiles",
         )
         assert not _has_code(errors, "U2")
 
     def test_u2_cohort_definition_and_in_cohort_filter(self) -> None:
-        """U2: CohortDefinition cohort and Filter.in_cohort() are exclusive."""
+        """U2: CohortDefinition cohort and FilterFactory.in_cohort() are exclusive."""
         errors = validate_user_args(
             cohort=_make_cohort_definition(),
-            where=[Filter.in_cohort(789)],
+            where=[FilterFactory.in_cohort(789)],
             mode="profiles",
         )
         assert _has_code(errors, "U2")
@@ -337,7 +342,7 @@ class TestValidateUserArgsMutualExclusion:
 
         # A valid Filter is fine
         errors_filter = validate_user_args(
-            where=Filter.equals("plan", "premium"),
+            where=FilterFactory.equals("plan", "premium"),
             mode="profiles",
         )
         assert not _has_code(errors_filter, "U9")
@@ -449,11 +454,11 @@ class TestValidateUserArgsBasic:
         Uses internal construction to bypass Filter factory validation.
         """
         # Build a Filter with an empty property name directly
-        f = Filter(
-            _property="",
-            _operator="equals",
-            _value=["test"],
-            _property_type="string",
+        f = EqualityFilter(
+            property="",
+            operator="equals",
+            value=["test"],
+            property_type="string",
         )
         errors = validate_user_args(where=f, mode="profiles")
         assert _has_code(errors, "U10")
@@ -461,19 +466,19 @@ class TestValidateUserArgsBasic:
     def test_u10_filter_with_valid_property_name(self) -> None:
         """U10: Filter with non-empty property name is valid."""
         errors = validate_user_args(
-            where=Filter.equals("country", "US"),
+            where=FilterFactory.equals("country", "US"),
             mode="profiles",
         )
         assert not _has_code(errors, "U10")
 
     def test_u10_filter_list_with_empty_property(self) -> None:
         """U10: Any Filter in a list with empty property triggers U10."""
-        f_valid = Filter.equals("plan", "premium")
-        f_invalid = Filter(
-            _property="",
-            _operator="equals",
-            _value=["test"],
-            _property_type="string",
+        f_valid = FilterFactory.equals("plan", "premium")
+        f_invalid = EqualityFilter(
+            property="",
+            operator="equals",
+            value=["test"],
+            property_type="string",
         )
         errors = validate_user_args(
             where=[f_valid, f_invalid],
@@ -579,55 +584,55 @@ class TestValidateUserArgsCohortDependency:
         assert not _has_code(errors, "U7")
 
     def test_u12_not_in_cohort_filter_not_supported(self) -> None:
-        """U12: Filter.not_in_cohort() is not supported in where."""
+        """U12: FilterFactory.not_in_cohort() is not supported in where."""
         errors = validate_user_args(
-            where=Filter.not_in_cohort(123),
+            where=FilterFactory.not_in_cohort(123),
             mode="profiles",
         )
         assert _has_code(errors, "U12")
 
     def test_u12_not_in_cohort_in_list(self) -> None:
-        """U12: Filter.not_in_cohort() in a list is not supported."""
+        """U12: FilterFactory.not_in_cohort() in a list is not supported."""
         errors = validate_user_args(
             where=[
-                Filter.equals("plan", "premium"),
-                Filter.not_in_cohort(123),
+                FilterFactory.equals("plan", "premium"),
+                FilterFactory.not_in_cohort(123),
             ],
             mode="profiles",
         )
         assert _has_code(errors, "U12")
 
     def test_u12_in_cohort_is_valid(self) -> None:
-        """U12: Filter.in_cohort() (non-negated) is valid."""
+        """U12: FilterFactory.in_cohort() (non-negated) is valid."""
         errors = validate_user_args(
-            where=Filter.in_cohort(123),
+            where=FilterFactory.in_cohort(123),
             mode="profiles",
         )
         assert not _has_code(errors, "U12")
 
     def test_u13_at_most_one_in_cohort_in_where(self) -> None:
-        """U13: At most one Filter.in_cohort() allowed in where list."""
+        """U13: At most one FilterFactory.in_cohort() allowed in where list."""
         errors = validate_user_args(
             where=[
-                Filter.in_cohort(123),
-                Filter.in_cohort(456),
+                FilterFactory.in_cohort(123),
+                FilterFactory.in_cohort(456),
             ],
             mode="profiles",
         )
         assert _has_code(errors, "U13")
 
     def test_u13_single_in_cohort_is_valid(self) -> None:
-        """U13: A single Filter.in_cohort() is valid."""
+        """U13: A single FilterFactory.in_cohort() is valid."""
         errors = validate_user_args(
-            where=[Filter.in_cohort(123)],
+            where=[FilterFactory.in_cohort(123)],
             mode="profiles",
         )
         assert not _has_code(errors, "U13")
 
     def test_u13_no_in_cohort_is_valid(self) -> None:
-        """U13: No Filter.in_cohort() in where is valid."""
+        """U13: No FilterFactory.in_cohort() in where is valid."""
         errors = validate_user_args(
-            where=[Filter.equals("plan", "premium")],
+            where=[FilterFactory.equals("plan", "premium")],
             mode="profiles",
         )
         assert not _has_code(errors, "U13")
@@ -1316,19 +1321,19 @@ class TestValidateUserArgsWhereTypeCheck:
     def test_u0_mixed_filter_and_non_filter(self) -> None:
         """U0: Mixed list with both Filter and non-Filter items."""
         errors = validate_user_args(
-            where=[Filter.equals("plan", "premium"), 42],  # type: ignore[list-item]
+            where=[FilterFactory.equals("plan", "premium"), 42],  # type: ignore[list-item]
         )
         assert _has_code(errors, "U0")
 
 
 class TestValidateUserArgsU7WithInCohortFilter:
-    """Tests for U7 fix: include_all_users with Filter.in_cohort()."""
+    """Tests for U7 fix: include_all_users with FilterFactory.in_cohort()."""
 
     def test_u7_include_all_users_with_in_cohort_filter_is_valid(self) -> None:
-        """U7: include_all_users=True with Filter.in_cohort() is valid."""
+        """U7: include_all_users=True with FilterFactory.in_cohort() is valid."""
         errors = validate_user_args(
             include_all_users=True,
-            where=[Filter.in_cohort(42)],
+            where=[FilterFactory.in_cohort(42)],
         )
         assert not _has_code(errors, "U7")
 

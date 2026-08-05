@@ -33,7 +33,7 @@ from pydantic import ValidationError
 from mixpanel_headless import (
     BookmarkValidationError,
     CohortCriteria,
-    Filter,
+    FilterFactory,
     FlowQueryResult,
     FlowStep,
     FrequencyBreakdown,
@@ -1049,54 +1049,54 @@ class TestOfflineUS6:
     """Offline tests for User Story 6 (new filter methods)."""
 
     def test_m32_not_between(self) -> None:
-        """M32 -- Filter.not_between produces correct operator."""
-        f = Filter.not_between("age", 18, 25)
-        assert f._operator == "not between"
-        assert f._value == [18, 25]
-        assert f._property_type == "number"
+        """M32 -- FilterFactory.not_between produces correct operator."""
+        f = FilterFactory.not_between("age", 18, 25)
+        assert f.operator == "not between"
+        assert f.value == [18, 25]
+        assert f.property_type == "number"
 
     def test_m33_starts_with(self) -> None:
-        """M33 -- Filter.starts_with produces correct operator."""
-        f = Filter.starts_with("email", "admin")
-        assert f._operator == "starts with"
-        assert f._value == "admin"
-        assert f._property_type == "string"
+        """M33 -- FilterFactory.starts_with produces correct operator."""
+        f = FilterFactory.starts_with("email", "admin")
+        assert f.operator == "starts with"
+        assert f.value == "admin"
+        assert f.property_type == "string"
 
     def test_m34_ends_with(self) -> None:
-        """M34 -- Filter.ends_with produces correct operator."""
-        f = Filter.ends_with("domain", ".edu")
-        assert f._operator == "ends with"
-        assert f._value == ".edu"
-        assert f._property_type == "string"
+        """M34 -- FilterFactory.ends_with produces correct operator."""
+        f = FilterFactory.ends_with("domain", ".edu")
+        assert f.operator == "ends with"
+        assert f.value == ".edu"
+        assert f.property_type == "string"
 
     def test_m35_date_not_between(self) -> None:
-        """M35 -- Filter.date_not_between produces correct operator."""
-        f = Filter.date_not_between("created", "2025-01-01", "2025-06-30")
-        assert f._operator == "was not between"
-        assert f._value == ["2025-01-01", "2025-06-30"]
-        assert f._property_type == "datetime"
+        """M35 -- FilterFactory.date_not_between produces correct operator."""
+        f = FilterFactory.date_not_between("created", "2025-01-01", "2025-06-30")
+        assert f.operator == "was not between"
+        assert f.value == ["2025-01-01", "2025-06-30"]
+        assert f.property_type == "datetime"
 
     def test_m36_in_the_next(self) -> None:
-        """M36 -- Filter.in_the_next produces correct operator."""
-        f = Filter.in_the_next("trial_end", 7, "day")
-        assert f._operator == "was in the next"
-        assert f._value == 7
-        assert f._property_type == "datetime"
-        assert f._date_unit == "day"
+        """M36 -- FilterFactory.in_the_next produces correct operator."""
+        f = FilterFactory.in_the_next("trial_end", 7, "day")
+        assert f.operator == "was in the next"
+        assert f.value == 7
+        assert f.property_type == "datetime"
+        assert f.date_unit == "day"
 
     def test_m37_at_least(self) -> None:
-        """M37 -- Filter.at_least produces correct operator."""
-        f = Filter.at_least("purchase_count", 5)
-        assert f._operator == "is at least"
-        assert f._value == 5
-        assert f._property_type == "number"
+        """M37 -- FilterFactory.at_least produces correct operator."""
+        f = FilterFactory.at_least("purchase_count", 5)
+        assert f.operator == "is at least"
+        assert f.value == 5
+        assert f.property_type == "number"
 
     def test_m38_at_most(self) -> None:
-        """M38 -- Filter.at_most produces correct operator."""
-        f = Filter.at_most("age", 65)
-        assert f._operator == "is at most"
-        assert f._value == 65
-        assert f._property_type == "number"
+        """M38 -- FilterFactory.at_most produces correct operator."""
+        f = FilterFactory.at_most("age", 65)
+        assert f.operator == "is at most"
+        assert f.value == 65
+        assert f.property_type == "number"
 
     def test_m39_new_filters_in_build_params(
         self, ws: Workspace, real_event: str
@@ -1107,7 +1107,7 @@ class TestOfflineUS6:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.at_least("$browser_version", 10)
+        f = FilterFactory.at_least("$browser_version", 10)
         params = ws.build_params(
             InsightsQuery(events=[Metric(real_event)], where=[f], last=7)
         )
@@ -1124,7 +1124,7 @@ class TestOfflineUS6:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.starts_with("$browser", "Chr")
+        f = FilterFactory.starts_with("$browser", "Chr")
         params = ws.build_params(
             InsightsQuery(events=[Metric(real_event)], where=[f], last=7)
         )
@@ -1302,7 +1302,7 @@ class TestOfflineUS8:
         params = ws.build_flow_params(
             FlowQuery(
                 event=real_event,
-                where=[Filter.equals("$browser", "Chrome")],
+                where=[FilterFactory.equals("$browser", "Chrome")],
                 last=7,
             )
         )
@@ -1322,7 +1322,7 @@ class TestOfflineUS8:
         """
         # Use in_cohort filter -- may not have a real cohort, so just
         # verify the params build without error.
-        f = Filter.in_cohort(12345)
+        f = FilterFactory.in_cohort(12345)
         params = ws.build_flow_params(FlowQuery(event=real_event, where=[f], last=7))
         assert isinstance(params, dict)
 
@@ -1794,7 +1794,7 @@ class TestLiveUS6:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.at_least("$browser_version", 1)
+        f = FilterFactory.at_least("$browser_version", 1)
         result = _query_or_api_error(
             ws.query,
             InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
@@ -1809,7 +1809,7 @@ class TestLiveUS6:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.starts_with("$browser", "Chr")
+        f = FilterFactory.starts_with("$browser", "Chr")
         result = _query_or_api_error(
             ws.query,
             InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
@@ -1824,7 +1824,7 @@ class TestLiveUS6:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.not_between("$browser_version", 0, 50)
+        f = FilterFactory.not_between("$browser_version", 0, 50)
         result = _query_or_api_error(
             ws.query,
             InsightsQuery(events=[Metric(real_event)], where=[f], last=7),
@@ -1877,7 +1877,7 @@ class TestLiveUS8:
             ws: Workspace fixture.
             real_event: Known event name.
         """
-        f = Filter.equals("$browser", "Chrome")
+        f = FilterFactory.equals("$browser", "Chrome")
         result = _query_or_api_error(
             ws.query_flow,
             FlowQuery(event=real_event, where=[f], last=7),
@@ -1969,7 +1969,7 @@ class TestCrossParameterInteractions:
             real_event: Known event name.
         """
         fb = FrequencyBreakdown(real_event)
-        f = Filter.equals("$browser", "Chrome")
+        f = FilterFactory.equals("$browser", "Chrome")
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
@@ -2098,7 +2098,7 @@ class TestCrossParameterInteractions:
                 event=real_event,
                 exclusions=["$identify"],
                 segments=[GroupBy(property="$browser")],
-                where=[Filter.equals("$os", "Mac OS X")],
+                where=[FilterFactory.equals("$os", "Mac OS X")],
                 last=7,
             )
         )

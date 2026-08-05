@@ -118,7 +118,7 @@ Types for advanced query features — period-over-period comparison, frequency a
 
 ## Cohort Definition Types
 
-Types for building inline cohort definitions programmatically — used with `Filter.in_cohort()` and `CohortBreakdown`. (`CohortMetric` accepts only saved cohort IDs — the server rejects inline definitions there.)
+Types for building inline cohort definitions programmatically — used with `FilterFactory.in_cohort()` and `CohortBreakdown`. (`CohortMetric` accepts only saved cohort IDs — the server rejects inline definitions there.)
 
 ::: mixpanel_headless.CohortDefinition
     options:

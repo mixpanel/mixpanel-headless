@@ -11,28 +11,33 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
-from typing import Any, Literal, NoReturn, cast
+from typing import Any, NoReturn, cast
 
 from mixpanel_headless._literal_types import QueryTimeUnit
 from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
 from mixpanel_headless.types import (
+    AbstractFilter,
     CohortBreakdown,
+    ContainmentFilter,
     CustomPropertyRef,
     Filter,
     FrequencyBreakdown,
     FrequencyFilter,
     GroupBy,
     InlineCustomProperty,
-    PropertyInput,
+    PayloadFormatError,
     TimeComparison,
     _sanitize_raw_cohort,
+)
+from mixpanel_headless.types import (
+    _build_composed_properties as _build_composed_properties,  # re-export
 )
 
 
 def _reject(path: str, message: str, code: str) -> NoReturn:
     """Raise a single-error ``BookmarkValidationError``.
 
-    Shared scaffolding for builder-level rejections of inputs the wire
+    Shared scaffolding for builder-level rejections of inputs the payload
     format cannot express, so each call site reads as just the rule
     (path, message, code).
 
@@ -48,46 +53,6 @@ def _reject(path: str, message: str, code: str) -> NoReturn:
     raise BookmarkValidationError(
         [ValidationError(path=path, message=message, code=code)]
     )
-
-
-def _build_composed_properties(
-    inputs: dict[str, PropertyInput],
-) -> dict[str, dict[str, str]]:
-    """Convert a PropertyInput mapping to bookmark composedProperties format.
-
-    Transforms the user-facing ``inputs`` dict (letter → PropertyInput)
-    into the JSON structure expected by Mixpanel's ``customProperty``
-    bookmark schema.
-
-    Args:
-        inputs: Mapping from single uppercase letters (A-Z) to
-            ``PropertyInput`` objects.
-
-    Returns:
-        Dict mapping each letter to a dict with ``value``, ``type``,
-        and ``resourceType`` keys.
-
-    Example:
-        ```python
-        from mixpanel_headless._internal.bookmark_builders import (
-            _build_composed_properties,
-        )
-        from mixpanel_headless.types import PropertyInput
-
-        result = _build_composed_properties({
-            "A": PropertyInput("price", type="number"),
-        })
-        # {"A": {"value": "price", "type": "number", "resourceType": "event"}}
-        ```
-    """
-    return {
-        key: {
-            "value": prop.name,
-            "type": prop.type,
-            "resourceType": prop.resource_type,
-        }
-        for key, prop in inputs.items()
-    }
 
 
 def build_time_section(
@@ -197,7 +162,10 @@ def build_date_range(
 
 
 def build_filter_section(
-    where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None,
+    where: AbstractFilter
+    | FrequencyFilter
+    | Sequence[AbstractFilter | FrequencyFilter]
+    | None,
 ) -> list[dict[str, Any]]:
     """Build the ``sections.filter`` array for bookmark params.
 
@@ -215,7 +183,7 @@ def build_filter_section(
 
     Example:
         ```python
-        filters = build_filter_section(Filter.equals("country", "US"))
+        filters = build_filter_section(FilterFactory.equals("country", "US"))
         # [{"resourceType": "events", "filterType": "string", ...}]
         ```
     """
@@ -226,8 +194,11 @@ def build_filter_section(
     for f in filters_list:
         if isinstance(f, FrequencyFilter):
             result.append(build_frequency_filter_entry(f))
-        elif isinstance(f, Filter):
-            result.append(build_filter_entry(f))
+        elif isinstance(f, AbstractFilter):
+            # Every AbstractFilter instance is one of the eleven members —
+            # nothing constructs the base — but mypy cannot carry that from
+            # an isinstance narrowing to the union the callee declares.
+            result.append(build_filter_entry(cast("Filter", f)))
     return result
 
 
@@ -379,8 +350,8 @@ def build_group_section(
                 # the Mixpanel UI does not support list-of-object
                 # breakdowns for people properties, so the classmethod
                 # exposes no resource_type parameter. Asymmetric with
-                # Filter.list_contains, which DOES accept
-                # resource_type="people" because the wire format permits
+                # FilterFactory.list_contains, which DOES accept
+                # resource_type="people" because the payload format permits
                 # list-object filters on people properties (just not
                 # breakdowns).
                 mode = g._list_item_mode
@@ -490,122 +461,30 @@ def _build_cohort_group_entry(
     }
 
 
-def build_filter_entry(f: Filter) -> dict[str, Any]:
+def build_filter_entry(f: AbstractFilter) -> dict[str, Any]:
     """Convert a Filter object to a bookmark filter dict.
 
-    Maps the internal Filter fields to the key names expected by the
-    Mixpanel bookmark API. Includes ``filterDateUnit`` only for
-    relative date filters that have a date unit set.
+    The rendering lives on the model — see ``AbstractFilter._dump_bookmark``
+    and the overrides on ``ContainmentFilter``, ``RelativeDateFilter`` and
+    ``CompoundFilter`` in ``mixpanel_headless.types``.
 
     Args:
-        f: A ``Filter`` object constructed via its class methods.
+        f: The filter to render.
 
     Returns:
-        Bookmark filter dict with keys: ``resourceType``, ``filterType``,
-        ``defaultType``, ``value``, ``filterValue``, ``filterOperator``,
-        and optionally ``filterDateUnit``.  For ``CustomPropertyRef``
-        properties the dict also contains ``customPropertyId`` and
-        ``dataset``.  For ``InlineCustomProperty`` properties it contains
-        ``customProperty`` (nested definition) and ``dataset``, and the
-        ``filterType``/``defaultType`` are overridden from the inline
-        property's ``property_type``.
+        The bookmark filter entry.
 
     Example:
         ```python
-        entry = build_filter_entry(Filter.equals("country", "US"))
-        # {"resourceType": "events", "filterType": "string",
-        #  "defaultType": "string", "value": "country",
-        #  "filterValue": ["US"], "filterOperator": "equals"}
+        build_filter_entry(FilterFactory.equals("country", "US"))
+        # {"resourceType": "events", "filterType": "string", ...}
         ```
     """
-    if f._operator == "list_contains":
-        return _build_list_contains_entry(f)
-    prop = f._property
-    entry: dict[str, Any] = {
-        "resourceType": f._resource_type,
-        "filterType": f._property_type,
-        "defaultType": f._property_type,
-        "filterValue": f._value,
-        "filterOperator": f._operator,
-    }
-    if isinstance(prop, CustomPropertyRef):
-        entry["customPropertyId"] = prop.id
-        entry["dataset"] = "$mixpanel"
-    elif isinstance(prop, InlineCustomProperty):
-        effective_type = (
-            prop.property_type if prop.property_type is not None else f._property_type
-        )
-        entry["customProperty"] = {
-            "displayFormula": prop.formula,
-            "composedProperties": _build_composed_properties(prop.inputs),
-            "name": "",
-            "description": "",
-            "propertyType": effective_type,
-            "resourceType": prop.resource_type,
-        }
-        entry["filterType"] = effective_type
-        entry["defaultType"] = effective_type
-        entry["dataset"] = "$mixpanel"
-        entry["resourceType"] = prop.resource_type
-    else:
-        entry["value"] = prop
-    if f._date_unit is not None:
-        entry["filterDateUnit"] = f._date_unit
-    return entry
-
-
-def _build_list_contains_entry(f: Filter) -> dict[str, Any]:
-    """Build the bookmark entry for a ``Filter.list_contains`` filter.
-
-    Emits the ``listItemFilters`` wire structure used by Mixpanel
-    Insights to filter on subproperties of objects nested inside a list
-    property (e.g. ``cart`` is a list of ``{"Brand": str, ...}``
-    items). Each inner ``Filter`` is serialized via the same
-    :func:`build_filter_entry` recursively, then ``dataset`` is
-    backfilled to ``"$mixpanel"`` since the wire format requires it on
-    inner items even for plain string properties.
-
-    Trusts that ``Filter.__post_init__`` has already validated the
-    ``list_contains`` invariants (``_list_item_filters`` and
-    ``_list_item_quantifier`` non-None). Direct construction with the
-    ``list_contains`` operator that omits either field is rejected at
-    Filter construction time, so this builder never sees ``None``.
-
-    Args:
-        f: A ``Filter`` constructed via ``Filter.list_contains(...)``.
-
-    Returns:
-        Bookmark filter dict carrying ``listItemFilters``,
-        ``listQuantifier``, and the constant outer wrapper
-        (``filterOperator: "true"``, ``filterValue: True``,
-        ``filterType: "object"``, ``filterJoinType: "list"``).
-    """
-    # Filter.__post_init__ guarantees these are non-None when
-    # _operator == "list_contains"; cast (not assert) makes this an
-    # explicit type-narrowing claim, not a redundant runtime check.
-    list_item_filters = cast(tuple[Filter, ...], f._list_item_filters)
-    list_item_quantifier = cast(Literal["any", "all"], f._list_item_quantifier)
-    inner: list[dict[str, Any]] = []
-    for sub in list_item_filters:
-        sub_entry = build_filter_entry(sub)
-        sub_entry.setdefault("dataset", "$mixpanel")
-        inner.append(sub_entry)
-    return {
-        "dataset": "$mixpanel",
-        "value": f._property,
-        "resourceType": f._resource_type,
-        "filterType": "object",
-        "defaultType": "object",
-        "filterJoinType": "list",
-        "listQuantifier": list_item_quantifier,
-        "listItemFilters": inner,
-        "filterOperator": "true",
-        "filterValue": True,
-    }
+    return f.mixpanel_model_dump("bookmark")
 
 
 def build_flow_where_entries(
-    filters: list[Filter],
+    filters: Sequence[AbstractFilter],
 ) -> list[dict[str, Any]]:
     """Build the flat ``where`` entry list for flow bookmark params.
 
@@ -642,7 +521,7 @@ def build_flow_where_entries(
 
     Example:
         ```python
-        entries = build_flow_where_entries([Filter.equals("country", "US")])
+        entries = build_flow_where_entries([FilterFactory.equals("country", "US")])
         # [{"property": "country", "operator": "equals", "value": ["US"]}]
         ```
     """
@@ -653,45 +532,25 @@ def build_flow_where_entries(
         )
     entries: list[dict[str, Any]] = []
     for i, f in enumerate(filters):
-        prop = f._property
-        if not isinstance(prop, str):
+        # A property check, not a filter one: it applies to every member, and
+        # the model cannot see whether its own property is a plain name.
+        if not isinstance(f.property, str):
             _reject(
                 path=f"where[{i}]",
                 message=(
                     f"flow where filters only support string "
-                    f"property names; got {type(prop).__name__} — "
+                    f"property names; got {type(f.property).__name__} — "
                     f"custom property refs are not supported in "
                     f"flow filters"
                 ),
                 code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
             )
-        if f._operator == "list_contains":
-            _reject(
-                path=f"where[{i}]",
-                message=(
-                    "flow where filters cannot express "
-                    "list_contains — the flat where format has "
-                    "no key for nested sub-filters"
-                ),
-                code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
-            )
-        if f._operator in Filter._RELATIVE_DATE_OPS:
-            _reject(
-                path=f"where[{i}]",
-                message=(
-                    f"flow where filters cannot express the "
-                    f"relative-date operator '{f._operator}' — the "
-                    f"flat where format has no key for the date "
-                    f"unit. Use an absolute date filter instead "
-                    f"(Filter.date_between / Filter.before / "
-                    f"Filter.since)"
-                ),
-                code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
-            )
-        entry: dict[str, Any] = {"property": prop, "operator": f._operator}
-        if f._value is not None:
-            entry["value"] = f._value
-        entries.append(entry)
+        # Members the flat format cannot express refuse themselves. Only the
+        # position is added here, since only this loop knows the index.
+        try:
+            entries.append(f.mixpanel_model_dump("flow_where"))
+        except PayloadFormatError as exc:
+            _reject(path=f"where[{i}]", message=exc.message, code=exc.code)
     return entries
 
 
@@ -807,13 +666,13 @@ def build_flow_segment_entries(
 
 
 def build_flow_cohort_filter(
-    where: Filter | list[Filter],
+    where: AbstractFilter | Sequence[AbstractFilter],
 ) -> dict[str, Any] | None:
     """Build the ``filter_by_cohort`` dict for flow bookmark params.
 
     Flows use a legacy ``filter_by_cohort`` top-level key rather than
     the ``sections.filter`` array used by insights/funnels/retention.
-    Only cohort filters (``Filter.in_cohort`` / ``Filter.not_in_cohort``)
+    Only cohort filters (``FilterFactory.in_cohort`` / ``FilterFactory.not_in_cohort``)
     are accepted; non-cohort filters raise ``ValueError``.
 
     Args:
@@ -836,19 +695,21 @@ def build_flow_cohort_filter(
 
     Example:
         ```python
-        fbc = build_flow_cohort_filter(Filter.in_cohort(123, "PU"))
+        fbc = build_flow_cohort_filter(FilterFactory.in_cohort(123, "PU"))
         # {"id": 123, "name": "PU", "negated": False}
         ```
     """
-    filters = where if isinstance(where, list) else [where]
+    filters: Sequence[AbstractFilter] = (
+        [where] if isinstance(where, AbstractFilter) else where
+    )
     if not filters:
         return None
 
     for f in filters:
-        if f._property != "$cohorts":
+        if f.property != "$cohorts":
             raise RuntimeError(
                 "build_flow_cohort_filter only accepts cohort filters "
-                "(Filter.in_cohort/not_in_cohort); property filters should "
+                "(FilterFactory.in_cohort/not_in_cohort); property filters should "
                 "use build_flow_where_entries instead"
             )
 
@@ -858,42 +719,29 @@ def build_flow_cohort_filter(
             message=(
                 f"query_flow supports a single cohort filter, but "
                 f"{len(filters)} were provided. Pass only one "
-                f"Filter.in_cohort/not_in_cohort."
+                f"FilterFactory.in_cohort/not_in_cohort."
             ),
             code="FL_WHERE_MULTIPLE_COHORTS",
         )
 
     f = filters[0]
-    # Extract from the _value structure: [{"cohort": {...}}]
-    cohort_value = f._value
-    if not isinstance(cohort_value, list) or len(cohort_value) == 0:
+    # `ContainmentFilter.value` is `str | list[CohortRef]` and the $cohorts
+    # pairing is enforced at construction, so the structure is a type here
+    # rather than something to re-derive and guard.
+    if not isinstance(f, ContainmentFilter) or not isinstance(f.value, list):
         raise RuntimeError(
-            "Internal error: cohort filter _value must be a non-empty list; "
-            f"got {type(cohort_value).__name__}. This indicates a bug in "
-            "Filter._build_cohort_filter."
+            "Internal error: a cohort filter must be a ContainmentFilter "
+            f"carrying a list of CohortRef; got {type(f).__name__}."
         )
-    first_item = cohort_value[0]
-    if not isinstance(first_item, dict):
-        raise RuntimeError(
-            "Internal error: cohort filter _value[0] is not a dict; "
-            f"got {type(first_item).__name__}. This indicates a bug in "
-            "Filter._build_cohort_filter."
-        )
-    cohort_data = first_item.get("cohort")
-    if not isinstance(cohort_data, dict):
-        raise RuntimeError(
-            "Internal error: cohort filter _value[0] is missing 'cohort' key; "
-            f"got keys {list(first_item.keys())}. This indicates a bug in "
-            "Filter._build_cohort_filter."
-        )
+    cohort = f.value[0].cohort
     result: dict[str, Any] = {
-        "name": cohort_data.get("name", ""),
-        "negated": f._operator == "does not contain",
+        "name": cohort.name,
+        "negated": f.operator == "does not contain",
     }
-    if "id" in cohort_data:
-        result["id"] = cohort_data["id"]
-    if "raw_cohort" in cohort_data:
-        result["raw_cohort"] = cohort_data["raw_cohort"]
+    if cohort.id is not None:
+        result["id"] = cohort.id
+    if cohort.raw_cohort is not None:
+        result["raw_cohort"] = cohort.raw_cohort
     return result
 
 

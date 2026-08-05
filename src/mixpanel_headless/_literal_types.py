@@ -511,9 +511,9 @@ FilterPropertyType = Literal[
 """Property data type for filter conditions.
 
 Includes ``"datetime"`` and ``"list"`` for API compatibility, and
-``"object"`` for ``Filter.list_contains`` (filtering on subproperties of
+``"object"`` for ``FilterFactory.list_contains`` (filtering on subproperties of
 objects nested inside a list-of-objects property). Datetime factory
-methods (``Filter.on``, ``Filter.before``, etc.) produce filters with
+methods (``FilterFactory.on``, ``FilterFactory.before``, etc.) produce filters with
 ``filterType="datetime"``.
 """
 
@@ -554,17 +554,17 @@ FilterOperator = Literal[
     "was on",
     "was since",
 ]
-"""All recognized values of ``Filter._operator``.
+"""All recognized values of ``Filter.operator``.
 
 Centralized so additions/removals stay in lockstep with the bookmark
-wire format and so mypy catches typos at every Filter classmethod
+payload format and so mypy catches typos at every Filter classmethod
 factory call site.
 """
 
 FilterDateUnit = Literal["hour", "day", "week", "month"]
 """Time unit for relative date filters.
 
-Used by ``Filter.in_the_last()`` and ``Filter.not_in_the_last()``
+Used by ``FilterFactory.in_the_last()`` and ``FilterFactory.not_in_the_last()``
 to specify the granularity of the relative time window.
 Maps to ``filterDateUnit`` in bookmark JSON.
 """

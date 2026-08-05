@@ -53,10 +53,15 @@ class TestShowFieldsPydanticDataclass:
     def test_filter_excludes_classvar_pseudo_fields(
         self, help_mod: ModuleType, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Filter's ClassVar frozensets are not listed as fields."""
-        from mixpanel_headless.types import Filter
+        """A filter member's inherited ClassVar frozensets are not listed as fields.
 
-        help_mod.show_fields(Filter)
+        Scoped to ``EqualityFilter``: ``Filter`` itself is now the plain
+        base that holds those ClassVars, and has no pydantic fields to
+        render, so the member is where the two could collide.
+        """
+        from mixpanel_headless.types import EqualityFilter
+
+        help_mod.show_fields(EqualityFilter)
         out = capsys.readouterr().out
         assert "_NUMERIC_OPS" not in out
         assert "_DATE_OPS" not in out

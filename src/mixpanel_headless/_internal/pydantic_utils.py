@@ -21,7 +21,8 @@ import functools
 from collections.abc import Callable
 from typing import Annotated, Any, Union, get_args
 
-from pydantic import Discriminator, GetCoreSchemaHandler, Tag
+from pydantic import Discriminator, GetCoreSchemaHandler, GetJsonSchemaHandler, Tag
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
 
 
@@ -135,32 +136,28 @@ def by_field(field: str) -> Callable[[Any], str | None]:
     return read
 
 
-def alternative_name(member: Any, field: str | None) -> str:
-    """Name a union member: its discriminator literal, or its type name.
+def literal_values(member: Any, field: str) -> tuple[str, ...]:
+    """Read every value a member's discriminator ``Literal`` accepts.
 
     Args:
-        member: A union member — a ``BaseModel`` or a pydantic dataclass. With
-            a ``field``, it must declare that field as a single-valued
-            ``Literal``.
-        field: The discriminator field name, or None when routing is by shape.
+        member: A union member — a ``BaseModel`` or a pydantic dataclass.
+        field: The discriminator field name.
 
     Returns:
-        The member's name, used for both its tag and the error message.
+        The literal values, in declaration order.
 
     Raises:
-        TypeError: If ``member`` has no single-valued ``Literal`` at ``field``.
+        TypeError: If ``member`` has no ``Literal`` at ``field``.
 
     Example:
         ```python
         # Cat declares `kind: Literal["cat"]`
-        alternative_name(Cat, "kind")  # "cat"
+        literal_values(Cat, "kind")  # ("cat",)
 
-        # No field to read, so the type names itself
-        alternative_name(Cat, None)  # "Cat"
+        # Presence declares `operator: Literal["is set", "is not set"]`
+        literal_values(Presence, "operator")  # ("is set", "is not set")
         ```
     """
-    if field is None:
-        return str(member.__name__)
     # A BaseModel keeps its fields on `model_fields`, a pydantic dataclass on
     # `__pydantic_fields__`; both map to `FieldInfo`. Most union members in this
     # package are dataclasses, so the string-discriminator path must read both.
@@ -170,9 +167,46 @@ def alternative_name(member: Any, field: str | None) -> str:
     if fields is None or field not in fields:
         raise TypeError(f"{member.__name__} has no pydantic field {field!r}")
     values = get_args(fields[field].annotation)
-    if len(values) != 1:
-        raise TypeError(f"{member.__name__}.{field} must be a single-valued Literal")
-    return str(values[0])
+    if not values:
+        raise TypeError(f"{member.__name__}.{field} must be a Literal")
+    return tuple(str(value) for value in values)
+
+
+def alternative_name(member: Any, field: str | None) -> str:
+    """Name a union member: its discriminator literal, or its type name.
+
+    A member claiming several literals cannot be named after any one of
+    them, so it takes its type name instead — and the tag stops doubling
+    as the payload value. :class:`MarkedDiscriminator` handles that by
+    routing through a value-to-tag map rather than comparing directly.
+
+    Args:
+        member: A union member — a ``BaseModel`` or a pydantic dataclass.
+        field: The discriminator field name, or None when routing is by shape.
+
+    Returns:
+        The member's sole literal when it has exactly one, otherwise its
+        type name.
+
+    Raises:
+        TypeError: If ``member`` has no ``Literal`` at ``field``.
+
+    Example:
+        ```python
+        # Cat declares `kind: Literal["cat"]`
+        alternative_name(Cat, "kind")  # "cat"
+
+        # Presence declares `operator: Literal["is set", "is not set"]`
+        alternative_name(Presence, "operator")  # "Presence"
+
+        # No field to read, so the type names itself
+        alternative_name(Cat, None)  # "Cat"
+        ```
+    """
+    if field is None:
+        return str(member.__name__)
+    values = literal_values(member, field)
+    return values[0] if len(values) == 1 else str(member.__name__)
 
 
 class MarkedDiscriminator:
@@ -245,6 +279,15 @@ class MarkedDiscriminator:
         self.members = members
         self.error_type = error_type
         self.message = message
+        self._json_schema_mapping: tuple[tuple[str, ...], ...] | None = None
+        """Per member, the values it accepts — stashed for the JSON hook.
+
+        In union order, so it zips against the generated branch list.
+        Only set when routing is by a field name, the only case that can
+        produce an OpenAPI ``discriminator``. Pydantic always builds the
+        core schema before the JSON schema, so this is populated by the
+        time the JSON hook reads it.
+        """
 
     def __get_pydantic_core_schema__(
         self, source: Any, handler: GetCoreSchemaHandler
@@ -273,12 +316,25 @@ class MarkedDiscriminator:
             raise TypeError(
                 "MarkedDiscriminator must annotate a union, or be given members="
             )
+        accepts: list[tuple[str, ...]]
         if isinstance(members, dict):
             named = list(members.items())
+            # A caller-supplied tag doubles as the value `read` returns.
+            accepts = [(name,) for name, _member in named]
         else:
             named = [(alternative_name(member, field), member) for member in members]
+            accepts = [
+                literal_values(member, field) if field is not None else (name,)
+                for name, member in named
+            ]
+        # Every value a member accepts routes to that member's single tag. The
+        # two coincide for a single-valued Literal, where the tag *is* the
+        # value; they diverge when a member claims several, and the tag falls
+        # back to its type name.
         tags: dict[str | None, str] = {
-            name: MarkedTag.of(name) for name, _member in named
+            value: MarkedTag.of(name)
+            for (name, _member), values in zip(named, accepts, strict=True)
+            for value in values
         }
 
         def to_tag(value: Any) -> str | None:
@@ -293,12 +349,16 @@ class MarkedDiscriminator:
 
         message = self.message
         if self.error_type is not None and message is None:
+            # List what a payload may carry, not what the members are called.
             message = f"{field or 'value'} must be one of " + ", ".join(
-                repr(name) for name, _member in named
+                repr(value) for values in accepts for value in values
             )
         routing = Discriminator(
             to_tag, custom_error_type=self.error_type, custom_error_message=message
         )
+        # Routing by a field is the only case that can carry an OpenAPI
+        # `discriminator`; a shape-routed union has no property to name.
+        self._json_schema_mapping = tuple(accepts) if field is not None else None
         return handler.generate_schema(
             Annotated[
                 Union[  # noqa: UP007 — subscripted with a tuple, `|` can't do this
@@ -307,3 +367,63 @@ class MarkedDiscriminator:
                 routing,
             ]
         )
+
+    def __get_pydantic_json_schema__(
+        self, schema: CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        """Add the OpenAPI ``discriminator`` block that routing already implies.
+
+        Pydantic emits that block only for ``Field(discriminator="x")``,
+        because it cannot know what a callable routes on. This marker
+        always routes through a callable — that is how the tag gets
+        ``#``-marked — so pydantic stays silent even when we *do* know the
+        mapping. We know it because we built it.
+
+        Without the block a consumer can still pick a branch: every member
+        pins the discriminator field to its own literal, so the ``oneOf``
+        is decidable by scanning ``$defs``. The block just states the same
+        thing directly::
+
+            "oneOf": [{"$ref": "#/$defs/Equals"}, ...]        # decidable
+            "discriminator": {                                 # ...and stated
+                "propertyName": "operator",
+                "mapping": {"equals": "#/$defs/Equals", ...}
+            }
+
+        It is a hint, not information — which is why it is safe to omit
+        when it cannot be built truthfully. Three cases skip it: routing
+        by shape (no property to name), a branch list whose length has
+        drifted from the tag list, and any branch that is not a plain
+        ``$ref`` (an inline subschema has nothing for ``mapping`` to
+        point at).
+
+        Args:
+            schema: The core schema this marker produced.
+            handler: Pydantic's JSON-schema handler.
+
+        Returns:
+            The generated JSON schema, with ``discriminator`` added when
+            it can be stated truthfully.
+        """
+        json_schema = handler(schema)
+        accepts = self._json_schema_mapping
+        if accepts is None:
+            return json_schema
+        branches = json_schema.get("oneOf") or json_schema.get("anyOf")
+        if not isinstance(branches, list) or len(branches) != len(accepts):
+            return json_schema
+        refs = [b.get("$ref") if isinstance(b, dict) else None for b in branches]
+        if not all(isinstance(ref, str) for ref in refs):
+            return json_schema
+        # Keyed on the values a payload carries, not the tags. A member
+        # claiming several literals contributes several entries pointing at
+        # the same `$ref`, which OpenAPI allows.
+        json_schema["discriminator"] = {
+            "propertyName": self.discriminator,
+            "mapping": {
+                value: ref
+                for values, ref in zip(accepts, refs, strict=True)
+                for value in values
+            },
+        }
+        return json_schema

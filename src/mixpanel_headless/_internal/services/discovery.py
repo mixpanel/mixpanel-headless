@@ -277,7 +277,7 @@ def _infer_subproperties(raw_values: list[str]) -> list[SubPropertyInfo]:
       ``UserWarning`` and are excluded from output. Sub-keys observed
       with both scalar and dict/list shapes across rows produce a
       ``UserWarning`` and are reported using the scalar form (since
-      ``GroupBy.list_item`` and ``Filter.list_contains`` only operate
+      ``GroupBy.list_item`` and ``FilterFactory.list_contains`` only operate
       on scalar subproperty values).
     - Sub-keys observed with mixed scalar types (e.g. some rows int,
       some string) collapse to ``"string"`` with a ``UserWarning``.
@@ -559,7 +559,7 @@ class DiscoveryService:
         boolean / ISO datetime string) are reported. Subproperties whose
         sub-values are themselves dicts or lists are silently skipped —
         they cannot be used by ``GroupBy.list_item`` or
-        ``Filter.list_contains`` anyway.
+        ``FilterFactory.list_contains`` anyway.
 
         Args:
             property_name: Top-level list-of-object property name (e.g.

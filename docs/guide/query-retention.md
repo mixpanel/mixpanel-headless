@@ -16,7 +16,7 @@ Build typed retention analysis against Mixpanel's Insights engine — define bor
 | Custom retention buckets | Not available | `bucket_sizes=[1, 3, 7, 14, 30]` |
 | Alignment modes | Not available | `alignment="birth"` or `"interval_start"` |
 | Display modes | Not available | `mode="curve"`, `"trends"`, or `"table"` |
-| Typed filters | Expression strings | `where=Filter.equals("country", "US")` |
+| Typed filters | Expression strings | `where=FilterFactory.equals("country", "US")` |
 | Property breakdowns | `on="country"` | `group_by="country"` |
 | Math types | Not available | `math="retention_rate"` or `"unique"` |
 | Save query as a report | N/A | `result.params` → `create_bookmark()` |
@@ -81,7 +81,7 @@ For per-event configuration with filters, use `RetentionEvent` objects:
 from mixpanel_headless import RetentionEvent, Filter, RetentionQuery
 
 result = ws.query_retention(RetentionQuery(
-    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    born_event=RetentionEvent("Signup", filters=[FilterFactory.equals("source", "organic")]),
     return_event=RetentionEvent("Login"),
 ))
 ```
@@ -99,7 +99,7 @@ Plain strings and `RetentionEvent` objects can be mixed freely:
 ```python
 result = ws.query_retention(RetentionQuery(
     born_event="Signup",  # plain string — no filters needed
-    return_event=RetentionEvent("Purchase", filters=[Filter.greater_than("amount", 0)]),
+    return_event=RetentionEvent("Purchase", filters=[FilterFactory.greater_than("amount", 0)]),
 ))
 ```
 
@@ -111,10 +111,10 @@ Apply filters to individual events using `RetentionEvent.filters`. These restric
 from mixpanel_headless import RetentionEvent, Filter, RetentionQuery
 
 result = ws.query_retention(RetentionQuery(
-    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    born_event=RetentionEvent("Signup", filters=[FilterFactory.equals("source", "organic")]),
     return_event=RetentionEvent("Purchase", filters=[
-        Filter.equals("country", "US"),
-        Filter.greater_than("amount", 25),
+        FilterFactory.equals("country", "US"),
+        FilterFactory.greater_than("amount", 25),
     ]),
 ))
 ```
@@ -127,8 +127,8 @@ result = ws.query_retention(RetentionQuery(
     return_event=RetentionEvent(
         "Purchase",
         filters=[
-            Filter.equals("country", "US"),
-            Filter.equals("country", "CA"),
+            FilterFactory.equals("country", "US"),
+            FilterFactory.equals("country", "CA"),
         ],
         filters_combinator="any",  # match US OR CA
     ),
@@ -234,14 +234,14 @@ from mixpanel_headless import Filter, RetentionQuery
 
 # Single filter
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Login", where=[Filter.equals("country", "US")],
+    born_event="Signup", return_event="Login", where=[FilterFactory.equals("country", "US")],
 ))
 
 # Multiple filters (AND logic)
 result = ws.query_retention(RetentionQuery(
     born_event="Signup", return_event="Login", where=[
-        Filter.equals("platform", "web"),
-        Filter.is_true("is_premium"),
+        FilterFactory.equals("platform", "web"),
+        FilterFactory.is_true("is_premium"),
     ],
 ))
 ```
@@ -259,7 +259,7 @@ from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, Retentio
 
 # Do power users retain better?
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Login", where=[Filter.in_cohort(123, "Power Users")],
+    born_event="Signup", return_event="Login", where=[FilterFactory.in_cohort(123, "Power Users")],
     retention_unit="week",
     last=90,
 ))
@@ -267,10 +267,10 @@ result = ws.query_retention(RetentionQuery(
 # Inline cohort — define the segment on the fly
 organic = CohortDefinition(
     CohortCriteria.did_event("Signup", at_least=1, within_days=90,
-        where=Filter.equals("source", "organic"))
+        where=FilterFactory.equals("source", "organic"))
 )
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Purchase", where=[Filter.in_cohort(organic, name="Organic Signups")],
+    born_event="Signup", return_event="Purchase", where=[FilterFactory.in_cohort(organic, name="Organic Signups")],
 ))
 ```
 
@@ -284,7 +284,7 @@ Use saved or inline custom properties in retention filters:
 from mixpanel_headless import Filter, CustomPropertyRef, RetentionQuery
 
 result = ws.query_retention(RetentionQuery(
-    born_event="Signup", return_event="Login", where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+    born_event="Signup", return_event="Login", where=[FilterFactory.greater_than(property=CustomPropertyRef(42), value=100)],
     retention_unit="week",
     last=90,
 ))
@@ -605,7 +605,7 @@ ws = mp.Workspace()
 
 # Weekly retention: do new signups come back?
 result = ws.query_retention(RetentionQuery(
-    born_event=RetentionEvent("Signup", filters=[Filter.equals("source", "organic")]),
+    born_event=RetentionEvent("Signup", filters=[FilterFactory.equals("source", "organic")]),
     return_event="Login",
     retention_unit="week",
     last=90,
@@ -629,7 +629,7 @@ print(result.df)
 result = ws.query_retention(RetentionQuery(
     born_event="Complete Onboarding", return_event="Purchase", retention_unit="month",
     last=180,
-    where=[Filter.is_true("is_premium")],
+    where=[FilterFactory.is_true("is_premium")],
 ))
 
 # Custom bucket sizes for key retention milestones

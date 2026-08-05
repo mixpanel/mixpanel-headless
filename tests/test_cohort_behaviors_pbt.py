@@ -1,6 +1,6 @@
 """Property-based tests for cohort behavior types using Hypothesis.
 
-These tests verify invariants of Filter.in_cohort/not_in_cohort,
+These tests verify invariants of FilterFactory.in_cohort/not_in_cohort,
 CohortBreakdown, and CohortMetric that should hold for all valid
 inputs. Covers tasks T052-T055.
 
@@ -29,7 +29,8 @@ from mixpanel_headless.types import (
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
-    Filter,
+    CohortRef,
+    FilterFactory,
 )
 
 # =============================================================================
@@ -59,7 +60,7 @@ cohort_ids = st.one_of(
 
 
 # =============================================================================
-# T052: Filter.in_cohort / Filter.not_in_cohort invariants
+# T052: FilterFactory.in_cohort / FilterFactory.not_in_cohort invariants
 # =============================================================================
 
 
@@ -70,56 +71,56 @@ class TestFilterCohortPBT:
     def test_in_cohort_property_is_always_cohorts(
         self, cohort_id: int, name: str | None
     ) -> None:
-        """Filter.in_cohort always sets _property to '$cohorts'.
+        """FilterFactory.in_cohort always sets _property to '$cohorts'.
 
         Args:
             cohort_id: Any positive integer.
             name: Optional display name.
         """
-        f = Filter.in_cohort(cohort_id, name)
-        assert f._property == "$cohorts"
+        f = FilterFactory.in_cohort(cohort_id, name)
+        assert f.property == "$cohorts"
 
     @given(cohort_id=positive_ints, name=optional_names)
     def test_in_cohort_operator_is_contains(
         self, cohort_id: int, name: str | None
     ) -> None:
-        """Filter.in_cohort always uses 'contains' operator.
+        """FilterFactory.in_cohort always uses 'contains' operator.
 
         Args:
             cohort_id: Any positive integer.
             name: Optional display name.
         """
-        f = Filter.in_cohort(cohort_id, name)
-        assert f._operator == "contains"
+        f = FilterFactory.in_cohort(cohort_id, name)
+        assert f.operator == "contains"
 
     @given(cohort_id=positive_ints, name=optional_names)
     def test_not_in_cohort_operator_is_does_not_contain(
         self, cohort_id: int, name: str | None
     ) -> None:
-        """Filter.not_in_cohort always uses 'does not contain' operator.
+        """FilterFactory.not_in_cohort always uses 'does not contain' operator.
 
         Args:
             cohort_id: Any positive integer.
             name: Optional display name.
         """
-        f = Filter.not_in_cohort(cohort_id, name)
-        assert f._operator == "does not contain"
+        f = FilterFactory.not_in_cohort(cohort_id, name)
+        assert f.operator == "does not contain"
 
     @given(cohort_id=positive_ints, name=optional_names)
     def test_in_cohort_value_is_list_of_one_dict(
         self, cohort_id: int, name: str | None
     ) -> None:
-        """Filter.in_cohort _value is always [{"cohort": {...}}].
+        """FilterFactory.in_cohort _value is always [{"cohort": {...}}].
 
         Args:
             cohort_id: Any positive integer.
             name: Optional display name.
         """
-        f = Filter.in_cohort(cohort_id, name)
-        assert isinstance(f._value, list)
-        assert len(f._value) == 1
-        assert isinstance(f._value[0], dict)
-        assert "cohort" in f._value[0]
+        f = FilterFactory.in_cohort(cohort_id, name)
+        assert isinstance(f.value, list)
+        assert len(f.value) == 1
+        assert isinstance(f.value[0], CohortRef)
+        assert f.value[0].cohort.id == cohort_id
 
     @given(cohort_id=positive_ints, name=optional_names)
     def test_in_cohort_bookmark_entry_has_correct_structure(
@@ -131,7 +132,7 @@ class TestFilterCohortPBT:
             cohort_id: Any positive integer.
             name: Optional display name.
         """
-        f = Filter.in_cohort(cohort_id, name)
+        f = FilterFactory.in_cohort(cohort_id, name)
         entry = build_filter_entry(f)
         assert entry["value"] == "$cohorts"
         assert entry["filterType"] == "list"
@@ -141,13 +142,13 @@ class TestFilterCohortPBT:
 
     @given(cohort_id=st.integers(max_value=0))
     def test_in_cohort_rejects_non_positive(self, cohort_id: int) -> None:
-        """Filter.in_cohort rejects non-positive cohort IDs.
+        """FilterFactory.in_cohort rejects non-positive cohort IDs.
 
         Args:
             cohort_id: Zero or negative integer.
         """
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.in_cohort(cohort_id)
+            FilterFactory.in_cohort(cohort_id)
 
     @given(
         name=st.text(
@@ -157,13 +158,13 @@ class TestFilterCohortPBT:
         )
     )
     def test_in_cohort_rejects_whitespace_only_name(self, name: str) -> None:
-        """Filter.in_cohort rejects whitespace-only names.
+        """FilterFactory.in_cohort rejects whitespace-only names.
 
         Args:
             name: Whitespace-only string.
         """
         with pytest.raises(ValueError, match="cohort name must be non-empty"):
-            Filter.in_cohort(1, name)
+            FilterFactory.in_cohort(1, name)
 
 
 # =============================================================================
@@ -298,7 +299,7 @@ class TestCohortDefinitionIntegrationPBT:
 
     @given(name=non_empty_names)
     def test_filter_in_cohort_with_inline_def(self, name: str) -> None:
-        """Filter.in_cohort with inline CohortDefinition always has raw_cohort.
+        """FilterFactory.in_cohort with inline CohortDefinition always has raw_cohort.
 
         Args:
             name: Non-empty display name.
@@ -306,14 +307,15 @@ class TestCohortDefinitionIntegrationPBT:
         cd = CohortDefinition(
             CohortCriteria.did_event("Purchase", at_least=1, within_days=30)
         )
-        f = Filter.in_cohort(cd, name=name)
-        assert isinstance(f._value, list)
-        first = f._value[0]
-        assert isinstance(first, dict)
-        cohort_data: dict[str, Any] = first["cohort"]
-        assert "raw_cohort" in cohort_data
-        assert "id" not in cohort_data
-        assert cohort_data["name"] == name
+        f = FilterFactory.in_cohort(cd, name=name)
+        assert isinstance(f.value, list)
+        first = f.value[0]
+        assert isinstance(first, CohortRef)
+        # An inline definition carries raw_cohort and no saved-cohort id;
+        # CohortPayload's validator requires exactly one of the two.
+        assert first.cohort.raw_cohort is not None
+        assert first.cohort.id is None
+        assert first.cohort.name == (name or "")
 
     @given(name=non_empty_names, include_negated=st.booleans())
     def test_cohort_breakdown_with_inline_def(

@@ -31,7 +31,7 @@ from mixpanel_headless.types import (
     CohortCriteria,
     CohortDefinition,
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     FunnelStep,
     GroupBy,
     InlineCustomProperty,
@@ -91,7 +91,9 @@ class TestVector1MetricFilterCPFixed:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         )
                     ],
                     last=7,
@@ -106,7 +108,9 @@ class TestVector1MetricFilterCPFixed:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(-1))
+                            ],
                         )
                     ],
                     last=7,
@@ -120,7 +124,7 @@ class TestVector1MetricFilterCPFixed:
                 events=[
                     Metric(
                         "AnyEvent",
-                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(42))],
                     )
                 ],
                 last=7,
@@ -135,7 +139,7 @@ class TestVector1MetricFilterCPFixed:
                 events=[
                     Metric(
                         "AnyEvent",
-                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(42))],
                     )
                 ],
                 last=7,
@@ -167,7 +171,9 @@ class TestVector2FunnelStepFilterCPFixed:
                     steps=[
                         FunnelStep(
                             "Step1",
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         ),
                         "Step2",
                     ],
@@ -182,7 +188,7 @@ class TestVector2FunnelStepFilterCPFixed:
                 steps=[
                     FunnelStep(
                         "Step1",
-                        filters=[Filter.is_set(property=CustomPropertyRef(42))],
+                        filters=[FilterFactory.is_set(property=CustomPropertyRef(42))],
                     ),
                     "Step2",
                 ],
@@ -312,7 +318,9 @@ class TestVector5NegativeCPRefFixed:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.is_set(property=CustomPropertyRef(-1))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(-1))
+                            ],
                         )
                     ],
                     last=7,
@@ -328,7 +336,9 @@ class TestVector5NegativeCPRefFixed:
                         Metric(
                             "AnyEvent",
                             filters=[
-                                Filter.is_set(property=CustomPropertyRef(-999999))
+                                FilterFactory.is_set(
+                                    property=CustomPropertyRef(-999999)
+                                )
                             ],
                         )
                     ],
@@ -357,7 +367,7 @@ class TestVector6EmptyFormulaFixed:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.is_set(property=bad_cp)],
+                            filters=[FilterFactory.is_set(property=bad_cp)],
                         )
                     ],
                     last=7,
@@ -375,7 +385,7 @@ class TestVector6EmptyFormulaFixed:
                 events=[
                     Metric(
                         "AnyEvent",
-                        filters=[Filter.is_set(property=good_cp)],
+                        filters=[FilterFactory.is_set(property=good_cp)],
                     )
                 ],
                 last=7,
@@ -443,7 +453,9 @@ class TestCombinedFixes:
                     events=[
                         Metric(
                             "AnyEvent",
-                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                            filters=[
+                                FilterFactory.is_set(property=CustomPropertyRef(0))
+                            ],
                         )
                     ],
                     group_by=[GroupBy("country")],
@@ -463,7 +475,7 @@ class TestCombinedFixes:
                     steps=[
                         FunnelStep(
                             "Step1",
-                            filters=[Filter.is_set(property=bad_cp)],
+                            filters=[FilterFactory.is_set(property=bad_cp)],
                         ),
                         "Step2",
                     ],

@@ -17,6 +17,7 @@ Run: uv run pytest tests/unit/_internal/test_pydantic_utils.py -v
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
@@ -31,6 +32,7 @@ from mixpanel_headless._internal.pydantic_utils import (
     alternative_name,
     by_field,
     is_meta_key,
+    literal_values,
 )
 
 
@@ -425,14 +427,30 @@ def test_alternative_name_reads_the_literal() -> None:
     assert alternative_name(Cat, None) == "Cat"
 
 
-def test_alternative_name_rejects_a_non_singular_literal() -> None:
-    """An ambiguous discriminator field fails at import, not at validation."""
+def test_alternative_name_falls_back_for_a_multi_valued_literal() -> None:
+    """A member claiming several literals is named after its type.
 
-    class Ambiguous(BaseModel):
+    It cannot be named after any one of them, so the tag stops doubling
+    as the payload value and :class:`MarkedDiscriminator` routes through
+    a value-to-tag map instead. See
+    :func:`test_multi_valued_literal_routes_every_value`.
+    """
+
+    class Several(BaseModel):
         kind: Literal["a", "b"]
 
-    with pytest.raises(TypeError, match="single-valued Literal"):
-        alternative_name(Ambiguous, "kind")
+    assert alternative_name(Several, "kind") == "Several"
+    assert literal_values(Several, "kind") == ("a", "b")
+
+
+def test_literal_values_rejects_a_field_that_is_not_a_literal() -> None:
+    """A discriminator field with no ``Literal`` fails at import."""
+
+    class NotALiteral(BaseModel):
+        kind: str
+
+    with pytest.raises(TypeError, match="must be a Literal"):
+        literal_values(NotALiteral, "kind")
 
 
 def test_alternative_name_reads_a_pydantic_dataclass() -> None:
@@ -644,19 +662,68 @@ def test_core_schema_is_a_tagged_union_with_marked_choices() -> None:
     assert node["discriminator"].__name__ == "by_field_kind"
 
 
-def test_json_schema_renders_the_plain_union() -> None:
-    """The marker leaves no trace in JSON schema — just a ``oneOf`` of members.
+def test_json_schema_renders_a_plain_union_plus_the_discriminator() -> None:
+    """The rendering is a plain ``oneOf`` and the OpenAPI ``discriminator``.
 
-    Other repositories drive MCP request schemas off ``model_json_schema()``,
-    so the tags and the discriminator must stay out of the rendering.
+    Other repositories drive MCP request schemas off
+    ``model_json_schema()``, so the *marked* tags must stay out of the
+    rendering — a consumer sends ``kind="cat"``, never ``"#cat"``. The
+    mapping therefore keys on the unmarked names, which are exactly the
+    values a payload carries. :func:`test_no_marked_tag_reaches_the_schema`
+    pins that separately.
+
+    Pydantic itself only emits ``discriminator`` for
+    ``Field(discriminator=...)``, because it cannot know what a callable
+    routes on. The marker always routes through a callable, so it
+    supplies the block itself from the mapping it already built.
     """
     schema = PetHolder.model_json_schema()
 
     assert schema["properties"]["pet"] == {
         "oneOf": [{"$ref": "#/$defs/Cat"}, {"$ref": "#/$defs/Dog"}],
+        "discriminator": {
+            "propertyName": "kind",
+            "mapping": {"cat": "#/$defs/Cat", "dog": "#/$defs/Dog"},
+        },
         "title": "Pet",
     }
     assert set(schema["$defs"]) == {"Cat", "Dog"}
+
+
+def test_no_marked_tag_reaches_the_schema() -> None:
+    """No ``#``-prefixed tag appears anywhere in the rendered schema.
+
+    The tags exist to keep pydantic's chosen-alternative out of caller
+    facing error paths; they are an internal routing detail. A consumer
+    generating payloads from this schema must never see one.
+    """
+    rendered = json.dumps(PetHolder.model_json_schema())
+
+    assert MarkedTag.PREFIX + "cat" not in rendered
+    assert MarkedTag.PREFIX + "dog" not in rendered
+
+
+def test_shape_routed_union_gets_no_discriminator() -> None:
+    """A union routed by shape carries no ``discriminator`` block.
+
+    ``discriminator`` names a property every member declares. A callable
+    that routes on shape has no such property, so claiming one would be
+    a lie — the block is omitted rather than guessed at.
+    """
+
+    def _by_shape(value: Any) -> str | None:
+        """Route on which key is present, not on a shared field."""
+        return "Cat" if isinstance(value, dict) and "meows" in value else "Dog"
+
+    class ShapeHolder(BaseModel):
+        """Holder whose union has no discriminator field."""
+
+        pet: Annotated[
+            Cat | Dog,
+            MarkedDiscriminator(_by_shape, members={"Cat": Cat, "Dog": Dog}),
+        ]
+
+    assert "discriminator" not in ShapeHolder.model_json_schema()["properties"]["pet"]
 
 
 def test_marker_rejects_a_non_union_source() -> None:
@@ -669,3 +736,69 @@ def test_marker_rejects_a_non_union_source() -> None:
             """Holder that should never finish building."""
 
             pet: NotAUnion
+
+
+def test_multi_valued_literal_routes_every_value() -> None:
+    """A member claiming several literals is reachable through each of them.
+
+    Grouping operators by value shape is only possible if one model can
+    claim several discriminator values. The tag then becomes the type
+    name — it can no longer double as the payload value — so routing
+    goes through a value-to-tag map. The schema mapping still keys on
+    the values, several of them pointing at the same ``$ref``, which
+    OpenAPI allows.
+    """
+
+    class Presence(BaseModel):
+        """Two operators, one shape."""
+
+        model_config = ConfigDict(extra="forbid")
+        operator: Literal["is set", "is not set"]
+
+    class Comparison(BaseModel):
+        """Two more, a different shape."""
+
+        model_config = ConfigDict(extra="forbid")
+        operator: Literal["is greater than", "is less than"]
+        value: int = Field(strict=True)
+
+    class Holder(BaseModel):
+        """Holder for the grouped union."""
+
+        model_config = ConfigDict(extra="forbid")
+        filter: Annotated[
+            Presence | Comparison,
+            MarkedDiscriminator("operator", error_type="invalid_operator"),
+        ]
+
+    for operator in ("is set", "is not set"):
+        assert isinstance(Holder(filter={"operator": operator}).filter, Presence)
+    for operator in ("is greater than", "is less than"):
+        chosen = Holder(filter={"operator": operator, "value": 1}).filter
+        assert isinstance(chosen, Comparison)
+
+    # The tag falls back to the type name, and is still marked and stripped.
+    with pytest.raises(ValidationError) as exc_info:
+        Holder(filter={"operator": "is less than", "value": "x"})
+    err = exc_info.value.errors()[0]
+    assert err["loc"] == ("filter", "#Comparison", "value")
+    assert to_json_path(err["loc"]) == "filter.value"
+
+    # The message lists operators, not type names.
+    with pytest.raises(ValidationError) as exc_info:
+        Holder(filter={"operator": "bogus"})
+    assert exc_info.value.errors()[0]["msg"] == (
+        "operator must be one of 'is set', 'is not set', "
+        "'is greater than', 'is less than'"
+    )
+
+    mapping = Holder.model_json_schema()["properties"]["filter"]["discriminator"]
+    assert mapping == {
+        "propertyName": "operator",
+        "mapping": {
+            "is set": "#/$defs/Presence",
+            "is not set": "#/$defs/Presence",
+            "is greater than": "#/$defs/Comparison",
+            "is less than": "#/$defs/Comparison",
+        },
+    }

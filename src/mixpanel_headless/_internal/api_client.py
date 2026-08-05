@@ -6567,7 +6567,7 @@ class MixpanelAPIClient:
         Single implementation behind ``get_property_definitions`` (by-name
         lookup) and ``list_property_definitions`` (bulk enumerate). It owns the
         endpoint path, the ``resourceType`` contract, and the bare-list shape
-        validation, so the two public methods encode the wire format in exactly
+        validation, so the two public methods encode the payload format in exactly
         one place.
 
         The App API accepts only the camelCase ``resourceType`` query param with
@@ -6575,7 +6575,7 @@ class MixpanelAPIClient:
         rejected and the snake_case ``resource_type`` param is silently ignored
         (both verified live), so caller-supplied spellings are normalized via
         :func:`_canonical_resource_type`. The boolean ``include_*`` toggles are
-        sent only when not ``None``, preserving each public method's wire format.
+        sent only when not ``None``, preserving each public method's payload format.
 
         Args:
             names: Property names to look up; ``None`` omits the ``name[]`` filter

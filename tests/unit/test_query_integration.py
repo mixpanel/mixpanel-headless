@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless import Filter, Formula, Metric, Workspace
+from mixpanel_headless import FilterFactory, Formula, Metric, Workspace
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
@@ -442,7 +442,7 @@ class TestFormulaInListIntegration:
                 events=[
                     Metric(
                         "Login",
-                        filters=[Filter.equals("$browser", "Chrome")],
+                        filters=[FilterFactory.equals("$browser", "Chrome")],
                         filters_combinator="any",
                     )
                 ],

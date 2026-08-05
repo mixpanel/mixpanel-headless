@@ -30,7 +30,7 @@ from mixpanel_headless.types import (
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
-    Filter,
+    FilterFactory,
     Formula,
     GroupBy,
     Metric,
@@ -100,7 +100,7 @@ def _simple_cohort_def() -> CohortDefinition:
 class TestBuildFilterEntryCohort:
     """Tests for cohort filter entry JSON structure (T003).
 
-    Verifies that ``Filter.in_cohort()`` and ``Filter.not_in_cohort()``
+    Verifies that ``FilterFactory.in_cohort()`` and ``FilterFactory.not_in_cohort()``
     produce correct bookmark filter entries in ``sections.filter``.
     """
 
@@ -109,7 +109,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "Power Users")],
+                where=[FilterFactory.in_cohort(123, "Power Users")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -120,7 +120,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "Power Users")],
+                where=[FilterFactory.in_cohort(123, "Power Users")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -131,7 +131,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -142,7 +142,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -155,7 +155,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "Power Users")],
+                where=[FilterFactory.in_cohort(123, "Power Users")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -173,7 +173,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(cohort_def, name="Buyers")],
+                where=[FilterFactory.in_cohort(cohort_def, name="Buyers")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -188,7 +188,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.not_in_cohort(789, "Bots")],
+                where=[FilterFactory.not_in_cohort(789, "Bots")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -199,7 +199,7 @@ class TestBuildFilterEntryCohort:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.not_in_cohort(789, "Bots")],
+                where=[FilterFactory.not_in_cohort(789, "Bots")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -221,8 +221,8 @@ class TestBuildFilterSectionMixed:
             InsightsQuery(
                 events=[Metric("Login")],
                 where=[
-                    Filter.in_cohort(123, "PU"),
-                    Filter.equals("country", "US"),
+                    FilterFactory.in_cohort(123, "PU"),
+                    FilterFactory.equals("country", "US"),
                 ],
             )
         )
@@ -235,8 +235,8 @@ class TestBuildFilterSectionMixed:
             InsightsQuery(
                 events=[Metric("Login")],
                 where=[
-                    Filter.in_cohort(123, "PU"),
-                    Filter.equals("country", "US"),
+                    FilterFactory.in_cohort(123, "PU"),
+                    FilterFactory.equals("country", "US"),
                 ],
             )
         )
@@ -254,21 +254,25 @@ class TestBuildFilterSectionMixed:
 class TestBuildFlowCohortFilter:
     """Tests for flow-specific filter_by_cohort format (T006).
 
-    Verifies that ``build_flow_params()`` with ``where=Filter.in_cohort()``
+    Verifies that ``build_flow_params()`` with ``where=FilterFactory.in_cohort()``
     produces the legacy ``filter_by_cohort`` top-level key.
     """
 
     def test_flow_cohort_filter_has_filter_by_cohort_key(self, ws: Workspace) -> None:
         """Verify build_flow_params produces filter_by_cohort key."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
+            FlowQuery(
+                event="Login", where=[FilterFactory.in_cohort(123, "Power Users")]
+            )
         )
         assert "filter_by_cohort" in result
 
     def test_flow_cohort_filter_id(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has correct id."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
+            FlowQuery(
+                event="Login", where=[FilterFactory.in_cohort(123, "Power Users")]
+            )
         )
         fbc = result["filter_by_cohort"]
         assert fbc["id"] == 123
@@ -276,7 +280,9 @@ class TestBuildFlowCohortFilter:
     def test_flow_cohort_filter_name(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has correct name."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
+            FlowQuery(
+                event="Login", where=[FilterFactory.in_cohort(123, "Power Users")]
+            )
         )
         fbc = result["filter_by_cohort"]
         assert fbc["name"] == "Power Users"
@@ -284,7 +290,7 @@ class TestBuildFlowCohortFilter:
     def test_flow_cohort_filter_negated_false(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has negated=False for in_cohort."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.in_cohort(123, "PU")])
+            FlowQuery(event="Login", where=[FilterFactory.in_cohort(123, "PU")])
         )
         fbc = result["filter_by_cohort"]
         assert fbc["negated"] is False
@@ -292,7 +298,7 @@ class TestBuildFlowCohortFilter:
     def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
         """Verify property filter in flow where= produces where key."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+            FlowQuery(event="Login", where=[FilterFactory.equals("country", "US")])
         )
         assert "where" in result
         assert len(result["where"]) == 1
@@ -445,7 +451,7 @@ class TestBuildGroupSectionMixed:
 class TestBuildParamsCohortFilter:
     """Tests for cohort filters in build_params() (T009).
 
-    Verifies that ``where=Filter.in_cohort()`` populates sections.filter
+    Verifies that ``where=FilterFactory.in_cohort()`` populates sections.filter
     in insights bookmark params.
     """
 
@@ -454,7 +460,7 @@ class TestBuildParamsCohortFilter:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         assert len(result["sections"]["filter"]) > 0
@@ -464,7 +470,7 @@ class TestBuildParamsCohortFilter:
         result = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -484,7 +490,7 @@ class TestBuildFunnelParamsCohortFilter:
         result = ws.build_funnel_params(
             FunnelQuery(
                 steps=["Signup", "Purchase"],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         filter_section = result["sections"]["filter"]
@@ -495,7 +501,7 @@ class TestBuildFunnelParamsCohortFilter:
         result = ws.build_funnel_params(
             FunnelQuery(
                 steps=["Signup", "Purchase"],
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -516,7 +522,7 @@ class TestBuildRetentionParamsCohortFilter:
             RetentionQuery(
                 born_event="Signup",
                 return_event="Login",
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         filter_section = result["sections"]["filter"]
@@ -528,7 +534,7 @@ class TestBuildRetentionParamsCohortFilter:
             RetentionQuery(
                 born_event="Signup",
                 return_event="Login",
-                where=[Filter.in_cohort(123, "PU")],
+                where=[FilterFactory.in_cohort(123, "PU")],
             )
         )
         entry = result["sections"]["filter"][0]
@@ -941,7 +947,7 @@ class TestQueryFlowCohortFilter:
     ) -> None:
         """Verify build_flow_params with cohort filter produces filter_by_cohort."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.in_cohort(123, "PU")])
+            FlowQuery(event="Login", where=[FilterFactory.in_cohort(123, "PU")])
         )
         assert "filter_by_cohort" in result
 
@@ -955,7 +961,7 @@ class TestQueryFlowCohortFilter:
     def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
         """Verify property filter in flow where= produces where key."""
         result = ws.build_flow_params(
-            FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+            FlowQuery(event="Login", where=[FilterFactory.equals("country", "US")])
         )
         assert "where" in result
         assert len(result["where"]) == 1
@@ -971,8 +977,8 @@ class TestQueryFlowCohortFilter:
                 FlowQuery(
                     event="Login",
                     where=[
-                        Filter.in_cohort(123, "A"),
-                        Filter.in_cohort(456, "B"),
+                        FilterFactory.in_cohort(123, "A"),
+                        FilterFactory.in_cohort(456, "B"),
                     ],
                 )
             )
@@ -995,7 +1001,7 @@ class TestBuildFlowCohortFilterDirect:
             build_flow_cohort_filter,
         )
 
-        result = build_flow_cohort_filter(Filter.in_cohort(123, "PU"))
+        result = build_flow_cohort_filter(FilterFactory.in_cohort(123, "PU"))
         assert result is not None
         assert result["id"] == 123
         assert result["name"] == "PU"
@@ -1008,7 +1014,9 @@ class TestBuildFlowCohortFilterDirect:
         )
 
         cohort_def = _simple_cohort_def()
-        result = build_flow_cohort_filter(Filter.in_cohort(cohort_def, name="Active"))
+        result = build_flow_cohort_filter(
+            FilterFactory.in_cohort(cohort_def, name="Active")
+        )
         assert result is not None
         assert "raw_cohort" in result
         assert result["name"] == "Active"
@@ -1020,7 +1028,7 @@ class TestBuildFlowCohortFilterDirect:
             build_flow_cohort_filter,
         )
 
-        result = build_flow_cohort_filter(Filter.not_in_cohort(123, "Bots"))
+        result = build_flow_cohort_filter(FilterFactory.not_in_cohort(123, "Bots"))
         assert result is not None
         assert result["negated"] is True
 
@@ -1033,7 +1041,7 @@ class TestBuildFlowCohortFilterDirect:
         )
 
         with pytest.raises(RuntimeError, match="only accepts cohort filters"):
-            build_flow_cohort_filter(Filter.equals("country", "US"))
+            build_flow_cohort_filter(FilterFactory.equals("country", "US"))
 
     def test_multiple_filters_rejected(self) -> None:
         """Multiple cohort filters raise a structured error (user-reachable
@@ -1046,6 +1054,6 @@ class TestBuildFlowCohortFilterDirect:
             BookmarkValidationError, match="single cohort filter, but 2"
         ) as exc_info:
             build_flow_cohort_filter(
-                [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]
+                [FilterFactory.in_cohort(1, "A"), FilterFactory.in_cohort(2, "B")]
             )
         assert exc_info.value.errors[0].code == "FL_WHERE_MULTIPLE_COHORTS"

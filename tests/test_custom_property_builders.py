@@ -21,7 +21,7 @@ from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
-    Filter,
+    FilterFactory,
     GroupBy,
     InlineCustomProperty,
     Metric,
@@ -260,7 +260,7 @@ class TestBuildFilterEntryCustomProperties:
 
     def test_plain_string_unchanged(self) -> None:
         """T026: Plain string filter produces unchanged output (backward compat)."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
 
         entry = build_filter_entry(f)
 
@@ -271,7 +271,7 @@ class TestBuildFilterEntryCustomProperties:
 
     def test_custom_property_ref(self) -> None:
         """T027: CustomPropertyRef produces customPropertyId, no value field."""
-        f = Filter.greater_than(property=CustomPropertyRef(42), value=100)
+        f = FilterFactory.greater_than(property=CustomPropertyRef(42), value=100)
 
         entry = build_filter_entry(f)
 
@@ -283,7 +283,7 @@ class TestBuildFilterEntryCustomProperties:
     def test_inline_custom_property(self) -> None:
         """T028: InlineCustomProperty produces customProperty dict, no value field."""
         icp = InlineCustomProperty.numeric("A * B", A="price", B="quantity")
-        f = Filter.greater_than(property=icp, value=1000)
+        f = FilterFactory.greater_than(property=icp, value=1000)
 
         entry = build_filter_entry(f)
 
@@ -304,7 +304,7 @@ class TestBuildFilterEntryCustomProperties:
             inputs={"A": PropertyInput("email", type="string")},
             property_type="string",
         )
-        f = Filter.equals(property=icp, value="test")
+        f = FilterFactory.equals(property=icp, value="test")
 
         entry = build_filter_entry(f)
 
@@ -313,7 +313,7 @@ class TestBuildFilterEntryCustomProperties:
 
     def test_custom_property_ref_preserves_resource_type(self) -> None:
         """T030: CustomPropertyRef preserves Filter's resource_type."""
-        f = Filter.equals(
+        f = FilterFactory.equals(
             property=CustomPropertyRef(42),
             value="admin",
             resource_type="people",
@@ -332,7 +332,7 @@ class TestBuildFilterEntryCustomProperties:
             property_type="string",
             resource_type="people",
         )
-        f = Filter.equals(property=icp, value="test")
+        f = FilterFactory.equals(property=icp, value="test")
 
         entry = build_filter_entry(f)
 
@@ -346,11 +346,11 @@ class TestBuildFilterEntryCustomProperties:
             inputs={"A": PropertyInput("price", type="number")},
             property_type=None,
         )
-        f = Filter.greater_than(property=icp, value=100)
+        f = FilterFactory.greater_than(property=icp, value=100)
 
         entry = build_filter_entry(f)
 
-        # greater_than sets _property_type="number"; None falls back to it
+        # greater_than sets property_type="number"; None falls back to it
         assert entry["filterType"] == "number"
         assert entry["defaultType"] == "number"
 

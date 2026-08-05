@@ -17,8 +17,10 @@ Functions:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from typing import TypeGuard
 
-from mixpanel_headless.types import Filter
+from mixpanel_headless.types import AbstractFilter, ContainmentFilter
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ def _format_value(value: str | int | float) -> str:
     return str(value)
 
 
-def _prop_ref(f: Filter) -> str:
+def _prop_ref(f: AbstractFilter) -> str:
     """Build the ``properties["name"]`` reference for a Filter.
 
     Args:
@@ -50,36 +52,37 @@ def _prop_ref(f: Filter) -> str:
     Returns:
         String of the form ``properties["<name>"]``.
     """
-    if not isinstance(f._property, str):
+    if not isinstance(f.property, str):
         raise ValueError(
             f"Engage selector requires a string property name, "
-            f"got {type(f._property).__name__}. Custom properties "
+            f"got {type(f.property).__name__}. Custom properties "
             f"are not supported in query_user() filters."
         )
-    escaped = f._property.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = f.property.replace("\\", "\\\\").replace('"', '\\"')
     return f'properties["{escaped}"]'
 
 
-def _is_cohort_filter(f: Filter) -> bool:
+def _is_cohort_filter(f: AbstractFilter) -> TypeGuard[ContainmentFilter]:
     """Return True if *f* is a cohort filter (in_cohort / not_in_cohort).
 
-    Cohort filters store their value as a list of dicts (from
-    ``CohortDefinition.to_dict()``), unlike regular filters which use
-    str, number, list-of-str, or None. This shape heuristic is safe
-    because ``Filter`` only produces list-of-dict values for
-    ``in_cohort()`` / ``not_in_cohort()``.
+    Cohort membership is the one thing ``ContainmentFilter`` carries
+    besides a substring, and it is the only filter whose value is a list
+    of :class:`~mixpanel_headless.types.CohortRef`. That makes this an
+    exact test — it used to be a "value is a list of dicts" heuristic,
+    which was as close as an untyped payload allowed.
 
     Args:
         f: Filter to test.
 
     Returns:
-        True when the filter's ``_value`` is a non-empty list of dicts.
+        True when the filter carries cohort membership. A ``TypeGuard``,
+        so callers narrow to :class:`ContainmentFilter` and need no
+        second check of their own.
     """
-    val = f._value
-    return isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict)
+    return isinstance(f, ContainmentFilter) and isinstance(f.value, list)
 
 
-def filter_to_selector(f: Filter) -> str:
+def filter_to_selector(f: AbstractFilter) -> str:
     """Convert a single Filter to an engage API selector string.
 
     Translates the Filter's internal operator to the equivalent engage
@@ -87,7 +90,7 @@ def filter_to_selector(f: Filter) -> str:
 
     Args:
         f: A Filter object (constructed via class methods like
-            ``Filter.equals()``, ``Filter.greater_than()``, etc.).
+            ``FilterFactory.equals()``, ``FilterFactory.greater_than()``, etc.).
 
     Returns:
         Selector string for the engage API ``where`` parameter.
@@ -100,13 +103,13 @@ def filter_to_selector(f: Filter) -> str:
         from mixpanel_headless.types import Filter
         from mixpanel_headless._internal.query.user_builders import filter_to_selector
 
-        selector = filter_to_selector(Filter.equals("plan", "premium"))
+        selector = filter_to_selector(FilterFactory.equals("plan", "premium"))
         # 'properties["plan"] == "premium"'
         ```
     """
-    op = f._operator
+    op = f.operator
     prop = _prop_ref(f)
-    value = f._value
+    value = f.value
 
     if op == "equals":
         # A numeric/bool-typed equals leaves _value scalar (the bookmark and
@@ -121,13 +124,13 @@ def filter_to_selector(f: Filter) -> str:
         dropped = [v for v in items if not isinstance(v, (str, int, float))]
         if dropped:
             logger.warning(
-                "Filter.equals() dropped %d non-scalar value(s): %r",
+                "FilterFactory.equals() dropped %d non-scalar value(s): %r",
                 len(dropped),
                 dropped,
             )
         if not parts:
             raise ValueError(
-                f"Filter.equals() produced no valid selector terms. "
+                f"FilterFactory.equals() produced no valid selector terms. "
                 f"All values were non-scalar: {items!r}"
             )
         if len(parts) > 1:
@@ -146,13 +149,13 @@ def filter_to_selector(f: Filter) -> str:
         dropped = [v for v in items if not isinstance(v, (str, int, float))]
         if dropped:
             logger.warning(
-                "Filter.not_equals() dropped %d non-scalar value(s): %r",
+                "FilterFactory.not_equals() dropped %d non-scalar value(s): %r",
                 len(dropped),
                 dropped,
             )
         if not parts:
             raise ValueError(
-                f"Filter.not_equals() produced no valid selector terms. "
+                f"FilterFactory.not_equals() produced no valid selector terms. "
                 f"All values were non-scalar: {items!r}"
             )
         # AND-combine: "!= a AND != b" means "not in [a, b]"
@@ -218,7 +221,7 @@ def filter_to_selector(f: Filter) -> str:
     raise ValueError(f"Unsupported filter operator: {op!r}")
 
 
-def filters_to_selector(filters: list[Filter]) -> str:
+def filters_to_selector(filters: Sequence[AbstractFilter]) -> str:
     """Convert multiple Filters to an AND-combined selector string.
 
     Each Filter is translated individually via ``filter_to_selector()``,
@@ -236,8 +239,8 @@ def filters_to_selector(filters: list[Filter]) -> str:
         from mixpanel_headless._internal.query.user_builders import filters_to_selector
 
         selector = filters_to_selector([
-            Filter.equals("plan", "premium"),
-            Filter.is_set("email"),
+            FilterFactory.equals("plan", "premium"),
+            FilterFactory.is_set("email"),
         ])
         # 'properties["plan"] == "premium" and defined(properties["email"])'
         ```
@@ -248,11 +251,11 @@ def filters_to_selector(filters: list[Filter]) -> str:
 
 
 def extract_cohort_filter(
-    filters: list[Filter],
-) -> tuple[list[Filter], Filter | None]:
+    filters: Sequence[AbstractFilter],
+) -> tuple[list[AbstractFilter], ContainmentFilter | None]:
     """Extract a cohort filter from a list of Filters.
 
-    Separates ``Filter.in_cohort()`` entries from regular property filters.
+    Separates ``FilterFactory.in_cohort()`` entries from regular property filters.
     At most one cohort filter is expected (validated by U13).
 
     Args:
@@ -267,16 +270,16 @@ def extract_cohort_filter(
         from mixpanel_headless._internal.query.user_builders import extract_cohort_filter
 
         filters = [
-            Filter.equals("plan", "premium"),
-            Filter.in_cohort(123),
+            FilterFactory.equals("plan", "premium"),
+            FilterFactory.in_cohort(123),
         ]
         remaining, cohort = extract_cohort_filter(filters)
-        # remaining = [Filter.equals("plan", "premium")]
-        # cohort = Filter.in_cohort(123)
+        # remaining = [FilterFactory.equals("plan", "premium")]
+        # cohort = FilterFactory.in_cohort(123)
         ```
     """
-    remaining: list[Filter] = []
-    cohort: Filter | None = None
+    remaining: list[AbstractFilter] = []
+    cohort: ContainmentFilter | None = None
     for f in filters:
         if _is_cohort_filter(f):
             if cohort is None:

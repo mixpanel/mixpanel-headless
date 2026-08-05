@@ -1,6 +1,6 @@
 """Live QA tests for cohort behaviors (Phase 036).
 
-Exercises Filter.in_cohort/not_in_cohort, CohortBreakdown, and
+Exercises FilterFactory.in_cohort/not_in_cohort, CohortBreakdown, and
 CohortMetric against the real Mixpanel API on account ``p8``
 (project ID 8). These tests discover real data dynamically and
 create/clean up QA objects with a ``QA-036-`` prefix.
@@ -24,7 +24,7 @@ from mixpanel_headless import (
     CohortDefinition,
     CohortMetric,
     CreateCohortParams,
-    Filter,
+    FilterFactory,
     GroupBy,
     Metric,
     QueryResult,
@@ -197,7 +197,7 @@ class TestDiscovery:
 
 
 class TestCohortFilterInsights:
-    """Cohort filters in insights queries via Filter.in_cohort/not_in_cohort."""
+    """Cohort filters in insights queries via FilterFactory.in_cohort/not_in_cohort."""
 
     def test_query_with_saved_cohort_filter(
         self,
@@ -210,7 +210,7 @@ class TestCohortFilterInsights:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=7,
             )
         )
@@ -227,7 +227,7 @@ class TestCohortFilterInsights:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.not_in_cohort(cid, cname)],
+                where=[FilterFactory.not_in_cohort(cid, cname)],
                 last=7,
             )
         )
@@ -247,7 +247,7 @@ class TestCohortFilterInsights:
         filtered = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=7,
                 mode="total",
             )
@@ -267,7 +267,10 @@ class TestCohortFilterInsights:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
+                where=[
+                    FilterFactory.in_cohort(cid, cname),
+                    FilterFactory.is_set("$browser"),
+                ],
                 last=7,
             )
         )
@@ -283,7 +286,7 @@ class TestCohortFilterInsights:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                where=[FilterFactory.in_cohort(inline_definition, name="Inline QA")],
                 last=7,
             )
         )
@@ -310,7 +313,7 @@ class TestCohortFilterFunnels:
         result = ws.query_funnel(
             FunnelQuery(
                 steps=[e1, e2],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=30,
             )
         )
@@ -327,7 +330,7 @@ class TestCohortFilterFunnels:
         result = ws.query_funnel(
             FunnelQuery(
                 steps=[e1, e2],
-                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                where=[FilterFactory.in_cohort(inline_definition, name="Inline QA")],
                 last=30,
             )
         )
@@ -345,7 +348,10 @@ class TestCohortFilterFunnels:
         result = ws.query_funnel(
             FunnelQuery(
                 steps=[e1, e2],
-                where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
+                where=[
+                    FilterFactory.in_cohort(cid, cname),
+                    FilterFactory.is_set("$browser"),
+                ],
                 last=30,
             )
         )
@@ -373,7 +379,7 @@ class TestCohortFilterRetention:
             RetentionQuery(
                 born_event=e1,
                 return_event=e2,
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=30,
             )
         )
@@ -391,7 +397,7 @@ class TestCohortFilterRetention:
             RetentionQuery(
                 born_event=e1,
                 return_event=e2,
-                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                where=[FilterFactory.in_cohort(inline_definition, name="Inline QA")],
                 last=30,
             )
         )
@@ -410,7 +416,7 @@ class TestCohortFilterRetention:
             RetentionQuery(
                 born_event=e1,
                 return_event=e2,
-                where=[Filter.not_in_cohort(cid, cname)],
+                where=[FilterFactory.not_in_cohort(cid, cname)],
                 last=30,
             )
         )
@@ -436,7 +442,7 @@ class TestCohortFilterFlows:
         result = ws.query_flow(
             FlowQuery(
                 event=real_event,
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=30,
             )
         )
@@ -453,7 +459,7 @@ class TestCohortFilterFlows:
         result = ws.query_flow(
             FlowQuery(
                 event=real_event,
-                where=[Filter.not_in_cohort(cid, cname)],
+                where=[FilterFactory.not_in_cohort(cid, cname)],
                 last=30,
             )
         )
@@ -469,7 +475,7 @@ class TestCohortFilterFlows:
         result = ws.query_flow(
             FlowQuery(
                 event=real_event,
-                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                where=[FilterFactory.in_cohort(inline_definition, name="Inline QA")],
                 last=30,
             )
         )
@@ -489,7 +495,7 @@ class TestCohortFilterFlows:
         result = ws.query_flow(
             FlowQuery(
                 event=real_event,
-                where=[Filter.equals("$browser", "Chrome")],
+                where=[FilterFactory.equals("$browser", "Chrome")],
                 last=7,
             )
         )
@@ -850,7 +856,7 @@ class TestCrossCuttingCombinations:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid1, cname1)],
+                where=[FilterFactory.in_cohort(cid1, cname1)],
                 group_by=[CohortBreakdown(cid2, cname2)],
                 last=7,
             )
@@ -869,7 +875,7 @@ class TestCrossCuttingCombinations:
         result = ws.query(
             InsightsQuery(
                 events=[CohortMetric(cid1, cname1)],
-                where=[Filter.in_cohort(cid2, cname2)],
+                where=[FilterFactory.in_cohort(cid2, cname2)],
                 last=30,
             )
         )
@@ -886,7 +892,7 @@ class TestCrossCuttingCombinations:
         result = ws.query(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 group_by=[CohortBreakdown(cid, cname)],
                 last=7,
             )
@@ -914,7 +920,7 @@ class TestErrorHandling:
             result = ws.query(
                 InsightsQuery(
                     events=[Metric(real_event)],
-                    where=[Filter.in_cohort(999999999, "Nonexistent")],
+                    where=[FilterFactory.in_cohort(999999999, "Nonexistent")],
                     last=7,
                 )
             )
@@ -961,12 +967,12 @@ class TestErrorHandling:
     def test_client_side_negative_id_rejected(self) -> None:
         """Negative cohort ID raises ValueError before API call."""
         with pytest.raises(ValueError, match="cohort must be a positive integer"):
-            Filter.in_cohort(-1)
+            FilterFactory.in_cohort(-1)
 
     def test_client_side_empty_name_rejected(self) -> None:
         """Empty string name raises ValueError before API call."""
         with pytest.raises(ValueError, match="cohort name must be non-empty"):
-            Filter.in_cohort(1, "")
+            FilterFactory.in_cohort(1, "")
 
 
 # =============================================================================
@@ -993,8 +999,8 @@ class TestEdgeCases:
                 InsightsQuery(
                     events=[Metric(real_event)],
                     where=[
-                        Filter.in_cohort(cid1, cname1),
-                        Filter.in_cohort(cid2, cname2),
+                        FilterFactory.in_cohort(cid1, cname1),
+                        FilterFactory.in_cohort(cid2, cname2),
                     ],
                     last=7,
                 )
@@ -1035,7 +1041,7 @@ class TestEdgeCases:
             result = ws.query(
                 InsightsQuery(
                     events=[Metric(real_event)],
-                    where=[Filter.in_cohort(bad_def, name="Bad Def")],
+                    where=[FilterFactory.in_cohort(bad_def, name="Bad Def")],
                     last=7,
                 )
             )
@@ -1055,7 +1061,7 @@ class TestEdgeCases:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 group_by=[CohortBreakdown(cid, cname)],
                 last=7,
             )
@@ -1085,7 +1091,7 @@ class TestBuildMethods:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric(real_event)],
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=7,
             )
         )
@@ -1143,7 +1149,7 @@ class TestBuildMethods:
         params = ws.build_flow_params(
             FlowQuery(
                 event=real_event,
-                where=[Filter.in_cohort(cid, cname)],
+                where=[FilterFactory.in_cohort(cid, cname)],
                 last=7,
             )
         )
@@ -1221,7 +1227,7 @@ class TestDataIntegrity:
         cid, cname = real_cohort
         q = InsightsQuery(
             events=[Metric(real_event)],
-            where=[Filter.in_cohort(cid, cname)],
+            where=[FilterFactory.in_cohort(cid, cname)],
             last=7,
             mode="total",
         )

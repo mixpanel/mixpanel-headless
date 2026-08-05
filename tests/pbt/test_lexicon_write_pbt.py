@@ -109,7 +109,7 @@ def test_bulk_event_update_keeps_contacts_snake(
     """Bulk event entries camelCase only ``display_name``; contact lists stay snake.
 
     This is the exact invariant the per-field-alias strategy on
-    ``BulkEventUpdate`` exists to protect: ``display_name`` must reach the wire
+    ``BulkEventUpdate`` exists to protect: ``display_name`` must reach the payload
     as ``displayName`` while ``team_contacts`` / ``contacts`` keep their
     established snake_case shape in the same payload.
     """

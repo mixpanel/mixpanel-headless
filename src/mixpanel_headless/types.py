@@ -22,7 +22,7 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date as dt_date
 from datetime import datetime
@@ -32,11 +32,12 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    ClassVar,
     Generic,
     Literal,
     TypedDict,
     TypeVar,
+    cast,
+    get_args,
 )
 
 from mixpanel_headless._internal.bookmark_enums import (
@@ -45,6 +46,18 @@ from mixpanel_headless._internal.bookmark_enums import (
     _MAX_FLOW_STEPS_DIRECTION,
 )
 from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
+from mixpanel_headless._internal.pydantic_validators import (
+    _DATE_PATTERN,
+    check_cohort_property,
+    check_cohort_source,
+    check_cohort_value_pairing,
+    check_dates_ordered,
+    check_is_real_date,
+    check_value_matches_property_type,
+    normalize_equality_value,
+    reject_hand_rolled_cohort,
+    reject_stray_value,
+)
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -93,8 +106,10 @@ if TYPE_CHECKING:
     import networkx as nx
 import pandas as pd
 from pydantic import (
+    AfterValidator,
     AliasChoices,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     GetCoreSchemaHandler,
@@ -689,7 +704,7 @@ class SubPropertyInfo:
     structure of properties whose values are lists of objects (e.g.
     ``cart`` is a list of ``{"Brand": str, "Category": str, "Price":
     int}`` items). Use the ``name`` and ``type`` to construct
-    :meth:`GroupBy.list_item` and :meth:`Filter.list_contains` calls.
+    :meth:`GroupBy.list_item` and :meth:`FilterFactory.list_contains` calls.
 
     Attributes:
         name: Subproperty name as it appears inside each object.
@@ -4636,7 +4651,7 @@ class PropertyResourceType(str, Enum):
     Values:
         EVENT: Event property.
         USER: User profile property.
-        GROUPPROFILE: Group profile property (wire format: ``groupprofile``).
+        GROUPPROFILE: Group profile property (payload format: ``groupprofile``).
     """
 
     EVENT = "event"
@@ -4785,11 +4800,11 @@ class PropertyDefinition(BaseModel):
 
 # Lexicon write-param alias convention:
 #   ``UpdateEventDefinitionParams``, ``UpdatePropertyDefinitionParams`` and
-#   ``BulkPropertyUpdate`` camelCase their wire keys via a model-wide
+#   ``BulkPropertyUpdate`` camelCase their payload keys via a model-wide
 #   ``alias_generator=to_camel``. ``BulkEventUpdate`` deliberately does NOT —
 #   it uses a per-field alias on ``display_name`` because a model-wide generator
 #   would re-case its ``team_contacts`` field to ``teamContacts`` and break that
-#   established snake_case wire shape. When adding a two-word field, follow the
+#   established snake_case payload shape. When adding a two-word field, follow the
 #   strategy already on the model you are editing.
 class UpdateEventDefinitionParams(BaseModel):
     """Parameters for updating an event definition (PATCH semantics).
@@ -5070,11 +5085,11 @@ class BulkEventUpdate(BaseModel):
     )
     """Human-readable name. Always emitted as ``displayName`` via an explicit
     serialization alias (rather than a model-wide ``alias_generator``) so the
-    established ``team_contacts`` wire shape stays snake_case. Accepts either
+    established ``team_contacts`` payload shape stays snake_case. Accepts either
     ``display_name`` or ``displayName`` on input, so a camelCase payload echoed
     by ``lexicon events get`` round-trips instead of silently dropping the
     field. (``contacts`` / ``team_contacts`` remain snake_case on input and the
-    wire by design.)"""
+    payload by design.)"""
 
     contacts: list[str] | None = None
     """Contact emails."""
@@ -6830,6 +6845,84 @@ class InlineCustomProperty:
             property_type="number",
         )
 
+    # TODO: fold into `AbstractMixpanelModel` once this is a `BaseModel`.
+    # It is a `@pydantic_dataclass`, so it cannot extend the base and gets a
+    # plain method instead — same result, no inheritance. Converting this and
+    # `CustomPropertyRef` is its own port: both are reachable from
+    # `PropertySpec`, so the schema they contribute to `Filter` is part of the
+    # published contract and has to be diffed on its own.
+    def _bookmark_filter_keys(self, default_type: FilterPropertyType) -> dict[str, Any]:
+        """Bookmark keys a filter gains from targeting this property.
+
+        An inline property overrides the filter's own type and resource
+        type: the formula's result type is what the filter is comparing
+        against, not whatever the filter declared.
+
+        Args:
+            default_type: The filter's ``property_type``, used when this
+                property declares none. The fallback lives in the
+                caller's argument rather than here because only the
+                filter knows it.
+
+        Returns:
+            Keys to merge into the filter's bookmark entry.
+        """
+        effective = (
+            self.property_type if self.property_type is not None else default_type
+        )
+        return {
+            "customProperty": {
+                "displayFormula": self.formula,
+                "composedProperties": _build_composed_properties(self.inputs),
+                "name": "",
+                "description": "",
+                "propertyType": effective,
+                "resourceType": self.resource_type,
+            },
+            "filterType": effective,
+            "defaultType": effective,
+            "dataset": "$mixpanel",
+            "resourceType": self.resource_type,
+        }
+
+
+def _build_composed_properties(
+    inputs: dict[str, PropertyInput],
+) -> dict[str, dict[str, str]]:
+    """Convert a PropertyInput mapping to bookmark composedProperties format.
+
+    Transforms the user-facing ``inputs`` dict (letter → PropertyInput)
+    into the JSON structure expected by Mixpanel's ``customProperty``
+    bookmark schema.
+
+    Lives here rather than in the bookmark builders because
+    :meth:`InlineCustomProperty._bookmark_filter_keys` needs it and
+    ``types.py`` cannot import them — they import it. The builders
+    re-export this name, so their callers are unaffected.
+
+    Args:
+        inputs: Mapping from single uppercase letters (A-Z) to
+            ``PropertyInput`` objects.
+
+    Returns:
+        Dict mapping each letter to a dict with ``value``, ``type``,
+        and ``resourceType`` keys.
+
+    Example:
+        ```python
+        _build_composed_properties({"A": PropertyInput("price", type="number")})
+        # {"A": {"value": "price", "type": "number", "resourceType": "event"}}
+        ```
+    """
+    return {
+        key: {
+            "value": prop.name,
+            "type": prop.type,
+            "resourceType": prop.resource_type,
+        }
+        for key, prop in inputs.items()
+    }
+
 
 @pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CustomPropertyRef:
@@ -6868,6 +6961,27 @@ class CustomPropertyRef:
     error — see :data:`_PositiveStrictIntSchema` for why the bound lives
     there rather than here.
     """
+
+    # TODO: fold into `AbstractMixpanelModel` once this is a `BaseModel` —
+    # see the note on `InlineCustomProperty._bookmark_filter_keys`.
+    def _bookmark_filter_keys(
+        self, _default_type: FilterPropertyType
+    ) -> dict[str, Any]:
+        """Bookmark keys a filter gains from targeting this property.
+
+        A saved custom property is referenced by id; the server already
+        knows its type, so unlike an inline definition this contributes
+        no type override.
+
+        Args:
+            _default_type: The filter's ``property_type``. Unused —
+                accepted so both property models present the same call
+                shape to :meth:`AbstractFilter._dump_bookmark`.
+
+        Returns:
+            Keys to merge into the filter's bookmark entry.
+        """
+        return {"customPropertyId": self.id, "dataset": "$mixpanel"}
 
 
 def _union_discriminator(
@@ -6913,6 +7027,120 @@ def _union_discriminator(
             if isinstance(v, model):
                 return model.__name__
         return None
+
+    return _discriminate
+
+
+def _operator_owners(members: tuple[Any, ...]) -> dict[str, str]:
+    """Map every operator a union accepts to the member that owns it.
+
+    The one table both halves of a filter union read: routing looks an
+    operator up in it, and the unroutable-value message lists its keys.
+    Deriving both from the same mapping is the point — generated
+    separately, the message could come to advertise operators the
+    discriminator does not actually route.
+
+    A member's operators come off its own ``_operator`` ``Literal``, so
+    the table cannot drift from the annotations: adding an operator to a
+    member makes it routable, and an operator on no member stays
+    unroutable.
+
+    For a union whose members each pin a *single*-valued ``Literal``,
+    prefer ``MarkedDiscriminator("<field>")`` — it builds the equivalent
+    table itself via
+    :func:`~mixpanel_headless._internal.pydantic_utils.alternative_name`.
+    That helper rejects the many-valued ``Literal``s used here, which is
+    the only reason filters route through a callable.
+
+    Args:
+        members: The union's member classes, each a pydantic dataclass
+            (or model) declaring ``_operator`` as a ``Literal`` of its
+            operators. Typed ``Any`` because ``__pydantic_fields__`` is
+            added by the ``@pydantic_dataclass`` decorator and is
+            invisible to the type checker on a plain ``type``.
+
+    Returns:
+        Operator string to owning member ``__name__``.
+
+    Example:
+        ```python
+        _operator_owners((PresenceFilter,))
+        # {"is set": "PresenceFilter", "is not set": "PresenceFilter"}
+        ```
+    """
+    # A BaseModel keeps its fields on `model_fields`, a pydantic dataclass
+    # on `__pydantic_fields__`; both map to `FieldInfo`. Reading both is
+    # what `pydantic_utils.alternative_name` does, for the same reason.
+    return {
+        operator: member.__name__
+        for member in members
+        for operator in get_args(
+            (getattr(member, "model_fields", None) or member.__pydantic_fields__)[
+                "_operator"
+            ].annotation
+        )
+    }
+
+
+def _filter_operators_of(owners: dict[str, str]) -> str:
+    """Render a union's accepted operators for its unroutable-value message.
+
+    Args:
+        owners: The union's table from :func:`_operator_owners`.
+
+    Returns:
+        The operators, sorted and quoted, joined with ``", "``.
+    """
+    return ", ".join(repr(operator) for operator in sorted(owners))
+
+
+def _filter_operator_discriminator(
+    owners: dict[str, str],
+) -> Callable[[Any], str | None]:
+    """Route a filter payload to the union member that owns its ``operator``.
+
+    A callable rather than ``Field(discriminator="_operator")`` because
+    pydantic copies a plain discriminator's tag into the error ``loc``,
+    which would put the operator the caller sent — ``where[0].is greater
+    than.value`` — into a path that has no such key. Routing through
+    :class:`MarkedDiscriminator` tags each member ``#<ClassName>``
+    instead, which :func:`is_meta_key` strips by shape.
+
+    Args:
+        owners: The union's table from :func:`_operator_owners`.
+
+    Returns:
+        A callable mapping a dict or filter instance to the owning
+        member's ``__name__``, or ``None`` when the operator belongs to
+        no member — which fires the ``MarkedDiscriminator``'s
+        ``custom_error_message`` instead of every member's shape noise.
+
+    Example:
+        ```python
+        route = _filter_operator_discriminator(
+            _operator_owners((PresenceFilter, EqualityFilter))
+        )
+        route({"property": "plan", "operator": "is set"})  # "PresenceFilter"
+        route({"property": "plan", "operator": "list_contains"})  # None
+        ```
+    """
+
+    def _discriminate(v: Any) -> str | None:
+        """Return the owning member's name for ``v``'s operator, or None.
+
+        Args:
+            v: A candidate filter — a dict (JSON/LLM input) or an
+                instance (re-validation and serialization).
+
+        Returns:
+            The member's ``__name__``, or ``None`` when unroutable.
+        """
+        operator = (
+            v.get("operator", v.get("_operator"))
+            if isinstance(v, dict)
+            else getattr(v, "_operator", None)
+        )
+        return owners.get(operator) if isinstance(operator, str) else None
 
     return _discriminate
 
@@ -7347,555 +7575,1016 @@ class Formula:
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-@pydantic_dataclass(
-    frozen=True,
-    config=ConfigDict(extra="forbid", populate_by_name=True),
-)
-class Filter:
-    """Represents a typed filter condition on a property.
+# =============================================================================
+# Segfilter tables
+#
+# Moved here from `_internal/segfilter.py` so the models can render themselves;
+# they cannot import that module, which imports them. What did *not* come with
+# them is the four operator frozensets (`_SETNESS_OPS`, `_NUMBER_RANGE_OPS`,
+# `_DATETIME_RELATIVE_OPS`, `_DATETIME_RANGE_OPS`) that used to sit alongside.
+# Each restated a member grouping the models already encode, and one had
+# drifted — `_NUMBER_RANGE_OPS` listed `"between"`, which is not a
+# `FilterOperator`. "Which operators behave this way" is now "which model
+# overrides `_segfilter_operand`".
+# =============================================================================
 
-    Constructed via class methods or via dict construction with
-    public field names for dict/JSON/LLM callers.
+RESOURCE_TYPE_MAP: dict[str, str] = {
+    "events": "properties",
+    "people": "user",
+    "cohorts": "cohort",
+    "other": "other",
+}
+"""Maps a filter's ``resource_type`` to the segfilter ``property.source``."""
 
-    Example (classmethods):
+STRING_OPERATOR_MAP: dict[str, str] = {
+    "equals": "==",
+    "does not equal": "!=",
+    "contains": "in",
+    "does not contain": "not in",
+    "is set": "set",
+    "is not set": "not set",
+}
+"""Maps string-typed filter operators to segfilter operators."""
+
+NUMBER_OPERATOR_MAP: dict[str, str] = {
+    "is greater than": ">",
+    "is less than": "<",
+    "equals": "==",
+    "does not equal": "!=",
+    "is at least": ">=",
+    "is at most": "<=",
+    "is between": "><",
+    "not between": "!><",
+    "is set": "is set",
+    "is not set": "is not set",
+}
+"""Maps number-typed filter operators to segfilter operators.
+
+Every key is a real :data:`FilterOperator`. Two that were not —
+``"between"`` and ``"is equal to"`` — are gone: ``operator`` is
+``Literal``-constrained, so no filter could ever carry them, and listing
+them made the "Valid operators" message advertise spellings that would
+be rejected at construction.
+"""
+
+DATETIME_OPERATOR_MAP: dict[str, str] = {
+    "was on": "==",
+    "was not on": "!=",
+    # Segfilter operators describe the operand's relation to matching values,
+    # not the event's relation to the operand. So "was before <date>" becomes
+    # ">" because the operand date is greater than the matching event dates.
+    "was before": ">",
+    "was since": "<",
+    "was in the": ">",
+    "was not in the": ">",
+    "was between": "><",
+    "was not between": "!><",
+}
+"""Maps datetime-typed filter operators to segfilter operators."""
+
+_SEGFILTER_OPERATORS: dict[str, dict[str, str]] = {
+    "string": STRING_OPERATOR_MAP,
+    "number": NUMBER_OPERATOR_MAP,
+    "boolean": {},
+    "datetime": DATETIME_OPERATOR_MAP,
+}
+"""Which operator table each property type uses.
+
+``boolean`` is empty: a boolean segfilter carries no ``operator`` key at
+all, so :class:`BooleanStateFilter` never looks one up.
+"""
+
+
+def _convert_date_format(date_str: str) -> str:
+    """Convert a date string from YYYY-MM-DD to MM/DD/YYYY format.
+
+    Args:
+        date_str: Date in YYYY-MM-DD format (e.g. ``"2026-01-15"``).
+
+    Returns:
+        Date in MM/DD/YYYY format (e.g. ``"01/15/2026"``).
+
+    Example:
         ```python
-        from mixpanel_headless import Filter
-
-        f1 = Filter.equals("country", "US")
-        f2 = Filter.greater_than("age", 18)
-        f3 = Filter.between("amount", 10, 100)
-        f4 = Filter.is_set("email")
-        ```
-
-    Example (dict construction):
-        ```python
-        from pydantic import TypeAdapter
-        from mixpanel_headless import Filter
-
-        adapter = TypeAdapter(Filter)
-        f = adapter.validate_python({
-            "property": "country",
-            "operator": "equals",
-            "value": "US",
-        })
+        _convert_date_format("2026-01-15")
+        # "01/15/2026"
         ```
     """
+    year, month, day = date_str.split("-")
+    return f"{month.zfill(2)}/{day.zfill(2)}/{year}"
 
-    _property: PropertySpec = Field(
-        validation_alias="property",
-    )
-    """Property to filter on (name, ref, or inline)."""
 
-    _operator: FilterOperator = Field(validation_alias="operator")
-    """Internal operator string. Must be one of the values in :data:`FilterOperator`."""
+# =============================================================================
+# Payload rendering
+#
+# These models are two things at once: the schema an AI/MCP consumer generates
+# against, and the translation layer into Mixpanel's payload formats. Knowing
+# every dialect is therefore their job, and each renders itself rather than
+# being taken apart from outside by a builder that re-derives, imperfectly,
+# groupings the models already encode.
+# =============================================================================
 
-    _value: Annotated[
-        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None,
-        WithJsonSchema(
-            {
-                "anyOf": [
-                    {"type": "string"},
-                    {"type": "integer"},
-                    {"type": "number"},
-                    # minItems / maxItems mirror the build-time B20
-                    # (non-empty filterValue) and B21 (at most 1000
-                    # entries) rules; runtime enforcement stays in
-                    # ``_validate_filter_clause`` so callers keep the
-                    # ``B20_EMPTY_FILTER_VALUE`` /
-                    # ``B21_FILTER_VALUE_TOO_MANY`` errors.
-                    {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 1,
-                        "maxItems": _MAX_FILTER_VALUES,
-                    },
-                    {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 1,
-                        "maxItems": _MAX_FILTER_VALUES,
-                    },
-                    {"type": "null"},
-                ],
-                "description": (
-                    "Value(s) to compare against. Scalar or list-of-scalars "
-                    "depending on the operator (str for contains, list[str] "
-                    "for equals, numeric for greater_than/less_than, "
-                    "two-element list for between, null for is_set/is_true). "
-                    "Cohort-membership filters (in_cohort/not_in_cohort) carry "
-                    "an internal wire structure here and must be built via the "
-                    "Filter.in_cohort() / Filter.not_in_cohort() constructors, "
-                    "not by hand."
-                ),
-            }
-        ),
-    ] = Field(default=None, validation_alias="value")
-    """Value(s) to compare against.
+PayloadFormat = Literal["default", "bookmark", "segfilter", "flow_where"]
+"""A Mixpanel payload dialect.
 
-    Shape varies by operator: list for equals/not_equals, str for
-    contains/not_contains, numeric for greater_than/less_than,
-    two-element list for between, None for is_set/is_not_set/is_true/is_false,
-    list of dicts for cohort filters (in_cohort/not_in_cohort).
+``default`` is plain :meth:`~pydantic.BaseModel.model_dump`. The other
+three name endpoint formats that differ in key names, operator spelling
+and value encoding — see :class:`AbstractMixpanelModel`.
+"""
 
-    The JSON schema for this field is overridden (via ``WithJsonSchema``) to a
-    closed scalar/list-of-scalar union. The runtime type still admits the
-    cohort ``list[dict]`` wire structure — a tested internal contract asserted
-    by ``tests/test_types_cohort_behaviors.py`` — but that shape is a builder
-    artifact of ``Filter.in_cohort``/``not_in_cohort``, not a declarative input
-    an LLM should synthesize, so it is deliberately excluded from the schema to
-    keep it free of opaque ``object`` holes. Declarative cohort membership is
-    expressed through :class:`InlineCohort` / :class:`CohortReferenceCriterion`
-    instead.
+
+class PayloadFormatError(Exception):
+    """A model cannot be expressed in the requested dialect.
+
+    Carries a code and a message but no path: the position of the
+    offending input (``where[2]``) is known only to the caller iterating
+    them, which catches this and re-raises with the location attached.
+
+    Attributes:
+        code: Stable error code, e.g. ``"FL_WHERE_LIST_CONTAINS_UNSUPPORTED"``.
+        message: Human-readable explanation.
     """
 
-    _property_type: FilterPropertyType = Field(
-        default="string", validation_alias="property_type"
-    )
-    """Data type of the property."""
-
-    _resource_type: Literal["events", "people"] = Field(
-        default="events", validation_alias="resource_type"
-    )
-    """Resource type to filter."""
-
-    _date_unit: FilterDateUnit | None = Field(
-        default=None, validation_alias="date_unit"
-    )
-    """Time unit for relative date filters (hour, day, week, month).
-
-    Set by ``in_the_last()``, ``not_in_the_last()``, and ``in_the_next()`` factory methods.
-    Maps to ``filterDateUnit`` in bookmark JSON. ``None`` for non-date
-    and absolute date filters.
-    """
-
-    _list_item_filters: tuple[Filter, ...] | None = Field(
-        default=None, validation_alias="list_item_filters"
-    )
-    """Sub-filters for ``list_contains``, evaluated per-item against a list-of-objects property."""
-
-    _list_item_quantifier: Literal["any", "all"] | None = Field(
-        default=None, validation_alias="list_item_quantifier"
-    )
-    """Quantifier for ``list_contains``: ``"any"`` (≥1 item matches) or ``"all"`` (every item matches)."""
-
-    # Operator families. Composite sets are derived from the base sets
-    # so each operator string is stated exactly once.
-    _NUMERIC_SCALAR_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"is greater than", "is less than", "is at least", "is at most"}
-    )
-    _NUMERIC_OPS: ClassVar[frozenset[str]] = _NUMERIC_SCALAR_OPS | {
-        "is between",
-        "not between",
-    }
-    _BOOLEAN_OPS: ClassVar[frozenset[str]] = frozenset({"true", "false"})
-    _SINGLE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"was on", "was not on", "was before", "was since"}
-    )
-    _DATE_OPS: ClassVar[frozenset[str]] = _SINGLE_DATE_OPS | {
-        "was between",
-        "was not between",
-    }
-    _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"was in the", "was not in the", "was in the next"}
-    )
-    _DATETIME_OPS: ClassVar[frozenset[str]] = _DATE_OPS | _RELATIVE_DATE_OPS
-    _NO_VALUE_OPS: ClassVar[frozenset[str]] = (
-        frozenset({"is set", "is not set"}) | _BOOLEAN_OPS
-    )
-    _TWO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"is between", "not between", "was between", "was not between"}
-    )
-    _STRING_OPS: ClassVar[frozenset[str]] = frozenset(
-        {"contains", "does not contain", "starts with", "ends with"}
-    )
-
-    # Operator/value-shape message templates, shared by ``__post_init__``
-    # and ``_reject_bool_value`` so the two producers cannot drift.
-    _MSG_NEEDS_NUMERIC: ClassVar[str] = (
-        "Filter operator '{op}' requires a numeric value, got {got!r}"
-    )
-    _MSG_NEEDS_STRING: ClassVar[str] = (
-        "Filter operator '{op}' requires a string value, got {got!r}"
-    )
-    _MSG_NEEDS_STR_OR_LIST: ClassVar[str] = (
-        "Filter operator '{op}' requires a string or a list of strings, got {got!r}"
-    )
-    _MSG_NEEDS_STR_LIST: ClassVar[str] = (
-        "Filter operator '{op}' requires a list of strings, got {got!r}"
-    )
-    _MSG_NEEDS_NUMERIC_PAIR: ClassVar[str] = (
-        "Filter operator '{op}' requires two numeric values, got {got!r}"
-    )
-    _MSG_NEEDS_DATE_PAIR: ClassVar[str] = (
-        "Filter operator '{op}' requires two date strings in "
-        "YYYY-MM-DD format, got {got!r}"
-    )
-
-    def __post_init__(self) -> None:
-        """Validate invariants and normalize dict-constructed instances.
-
-        Uses ``object.__setattr__`` to mutate the frozen instance during
-        construction — the documented pydantic pattern for dataclass
-        normalization. A model_validator(mode='before') alternative would
-        avoid the mutation but requires restructuring the entire class.
-
-        Normalization replicates the logic in classmethods so that
-        dict/JSON callers get the same result:
-
-        - ``equals`` / ``does not equal``: wraps scalar string to list
-        - Numeric operators: infers ``_property_type="number"``
-        - Boolean operators: infers ``_property_type="boolean"``
-        - Date operators: infers ``_property_type="datetime"``
-        - Relative-date operators: defaults ``_date_unit="day"``
-
-        Raises:
-            ValueError: If ``_operator == "list_contains"`` but
-                ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``, or ``_value`` is not ``None`` (the builder
-                ignores it); if a ``$cohorts`` filter was hand-rolled
-                instead of built via ``Filter.in_cohort()`` /
-                ``Filter.not_in_cohort()`` (the value-less ``is set`` /
-                ``is not set`` operators are exempt); if a scalar numeric
-                operator receives a non-numeric (or missing) value; if
-                a string operator receives a non-string (or missing)
-                value; if a no-value operator (``is set`` /
-                ``is not set`` / ``true`` / ``false``) receives a
-                value; if a date operator receives a value that is
-                not a valid YYYY-MM-DD date (or two-date range with
-                from <= to); or if a relative-date operator receives a
-                non-positive quantity.
-        """
-        if self._operator == "list_contains":
-            if self._list_item_filters is None:
-                raise ValueError(
-                    "list_contains Filter requires _list_item_filters; "
-                    "construct via Filter.list_contains(...)"
-                )
-            if self._list_item_quantifier is None:
-                raise ValueError(
-                    "list_contains Filter requires _list_item_quantifier; "
-                    "construct via Filter.list_contains(...)"
-                )
-            for sub in self._list_item_filters:
-                if sub._operator == "list_contains":
-                    raise ValueError(
-                        "Nested list_contains is not supported; "
-                        "list_item_filters cannot themselves be list_contains"
-                    )
-            # The wire entry hard-codes filterValue: True and carries the
-            # real conditions in listItemFilters, so _value is never read.
-            # Accepting one would silently run semantics the caller did
-            # not write.
-            if self._value is not None:
-                raise ValueError(
-                    "list_contains Filter does not accept _value; the "
-                    "conditions belong in _list_item_filters (the value "
-                    "would be silently ignored)"
-                )
-
-        # Cohort-membership filters carry an internal wire structure in
-        # _value ([{"cohort": {...}}]) that only the constructors build.
-        # Hand-rolled '$cohorts' filters (e.g. the dict/LLM input
-        # {"property": "$cohorts", "operator": "contains", "value": "123"})
-        # previously slipped through, then either crashed the flow builder
-        # with an internal RuntimeError or silently emitted an ordinary
-        # string filter on the insights path. The value-less presence
-        # operators ("is set" / "is not set") stay allowed — they emit an
-        # ordinary filter entry that never touches the cohort wire
-        # structure and were constructible before this guard existed.
-        if (
-            self._property == "$cohorts"
-            and self._operator not in ("is set", "is not set")
-            and not self._has_cohort_wire_shape()
-        ):
-            raise ValueError(
-                "Filters on '$cohorts' must be built via Filter.in_cohort() / "
-                "Filter.not_in_cohort() (or the declarative InlineCohort / "
-                "CohortReferenceCriterion inputs), not constructed by hand; "
-                "only the value-less 'is set' / 'is not set' operators may "
-                "target '$cohorts' directly "
-                f"(got operator={self._operator!r}, value={self._value!r})"
-            )
-
-        # Scalar numeric operators require a numeric value (classmethod
-        # contract is int | float); anything else built a
-        # self-contradictory wire entry (filterType "number" with a
-        # non-numeric operand). Raw booleans never reach this check —
-        # _reject_bool_value refuses them before the int-alternative coercion.
-        if self._operator in self._NUMERIC_SCALAR_OPS and not isinstance(
-            self._value, (int, float)
-        ):
-            raise ValueError(
-                self._MSG_NEEDS_NUMERIC.format(op=self._operator, got=self._value)
-            )
-
-        # String operators require a string value (classmethod contract
-        # is str); '$cohorts' filters reuse 'contains'/'does not contain'
-        # with the cohort wire structure validated above
-        if (
-            self._operator in self._STRING_OPS
-            and self._property != "$cohorts"
-            and not isinstance(self._value, str)
-        ):
-            raise ValueError(
-                self._MSG_NEEDS_STRING.format(op=self._operator, got=self._value)
-            )
-
-        # No-value operators reject a supplied value instead of silently
-        # discarding it — "is set" with a value almost certainly meant
-        # "equals", and running the bare existence check would be a
-        # semantically different query than the caller wrote.
-        if self._operator in self._NO_VALUE_OPS and self._value is not None:
-            hint = (
-                "; did you mean operator 'equals'?"
-                if self._operator in ("is set", "is not set")
-                else ""
-            )
-            raise ValueError(
-                f"Filter operator '{self._operator}' does not take a value "
-                f"(got {self._value!r}){hint}"
-            )
-
-        # TODO(AIE): none of the operator -> value rules in this method are
-        # mirrored in the generated schema, so it stays a strict superset of
-        # this runtime:
-        # `{"operator": "equals", "value": "oops", "property_type": "number"}`,
-        # `{"operator": "is greater than", "value": "abc"}` and
-        # `{"operator": "list_contains", "value": "nike"}` all schema-accept
-        # and runtime-reject. Expressing the coupling natively
-        # needs a discriminated union over (operator x property_type), and the
-        # legal space does not partition yet — `equals` carries both list[str]
-        # and scalar numeric, `contains` carries the schema-hidden cohort wire
-        # under property_type "list", and an explicit "string" is
-        # indistinguishable from an omitted one. Deferred: agreeing a narrowed
-        # legal table is a behavior change, measured at ~10-12 union members,
-        # property shims for segfilter.py / bookmark_schema.py /
-        # bookmark_builders.py, and ~25 test sites. Own PR, whole rule set at
-        # once — a hand-written if/then in the schema would just drift.
-        #
-        # Wrap scalar string to list for equals/not_equals (matches classmethod
-        # behavior); for string-typed filters (the default, and the LLM dict
-        # path) reject non-string scalars and non-string list elements — the
-        # classmethod contract is str | list[str], and a bare scalar
-        # filterValue is rejected by the API. Explicitly numeric-typed filters
-        # keep their scalar values (the segfilter engine stringifies them
-        # downstream); boolean-typed ones have no compatible operand at all.
-        if self._operator in ("equals", "does not equal"):
-            if self._value is None:
-                raise ValueError(f"Filter operator '{self._operator}' requires a value")
-            # An explicit non-string _property_type has to be honoured before
-            # the scalar-string wrap below, which would otherwise turn "oops"
-            # into ["oops"] and emit filterType "number" holding a string.
-            # Type inference runs at the end of __post_init__, so a "number"
-            # or "boolean" type seen here was always supplied by the caller.
-            if self._property_type == "number":
-                operands = (
-                    self._value if isinstance(self._value, list) else [self._value]
-                )
-                if not all(isinstance(v, (int, float)) for v in operands):
-                    raise ValueError(
-                        self._MSG_NEEDS_NUMERIC.format(
-                            op=self._operator, got=self._value
-                        )
-                    )
-            elif self._property_type == "boolean":
-                # Boolean properties are tested with the value-less
-                # true/false operators, so no operand is compatible.
-                raise ValueError(
-                    f"Filter operator '{self._operator}' is not valid for a "
-                    f"boolean property (got {self._value!r}); use "
-                    "Filter.is_true()/Filter.is_false() for boolean property tests"
-                )
-            elif isinstance(self._value, str):
-                object.__setattr__(self, "_value", [self._value])
-            elif self._property_type == "string":
-                if not isinstance(self._value, list):
-                    raise ValueError(
-                        self._MSG_NEEDS_STR_OR_LIST.format(
-                            op=self._operator, got=type(self._value).__name__
-                        )
-                    )
-                if not all(isinstance(v, str) for v in self._value):
-                    raise ValueError(
-                        self._MSG_NEEDS_STR_LIST.format(
-                            op=self._operator, got=self._value
-                        )
-                    )
-
-        # Validate two-value operators require exactly 2 elements
-        if self._operator in self._TWO_VALUE_OPS and (
-            not isinstance(self._value, list) or len(self._value) != 2
-        ):
-            raise ValueError(
-                f"Filter operator '{self._operator}' requires a "
-                f"2-element list, got {self._value!r}"
-            )
-
-        # Numeric two-value operators require numeric endpoints
-        # (Filter.between/not_between contract is list[int | float]); the
-        # date pair ("was between"/"was not between") is validated below.
-        # Boolean endpoints never reach this check — _reject_bool_value
-        # scans list items before the int-alternative coercion can turn
-        # True/False into 1/0.
-        if (
-            self._operator in ("is between", "not between")
-            and isinstance(self._value, list)
-            and not all(isinstance(v, (int, float)) for v in self._value)
-        ):
-            raise ValueError(
-                self._MSG_NEEDS_NUMERIC_PAIR.format(op=self._operator, got=self._value)
-            )
-
-        # Validate date values (classmethod parity — dict construction
-        # must reject the same inputs Filter.on()/date_between()/etc. do)
-        if self._operator in self._SINGLE_DATE_OPS:
-            if not isinstance(self._value, str):
-                raise ValueError(
-                    f"Filter operator '{self._operator}' requires a date "
-                    f"string in YYYY-MM-DD format, got {self._value!r}"
-                )
-            self._validate_date(self._value)
-
-        if self._operator in ("was between", "was not between") and isinstance(
-            self._value, list
-        ):
-            from_raw, to_raw = self._value
-            if not isinstance(from_raw, str) or not isinstance(to_raw, str):
-                raise ValueError(
-                    self._MSG_NEEDS_DATE_PAIR.format(op=self._operator, got=self._value)
-                )
-            from_parsed = self._validate_date(from_raw)
-            to_parsed = self._validate_date(to_raw)
-            if from_parsed > to_parsed:
-                raise ValueError(
-                    f"from_date must be before to_date (got '{from_raw}' > '{to_raw}')"
-                )
-
-        if self._operator in self._RELATIVE_DATE_OPS and (
-            not isinstance(self._value, int)
-            or isinstance(self._value, bool)
-            or self._value <= 0
-        ):
-            raise ValueError(
-                f"quantity must be a positive integer (got {self._value!r})"
-            )
-
-        # Infer _property_type from operator when left at default
-        if self._property_type == "string":
-            if self._operator in self._NUMERIC_OPS:
-                object.__setattr__(self, "_property_type", "number")
-            elif self._operator in self._BOOLEAN_OPS:
-                object.__setattr__(self, "_property_type", "boolean")
-            elif self._operator in self._DATETIME_OPS:
-                object.__setattr__(self, "_property_type", "datetime")
-
-        if self._operator in self._RELATIVE_DATE_OPS and self._date_unit is None:
-            object.__setattr__(self, "_date_unit", "day")
-
-    @field_validator("_value", mode="before")
-    @classmethod
-    def _reject_bool_value(cls, v: object, info: core_schema.ValidationInfo) -> object:
-        """Reject boolean values (scalar or list item) before lax int coercion.
-
-        Pydantic's lax mode coerces ``True``/``False`` into ``1``/``0``
-        via the ``int`` alternative (and the ``list[int | float]`` alternative) of the
-        ``_value`` union *before* ``__post_init__`` runs, so
-        operator/value-shape checks there would see integers and accept
-        a query the caller never wrote — ``Filter.between("amount",
-        True, 100)`` silently became ``[1, 100]``. No operator family
-        accepts a boolean value in any position (boolean property tests
-        use the value-less ``true``/``false`` operators), so booleans
-        are rejected outright with an operator-specific message that
-        reports the caller's original input.
+    def __init__(self, code: str, message: str) -> None:
+        """Store the code and message.
 
         Args:
-            v: The raw ``_value`` input, prior to any coercion.
-            info: Validation context; ``info.data`` carries the
-                already-validated ``_operator`` field (declared before
-                ``_value``), used to phrase the error.
+            code: Stable error code.
+            message: Human-readable explanation.
+        """
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class AbstractMixpanelModel(BaseModel):
+    """A model that can render itself into Mixpanel's payload dialects.
+
+    One public entry point, :meth:`mixpanel_model_dump`, dispatching to a
+    per-dialect hook. Subclasses override only the hooks whose output
+    differs from a plain ``model_dump()``, so a model that has no payload
+    form of its own inherits sensible behaviour and declares nothing.
+
+    The dispatch is a typed ``if``-ladder here rather than a lookup by
+    name (``getattr(self, f"_dump_{fmt}")``), which ``mypy --strict``
+    cannot check, and rather than each subclass switching on ``fmt``
+    itself, which repeats the ladder once per member.
+
+    Example:
+        ```python
+        f = FilterFactory.equals("plan", "pro")
+        f.mixpanel_model_dump("bookmark")
+        # {"resourceType": "events", "filterType": "string", ...}
+        ```
+    """
+
+    def mixpanel_model_dump(self, fmt: PayloadFormat = "default") -> dict[str, Any]:
+        """Render this model in the given Mixpanel dialect.
+
+        Args:
+            fmt: Which dialect to emit. Defaults to ``"default"``, plain
+                ``model_dump()``.
 
         Returns:
-            The input unchanged when it carries no boolean.
+            The payload dict for ``fmt``.
 
         Raises:
-            ValueError: If ``v`` is a ``bool``, or a list containing a
-                ``bool``.
-
-        Example:
-            ```python
-            from pydantic import TypeAdapter
-
-            TypeAdapter(Filter).validate_python(
-                {"property": "amount", "operator": "is between", "value": [True, 100]}
-            )
-            # ValidationError: ... requires two numeric values, got [True, 100]
-            ```
+            PayloadFormatError: If this model has no representation in
+                ``fmt`` — the flat flow format cannot express nested or
+                relative-date filters, for instance.
         """
-        if isinstance(v, bool):
-            operator = info.data.get("_operator")
-            if operator in ("equals", "does not equal"):
-                raise ValueError(
-                    cls._MSG_NEEDS_STR_OR_LIST.format(op=operator, got=type(v).__name__)
-                )
-            if operator in cls._NUMERIC_SCALAR_OPS:
-                raise ValueError(cls._MSG_NEEDS_NUMERIC.format(op=operator, got=v))
-            if operator in cls._STRING_OPS:
-                raise ValueError(cls._MSG_NEEDS_STRING.format(op=operator, got=v))
-            raise ValueError(
-                f"Filter value cannot be a boolean (got {v!r}); use "
-                "Filter.is_true()/Filter.is_false() for boolean property tests"
-            )
-        if isinstance(v, list) and any(isinstance(item, bool) for item in v):
-            operator = info.data.get("_operator")
-            if operator in ("equals", "does not equal"):
-                raise ValueError(cls._MSG_NEEDS_STR_LIST.format(op=operator, got=v))
-            if operator in ("is between", "not between"):
-                raise ValueError(cls._MSG_NEEDS_NUMERIC_PAIR.format(op=operator, got=v))
-            if operator in ("was between", "was not between"):
-                raise ValueError(cls._MSG_NEEDS_DATE_PAIR.format(op=operator, got=v))
-            raise ValueError(
-                f"Filter value cannot contain a boolean (got {v!r}); use "
-                "Filter.is_true()/Filter.is_false() for boolean property tests"
-            )
-        return v
+        if fmt == "bookmark":
+            return self._dump_bookmark()
+        if fmt == "segfilter":
+            return self._dump_segfilter()
+        if fmt == "flow_where":
+            return self._dump_flow_where()
+        return self.model_dump()
 
-    def _has_cohort_wire_shape(self) -> bool:
-        """Check whether this filter carries the cohort wire structure.
-
-        The cohort-membership constructors (``in_cohort`` /
-        ``not_in_cohort``) produce ``_operator`` in
-        ``{"contains", "does not contain"}`` and ``_value`` shaped as a
-        non-empty list of ``{"cohort": {...}}`` dicts. Any ``$cohorts``
-        filter that does not match this shape was hand-rolled and would
-        break the downstream builders.
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render for the bookmark/report format.
 
         Returns:
-            True if ``_operator`` and ``_value`` match the structure
-            built by ``_build_cohort_filter``; False otherwise.
-
-        Example:
-            ```python
-            Filter.in_cohort(123, "PU")._has_cohort_wire_shape()
-            # True
-            ```
+            ``model_dump()`` unless a subclass overrides.
         """
-        if self._operator not in ("contains", "does not contain"):
-            return False
-        if not isinstance(self._value, list) or len(self._value) == 0:
-            return False
-        return all(
-            isinstance(item, dict) and isinstance(item.get("cohort"), dict)
-            for item in self._value
+        return self.model_dump()
+
+    def _dump_segfilter(self) -> dict[str, Any]:
+        """Render for the flows segfilter format.
+
+        Returns:
+            ``model_dump()`` unless a subclass overrides.
+        """
+        return self.model_dump()
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Render for the flat flow ``where`` format.
+
+        Returns:
+            ``model_dump()`` unless a subclass overrides.
+        """
+        return self.model_dump()
+
+
+class AbstractFilter(AbstractMixpanelModel):
+    """Fields and configuration shared by every filter model.
+
+    Named ``Abstract`` so that :data:`Filter` — the name callers type in
+    signatures — can be the union. The two cannot share a name: a union
+    is an ``Annotated`` alias and carries neither classmethods nor
+    ``isinstance``.
+
+    Constructors live on :class:`FilterFactory`, not here, so a model
+    stays field declarations, configuration, and at most a one-line
+    validator hook. Rules with a body live in
+    ``mixpanel_headless._internal.pydantic_validators``.
+
+    "Abstract" is aspirational, not enforced: constructing one succeeds
+    and yields a base instance no builder understands. Nothing points a
+    caller here — :data:`Filter` is the annotation everywhere.
+
+    Attributes:
+        property: Property being tested. A name, or a custom-property
+            reference or inline definition.
+        property_type: Declared type of the property. Members that only
+            make sense for one type pin it.
+        resource_type: ``"events"`` or ``"people"``. Default:
+            ``"events"``.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    property: PropertySpec
+    operator: FilterOperator
+    # Deliberately ``Any``: this is the widest common supertype, and every
+    # member narrows it to the shape its operators accept. Declaring it here
+    # is what lets a consumer take ``Sequence[AbstractFilter]`` and still read
+    # ``.value`` — without it, a heterogeneous list of members joins to a base
+    # that has no such attribute. Members override, so no member's schema
+    # renders this.
+    value: Any = None
+    property_type: FilterPropertyType = "string"
+    resource_type: Literal["events", "people"] = "events"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _name_the_intended_operator(cls, data: Any) -> Any:
+        """Improve the message when a value-less operator is given a value.
+
+        Members taking no comparand annotate ``value: None``, which
+        already rejects one — but reports a bare "Input should be None".
+        This runs first and names the operator the caller likely meant.
+
+        Which members those are is read off the annotation rather than
+        listed, so adding a value-less member needs no edit here.
+
+        Args:
+            data: The raw input, before field validation.
+
+        Returns:
+            ``data``, unchanged.
+
+        Raises:
+            ValueError: If a value-less member was given a value.
+        """
+        if cls.model_fields["value"].annotation is type(None):
+            reject_stray_value(data)
+        return data
+
+    @model_validator(mode="after")
+    def _guard_cohort_property(self) -> AbstractFilter:
+        """Refuse a ``$cohorts`` filter this model may not build.
+
+        Overridden by the two models that may target it.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        check_cohort_property(self.property, self.operator, self.value)
+        return self
+
+    # --- payload rendering -----------------------------------------------------
+
+    def _bookmark_value(self) -> Any:
+        """The ``filterValue`` payload.
+
+        Every member's ``value`` is already JSON-native except cohort
+        membership, so this is the identity and
+        :class:`ContainmentFilter` overrides it.
+
+        Returns:
+            ``self.value``, ready for JSON.
+        """
+        return self.value
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render the bookmark/report filter entry.
+
+        Returns:
+            The entry dict, including whatever keys the property
+            contributes.
+        """
+        entry: dict[str, Any] = {
+            "resourceType": self.resource_type,
+            "filterType": self.property_type,
+            "defaultType": self.property_type,
+            "filterValue": self._bookmark_value(),
+            "filterOperator": self.operator,
+        }
+        prop = self.property
+        if isinstance(prop, str):
+            entry["value"] = prop
+        else:
+            entry.update(prop._bookmark_filter_keys(self.property_type))
+        return entry
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Render the flat flow ``where`` entry.
+
+        The property is checked by the caller, which owns the position
+        in the list and so can report ``where[i]``.
+
+        Returns:
+            ``{property, operator}``, plus ``value`` when the operator
+            takes one.
+        """
+        entry: dict[str, Any] = {
+            "property": self.property,
+            "operator": self.operator,
+        }
+        if self.value is not None:
+            entry["value"] = self.value
+        return entry
+
+    def _segfilter_operand(self) -> Any:
+        """The segfilter ``operand``, in the common scalar case.
+
+        Numbers go out stringified; strings go out as-is, which for the
+        equality operators means the list their ``value`` already holds.
+        Members whose operand is shaped differently — ranges, dates,
+        the value-less operators — override this.
+
+        Returns:
+            The operand for this filter's value.
+        """
+        return str(self.value) if self.property_type == "number" else self.value
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """The segfilter ``filter`` sub-dict.
+
+        Returns:
+            ``{operator, operand}``.
+
+        Raises:
+            ValueError: If the operator has no segfilter spelling for
+                this property type.
+        """
+        table = _SEGFILTER_OPERATORS[self.property_type]
+        if self.operator not in table:
+            raise ValueError(
+                f"Unknown {self.property_type} operator '{self.operator}'. "
+                f"Valid operators: {sorted(table)}"
+            )
+        return {"operator": table[self.operator], "operand": self._segfilter_operand()}
+
+    def _dump_segfilter(self) -> dict[str, Any]:
+        """Render the flows segfilter entry.
+
+        Returns:
+            The segfilter dict: a ``property`` descriptor, the type
+            twice, and the ``filter`` sub-dict.
+
+        Raises:
+            ValueError: If the property type has no segfilter form
+                (``list`` and ``object`` do not), or the operator has no
+                spelling for the type.
+        """
+        if self.property_type not in _SEGFILTER_OPERATORS:
+            raise ValueError(
+                f"Unsupported property type '{self.property_type}'. "
+                f"Supported types: string, number, boolean, datetime"
+            )
+        return {
+            "property": {
+                "name": self.property,
+                "source": RESOURCE_TYPE_MAP.get(self.resource_type, self.resource_type),
+                "type": self.property_type,
+            },
+            "type": self.property_type,
+            "selected_property_type": self.property_type,
+            "filter": self._segfilter_filter(),
+        }
+
+
+# =============================================================================
+# Value types
+# =============================================================================
+
+_Number = StrictInt | StrictFloat
+"""Strict, so ``True`` and ``"5"`` never silently become ``1`` and ``5``."""
+
+_StrList = Annotated[list[str], Field(min_length=1, max_length=_MAX_FILTER_VALUES)]
+_NumberList = Annotated[
+    list[_Number], Field(min_length=1, max_length=_MAX_FILTER_VALUES)
+]
+
+_DateStr = Annotated[
+    str,
+    AfterValidator(check_is_real_date),
+    Field(json_schema_extra={"format": "date", "pattern": _DATE_PATTERN}),
+]
+"""A ``YYYY-MM-DD`` date string.
+
+The pattern is declared through ``json_schema_extra`` and enforced by
+``check_is_real_date``, rather than by ``StringConstraints(pattern=…)``.
+``StringConstraints`` renders the same schema natively and is normally
+the better choice — but it takes the rejection over, replacing "Date
+must be YYYY-MM-DD format (got '01/01/2025')" with a generic "String
+should match pattern". One ``AfterValidator`` covering both shape and
+calendar validity keeps the message that names the format.
+
+Deliberately a ``str``, not a ``datetime.date``: the bookmark builders
+write ``value`` straight into the payload, so a parsed date object would
+silently change the outgoing payload.
+"""
+
+_NumberPair = Annotated[list[_Number], Field(min_length=2, max_length=2)]
+"""Exactly two numbers.
+
+A ``list`` rather than a ``tuple``: a tuple renders as ``prefixItems``
+and reports ``missing`` for a short input, and the downstream builders
+gate on ``isinstance(value, list)``.
+"""
+
+_DatePair = Annotated[list[_DateStr], Field(min_length=2, max_length=2)]
+"""Exactly two ``YYYY-MM-DD`` date strings, low then high."""
+
+_Quantity = Annotated[StrictInt, Field(gt=0)]
+"""A positive whole number of ``date_unit``s. Emits ``exclusiveMinimum: 0``."""
+
+
+# =============================================================================
+# Cohort membership
+#
+# What `FilterFactory.in_cohort()` puts in `value`. Typed rather than hidden
+# behind `SkipJsonSchema`, so the schema describes what the runtime accepts —
+# this was the one place the library could emit a payload its own schema
+# rejected.
+# =============================================================================
+
+
+class CohortPayload(BaseModel):
+    """The cohort a membership filter points at.
+
+    Exactly one of ``id`` (a saved cohort) or ``raw_cohort`` (an inline
+    definition) is set — which is a cross-field rule, so it is a
+    validator rather than a field type.
+
+    ``raw_cohort`` is the one field kept out of the schema. It carries
+    the Mixpanel selector tree ``CohortDefinition.to_dict()`` produces —
+    a nested structure with dynamically-named ``bhvr_N`` keys, which
+    would render as an untyped open object and put an opaque hole back
+    into a schema whose whole point is not having any. It is a builder
+    artifact: a consumer generating a filter uses ``id``. This narrows
+    the old residual, where the *entire* cohort value was hidden behind
+    ``SkipJsonSchema``, down to this single field.
+
+    With ``raw_cohort`` hidden, the only source a schema consumer can
+    name is ``id`` — so the schema marks it required, which is also what
+    stops ``{"cohort": {}}`` being advertised as valid when nothing
+    accepts it. It is declared through ``json_schema_extra`` rather than
+    by dropping the default, because the runtime must keep taking the
+    ``raw_cohort``-only form the builders produce.
+
+    Attributes:
+        name: Display name. Empty when the caller did not supply one.
+        negated: True for ``not_in_cohort``.
+        id: Saved-cohort id. Required schema-side; optional at runtime,
+            where ``raw_cohort`` is the alternative.
+        raw_cohort: Sanitised inline cohort definition. Schema-hidden.
+    """
+
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"required": ["id"]})
+
+    name: str = ""
+    negated: bool = False
+    id: int | None = None
+    raw_cohort: SkipJsonSchema[dict[str, Any] | None] = None
+
+    @model_validator(mode="after")
+    def _check_one_source(self) -> CohortPayload:
+        """Require exactly one of ``id`` / ``raw_cohort``.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        check_cohort_source(self.id, self.raw_cohort)
+        return self
+
+
+class CohortRef(BaseModel):
+    """One entry of a ``$cohorts`` filter value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cohort: CohortPayload
+
+
+# =============================================================================
+# Filters
+#
+# One model per *shape*, not per operator: an operator earns its own model only
+# when it needs a field or a rule the others do not. `MarkedDiscriminator`
+# accepts a multi-valued `Literal`, mapping every operator to the model that
+# claims it, so grouping costs nothing at the routing layer.
+# =============================================================================
+
+
+class PresenceFilter(AbstractFilter):
+    """Asserts only that a property is or is not populated.
+
+    Takes no comparand, so ``value`` is annotated ``None`` — which puts
+    ``type: "null"`` in the schema rather than leaving the prohibition
+    to a runtime check.
+
+    May target ``$cohorts`` directly: the value-less operators emit an
+    ordinary filter entry that never touches the cohort payload structure.
+    """
+
+    operator: Literal["is set", "is not set"]
+    value: None = None
+
+    def _segfilter_operand(self) -> Any:
+        """No comparand, so the operand is empty.
+
+        Returns:
+            ``""``.
+        """
+        return ""
+
+    @model_validator(mode="after")
+    def _guard_cohort_property(self) -> PresenceFilter:
+        """Allowed against ``$cohorts``; the base guard does not apply.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        return self
+
+
+class BooleanStateFilter(AbstractFilter):
+    """Tests a boolean property for truth. Takes no comparand."""
+
+    operator: Literal["true", "false"]
+    value: None = None
+    property_type: Literal["boolean"] = "boolean"
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """The boolean segfilter, which carries no ``operator``.
+
+        The truth value rides in ``operand`` instead, so this is the one
+        member that replaces the sub-dict rather than the operand.
+
+        Returns:
+            ``{"operand": <operator>}``.
+        """
+        return {"operand": self.operator}
+
+
+class SubstringFilter(AbstractFilter):
+    """Matches a string property against a prefix or suffix."""
+
+    operator: Literal["starts with", "ends with"]
+    value: str
+
+
+class ContainmentFilter(AbstractFilter):
+    """Matches a substring — or, against ``$cohorts``, cohort membership.
+
+    ``contains`` carries double duty in the payload: aimed at the
+    ``$cohorts`` pseudo-property it holds the structure
+    :meth:`FilterFactory.in_cohort` builds. That is why containment is
+    its own model rather than sharing :class:`SubstringFilter` — only
+    these two operators may take a cohort value.
+    """
+
+    operator: Literal["contains", "does not contain"]
+    value: str | list[CohortRef]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _point_at_the_constructors(cls, data: Any) -> Any:
+        """Name the constructors when a ``$cohorts`` value is malformed.
+
+        Args:
+            data: The raw input, before field validation.
+
+        Returns:
+            ``data``, unchanged.
+
+        Raises:
+            ValueError: If a ``$cohorts`` filter was hand-rolled.
+        """
+        reject_hand_rolled_cohort(data)
+        return data
+
+    @model_validator(mode="after")
+    def _guard_cohort_property(self) -> ContainmentFilter:
+        """Tie the cohort payload shape to ``$cohorts``, in both directions.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        check_cohort_value_pairing(self.property, self.operator, self.value)
+        return self
+
+    def _bookmark_value(self) -> Any:
+        """Render cohort entries as plain dicts.
+
+        The only member whose ``value`` can hold models, so the only one
+        that has to say anything here. ``exclude_none`` drops whichever
+        of ``id`` / ``raw_cohort`` is unset.
+
+        Returns:
+            A list of cohort dicts, or the substring unchanged.
+        """
+        if isinstance(self.value, str):
+            return self.value
+        return [entry.model_dump(exclude_none=True) for entry in self.value]
+
+
+EQUALITY_VALUE_RULE: dict[str, Any] = {
+    "if": {
+        "properties": {"property_type": {"const": "number"}},
+        "required": ["property_type"],
+    },
+    "then": {
+        "properties": {
+            "value": {
+                "anyOf": [
+                    {"type": "number"},
+                    {"type": "array", "items": {"type": "number"}},
+                ]
+            }
+        }
+    },
+    "else": {
+        "properties": {
+            "value": {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "array", "items": {"type": "string"}},
+                ]
+            }
+        }
+    },
+}
+"""Schema half of the equality ``property_type``/``value`` pairing.
+
+The pairing is cross-field, so no field type states it — but JSON Schema
+can, via ``if``/``then``, which stops a schema-driven consumer generating
+``{"property_type": "number", "value": "oops"}``.
+
+``json_schema_extra`` is inert at validation time, so
+``pydantic_validators.check_value_matches_property_type`` is the runtime
+half. The two
+must agree; changing one without the other reintroduces the parity gap
+this closes.
+"""
+
+
+class EqualityFilter(AbstractFilter):
+    """Tests a property for equality against one operand or a list.
+
+    The one model whose rule a field type cannot state: ``value`` must
+    agree with ``property_type``, and they are siblings.
+    :data:`EQUALITY_VALUE_RULE` just above states it in the schema as
+    ``if``/``then``; the validator below states it at runtime. The two
+    must agree.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", frozen=True, json_schema_extra=EQUALITY_VALUE_RULE
+    )
+
+    operator: Literal["equals", "does not equal"]
+    value: Annotated[
+        str | _StrList | _Number | _NumberList,
+        BeforeValidator(normalize_equality_value),
+    ]
+    property_type: Literal["string", "number", "datetime", "list", "object"] = "string"
+
+    @model_validator(mode="after")
+    def _check_value_matches_property_type(self) -> EqualityFilter:
+        """Runtime half of the ``property_type``/``value`` pairing.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        check_value_matches_property_type(self.operator, self.property_type, self.value)
+        return self
+
+
+class NumericComparisonFilter(AbstractFilter):
+    """Compares a numeric property against a single comparand."""
+
+    operator: Literal["is greater than", "is less than", "is at least", "is at most"]
+    value: _Number
+    property_type: Literal["number"] = "number"
+
+
+class NumericRangeFilter(AbstractFilter):
+    """Tests whether a numeric property falls within, or outside, a range."""
+
+    operator: Literal["is between", "not between"]
+    value: _NumberPair
+
+    def _segfilter_operand(self) -> list[str]:
+        """Both bounds, stringified.
+
+        Returns:
+            The two bounds as strings.
+        """
+        return [str(v) for v in self.value]
+
+    property_type: Literal["number"] = "number"
+
+
+class AbsoluteDateFilter(AbstractFilter):
+    """Compares a datetime property against one fixed date."""
+
+    operator: Literal["was on", "was not on", "was before", "was since"]
+    value: _DateStr
+
+    def _segfilter_operand(self) -> str:
+        """The date in the segfilter's MM/DD/YYYY spelling.
+
+        Returns:
+            The reformatted date.
+        """
+        return _convert_date_format(str(self.value))
+
+    property_type: Literal["datetime"] = "datetime"
+
+
+class DateRangeFilter(AbstractFilter):
+    """Tests whether a datetime property falls within, or outside, two dates."""
+
+    operator: Literal["was between", "was not between"]
+    value: _DatePair
+
+    def _segfilter_operand(self) -> list[str]:
+        """Both endpoints in the segfilter's MM/DD/YYYY spelling.
+
+        Returns:
+            The two reformatted dates.
+        """
+        return [_convert_date_format(d) for d in self.value]
+
+    property_type: Literal["datetime"] = "datetime"
+
+    @model_validator(mode="after")
+    def _check_endpoints_are_ordered(self) -> DateRangeFilter:
+        """Endpoint ordering; JSON Schema cannot compare array elements.
+
+        Returns:
+            ``self``, unchanged.
+        """
+        check_dates_ordered(self.value)
+        return self
+
+
+class RelativeDateFilter(AbstractFilter):
+    """Tests a datetime property against a rolling window."""
+
+    operator: Literal["was in the", "was not in the", "was in the next"]
+    value: _Quantity
+    date_unit: FilterDateUnit = "day"
+    property_type: Literal["datetime"] = "datetime"
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Add the rolling-window unit to the shared entry.
+
+        Returns:
+            The bookmark entry, plus ``filterDateUnit``.
+        """
+        entry = super()._dump_bookmark()
+        entry["filterDateUnit"] = self.date_unit
+        return entry
+
+    def _segfilter_filter(self) -> dict[str, Any]:
+        """Add the pluralised unit beside the quantity.
+
+        The operand is the bare quantity — a rolling window, not a date
+        — so the unit has to travel with it.
+
+        ``was in the next`` has no segfilter spelling and is rejected by
+        the table lookup in the base. That gap predates this method;
+        preserve it rather than inventing an operator.
+
+        Returns:
+            ``{operator, operand, unit}``.
+        """
+        entry = super()._segfilter_filter()
+        entry["unit"] = f"{self.date_unit}s"
+        return entry
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Refuse: the flat flow format has no key for the date unit.
+
+        Raises:
+            PayloadFormatError: Always.
+        """
+        raise PayloadFormatError(
+            code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
+            message=(
+                f"flow where filters cannot express the relative-date "
+                f"operator '{self.operator}' — the flat where format has "
+                f"no key for the date unit. Use an absolute date filter "
+                f"instead (FilterFactory.date_between / FilterFactory.before / "
+                f"FilterFactory.since)"
+            ),
         )
 
-    @classmethod
+
+class CompoundFilter(AbstractFilter):
+    """``list_contains``: a list property has an item matching sub-filters.
+
+    The only filter that holds other filters. ``list_item_filters``
+    points at :data:`AtomicFilter`, which omits this model — Mixpanel has
+    no list-of-lists, so ``list_contains`` inside ``list_contains`` is
+    unrepresentable rather than rejected by a check.
+
+    Attributes:
+        list_item_filters: Sub-filters applied per list item. At least
+            one is required.
+        list_item_quantifier: ``"any"`` (one item must match) or
+            ``"all"`` (every item must). Default: ``"any"``.
+    """
+
+    operator: Literal["list_contains"]
+    value: None = None
+    property_type: Literal["object"] = "object"
+    list_item_filters: Annotated[tuple[AtomicFilter, ...], Field(min_length=1)]
+    list_item_quantifier: Literal["any", "all"] = "any"
+
+    def _dump_bookmark(self) -> dict[str, Any]:
+        """Render the nested ``listItemFilters`` entry.
+
+        Shares nothing with the shared entry — the outer wrapper is a
+        constant (``filterOperator: "true"``, ``filterValue: True``) and
+        the real content is the inner filters. ``dataset`` is backfilled
+        onto each inner entry because the payload format requires it there
+        even for plain string properties.
+
+        Returns:
+            The ``list_contains`` bookmark entry.
+        """
+        inner: list[dict[str, Any]] = []
+        for sub in self.list_item_filters:
+            sub_entry = sub._dump_bookmark()
+            sub_entry.setdefault("dataset", "$mixpanel")
+            inner.append(sub_entry)
+        return {
+            "dataset": "$mixpanel",
+            "value": self.property,
+            "resourceType": self.resource_type,
+            "filterType": "object",
+            "defaultType": "object",
+            "filterJoinType": "list",
+            "listQuantifier": self.list_item_quantifier,
+            "listItemFilters": inner,
+            "filterOperator": "true",
+            "filterValue": True,
+        }
+
+    def _dump_flow_where(self) -> dict[str, Any]:
+        """Refuse: the flat flow format cannot nest.
+
+        Raises:
+            PayloadFormatError: Always.
+        """
+        raise PayloadFormatError(
+            code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
+            message=(
+                "flow where filters cannot express list_contains — the "
+                "flat where format has no key for nested sub-filters"
+            ),
+        )
+
+
+# =============================================================================
+# The unions
+#
+# Both list their members literally: an `Annotated` union cannot be composed
+# into another, so `AtomicFilter | CompoundFilter` is unavailable — the outer
+# marker would receive an alias with no `model_fields` to read.
+# =============================================================================
+
+AtomicFilter = Annotated[
+    PresenceFilter
+    | BooleanStateFilter
+    | SubstringFilter
+    | ContainmentFilter
+    | EqualityFilter
+    | NumericComparisonFilter
+    | NumericRangeFilter
+    | AbsoluteDateFilter
+    | DateRangeFilter
+    | RelativeDateFilter,
+    MarkedDiscriminator("operator", error_type="invalid_nested_filter_operator"),
+]
+"""A filter that holds no other filters — everything but :class:`CompoundFilter`.
+
+What ``list_item_filters`` accepts, which is what makes a nested
+``list_contains`` unrepresentable rather than rejected at runtime.
+"""
+
+Filter = Annotated[
+    PresenceFilter
+    | BooleanStateFilter
+    | SubstringFilter
+    | ContainmentFilter
+    | EqualityFilter
+    | NumericComparisonFilter
+    | NumericRangeFilter
+    | AbsoluteDateFilter
+    | DateRangeFilter
+    | RelativeDateFilter
+    | CompoundFilter,
+    MarkedDiscriminator("operator", error_type="invalid_filter_operator"),
+]
+"""A single filter condition, routed by its ``operator``.
+
+Use this — not :class:`AbstractFilter` — as the annotation wherever a
+filter is accepted. Each model declares only the fields its operators
+support, so ``model_json_schema()`` advertises exactly the payloads the
+runtime accepts.
+
+``MarkedDiscriminator`` rather than ``Field(discriminator="operator")``:
+both route identically and both emit the OpenAPI ``discriminator``
+block, but a plain discriminator copies the matched tag into the error
+``loc``, reporting ``where[0].is at most.value`` — a segment the caller
+never sent. Marked tags come back ``#``-prefixed and
+:func:`~mixpanel_headless._internal.pydantic_utils.is_meta_key` strips
+them by shape.
+
+``error_type`` is load-bearing: without it an unroutable operator
+reports "Unable to extract tag"; with it, the marker generates
+"operator must be one of ..." naming every operator, from the models.
+
+Documented residuals, all of them runtime-stricter-than-schema — a
+payload can satisfy the schema and still be rejected, so a generating
+consumer must surface the error rather than assume it cannot happen:
+
+1. **Cross-field rules JSON Schema cannot express.**
+   :meth:`DateRangeFilter._check_endpoints_are_ordered` (from ≤ to) and
+   the ``$cohorts`` guards are ``model_validator``s. The equality
+   ``property_type``/``value`` pairing is *not* among them — ``if``/``then``
+   states it in the schema too.
+2. **Calendar validity.** ``_DateStr``'s pattern rejects a malformed
+   date schema-side; ``2025-02-30`` is caught only at runtime.
+3. **Integral floats.** JSON has one number type, so ``"type": "integer"``
+   matches any number with a zero fractional part — ``1.0`` included.
+   ``StrictInt`` refuses it, per the strict-mode policy that keeps
+   ``True`` and ``"5"`` from becoming ``1`` and ``5``. Unreachable from
+   JSON text, which parses ``1`` to an ``int``.
+"""
+
+CompoundFilter.model_rebuild()
+
+
+class FilterFactory:
+    """Constructors for the filter models. Sugar, and only sugar.
+
+    Not a model: no fields, no instances, nothing pydantic. Every method
+    normalises its arguments and returns the model that owns the
+    operator, so the models themselves stay field declarations, config
+    and one-line hooks.
+
+    They exist because ``operator`` is the union's discriminator and
+    cannot carry a default — a default makes it *optional* in the
+    generated schema while routing still requires it, which is the
+    schema-⊃-runtime break this whole design closes. So without these,
+    every construction would spell out ``operator="equals"`` by hand.
+
+    Example:
+        ```python
+        from mixpanel_headless import FilterFactory
+
+        FilterFactory.equals("plan", "premium")
+        FilterFactory.greater_than("ltv", 100)
+        FilterFactory.in_cohort(12345, "Power Users")
+        ```
+    """
+
+    @staticmethod
     def equals(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: str | list[str],
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> EqualityFilter:
         """Create an equality filter.
 
         Args:
@@ -7907,22 +8596,21 @@ class Filter:
             Filter for string equality.
         """
         val = [value] if isinstance(value, str) else value
-        return cls(
-            _property=property,
-            _operator="equals",
-            _value=val,
-            _property_type="string",
-            _resource_type=resource_type,
+        return EqualityFilter(
+            property=property,
+            operator="equals",
+            value=val,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def not_equals(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: str | list[str],
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> EqualityFilter:
         """Create a not-equals filter.
 
         Args:
@@ -7934,22 +8622,21 @@ class Filter:
             Filter for string inequality.
         """
         val = [value] if isinstance(value, str) else value
-        return cls(
-            _property=property,
-            _operator="does not equal",
-            _value=val,
-            _property_type="string",
-            _resource_type=resource_type,
+        return EqualityFilter(
+            property=property,
+            operator="does not equal",
+            value=val,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def contains(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> ContainmentFilter:
         """Create a contains (substring) filter.
 
         Args:
@@ -7960,22 +8647,21 @@ class Filter:
         Returns:
             Filter for substring containment.
         """
-        return cls(
-            _property=property,
-            _operator="contains",
-            _value=value,
-            _property_type="string",
-            _resource_type=resource_type,
+        return ContainmentFilter(
+            property=property,
+            operator="contains",
+            value=value,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def not_contains(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> ContainmentFilter:
         """Create a not-contains filter.
 
         Args:
@@ -7986,22 +8672,21 @@ class Filter:
         Returns:
             Filter for substring non-containment.
         """
-        return cls(
-            _property=property,
-            _operator="does not contain",
-            _value=value,
-            _property_type="string",
-            _resource_type=resource_type,
+        return ContainmentFilter(
+            property=property,
+            operator="does not contain",
+            value=value,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def greater_than(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericComparisonFilter:
         """Create a greater-than filter.
 
         Args:
@@ -8012,22 +8697,21 @@ class Filter:
         Returns:
             Filter for numeric greater-than.
         """
-        return cls(
-            _property=property,
-            _operator="is greater than",
-            _value=value,
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericComparisonFilter(
+            property=property,
+            operator="is greater than",
+            value=value,
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def less_than(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericComparisonFilter:
         """Create a less-than filter.
 
         Args:
@@ -8038,23 +8722,22 @@ class Filter:
         Returns:
             Filter for numeric less-than.
         """
-        return cls(
-            _property=property,
-            _operator="is less than",
-            _value=value,
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericComparisonFilter(
+            property=property,
+            operator="is less than",
+            value=value,
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def between(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         min_val: int | float,
         max_val: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericRangeFilter:
         """Create a between (inclusive range) filter.
 
         Args:
@@ -8066,23 +8749,22 @@ class Filter:
         Returns:
             Filter for numeric range.
         """
-        return cls(
-            _property=property,
-            _operator="is between",
-            _value=[min_val, max_val],
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericRangeFilter(
+            property=property,
+            operator="is between",
+            value=[min_val, max_val],
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def not_between(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         min_val: int | float,
         max_val: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericRangeFilter:
         """Create a not-between (exclusive range) filter.
 
         Args:
@@ -8096,25 +8778,24 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.not_between("age", 18, 65)
+            f = FilterFactory.not_between("age", 18, 65)
             ```
         """
-        return cls(
-            _property=property,
-            _operator="not between",
-            _value=[min_val, max_val],
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericRangeFilter(
+            property=property,
+            operator="not between",
+            value=[min_val, max_val],
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def at_least(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericComparisonFilter:
         """Create a greater-than-or-equal filter.
 
         Args:
@@ -8127,25 +8808,24 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.at_least("score", 80)
+            f = FilterFactory.at_least("score", 80)
             ```
         """
-        return cls(
-            _property=property,
-            _operator="is at least",
-            _value=value,
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericComparisonFilter(
+            property=property,
+            operator="is at least",
+            value=value,
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def at_most(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         value: int | float,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> NumericComparisonFilter:
         """Create a less-than-or-equal filter.
 
         Args:
@@ -8158,24 +8838,23 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.at_most("errors", 5)
+            f = FilterFactory.at_most("errors", 5)
             ```
         """
-        return cls(
-            _property=property,
-            _operator="is at most",
-            _value=value,
-            _property_type="number",
-            _resource_type=resource_type,
+        return NumericComparisonFilter(
+            property=property,
+            operator="is at most",
+            value=value,
+            property_type="number",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def is_set(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> PresenceFilter:
         """Create a property-existence filter.
 
         Args:
@@ -8185,21 +8864,20 @@ class Filter:
         Returns:
             Filter for property existence.
         """
-        return cls(
-            _property=property,
-            _operator="is set",
-            _value=None,
-            _property_type="string",
-            _resource_type=resource_type,
+        return PresenceFilter(
+            property=property,
+            operator="is set",
+            value=None,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def is_not_set(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> PresenceFilter:
         """Create a property-nonexistence filter.
 
         Args:
@@ -8209,22 +8887,21 @@ class Filter:
         Returns:
             Filter for property non-existence.
         """
-        return cls(
-            _property=property,
-            _operator="is not set",
-            _value=None,
-            _property_type="string",
-            _resource_type=resource_type,
+        return PresenceFilter(
+            property=property,
+            operator="is not set",
+            value=None,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def starts_with(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         prefix: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> SubstringFilter:
         """Create a starts-with (prefix match) filter.
 
         Args:
@@ -8237,25 +8914,24 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.starts_with("url", "https://")
+            f = FilterFactory.starts_with("url", "https://")
             ```
         """
-        return cls(
-            _property=property,
-            _operator="starts with",
-            _value=prefix,
-            _property_type="string",
-            _resource_type=resource_type,
+        return SubstringFilter(
+            property=property,
+            operator="starts with",
+            value=prefix,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def ends_with(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         suffix: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> SubstringFilter:
         """Create an ends-with (suffix match) filter.
 
         Args:
@@ -8268,24 +8944,23 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.ends_with("email", "@example.com")
+            f = FilterFactory.ends_with("email", "@example.com")
             ```
         """
-        return cls(
-            _property=property,
-            _operator="ends with",
-            _value=suffix,
-            _property_type="string",
-            _resource_type=resource_type,
+        return SubstringFilter(
+            property=property,
+            operator="ends with",
+            value=suffix,
+            property_type="string",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def is_true(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> BooleanStateFilter:
         """Create a boolean true filter.
 
         Args:
@@ -8295,21 +8970,20 @@ class Filter:
         Returns:
             Filter for boolean true.
         """
-        return cls(
-            _property=property,
-            _operator="true",
-            _value=None,
-            _property_type="boolean",
-            _resource_type=resource_type,
+        return BooleanStateFilter(
+            property=property,
+            operator="true",
+            value=None,
+            property_type="boolean",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def is_false(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> BooleanStateFilter:
         """Create a boolean false filter.
 
         Args:
@@ -8319,22 +8993,21 @@ class Filter:
         Returns:
             Filter for boolean false.
         """
-        return cls(
-            _property=property,
-            _operator="false",
-            _value=None,
-            _property_type="boolean",
-            _resource_type=resource_type,
+        return BooleanStateFilter(
+            property=property,
+            operator="false",
+            value=None,
+            property_type="boolean",
+            resource_type=resource_type,
         )
 
     # --- Cohort filters ---
 
-    @classmethod
+    @staticmethod
     def in_cohort(
-        cls,
         cohort: int | CohortDefinition,
         name: str | None = None,
-    ) -> Filter:
+    ) -> ContainmentFilter:
         """Create a filter restricting to users in a cohort.
 
         Accepts either a saved cohort ID (``int``) or an inline
@@ -8360,20 +9033,19 @@ class Filter:
             from mixpanel_headless import Filter
 
             # Saved cohort
-            f = Filter.in_cohort(123, "Power Users")
+            f = FilterFactory.in_cohort(123, "Power Users")
 
             # Inline cohort
-            f = Filter.in_cohort(cohort_def, name="Frequent Buyers")
+            f = FilterFactory.in_cohort(cohort_def, name="Frequent Buyers")
             ```
         """
-        return cls._build_cohort_filter(cohort, name, negated=False)
+        return FilterFactory._build_cohort_filter(cohort, name, negated=False)
 
-    @classmethod
+    @staticmethod
     def not_in_cohort(
-        cls,
         cohort: int | CohortDefinition,
         name: str | None = None,
-    ) -> Filter:
+    ) -> ContainmentFilter:
         """Create a filter excluding users in a cohort.
 
         Accepts either a saved cohort ID (``int``) or an inline
@@ -8397,19 +9069,18 @@ class Filter:
             ```python
             from mixpanel_headless import Filter
 
-            f = Filter.not_in_cohort(789, "Bots")
+            f = FilterFactory.not_in_cohort(789, "Bots")
             ```
         """
-        return cls._build_cohort_filter(cohort, name, negated=True)
+        return FilterFactory._build_cohort_filter(cohort, name, negated=True)
 
-    @classmethod
+    @staticmethod
     def _build_cohort_filter(
-        cls,
         cohort: int | CohortDefinition,
         name: str | None,
         *,
         negated: bool,
-    ) -> Filter:
+    ) -> ContainmentFilter:
         """Build a cohort filter (shared by in_cohort/not_in_cohort).
 
         Args:
@@ -8425,7 +9096,9 @@ class Filter:
         """
         _validate_cohort_args(cohort, name)
 
-        operator: FilterOperator = "does not contain" if negated else "contains"
+        operator: Literal["contains", "does not contain"] = (
+            "does not contain" if negated else "contains"
+        )
 
         # Build the cohort value structure
         cohort_entry: dict[str, Any] = {"negated": negated, "name": name or ""}
@@ -8436,44 +9109,23 @@ class Filter:
 
         value: list[dict[str, Any]] = [{"cohort": cohort_entry}]
 
-        return cls(
-            _property="$cohorts",
-            _operator=operator,
-            _value=value,
-            _property_type="list",
-            _resource_type="events",
+        return ContainmentFilter(
+            property="$cohorts",
+            operator=operator,
+            value=value,
+            property_type="list",
+            resource_type="events",
         )
 
     # --- Date/datetime filters ---
 
     @staticmethod
-    def _validate_date(date_str: str) -> dt_date:
-        """Validate a date string is YYYY-MM-DD and return parsed date.
-
-        Args:
-            date_str: Date string to validate.
-
-        Returns:
-            Parsed ``datetime.date`` object.
-
-        Raises:
-            ValueError: If format is wrong or date is invalid.
-        """
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-            raise ValueError(f"Date must be YYYY-MM-DD format (got '{date_str}')")
-        try:
-            return dt_date.fromisoformat(date_str)
-        except ValueError:
-            raise ValueError(f"'{date_str}' is not a valid calendar date") from None
-
-    @classmethod
     def on(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> AbsoluteDateFilter:
         """Create a date equality filter (exact date match).
 
         Args:
@@ -8487,22 +9139,21 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        return cls(
-            _property=property,
-            _operator="was on",
-            _value=date,
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return AbsoluteDateFilter(
+            property=property,
+            operator="was on",
+            value=date,
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def not_on(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> AbsoluteDateFilter:
         """Create a date inequality filter (not on date).
 
         Args:
@@ -8516,22 +9167,21 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        return cls(
-            _property=property,
-            _operator="was not on",
-            _value=date,
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return AbsoluteDateFilter(
+            property=property,
+            operator="was not on",
+            value=date,
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def before(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> AbsoluteDateFilter:
         """Create a date before filter.
 
         Args:
@@ -8545,22 +9195,21 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        return cls(
-            _property=property,
-            _operator="was before",
-            _value=date,
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return AbsoluteDateFilter(
+            property=property,
+            operator="was before",
+            value=date,
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def since(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> AbsoluteDateFilter:
         """Create a date since filter (from date onward).
 
         Args:
@@ -8574,23 +9223,22 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        return cls(
-            _property=property,
-            _operator="was since",
-            _value=date,
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return AbsoluteDateFilter(
+            property=property,
+            operator="was since",
+            value=date,
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def in_the_last(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         quantity: int,
         date_unit: FilterDateUnit,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> RelativeDateFilter:
         """Create a relative date filter (in the last N units).
 
         Args:
@@ -8606,24 +9254,23 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        return cls(
-            _property=property,
-            _operator="was in the",
-            _value=quantity,
-            _property_type="datetime",
-            _resource_type=resource_type,
-            _date_unit=date_unit,
+        return RelativeDateFilter(
+            property=property,
+            operator="was in the",
+            value=quantity,
+            property_type="datetime",
+            resource_type=resource_type,
+            date_unit=date_unit,
         )
 
-    @classmethod
+    @staticmethod
     def not_in_the_last(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         quantity: int,
         date_unit: FilterDateUnit,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> RelativeDateFilter:
         """Create a relative date exclusion filter (not in the last N units).
 
         Args:
@@ -8639,24 +9286,23 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        return cls(
-            _property=property,
-            _operator="was not in the",
-            _value=quantity,
-            _property_type="datetime",
-            _resource_type=resource_type,
-            _date_unit=date_unit,
+        return RelativeDateFilter(
+            property=property,
+            operator="was not in the",
+            value=quantity,
+            property_type="datetime",
+            resource_type=resource_type,
+            date_unit=date_unit,
         )
 
-    @classmethod
+    @staticmethod
     def date_between(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         from_date: str,
         to_date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> DateRangeFilter:
         """Create a date range filter (between two dates, inclusive).
 
         Args:
@@ -8672,23 +9318,22 @@ class Filter:
             ValueError: If dates are not valid YYYY-MM-DD or
                 from_date is after to_date.
         """
-        return cls(
-            _property=property,
-            _operator="was between",
-            _value=[from_date, to_date],
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return DateRangeFilter(
+            property=property,
+            operator="was between",
+            value=[from_date, to_date],
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def date_not_between(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         from_date: str,
         to_date: str,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> DateRangeFilter:
         """Create a date exclusion range filter (not between two dates).
 
         Args:
@@ -8706,26 +9351,25 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
+            f = FilterFactory.date_not_between("created", "2024-01-01", "2024-06-30")
             ```
         """
-        return cls(
-            _property=property,
-            _operator="was not between",
-            _value=[from_date, to_date],
-            _property_type="datetime",
-            _resource_type=resource_type,
+        return DateRangeFilter(
+            property=property,
+            operator="was not between",
+            value=[from_date, to_date],
+            property_type="datetime",
+            resource_type=resource_type,
         )
 
-    @classmethod
+    @staticmethod
     def in_the_next(
-        cls,
         property: str | CustomPropertyRef | InlineCustomProperty,
         quantity: int,
         date_unit: FilterDateUnit,
         *,
         resource_type: Literal["events", "people"] = "events",
-    ) -> Filter:
+    ) -> RelativeDateFilter:
         """Create a relative date filter (in the next N units).
 
         Args:
@@ -8743,29 +9387,28 @@ class Filter:
 
         Example:
             ```python
-            f = Filter.in_the_next("expires", 7, "day")
+            f = FilterFactory.in_the_next("expires", 7, "day")
             ```
         """
-        return cls(
-            _property=property,
-            _operator="was in the next",
-            _value=quantity,
-            _property_type="datetime",
-            _resource_type=resource_type,
-            _date_unit=date_unit,
+        return RelativeDateFilter(
+            property=property,
+            operator="was in the next",
+            value=quantity,
+            property_type="datetime",
+            resource_type=resource_type,
+            date_unit=date_unit,
         )
 
     # --- List-of-object subproperty filters ---
 
-    @classmethod
+    @staticmethod
     def list_contains(
-        cls,
         property: str,
         *item_filters: Filter,
         quantifier: Literal["any", "all"] = "any",
         resource_type: Literal["events", "people"] = "events",
         **equals: str | list[str],
-    ) -> Filter:
+    ) -> CompoundFilter:
         """Match events whose list-of-object property contains items satisfying inner conditions.
 
         Used to filter on subproperties of objects nested inside a list
@@ -8778,11 +9421,11 @@ class Filter:
         Two ways to specify inner conditions:
 
         - **Keyword shorthand** for the common equality case:
-          ``Filter.list_contains("cart", Brand="nike", Category="hats")``.
+          ``FilterFactory.list_contains("cart", Brand="nike", Category="hats")``.
           Inner equality filters inherit the outer ``resource_type``.
-        - **Explicit Filter instances** for any wire-format operator:
-          ``Filter.list_contains("cart", Filter.equals("Brand", "nike"),
-          Filter.greater_than("Price", 50))``. Each inner Filter carries
+        - **Explicit Filter instances** for any payload-format operator:
+          ``FilterFactory.list_contains("cart", FilterFactory.equals("Brand", "nike"),
+          FilterFactory.greater_than("Price", 50))``. Each inner Filter carries
           its own ``resource_type`` from its own factory call — pass
           ``resource_type=`` explicitly on each inner factory if you
           want them to match the outer.
@@ -8798,7 +9441,7 @@ class Filter:
                 ``"any"``.
             resource_type: Resource type. Default: ``"events"``.
             **equals: Keyword shorthand — each ``key=value`` becomes
-                ``Filter.equals(key, value, resource_type=resource_type)``.
+                ``FilterFactory.equals(key, value, resource_type=resource_type)``.
                 Mutually exclusive with ``*item_filters``. Values must
                 be ``str`` or ``list[str]``; keys must be non-empty.
 
@@ -8813,9 +9456,9 @@ class Filter:
                 conditions are given, or if any inner filter is itself
                 a ``list_contains`` (nesting is not supported).
             TypeError: If a ``**equals`` value is not ``str`` or
-                ``list[str]`` (the wire format only supports string
+                ``list[str]`` (the payload format only supports string
                 equality; numeric/boolean comparisons require explicit
-                ``Filter.equals(...)`` / ``Filter.greater_than(...)``
+                ``FilterFactory.equals(...)`` / ``FilterFactory.greater_than(...)``
                 positional inner filters).
 
         Example:
@@ -8823,60 +9466,65 @@ class Filter:
             from mixpanel_headless import Filter
 
             # Cart contains a nike-branded hat
-            f1 = Filter.list_contains("cart", Brand="nike", Category="hats")
+            f1 = FilterFactory.list_contains("cart", Brand="nike", Category="hats")
 
             # Every cart item costs more than $50
-            f2 = Filter.list_contains(
+            f2 = FilterFactory.list_contains(
                 "cart",
-                Filter.greater_than("Price", 50),
+                FilterFactory.greater_than("Price", 50),
                 quantifier="all",
             )
             ```
         """
         if item_filters and equals:
             raise ValueError(
-                "Filter.list_contains: pass either positional Filter instances "
+                "FilterFactory.list_contains: pass either positional Filter instances "
                 "OR keyword equals shorthand, not both"
             )
         if quantifier not in ("any", "all"):
             raise ValueError(
-                f"Filter.list_contains quantifier must be 'any' or 'all', "
+                f"FilterFactory.list_contains quantifier must be 'any' or 'all', "
                 f"got {quantifier!r}"
             )
         for k, v in equals.items():
             if not k.strip():
                 raise ValueError(
-                    "Filter.list_contains: kwarg keys must be non-empty strings"
+                    "FilterFactory.list_contains: kwarg keys must be non-empty strings"
                 )
             if not isinstance(v, (str, list)):
                 raise TypeError(
-                    f"Filter.list_contains kwarg {k!r}: value must be str or "
+                    f"FilterFactory.list_contains kwarg {k!r}: value must be str or "
                     f"list[str], got {type(v).__name__}"
                 )
         sub_filters: tuple[Filter, ...] = (
             tuple(item_filters)
             if item_filters
             else tuple(
-                cls.equals(k, v, resource_type=resource_type) for k, v in equals.items()
+                FilterFactory.equals(k, v, resource_type=resource_type)
+                for k, v in equals.items()
             )
         )
         if not sub_filters:
             raise ValueError(
-                "Filter.list_contains requires at least one inner condition"
+                "FilterFactory.list_contains requires at least one inner condition"
             )
         for sub in sub_filters:
-            if sub._operator == "list_contains":
+            if sub.operator == "list_contains":
                 raise ValueError(
-                    "Filter.list_contains does not support nested list_contains filters"
+                    "FilterFactory.list_contains does not support nested list_contains filters"
                 )
-        return cls(
-            _property=property,
-            _operator="list_contains",
-            _value=None,
-            _property_type="object",
-            _resource_type=resource_type,
-            _list_item_filters=sub_filters,
-            _list_item_quantifier=quantifier,
+        # The loop above establishes what ``AtomicFilter`` encodes —
+        # no member is a ``CompoundFilter`` — but mypy cannot carry
+        # that through a tuple, and the parameter stays the ergonomic
+        # ``Filter`` so callers can pass any factory's result.
+        return CompoundFilter(
+            property=property,
+            operator="list_contains",
+            value=None,
+            property_type="object",
+            resource_type=resource_type,
+            list_item_filters=cast("tuple[AtomicFilter, ...]", sub_filters),
+            list_item_quantifier=quantifier,
         )
 
 
@@ -8972,7 +9620,7 @@ class GroupBy:
     """Data type of the property. One of the four scalar types.
 
     Note: list-item breakdowns set ``_list_item_mode`` instead — the
-    wire builder hardcodes ``propertyType: "object"`` for that branch
+    payload builder hardcodes ``propertyType: "object"`` for that branch
     independently of this field.
     """
 
@@ -9144,7 +9792,7 @@ _FILTER_TO_SELECTOR_SUPPORTED: frozenset[str] = frozenset(
         "is between",
     }
 )
-"""Set of ``Filter._operator`` values accepted by ``_build_event_selector``.
+"""Set of ``Filter.operator`` values accepted by ``_build_event_selector``.
 
 These operators are emitted verbatim in the Insights bookmark filter
 format (``filterOperator`` key) — no mapping is needed because the
@@ -9174,7 +9822,7 @@ def _validate_cohort_date(date_str: str) -> None:
 
 
 def _build_event_selector(
-    filters: Filter | list[Filter],
+    filters: Filter | Sequence[Filter],
 ) -> dict[str, Any]:
     """Convert Filter objects to an event selector expression tree.
 
@@ -9195,22 +9843,22 @@ def _build_event_selector(
     Raises:
         ValueError: If a filter uses an unsupported operator.
     """
-    filter_list = [filters] if isinstance(filters, Filter) else filters
+    filter_list = [filters] if isinstance(filters, AbstractFilter) else filters
     children: list[dict[str, Any]] = []
     for f in filter_list:
-        if f._operator not in _FILTER_TO_SELECTOR_SUPPORTED:
+        if f.operator not in _FILTER_TO_SELECTOR_SUPPORTED:
             supported = ", ".join(sorted(_FILTER_TO_SELECTOR_SUPPORTED))
             msg = (
-                f"unsupported filter operator for cohort selector: {f._operator!r}. "
+                f"unsupported filter operator for cohort selector: {f.operator!r}. "
                 f"Supported operators: {supported}"
             )
             raise ValueError(msg)
-        prop = f._property
+        prop = f.property
         node: dict[str, Any] = {
-            "resourceType": f._resource_type,
-            "filterType": f._property_type,
-            "defaultType": f._property_type,
-            "filterOperator": f._operator,
+            "resourceType": f.resource_type,
+            "filterType": f.property_type,
+            "defaultType": f.property_type,
+            "filterOperator": f.operator,
         }
         if isinstance(prop, CustomPropertyRef):
             node["customPropertyId"] = prop.id
@@ -9219,7 +9867,7 @@ def _build_event_selector(
             effective_type = (
                 prop.property_type
                 if prop.property_type is not None
-                else f._property_type
+                else f.property_type
             )
             node["customProperty"] = {
                 "displayFormula": prop.formula,
@@ -9242,8 +9890,8 @@ def _build_event_selector(
             node["resourceType"] = prop.resource_type
         else:
             node["value"] = prop
-        if f._value is not None:
-            node["filterValue"] = f._value
+        if f.value is not None:
+            node["filterValue"] = f.value
         children.append(node)
     return {"operator": "and", "children": children}
 
@@ -9293,7 +9941,7 @@ class CohortCriteria:
         within_months: int | None = None,
         from_date: str | None = None,
         to_date: str | None = None,
-        where: Filter | list[Filter] | None = None,
+        where: Filter | Sequence[Filter] | None = None,
         aggregation: CohortAggregationType | None = None,
         aggregation_property: str | None = None,
     ) -> CohortCriteria:
@@ -9396,7 +10044,7 @@ class CohortCriteria:
             "selector": None,
         }
         if where is not None:
-            where_list = [where] if isinstance(where, Filter) else where
+            where_list = [where] if isinstance(where, AbstractFilter) else where
             if where_list:
                 event_selector["selector"] = _build_event_selector(where_list)
 
@@ -9996,7 +10644,7 @@ class PropertyCriterion(BaseModel):
         ``is_not_set`` with a real value almost certainly meant
         ``equals``, and silently discarding the operand would run a
         semantically different query than the caller wrote (and ship
-        the ignored operand into the wire selector). ``value`` stays a
+        the ignored operand into the payload selector). ``value`` stays a
         required field for the comparison operators, so the presence
         operators accept only the documented ``""`` sentinel.
 
@@ -10260,7 +10908,7 @@ class InlineCohort(BaseModel):
                 ),
             ],
         )
-        wire = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
+        payload = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
         ```
     """
 
@@ -10374,7 +11022,7 @@ _CohortIdOrHiddenDefinition = Annotated[
 """Saved cohort ID or inline definition, definition hidden from the schema.
 
 Accepts the same values as :data:`_CohortIdOrDefinition`; ``CohortMetric``
-accepts only an ID on the wire, so its definition alternative is
+accepts only an ID in the payload, so its definition alternative is
 ``SkipJsonSchema``.
 """
 
@@ -11061,7 +11709,7 @@ class FunnelStep:
         step2 = FunnelStep(
             "Purchase",
             label="High-Value Purchase",
-            filters=[Filter.greater_than("amount", 50)],
+            filters=[FilterFactory.greater_than("amount", 50)],
         )
 
         result = ws.query_funnel(FunnelQuery(steps=[step1, step2]))
@@ -11392,7 +12040,7 @@ class RetentionEvent:
         # Event with per-event filter
         born = RetentionEvent(
             "Signup",
-            filters=[Filter.equals("source", "organic")],
+            filters=[FilterFactory.equals("source", "organic")],
         )
 
         result = ws.query_retention(RetentionQuery(
@@ -11690,7 +12338,7 @@ class FlowStep:
             forward=5,
             reverse=3,
             label="Buy",
-            filters=[Filter.equals("country", "US")],
+            filters=[FilterFactory.equals("country", "US")],
             filters_combinator="all",
         )
 
@@ -13519,7 +14167,7 @@ class Target(BaseModel):
     """Local config name of the referenced account (must exist)."""
 
     project: Annotated[ProjectId, Field(min_length=1, pattern=r"^\d+$")]
-    """Numeric project ID (Mixpanel's wire format)."""
+    """Numeric project ID (Mixpanel's payload format)."""
 
     workspace: Annotated[WorkspaceId, Field(gt=0)] | None = None
     """Optional workspace ID (must be a positive integer when set);

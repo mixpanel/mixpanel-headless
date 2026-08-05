@@ -15,7 +15,11 @@ from typing import Any
 
 import pytest
 
-from mixpanel_headless.types import Filter, RetentionEvent, RetentionQueryResult
+from mixpanel_headless.types import (
+    FilterFactory,
+    RetentionEvent,
+    RetentionQueryResult,
+)
 
 # =============================================================================
 # T004: RetentionEvent
@@ -34,7 +38,7 @@ class TestRetentionEventConstruction:
 
     def test_construct_with_all_fields(self) -> None:
         """RetentionEvent with all fields preserves them."""
-        f = Filter.equals("country", "US")
+        f = FilterFactory.equals("country", "US")
         e = RetentionEvent("Signup", filters=[f], filters_combinator="any")
         assert e.event == "Signup"
         assert e.filters is not None
@@ -58,8 +62,8 @@ class TestRetentionEventConstruction:
 
     def test_filters_list_preserved(self) -> None:
         """Filters list contents are preserved."""
-        f1 = Filter.equals("country", "US")
-        f2 = Filter.equals("platform", "iOS")
+        f1 = FilterFactory.equals("country", "US")
+        f2 = FilterFactory.equals("platform", "iOS")
         e = RetentionEvent("Signup", filters=[f1, f2])
         assert e.filters is not None
         assert len(e.filters) == 2

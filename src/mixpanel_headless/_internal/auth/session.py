@@ -47,7 +47,7 @@ class Project(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: Annotated[ProjectId, Field(min_length=1, pattern=r"^\d+$")]
-    """Numeric project ID (Mixpanel's wire format is a digit string)."""
+    """Numeric project ID (Mixpanel's payload format is a digit string)."""
 
     name: str | None = None
     """Display name from ``/me``, when known."""

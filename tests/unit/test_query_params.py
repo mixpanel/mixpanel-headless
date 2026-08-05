@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless import Filter, Formula, GroupBy, Metric, Workspace
+from mixpanel_headless import FilterFactory, Formula, GroupBy, Metric, Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.bookmark_builders import build_filter_entry
@@ -332,8 +332,7 @@ class TestFilterParams:
     """Tests for filter params generation."""
 
     def test_string_filter_format(self, ws: Workspace) -> None:
-        """Filter.equals produces correct filter entry."""
-        from mixpanel_headless import Filter
+        """FilterFactory.equals produces correct filter entry."""
 
         params = ws._build_query_params(
             events=["Login"],
@@ -345,7 +344,7 @@ class TestFilterParams:
             last=30,
             unit="day",
             group_by=None,
-            where=[Filter.equals("country", "US")],
+            where=[FilterFactory.equals("country", "US")],
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -358,8 +357,7 @@ class TestFilterParams:
         assert f["filterType"] == "string"
 
     def test_numeric_filter_scalar_value(self, ws: Workspace) -> None:
-        """Filter.greater_than produces scalar filterValue."""
-        from mixpanel_headless import Filter
+        """FilterFactory.greater_than produces scalar filterValue."""
 
         params = ws._build_query_params(
             events=["Purchase"],
@@ -371,7 +369,7 @@ class TestFilterParams:
             last=30,
             unit="day",
             group_by=None,
-            where=[Filter.greater_than("age", 18)],
+            where=[FilterFactory.greater_than("age", 18)],
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -382,8 +380,7 @@ class TestFilterParams:
         assert f["filterType"] == "number"
 
     def test_contains_filter_plain_string(self, ws: Workspace) -> None:
-        """Filter.contains produces plain string filterValue."""
-        from mixpanel_headless import Filter
+        """FilterFactory.contains produces plain string filterValue."""
 
         params = ws._build_query_params(
             events=["Login"],
@@ -395,7 +392,7 @@ class TestFilterParams:
             last=30,
             unit="day",
             group_by=None,
-            where=[Filter.contains("browser", "Chrome")],
+            where=[FilterFactory.contains("browser", "Chrome")],
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -406,7 +403,6 @@ class TestFilterParams:
 
     def test_multiple_filters(self, ws: Workspace) -> None:
         """Multiple filters produce multiple entries."""
-        from mixpanel_headless import Filter
 
         params = ws._build_query_params(
             events=["Purchase"],
@@ -418,7 +414,10 @@ class TestFilterParams:
             last=30,
             unit="day",
             group_by=None,
-            where=[Filter.equals("country", "US"), Filter.greater_than("amount", 10)],
+            where=[
+                FilterFactory.equals("country", "US"),
+                FilterFactory.greater_than("amount", 10),
+            ],
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -449,8 +448,7 @@ class TestFilterParams:
     def test_list_contains_filter_through_build_query_params(
         self, ws: Workspace
     ) -> None:
-        """Filter.list_contains threads through _build_query_params end-to-end."""
-        from mixpanel_headless import Filter
+        """FilterFactory.list_contains threads through _build_query_params end-to-end."""
 
         params = ws._build_query_params(
             events=["Purchase Completed"],
@@ -462,7 +460,7 @@ class TestFilterParams:
             last=90,
             unit="day",
             group_by=None,
-            where=[Filter.list_contains("cart", Brand="nike", Category="hats")],
+            where=[FilterFactory.list_contains("cart", Brand="nike", Category="hats")],
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -909,10 +907,12 @@ class TestPerMetricFilters:
 
     def test_per_metric_filter_in_behavior(self, ws: Workspace) -> None:
         """Metric.filters appear in behavior.filters, not sections.filter."""
-        from mixpanel_headless import Filter, Metric
+        from mixpanel_headless import Metric
 
         params = ws._build_query_params(
-            events=[Metric("Purchase", filters=[Filter.equals("country", "US")])],
+            events=[
+                Metric("Purchase", filters=[FilterFactory.equals("country", "US")])
+            ],
             math="total",
             math_property=None,
             per_user=None,
@@ -939,10 +939,12 @@ class TestPerMetricFilters:
 
     def test_per_metric_filter_separate_from_global(self, ws: Workspace) -> None:
         """Per-metric filters and global where are in different locations."""
-        from mixpanel_headless import Filter, Metric
+        from mixpanel_headless import Metric
 
         params = ws._build_query_params(
-            events=[Metric("Purchase", filters=[Filter.equals("country", "US")])],
+            events=[
+                Metric("Purchase", filters=[FilterFactory.equals("country", "US")])
+            ],
             math="total",
             math_property=None,
             per_user=None,
@@ -951,7 +953,7 @@ class TestPerMetricFilters:
             last=30,
             unit="day",
             group_by=None,
-            where=Filter.greater_than("age", 18),
+            where=FilterFactory.greater_than("age", 18),
             formulas=[],
             rolling=None,
             cumulative=False,
@@ -1033,13 +1035,13 @@ class TestFiltersCombinatorParams:
 
     def test_any_combinator(self, ws: Workspace) -> None:
         """filters_combinator='any' emits filtersDeterminer='any'."""
-        from mixpanel_headless import Filter, Metric
+        from mixpanel_headless import Metric
 
         params = ws._build_query_params(
             events=[
                 Metric(
                     "Login",
-                    filters=[Filter.equals("$browser", "Chrome")],
+                    filters=[FilterFactory.equals("$browser", "Chrome")],
                     filters_combinator="any",
                 )
             ],
@@ -1216,7 +1218,7 @@ class TestBuildParams:
                 to_date="2024-01-31",
                 unit="week",
                 group_by=[GroupBy("country")],
-                where=[Filter.equals("region", "US")],
+                where=[FilterFactory.equals("region", "US")],
                 formula="A + B",
                 formula_label="Combined",
                 mode="total",
@@ -1265,7 +1267,7 @@ class TestDateFilterParams:
 
     def test_absolute_date_omits_date_unit(self) -> None:
         """Absolute date filter (on) omits filterDateUnit."""
-        entry = build_filter_entry(Filter.on("created", "2024-06-15"))
+        entry = build_filter_entry(FilterFactory.on("created", "2024-06-15"))
         assert entry["filterType"] == "datetime"
         assert entry["filterOperator"] == "was on"
         assert entry["filterValue"] == "2024-06-15"
@@ -1273,7 +1275,7 @@ class TestDateFilterParams:
 
     def test_relative_date_includes_date_unit(self) -> None:
         """Relative date filter (in_the_last) includes filterDateUnit."""
-        entry = build_filter_entry(Filter.in_the_last("created", 7, "day"))
+        entry = build_filter_entry(FilterFactory.in_the_last("created", 7, "day"))
         assert entry["filterDateUnit"] == "day"
         assert entry["filterValue"] == 7
         assert entry["filterType"] == "datetime"
@@ -1281,7 +1283,7 @@ class TestDateFilterParams:
     def test_date_between_value_is_list(self) -> None:
         """Date between filter value is a two-element list."""
         entry = build_filter_entry(
-            Filter.date_between("created", "2024-01-01", "2024-06-30")
+            FilterFactory.date_between("created", "2024-01-01", "2024-06-30")
         )
         assert entry["filterValue"] == ["2024-01-01", "2024-06-30"]
         assert entry["filterOperator"] == "was between"
@@ -1289,7 +1291,7 @@ class TestDateFilterParams:
 
     def test_existing_filters_unaffected(self) -> None:
         """Non-date filters still omit filterDateUnit (backward compat)."""
-        entry = build_filter_entry(Filter.equals("country", "US"))
+        entry = build_filter_entry(FilterFactory.equals("country", "US"))
         assert "filterDateUnit" not in entry
 
     def test_date_filter_in_where_clause(self, ws: Workspace) -> None:
@@ -1297,7 +1299,7 @@ class TestDateFilterParams:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.in_the_last("created", 7, "day")],
+                where=[FilterFactory.in_the_last("created", 7, "day")],
             )
         )
         filt = params["sections"]["filter"][0]
@@ -1305,21 +1307,21 @@ class TestDateFilterParams:
         assert filt["filterType"] == "datetime"
 
     def test_before_filter_params(self) -> None:
-        """Filter.before() produces correct bookmark entry."""
-        entry = build_filter_entry(Filter.before("created", "2024-01-01"))
+        """FilterFactory.before() produces correct bookmark entry."""
+        entry = build_filter_entry(FilterFactory.before("created", "2024-01-01"))
         assert entry["filterOperator"] == "was before"
         assert entry["filterValue"] == "2024-01-01"
         assert entry["filterType"] == "datetime"
 
     def test_since_filter_params(self) -> None:
-        """Filter.since() produces correct bookmark entry."""
-        entry = build_filter_entry(Filter.since("created", "2024-01-01"))
+        """FilterFactory.since() produces correct bookmark entry."""
+        entry = build_filter_entry(FilterFactory.since("created", "2024-01-01"))
         assert entry["filterOperator"] == "was since"
         assert entry["filterValue"] == "2024-01-01"
 
     def test_not_in_the_last_includes_date_unit(self) -> None:
-        """Filter.not_in_the_last() includes filterDateUnit."""
-        entry = build_filter_entry(Filter.not_in_the_last("created", 30, "day"))
+        """FilterFactory.not_in_the_last() includes filterDateUnit."""
+        entry = build_filter_entry(FilterFactory.not_in_the_last("created", 30, "day"))
         assert entry["filterDateUnit"] == "day"
         assert entry["filterOperator"] == "was not in the"
 
@@ -1682,7 +1684,7 @@ class TestFrequencyFilterInBuildParams:
             InsightsQuery(
                 events=[Metric("Login")],
                 where=[
-                    Filter.equals("country", "US"),
+                    FilterFactory.equals("country", "US"),
                     FrequencyFilter("Login", value=5),
                 ],
             )
@@ -1697,7 +1699,7 @@ class TestFrequencyFilterInBuildParams:
         params = ws.build_params(
             InsightsQuery(
                 events=[Metric("Login")],
-                where=[Filter.equals("country", "US")],
+                where=[FilterFactory.equals("country", "US")],
             )
         )
         filt = params["sections"]["filter"]
