@@ -11,7 +11,7 @@ for cmd in python3 python; do
   if command -v "$cmd" &>/dev/null; then
     major=$("$cmd" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo 0)
     minor=$("$cmd" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo 0)
-    if [ "$major" -gt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -ge 10 ]); then
+    if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 10 ]; }; then
       version=$("$cmd" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")
       python_cmd="$cmd"
       echo "✓ Python $version ($cmd)"
@@ -116,7 +116,7 @@ try:
         print('  Service account:  mp account add team --type service_account --username sa_xxx --project 12345 --region us')
 except Exception as e:
     print(f'⚠ Could not read ~/.mp/config.toml: {e}')
-    print('  Run `mp login`, set env vars (service-account quad or OAuth triple), or run mp account add ...')
+    print('  Run mp login, set env vars (service-account quad or OAuth triple), or run mp account add ...')
 "
 
 # Cowork detection: check for bridge file
@@ -124,6 +124,9 @@ if [ -d "/sessions" ] || [ -n "${CLAUDE_COWORK:-}" ]; then
   echo ""
   echo "Cowork environment detected."
   BRIDGE_FOUND=""
+  # Single candidate path today; kept as a loop so more bridge locations can be
+  # appended. The one-iteration loop over a quoted word is intentional.
+  # shellcheck disable=SC2066
   for f in "$HOME/.claude/mixpanel/auth.json"; do
     if [ -f "$f" ]; then
       echo "✓ Auth bridge file found: $f"
