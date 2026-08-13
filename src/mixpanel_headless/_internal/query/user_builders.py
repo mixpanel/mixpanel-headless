@@ -109,16 +109,16 @@ def filter_to_selector(f: Filter) -> str:
     value = f._value
 
     if op == "equals":
-        if not isinstance(value, list):
-            raise ValueError(
-                f"Expected list for 'equals' operator, got {type(value).__name__}"
-            )
+        # A numeric/bool-typed equals leaves _value scalar (the bookmark and
+        # segfilter paths accept it); wrap it so the selector emits one term,
+        # like a string equals (already list-wrapped in __post_init__).
+        items = [value] if not isinstance(value, list) else value
         parts = [
             f"{prop} == {_format_value(v)}"
-            for v in value
+            for v in items
             if isinstance(v, (str, int, float))
         ]
-        dropped = [v for v in value if not isinstance(v, (str, int, float))]
+        dropped = [v for v in items if not isinstance(v, (str, int, float))]
         if dropped:
             logger.warning(
                 "Filter.equals() dropped %d non-scalar value(s): %r",
@@ -128,23 +128,22 @@ def filter_to_selector(f: Filter) -> str:
         if not parts:
             raise ValueError(
                 f"Filter.equals() produced no valid selector terms. "
-                f"All values were non-scalar: {value!r}"
+                f"All values were non-scalar: {items!r}"
             )
         if len(parts) > 1:
             return f"({' or '.join(parts)})"
         return parts[0]
 
     if op == "does not equal":
-        if not isinstance(value, list):
-            raise ValueError(
-                f"Expected list for 'does not equal' operator, got {type(value).__name__}"
-            )
+        # Wrap a scalar like the equals branch above (numeric/bool-typed
+        # not-equals leaves _value scalar; the selector still emits one term).
+        items = [value] if not isinstance(value, list) else value
         parts = [
             f"{prop} != {_format_value(v)}"
-            for v in value
+            for v in items
             if isinstance(v, (str, int, float))
         ]
-        dropped = [v for v in value if not isinstance(v, (str, int, float))]
+        dropped = [v for v in items if not isinstance(v, (str, int, float))]
         if dropped:
             logger.warning(
                 "Filter.not_equals() dropped %d non-scalar value(s): %r",
@@ -154,7 +153,7 @@ def filter_to_selector(f: Filter) -> str:
         if not parts:
             raise ValueError(
                 f"Filter.not_equals() produced no valid selector terms. "
-                f"All values were non-scalar: {value!r}"
+                f"All values were non-scalar: {items!r}"
             )
         # AND-combine: "!= a AND != b" means "not in [a, b]"
         # (contrast: equals uses OR — "== a OR == b" means "in [a, b]")

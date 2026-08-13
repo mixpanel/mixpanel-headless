@@ -31,6 +31,12 @@ from mixpanel_headless import (
     Workspace,
 )
 from mixpanel_headless.exceptions import BookmarkValidationError, QueryError
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 from mixpanel_headless.types import (
     FlowQueryResult,
     FunnelQueryResult,
@@ -201,7 +207,13 @@ class TestCohortFilterInsights:
     ) -> None:
         """Query with saved cohort filter succeeds and returns QueryResult."""
         cid, cname = real_cohort
-        result = ws.query(real_event, where=Filter.in_cohort(cid, cname), last=7)
+        result = ws.query(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname)],
+                last=7,
+            )
+        )
         assert isinstance(result, QueryResult)
 
     def test_query_with_not_in_cohort_filter(
@@ -212,7 +224,13 @@ class TestCohortFilterInsights:
     ) -> None:
         """Query with not_in_cohort filter succeeds."""
         cid, cname = real_cohort
-        result = ws.query(real_event, where=Filter.not_in_cohort(cid, cname), last=7)
+        result = ws.query(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.not_in_cohort(cid, cname)],
+                last=7,
+            )
+        )
         assert isinstance(result, QueryResult)
 
     def test_cohort_filter_changes_results(
@@ -223,9 +241,16 @@ class TestCohortFilterInsights:
     ) -> None:
         """Cohort filter should not error, and query executes successfully both ways."""
         cid, cname = real_cohort
-        unfiltered = ws.query(real_event, last=7, mode="total")
+        unfiltered = ws.query(
+            InsightsQuery(events=[Metric(real_event)], last=7, mode="total")
+        )
         filtered = ws.query(
-            real_event, where=Filter.in_cohort(cid, cname), last=7, mode="total"
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname)],
+                last=7,
+                mode="total",
+            )
         )
         # Both should succeed — values may or may not differ
         assert isinstance(unfiltered, QueryResult)
@@ -240,9 +265,11 @@ class TestCohortFilterInsights:
         """Mixed cohort + property filters in a single query."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -254,9 +281,11 @@ class TestCohortFilterInsights:
     ) -> None:
         """Inline CohortDefinition works in cohort filter without saving."""
         result = ws.query(
-            real_event,
-            where=Filter.in_cohort(inline_definition, name="Inline QA"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -279,9 +308,11 @@ class TestCohortFilterFunnels:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_funnel(
-            [e1, e2],
-            where=Filter.in_cohort(cid, cname),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                where=[Filter.in_cohort(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -294,9 +325,11 @@ class TestCohortFilterFunnels:
         """Funnel with inline CohortDefinition filter."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            where=Filter.in_cohort(inline_definition, name="Inline QA"),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -310,9 +343,11 @@ class TestCohortFilterFunnels:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_funnel(
-            [e1, e2],
-            where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                where=[Filter.in_cohort(cid, cname), Filter.is_set("$browser")],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -335,10 +370,12 @@ class TestCohortFilterRetention:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_retention(
-            e1,
-            e2,
-            where=Filter.in_cohort(cid, cname),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                where=[Filter.in_cohort(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -351,10 +388,12 @@ class TestCohortFilterRetention:
         """Retention with inline CohortDefinition filter."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            where=Filter.in_cohort(inline_definition, name="Inline QA"),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -368,10 +407,12 @@ class TestCohortFilterRetention:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_retention(
-            e1,
-            e2,
-            where=Filter.not_in_cohort(cid, cname),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                where=[Filter.not_in_cohort(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -393,9 +434,11 @@ class TestCohortFilterFlows:
         """Flow with cohort filter succeeds."""
         cid, cname = real_cohort
         result = ws.query_flow(
-            real_event,
-            where=Filter.in_cohort(cid, cname),
-            last=30,
+            FlowQuery(
+                event=real_event,
+                where=[Filter.in_cohort(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, FlowQueryResult)
 
@@ -408,9 +451,11 @@ class TestCohortFilterFlows:
         """Flow with negated cohort filter."""
         cid, cname = real_cohort
         result = ws.query_flow(
-            real_event,
-            where=Filter.not_in_cohort(cid, cname),
-            last=30,
+            FlowQuery(
+                event=real_event,
+                where=[Filter.not_in_cohort(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, FlowQueryResult)
 
@@ -422,24 +467,33 @@ class TestCohortFilterFlows:
     ) -> None:
         """Flow with inline CohortDefinition filter."""
         result = ws.query_flow(
-            real_event,
-            where=Filter.in_cohort(inline_definition, name="Inline QA"),
-            last=30,
+            FlowQuery(
+                event=real_event,
+                where=[Filter.in_cohort(inline_definition, name="Inline QA")],
+                last=30,
+            )
         )
         assert isinstance(result, FlowQueryResult)
 
-    def test_flow_non_cohort_filter_rejected(
+    def test_flow_property_filter_supported(
         self,
         ws: Workspace,
         real_event: str,
     ) -> None:
-        """Non-cohort filter in flow where= raises ValueError (client-side)."""
-        with pytest.raises(ValueError, match="query_flow where= only accepts cohort"):
-            ws.query_flow(
-                real_event,
-                where=Filter.equals("$browser", "Chrome"),
+        """Property filters in flow where= build flat where entries and run.
+
+        The pre-R2 client rejected non-cohort flow filters wholesale;
+        the flow builder now emits them as flat ``where`` entries, so
+        this pins the supported behavior end-to-end against the live API.
+        """
+        result = ws.query_flow(
+            FlowQuery(
+                event=real_event,
+                where=[Filter.equals("$browser", "Chrome")],
                 last=7,
             )
+        )
+        assert isinstance(result, FlowQueryResult)
 
 
 # =============================================================================
@@ -459,9 +513,11 @@ class TestCohortBreakdownInsights:
         """Breakdown by saved cohort succeeds."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            group_by=CohortBreakdown(cid, cname),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid, cname)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
         # Series should have cohort segment keys
@@ -476,9 +532,11 @@ class TestCohortBreakdownInsights:
         """Default include_negated=True produces 'In' and 'Not In' segments."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            group_by=CohortBreakdown(cid, cname, include_negated=True),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid, cname, include_negated=True)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
         # Series has 1 top-level metric key; segments are nested inside
@@ -497,9 +555,11 @@ class TestCohortBreakdownInsights:
         """include_negated=False produces only 'In' segment."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            group_by=CohortBreakdown(cid, cname, include_negated=False),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid, cname, include_negated=False)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -511,9 +571,11 @@ class TestCohortBreakdownInsights:
     ) -> None:
         """Breakdown by inline CohortDefinition."""
         result = ws.query(
-            real_event,
-            group_by=CohortBreakdown(inline_definition, name="Inline QA"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(inline_definition, name="Inline QA")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -526,9 +588,11 @@ class TestCohortBreakdownInsights:
         """CohortBreakdown + property GroupBy in same insights query."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -551,9 +615,11 @@ class TestCohortBreakdownFunnels:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_funnel(
-            [e1, e2],
-            group_by=CohortBreakdown(cid, cname),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                group_by=[CohortBreakdown(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -566,9 +632,11 @@ class TestCohortBreakdownFunnels:
         """Funnel with inline CohortDefinition breakdown."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            group_by=CohortBreakdown(inline_definition, name="Inline QA"),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                group_by=[CohortBreakdown(inline_definition, name="Inline QA")],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -591,10 +659,12 @@ class TestCohortBreakdownRetention:
         e1, e2 = real_events_pair
         cid, cname = real_cohort
         result = ws.query_retention(
-            e1,
-            e2,
-            group_by=CohortBreakdown(cid, cname),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                group_by=[CohortBreakdown(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -610,10 +680,15 @@ class TestCohortBreakdownRetention:
         cid1, cname1 = real_cohort
         cid2, cname2 = second_cohort
         result = ws.query_retention(
-            e1,
-            e2,
-            group_by=[CohortBreakdown(cid1, cname1), CohortBreakdown(cid2, cname2)],
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                group_by=[
+                    CohortBreakdown(cid1, cname1),
+                    CohortBreakdown(cid2, cname2),
+                ],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -629,9 +704,11 @@ class TestCohortBreakdownRetention:
         ):
             ws = Workspace(account="p8")
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
+                )
             )
 
     def test_retention_breakdown_mixed_with_string_rejected(
@@ -646,9 +723,11 @@ class TestCohortBreakdownRetention:
         ):
             ws = Workspace(account="p8")
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(cid, cname), "$browser"],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(cid, cname), GroupBy("$browser")],
+                )
             )
 
 
@@ -667,7 +746,7 @@ class TestCohortMetricInsights:
     ) -> None:
         """CohortMetric with saved cohort returns time series."""
         cid, cname = real_cohort
-        result = ws.query(CohortMetric(cid, cname), last=30)
+        result = ws.query(InsightsQuery(events=[CohortMetric(cid, cname)], last=30))
         assert isinstance(result, QueryResult)
         assert len(result.series) > 0
 
@@ -691,8 +770,10 @@ class TestCohortMetricInsights:
         """CohortMetric alongside regular Metric."""
         cid, cname = real_cohort
         result = ws.query(
-            [Metric(real_event, math="total"), CohortMetric(cid, cname)],
-            last=30,
+            InsightsQuery(
+                events=[Metric(real_event, math="total"), CohortMetric(cid, cname)],
+                last=30,
+            )
         )
         assert isinstance(result, QueryResult)
         assert len(result.series) >= 2
@@ -706,10 +787,12 @@ class TestCohortMetricInsights:
         """CohortMetric with formula referencing it."""
         cid, cname = real_cohort
         result = ws.query(
-            [Metric(real_event, math="unique"), CohortMetric(cid, cname)],
-            formula="(B / A) * 100",
-            formula_label="Cohort % of Total",
-            last=30,
+            InsightsQuery(
+                events=[Metric(real_event, math="unique"), CohortMetric(cid, cname)],
+                formula="(B / A) * 100",
+                formula_label="Cohort % of Total",
+                last=30,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -720,7 +803,13 @@ class TestCohortMetricInsights:
     ) -> None:
         """CohortMetric with weekly time unit."""
         cid, cname = real_cohort
-        result = ws.query(CohortMetric(cid, cname), last=90, unit="week")
+        result = ws.query(
+            InsightsQuery(
+                events=[CohortMetric(cid, cname)],
+                last=90,
+                unit="week",
+            )
+        )
         assert isinstance(result, QueryResult)
 
     def test_cohort_metric_total_mode(
@@ -730,7 +819,13 @@ class TestCohortMetricInsights:
     ) -> None:
         """CohortMetric with total mode returns single aggregate."""
         cid, cname = real_cohort
-        result = ws.query(CohortMetric(cid, cname), last=30, mode="total")
+        result = ws.query(
+            InsightsQuery(
+                events=[CohortMetric(cid, cname)],
+                last=30,
+                mode="total",
+            )
+        )
         assert isinstance(result, QueryResult)
 
 
@@ -753,10 +848,12 @@ class TestCrossCuttingCombinations:
         cid1, cname1 = real_cohort
         cid2, cname2 = second_cohort
         result = ws.query(
-            real_event,
-            where=Filter.in_cohort(cid1, cname1),
-            group_by=CohortBreakdown(cid2, cname2),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid1, cname1)],
+                group_by=[CohortBreakdown(cid2, cname2)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -770,9 +867,11 @@ class TestCrossCuttingCombinations:
         cid1, cname1 = real_cohort
         cid2, cname2 = second_cohort
         result = ws.query(
-            CohortMetric(cid1, cname1),
-            where=Filter.in_cohort(cid2, cname2),
-            last=30,
+            InsightsQuery(
+                events=[CohortMetric(cid1, cname1)],
+                where=[Filter.in_cohort(cid2, cname2)],
+                last=30,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -785,10 +884,12 @@ class TestCrossCuttingCombinations:
         """Same cohort ID used in both filter and breakdown."""
         cid, cname = real_cohort
         result = ws.query(
-            real_event,
-            where=Filter.in_cohort(cid, cname),
-            group_by=CohortBreakdown(cid, cname),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname)],
+                group_by=[CohortBreakdown(cid, cname)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -811,9 +912,11 @@ class TestErrorHandling:
         # This test discovers the actual behavior.
         try:
             result = ws.query(
-                real_event,
-                where=Filter.in_cohort(999999999, "Nonexistent"),
-                last=7,
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[Filter.in_cohort(999999999, "Nonexistent")],
+                    last=7,
+                )
             )
             # If no error, query succeeded (API may ignore bad cohort)
             assert isinstance(result, QueryResult)
@@ -829,9 +932,11 @@ class TestErrorHandling:
         """Nonexistent cohort in breakdown produces API error or empty segments."""
         try:
             result = ws.query(
-                real_event,
-                group_by=CohortBreakdown(999999999, "Nonexistent"),
-                last=7,
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[CohortBreakdown(999999999, "Nonexistent")],
+                    last=7,
+                )
             )
             assert isinstance(result, QueryResult)
         except (QueryError, Exception):
@@ -843,7 +948,12 @@ class TestErrorHandling:
     ) -> None:
         """Nonexistent cohort in CohortMetric produces API error or zeros."""
         try:
-            result = ws.query(CohortMetric(999999999, "Nonexistent"), last=7)
+            result = ws.query(
+                InsightsQuery(
+                    events=[CohortMetric(999999999, "Nonexistent")],
+                    last=7,
+                )
+            )
             assert isinstance(result, QueryResult)
         except (QueryError, Exception):
             pass  # Expected
@@ -880,12 +990,14 @@ class TestEdgeCases:
         # May succeed (AND logic) or error — we discover the behavior
         try:
             result = ws.query(
-                real_event,
-                where=[
-                    Filter.in_cohort(cid1, cname1),
-                    Filter.in_cohort(cid2, cname2),
-                ],
-                last=7,
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[
+                        Filter.in_cohort(cid1, cname1),
+                        Filter.in_cohort(cid2, cname2),
+                    ],
+                    last=7,
+                )
             )
             assert isinstance(result, QueryResult)
         except (QueryError, Exception):
@@ -900,9 +1012,11 @@ class TestEdgeCases:
         """CohortBreakdown(id) with name=None should work."""
         cid, _ = real_cohort
         result = ws.query(
-            real_event,
-            group_by=CohortBreakdown(cid),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -919,9 +1033,11 @@ class TestEdgeCases:
         )
         try:
             result = ws.query(
-                real_event,
-                where=Filter.in_cohort(bad_def, name="Bad Def"),
-                last=7,
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[Filter.in_cohort(bad_def, name="Bad Def")],
+                    last=7,
+                )
             )
             # May succeed with empty/zero results
             assert isinstance(result, QueryResult)
@@ -937,10 +1053,12 @@ class TestEdgeCases:
         """build_params output can be submitted as a saved bookmark."""
         cid, cname = real_cohort
         params = ws.build_params(
-            real_event,
-            where=Filter.in_cohort(cid, cname),
-            group_by=CohortBreakdown(cid, cname),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname)],
+                group_by=[CohortBreakdown(cid, cname)],
+                last=7,
+            )
         )
         # Verify structure is valid
         assert "sections" in params
@@ -964,7 +1082,13 @@ class TestBuildMethods:
     ) -> None:
         """build_params produces correct filter structure for cohort."""
         cid, cname = real_cohort
-        params = ws.build_params(real_event, where=Filter.in_cohort(cid, cname), last=7)
+        params = ws.build_params(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.in_cohort(cid, cname)],
+                last=7,
+            )
+        )
         filters = params["sections"]["filter"]
         assert len(filters) == 1
         assert filters[0]["value"] == "$cohorts"
@@ -980,7 +1104,11 @@ class TestBuildMethods:
         """build_params produces correct group structure for CohortBreakdown."""
         cid, cname = real_cohort
         params = ws.build_params(
-            real_event, group_by=CohortBreakdown(cid, cname), last=7
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[CohortBreakdown(cid, cname)],
+                last=7,
+            )
         )
         groups = params["sections"]["group"]
         assert len(groups) == 1
@@ -994,7 +1122,9 @@ class TestBuildMethods:
     ) -> None:
         """build_params produces correct show structure for CohortMetric."""
         cid, cname = real_cohort
-        params = ws.build_params(CohortMetric(cid, cname), last=7)
+        params = ws.build_params(
+            InsightsQuery(events=[CohortMetric(cid, cname)], last=7)
+        )
         show = params["sections"]["show"]
         assert len(show) == 1
         assert show[0]["behavior"]["type"] == "cohort"
@@ -1011,7 +1141,11 @@ class TestBuildMethods:
         """build_flow_params includes filter_by_cohort key."""
         cid, cname = real_cohort
         params = ws.build_flow_params(
-            real_event, where=Filter.in_cohort(cid, cname), last=7
+            FlowQuery(
+                event=real_event,
+                where=[Filter.in_cohort(cid, cname)],
+                last=7,
+            )
         )
         assert "filter_by_cohort" in params
         assert params["filter_by_cohort"]["id"] == cid
@@ -1032,7 +1166,7 @@ class TestBackwardCompatibility:
         real_event: str,
     ) -> None:
         """Basic query without cohort params still works."""
-        result = ws.query(real_event, last=7)
+        result = ws.query(InsightsQuery(events=[Metric(real_event)], last=7))
         assert isinstance(result, QueryResult)
 
     def test_existing_funnel_unchanged(
@@ -1042,7 +1176,7 @@ class TestBackwardCompatibility:
     ) -> None:
         """Basic funnel without cohort params still works."""
         e1, e2 = real_events_pair
-        result = ws.query_funnel([e1, e2], last=30)
+        result = ws.query_funnel(FunnelQuery(steps=[e1, e2], last=30))
         assert isinstance(result, FunnelQueryResult)
 
     def test_existing_flow_unchanged(
@@ -1051,7 +1185,7 @@ class TestBackwardCompatibility:
         real_event: str,
     ) -> None:
         """Basic flow without cohort params still works."""
-        result = ws.query_flow(real_event, last=30)
+        result = ws.query_flow(FlowQuery(event=real_event, last=30))
         assert isinstance(result, FlowQueryResult)
 
 
@@ -1070,7 +1204,7 @@ class TestDataIntegrity:
     ) -> None:
         """Cohort size values should always be >= 0."""
         cid, cname = real_cohort
-        result = ws.query(CohortMetric(cid, cname), last=7)
+        result = ws.query(InsightsQuery(events=[CohortMetric(cid, cname)], last=7))
         for _metric_name, values in result.series.items():
             if isinstance(values, dict):
                 for _date, val in values.items():
@@ -1085,12 +1219,14 @@ class TestDataIntegrity:
     ) -> None:
         """Same cohort filter query twice returns same results."""
         cid, cname = real_cohort
-        r1 = ws.query(
-            real_event, where=Filter.in_cohort(cid, cname), last=7, mode="total"
+        q = InsightsQuery(
+            events=[Metric(real_event)],
+            where=[Filter.in_cohort(cid, cname)],
+            last=7,
+            mode="total",
         )
-        r2 = ws.query(
-            real_event, where=Filter.in_cohort(cid, cname), last=7, mode="total"
-        )
+        r1 = ws.query(q)
+        r2 = ws.query(q)
         assert set(r1.series.keys()) == set(r2.series.keys())
 
     def test_cohort_metric_consistent_with_cohort_size(
@@ -1101,7 +1237,13 @@ class TestDataIntegrity:
         """CohortMetric latest value should be close to ws.get_cohort().size."""
         cid, cname = real_cohort
         cohort = ws.get_cohort(cid)
-        result = ws.query(CohortMetric(cid, cname), last=1, mode="total")
+        result = ws.query(
+            InsightsQuery(
+                events=[CohortMetric(cid, cname)],
+                last=1,
+                mode="total",
+            )
+        )
         # Just verify both succeed — exact match not guaranteed due to timing
         assert cohort.id == cid
         assert isinstance(result, QueryResult)

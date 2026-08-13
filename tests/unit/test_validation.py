@@ -324,8 +324,8 @@ class TestValidateQueryArgsLayer1:
         assert any(e.code == "V11_BUCKET_REQUIRES_SIZE" for e in errors)
 
     def test_v12_bucket_size_positive(self) -> None:
-        """V12: Non-positive bucket_size is rejected by GroupBy.__post_init__."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        """V12: Non-positive bucket_size is rejected at construction."""
+        with pytest.raises(ValueError, match="greater than 0"):
             GroupBy(
                 property="revenue",
                 property_type="number",

@@ -35,6 +35,7 @@ from mixpanel_headless.exceptions import (
     SignedURLExpiredError,
     UnsupportedReplayFormatError,
 )
+from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     Filter,
     ReplayEvent,
@@ -151,7 +152,7 @@ class ReplaysService:
         self,
         api_client: MixpanelAPIClient,
         *,
-        query_fn: Callable[..., Any] | None = None,
+        query_fn: Callable[[InsightsQuery], Any] | None = None,
         logger: logging.Logger | None = None,
         _async_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -203,19 +204,38 @@ class ReplaysService:
                 lacks ``sensitive_data_replay`` permission.
             APIError: Other 4xx (other than the sensitive-data 403) or
                 ``ServerError`` on 5xx.
+            MixpanelHeadlessError: The sign response doesn't match the
+                expected schema — a non-dict item, or a dict missing
+                ``replay_id``/``url``/``query_string``
+                (``code="SIGN_RESPONSE_SCHEMA"``).
         """
         signed_at = time.time()
         raw = self._api.sign_replays(replay_ids, env=env)
-        return [
-            SignedReplay(
-                replay_id=str(item["replay_id"]),
-                url=str(item["url"]),
-                query_string=str(item["query_string"]),
-                env=env,
-                signed_at=signed_at,
-            )
-            for item in raw
-        ]
+        results: list[SignedReplay] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise MixpanelHeadlessError(
+                    f"Sign response item is not an object: expected an "
+                    f"object with replay_id/url/query_string, got "
+                    f"{type(item).__name__}",
+                    code="SIGN_RESPONSE_SCHEMA",
+                )
+            try:
+                results.append(
+                    SignedReplay(
+                        replay_id=str(item["replay_id"]),
+                        url=str(item["url"]),
+                        query_string=str(item["query_string"]),
+                        env=env,
+                        signed_at=signed_at,
+                    )
+                )
+            except KeyError as exc:
+                raise MixpanelHeadlessError(
+                    f"Sign response missing key {exc} in item: {list(item.keys())}",
+                    code="SIGN_RESPONSE_SCHEMA",
+                ) from exc
+        return results
 
     # =========================================================================
     # Fetch / walk
@@ -345,6 +365,10 @@ class ReplaysService:
                     if not re_sign_on_expiry or re_signed_once:
                         raise self._build_expired_error(signed)
                     re_signed_once = True
+                    # Sync call inside async walker — sign() uses the sync
+                    # httpx.Client. Acceptable because re-sign is rare (once per
+                    # expired replay) and brief. A proper fix would require an
+                    # async sign path or run_in_executor.
                     fresh = self.sign([signed.replay_id], env=signed.env)
                     current_signed = fresh[0]
                     results = await self._fetch_batch(
@@ -467,6 +491,12 @@ class ReplaysService:
                     f"CDN file {file_num:04d} returned non-JSON: {exc}",
                     code="CDN_INVALID_RESPONSE",
                 ) from exc
+            if not isinstance(payload, list):
+                self._logger.warning(
+                    "CDN file %04d returned %s instead of list; treating as empty",
+                    file_num,
+                    type(payload).__name__,
+                )
             events = payload if isinstance(payload, list) else []
             return (200, events)
         if response.status_code in (403, 404):
@@ -552,9 +582,9 @@ class ReplaysService:
             )
 
         if distinct_id is not None:
-            where: Filter | list[Filter] = Filter.equals("$distinct_id", distinct_id)
+            where: list[Filter] = [Filter.equals("$distinct_id", distinct_id)]
         elif replay_ids:
-            where = Filter.equals("$mp_replay_id", list(replay_ids))
+            where = [Filter.equals("$mp_replay_id", list(replay_ids))]
         else:
             return []
 
@@ -577,13 +607,15 @@ class ReplaysService:
         # property is "$time" (the reserved event-time property); plain "time"
         # silently returns an empty series.
         result = self._query_fn(
-            "$mp_session_record",
-            group_by=["$mp_replay_id", "$mp_replay_retention_period"],
-            where=where,
-            math="min",
-            math_property="$time",
-            mode="table",
-            **date_kwargs,
+            InsightsQuery(
+                events=["$mp_session_record"],
+                group_by=["$mp_replay_id", "$mp_replay_retention_period"],
+                where=where,
+                math="min",
+                math_property="$time",
+                mode="table",
+                **date_kwargs,
+            )
         )
 
         project_id = int(self._api.project_id)
@@ -613,7 +645,7 @@ class ReplaysService:
             {metric: {replay_id: {retention: {"all": min_time_seconds}}}}
 
         The leaf is the per-replay minimum event time in unix SECONDS (from the
-        ``math="min"`` / ``math_property="time"`` aggregation);
+        ``math="min"`` / ``math_property="$time"`` aggregation);
         :func:`_to_unix_ms` up-converts it. Retention defaults to 30 with a
         :class:`UserWarning` when the property is absent, per error-messages.md §10.
 
@@ -740,11 +772,13 @@ class ReplaysService:
         else:
             date_kwargs = {"last": _EVENTS_DEFAULT_LOOKBACK_DAYS}
         result = self._query_fn(
-            "$all_events",
-            group_by=group_by,
-            where=where,
-            mode="table",
-            **date_kwargs,
+            InsightsQuery(
+                events=["$all_events"],
+                group_by=group_by,
+                where=where,
+                mode="table",
+                **date_kwargs,
+            )
         )
 
         # Parse result.series directly. The .df projection only flattens one
@@ -952,6 +986,7 @@ def _to_unix_ms(value: Any) -> int:
         ts = pd.Timestamp(value)
         return int(ts.value // 1_000_000)
     except (ValueError, TypeError, ImportError):
+        _logger.warning("_to_unix_ms: unparseable timestamp %r, defaulting to 0", value)
         return 0
 
 

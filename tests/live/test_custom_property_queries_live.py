@@ -26,6 +26,11 @@ from mixpanel_headless import (
 )
 from mixpanel_headless._internal.bookmark_builders import _build_composed_properties
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import (
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 from mixpanel_headless.types import (
     CustomProperty,
     FunnelQueryResult,
@@ -213,9 +218,11 @@ class TestInlineCustomPropertyGroupBy:
     ) -> None:
         """Numeric inline CP in group_by produces a valid QueryResult."""
         result = ws.query(
-            real_event,
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -224,9 +231,11 @@ class TestInlineCustomPropertyGroupBy:
     ) -> None:
         """String inline CP in group_by produces a valid QueryResult."""
         result = ws.query(
-            real_event,
-            group_by=GroupBy(property=string_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=string_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -243,9 +252,11 @@ class TestInlineCustomPropertyGroupBy:
             property_type="number",
         )
         params = ws.build_params(
-            real_event,
-            group_by=GroupBy(property=icp, property_type="string"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=icp, property_type="string")],
+                last=7,
+            )
         )
         group = params["sections"]["group"][0]
         # ICP's "number" overrides GroupBy's "string"
@@ -265,9 +276,11 @@ class TestInlineCustomPropertyGroupBy:
             property_type=None,
         )
         params = ws.build_params(
-            real_event,
-            group_by=GroupBy(property=icp, property_type="number"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=icp, property_type="number")],
+                last=7,
+            )
         )
         group = params["sections"]["group"][0]
         assert group["customProperty"]["propertyType"] == "number"
@@ -281,12 +294,14 @@ class TestInlineCustomPropertyGroupBy:
     ) -> None:
         """Two ICPs in same group_by list produce valid QueryResult."""
         result = ws.query(
-            real_event,
-            group_by=[
-                GroupBy(property=simple_inline_cp, property_type="number"),
-                GroupBy(property=string_inline_cp),
-            ],
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[
+                    GroupBy(property=simple_inline_cp, property_type="number"),
+                    GroupBy(property=string_inline_cp),
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -303,12 +318,16 @@ class TestCustomPropertyRefGroupBy:
     ) -> None:
         """Saved custom property ref in group_by produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            group_by=GroupBy(
-                property=CustomPropertyRef(saved_cp_id),
-                property_type=saved_cp_type,  # type: ignore[arg-type]
-            ),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    )
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -321,12 +340,16 @@ class TestCustomPropertyRefGroupBy:
     ) -> None:
         """build_params with ref produces customPropertyId in group entry."""
         params = ws.build_params(
-            real_event,
-            group_by=GroupBy(
-                property=CustomPropertyRef(saved_cp_id),
-                property_type=saved_cp_type,  # type: ignore[arg-type]
-            ),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    )
+                ],
+                last=7,
+            )
         )
         group = params["sections"]["group"][0]
         assert group["customPropertyId"] == saved_cp_id
@@ -346,9 +369,11 @@ class TestInlineCustomPropertyFilter:
     ) -> None:
         """is_set filter on inline CP produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            where=Filter.is_set(property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -357,9 +382,11 @@ class TestInlineCustomPropertyFilter:
     ) -> None:
         """greater_than filter on inline CP produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            where=Filter.greater_than(property=simple_inline_cp, value=0),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.greater_than(property=simple_inline_cp, value=0)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -368,9 +395,13 @@ class TestInlineCustomPropertyFilter:
     ) -> None:
         """between filter on inline CP produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            where=Filter.between(property=simple_inline_cp, min_val=0, max_val=999999),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[
+                    Filter.between(property=simple_inline_cp, min_val=0, max_val=999999)
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -379,9 +410,11 @@ class TestInlineCustomPropertyFilter:
     ) -> None:
         """equals filter on string inline CP produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            where=Filter.equals(property=string_inline_cp, value="Chrome"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.equals(property=string_inline_cp, value="Chrome")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -390,9 +423,11 @@ class TestInlineCustomPropertyFilter:
     ) -> None:
         """Filter with inline CP has customProperty key, no value/propertyName."""
         params = ws.build_params(
-            real_event,
-            where=Filter.is_set(property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=7,
+            )
         )
         f = params["sections"]["filter"][0]
         assert "customProperty" in f
@@ -408,9 +443,11 @@ class TestCustomPropertyRefFilter:
     ) -> None:
         """is_set filter on ref produces valid QueryResult."""
         result = ws.query(
-            real_event,
-            where=Filter.is_set(property=CustomPropertyRef(saved_cp_id)),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -419,9 +456,11 @@ class TestCustomPropertyRefFilter:
     ) -> None:
         """Filter with ref has customPropertyId, no value."""
         params = ws.build_params(
-            real_event,
-            where=Filter.is_set(property=CustomPropertyRef(saved_cp_id)),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                last=7,
+            )
         )
         f = params["sections"]["filter"][0]
         assert f["customPropertyId"] == saved_cp_id
@@ -441,8 +480,10 @@ class TestInlineCustomPropertyMetric:
     ) -> None:
         """average math on inline CP produces valid QueryResult."""
         result = ws.query(
-            Metric(real_event, math="average", property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -451,8 +492,10 @@ class TestInlineCustomPropertyMetric:
     ) -> None:
         """median math on inline CP produces valid QueryResult."""
         result = ws.query(
-            Metric(real_event, math="median", property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="median", property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -461,8 +504,10 @@ class TestInlineCustomPropertyMetric:
     ) -> None:
         """min math on inline CP produces valid QueryResult."""
         result = ws.query(
-            Metric(real_event, math="min", property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="min", property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -471,8 +516,10 @@ class TestInlineCustomPropertyMetric:
     ) -> None:
         """Measurement.property has customProperty dict with displayFormula."""
         params = ws.build_params(
-            Metric(real_event, math="average", property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=simple_inline_cp)],
+                last=7,
+            )
         )
         prop = params["sections"]["show"][0]["measurement"]["property"]
         assert "customProperty" in prop
@@ -487,12 +534,16 @@ class TestCustomPropertyRefMetric:
     ) -> None:
         """average math on ref produces valid QueryResult."""
         result = ws.query(
-            Metric(
-                real_event,
-                math="average",
-                property=CustomPropertyRef(saved_cp_id),
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        real_event,
+                        math="average",
+                        property=CustomPropertyRef(saved_cp_id),
+                    )
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -501,12 +552,16 @@ class TestCustomPropertyRefMetric:
     ) -> None:
         """Measurement.property has customPropertyId."""
         params = ws.build_params(
-            Metric(
-                real_event,
-                math="average",
-                property=CustomPropertyRef(saved_cp_id),
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        real_event,
+                        math="average",
+                        property=CustomPropertyRef(saved_cp_id),
+                    )
+                ],
+                last=7,
+            )
         )
         prop = params["sections"]["show"][0]["measurement"]["property"]
         assert prop["customPropertyId"] == saved_cp_id
@@ -529,9 +584,11 @@ class TestCustomPropertyFunnels:
         """ICP in funnel group_by produces valid FunnelQueryResult."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -544,9 +601,11 @@ class TestCustomPropertyFunnels:
         """ICP in funnel global filter — server rejects (known limitation)."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            where=Filter.is_set(property=simple_inline_cp),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -559,11 +618,13 @@ class TestCustomPropertyFunnels:
         """EDGE CASE #2: ICP in FunnelStep.filters (bypasses L1 validation)."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [
-                FunnelStep(e1, filters=[Filter.is_set(property=simple_inline_cp)]),
-                e2,
-            ],
-            last=30,
+            FunnelQuery(
+                steps=[
+                    FunnelStep(e1, filters=[Filter.is_set(property=simple_inline_cp)]),
+                    e2,
+                ],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -577,12 +638,16 @@ class TestCustomPropertyFunnels:
         """Ref in funnel group_by produces valid FunnelQueryResult."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            group_by=GroupBy(
-                property=CustomPropertyRef(saved_cp_id),
-                property_type=saved_cp_type,  # type: ignore[arg-type]
-            ),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                group_by=[
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    )
+                ],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -604,10 +669,12 @@ class TestCustomPropertyRetention:
         """ICP in retention group_by produces valid RetentionQueryResult."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -620,10 +687,12 @@ class TestCustomPropertyRetention:
         """ICP in retention global filter — server rejects (known limitation)."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            where=Filter.is_set(property=simple_inline_cp),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -637,13 +706,17 @@ class TestCustomPropertyRetention:
         """Ref in retention group_by produces valid RetentionQueryResult."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            group_by=GroupBy(
-                property=CustomPropertyRef(saved_cp_id),
-                property_type=saved_cp_type,  # type: ignore[arg-type]
-            ),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                group_by=[
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    )
+                ],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -656,10 +729,12 @@ class TestCustomPropertyRetention:
         """Ref in retention filter — server rejects (same bug as inline CP)."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            where=Filter.is_set(property=CustomPropertyRef(saved_cp_id)),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -677,11 +752,15 @@ class TestPerMetricFilterCustomProperty:
     ) -> None:
         """Per-metric filter with ICP works despite L1 validation gap."""
         result = ws.query(
-            Metric(
-                real_event,
-                filters=[Filter.is_set(property=simple_inline_cp)],
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        real_event,
+                        filters=[Filter.is_set(property=simple_inline_cp)],
+                    )
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -690,11 +769,17 @@ class TestPerMetricFilterCustomProperty:
     ) -> None:
         """Per-metric filter with ref works despite L1 validation gap."""
         result = ws.query(
-            Metric(
-                real_event,
-                filters=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
-            ),
-            last=7,
+            InsightsQuery(
+                events=[
+                    Metric(
+                        real_event,
+                        filters=[
+                            Filter.is_set(property=CustomPropertyRef(saved_cp_id))
+                        ],
+                    )
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -704,11 +789,15 @@ class TestPerMetricFilterCustomProperty:
         """CustomPropertyRef(0) in Metric.filters IS caught at L1 (gap closed)."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    real_event,
-                    filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                ),
-                last=7,
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            real_event,
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        )
+                    ],
+                    last=7,
+                )
             )
 
 
@@ -726,8 +815,10 @@ class TestInlineCustomPropertyNumericConstructor:
         """Single-input .numeric() works in a live query."""
         icp = InlineCustomProperty.numeric("A", A=real_numeric_property)
         result = ws.query(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -737,8 +828,10 @@ class TestInlineCustomPropertyNumericConstructor:
         """Formula with literal in .numeric() works."""
         icp = InlineCustomProperty.numeric("A * 2", A=real_numeric_property)
         result = ws.query(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -750,8 +843,10 @@ class TestInlineCustomPropertyNumericConstructor:
             "A + B", A=real_numeric_property, B=real_numeric_property
         )
         result = ws.query(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -769,10 +864,12 @@ class TestCustomPropertyEdgeCases:
     ) -> None:
         """Same ICP instance used in both filter and group_by."""
         result = ws.query(
-            real_event,
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            where=Filter.is_set(property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -781,9 +878,11 @@ class TestCustomPropertyEdgeCases:
     ) -> None:
         """Same ICP instance in Metric.property and GroupBy.property."""
         result = ws.query(
-            Metric(real_event, math="average", property=simple_inline_cp),
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=simple_inline_cp)],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -793,8 +892,10 @@ class TestCustomPropertyEdgeCases:
         """Formula with parentheses and division works."""
         icp = InlineCustomProperty.numeric("(A + A) / 2", A=real_numeric_property)
         result = ws.query(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -809,8 +910,10 @@ class TestCustomPropertyEdgeCases:
         )
         # Verify JSON shape: propertyType should be absent
         params = ws.build_params(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         cp_dict = params["sections"]["show"][0]["measurement"]["property"][
             "customProperty"
@@ -818,8 +921,10 @@ class TestCustomPropertyEdgeCases:
         assert "propertyType" not in cp_dict
         # But the live query may still work (server infers type)
         result = ws.query(
-            Metric(real_event, math="average", property=icp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=icp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -830,9 +935,11 @@ class TestCustomPropertyEdgeCases:
         # Server may return empty results or an error — document behavior
         try:
             result = ws.query(
-                real_event,
-                where=Filter.is_set(property=CustomPropertyRef(99999)),
-                last=7,
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[Filter.is_set(property=CustomPropertyRef(99999))],
+                    last=7,
+                )
             )
             assert isinstance(result, QueryResult)
         except Exception as exc:
@@ -849,15 +956,17 @@ class TestCustomPropertyEdgeCases:
     ) -> None:
         """Mixing ref + inline in same group_by list."""
         result = ws.query(
-            real_event,
-            group_by=[
-                GroupBy(property=simple_inline_cp, property_type="number"),
-                GroupBy(
-                    property=CustomPropertyRef(saved_cp_id),
-                    property_type=saved_cp_type,  # type: ignore[arg-type]
-                ),
-            ],
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[
+                    GroupBy(property=simple_inline_cp, property_type="number"),
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    ),
+                ],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -871,9 +980,11 @@ class TestCustomPropertyEdgeCases:
         # greater_than hard-codes _property_type="number" but string_inline_cp
         # has property_type=None. No validation catches this mismatch.
         params = ws.build_params(
-            real_event,
-            where=Filter.greater_than(property=string_inline_cp, value=5),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.greater_than(property=string_inline_cp, value=5)],
+                last=7,
+            )
         )
         # build_params succeeds — gap confirmed
         assert "sections" in params
@@ -891,18 +1002,24 @@ class TestCustomPropertyValidation:
         """CP1: CustomPropertyRef(0) raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                real_event,
-                group_by=GroupBy(property=CustomPropertyRef(0), property_type="number"),
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(0), property_type="number")
+                    ],
+                )
             )
 
     def test_cp1_invalid_id_negative(self, ws: Workspace, real_event: str) -> None:
         """CP1: CustomPropertyRef(-5) raises BookmarkValidationError."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                real_event,
-                group_by=GroupBy(
-                    property=CustomPropertyRef(-5), property_type="number"
-                ),
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(-5), property_type="number")
+                    ],
+                )
             )
 
     def test_cp2_empty_formula(self, ws: Workspace, real_event: str) -> None:
@@ -910,7 +1027,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="", inputs={"A": PropertyInput("x")})
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp2_whitespace_only_formula(self, ws: Workspace, real_event: str) -> None:
@@ -918,7 +1038,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="   ", inputs={"A": PropertyInput("x")})
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp3_empty_inputs(self, ws: Workspace, real_event: str) -> None:
@@ -926,7 +1049,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="A", inputs={})
         with pytest.raises(BookmarkValidationError, match="at least one input"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp4_invalid_input_key_lowercase(
@@ -936,7 +1062,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="a", inputs={"a": PropertyInput("x")})
         with pytest.raises(BookmarkValidationError, match="uppercase"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp4_invalid_input_key_multi_char(
@@ -946,7 +1075,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="AB", inputs={"AB": PropertyInput("x")})
         with pytest.raises(BookmarkValidationError, match="uppercase"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp5_formula_too_long(self, ws: Workspace, real_event: str) -> None:
@@ -956,7 +1088,10 @@ class TestCustomPropertyValidation:
         )
         with pytest.raises(BookmarkValidationError, match="20,000"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp5_formula_at_boundary(self, ws: Workspace, real_event: str) -> None:
@@ -966,7 +1101,10 @@ class TestCustomPropertyValidation:
         )
         # Should NOT raise
         params = ws.build_params(
-            real_event, group_by=GroupBy(property=icp, property_type="string")
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=icp, property_type="string")],
+            )
         )
         assert "sections" in params
 
@@ -975,7 +1113,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="A", inputs={"A": PropertyInput("")})
         with pytest.raises(BookmarkValidationError, match="empty property name"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_cp6_whitespace_only_property_name(
@@ -985,7 +1126,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="A", inputs={"A": PropertyInput("   ")})
         with pytest.raises(BookmarkValidationError, match="empty property name"):
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_multiple_validation_errors(self, ws: Workspace, real_event: str) -> None:
@@ -993,7 +1137,10 @@ class TestCustomPropertyValidation:
         icp = InlineCustomProperty(formula="", inputs={})
         with pytest.raises(BookmarkValidationError) as exc_info:
             ws.build_params(
-                real_event, group_by=GroupBy(property=icp, property_type="string")
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
         errors = exc_info.value.errors
         codes = {e.code for e in errors}
@@ -1008,15 +1155,22 @@ class TestValidationInFilterPosition:
         """CP1 caught in filter position."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                real_event,
-                where=Filter.is_set(property=CustomPropertyRef(0)),
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[Filter.is_set(property=CustomPropertyRef(0))],
+                )
             )
 
     def test_cp2_in_filter_position(self, ws: Workspace, real_event: str) -> None:
         """CP2 caught in filter position."""
         icp = InlineCustomProperty(formula="", inputs={"A": PropertyInput("x")})
         with pytest.raises(BookmarkValidationError, match="non-empty"):
-            ws.build_params(real_event, where=Filter.is_set(property=icp))
+            ws.build_params(
+                InsightsQuery(
+                    events=[Metric(real_event)],
+                    where=[Filter.is_set(property=icp)],
+                )
+            )
 
 
 class TestValidationInMetricPosition:
@@ -1026,11 +1180,15 @@ class TestValidationInMetricPosition:
         """CP1 caught in Metric.property position."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    real_event,
-                    math="average",
-                    property=CustomPropertyRef(0),
-                ),
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            real_event,
+                            math="average",
+                            property=CustomPropertyRef(0),
+                        )
+                    ],
+                )
             )
 
 
@@ -1048,10 +1206,14 @@ class TestValidationGaps:
         """CLOSED: CustomPropertyRef(0) in Metric.filters IS caught at L1."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric(
-                    real_event,
-                    filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                ),
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            real_event,
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        )
+                    ],
+                )
             )
 
     def test_funnel_step_filter_cp_now_validated(
@@ -1061,13 +1223,15 @@ class TestValidationGaps:
         e1, e2 = real_events_pair
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_funnel_params(
-                [
-                    FunnelStep(
-                        e1,
-                        filters=[Filter.is_set(property=CustomPropertyRef(0))],
-                    ),
-                    e2,
-                ],
+                FunnelQuery(
+                    steps=[
+                        FunnelStep(
+                            e1,
+                            filters=[Filter.is_set(property=CustomPropertyRef(0))],
+                        ),
+                        e2,
+                    ],
+                )
             )
 
     def test_retention_where_cp_validated_by_workspace(
@@ -1077,9 +1241,11 @@ class TestValidationGaps:
         e1, e2 = real_events_pair
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_retention_params(
-                e1,
-                e2,
-                where=Filter.is_set(property=CustomPropertyRef(0)),
+                RetentionQuery(
+                    born_event=e1,
+                    return_event=e2,
+                    where=[Filter.is_set(property=CustomPropertyRef(0))],
+                )
             )
 
 
@@ -1096,10 +1262,12 @@ class TestCrossEngine:
     ) -> None:
         """ICP in GroupBy + Filter + Metric simultaneously — insights."""
         result = ws.query(
-            Metric(real_event, math="average", property=simple_inline_cp),
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            where=Filter.is_set(property=simple_inline_cp),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event, math="average", property=simple_inline_cp)],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)
 
@@ -1112,10 +1280,12 @@ class TestCrossEngine:
         """ICP in both funnel group_by and where."""
         e1, e2 = real_events_pair
         result = ws.query_funnel(
-            [e1, e2],
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            where=Filter.is_set(property=simple_inline_cp),
-            last=30,
+            FunnelQuery(
+                steps=[e1, e2],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=30,
+            )
         )
         assert isinstance(result, FunnelQueryResult)
 
@@ -1128,11 +1298,13 @@ class TestCrossEngine:
         """ICP in both retention group_by and where."""
         e1, e2 = real_events_pair
         result = ws.query_retention(
-            e1,
-            e2,
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
-            where=Filter.is_set(property=simple_inline_cp),
-            last=30,
+            RetentionQuery(
+                born_event=e1,
+                return_event=e2,
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+                where=[Filter.is_set(property=simple_inline_cp)],
+                last=30,
+            )
         )
         assert isinstance(result, RetentionQueryResult)
 
@@ -1151,16 +1323,18 @@ class TestCrossEngine:
         )
 
         # Insights
-        r1 = ws.query(real_event, group_by=gb, last=7)
+        r1 = ws.query(InsightsQuery(events=[Metric(real_event)], group_by=[gb], last=7))
         assert isinstance(r1, QueryResult)
 
         # Funnels
         e1, e2 = real_events_pair
-        r2 = ws.query_funnel([e1, e2], group_by=gb, last=30)
+        r2 = ws.query_funnel(FunnelQuery(steps=[e1, e2], group_by=[gb], last=30))
         assert isinstance(r2, FunnelQueryResult)
 
         # Retention
-        r3 = ws.query_retention(e1, e2, group_by=gb, last=30)
+        r3 = ws.query_retention(
+            RetentionQuery(born_event=e1, return_event=e2, group_by=[gb], last=30)
+        )
         assert isinstance(r3, RetentionQueryResult)
 
 
@@ -1177,8 +1351,10 @@ class TestBuildParamsStructure:
     ) -> None:
         """Group entry has complete customProperty dict."""
         params = ws.build_params(
-            real_event,
-            group_by=GroupBy(property=simple_inline_cp, property_type="number"),
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(property=simple_inline_cp, property_type="number")],
+            )
         )
         g = params["sections"]["group"][0]
         cp = g["customProperty"]
@@ -1193,8 +1369,10 @@ class TestBuildParamsStructure:
     ) -> None:
         """Filter entry has customProperty, no value/propertyName."""
         params = ws.build_params(
-            real_event,
-            where=Filter.is_set(property=simple_inline_cp),
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=simple_inline_cp)],
+            )
         )
         f = params["sections"]["filter"][0]
         assert "customProperty" in f
@@ -1206,11 +1384,15 @@ class TestBuildParamsStructure:
     ) -> None:
         """Group entry has customPropertyId, no value/propertyName."""
         params = ws.build_params(
-            real_event,
-            group_by=GroupBy(
-                property=CustomPropertyRef(saved_cp_id),
-                property_type=saved_cp_type,  # type: ignore[arg-type]
-            ),
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[
+                    GroupBy(
+                        property=CustomPropertyRef(saved_cp_id),
+                        property_type=saved_cp_type,  # type: ignore[arg-type]
+                    )
+                ],
+            )
         )
         g = params["sections"]["group"][0]
         assert g["customPropertyId"] == saved_cp_id
@@ -1221,8 +1403,10 @@ class TestBuildParamsStructure:
     ) -> None:
         """Filter entry has customPropertyId, no value."""
         params = ws.build_params(
-            real_event,
-            where=Filter.is_set(property=CustomPropertyRef(saved_cp_id)),
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(property=CustomPropertyRef(saved_cp_id))],
+            )
         )
         f = params["sections"]["filter"][0]
         assert f["customPropertyId"] == saved_cp_id
@@ -1253,28 +1437,42 @@ class TestBackwardCompatibility:
 
     def test_plain_string_query_unchanged(self, ws: Workspace, real_event: str) -> None:
         """Plain event string query still works."""
-        result = ws.query(real_event, last=7)
+        result = ws.query(InsightsQuery(events=[Metric(real_event)], last=7))
         assert isinstance(result, QueryResult)
 
     def test_plain_string_groupby_unchanged(
         self, ws: Workspace, real_event: str, real_string_property: str
     ) -> None:
         """Plain string group_by still works."""
-        result = ws.query(real_event, group_by=real_string_property, last=7)
+        result = ws.query(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(real_string_property)],
+                last=7,
+            )
+        )
         assert isinstance(result, QueryResult)
 
     def test_groupby_object_without_cp_unchanged(
         self, ws: Workspace, real_event: str, real_string_property: str
     ) -> None:
         """GroupBy object with plain string property still works."""
-        result = ws.query(real_event, group_by=GroupBy(real_string_property), last=7)
+        result = ws.query(
+            InsightsQuery(
+                events=[Metric(real_event)],
+                group_by=[GroupBy(real_string_property)],
+                last=7,
+            )
+        )
         assert isinstance(result, QueryResult)
 
     def test_metric_with_string_property_unchanged(
         self, ws: Workspace, real_event: str
     ) -> None:
         """Metric with plain string math still works."""
-        result = ws.query(Metric(real_event, math="total"), last=7)
+        result = ws.query(
+            InsightsQuery(events=[Metric(real_event, math="total")], last=7)
+        )
         assert isinstance(result, QueryResult)
 
     def test_filter_with_string_property_unchanged(
@@ -1282,8 +1480,10 @@ class TestBackwardCompatibility:
     ) -> None:
         """Filter with plain string property still works."""
         result = ws.query(
-            real_event,
-            where=Filter.is_set(real_string_property),
-            last=7,
+            InsightsQuery(
+                events=[Metric(real_event)],
+                where=[Filter.is_set(real_string_property)],
+                last=7,
+            )
         )
         assert isinstance(result, QueryResult)

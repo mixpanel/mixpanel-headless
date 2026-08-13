@@ -34,12 +34,13 @@ The structured-action mapping from internal interactions to public
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, cast
+from typing import Any
 from urllib.parse import urlparse
 
-from mixpanel_headless.types import UserAction
+from mixpanel_headless.types import _REPLAY_ACTION_LITERAL, UserAction
 
 log = logging.getLogger(__name__)
 
@@ -224,10 +225,10 @@ class DOMTracker:
             node: The rrweb node dict to ingest.
             parent_id: Optional parent rrweb node id for ancestor traversal.
         """
-        queue: list[tuple[dict[str, Any], int | None]] = [(node, parent_id)]
+        queue: deque[tuple[dict[str, Any], int | None]] = deque([(node, parent_id)])
 
         while queue:
-            current_node, current_parent_id = queue.pop(0)
+            current_node, current_parent_id = queue.popleft()
 
             node_id = current_node.get("id")
             if node_id is None:
@@ -437,7 +438,7 @@ class DOMTracker:
                     if path and path != "/":
                         parts.append(f"to {path}")
                         has_meaningful_info = True
-                except Exception:  # noqa: BLE001 — defensively swallow URL parse failures
+                except (ValueError, UnicodeError):
                     pass
 
         if attrs.get("id") is not None and not has_meaningful_info:
@@ -507,7 +508,7 @@ _MOUSE_INTERACTION_NAMES: dict[int, str] = {
 # All click-family interactions collapse to "click" so ReplayBundle
 # aggregations (top_clicks, rage_clicks) work uniformly;
 # the original interaction is preserved in metadata["interaction"].
-_INTERACTION_TO_ACTION: dict[str, str] = {
+_INTERACTION_TO_ACTION: dict[str, _REPLAY_ACTION_LITERAL] = {
     "clicked": "click",
     "double-clicked": "click",
     "right-clicked": "click",
@@ -548,7 +549,7 @@ class EventAnalyzer:
     def _emit(
         self,
         timestamp: int,
-        action: str,
+        action: _REPLAY_ACTION_LITERAL,
         description: str,
         *,
         target_node_id: int | None = None,
@@ -572,7 +573,7 @@ class EventAnalyzer:
         self.user_actions.append(
             UserAction(
                 timestamp=timestamp,
-                action=cast(Any, action),
+                action=action,
                 target_node_id=target_node_id,
                 target_desc=target_desc or description,
                 url=url if url is not None else self.current_url,

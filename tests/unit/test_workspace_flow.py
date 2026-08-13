@@ -17,6 +17,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import FlowQuery
 from mixpanel_headless.types import (
     Filter,
     FlowQueryResult,
@@ -509,7 +510,7 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow("Login")
+            result = ws.query_flow(FlowQuery(event="Login"))
 
             assert isinstance(result, FlowQueryResult)
             assert result.computed_at == "2025-01-15T10:00:00"
@@ -529,7 +530,7 @@ class TestWorkspaceFlowPublicMethods:
         """build_flow_params() returns a dict without making API calls."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
 
             assert isinstance(params, dict)
             assert "steps" in params
@@ -562,7 +563,9 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow(FlowStep("Login", forward=5, reverse=2))
+            result = ws.query_flow(
+                FlowQuery(event=FlowStep("Login", forward=5, reverse=2))
+            )
 
             assert isinstance(result, FlowQueryResult)
             mock_live_query.query_flow.assert_called_once()
@@ -588,7 +591,7 @@ class TestWorkspaceFlowPublicMethods:
             )
             ws._live_query = mock_live_query
 
-            result = ws.query_flow(["Login", "Purchase"], mode="paths")
+            result = ws.query_flow(FlowQuery(event=["Login", "Purchase"], mode="paths"))
 
             assert isinstance(result, FlowQueryResult)
             call_kwargs = mock_live_query.query_flow.call_args
@@ -617,7 +620,7 @@ class TestMultiStepNormalization:
         """List of strings produces N steps with correct defaults applied."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["A", "B"])
+            params = ws.build_flow_params(FlowQuery(event=["A", "B"]))
 
             assert len(params["steps"]) == 2
             assert params["steps"][0]["event"] == "A"
@@ -638,7 +641,7 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                [FlowStep("A", forward=3), FlowStep("B", reverse=2)]
+                FlowQuery(event=[FlowStep("A", forward=3), FlowStep("B", reverse=2)])
             )
 
             assert len(params["steps"]) == 2
@@ -656,7 +659,9 @@ class TestMultiStepNormalization:
         """Mixed list of strings and FlowStep objects works correctly."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["A", FlowStep("B", forward=1)])
+            params = ws.build_flow_params(
+                FlowQuery(event=["A", FlowStep("B", forward=1)])
+            )
 
             assert len(params["steps"]) == 2
             assert params["steps"][0]["event"] == "A"
@@ -676,7 +681,7 @@ class TestMultiStepNormalization:
         """Single string 'Purchase' produces a single-element step list."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Purchase")
+            params = ws.build_flow_params(FlowQuery(event="Purchase"))
 
             assert len(params["steps"]) == 1
             assert params["steps"][0]["event"] == "Purchase"
@@ -690,7 +695,7 @@ class TestMultiStepNormalization:
         """Single FlowStep produces a single-element step list."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(FlowStep("A", forward=3))
+            params = ws.build_flow_params(FlowQuery(event=FlowStep("A", forward=3)))
 
             assert len(params["steps"]) == 1
             assert params["steps"][0]["event"] == "A"
@@ -705,7 +710,9 @@ class TestMultiStepNormalization:
         """String steps inherit top-level forward/reverse defaults."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params(["X", "Y"], forward=5, reverse=2)
+            params = ws.build_flow_params(
+                FlowQuery(event=["X", "Y"], forward=5, reverse=2)
+            )
 
             # Both string steps should get forward=5, reverse=2
             for step in params["steps"]:
@@ -722,9 +729,9 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("A", forward=5, reverse=4),
-                forward=3,
-                reverse=0,
+                FlowQuery(
+                    event=FlowStep("A", forward=5, reverse=4), forward=3, reverse=0
+                )
             )
 
             assert params["steps"][0]["forward"] == 5
@@ -740,9 +747,9 @@ class TestMultiStepNormalization:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("A"),  # forward=None, reverse=None
-                forward=5,
-                reverse=2,
+                FlowQuery(
+                    event=FlowStep("A"), forward=5, reverse=2
+                )  # FlowStep forward=None, reverse=None
             )
 
             assert params["steps"][0]["forward"] == 5
@@ -766,7 +773,7 @@ class TestMultiStepAnchorPosition:
         """anchor_position is set to 1 in built params."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
 
             assert params["anchor_position"] == 1
         finally:
@@ -789,9 +796,7 @@ class TestPerStepDirectionValidation:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep("Login", forward=3),
-                forward=0,
-                reverse=0,
+                FlowQuery(event=FlowStep("Login", forward=3), forward=0, reverse=0)
             )
 
             assert params["steps"][0]["forward"] == 3
@@ -810,9 +815,9 @@ class TestPerStepDirectionValidation:
                 BookmarkValidationError, match="forward or reverse must be > 0"
             ):
                 ws.build_flow_params(
-                    FlowStep("Login"),  # forward=None, reverse=None → 0, 0
-                    forward=0,
-                    reverse=0,
+                    FlowQuery(
+                        event=FlowStep("Login"), forward=0, reverse=0
+                    )  # forward=None, reverse=None → 0, 0
                 )
         finally:
             ws.close()
@@ -825,9 +830,11 @@ class TestPerStepDirectionValidation:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                [FlowStep("A", forward=3), FlowStep("B", reverse=2)],
-                forward=0,
-                reverse=0,
+                FlowQuery(
+                    event=[FlowStep("A", forward=3), FlowStep("B", reverse=2)],
+                    forward=0,
+                    reverse=0,
+                )
             )
 
             assert params["steps"][0]["forward"] == 3
@@ -854,10 +861,12 @@ class TestFlowStepDatetimeFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(
-                    "Login",
-                    filters=[Filter.before("$time", "2026-01-15")],
-                ),
+                FlowQuery(
+                    event=FlowStep(
+                        "Login",
+                        filters=[Filter.before("$time", "2026-01-15")],
+                    )
+                )
             )
 
             segfilter = params["steps"][0]["property_filter_params_list"][0]
@@ -874,10 +883,12 @@ class TestFlowStepDatetimeFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(
-                    "Login",
-                    filters=[Filter.in_the_last("$time", 7, "day")],
-                ),
+                FlowQuery(
+                    event=FlowStep(
+                        "Login",
+                        filters=[Filter.in_the_last("$time", 7, "day")],
+                    )
+                )
             )
 
             segfilter = params["steps"][0]["property_filter_params_list"][0]
@@ -946,7 +957,7 @@ class TestQueryFlowTreeIntegration:
         mock_api_client.arb_funnels_query.return_value = _sample_tree_api_response()
         ws = workspace_factory()
         try:
-            result = ws.query_flow("Login", mode="tree")
+            result = ws.query_flow(FlowQuery(event="Login", mode="tree"))
 
             assert isinstance(result, FlowQueryResult)
             assert result.mode == "tree"
@@ -997,7 +1008,7 @@ class TestDataGroupIdFlow:
     ) -> None:
         """build_flow_params with data_group_id=5 includes data_group_id: 5 (snake_case for flows)."""
         ws = workspace_factory()
-        result = ws.build_flow_params("Login", data_group_id=5)
+        result = ws.build_flow_params(FlowQuery(event="Login", data_group_id=5))
         assert result["data_group_id"] == 5
 
     def test_build_flow_params_without_data_group_id(
@@ -1006,7 +1017,7 @@ class TestDataGroupIdFlow:
     ) -> None:
         """build_flow_params without data_group_id omits the key entirely."""
         ws = workspace_factory()
-        result = ws.build_flow_params("Login")
+        result = ws.build_flow_params(FlowQuery(event="Login"))
         assert "data_group_id" not in result
 
 
@@ -1026,7 +1037,7 @@ class TestFlowSessionEvent:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(event="$session_start", session_event="start"),
+                FlowQuery(event=FlowStep(event="$session_start", session_event="start"))
             )
             step = params["steps"][0]
             assert step["session_event"] == "start"
@@ -1041,7 +1052,7 @@ class TestFlowSessionEvent:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                FlowStep(event="$session_end", session_event="end"),
+                FlowQuery(event=FlowStep(event="$session_end", session_event="end"))
             )
             step = params["steps"][0]
             assert step["session_event"] == "end"
@@ -1055,7 +1066,7 @@ class TestFlowSessionEvent:
         """Regular FlowStep does not include session_event key in step dict."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             step = params["steps"][0]
             assert "session_event" not in step
         finally:
@@ -1069,17 +1080,16 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with segments=GroupBy('country') produces segments in output."""
+        """build_flow_params with segments=GroupBy('country') produces segment_by."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments=GroupBy("country"),
+                FlowQuery(event="Login", segments=[GroupBy("country")])
             )
-            assert "segments" in params
-            assert isinstance(params["segments"], list)
-            assert len(params["segments"]) == 1
-            assert params["segments"][0]["value"] == "country"
+            assert "segment_by" in params
+            assert isinstance(params["segment_by"], list)
+            assert len(params["segment_by"]) == 1
+            assert params["segment_by"][0]["property"] == "country"
         finally:
             ws.close()
 
@@ -1087,15 +1097,14 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with segments='country' produces segments in output."""
+        """build_flow_params with segments='country' produces segment_by."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments="country",
+                FlowQuery(event="Login", segments=[GroupBy("country")])
             )
-            assert "segments" in params
-            assert len(params["segments"]) == 1
+            assert "segment_by" in params
+            assert len(params["segment_by"]) == 1
         finally:
             ws.close()
 
@@ -1103,14 +1112,15 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with list of GroupBy produces multiple segments."""
+        """build_flow_params with list of GroupBy produces multiple segment_by entries."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                segments=[GroupBy("country"), GroupBy("platform")],
+                FlowQuery(
+                    event="Login", segments=[GroupBy("country"), GroupBy("platform")]
+                )
             )
-            assert len(params["segments"]) == 2
+            assert len(params["segment_by"]) == 2
         finally:
             ws.close()
 
@@ -1118,11 +1128,11 @@ class TestFlowSegments:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params without segments does not include segments key."""
+        """build_flow_params without segments does not include segment_by key."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
-            assert "segments" not in params
+            params = ws.build_flow_params(FlowQuery(event="Login"))
+            assert "segment_by" not in params
         finally:
             ws.close()
 
@@ -1138,8 +1148,7 @@ class TestFlowExclusions:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                exclusions=["Error Event"],
+                FlowQuery(event="Login", exclusions=["Error Event"])
             )
             assert params["exclusions"] == ["Error Event"]
         finally:
@@ -1153,8 +1162,7 @@ class TestFlowExclusions:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                exclusions=["Error", "Debug", "Test"],
+                FlowQuery(event="Login", exclusions=["Error", "Debug", "Test"])
             )
             assert params["exclusions"] == ["Error", "Debug", "Test"]
         finally:
@@ -1167,34 +1175,29 @@ class TestFlowExclusions:
         """build_flow_params without exclusions produces empty exclusions list (default)."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             assert params["exclusions"] == []
         finally:
             ws.close()
 
 
 class TestFlowPropertyFilters:
-    """Tests for property filters (filter_by_event) on flow queries (T038)."""
+    """Tests for property filters (where) on flow queries (T038)."""
 
-    def test_property_filter_produces_filter_by_event(
+    def test_property_filter_produces_where(
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with where=Filter.equals produces filter_by_event."""
+        """build_flow_params with where=Filter.equals produces where key."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=Filter.equals("country", "US"),
+                FlowQuery(event="Login", where=[Filter.equals("country", "US")])
             )
-            assert "filter_by_event" in params
-            fbe = params["filter_by_event"]
-            assert fbe["operator"] == "and"
-            assert len(fbe["children"]) == 1
-            child = fbe["children"][0]
-            assert child["filterOperator"] == "equals"
-            assert child["propertyName"] == "country"
-            assert child["filterValue"] == ["US"]
+            assert "where" in params
+            assert params["where"] == [
+                {"property": "country", "operator": "equals", "value": ["US"]}
+            ]
         finally:
             ws.close()
 
@@ -1202,18 +1205,96 @@ class TestFlowPropertyFilters:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """build_flow_params with list of property filters produces children array."""
+        """build_flow_params with list of property filters produces where entries."""
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=[
-                    Filter.equals("country", "US"),
-                    Filter.greater_than("age", 18),
-                ],
+                FlowQuery(
+                    event="Login",
+                    where=[
+                        Filter.equals("country", "US"),
+                        Filter.greater_than("age", 18),
+                    ],
+                )
             )
-            fbe = params["filter_by_event"]
-            assert len(fbe["children"]) == 2
+            assert params["where"] == [
+                {"property": "country", "operator": "equals", "value": ["US"]},
+                {"property": "age", "operator": "is greater than", "value": 18},
+            ]
+        finally:
+            ws.close()
+
+    def test_list_contains_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """list_contains filters cannot be expressed in the flow where
+        format — rejected at build time instead of silently dropping the
+        inner conditions."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(
+                BookmarkValidationError, match="list_contains"
+            ) as exc_info:
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        where=[Filter.list_contains("cart", Brand="nike")],
+                    )
+                )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_LIST_CONTAINS_UNSUPPORTED"
+            assert err.path == "where[0]"
+        finally:
+            ws.close()
+
+    def test_custom_property_ref_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """CustomPropertyRef filters are rejected at build time instead of
+        crashing in json.dumps at request time."""
+        from mixpanel_headless.types import CustomPropertyRef
+
+        ws = workspace_factory()
+        try:
+            f = Filter(
+                _property=CustomPropertyRef(id=42),
+                _operator="equals",
+                _value=["US"],
+                _property_type="string",
+                _resource_type="events",
+            )
+            with pytest.raises(
+                BookmarkValidationError, match="custom property refs"
+            ) as exc_info:
+                ws.build_flow_params(FlowQuery(event="Login", where=[f]))
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED"
+            assert err.path == "where[0]"
+        finally:
+            ws.close()
+
+    def test_relative_date_filter_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """Relative-date filters lose their date unit in the flow where
+        format — rejected with a pointer to absolute-date alternatives."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(
+                BookmarkValidationError, match="absolute date"
+            ) as exc_info:
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        where=[Filter.in_the_last("created", 2, "week")],
+                    )
+                )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_WHERE_RELATIVE_DATE_UNSUPPORTED"
+            assert err.path == "where[0]"
         finally:
             ws.close()
 
@@ -1225,11 +1306,10 @@ class TestFlowPropertyFilters:
         ws = workspace_factory()
         try:
             params = ws.build_flow_params(
-                "Login",
-                where=Filter.in_cohort(123, "Power Users"),
+                FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
             )
             assert "filter_by_cohort" in params
-            assert "filter_by_event" not in params
+            assert "where" not in params
         finally:
             ws.close()
 
@@ -1240,8 +1320,77 @@ class TestFlowPropertyFilters:
         """build_flow_params without where has no filter_by_event or filter_by_cohort."""
         ws = workspace_factory()
         try:
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             assert "filter_by_event" not in params
             assert "filter_by_cohort" not in params
+        finally:
+            ws.close()
+
+
+class TestFlowDateAndEmptyListHandling:
+    """Flow accepts the same date/empty-list inputs as its sibling models."""
+
+    def test_lone_from_date_builds_between_today(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """from_date alone builds a 'between [from_date, today]' range."""
+        from datetime import date
+
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(
+                FlowQuery(event="Login", from_date="2025-06-01")
+            )
+            dr = params["date_range"]
+            assert dr["type"] == "between"
+            assert dr["from_date"] == "2025-06-01"
+            assert dr["to_date"] == date.today().isoformat()
+        finally:
+            ws.close()
+
+    def test_empty_segments_list_no_ops(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """segments=[] builds without a segment_by key (like where=[])."""
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(FlowQuery(event="Login", segments=[]))
+            assert "segment_by" not in params
+        finally:
+            ws.close()
+
+    def test_empty_where_list_no_ops(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """where=[] builds without where or filter_by_cohort keys."""
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params(FlowQuery(event="Login", where=[]))
+            assert "where" not in params
+            assert "filter_by_cohort" not in params
+        finally:
+            ws.close()
+
+    def test_list_item_segment_rejected(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """GroupBy.list_item in segments raises a structured error instead
+        of silently dropping the sub-property from the wire payload."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(BookmarkValidationError, match="list_item") as exc_info:
+                ws.build_flow_params(
+                    FlowQuery(
+                        event="Login",
+                        segments=[GroupBy.list_item("cart", "Brand")],
+                    )
+                )
+            err = exc_info.value.errors[0]
+            assert err.code == "FL_SEGMENT_LIST_ITEM_UNSUPPORTED"
+            assert err.path == "segments[0]"
         finally:
             ws.close()

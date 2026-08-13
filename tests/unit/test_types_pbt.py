@@ -28,6 +28,7 @@ import pandas as pd
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError as PydanticValidationError
 
 from mixpanel_headless._internal.bookmark_enums import VALID_FREQUENCY_FILTER_OPERATORS
 from mixpanel_headless._literal_types import MathType, TimeComparisonUnit
@@ -57,6 +58,8 @@ from mixpanel_headless.types import (
     TopEvent,
     UserEvent,
 )
+
+_INVALID_OPERATOR = (ValueError, PydanticValidationError)
 
 # =============================================================================
 # Custom Strategies
@@ -1629,7 +1632,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_empty_event_raises(self, bad_event: str, bucket_size: int) -> None:
         """FB1: empty event name always raises ValueError."""
-        with pytest.raises(ValueError, match="non-empty"):
+        with pytest.raises(ValueError, match="at least 1 character"):
             FrequencyBreakdown(event=bad_event, bucket_size=bucket_size)
 
     @given(
@@ -1638,7 +1641,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_non_positive_bucket_size_raises(self, event: str, bad_size: int) -> None:
         """FB2: non-positive bucket_size always raises ValueError."""
-        with pytest.raises(ValueError, match="bucket_size must be positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             FrequencyBreakdown(event=event, bucket_size=bad_size)
 
     @given(
@@ -1656,7 +1659,7 @@ class TestFrequencyBreakdownProperties:
     )
     def test_negative_bucket_min_raises(self, event: str, bad_min: int) -> None:
         """FB4: negative bucket_min always raises ValueError."""
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
             FrequencyBreakdown(event=event, bucket_min=bad_min, bucket_max=bad_min + 10)
 
     @given(event=event_names)
@@ -1722,8 +1725,8 @@ class TestFrequencyFilterProperties:
         value=st.integers(min_value=0, max_value=100),
     )
     def test_invalid_operator_raises(self, event: str, bad_op: str, value: int) -> None:
-        """FF2: invalid operator always raises ValueError."""
-        with pytest.raises(ValueError, match="operator must be one of"):
+        """FF2: invalid operator is rejected."""
+        with pytest.raises(_INVALID_OPERATOR):
             FrequencyFilter(event=event, operator=bad_op, value=value)  # type: ignore[arg-type]
 
     @given(

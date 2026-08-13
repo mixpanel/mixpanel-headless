@@ -20,6 +20,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import FunnelQuery, InsightsQuery, RetentionQuery
 from mixpanel_headless.types import (
     CustomPropertyRef,
     Filter,
@@ -308,18 +309,24 @@ class TestCustomPropertyValidationCP1:
         """CustomPropertyRef(0) in group_by raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=CustomPropertyRef(0), property_type="number"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(0), property_type="number")
+                    ],
+                )
             )
 
     def test_negative_id(self, ws: Workspace) -> None:
         """CustomPropertyRef(-1) raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(
-                    property=CustomPropertyRef(-1), property_type="number"
-                ),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(-1), property_type="number")
+                    ],
+                )
             )
 
 
@@ -335,8 +342,10 @@ class TestCustomPropertyValidationCP2:
 
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_whitespace_only_formula(self, ws: Workspace) -> None:
@@ -348,8 +357,10 @@ class TestCustomPropertyValidationCP2:
 
         with pytest.raises(BookmarkValidationError, match="non-empty"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
 
@@ -362,8 +373,10 @@ class TestCustomPropertyValidationCP3:
 
         with pytest.raises(BookmarkValidationError, match="at least one input"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
 
@@ -380,8 +393,10 @@ class TestCustomPropertyValidationCP4:
 
         with pytest.raises(BookmarkValidationError, match="uppercase"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
 
@@ -397,8 +412,10 @@ class TestCustomPropertyValidationCP5:
 
         with pytest.raises(BookmarkValidationError, match="20,000"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
     def test_formula_at_boundary_passes(self, ws: Workspace) -> None:
@@ -410,8 +427,10 @@ class TestCustomPropertyValidationCP5:
 
         # Should NOT raise — exactly at the limit
         params = ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=icp, property_type="string"),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[GroupBy(property=icp, property_type="string")],
+            )
         )
         assert "sections" in params
 
@@ -428,8 +447,10 @@ class TestCustomPropertyValidationCP6:
 
         with pytest.raises(BookmarkValidationError, match="empty property name"):
             ws.build_params(
-                "Purchase",
-                group_by=GroupBy(property=icp, property_type="string"),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    group_by=[GroupBy(property=icp, property_type="string")],
+                )
             )
 
 
@@ -441,16 +462,22 @@ class TestCustomPropertyValidationValid:
         icp = InlineCustomProperty.numeric("A * B", A="price", B="quantity")
         # Should not raise
         ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=icp, property_type="number"),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[GroupBy(property=icp, property_type="number")],
+            )
         )
 
     def test_valid_ref_passes(self, ws: Workspace) -> None:
         """Valid CustomPropertyRef passes validation without errors."""
         # Should not raise
         ws.build_params(
-            "Purchase",
-            group_by=GroupBy(property=CustomPropertyRef(42), property_type="number"),
+            InsightsQuery(
+                events=[Metric("Purchase")],
+                group_by=[
+                    GroupBy(property=CustomPropertyRef(42), property_type="number")
+                ],
+            )
         )
 
 
@@ -461,8 +488,12 @@ class TestCustomPropertyValidationFilterPosition:
         """CustomPropertyRef(0) in filter raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                "Purchase",
-                where=Filter.greater_than(property=CustomPropertyRef(0), value=100),
+                InsightsQuery(
+                    events=[Metric("Purchase")],
+                    where=[
+                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                    ],
+                )
             )
 
 
@@ -473,7 +504,13 @@ class TestCustomPropertyValidationMeasurementPosition:
         """CustomPropertyRef(0) in Metric.property raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_params(
-                Metric("Purchase", math="average", property=CustomPropertyRef(0)),
+                InsightsQuery(
+                    events=[
+                        Metric(
+                            "Purchase", math="average", property=CustomPropertyRef(0)
+                        )
+                    ],
+                )
             )
 
 
@@ -484,32 +521,48 @@ class TestCustomPropertyValidationFunnelRetention:
         """CustomPropertyRef(0) in funnel group_by raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_funnel_params(
-                ["Signup", "Purchase"],
-                group_by=GroupBy(property=CustomPropertyRef(0), property_type="number"),
+                FunnelQuery(
+                    steps=["Signup", "Purchase"],
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(0), property_type="number")
+                    ],
+                )
             )
 
     def test_invalid_ref_in_retention_group_by(self, ws: Workspace) -> None:
         """CustomPropertyRef(0) in retention group_by raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=GroupBy(property=CustomPropertyRef(0), property_type="number"),
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[
+                        GroupBy(property=CustomPropertyRef(0), property_type="number")
+                    ],
+                )
             )
 
     def test_invalid_ref_in_funnel_where(self, ws: Workspace) -> None:
         """CustomPropertyRef(0) in funnel where raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_funnel_params(
-                ["Signup", "Purchase"],
-                where=Filter.greater_than(property=CustomPropertyRef(0), value=100),
+                FunnelQuery(
+                    steps=["Signup", "Purchase"],
+                    where=[
+                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                    ],
+                )
             )
 
     def test_invalid_ref_in_retention_where(self, ws: Workspace) -> None:
         """CustomPropertyRef(0) in retention where raises validation error."""
         with pytest.raises(BookmarkValidationError, match="positive integer"):
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                where=Filter.greater_than(property=CustomPropertyRef(0), value=100),
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    where=[
+                        Filter.greater_than(property=CustomPropertyRef(0), value=100)
+                    ],
+                )
             )

@@ -320,49 +320,82 @@ class TestPydanticAdapter:
     """Direct tests for the Pydantic-error → ``ValidationError`` adapter.
 
     The adapter (``validate_with_pydantic``, ``_translate_pydantic_error``,
-    ``_loc_to_jsonpath``) is the load-bearing translation layer between
+    ``_error_location_to_json_path``) is the load-bearing translation layer between
     Pydantic and the package's stable ``B*``/``S*`` codes. Bugs here
     propagate to every caller and break agent-grep workflows.
     """
 
-    def test_loc_to_jsonpath_top_level(self) -> None:
-        """Single-segment loc renders as the segment name."""
-        from mixpanel_headless._internal.bookmark_schema import _loc_to_jsonpath
+    def test_error_location_to_json_path_top_level(self) -> None:
+        """Single-segment error_location renders as the segment name."""
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
 
-        assert _loc_to_jsonpath(("sortBy",), "") == "sortBy"
+        assert _error_location_to_json_path(("sortBy",), "") == "sortBy"
 
-    def test_loc_to_jsonpath_nested_with_index(self) -> None:
+    def test_error_location_to_json_path_nested_with_index(self) -> None:
         """List-index ints attach to the previous segment as ``[i]``."""
-        from mixpanel_headless._internal.bookmark_schema import _loc_to_jsonpath
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
 
         assert (
-            _loc_to_jsonpath(("show", 0, "behavior", "type"), "sections")
+            _error_location_to_json_path(("show", 0, "behavior", "type"), "sections")
             == "sections.show[0].behavior.type"
         )
 
-    def test_loc_to_jsonpath_with_prefix(self) -> None:
+    def test_error_location_to_json_path_with_prefix(self) -> None:
         """``prefix`` is prepended verbatim (no trailing dot needed)."""
-        from mixpanel_headless._internal.bookmark_schema import _loc_to_jsonpath
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
 
-        assert _loc_to_jsonpath(("bar", "sortBy"), "sorting") == "sorting.bar.sortBy"
+        assert (
+            _error_location_to_json_path(("bar", "sortBy"), "sorting")
+            == "sorting.bar.sortBy"
+        )
 
-    def test_loc_to_jsonpath_leading_index(self) -> None:
+    def test_error_location_to_json_path_leading_index(self) -> None:
         """A leading int (no preceding segment) renders as ``[i]``."""
-        from mixpanel_headless._internal.bookmark_schema import _loc_to_jsonpath
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
 
-        assert _loc_to_jsonpath((0, "name"), "") == "[0].name"
+        assert _error_location_to_json_path((0, "name"), "") == "[0].name"
 
-    def test_loc_to_jsonpath_strips_discriminator_tags(self) -> None:
-        """Pydantic ``Tag`` names are filtered out of the JSONPath.
+    def test_error_location_to_json_path_strips_discriminator_tags(self) -> None:
+        """Marked ``Tag`` names are filtered out of the JSONPath.
 
-        ``Discriminator(...)+Tag(...)`` causes Pydantic to insert the Tag
-        name into ``loc`` for discriminated-union failures. Those names
-        are internal model class names and shouldn't leak to callers.
+        Pydantic inserts the matched tag into ``error_location`` for
+        discriminated-union failures. ``MarkedDiscriminator`` marks every tag
+        with ``MarkedTag.PREFIX``, so it is recognisable by shape and never
+        reaches callers — unlike the field names beside it.
         """
-        from mixpanel_headless._internal.bookmark_schema import _loc_to_jsonpath
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
 
-        loc = ("line", "FlatLabelSortConfig", "sortOrder")
-        assert _loc_to_jsonpath(loc, "sorting") == "sorting.line.sortOrder"
+        error_location = ("line", "#FlatLabelSortConfig", "sortOrder")
+        assert (
+            _error_location_to_json_path(error_location, "sorting")
+            == "sorting.line.sortOrder"
+        )
+
+    def test_error_location_keeps_an_unmarked_field_named_like_a_tag(self) -> None:
+        """A real field is kept even when it shares a tag's name.
+
+        The prefix is what distinguishes them: ``property`` is both a cohort
+        ``kind`` value and a real field on four models, so only the marked form
+        may be stripped.
+        """
+        from mixpanel_headless._internal.bookmark_schema import (
+            _error_location_to_json_path,
+        )
+
+        assert (
+            _error_location_to_json_path(("group_by", 0, "property", "formula"), "")
+            == "group_by[0].property.formula"
+        )
 
     def test_unmapped_error_falls_through_to_validation_error(self) -> None:
         """Default mapper returns ``"VALIDATION_ERROR"`` for unknown types."""
@@ -377,6 +410,22 @@ class TestPydanticAdapter:
         assert _default_code_mapper("missing", ()) == "B0_MISSING_FIELD"
         assert _default_code_mapper("extra_forbidden", ()) == "S3_UNKNOWN_FIELD"
         assert _default_code_mapper("literal_error", ()) == "B0_INVALID_LITERAL"
+
+    def test_dataclass_and_instance_check_types_map_to_wrong_type(self) -> None:
+        """``dataclass_type`` / ``is_instance_of`` map to B0_WRONG_TYPE.
+
+        Regression for finding
+        ``dataclass-type-error-unmapped-to-generic-code``: pydantic's
+        ``dataclass_type`` is the exact dataclass-alternative equivalent of
+        ``model_type`` (already mapped), and ``is_instance_of`` fires for
+        a Python caller who passed the wrong builder object — both must
+        carry the stable wrong-type code instead of the generic
+        ``VALIDATION_ERROR`` fallback.
+        """
+        from mixpanel_headless._internal.bookmark_schema import _default_code_mapper
+
+        assert _default_code_mapper("dataclass_type", ()) == "B0_WRONG_TYPE"
+        assert _default_code_mapper("is_instance_of", ()) == "B0_WRONG_TYPE"
 
     def test_sorting_code_mapper_path_disambiguation(self) -> None:
         """Sorting mapper distinguishes ``missing`` codes by terminal field."""
@@ -402,7 +451,7 @@ class TestPydanticAdapter:
             validate_with_pydantic,
         )
 
-        def my_mapper(err_type: str, loc: tuple[Any, ...]) -> str:
+        def my_mapper(err_type: str, error_location: tuple[Any, ...]) -> str:
             return "CUSTOM_CODE"
 
         errs = validate_with_pydantic(

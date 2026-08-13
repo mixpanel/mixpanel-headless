@@ -603,15 +603,18 @@ class TestTier2CrashPaths:
         dicts) but the dict is missing the ``"cohort"`` key, the
         extraction raises ``BookmarkValidationError`` with code
         ``U_COHORT``.
+
+        ``Filter.__post_init__`` now rejects hand-rolled ``$cohorts``
+        filters at construction time, so the malformed shape can no
+        longer be built through the public constructor. The test
+        corrupts a validly constructed cohort filter via
+        ``object.__setattr__`` (the frozen-bypass pattern) to keep the
+        downstream extraction defense exercised.
         """
-        # Construct a Filter that passes _is_cohort_filter but has
-        # wrong internal structure
-        malformed_filter = Filter(
-            _property="$cohorts",
-            _operator="contains",
-            _value=[{"not_cohort": True}],
-            _property_type="list",
-        )
+        # Corrupt a valid cohort filter so it still passes
+        # _is_cohort_filter (list of dicts) but lacks the "cohort" key
+        malformed_filter = Filter.in_cohort(123, "Power Users")
+        object.__setattr__(malformed_filter, "_value", [{"not_cohort": True}])
 
         ws = workspace_factory()
         try:
@@ -684,29 +687,24 @@ class TestTier2CrashPaths:
     def test_t2_05_filter_to_selector_unsupported_operator(
         self,
     ) -> None:
-        """Unsupported filter operator raises ValueError.
+        """Unsupported filter operator is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        Verifies the catch-all at user_builders.py:142 raises a clear
-        ValueError with the operator name.
-        """
-        f = Filter(
-            _property="fake",
-            _operator="unknown_op",  # type: ignore[arg-type]
-            _value=None,
-            _property_type="string",
-        )
+        with pytest.raises(PydanticValidationError, match="literal_error"):
+            Filter(
+                _property="fake",
+                _operator="unknown_op",  # type: ignore[arg-type]
+                _value=None,
+                _property_type="string",
+            )
 
-        with pytest.raises(ValueError, match="Unsupported filter operator.*unknown_op"):
-            filter_to_selector(f)
-
-    def test_t2_06_filter_to_selector_equals_non_list_value(
+    def test_t2_06_filter_to_selector_equals_scalar_auto_wrapped(
         self,
     ) -> None:
-        """Equals operator with non-list value triggers ValueError.
+        """Equals operator with scalar string is auto-wrapped by __post_init__.
 
-        The type check at user_builders.py raises ValueError when
-        ``isinstance(value, list)`` fails. This is production-safe
-        (not stripped by ``python -O`` like bare assert).
+        Filter's ``__post_init__`` normalizes scalar strings for
+        equals/does-not-equal to ``[value]``.
         """
         f = Filter(
             _property="plan",
@@ -714,28 +712,26 @@ class TestTier2CrashPaths:
             _value="string_not_list",
             _property_type="string",
         )
+        assert f._value == ["string_not_list"]
+        result = filter_to_selector(f)
+        assert result is not None
 
-        with pytest.raises(ValueError, match="Expected list"):
-            filter_to_selector(f)
-
-    def test_t2_07_filter_to_selector_between_wrong_length(
+    def test_t2_07_filter_between_wrong_length_rejected_at_construction(
         self,
     ) -> None:
-        """Between operator with wrong list length triggers ValueError.
+        """Between operator with wrong list length rejected at construction.
 
-        The type check at user_builders.py raises ValueError when
-        the value is not a list of length 2. A 3-element list fails.
+        Filter's ``__post_init__`` now validates that two-value operators
+        receive exactly a 2-element list.
         """
         between_val: list[int | float] = [1, 2, 3]
-        f = Filter(
-            _property="amount",
-            _operator="is between",
-            _value=between_val,
-            _property_type="number",
-        )
-
-        with pytest.raises(ValueError, match="Expected list"):
-            filter_to_selector(f)
+        with pytest.raises(ValueError, match="2-element list"):
+            Filter(
+                _property="amount",
+                _operator="is between",
+                _value=between_val,
+                _property_type="number",
+            )
 
     def test_t2_08_aggregate_response_missing_results_key(
         self,

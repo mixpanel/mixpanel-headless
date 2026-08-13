@@ -28,8 +28,23 @@ from datetime import date as dt_date
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Generic, Literal, TypedDict, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    TypedDict,
+    TypeVar,
+)
 
+from mixpanel_headless._internal.bookmark_enums import (
+    _CP_MAX_FORMULA_LENGTH,
+    _MAX_FILTER_VALUES,
+    _MAX_FLOW_STEPS_DIRECTION,
+)
+from mixpanel_headless._internal.pydantic_utils import MarkedDiscriminator
 from mixpanel_headless._literal_types import (
     CohortAggregationType as CohortAggregationType,
 )
@@ -82,11 +97,19 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    GetCoreSchemaHandler,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    WithJsonSchema,
     computed_field,
     field_validator,
     model_validator,
 )
 from pydantic.alias_generators import to_camel
+from pydantic.dataclasses import dataclass as pydantic_dataclass
+from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import core_schema
 
 T = TypeVar("T")
 
@@ -6591,13 +6614,66 @@ class ProfilePageResult:
 # Custom Property Query Types (Phase 037)
 # =============================================================================
 
+_NonEmptyStrSchema = Annotated[str, Field(json_schema_extra={"minLength": 1})]
+"""String annotated with ``minLength: 1`` for JSON-schema consumers.
 
-@dataclass(frozen=True)
+Schema-only mirror of a build-time non-empty rule; runtime enforcement
+stays with each owning field's validator so callers keep its
+domain-specific error message.
+"""
+
+# TODO(AIE): `Annotated[int, Field(strict=True, gt=0)]` would enforce the bound
+# at validation time and *generate* `exclusiveMinimum`, retiring the
+# hand-written keyword below. Deferred because it moves the rejection into the
+# constructor for all four owning fields: each domain rule (CP1 on custom
+# properties, FF5 on `date_range_value`, the cohort-ID checks) becomes
+# unreachable, and its code becomes the generic `B0_OUT_OF_RANGE`. Measured
+# cost — 30 tests across the four fields, 4 if only `CustomPropertyRef.id`
+# moves. Worth doing as its own change, with those rules deleted deliberately.
+_PositiveStrictIntSchema = Annotated[
+    StrictInt, Field(json_schema_extra={"exclusiveMinimum": 0})
+]
+"""Strict integer annotated with ``exclusiveMinimum: 0`` for JSON-schema
+consumers.
+
+Strict mode rejects bool/str coercion at construction, so a bool never
+silently becomes the ID ``1``; the positivity bound is schema-only — runtime
+enforcement stays with each owning field's validator so callers keep its
+domain-specific error message.
+
+Two divergences from the generated schema follow from that split, both
+shared by every field using this alias:
+
+- a non-positive value passes ``model_validate`` and is caught later by the
+  owning validator (see the ``TODO`` above);
+- ``42.0`` is schema-valid, because JSON Schema counts a whole float as an
+  integer, but strict mode rejects it.
+"""
+
+_PercentileValue = (
+    Annotated[int, Field(strict=True, ge=0, le=100)]
+    | Annotated[float, Field(strict=True, ge=0, le=100)]
+)
+"""Percentile number validated in strict mode and bounded to 0-100.
+
+Shared by ``Metric.percentile_value`` and
+``InsightsQuery.percentile_value`` so the two fields cannot drift. The
+bound is annotated per union alternative so it renders as standard JSON-Schema
+``minimum``/``maximum`` keywords AND rejects out-of-range values at
+construction.
+"""
+
+
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class PropertyInput:
     """A raw property reference mapping a formula variable to a named property.
 
     Used as an entry in :attr:`InlineCustomProperty.inputs` to bind a
     formula variable (A-Z) to a concrete Mixpanel event or user property.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Attributes:
         name: The raw property name (e.g., ``"price"``, ``"$browser"``).
@@ -6615,8 +6691,14 @@ class PropertyInput:
         ```
     """
 
-    name: str
-    """The raw property name."""
+    name: _NonEmptyStrSchema
+    """The raw property name.
+
+    The ``minLength`` keyword mirrors the build-time CP6 rule
+    (non-empty) into the JSON schema; runtime enforcement stays in
+    ``_validate_custom_property`` so callers keep its domain-specific
+    ``CP6_EMPTY_INPUT_NAME`` error.
+    """
 
     type: Literal["string", "number", "boolean", "datetime", "list"] = "string"
     """Property data type."""
@@ -6625,13 +6707,17 @@ class PropertyInput:
     """Property domain (singular form for composedProperties schema)."""
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class InlineCustomProperty:
     """An ephemeral computed property defined by a formula and input references.
 
     Defines a custom property inline at query time without persisting it
     to Mixpanel. The formula uses variables (A-Z) that map to concrete
     properties via the ``inputs`` dict.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Can be used in ``GroupBy.property``, ``Filter`` class methods, and
     ``Metric.property`` to compute derived values on the fly.
@@ -6666,11 +6752,36 @@ class InlineCustomProperty:
         ```
     """
 
-    formula: str
-    """Expression in Mixpanel's formula language."""
+    formula: Annotated[
+        str,
+        Field(json_schema_extra={"minLength": 1, "maxLength": _CP_MAX_FORMULA_LENGTH}),
+    ]
+    """Expression in Mixpanel's formula language.
 
-    inputs: dict[str, PropertyInput]
-    """Mapping from single uppercase letters (A-Z) to property references."""
+    The ``minLength`` / ``maxLength`` keywords mirror the build-time
+    CP2 (non-empty) and CP5 (max 20,000 chars) rules into the JSON
+    schema; runtime enforcement stays in ``_validate_custom_property``
+    so callers keep its domain-specific ``CP2_EMPTY_FORMULA`` /
+    ``CP5_FORMULA_TOO_LONG`` errors.
+    """
+
+    inputs: Annotated[
+        dict[str, PropertyInput],
+        Field(
+            json_schema_extra={
+                "minProperties": 1,
+                "propertyNames": {"pattern": "^[A-Z]$"},
+            }
+        ),
+    ]
+    """Mapping from single uppercase letters (A-Z) to property references.
+
+    ``minProperties`` / ``propertyNames`` mirror the build-time CP3
+    (non-empty inputs) and CP4 (single uppercase A-Z keys) rules into
+    the JSON schema; runtime enforcement stays in
+    ``_validate_custom_property`` so callers keep the
+    ``CP3_EMPTY_INPUTS`` / ``CP4_INVALID_INPUT_KEY`` errors.
+    """
 
     property_type: Literal["string", "number", "boolean", "datetime"] | None = None
     """Result type of the formula; None defers to containing type."""
@@ -6720,13 +6831,17 @@ class InlineCustomProperty:
         )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CustomPropertyRef:
     """A reference to a persisted custom property by its integer ID.
 
     Used in ``GroupBy.property``, ``Filter`` class methods, and
     ``Metric.property`` to reference a custom property that was
     previously created and saved in Mixpanel.
+
+    A pydantic dataclass with ``extra="forbid"`` so the generated JSON
+    schema advertises ``additionalProperties: false``, matching the
+    runtime rejection of unknown keys.
 
     Attributes:
         id: The custom property's server-assigned ID (must be positive).
@@ -6740,15 +6855,145 @@ class CustomPropertyRef:
         ```
     """
 
-    id: int
-    """The custom property's server-assigned ID."""
+    id: _PositiveStrictIntSchema
+    """The custom property's server-assigned ID.
+
+    Strict, so a bool or numeric string is rejected rather than coerced into
+    a *different* real property (``id=True`` used to become custom property
+    ``1``). CP1 could never catch that: coercion runs first, and by the time
+    it sees the value the bool is a legitimate positive integer.
+
+    A non-positive ID is still enforced at build time by
+    ``_validate_custom_property``, so callers keep its ``CP1_INVALID_ID``
+    error — see :data:`_PositiveStrictIntSchema` for why the bound lives
+    there rather than here.
+    """
 
 
-PropertySpec = str | CustomPropertyRef | InlineCustomProperty
+def _union_discriminator(
+    specs: tuple[tuple[type, str], ...],
+    *,
+    allow_str: bool = True,
+) -> Callable[[Any], str | None]:
+    """Pick which union alternative a value is, by its shape, so pydantic validates only that one.
+
+    Pydantic calls this on dicts (JSON/LLM input) AND on model instances
+    (serialization), so we check both dict keys and ``isinstance``.
+
+    Args:
+        specs: ``(model, distinguishing_key)`` pairs, tried in order — a dict
+            matches on the key, a model on ``isinstance``.
+        allow_str: ``False`` for unions with no bare-string shorthand.
+
+    Returns:
+        A callable naming the matching alternative, or ``None`` (unroutable) —
+        which fires the ``Discriminator``'s ``custom_error_message`` instead of
+        every alternative's shape noise. Names come from ``__name__``, the same
+        source ``MarkedDiscriminator`` tags each member from, so the two cannot
+        drift.
+    """
+
+    def _discriminate(v: Any) -> str | None:
+        """Return ``v``'s alternative name, or None if nothing matches.
+
+        Args:
+            v: A candidate union value (str, dict, or model instance).
+
+        Returns:
+            The matching alternative's name, or ``None`` when unroutable.
+        """
+        if allow_str and isinstance(v, str):
+            return "str"
+        if isinstance(v, dict):
+            for model, key in specs:
+                if key in v:
+                    return model.__name__
+            return None
+        for model, _key in specs:
+            if isinstance(v, model):
+                return model.__name__
+        return None
+
+    return _discriminate
+
+
+def _str_or(model: type) -> Callable[[Any], str]:
+    """Discriminator for ``str | <one model>``: a string is the string, anything else is the model.
+
+    Routing non-strings to the model (rather than a smart union) means a bad
+    dict shows that model's own field errors (``steps[0].bogus``), not a
+    useless "should be a string".
+
+    Args:
+        model: The non-string alternative. Named by its ``__name__``, the same
+            source ``MarkedDiscriminator`` tags it from, so the two cannot drift.
+
+    Returns:
+        A total callable — ``"str"`` for strings, the model's name otherwise —
+        so this union's ``custom_error_message`` never fires.
+    """
+    name = model.__name__
+
+    def _discriminate(v: Any) -> str:
+        """Return ``"str"`` for a string, else the model's name.
+
+        Args:
+            v: A candidate union value.
+
+        Returns:
+            ``"str"`` or the model's ``__name__``.
+        """
+        return "str" if isinstance(v, str) else name
+
+    return _discriminate
+
+
+_property_spec_discriminator = _union_discriminator(
+    ((CustomPropertyRef, "id"), (InlineCustomProperty, "formula"))
+)
+"""Route a property spec: ``id`` -> ref, ``formula`` -> inline, str -> ``"str"``."""
+
+_PROPERTY_SPEC_ERROR_MESSAGE = (
+    "property must be a property-name string or an object with 'id' "
+    "(a saved custom-property reference) or 'formula' (an inline custom property)"
+)
+"""Caller-facing message for an unroutable property spec (no class names)."""
+
+PropertySpec = Annotated[
+    str | CustomPropertyRef | InlineCustomProperty,
+    MarkedDiscriminator(
+        _property_spec_discriminator,
+        error_type="invalid_property_spec",
+        message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    ),
+]
 """Union type for property specifications in query parameters.
 
 Accepted wherever a property can be specified: ``Metric.property``,
-``GroupBy.property``, and ``Filter`` class method ``property`` parameters.
+``GroupBy.property`` (via ``_PropertySpecNonEmpty``), and ``Filter``
+class method ``property`` parameters. Discriminated by structure so a
+malformed property dict yields one located error rather than every
+alternative's shape noise.
+"""
+
+_PropertySpecNonEmpty = Annotated[
+    str | CustomPropertyRef | InlineCustomProperty,
+    MarkedDiscriminator(
+        _property_spec_discriminator,
+        members={
+            "str": _NonEmptyStrSchema,
+            "CustomPropertyRef": CustomPropertyRef,
+            "InlineCustomProperty": InlineCustomProperty,
+        },
+        error_type="invalid_property_spec",
+        message=_PROPERTY_SPEC_ERROR_MESSAGE,
+    ),
+]
+"""``PropertySpec`` whose string alternative carries ``minLength: 1``.
+
+Used by ``GroupBy.property`` so the breakdown property keeps its
+schema-visible non-empty bound; shares one discriminator with
+``PropertySpec``.
 """
 
 
@@ -6759,8 +7004,22 @@ Accepted wherever a property can be specified: ``Metric.property``,
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """Regex for YYYY-MM-DD date format validation."""
 
+_DateStrSchema = Annotated[
+    str,
+    WithJsonSchema({"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}),
+]
+"""String annotated with a YYYY-MM-DD pattern for JSON-schema consumers.
 
-@dataclass(frozen=True)
+Schema-only, shared by every date-string field reachable from the query
+models (``TimeComparison``, ``BehavioralCriterion``, and the query
+models' own ``from_date``/``to_date``). Runtime date validation stays
+with each owner (``__post_init__`` checks, ``_validate_cohort_date``,
+or build-time ``validate_time_args``), which produce domain-specific
+messages a bare pydantic ``pattern`` error would replace.
+"""
+
+
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class TimeComparison:
     """Overlay a comparison time period on insights, funnel, or retention queries.
 
@@ -6789,8 +7048,8 @@ class TimeComparison:
             must be ``None`` otherwise.
 
     Raises:
-        ValueError: If validation rules TC1-TC3 are violated during
-            construction.
+        ValueError: If cross-field constraints are violated during
+            construction (e.g. relative without unit, absolute without date).
 
     Example:
         ```python
@@ -6813,39 +7072,31 @@ class TimeComparison:
     unit: TimeComparisonUnit | None = None
     """Time unit for relative comparison (day, week, month, quarter, year)."""
 
-    date: str | None = None
-    """ISO date (YYYY-MM-DD) for absolute comparison."""
+    date: _DateStrSchema | None = None
+    """ISO date (YYYY-MM-DD) for absolute comparison.
+
+    The JSON schema renders the YYYY-MM-DD ``pattern`` (schema-only,
+    via ``_DateStrSchema``); runtime validation stays in
+    ``__post_init__`` with its domain-specific messages.
+    """
 
     def __post_init__(self) -> None:
-        """Validate construction arguments (rules TC1-TC3).
+        """Validate cross-field construction arguments.
 
         Raises:
-            ValueError: If type="relative" and unit is None (TC1),
-                or type="relative" and date is set (TC1),
-                or type is absolute and date is None (TC2),
-                or type is absolute and unit is set (TC2),
-                or date does not match YYYY-MM-DD format (TC3).
+            ValueError: If type="relative" and unit is None,
+                or type="relative" and date is set,
+                or type is absolute and date is None,
+                or type is absolute and unit is set,
+                or date does not match YYYY-MM-DD format.
         """
-        # TC0: type must be a valid TimeComparisonType
-        valid_types = {"relative", "absolute-start", "absolute-end"}
-        if self.type not in valid_types:
-            raise ValueError(
-                f"TimeComparison type must be one of {sorted(valid_types)}, "
-                f"got {self.type!r}"
-            )
+        # type/unit Literal membership is enforced by pydantic before
+        # __post_init__ runs; only cross-field rules live here
         if self.type == "relative":
-            # TC1: relative requires unit, rejects date
             if self.unit is None:
                 raise ValueError(
                     "TimeComparison type='relative' requires unit to be set "
                     "(e.g., TimeComparison.relative('month'))"
-                )
-            # TC1b: unit must be a valid TimeComparisonUnit
-            valid_units = {"day", "week", "month", "quarter", "year"}
-            if self.unit not in valid_units:
-                raise ValueError(
-                    f"TimeComparison unit must be one of {sorted(valid_units)}, "
-                    f"got {self.unit!r}"
                 )
             if self.date is not None:
                 raise ValueError(
@@ -6853,7 +7104,6 @@ class TimeComparison:
                     "use absolute-start or absolute-end for date-based comparison"
                 )
         else:
-            # TC2: absolute-start / absolute-end requires date, rejects unit
             if self.date is None:
                 raise ValueError(
                     f"TimeComparison type={self.type!r} requires date to be set "
@@ -6864,13 +7114,11 @@ class TimeComparison:
                     f"TimeComparison type={self.type!r} does not accept unit; "
                     f"unit is only valid for type='relative'"
                 )
-            # TC3: date must be a valid YYYY-MM-DD calendar date
             if not _DATE_RE.match(self.date):
                 raise ValueError(
                     f"TimeComparison date must be in YYYY-MM-DD format, "
                     f"got {self.date!r}"
                 )
-            # TC3b: verify it's a real calendar date (e.g. reject 2026-02-30)
             try:
                 import datetime
 
@@ -6919,7 +7167,7 @@ class TimeComparison:
             the specified ``date``.
 
         Raises:
-            ValueError: If date is not in YYYY-MM-DD format (TC3).
+            ValueError: If date is not in YYYY-MM-DD format.
 
         Example:
             ```python
@@ -6944,7 +7192,7 @@ class TimeComparison:
             the specified ``date``.
 
         Raises:
-            ValueError: If date is not in YYYY-MM-DD format (TC3).
+            ValueError: If date is not in YYYY-MM-DD format.
 
         Example:
             ```python
@@ -6955,7 +7203,7 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Metric:
     """Encapsulates a single event to query with its aggregation settings.
 
@@ -6987,23 +7235,24 @@ class Metric:
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name."""
 
     math: MathType = "total"
     """Aggregation function."""
 
-    property: str | CustomPropertyRef | InlineCustomProperty | None = None
+    property: PropertySpec | None = None
     """Property for property-based math types (name, ref, or inline)."""
 
     per_user: PerUserAggregation | None = None
     """Per-user pre-aggregation type."""
 
-    percentile_value: int | float | None = None
+    percentile_value: _PercentileValue | None = None
     """Custom percentile value (e.g. 95 for p95).
 
     Required when ``math="percentile"``. Ignored for other math types.
-    Maps to ``percentile`` in bookmark JSON.
+    Maps to ``percentile`` in bookmark JSON. See ``_PercentileValue``
+    for the shared strict-mode 0-100 validation.
     """
 
     filters: list[Filter] | None = None
@@ -7026,9 +7275,9 @@ class Metric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (M1), math requires a property but none is set (M2),
-                or math="percentile" but percentile_value is missing (M3).
+            ValueError: If event is empty or contains control characters,
+                math requires a property but none is set,
+                or math="percentile" but percentile_value is missing.
         """
         _validate_event_name(self.event, "Metric")
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
@@ -7042,17 +7291,9 @@ class Metric:
                 'Metric math="percentile" requires percentile_value '
                 "(e.g., Metric(event, math='percentile', percentile_value=95))"
             )
-        # M4: segment_method must be valid if set
-        if self.segment_method is not None:
-            valid_segments = {"all", "first"}
-            if self.segment_method not in valid_segments:
-                raise ValueError(
-                    f"Metric segment_method must be one of {sorted(valid_segments)}, "
-                    f"got {self.segment_method!r}"
-                )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Formula:
     """A formula expression referencing events by position letter (A, B, C...).
 
@@ -7069,26 +7310,26 @@ class Formula:
 
     Example:
         ```python
-        from mixpanel_headless import Formula, Metric
+        from mixpanel_headless import Formula, InsightsQuery, Metric
 
         # Formula in the events list
-        result = ws.query(
-            [Metric("Signup", math="unique"),
-             Metric("Purchase", math="unique"),
-             Formula("(B / A) * 100", label="Conversion %")],
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique"),
+                    Formula("(B / A) * 100", label="Conversion %")],
+        ))
 
         # Equivalent using top-level parameter
-        result = ws.query(
-            [Metric("Signup", math="unique"),
-             Metric("Purchase", math="unique")],
+        result = ws.query(InsightsQuery(
+            events=[Metric("Signup", math="unique"),
+                    Metric("Purchase", math="unique")],
             formula="(B / A) * 100",
             formula_label="Conversion %",
-        )
+        ))
         ```
     """
 
-    expression: str
+    expression: str = Field(min_length=1)
     """Formula expression referencing events by letter."""
 
     label: str | None = None
@@ -7097,22 +7338,26 @@ class Formula:
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
+        Empty expressions are caught by ``Field(min_length=1)``.
+
         Raises:
-            ValueError: If expression is empty (FM1).
+            ValueError: If expression is whitespace-only.
         """
-        if not self.expression or not self.expression.strip():
+        if not self.expression.strip():
             raise ValueError("Formula.expression must be a non-empty string")
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(
+    frozen=True,
+    config=ConfigDict(extra="forbid", populate_by_name=True),
+)
 class Filter:
     """Represents a typed filter condition on a property.
 
-    Constructed exclusively via class methods — never instantiated directly.
-    Each class method maps to specific filterType, filterOperator, and
-    filterValue format in the bookmark JSON.
+    Constructed via class methods or via dict construction with
+    public field names for dict/JSON/LLM callers.
 
-    Example:
+    Example (classmethods):
         ```python
         from mixpanel_headless import Filter
 
@@ -7121,32 +7366,101 @@ class Filter:
         f3 = Filter.between("amount", 10, 100)
         f4 = Filter.is_set("email")
         ```
+
+    Example (dict construction):
+        ```python
+        from pydantic import TypeAdapter
+        from mixpanel_headless import Filter
+
+        adapter = TypeAdapter(Filter)
+        f = adapter.validate_python({
+            "property": "country",
+            "operator": "equals",
+            "value": "US",
+        })
+        ```
     """
 
-    _property: str | CustomPropertyRef | InlineCustomProperty
+    _property: PropertySpec = Field(
+        validation_alias="property",
+    )
     """Property to filter on (name, ref, or inline)."""
 
-    _operator: FilterOperator
+    _operator: FilterOperator = Field(validation_alias="operator")
     """Internal operator string. Must be one of the values in :data:`FilterOperator`."""
 
-    _value: (
-        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None
-    )
+    _value: Annotated[
+        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None,
+        WithJsonSchema(
+            {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "integer"},
+                    {"type": "number"},
+                    # minItems / maxItems mirror the build-time B20
+                    # (non-empty filterValue) and B21 (at most 1000
+                    # entries) rules; runtime enforcement stays in
+                    # ``_validate_filter_clause`` so callers keep the
+                    # ``B20_EMPTY_FILTER_VALUE`` /
+                    # ``B21_FILTER_VALUE_TOO_MANY`` errors.
+                    {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": _MAX_FILTER_VALUES,
+                    },
+                    {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 1,
+                        "maxItems": _MAX_FILTER_VALUES,
+                    },
+                    {"type": "null"},
+                ],
+                "description": (
+                    "Value(s) to compare against. Scalar or list-of-scalars "
+                    "depending on the operator (str for contains, list[str] "
+                    "for equals, numeric for greater_than/less_than, "
+                    "two-element list for between, null for is_set/is_true). "
+                    "Cohort-membership filters (in_cohort/not_in_cohort) carry "
+                    "an internal wire structure here and must be built via the "
+                    "Filter.in_cohort() / Filter.not_in_cohort() constructors, "
+                    "not by hand."
+                ),
+            }
+        ),
+    ] = Field(default=None, validation_alias="value")
     """Value(s) to compare against.
 
     Shape varies by operator: list for equals/not_equals, str for
     contains/not_contains, numeric for greater_than/less_than,
     two-element list for between, None for is_set/is_not_set/is_true/is_false,
     list of dicts for cohort filters (in_cohort/not_in_cohort).
+
+    The JSON schema for this field is overridden (via ``WithJsonSchema``) to a
+    closed scalar/list-of-scalar union. The runtime type still admits the
+    cohort ``list[dict]`` wire structure — a tested internal contract asserted
+    by ``tests/test_types_cohort_behaviors.py`` — but that shape is a builder
+    artifact of ``Filter.in_cohort``/``not_in_cohort``, not a declarative input
+    an LLM should synthesize, so it is deliberately excluded from the schema to
+    keep it free of opaque ``object`` holes. Declarative cohort membership is
+    expressed through :class:`InlineCohort` / :class:`CohortReferenceCriterion`
+    instead.
     """
 
-    _property_type: FilterPropertyType = "string"
+    _property_type: FilterPropertyType = Field(
+        default="string", validation_alias="property_type"
+    )
     """Data type of the property."""
 
-    _resource_type: Literal["events", "people"] = "events"
+    _resource_type: Literal["events", "people"] = Field(
+        default="events", validation_alias="resource_type"
+    )
     """Resource type to filter."""
 
-    _date_unit: FilterDateUnit | None = None
+    _date_unit: FilterDateUnit | None = Field(
+        default=None, validation_alias="date_unit"
+    )
     """Time unit for relative date filters (hour, day, week, month).
 
     Set by ``in_the_last()``, ``not_in_the_last()``, and ``in_the_next()`` factory methods.
@@ -7154,25 +7468,102 @@ class Filter:
     and absolute date filters.
     """
 
-    _list_item_filters: tuple[Filter, ...] | None = None
+    _list_item_filters: tuple[Filter, ...] | None = Field(
+        default=None, validation_alias="list_item_filters"
+    )
     """Sub-filters for ``list_contains``, evaluated per-item against a list-of-objects property."""
 
-    _list_item_quantifier: Literal["any", "all"] | None = None
+    _list_item_quantifier: Literal["any", "all"] | None = Field(
+        default=None, validation_alias="list_item_quantifier"
+    )
     """Quantifier for ``list_contains``: ``"any"`` (≥1 item matches) or ``"all"`` (every item matches)."""
 
-    def __post_init__(self) -> None:
-        """Validate Filter mode invariants.
+    # Operator families. Composite sets are derived from the base sets
+    # so each operator string is stated exactly once.
+    _NUMERIC_SCALAR_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is greater than", "is less than", "is at least", "is at most"}
+    )
+    _NUMERIC_OPS: ClassVar[frozenset[str]] = _NUMERIC_SCALAR_OPS | {
+        "is between",
+        "not between",
+    }
+    _BOOLEAN_OPS: ClassVar[frozenset[str]] = frozenset({"true", "false"})
+    _SINGLE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"was on", "was not on", "was before", "was since"}
+    )
+    _DATE_OPS: ClassVar[frozenset[str]] = _SINGLE_DATE_OPS | {
+        "was between",
+        "was not between",
+    }
+    _RELATIVE_DATE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"was in the", "was not in the", "was in the next"}
+    )
+    _DATETIME_OPS: ClassVar[frozenset[str]] = _DATE_OPS | _RELATIVE_DATE_OPS
+    _NO_VALUE_OPS: ClassVar[frozenset[str]] = (
+        frozenset({"is set", "is not set"}) | _BOOLEAN_OPS
+    )
+    _TWO_VALUE_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"is between", "not between", "was between", "was not between"}
+    )
+    _STRING_OPS: ClassVar[frozenset[str]] = frozenset(
+        {"contains", "does not contain", "starts with", "ends with"}
+    )
 
-        Only validates the ``list_contains`` mode today. Other operator
-        modes rely on classmethod-only validation; expanding this
-        coverage is a separate concern from this PR's list_contains
-        feature.
+    # Operator/value-shape message templates, shared by ``__post_init__``
+    # and ``_reject_bool_value`` so the two producers cannot drift.
+    _MSG_NEEDS_NUMERIC: ClassVar[str] = (
+        "Filter operator '{op}' requires a numeric value, got {got!r}"
+    )
+    _MSG_NEEDS_STRING: ClassVar[str] = (
+        "Filter operator '{op}' requires a string value, got {got!r}"
+    )
+    _MSG_NEEDS_STR_OR_LIST: ClassVar[str] = (
+        "Filter operator '{op}' requires a string or a list of strings, got {got!r}"
+    )
+    _MSG_NEEDS_STR_LIST: ClassVar[str] = (
+        "Filter operator '{op}' requires a list of strings, got {got!r}"
+    )
+    _MSG_NEEDS_NUMERIC_PAIR: ClassVar[str] = (
+        "Filter operator '{op}' requires two numeric values, got {got!r}"
+    )
+    _MSG_NEEDS_DATE_PAIR: ClassVar[str] = (
+        "Filter operator '{op}' requires two date strings in "
+        "YYYY-MM-DD format, got {got!r}"
+    )
+
+    def __post_init__(self) -> None:
+        """Validate invariants and normalize dict-constructed instances.
+
+        Uses ``object.__setattr__`` to mutate the frozen instance during
+        construction — the documented pydantic pattern for dataclass
+        normalization. A model_validator(mode='before') alternative would
+        avoid the mutation but requires restructuring the entire class.
+
+        Normalization replicates the logic in classmethods so that
+        dict/JSON callers get the same result:
+
+        - ``equals`` / ``does not equal``: wraps scalar string to list
+        - Numeric operators: infers ``_property_type="number"``
+        - Boolean operators: infers ``_property_type="boolean"``
+        - Date operators: infers ``_property_type="datetime"``
+        - Relative-date operators: defaults ``_date_unit="day"``
 
         Raises:
             ValueError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` or ``_list_item_quantifier`` is
-                ``None``. List-contains filters must be constructed
-                via ``Filter.list_contains(...)``.
+                ``None``, or ``_value`` is not ``None`` (the builder
+                ignores it); if a ``$cohorts`` filter was hand-rolled
+                instead of built via ``Filter.in_cohort()`` /
+                ``Filter.not_in_cohort()`` (the value-less ``is set`` /
+                ``is not set`` operators are exempt); if a scalar numeric
+                operator receives a non-numeric (or missing) value; if
+                a string operator receives a non-string (or missing)
+                value; if a no-value operator (``is set`` /
+                ``is not set`` / ``true`` / ``false``) receives a
+                value; if a date operator receives a value that is
+                not a valid YYYY-MM-DD date (or two-date range with
+                from <= to); or if a relative-date operator receives a
+                non-positive quantity.
         """
         if self._operator == "list_contains":
             if self._list_item_filters is None:
@@ -7185,6 +7576,317 @@ class Filter:
                     "list_contains Filter requires _list_item_quantifier; "
                     "construct via Filter.list_contains(...)"
                 )
+            for sub in self._list_item_filters:
+                if sub._operator == "list_contains":
+                    raise ValueError(
+                        "Nested list_contains is not supported; "
+                        "list_item_filters cannot themselves be list_contains"
+                    )
+            # The wire entry hard-codes filterValue: True and carries the
+            # real conditions in listItemFilters, so _value is never read.
+            # Accepting one would silently run semantics the caller did
+            # not write.
+            if self._value is not None:
+                raise ValueError(
+                    "list_contains Filter does not accept _value; the "
+                    "conditions belong in _list_item_filters (the value "
+                    "would be silently ignored)"
+                )
+
+        # Cohort-membership filters carry an internal wire structure in
+        # _value ([{"cohort": {...}}]) that only the constructors build.
+        # Hand-rolled '$cohorts' filters (e.g. the dict/LLM input
+        # {"property": "$cohorts", "operator": "contains", "value": "123"})
+        # previously slipped through, then either crashed the flow builder
+        # with an internal RuntimeError or silently emitted an ordinary
+        # string filter on the insights path. The value-less presence
+        # operators ("is set" / "is not set") stay allowed — they emit an
+        # ordinary filter entry that never touches the cohort wire
+        # structure and were constructible before this guard existed.
+        if (
+            self._property == "$cohorts"
+            and self._operator not in ("is set", "is not set")
+            and not self._has_cohort_wire_shape()
+        ):
+            raise ValueError(
+                "Filters on '$cohorts' must be built via Filter.in_cohort() / "
+                "Filter.not_in_cohort() (or the declarative InlineCohort / "
+                "CohortReferenceCriterion inputs), not constructed by hand; "
+                "only the value-less 'is set' / 'is not set' operators may "
+                "target '$cohorts' directly "
+                f"(got operator={self._operator!r}, value={self._value!r})"
+            )
+
+        # Scalar numeric operators require a numeric value (classmethod
+        # contract is int | float); anything else built a
+        # self-contradictory wire entry (filterType "number" with a
+        # non-numeric operand). Raw booleans never reach this check —
+        # _reject_bool_value refuses them before the int-alternative coercion.
+        if self._operator in self._NUMERIC_SCALAR_OPS and not isinstance(
+            self._value, (int, float)
+        ):
+            raise ValueError(
+                self._MSG_NEEDS_NUMERIC.format(op=self._operator, got=self._value)
+            )
+
+        # String operators require a string value (classmethod contract
+        # is str); '$cohorts' filters reuse 'contains'/'does not contain'
+        # with the cohort wire structure validated above
+        if (
+            self._operator in self._STRING_OPS
+            and self._property != "$cohorts"
+            and not isinstance(self._value, str)
+        ):
+            raise ValueError(
+                self._MSG_NEEDS_STRING.format(op=self._operator, got=self._value)
+            )
+
+        # No-value operators reject a supplied value instead of silently
+        # discarding it — "is set" with a value almost certainly meant
+        # "equals", and running the bare existence check would be a
+        # semantically different query than the caller wrote.
+        if self._operator in self._NO_VALUE_OPS and self._value is not None:
+            hint = (
+                "; did you mean operator 'equals'?"
+                if self._operator in ("is set", "is not set")
+                else ""
+            )
+            raise ValueError(
+                f"Filter operator '{self._operator}' does not take a value "
+                f"(got {self._value!r}){hint}"
+            )
+
+        # TODO(AIE): none of the operator -> value rules in this method are
+        # mirrored in the generated schema, so it stays a strict superset of
+        # this runtime:
+        # `{"operator": "equals", "value": "oops", "property_type": "number"}`,
+        # `{"operator": "is greater than", "value": "abc"}` and
+        # `{"operator": "list_contains", "value": "nike"}` all schema-accept
+        # and runtime-reject. Expressing the coupling natively
+        # needs a discriminated union over (operator x property_type), and the
+        # legal space does not partition yet — `equals` carries both list[str]
+        # and scalar numeric, `contains` carries the schema-hidden cohort wire
+        # under property_type "list", and an explicit "string" is
+        # indistinguishable from an omitted one. Deferred: agreeing a narrowed
+        # legal table is a behavior change, measured at ~10-12 union members,
+        # property shims for segfilter.py / bookmark_schema.py /
+        # bookmark_builders.py, and ~25 test sites. Own PR, whole rule set at
+        # once — a hand-written if/then in the schema would just drift.
+        #
+        # Wrap scalar string to list for equals/not_equals (matches classmethod
+        # behavior); for string-typed filters (the default, and the LLM dict
+        # path) reject non-string scalars and non-string list elements — the
+        # classmethod contract is str | list[str], and a bare scalar
+        # filterValue is rejected by the API. Explicitly numeric-typed filters
+        # keep their scalar values (the segfilter engine stringifies them
+        # downstream); boolean-typed ones have no compatible operand at all.
+        if self._operator in ("equals", "does not equal"):
+            if self._value is None:
+                raise ValueError(f"Filter operator '{self._operator}' requires a value")
+            # An explicit non-string _property_type has to be honoured before
+            # the scalar-string wrap below, which would otherwise turn "oops"
+            # into ["oops"] and emit filterType "number" holding a string.
+            # Type inference runs at the end of __post_init__, so a "number"
+            # or "boolean" type seen here was always supplied by the caller.
+            if self._property_type == "number":
+                operands = (
+                    self._value if isinstance(self._value, list) else [self._value]
+                )
+                if not all(isinstance(v, (int, float)) for v in operands):
+                    raise ValueError(
+                        self._MSG_NEEDS_NUMERIC.format(
+                            op=self._operator, got=self._value
+                        )
+                    )
+            elif self._property_type == "boolean":
+                # Boolean properties are tested with the value-less
+                # true/false operators, so no operand is compatible.
+                raise ValueError(
+                    f"Filter operator '{self._operator}' is not valid for a "
+                    f"boolean property (got {self._value!r}); use "
+                    "Filter.is_true()/Filter.is_false() for boolean property tests"
+                )
+            elif isinstance(self._value, str):
+                object.__setattr__(self, "_value", [self._value])
+            elif self._property_type == "string":
+                if not isinstance(self._value, list):
+                    raise ValueError(
+                        self._MSG_NEEDS_STR_OR_LIST.format(
+                            op=self._operator, got=type(self._value).__name__
+                        )
+                    )
+                if not all(isinstance(v, str) for v in self._value):
+                    raise ValueError(
+                        self._MSG_NEEDS_STR_LIST.format(
+                            op=self._operator, got=self._value
+                        )
+                    )
+
+        # Validate two-value operators require exactly 2 elements
+        if self._operator in self._TWO_VALUE_OPS and (
+            not isinstance(self._value, list) or len(self._value) != 2
+        ):
+            raise ValueError(
+                f"Filter operator '{self._operator}' requires a "
+                f"2-element list, got {self._value!r}"
+            )
+
+        # Numeric two-value operators require numeric endpoints
+        # (Filter.between/not_between contract is list[int | float]); the
+        # date pair ("was between"/"was not between") is validated below.
+        # Boolean endpoints never reach this check — _reject_bool_value
+        # scans list items before the int-alternative coercion can turn
+        # True/False into 1/0.
+        if (
+            self._operator in ("is between", "not between")
+            and isinstance(self._value, list)
+            and not all(isinstance(v, (int, float)) for v in self._value)
+        ):
+            raise ValueError(
+                self._MSG_NEEDS_NUMERIC_PAIR.format(op=self._operator, got=self._value)
+            )
+
+        # Validate date values (classmethod parity — dict construction
+        # must reject the same inputs Filter.on()/date_between()/etc. do)
+        if self._operator in self._SINGLE_DATE_OPS:
+            if not isinstance(self._value, str):
+                raise ValueError(
+                    f"Filter operator '{self._operator}' requires a date "
+                    f"string in YYYY-MM-DD format, got {self._value!r}"
+                )
+            self._validate_date(self._value)
+
+        if self._operator in ("was between", "was not between") and isinstance(
+            self._value, list
+        ):
+            from_raw, to_raw = self._value
+            if not isinstance(from_raw, str) or not isinstance(to_raw, str):
+                raise ValueError(
+                    self._MSG_NEEDS_DATE_PAIR.format(op=self._operator, got=self._value)
+                )
+            from_parsed = self._validate_date(from_raw)
+            to_parsed = self._validate_date(to_raw)
+            if from_parsed > to_parsed:
+                raise ValueError(
+                    f"from_date must be before to_date (got '{from_raw}' > '{to_raw}')"
+                )
+
+        if self._operator in self._RELATIVE_DATE_OPS and (
+            not isinstance(self._value, int)
+            or isinstance(self._value, bool)
+            or self._value <= 0
+        ):
+            raise ValueError(
+                f"quantity must be a positive integer (got {self._value!r})"
+            )
+
+        # Infer _property_type from operator when left at default
+        if self._property_type == "string":
+            if self._operator in self._NUMERIC_OPS:
+                object.__setattr__(self, "_property_type", "number")
+            elif self._operator in self._BOOLEAN_OPS:
+                object.__setattr__(self, "_property_type", "boolean")
+            elif self._operator in self._DATETIME_OPS:
+                object.__setattr__(self, "_property_type", "datetime")
+
+        if self._operator in self._RELATIVE_DATE_OPS and self._date_unit is None:
+            object.__setattr__(self, "_date_unit", "day")
+
+    @field_validator("_value", mode="before")
+    @classmethod
+    def _reject_bool_value(cls, v: object, info: core_schema.ValidationInfo) -> object:
+        """Reject boolean values (scalar or list item) before lax int coercion.
+
+        Pydantic's lax mode coerces ``True``/``False`` into ``1``/``0``
+        via the ``int`` alternative (and the ``list[int | float]`` alternative) of the
+        ``_value`` union *before* ``__post_init__`` runs, so
+        operator/value-shape checks there would see integers and accept
+        a query the caller never wrote — ``Filter.between("amount",
+        True, 100)`` silently became ``[1, 100]``. No operator family
+        accepts a boolean value in any position (boolean property tests
+        use the value-less ``true``/``false`` operators), so booleans
+        are rejected outright with an operator-specific message that
+        reports the caller's original input.
+
+        Args:
+            v: The raw ``_value`` input, prior to any coercion.
+            info: Validation context; ``info.data`` carries the
+                already-validated ``_operator`` field (declared before
+                ``_value``), used to phrase the error.
+
+        Returns:
+            The input unchanged when it carries no boolean.
+
+        Raises:
+            ValueError: If ``v`` is a ``bool``, or a list containing a
+                ``bool``.
+
+        Example:
+            ```python
+            from pydantic import TypeAdapter
+
+            TypeAdapter(Filter).validate_python(
+                {"property": "amount", "operator": "is between", "value": [True, 100]}
+            )
+            # ValidationError: ... requires two numeric values, got [True, 100]
+            ```
+        """
+        if isinstance(v, bool):
+            operator = info.data.get("_operator")
+            if operator in ("equals", "does not equal"):
+                raise ValueError(
+                    cls._MSG_NEEDS_STR_OR_LIST.format(op=operator, got=type(v).__name__)
+                )
+            if operator in cls._NUMERIC_SCALAR_OPS:
+                raise ValueError(cls._MSG_NEEDS_NUMERIC.format(op=operator, got=v))
+            if operator in cls._STRING_OPS:
+                raise ValueError(cls._MSG_NEEDS_STRING.format(op=operator, got=v))
+            raise ValueError(
+                f"Filter value cannot be a boolean (got {v!r}); use "
+                "Filter.is_true()/Filter.is_false() for boolean property tests"
+            )
+        if isinstance(v, list) and any(isinstance(item, bool) for item in v):
+            operator = info.data.get("_operator")
+            if operator in ("equals", "does not equal"):
+                raise ValueError(cls._MSG_NEEDS_STR_LIST.format(op=operator, got=v))
+            if operator in ("is between", "not between"):
+                raise ValueError(cls._MSG_NEEDS_NUMERIC_PAIR.format(op=operator, got=v))
+            if operator in ("was between", "was not between"):
+                raise ValueError(cls._MSG_NEEDS_DATE_PAIR.format(op=operator, got=v))
+            raise ValueError(
+                f"Filter value cannot contain a boolean (got {v!r}); use "
+                "Filter.is_true()/Filter.is_false() for boolean property tests"
+            )
+        return v
+
+    def _has_cohort_wire_shape(self) -> bool:
+        """Check whether this filter carries the cohort wire structure.
+
+        The cohort-membership constructors (``in_cohort`` /
+        ``not_in_cohort``) produce ``_operator`` in
+        ``{"contains", "does not contain"}`` and ``_value`` shaped as a
+        non-empty list of ``{"cohort": {...}}`` dicts. Any ``$cohorts``
+        filter that does not match this shape was hand-rolled and would
+        break the downstream builders.
+
+        Returns:
+            True if ``_operator`` and ``_value`` match the structure
+            built by ``_build_cohort_filter``; False otherwise.
+
+        Example:
+            ```python
+            Filter.in_cohort(123, "PU")._has_cohort_wire_shape()
+            # True
+            ```
+        """
+        if self._operator not in ("contains", "does not contain"):
+            return False
+        if not isinstance(self._value, list) or len(self._value) == 0:
+            return False
+        return all(
+            isinstance(item, dict) and isinstance(item.get("cohort"), dict)
+            for item in self._value
+        )
 
     @classmethod
     def equals(
@@ -7785,7 +8487,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was on",
@@ -7815,7 +8516,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was not on",
@@ -7845,7 +8545,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was before",
@@ -7875,7 +8574,6 @@ class Filter:
         Raises:
             ValueError: If date is not valid YYYY-MM-DD.
         """
-        cls._validate_date(date)
         return cls(
             _property=property,
             _operator="was since",
@@ -7908,8 +8606,6 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was in the",
@@ -7943,8 +8639,6 @@ class Filter:
         Raises:
             ValueError: If quantity is not positive.
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was not in the",
@@ -7978,12 +8672,6 @@ class Filter:
             ValueError: If dates are not valid YYYY-MM-DD or
                 from_date is after to_date.
         """
-        from_parsed = cls._validate_date(from_date)
-        to_parsed = cls._validate_date(to_date)
-        if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
-            )
         return cls(
             _property=property,
             _operator="was between",
@@ -8021,12 +8709,6 @@ class Filter:
             f = Filter.date_not_between("created", "2024-01-01", "2024-06-30")
             ```
         """
-        from_parsed = cls._validate_date(from_date)
-        to_parsed = cls._validate_date(to_date)
-        if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
-            )
         return cls(
             _property=property,
             _operator="was not between",
@@ -8064,8 +8746,6 @@ class Filter:
             f = Filter.in_the_next("expires", 7, "day")
             ```
         """
-        if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
         return cls(
             _property=property,
             _operator="was in the next",
@@ -8200,7 +8880,7 @@ class Filter:
         )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class ListItemGroupMode:
     """Discriminator for ``GroupBy.list_item`` — sub-property name + scalar type.
 
@@ -8231,24 +8911,22 @@ class ListItemGroupMode:
     """Subproperty data type, matching :data:`CustomPropertyType`."""
 
     def __post_init__(self) -> None:
-        """Validate sub is non-empty and sub_type is a known scalar type.
+        """Validate sub is non-empty.
+
+        ``sub_type`` Literal membership is enforced by pydantic before
+        ``__post_init__`` runs.
 
         Raises:
-            ValueError: If ``sub`` is empty after stripping or
-                ``sub_type`` is not one of the four
-                ``CustomPropertyType`` values.
+            ValueError: If ``sub`` is empty after stripping.
         """
         if not self.sub.strip():
             raise ValueError("ListItemGroupMode.sub must be a non-empty string")
-        if self.sub_type not in ("string", "number", "boolean", "datetime"):
-            raise ValueError(
-                "ListItemGroupMode.sub_type must be one of "
-                "'string'/'number'/'boolean'/'datetime', "
-                f"got {self.sub_type!r}"
-            )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(
+    frozen=True,
+    config=ConfigDict(extra="forbid", populate_by_name=True),
+)
 class GroupBy:
     """Specifies a property breakdown with optional numeric bucketing.
 
@@ -8281,8 +8959,14 @@ class GroupBy:
         ```
     """
 
-    property: str | CustomPropertyRef | InlineCustomProperty
-    """Property to break down by (name, ref, or inline)."""
+    property: _PropertySpecNonEmpty
+    """Property to break down by (name, ref, or inline).
+
+    The string alternative's ``minLength`` keyword mirrors the runtime
+    non-empty rule into the JSON schema; enforcement stays in
+    ``__post_init__`` (which also rejects whitespace-only names) so
+    callers keep its message.
+    """
 
     property_type: CustomPropertyType = "string"
     """Data type of the property. One of the four scalar types.
@@ -8292,35 +8976,43 @@ class GroupBy:
     independently of this field.
     """
 
-    bucket_size: int | float | None = None
-    """Bucket width for numeric properties."""
+    bucket_size: (
+        Annotated[int, Field(strict=True, gt=0)]
+        | Annotated[float, Field(strict=True, gt=0)]
+        | None
+    ) = None
+    """Bucket width for numeric properties.
 
-    bucket_min: int | float | None = None
-    """Minimum value for numeric buckets."""
+    The ``gt=0`` bound is annotated per union alternative so it renders as
+    JSON-Schema ``exclusiveMinimum`` (a constraint on the union itself
+    would emit a non-standard literal ``gt`` key that schema-driven
+    consumers ignore). Strict mode — bool/str inputs are rejected.
+    """
 
-    bucket_max: int | float | None = None
-    """Maximum value for numeric buckets."""
+    bucket_min: StrictInt | StrictFloat | None = None
+    """Minimum value for numeric buckets. Strict — bool/str rejected."""
 
-    _list_item_mode: ListItemGroupMode | None = None
+    bucket_max: StrictInt | StrictFloat | None = None
+    """Maximum value for numeric buckets. Strict — bool/str rejected."""
+
+    _list_item_mode: ListItemGroupMode | None = Field(
+        default=None, validation_alias="list_item_mode"
+    )
     """List-item breakdown discriminator. Set by :meth:`list_item`."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is an empty string (GB1),
-                bucket_size is not positive (GB2),
-                bucket_min >= bucket_max (GB3),
-                ``_list_item_mode`` is combined with bucketing (GB4),
+            ValueError: If property is an empty string,
+                bucket_min >= bucket_max,
+                ``_list_item_mode`` is combined with bucketing,
                 or ``_list_item_mode`` is set but ``property`` is not a
-                plain ``str`` (GB5).
+                plain ``str``. Note that bucket_size > 0 is enforced
+                by ``Field(gt=0)`` and visible in the JSON schema.
         """
         if isinstance(self.property, str) and not self.property.strip():
             raise ValueError("GroupBy.property must be a non-empty string")
-        if self.bucket_size is not None and self.bucket_size <= 0:
-            raise ValueError(
-                f"GroupBy.bucket_size must be positive, got {self.bucket_size}"
-            )
         if (
             self.bucket_min is not None
             and self.bucket_max is not None
@@ -8407,6 +9099,37 @@ _PROPERTY_OPERATOR_MAP: dict[str, str] = {
     "is_not_set": "not defined",
 }
 """Maps ``CohortCriteria.has_property()`` operator names to selector tree operators."""
+
+CohortPropertyOperator = Literal[
+    "equals",
+    "not_equals",
+    "contains",
+    "not_contains",
+    "greater_than",
+    "less_than",
+    "is_set",
+    "is_not_set",
+]
+"""Comparison operators for property-based cohort criteria.
+
+Shared by :meth:`CohortCriteria.has_property` and
+:class:`PropertyCriterion`; the exact keys of :data:`_PROPERTY_OPERATOR_MAP`.
+"""
+
+CohortPropertyValueType = Literal[
+    "string",
+    "number",
+    "boolean",
+    "datetime",
+    "list",
+]
+"""Property data types for property-based cohort criteria.
+
+Shared by :meth:`CohortCriteria.has_property` and
+:class:`PropertyCriterion`. Includes ``"list"`` (unlike
+:data:`CustomPropertyType`) because cohort property selectors support
+list membership comparisons.
+"""
 
 _FILTER_TO_SELECTOR_SUPPORTED: frozenset[str] = frozenset(
     {
@@ -8786,23 +9509,8 @@ class CohortCriteria:
         property: str,
         value: str | int | float | bool | list[str],
         *,
-        operator: Literal[
-            "equals",
-            "not_equals",
-            "contains",
-            "not_contains",
-            "greater_than",
-            "less_than",
-            "is_set",
-            "is_not_set",
-        ] = "equals",
-        property_type: Literal[
-            "string",
-            "number",
-            "boolean",
-            "datetime",
-            "list",
-        ] = "string",
+        operator: CohortPropertyOperator = "equals",
+        property_type: CohortPropertyValueType = "string",
     ) -> CohortCriteria:
         """Create a property-based criterion.
 
@@ -9173,8 +9881,505 @@ class CohortDefinition:
         selector = _collect_and_build(self)
         return {"selector": selector, "behaviors": behaviors}
 
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        source_type: Any,
+        handler: GetCoreSchemaHandler,
+    ) -> core_schema.CoreSchema:
+        """Bridge the builder type to the declarative :class:`InlineCohort` schema.
 
-@dataclass(frozen=True)
+        ``CohortDefinition`` is constructed via classmethods, not from
+        JSON, so its own fields are private and useless to a schema
+        consumer. This hook makes any pydantic field typed
+        ``int | CohortDefinition`` render its inline alternative as the fully
+        self-describing :class:`InlineCohort` model while keeping the
+        builder API working at runtime:
+
+        - **JSON input** (an LLM's declarative payload) validates against
+          ``InlineCohort`` and is converted to a ``CohortDefinition`` via
+          :meth:`InlineCohort.to_definition`.
+        - **Python input** accepts an existing ``CohortDefinition``
+          instance unchanged, or the same declarative shape.
+        - **Serialization** delegates to :meth:`to_dict`.
+
+        Args:
+            source_type: The annotated source type (unused; always
+                ``CohortDefinition``).
+            handler: Pydantic core-schema handler used to build the
+                nested ``InlineCohort`` schema.
+
+        Returns:
+            A core schema that renders as ``InlineCohort`` in JSON schema,
+            accepts builder instances and declarative input at runtime,
+            and serializes via ``to_dict``.
+        """
+        inline_schema = handler.generate_schema(InlineCohort)
+        from_inline = core_schema.no_info_after_validator_function(
+            lambda inline: inline.to_definition(),
+            inline_schema,
+        )
+        return core_schema.json_or_python_schema(
+            json_schema=from_inline,
+            python_schema=core_schema.union_schema(
+                [
+                    core_schema.is_instance_schema(cls),
+                    from_inline,
+                ]
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda definition: definition.to_dict(),
+            ),
+        )
+
+
+# =============================================================================
+# Declarative Cohort Input Models (LLM-facing, JSON-schema exhaustive)
+# =============================================================================
+
+
+class PropertyCriterion(BaseModel):
+    """Declarative property-based cohort criterion.
+
+    JSON-schema-exhaustive mirror of
+    :meth:`CohortCriteria.has_property`. Selects users by a stored
+    user-property value.
+
+    Attributes:
+        kind: Discriminator tag. Required; always ``"property"``.
+        property: Property name (must be non-empty).
+        value: Value to compare against. The presence operators
+            (``is_set`` / ``is_not_set``) take no value — pass ``""``;
+            any other value is rejected (see
+            :meth:`_reject_value_on_presence_operators`).
+        operator: Comparison operator. Default: ``"equals"``.
+        property_type: Data type of the property. Default: ``"string"``.
+
+    Example:
+        ```python
+        from mixpanel_headless import PropertyCriterion
+
+        c = PropertyCriterion(kind="property", property="plan", value="premium")
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["property"]
+    """Discriminator tag. Required."""
+
+    property: str = Field(min_length=1, description="User property name.")
+    """Property name (must be non-empty)."""
+
+    value: str | int | float | bool | list[str] = Field(
+        description='Value to compare against (must be "" for is_set/is_not_set).',
+    )
+    """Value to compare against (must be ``""`` for the presence operators)."""
+
+    operator: CohortPropertyOperator = Field(
+        "equals",
+        description="Comparison operator.",
+    )
+    """Comparison operator."""
+
+    property_type: CohortPropertyValueType = Field(
+        "string",
+        description="Data type of the property.",
+    )
+    """Data type of the property."""
+
+    @model_validator(mode="after")
+    def _reject_value_on_presence_operators(self) -> PropertyCriterion:
+        """Reject a supplied value on the presence operators.
+
+        Mirrors ``Filter``'s no-value-operator rule: ``is_set`` /
+        ``is_not_set`` with a real value almost certainly meant
+        ``equals``, and silently discarding the operand would run a
+        semantically different query than the caller wrote (and ship
+        the ignored operand into the wire selector). ``value`` stays a
+        required field for the comparison operators, so the presence
+        operators accept only the documented ``""`` sentinel.
+
+        Returns:
+            The validated instance, unchanged.
+
+        Raises:
+            ValueError: If ``operator`` is ``is_set`` / ``is_not_set``
+                and ``value`` is anything other than ``""``.
+        """
+        if self.operator in ("is_set", "is_not_set") and self.value != "":
+            raise ValueError(
+                f"PropertyCriterion operator '{self.operator}' does not "
+                f'take a value (got {self.value!r}) — pass value=""; '
+                "did you mean operator 'equals'?"
+            )
+        return self
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.has_property`.
+
+        Raises:
+            ValueError: If the property name is empty (propagated from
+                ``has_property``).
+        """
+        return CohortCriteria.has_property(
+            self.property,
+            self.value,
+            operator=self.operator,
+            property_type=self.property_type,
+        )
+
+
+class BehavioralCriterion(BaseModel):
+    """Declarative behavioral (event-frequency) cohort criterion.
+
+    JSON-schema-exhaustive mirror of :meth:`CohortCriteria.did_event`.
+    Exactly one frequency bound (``at_least`` / ``at_most`` /
+    ``exactly``) and exactly one time constraint (one ``within_*`` OR the
+    ``from_date`` + ``to_date`` pair) must be provided; this is enforced
+    at conversion time by ``did_event``.
+
+    Attributes:
+        kind: Discriminator tag. Required; always ``"behavioral"``.
+        event: Event name (must be non-empty).
+        at_least: Minimum event count (``>=``).
+        at_most: Maximum event count (``<=``).
+        exactly: Exact event count (``==``). Use ``0`` for "did not do".
+        within_days: Rolling window in days.
+        within_weeks: Rolling window in weeks.
+        within_months: Rolling window in months.
+        from_date: Absolute start date (YYYY-MM-DD).
+        to_date: Absolute end date (YYYY-MM-DD).
+        where: Event-property filters applied to the counted events.
+        aggregation: Aggregation operator for property thresholds; must
+            be paired with ``aggregation_property``.
+        aggregation_property: Event property to aggregate; must be paired
+            with ``aggregation``.
+
+    Example:
+        ```python
+        from mixpanel_headless import BehavioralCriterion
+
+        c = BehavioralCriterion(
+            kind="behavioral", event="Purchase", at_least=3, within_days=30
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["behavioral"]
+    """Discriminator tag. Required."""
+
+    event: str = Field(min_length=1, description="Event name.")
+    """Event name (must be non-empty)."""
+
+    at_least: int | None = Field(
+        None, ge=0, strict=True, description="Minimum event count (>=)."
+    )
+    """Minimum event count. Strict — bool/float/str inputs are rejected."""
+
+    at_most: int | None = Field(
+        None, ge=0, strict=True, description="Maximum event count (<=)."
+    )
+    """Maximum event count. Strict — bool/float/str inputs are rejected."""
+
+    exactly: int | None = Field(
+        None,
+        ge=0,
+        strict=True,
+        description="Exact event count (==); use 0 for 'did not do'.",
+    )
+    """Exact event count. Strict — bool/float/str inputs are rejected."""
+
+    within_days: int | None = Field(
+        None, gt=0, strict=True, description="Rolling window in days."
+    )
+    """Rolling window in days. Strict — bool/float/str inputs are rejected."""
+
+    within_weeks: int | None = Field(
+        None, gt=0, strict=True, description="Rolling window in weeks."
+    )
+    """Rolling window in weeks. Strict — bool/float/str inputs are rejected."""
+
+    within_months: int | None = Field(
+        None, gt=0, strict=True, description="Rolling window in months."
+    )
+    """Rolling window in months. Strict — bool/float/str inputs are rejected."""
+
+    from_date: _DateStrSchema | None = Field(
+        None, description="Absolute start date (YYYY-MM-DD); requires to_date."
+    )
+    """Absolute start date."""
+
+    to_date: _DateStrSchema | None = Field(
+        None, description="Absolute end date (YYYY-MM-DD); requires from_date."
+    )
+    """Absolute end date."""
+
+    where: list[Filter] | None = Field(
+        None, description="Event-property filters applied to the counted events."
+    )
+    """Event-property filters."""
+
+    aggregation: CohortAggregationType | None = Field(
+        None,
+        description="Aggregation operator for property thresholds "
+        "(pair with aggregation_property).",
+    )
+    """Aggregation operator."""
+
+    aggregation_property: str | None = Field(
+        None,
+        description="Event property to aggregate (pair with aggregation).",
+    )
+    """Event property to aggregate."""
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.did_event`.
+
+        Raises:
+            ValueError: If frequency, time-constraint, date, or
+                aggregation invariants are violated (propagated from
+                ``did_event``).
+        """
+        return CohortCriteria.did_event(
+            self.event,
+            at_least=self.at_least,
+            at_most=self.at_most,
+            exactly=self.exactly,
+            within_days=self.within_days,
+            within_weeks=self.within_weeks,
+            within_months=self.within_months,
+            from_date=self.from_date,
+            to_date=self.to_date,
+            where=self.where,
+            aggregation=self.aggregation,
+            aggregation_property=self.aggregation_property,
+        )
+
+
+class CohortReferenceCriterion(BaseModel):
+    """Declarative saved-cohort membership criterion.
+
+    JSON-schema-exhaustive mirror of :meth:`CohortCriteria.in_cohort` /
+    :meth:`CohortCriteria.not_in_cohort`.
+
+    Attributes:
+        kind: Discriminator tag. Required; always ``"cohort_reference"``.
+        cohort_id: Saved cohort ID (positive integer).
+        negated: When ``True``, selects users **not** in the cohort.
+            Default: ``False``.
+
+    Example:
+        ```python
+        from mixpanel_headless import CohortReferenceCriterion
+
+        c = CohortReferenceCriterion(kind="cohort_reference", cohort_id=456)
+        c_not = CohortReferenceCriterion(
+            kind="cohort_reference", cohort_id=456, negated=True
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["cohort_reference"]
+    """Discriminator tag. Required."""
+
+    cohort_id: int = Field(
+        gt=0, strict=True, description="Saved cohort ID (positive integer)."
+    )
+    """Saved cohort ID. Strict — bool/float/str inputs are rejected.
+
+    The ``exclusiveMinimum`` bound renders in the JSON schema and is
+    enforced at construction, so a ``cohort_id: "456"`` typo cannot
+    silently reference saved cohort 456.
+    """
+
+    negated: StrictBool = Field(
+        False, description="Select users NOT in the cohort when True."
+    )
+    """Whether to negate membership. Strict — int inputs are rejected."""
+
+    def to_criteria(self) -> CohortCriteria:
+        """Convert to the builder criterion.
+
+        Returns:
+            An equivalent :class:`CohortCriteria` from
+            :meth:`CohortCriteria.not_in_cohort` when ``negated`` else
+            :meth:`CohortCriteria.in_cohort`.
+
+        Raises:
+            ValueError: If ``cohort_id`` is not positive (propagated).
+        """
+        if self.negated:
+            return CohortCriteria.not_in_cohort(self.cohort_id)
+        return CohortCriteria.in_cohort(self.cohort_id)
+
+
+class InlineCohort(BaseModel):
+    """Declarative, JSON-schema-exhaustive cohort definition.
+
+    Mirror of the :class:`CohortDefinition` builder in a form that
+    fully self-describes in ``model_json_schema()`` — an LLM can emit a
+    valid cohort as plain JSON. Criteria are combined with AND
+    (``operator="and"``, the default) or OR (``operator="or"``), and may
+    nest other ``InlineCohort`` groups arbitrarily.
+
+    Any pydantic field typed ``int | CohortDefinition`` (e.g.
+    :class:`CohortBreakdown.cohort`) accepts this shape as JSON and
+    coerces it to a :class:`CohortDefinition` at validation time.
+
+    Attributes:
+        kind: Discriminator tag. Required; always ``"group"``.
+        operator: Boolean combinator for ``criteria``. Default:
+            ``"and"``.
+        criteria: One or more child criteria or nested groups.
+
+    Example:
+        ```python
+        from mixpanel_headless import (
+            InlineCohort, PropertyCriterion, BehavioralCriterion,
+        )
+
+        cohort = InlineCohort(
+            kind="group",
+            criteria=[
+                PropertyCriterion(kind="property", property="plan", value="premium"),
+                BehavioralCriterion(
+                    kind="behavioral", event="Purchase", at_least=3, within_days=30
+                ),
+            ],
+        )
+        wire = cohort.to_dict()  # {"selector": {...}, "behaviors": {...}}
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["group"]
+    """Discriminator tag. Required."""
+
+    operator: Literal["and", "or"] = Field(
+        "and", description="Boolean combinator for criteria."
+    )
+    """Boolean combinator."""
+
+    criteria: list[_CohortNode] = Field(
+        min_length=1,
+        description="Child criteria or nested groups (at least one).",
+    )
+    """Child criteria or nested groups."""
+
+    def to_definition(self) -> CohortDefinition:
+        """Convert to the builder :class:`CohortDefinition`.
+
+        Recursively converts each child (leaf criterion or nested group)
+        and combines them with the model's ``operator``.
+
+        Returns:
+            An equivalent :class:`CohortDefinition` producing byte-for-byte
+            identical :meth:`CohortDefinition.to_dict` output.
+
+        Raises:
+            ValueError: If any child criterion is invalid (propagated
+                from its ``to_criteria`` / ``to_definition``).
+        """
+        built: list[CohortCriteria | CohortDefinition] = [
+            child.to_definition()
+            if isinstance(child, InlineCohort)
+            else child.to_criteria()
+            for child in self.criteria
+        ]
+        if self.operator == "or":
+            return CohortDefinition.any_of(*built)
+        return CohortDefinition.all_of(*built)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to Mixpanel cohort definition JSON.
+
+        Returns:
+            The same ``{"selector": {...}, "behaviors": {...}}`` dict that
+            the equivalent :class:`CohortDefinition` would produce.
+        """
+        return self.to_definition().to_dict()
+
+
+_CohortNode = Annotated[
+    PropertyCriterion | BehavioralCriterion | CohortReferenceCriterion | InlineCohort,
+    MarkedDiscriminator("kind", error_type="invalid_cohort_node"),
+]
+"""Declarative cohort nodes, routed by ``kind``.
+
+Declared after :class:`InlineCohort` because every member is a real class here
+— ``criteria: list[_CohortNode]`` in the class body stays a lazy annotation
+(``from __future__ import annotations``) until ``model_rebuild`` below.
+
+``kind`` is required on every alternative, so the generated schema marks it
+required too — a schema-valid payload always routes.
+"""
+
+InlineCohort.model_rebuild()
+
+
+def _cohort_int_or_definition_discriminator(v: Any) -> str:
+    """Route ``int | CohortDefinition`` (shared by CohortBreakdown/CohortMetric).
+
+    Total, so a wrong-typed scalar is judged only by the int alternative —
+    matching the integer-only schema each field advertises.
+
+    Args:
+        v: A cohort value (int, dict, or a builder / ``InlineCohort`` instance).
+
+    Returns:
+        ``"CohortDefinition"`` for structured input, else ``"int"``.
+    """
+    if isinstance(v, (dict, CohortDefinition, InlineCohort)):
+        return "CohortDefinition"
+    return "int"
+
+
+_CohortIdOrDefinition = Annotated[
+    int | CohortDefinition,
+    MarkedDiscriminator(
+        _cohort_int_or_definition_discriminator,
+        members={"int": _PositiveStrictIntSchema, "CohortDefinition": CohortDefinition},
+    ),
+]
+"""Saved cohort ID or inline definition, schema-visible form.
+
+``CohortBreakdown`` takes inline cohorts, so both alternatives are
+advertised in the generated JSON schema.
+"""
+
+_CohortIdOrHiddenDefinition = Annotated[
+    int | CohortDefinition,
+    MarkedDiscriminator(
+        _cohort_int_or_definition_discriminator,
+        members={
+            "int": _PositiveStrictIntSchema,
+            "CohortDefinition": SkipJsonSchema[CohortDefinition],
+        },
+    ),
+]
+"""Saved cohort ID or inline definition, definition hidden from the schema.
+
+Accepts the same values as :data:`_CohortIdOrDefinition`; ``CohortMetric``
+accepts only an ID on the wire, so its definition alternative is
+``SkipJsonSchema``.
+"""
+
+
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortBreakdown:
     """Break down query results by cohort membership.
 
@@ -9196,39 +10401,50 @@ class CohortBreakdown:
 
     Example:
         ```python
-        from mixpanel_headless import CohortBreakdown
+        from mixpanel_headless import CohortBreakdown, InsightsQuery, Metric
 
         # Segment by saved cohort
-        result = ws.query("Purchase", group_by=CohortBreakdown(123, "Power Users"))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            group_by=[CohortBreakdown(123, "Power Users")],
+        ))
 
         # Without "Not In" segment
-        result = ws.query(
-            "Purchase",
-            group_by=CohortBreakdown(123, "Power Users", include_negated=False),
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            group_by=[CohortBreakdown(123, "Power Users", include_negated=False)],
+        ))
         ```
     """
 
-    cohort: int | CohortDefinition
-    """Saved cohort ID or inline definition."""
+    cohort: _CohortIdOrDefinition
+    """Saved cohort ID or inline definition.
+
+    Discriminated like ``CohortMetric.cohort``, but the definition alternative is
+    advertised in the schema (no ``SkipJsonSchema``) because inline
+    cohorts are accepted here. The ID alternative is a strict integer — bool/str
+    inputs are rejected instead of coerced into a different saved-cohort
+    ID — and its ``exclusiveMinimum`` mirrors the runtime positive-ID
+    rule (enforced in ``__post_init__``).
+    """
 
     name: str | None = None
     """Display name for the cohort."""
 
-    include_negated: bool = True
-    """Whether to include a 'Not In' segment."""
+    include_negated: StrictBool = True
+    """Whether to include a 'Not In' segment. Strict — int inputs rejected."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CB1) or name
-                is empty when provided (CB2).
+            ValueError: If cohort ID is not positive or name
+                is empty when provided.
         """
         _validate_cohort_args(self.cohort, self.name)
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class CohortMetric:
     """Track cohort size over time as an event metric.
 
@@ -9237,35 +10453,54 @@ class CohortMetric:
     with ``behavior.type: "cohort"`` in the bookmark JSON.
 
     Cannot be used with ``query_funnel()``, ``query_retention()``,
-    or ``query_flow()`` (CM4 — insights only).
+    or ``query_flow()`` — insights only.
 
-    Inline ``CohortDefinition`` is not supported (CM5 — server returns
-    500). Use a saved cohort ID instead. This is enforced at construction.
+    Inline ``CohortDefinition`` is not supported (server returns
+    500). Use a saved cohort ID instead. This is enforced at
+    construction, and the JSON schema advertises only the integer alternative
+    so schema-driven consumers cannot synthesize the unsupported
+    inline shape.
 
     Attributes:
-        cohort: Saved cohort ID (positive integer) or inline
-            ``CohortDefinition``.
-        name: Display name / series label. Optional for saved
-            cohorts; recommended for inline definitions.
+        cohort: Saved cohort ID (positive integer). Inline
+            ``CohortDefinition`` values are rejected at construction
+            (server returns 500) and are hidden from the JSON schema.
+        name: Display name / series label.
 
     Example:
         ```python
-        from mixpanel_headless import CohortMetric, Metric, Formula
+        from mixpanel_headless import CohortMetric, InsightsQuery, Metric, Formula
 
         # Track cohort growth
-        result = ws.query(CohortMetric(123, "Power Users"), last=90, unit="week")
+        result = ws.query(InsightsQuery(
+            events=[CohortMetric(123, "Power Users")], last=90, unit="week",
+        ))
 
         # Mix with event metrics and formulas
-        result = ws.query(
-            [Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login", math="unique"), CohortMetric(123, "Power Users")],
             formula="(B / A) * 100",
             formula_label="Power User %",
-        )
+        ))
         ```
     """
 
-    cohort: int | CohortDefinition
-    """Saved cohort ID or inline definition."""
+    cohort: _CohortIdOrHiddenDefinition
+    """Saved cohort ID (the only shape the server accepts here).
+
+    The ID alternative is a strict integer — bool/str inputs are rejected
+    instead of being coerced into a (different) saved-cohort ID — and
+    carries ``exclusiveMinimum`` mirroring the runtime positive-ID rule
+    (``_validate_cohort_args``). The ``CohortDefinition`` alternative exists
+    only at runtime (``SkipJsonSchema``) so Python builder callers get
+    the targeted server-returns-500 rejection from ``__post_init__``
+    instead of a generic type error; it is hidden from the JSON schema
+    because the server rejects inline definitions for cohort metrics.
+    The union is discriminated (``_cohort_int_or_definition_discriminator``)
+    so non-structured wrong-type inputs surface ONLY the schema-
+    consistent integer diagnosis — never the hidden alternative's
+    dictionary/``InlineCohort`` message.
+    """
 
     name: str | None = None
     """Display name / series label."""
@@ -9274,12 +10509,11 @@ class CohortMetric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CM1), name
-                is empty when provided (CM2), or cohort is an inline
-                ``CohortDefinition`` (CM5 — server returns 500).
+            ValueError: If cohort ID is not positive, name is empty
+                when provided, or cohort is an inline
+                ``CohortDefinition`` (server returns 500).
         """
         _validate_cohort_args(self.cohort, self.name)
-        # CM5: Inline CohortDefinition causes server-side 500.
         if isinstance(self.cohort, CohortDefinition):
             raise ValueError(
                 "CohortMetric does not support inline CohortDefinition "
@@ -9287,7 +10521,7 @@ class CohortMetric:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FrequencyBreakdown:
     """Break down query results by how often users performed an event.
 
@@ -9303,64 +10537,57 @@ class FrequencyBreakdown:
             ``"<event> Frequency"`` (e.g., ``"Purchase Frequency"``).
 
     Raises:
-        ValueError: If validation rules FB1-FB4 are violated.
+        ValueError: If event is empty, bucket_size is not positive,
+            bucket_min is negative, or bucket_min >= bucket_max.
 
     Example:
         ```python
-        from mixpanel_headless import FrequencyBreakdown
+        from mixpanel_headless import FrequencyBreakdown, InsightsQuery, Metric
 
         # How often users purchased (0-10 in increments of 1)
-        result = ws.query("Login", group_by=FrequencyBreakdown("Purchase"))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            group_by=[FrequencyBreakdown("Purchase")],
+        ))
 
         # Custom buckets: 0-50 in increments of 5
-        result = ws.query(
-            "Login",
-            group_by=FrequencyBreakdown(
-                "Purchase", bucket_size=5, bucket_min=0, bucket_max=50
-            ),
-        )
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            group_by=[FrequencyBreakdown(
+                "Purchase", bucket_size=5, bucket_min=0, bucket_max=50,
+            )],
+        ))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Event name to count frequency for."""
 
-    bucket_size: int = 1
-    """Width of each frequency bucket."""
+    bucket_size: int = Field(default=1, gt=0, strict=True)
+    """Width of each frequency bucket. Strict — bool/float/str rejected."""
 
-    bucket_min: int = 0
-    """Minimum frequency value."""
+    bucket_min: int = Field(default=0, ge=0, strict=True)
+    """Minimum frequency value. Strict — bool/float/str rejected."""
 
-    bucket_max: int = 10
-    """Maximum frequency value."""
+    bucket_max: StrictInt = 10
+    """Maximum frequency value. Strict — bool/float/str rejected."""
 
     label: str | None = None
     """Display label for the breakdown."""
 
     def __post_init__(self) -> None:
-        """Validate construction arguments (rules FB1-FB4).
+        """Validate cross-field construction arguments.
+
+        Single-field constraints (non-empty event, positive bucket_size,
+        non-negative bucket_min) are enforced by Field constraints and
+        visible in the JSON schema.
 
         Raises:
-            ValueError: If event is empty (FB1), bucket_size is not
-                positive (FB2), bucket_min >= bucket_max (FB3), or
-                bucket_min is negative (FB4).
+            ValueError: If event is whitespace-only (edge case not
+                caught by ``min_length``), or bucket_min >= bucket_max.
         """
-        # FB1: event must be non-empty
         if not self.event.strip():
             raise ValueError("FrequencyBreakdown.event must be a non-empty string")
-        # FB2: bucket_size must be positive
-        if self.bucket_size <= 0:
-            raise ValueError(
-                f"FrequencyBreakdown.bucket_size must be positive, "
-                f"got {self.bucket_size}"
-            )
-        # FB4: bucket_min must be non-negative (check before FB3 for clarity)
-        if self.bucket_min < 0:
-            raise ValueError(
-                f"FrequencyBreakdown.bucket_min must be non-negative, "
-                f"got {self.bucket_min}"
-            )
-        # FB3: bucket_min must be < bucket_max
         if self.bucket_min >= self.bucket_max:
             raise ValueError(
                 f"FrequencyBreakdown.bucket_min ({self.bucket_min}) must be "
@@ -9368,7 +10595,7 @@ class FrequencyBreakdown:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FrequencyFilter:
     """Filter query results by how often users performed an event.
 
@@ -9393,35 +10620,57 @@ class FrequencyFilter:
 
     Example:
         ```python
-        from mixpanel_headless import FrequencyFilter
+        from mixpanel_headless import FrequencyFilter, InsightsQuery, Metric
 
         # Users who logged in at least 5 times
-        result = ws.query("Purchase", where=FrequencyFilter("Login", value=5))
+        result = ws.query(InsightsQuery(
+            events=[Metric("Purchase")],
+            where=[FrequencyFilter("Login", value=5)],
+        ))
 
         # Users who purchased 3+ times in the last 30 days
-        result = ws.query(
-            "Login",
-            where=FrequencyFilter(
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login")],
+            where=[FrequencyFilter(
                 "Purchase",
                 value=3,
                 date_range_value=30,
                 date_range_unit="day",
-            ),
-        )
+            )],
+        ))
         ```
     """
 
-    event: str
-    """Event name to count frequency for."""
+    event: _NonEmptyStrSchema
+    """Event name to count frequency for.
 
-    value: int | float
-    """Threshold value for the comparison."""
+    The ``minLength`` keyword mirrors the runtime FF1 rule (non-empty)
+    into the JSON schema; enforcement stays in ``__post_init__`` (which
+    also rejects whitespace-only names) so callers keep its message.
+    """
+
+    value: (
+        Annotated[StrictInt, Field(json_schema_extra={"minimum": 0})]
+        | Annotated[StrictFloat, Field(json_schema_extra={"minimum": 0})]
+    )
+    """Threshold value for the comparison.
+
+    Strict — bool/str inputs are rejected instead of being coerced
+    to a threshold number. The per-alternative ``minimum`` keyword mirrors the
+    runtime FF3 rule (value >= 0) into the JSON schema; enforcement
+    stays in ``__post_init__`` so callers keep its message.
+    """
 
     operator: FrequencyFilterOperator = "is at least"
     """Comparison operator."""
 
-    date_range_value: int | None = None
-    """Lookback window size."""
+    date_range_value: _PositiveStrictIntSchema | None = None
+    """Lookback window size. Strict integer — bool/float/str rejected.
+
+    The ``exclusiveMinimum`` keyword mirrors the runtime FF5 rule
+    (positive when set) into the JSON schema; enforcement stays in
+    ``__post_init__`` so callers keep its message.
+    """
 
     date_range_unit: Literal["day", "week", "month"] | None = None
     """Lookback window unit."""
@@ -9436,25 +10685,16 @@ class FrequencyFilter:
         """Validate construction arguments (rules FF1-FF5).
 
         Raises:
-            ValueError: If event is empty (FF1), operator is invalid
-                (FF2), value is negative (FF3), date_range_value and
-                date_range_unit are not both set or both None (FF4),
-                or date_range_value is not positive when set (FF5).
+            ValueError: If event is empty (FF1), value is negative
+                (FF3), date_range_value and date_range_unit are not
+                both set or both None (FF4), or date_range_value is not
+                positive when set (FF5). Operator membership (FF2) is
+                enforced by pydantic's Literal validation before
+                ``__post_init__`` runs.
         """
-        from mixpanel_headless._internal.bookmark_enums import (
-            VALID_FREQUENCY_FILTER_OPERATORS,
-        )
-
         # FF1: event must be non-empty
         if not self.event.strip():
             raise ValueError("FrequencyFilter.event must be a non-empty string")
-        # FF2: operator must be valid
-        if self.operator not in VALID_FREQUENCY_FILTER_OPERATORS:
-            valid = ", ".join(sorted(VALID_FREQUENCY_FILTER_OPERATORS))
-            raise ValueError(
-                f"FrequencyFilter.operator must be one of: {valid}; "
-                f"got {self.operator!r}"
-            )
         # FF3: value must be non-negative
         if self.value < 0:
             raise ValueError(
@@ -9516,7 +10756,11 @@ class QueryResult(ResultWithDataFrame):
 
     Example:
         ```python
-        result = ws.query("Login", math="unique", last=7)
+        from mixpanel_headless import InsightsQuery, Metric
+
+        result = ws.query(InsightsQuery(
+            events=[Metric("Login", math="unique")], last=7,
+        ))
 
         # DataFrame access
         print(result.df.head())
@@ -9786,7 +11030,7 @@ class FlowEdge(TypedDict, total=False):
 # for backward compatibility.
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FunnelStep:
     """A single step in a funnel query.
 
@@ -9808,7 +11052,7 @@ class FunnelStep:
 
     Example:
         ```python
-        from mixpanel_headless import FunnelStep, Filter
+        from mixpanel_headless import FunnelQuery, FunnelStep, Filter
 
         # Simple step (equivalent to just using "Signup" string)
         step1 = FunnelStep("Signup")
@@ -9820,11 +11064,11 @@ class FunnelStep:
             filters=[Filter.greater_than("amount", 50)],
         )
 
-        ws.query_funnel([step1, step2])
+        result = ws.query_funnel(FunnelQuery(steps=[step1, step2]))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name for this funnel step."""
 
     label: str | None = None
@@ -9843,12 +11087,12 @@ class FunnelStep:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters (FS1).
+            ValueError: If event is empty or contains control characters.
         """
         _validate_event_name(self.event, "FunnelStep")
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class Exclusion:
     """An event to exclude between funnel steps.
 
@@ -9866,7 +11110,7 @@ class Exclusion:
 
     Example:
         ```python
-        from mixpanel_headless import Exclusion
+        from mixpanel_headless import FunnelQuery, Exclusion
 
         # Exclude between all steps (same as using string "Logout")
         ex1 = Exclusion("Logout")
@@ -9874,28 +11118,37 @@ class Exclusion:
         # Exclude only between steps 1 and 2
         ex2 = Exclusion("Refund", from_step=1, to_step=2)
 
-        ws.query_funnel(
-            ["Signup", "Add to Cart", "Purchase"],
+        result = ws.query_funnel(FunnelQuery(
+            steps=["Signup", "Add to Cart", "Purchase"],
             exclusions=[ex1, ex2],
-        )
+        ))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Event name to exclude between steps."""
 
-    from_step: int = 0
-    """Start of exclusion range (0-indexed, inclusive)."""
+    from_step: Annotated[StrictInt, Field(json_schema_extra={"minimum": 0})] = 0
+    """Start of exclusion range (0-indexed, inclusive).
 
-    to_step: int | None = None
-    """End of exclusion range (0-indexed, inclusive). None = last step."""
+    Strict integer — bool/float/str inputs are rejected instead of
+    being coerced to a step index. The ``minimum`` keyword mirrors the
+    runtime ``from_step >= 0`` rule into the JSON schema; enforcement
+    stays in ``__post_init__`` so callers keep its message.
+    """
+
+    to_step: StrictInt | None = None
+    """End of exclusion range (0-indexed, inclusive). None = last step.
+
+    Strict integer, like ``from_step``.
+    """
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty (EX1), from_step is negative
-                (EX2), or to_step < from_step (EX3).
+            ValueError: If event is empty, from_step is negative,
+                or to_step < from_step.
         """
         _validate_event_name(self.event, "Exclusion")
         if self.from_step < 0:
@@ -9907,7 +11160,7 @@ class Exclusion:
             )
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class HoldingConstant:
     """A property to hold constant across all funnel steps.
 
@@ -9931,15 +11184,20 @@ class HoldingConstant:
         # Hold a user-profile property constant
         hc2 = HoldingConstant("plan_tier", resource_type="people")
 
-        ws.query_funnel(
-            ["Signup", "Purchase"],
+        result = ws.query_funnel(FunnelQuery(
+            steps=["Signup", "Purchase"],
             holding_constant=[hc1, hc2],
-        )
+        ))
         ```
     """
 
-    property: str
-    """Property name to hold constant across steps."""
+    property: _NonEmptyStrSchema
+    """Property name to hold constant across steps.
+
+    The ``minLength`` keyword mirrors the runtime non-empty rule into
+    the JSON schema; enforcement stays in ``__post_init__`` (which also
+    rejects whitespace-only names) so callers keep its message.
+    """
 
     resource_type: Literal["events", "people"] = "events"
     """Whether this is an event property or user-profile property."""
@@ -9948,7 +11206,7 @@ class HoldingConstant:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is empty (HC1).
+            ValueError: If property is empty.
         """
         if not self.property or not self.property.strip():
             raise ValueError("HoldingConstant.property must be a non-empty string")
@@ -9983,7 +11241,7 @@ class FunnelQueryResult(ResultWithDataFrame):
 
     Example:
         ```python
-        result = ws.query_funnel(["Signup", "Purchase"])
+        result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 
         # Overall conversion
         print(result.overall_conversion_rate)  # e.g. 0.12
@@ -10108,7 +11366,7 @@ class FunnelQueryResult(ResultWithDataFrame):
 # from _literal_types (imported above) for backward compatibility.
 
 
-@dataclass(frozen=True)
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class RetentionEvent:
     """An event specification for retention queries.
 
@@ -10137,11 +11395,13 @@ class RetentionEvent:
             filters=[Filter.equals("source", "organic")],
         )
 
-        ws.query_retention(born, "Login")
+        result = ws.query_retention(RetentionQuery(
+            born_event=born, return_event="Login",
+        ))
         ```
     """
 
-    event: str
+    event: str = Field(min_length=1)
     """Mixpanel event name."""
 
     filters: list[Filter] | None = None
@@ -10154,7 +11414,7 @@ class RetentionEvent:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters (RE1).
+            ValueError: If event is empty or contains control characters.
         """
         _validate_event_name(self.event, "RetentionEvent")
 
@@ -10194,14 +11454,17 @@ class RetentionQueryResult(ResultWithDataFrame):
     Example:
         ```python
         # Unsegmented retention
-        result = ws.query_retention("Signup", "Login")
+        result = ws.query_retention(RetentionQuery(
+            born_event="Signup", return_event="Login",
+        ))
         print(result.df)
         #   cohort_date  bucket  count  rate
 
         # Segmented retention
-        result = ws.query_retention(
-            "Signup", "Login", group_by="platform"
-        )
+        result = ws.query_retention(RetentionQuery(
+            born_event="Signup", return_event="Login",
+            group_by=["platform"],
+        ))
         print(result.df)
         #   segment  cohort_date  bucket  count  rate
         for name, cohorts in result.segments.items():
@@ -10375,8 +11638,20 @@ def _safe_int(value: Any, default: int = 0) -> int:
 # Flow Query Types (Phase 034)
 # =============================================================================
 
+_FlowStepDirection = Annotated[
+    StrictInt,
+    Field(json_schema_extra={"minimum": 0, "maximum": _MAX_FLOW_STEPS_DIRECTION}),
+]
+"""Strict integer annotated with the 0-5 flow step-direction range.
 
-@dataclass(frozen=True)
+Shared by ``FlowStep.forward`` and ``FlowStep.reverse``. Strict mode
+rejects bool/float/str coercion; the range renders as JSON-Schema
+``minimum``/``maximum`` while runtime enforcement stays in
+``FlowStep.__post_init__`` so callers keep its message.
+"""
+
+
+@pydantic_dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class FlowStep:
     """An anchor event in a flow query with per-step configuration.
 
@@ -10387,9 +11662,14 @@ class FlowStep:
     Attributes:
         event: The event name to anchor this step on.
         forward: Maximum number of forward steps to trace from this event.
-            ``None`` means use the query-level default.
+            ``None`` means use the query-level default. Validated in
+            strict mode — bool/float/str inputs are rejected instead
+            of being coerced to an integer. The runtime 0-5 range rule
+            renders as JSON-Schema ``minimum``/``maximum``; enforcement
+            stays in ``__post_init__``.
         reverse: Maximum number of reverse steps to trace from this event.
-            ``None`` means use the query-level default.
+            ``None`` means use the query-level default. Strict integer
+            with the same 0-5 range as ``forward``.
         label: Optional display label for this step. If ``None``, the event
             name is used as the label.
         filters: Optional list of ``Filter`` conditions to narrow the events
@@ -10422,9 +11702,9 @@ class FlowStep:
         ```
     """
 
-    event: str
-    forward: int | None = None
-    reverse: int | None = None
+    event: str = Field(min_length=1)
+    forward: _FlowStepDirection | None = None
+    reverse: _FlowStepDirection | None = None
     label: str | None = None
     filters: list[Filter] | None = None
     filters_combinator: FiltersCombinator = "all"
@@ -10434,20 +11714,27 @@ class FlowStep:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (FL1), forward/reverse is outside 0-5 range (FL2), or
-                session_event conflicts with event name (FS1).
+            ValueError: If event is empty or contains control characters,
+                forward/reverse is outside 0-5 range, or
+                session_event conflicts with event name.
         """
         _validate_event_name(self.event, "FlowStep")
-        if self.forward is not None and not 0 <= self.forward <= 5:
+        if (
+            self.forward is not None
+            and not 0 <= self.forward <= _MAX_FLOW_STEPS_DIRECTION
+        ):
             raise ValueError(
-                f"FlowStep.forward must be in range 0-5, got {self.forward}"
+                f"FlowStep.forward must be in range 0-{_MAX_FLOW_STEPS_DIRECTION}, "
+                f"got {self.forward}"
             )
-        if self.reverse is not None and not 0 <= self.reverse <= 5:
+        if (
+            self.reverse is not None
+            and not 0 <= self.reverse <= _MAX_FLOW_STEPS_DIRECTION
+        ):
             raise ValueError(
-                f"FlowStep.reverse must be in range 0-5, got {self.reverse}"
+                f"FlowStep.reverse must be in range 0-{_MAX_FLOW_STEPS_DIRECTION}, "
+                f"got {self.reverse}"
             )
-        # FS1: Validate session_event / event consistency
         if self.session_event is not None:
             expected_event = (
                 "$session_start" if self.session_event == "start" else "$session_end"
@@ -10892,7 +12179,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             result.nodes_df
             #    step   event   type  count anchor_type  ...
             # 0     0   Login  ANCHOR   100      NORMAL  ...
@@ -10946,7 +12233,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             result.edges_df
             #    source_step source_event  target_step target_event  count target_type
             # 0            0        Login            1       Search     80      NORMAL
@@ -11001,7 +12288,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = workspace.query_flow(steps=[FlowStep("Login")])
+            result = workspace.query_flow(FlowQuery(event="Login"))
             G = result.graph
             G.nodes["Login@0"]["count"]
             # 100
@@ -11055,7 +12342,7 @@ class FlowQueryResult(ResultWithDataFrame):
         Example:
             ```python
             result = workspace.query_flow(
-                steps=[FlowStep("Login")], mode="sankey"
+                FlowQuery(event="Login", mode="sankey")
             )
             result.df.columns
             # Index(['step', 'event', 'type', 'count', ...])
@@ -11167,7 +12454,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", forward=3)
+            result = ws.query_flow(FlowQuery(event="Login", forward=3))
             for src, tgt, count in result.top_transitions(n=5):
                 print(f"{src} -> {tgt}: {count}")
             # Login@0 -> Search@1: 150
@@ -11205,7 +12492,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", forward=3)
+            result = ws.query_flow(FlowQuery(event="Login", forward=3))
             for step, info in result.drop_off_summary().items():
                 print(f"{step}: {info['rate']:.0%} drop-off")
             ```
@@ -11268,7 +12555,7 @@ class FlowQueryResult(ResultWithDataFrame):
 
         Example:
             ```python
-            result = ws.query_flow("Login", mode="tree")
+            result = ws.query_flow(FlowQuery(event="Login", mode="tree"))
             for root in result.anytree:
                 from anytree import RenderTree
                 print(RenderTree(root))
@@ -12200,7 +13487,7 @@ class AccountTestResult(BaseModel):
             ValueError: When ``ok``/``error`` disagree, or when
                 ``ok=True`` is paired with a non-None error_code /
                 error_details (those fields belong to the failure
-                arm only).
+                alternative only).
         """
         if self.ok and self.error is not None:
             raise ValueError("AccountTestResult: ok=True implies error is None.")
@@ -12701,6 +13988,45 @@ def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_ACTION_COLS = [
+    "t",
+    "action",
+    "target_node_id",
+    "target_desc",
+    "description",
+    "url",
+    "metadata",
+]
+"""Column order for every action-level DataFrame projection.
+
+Shared by :attr:`Replay.actions_df`, :meth:`Replay.clicks_on`, and
+:attr:`ReplayBundle.actions_df` (which prepends ``replay_id``) so the
+three projections cannot drift.
+"""
+
+
+def _action_row(action: UserAction) -> dict[str, Any]:
+    """Project one :class:`UserAction` into the ``actions_df`` row shape.
+
+    Args:
+        action: The normalized action to project.
+
+    Returns:
+        Dict with the :data:`_ACTION_COLS` keys; ``metadata`` is a
+        shallow copy so DataFrame consumers cannot mutate the action's
+        own dict.
+    """
+    return {
+        "t": action.timestamp,
+        "action": action.action,
+        "target_node_id": action.target_node_id,
+        "target_desc": action.target_desc,
+        "description": action.description,
+        "url": action.url,
+        "metadata": dict(action.metadata),
+    }
+
+
 @dataclass(frozen=True)
 class Replay(ResultWithDataFrame):
     """Single fully-materialized session replay (data-model §2.5).
@@ -12834,28 +14160,8 @@ class Replay(ResultWithDataFrame):
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
-        cols = [
-            "t",
-            "action",
-            "target_node_id",
-            "target_desc",
-            "description",
-            "url",
-            "metadata",
-        ]
-        rows = [
-            {
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "description": a.description,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
-            for a in self.actions
-        ]
-        result = pd.DataFrame(rows, columns=cols)
+        rows = [_action_row(a) for a in self.actions]
+        result = pd.DataFrame(rows, columns=_ACTION_COLS)
         object.__setattr__(self, "_actions_df_cache", result)
         return result
 
@@ -12951,8 +14257,6 @@ class Replay(ResultWithDataFrame):
             replay had no console errors.
         """
         df = self.actions_df
-        if df.empty:
-            return df
         filtered: pd.DataFrame = df[df["action"] == "console_error"].reset_index(
             drop=True
         )
@@ -12969,22 +14273,10 @@ class Replay(ResultWithDataFrame):
             DataFrame projection (``actions_df``-shaped) of the click
             actions for which ``predicate`` returned True.
         """
-        cols = ["t", "action", "target_node_id", "target_desc", "url", "metadata"]
-        if not self.actions:
-            return pd.DataFrame(columns=cols)
-        keep = [a for a in self.actions if a.action == "click" and predicate(a)]
         rows = [
-            {
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
-            for a in keep
+            _action_row(a) for a in self.actions if a.action == "click" and predicate(a)
         ]
-        return pd.DataFrame(rows, columns=cols)
+        return pd.DataFrame(rows, columns=_ACTION_COLS)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serializable representation.
@@ -12992,7 +14284,11 @@ class Replay(ResultWithDataFrame):
         Returns:
             Dict with the eight visible fields. ``rrweb_events`` is
             included so the dict can re-hydrate a full :class:`Replay`
-            via :meth:`Workspace.fetch_replay` follow-ups.
+            via :meth:`Workspace.fetch_replay` follow-ups. The events
+            list is a new list whose items alias the replay's event
+            dicts (same as :meth:`to_rrweb_player_json`) — deep-copying
+            a multi-megabyte rrweb stream on every serialization costs
+            seconds and doubles transient memory for no caller benefit.
         """
         return {
             "replay_id": self.replay_id,
@@ -13058,7 +14354,7 @@ class ReplayBundle(ResultWithDataFrame):
             ValueError: A replay's ``project_id`` differs from the
                 bundle's ``project_id``.
         """
-        if self.project_id and any(
+        if self.project_id != 0 and any(
             r.project_id != self.project_id for r in self.replays
         ):
             mismatches = [
@@ -13160,31 +14456,12 @@ class ReplayBundle(ResultWithDataFrame):
         """
         if self._actions_df_cache is not None:
             return self._actions_df_cache
-        cols = [
-            "replay_id",
-            "t",
-            "action",
-            "target_node_id",
-            "target_desc",
-            "description",
-            "url",
-            "metadata",
-        ]
         rows = [
-            {
-                "replay_id": r.replay_id,
-                "t": a.timestamp,
-                "action": a.action,
-                "target_node_id": a.target_node_id,
-                "target_desc": a.target_desc,
-                "description": a.description,
-                "url": a.url,
-                "metadata": dict(a.metadata),
-            }
+            {"replay_id": r.replay_id, **_action_row(a)}
             for r in self.replays
             for a in r.actions
         ]
-        result = pd.DataFrame(rows, columns=cols)
+        result = pd.DataFrame(rows, columns=["replay_id", *_ACTION_COLS])
         object.__setattr__(self, "_actions_df_cache", result)
         return result
 
@@ -13533,7 +14810,7 @@ class ReplayBundle(ResultWithDataFrame):
             ```
         """
         return ReplayBundle(
-            replays=list(self.replays[:n]),
+            replays=self.replays[:n],
             computed_at=self.computed_at,
             project_id=self.project_id,
         )
@@ -13603,13 +14880,17 @@ class ReplayBundle(ResultWithDataFrame):
         """
         if not self.replays:
             return "# No replays in bundle\n"
-        sections = ["# Bundle summary", "", f"- replays: {len(self.replays)}"]
+        # sessions_df has one row per replay, so it is non-empty here.
         df = self.sessions_df
-        if not df.empty:
-            sections.append(f"- total events: {int(df['n_events'].sum())}")
-            sections.append(f"- total actions: {int(df['n_actions'].sum())}")
-            sections.append(f"- total errors: {int(df['n_errors'].sum())}")
-        sections.append("")
+        sections = [
+            "# Bundle summary",
+            "",
+            f"- replays: {len(self.replays)}",
+            f"- total events: {int(df['n_events'].sum())}",
+            f"- total actions: {int(df['n_actions'].sum())}",
+            f"- total errors: {int(df['n_errors'].sum())}",
+            "",
+        ]
         for r in self.replays:
             try:
                 sections.append(r.summary_markdown)
@@ -13628,16 +14909,8 @@ class ReplayBundle(ResultWithDataFrame):
             DataFrame with columns ``action``, ``self_count``,
             ``other_count``, ``delta`` (self - other).
         """
-        a = (
-            self.actions_df["action"].value_counts()
-            if not self.actions_df.empty
-            else pd.Series(dtype=int)
-        )
-        b = (
-            other.actions_df["action"].value_counts()
-            if not other.actions_df.empty
-            else pd.Series(dtype=int)
-        )
+        a = self.actions_df["action"].value_counts()
+        b = other.actions_df["action"].value_counts()
         keys = sorted(set(a.index) | set(b.index))
         rows = [
             {

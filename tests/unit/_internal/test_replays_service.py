@@ -99,6 +99,39 @@ class TestSignWrapping:
         assert result[0].signed_at > 0
         api.sign_replays.assert_called_once_with(["r-1", "r-2"], env="prod")
 
+    def test_sign_missing_key_raises_schema_error(self) -> None:
+        """A dict item missing url/query_string raises the structured error."""
+        api = _mock_api_client()
+        api.sign_replays.return_value = [
+            {"replay_id": "r-1", "query_string": "URLPrefix=A&Signature=X"}
+        ]
+        service = ReplaysService(api)
+
+        with pytest.raises(MixpanelHeadlessError, match="missing key") as exc_info:
+            service.sign(["r-1"])
+        assert exc_info.value.code == "SIGN_RESPONSE_SCHEMA"
+
+    @pytest.mark.parametrize(
+        "bad_item",
+        [
+            pytest.param(None, id="none"),
+            pytest.param("r-1-just-a-string", id="string"),
+            pytest.param(["r-1"], id="list"),
+        ],
+    )
+    def test_sign_non_dict_item_raises_schema_error(self, bad_item: object) -> None:
+        """Non-dict items raise the structured schema error, not TypeError."""
+        api = _mock_api_client()
+        api.sign_replays.return_value = [bad_item]
+        service = ReplaysService(api)
+
+        with pytest.raises(
+            MixpanelHeadlessError, match="expected an object"
+        ) as exc_info:
+            service.sign(["r-1"])
+        assert exc_info.value.code == "SIGN_RESPONSE_SCHEMA"
+        assert type(bad_item).__name__ in str(exc_info.value)
+
 
 # =============================================================================
 # fetch_files() — the CDN walker
@@ -528,10 +561,10 @@ class TestDiscoverParsing:
         service.discover(
             distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
         )
-        _args, kwargs = query_fn.call_args
-        assert kwargs["math"] == "min"
-        assert kwargs["math_property"] == "$time"
-        assert kwargs["group_by"] == [
+        q = query_fn.call_args[0][0]
+        assert q.math == "min"
+        assert q.math_property == "$time"
+        assert q.group_by == [
             "$mp_replay_id",
             "$mp_replay_retention_period",
         ]
@@ -606,10 +639,10 @@ class TestDiscoverParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.discover(replay_ids=["rid-aaa"])
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("last") == 90
-        assert "from_date" not in kwargs
-        assert "to_date" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.last == 90
+        assert q.from_date is None
+        assert q.to_date is None
 
     def test_explicit_window_overrides_lookback(self) -> None:
         """An explicit from/to is passed through; last is not sent."""
@@ -619,10 +652,9 @@ class TestDiscoverParsing:
         service.discover(
             distinct_id="u-1", from_date="2026-05-20", to_date="2026-05-27"
         )
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("from_date") == "2026-05-20"
-        assert kwargs.get("to_date") == "2026-05-27"
-        assert "last" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.from_date == "2026-05-20"
+        assert q.to_date == "2026-05-27"
 
     def test_missing_retention_warning_has_no_doubled_prefix(self) -> None:
         """The warning text must not carry a literal 'UserWarning:' prefix.
@@ -672,9 +704,9 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result(_EVENTS_SERIES))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"])
-        args, kwargs = query_fn.call_args
-        assert args[0] == "$all_events"
-        assert kwargs["group_by"][:3] == ["$time", "$event_name", "$mp_replay_id"]
+        q = query_fn.call_args[0][0]
+        assert q.events == ["$all_events"]
+        assert q.group_by[:3] == ["$time", "$event_name", "$mp_replay_id"]
 
     def test_empty_series_returns_empty_dict(self) -> None:
         """An empty series yields an empty dict, no raise."""
@@ -693,10 +725,10 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"])
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("last") == 90
-        assert "from_date" not in kwargs
-        assert "to_date" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.last == 90
+        assert q.from_date is None
+        assert q.to_date is None
 
     def test_explicit_window_overrides_lookback(self) -> None:
         """An explicit from/to is passed through; last is not sent."""
@@ -704,11 +736,58 @@ class TestEventsForParsing:
         query_fn = MagicMock(return_value=_series_result({}))
         service = ReplaysService(api, query_fn=query_fn)
         service.events_for(["rid-bab"], from_date="2026-05-20", to_date="2026-05-21")
-        _args, kwargs = query_fn.call_args
-        assert kwargs.get("from_date") == "2026-05-20"
-        assert kwargs.get("to_date") == "2026-05-21"
-        assert "last" not in kwargs
+        q = query_fn.call_args[0][0]
+        assert q.from_date == "2026-05-20"
+        assert q.to_date == "2026-05-21"
 
 
 # Ensure the module is importable as a package for pytest collection.
 _ = json
+
+
+class TestFetchFilesNonListPayload:
+    """CDN files with non-list JSON are logged and treated as empty."""
+
+    def test_non_list_json_warns_and_treats_as_empty(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A dict payload logs a warning and contributes zero events."""
+        import logging
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Serve a dict payload for file 0, then 404."""
+            file_num = _parse_file_num(str(request.url))
+            if file_num == 0:
+                return httpx.Response(200, json={"error": "oops"})
+            return httpx.Response(404)
+
+        api = _mock_api_client()
+        transport = httpx.MockTransport(handler)
+        service = ReplaysService(api, _async_transport=transport)
+
+        with caplog.at_level(logging.WARNING):
+            events = service.fetch_files(
+                _signed(),
+                retention_days=30,
+                max_files=500,
+                concurrency=1,
+            )
+
+        assert events == []
+        assert any("instead of list" in r.getMessage() for r in caplog.records)
+
+
+class TestToUnixMs:
+    """_to_unix_ms coercion edge cases."""
+
+    def test_unparseable_timestamp_warns_and_returns_zero(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Garbage $time values log a warning and coerce to 0."""
+        import logging
+
+        from mixpanel_headless._internal.services.replays import _to_unix_ms
+
+        with caplog.at_level(logging.WARNING):
+            assert _to_unix_ms("not-a-timestamp") == 0
+        assert any("unparseable timestamp" in r.getMessage() for r in caplog.records)

@@ -20,8 +20,15 @@ from difflib import get_close_matches
 from typing import Any, Literal
 
 from mixpanel_headless._internal.bookmark_enums import (
+    _CP_MAX_FORMULA_LENGTH,
+    _MAX_FILTER_VALUES,
+    _MAX_FLOW_CARDINALITY,
+    _MAX_FLOW_STEPS_DIRECTION,
     _MAX_FUNNEL_STEPS,
     _MAX_HOLDING_CONSTANT,
+    _MAX_LAST_DAYS,
+    _MAX_RETENTION_BUCKETS,
+    _MAX_ROLLING,
     MATH_NO_PER_USER,
     MATH_PROPERTY_OPTIONAL,
     MATH_REQUIRING_PROPERTY,
@@ -89,7 +96,6 @@ from mixpanel_headless.types import (
 )
 
 _CP_INPUT_KEY_RE = re.compile(r"^[A-Z]$")
-_CP_MAX_FORMULA_LENGTH = 20_000
 
 
 def _validate_custom_property(
@@ -226,8 +232,8 @@ def _scan_custom_properties(
     where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
     events: Sequence[str | Metric | CohortMetric] | None = None,
     funnel_steps: Sequence[str | FunnelStep] | None = None,
-    flow_steps: Sequence[FlowStep] | None = None,
-    retention_events: Sequence[RetentionEvent] | None = None,
+    flow_steps: Sequence[str | FlowStep] | None = None,
+    retention_events: Sequence[str | RetentionEvent] | None = None,
 ) -> list[ValidationError]:
     """Scan all query positions for custom properties and validate.
 
@@ -316,10 +322,11 @@ def _scan_custom_properties(
                     _scan_filters_for_custom_properties(step.filters, f"steps[{idx}]")
                 )
 
-    # Scan flow steps (FlowStep.filters)
+    # Scan flow steps (FlowStep.filters); bare ``str`` steps carry no
+    # filters and are skipped in place so indices stay position-accurate
     if flow_steps is not None:
         for idx, fstep in enumerate(flow_steps):
-            if fstep.filters:
+            if isinstance(fstep, FlowStep) and fstep.filters:
                 errors.extend(
                     _scan_filters_for_custom_properties(fstep.filters, f"steps[{idx}]")
                 )
@@ -328,7 +335,7 @@ def _scan_custom_properties(
     # retention_events is always [born_event, return_event] — see workspace.py
     if retention_events is not None:
         for idx, rev in enumerate(retention_events):
-            if rev.filters:
+            if isinstance(rev, RetentionEvent) and rev.filters:
                 label = "born_event" if idx == 0 else "return_event"
                 errors.extend(_scan_filters_for_custom_properties(rev.filters, label))
 
@@ -361,9 +368,6 @@ def contains_control_chars(s: str) -> bool:
 
 
 _INVISIBLE_RE = re.compile(r"^[\s\u200b\u200c\u200d\ufeff\u00ad\u2060]*$")
-_MAX_LAST_DAYS = 3650  # 10 years — generous but sane upper bound
-_MAX_ROLLING = 365  # rolling window sanity cap
-_MAX_FILTER_VALUES = 1000  # server rejects queries with very large filter value lists
 
 
 def _is_valid_date(date_str: str) -> bool:
@@ -508,6 +512,75 @@ def _validate_data_group_id(
     return []
 
 
+def v9_to_requires_from(
+    from_date: str | None, to_date: str | None
+) -> list[ValidationError]:
+    """V9: ``to_date`` requires ``from_date`` to be set.
+
+    Every builder ignores a lone ``to_date``, silently falling back to
+    ``last`` — reject it instead. Shared by ``validate_time_args``
+    (build-time Layer 1) and the query models' cross-field validators
+    (construction time) so both layers emit the same stable code.
+
+    Args:
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+
+    Returns:
+        List with one ``V9_TO_REQUIRES_FROM`` error if ``to_date`` is
+        set without ``from_date``, empty otherwise.
+    """
+    if to_date is not None and from_date is None:
+        return [
+            ValidationError(
+                path="to_date",
+                message="to_date requires from_date",
+                code="V9_TO_REQUIRES_FROM",
+            )
+        ]
+    return []
+
+
+def v26_percentile_requires_value(
+    events: Sequence[str | Metric | CohortMetric | Formula],
+    math: str,
+    percentile_value: int | float | None,
+) -> list[ValidationError]:
+    """V26: percentile math requires ``percentile_value``.
+
+    Top-level ``math`` only applies to plain-string events (``Metric``
+    and ``CohortMetric`` carry their own math), so the rule is gated on
+    the events list containing at least one bare string. Shared by
+    ``validate_query_args`` (build-time Layer 1) and
+    ``InsightsQuery``'s cross-field validator (construction time) so
+    both layers emit the same stable code.
+
+    Args:
+        events: The query's events list (bare names and/or metric
+            objects).
+        math: The top-level aggregation function.
+        percentile_value: The percentile to compute, or ``None``.
+
+    Returns:
+        List with one ``V26_PERCENTILE_REQUIRES_VALUE`` error if
+        percentile math lacks a value, empty otherwise.
+    """
+    # Cheap gates first — the events scan only runs for percentile math.
+    if (
+        math == "percentile"
+        and percentile_value is None
+        and any(isinstance(item, str) for item in events)
+    ):
+        return [
+            ValidationError(
+                path="percentile_value",
+                message=("math='percentile' requires percentile_value to be set"),
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
+        ]
+    return []
+
+
 def validate_time_args(
     *,
     from_date: str | None,
@@ -590,15 +663,9 @@ def validate_time_args(
                 )
             )
 
-    # V9: to_date requires from_date
-    if to_date is not None and from_date is None:
-        errors.append(
-            ValidationError(
-                path="to_date",
-                message="to_date requires from_date",
-                code="V9_TO_REQUIRES_FROM",
-            )
-        )
+    # V9: to_date requires from_date (shared with the query models'
+    # construction-time cross-field validation)
+    errors.extend(v9_to_requires_from(from_date, to_date))
 
     # V10: Cannot combine explicit dates with non-default last
     if from_date is not None and last != 30:
@@ -783,7 +850,7 @@ def validate_funnel_args(
     conversion_window_unit: ConversionWindowUnit = "day",
     math: FunnelMathType = "conversion_rate_unique",
     math_property: str | None = None,
-    exclusions: list[Exclusion] | None,
+    exclusions: Sequence[str | Exclusion] | None,
     holding_constant: Sequence[str | HoldingConstant] | None = None,
     from_date: str | None,
     to_date: str | None,
@@ -814,7 +881,9 @@ def validate_funnel_args(
             math types (average, median, min, max, p25, p75, p90, p99).
             Required when ``math`` is a property-aggregation type;
             must be ``None`` otherwise. Default: ``None``.
-        exclusions: Events to exclude between steps, or ``None``.
+        exclusions: Events to exclude between steps, or ``None``. Accepts
+            bare event-name strings (validated with the ``Exclusion``
+            field defaults) or ``Exclusion`` objects.
         holding_constant: Properties to hold constant, or ``None``.
         from_date: Start date (YYYY-MM-DD) or ``None``.
         to_date: End date (YYYY-MM-DD) or ``None``.
@@ -1032,9 +1101,15 @@ def validate_funnel_args(
         )
 
     # F4: Non-empty exclusion event names and step range validation
+    # (accepts raw ``str`` items — normalization happens after Layer 1,
+    # so bare event names carry the ``Exclusion`` field defaults here)
     if exclusions is not None:
         for i, ex in enumerate(exclusions):
-            if not ex.event or not ex.event.strip():
+            if isinstance(ex, Exclusion):
+                ex_event, ex_from, ex_to = ex.event, ex.from_step, ex.to_step
+            else:
+                ex_event, ex_from, ex_to = ex, 0, None
+            if not ex_event or not ex_event.strip():
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
@@ -1043,59 +1118,57 @@ def validate_funnel_args(
                     )
                 )
             # F4 control char check on exclusion events
-            elif _CONTROL_CHAR_RE.search(ex.event):
+            elif _CONTROL_CHAR_RE.search(ex_event):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
                             f"Exclusion event name contains control "
-                            f"characters: {ex.event!r}"
+                            f"characters: {ex_event!r}"
                         ),
                         code="F4_CONTROL_CHAR_EXCLUSION",
                     )
                 )
             # F4e: from_step must be non-negative
-            if ex.from_step < 0:
+            if ex_from < 0:
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
-                        message=(
-                            f"Exclusion from_step must be >= 0 (got {ex.from_step})"
-                        ),
+                        message=(f"Exclusion from_step must be >= 0 (got {ex_from})"),
                         code="F4_EXCLUSION_NEGATIVE_STEP",
                     )
                 )
             # F4b: to_step must be > from_step (server requires strict from < to)
-            if ex.to_step is not None and ex.to_step <= ex.from_step:
+            if ex_to is not None and ex_to <= ex_from:
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion to_step ({ex.to_step}) must be > "
-                            f"from_step ({ex.from_step})"
+                            f"Exclusion to_step ({ex_to}) must be > "
+                            f"from_step ({ex_from})"
                         ),
                         code="F4_EXCLUSION_STEP_ORDER",
                     )
                 )
             # F4c: to_step must not exceed step count
-            if ex.to_step is not None and ex.to_step >= len(steps):
+            if ex_to is not None and ex_to >= len(steps):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion to_step ({ex.to_step}) exceeds "
+                            f"Exclusion to_step ({ex_to}) exceeds "
                             f"step count ({len(steps)})"
                         ),
                         code="F4_EXCLUSION_STEP_BOUNDS",
                     )
                 )
             # F4d: from_step must not exceed step count
-            if ex.from_step >= len(steps):
+            if ex_from >= len(steps):
                 errors.append(
                     ValidationError(
                         path=f"exclusions[{i}]",
                         message=(
-                            f"Exclusion from_step ({ex.from_step}) exceeds "
+                            f"Exclusion from_step ({ex_from}) exceeds "
                             f"step count ({len(steps)})"
                         ),
                         code="F4_EXCLUSION_STEP_BOUNDS",
@@ -1171,9 +1244,6 @@ in bookmark_enums.py) accepted them. Now L1 and L2 use the same set.
 
 _VALID_RETENTION_MODES: frozenset[str] = frozenset({"curve", "trends", "table"})
 """Valid display modes for retention queries."""
-
-_MAX_RETENTION_BUCKETS = 730
-"""Maximum number of custom retention buckets allowed by the API."""
 
 
 def validate_retention_args(
@@ -1480,12 +1550,6 @@ def validate_retention_args(
 # =============================================================================
 # Flow argument validation (FL1-FL10)
 # =============================================================================
-
-_MAX_FLOW_STEPS_DIRECTION = 5
-"""Maximum number of forward or reverse steps in a flow query (0-5)."""
-
-_MAX_FLOW_CARDINALITY = 50
-"""Maximum cardinality (number of top paths shown) in a flow query."""
 
 _FLOW_MAX_WINDOW: dict[str, int] = {
     "month": 12,
@@ -2049,15 +2113,9 @@ def validate_query_args(
             )
         )
 
-    # V26: percentile math requires percentile_value
-    if has_plain_events and math == "percentile" and percentile_value is None:
-        errors.append(
-            ValidationError(
-                path="percentile_value",
-                message=("math='percentile' requires percentile_value to be set"),
-                code="V26_PERCENTILE_REQUIRES_VALUE",
-            )
-        )
+    # V26: percentile math requires percentile_value (shared with
+    # InsightsQuery's construction-time cross-field validation)
+    errors.extend(v26_percentile_requires_value(events, math, percentile_value))
 
     # V27: histogram math requires per_user
     if has_plain_events and math == "histogram" and per_user is None:

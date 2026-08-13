@@ -88,6 +88,19 @@ All code must be fully typed and pass `mypy --strict`. This is non-negotiable:
 - All function signatures must have complete type annotations
 - All return types must be explicitly declared
 
+**Pydantic first — read the docs before adding or editing any type.** Before you
+add or change a Pydantic model, field, union, validator, or `Discriminator`,
+read the official Pydantic v2 documentation and prefer a built-in mechanism over
+hand-rolled logic. Its features (discriminated unions, `Discriminator` +
+`custom_error_type`/`custom_error_message`, strict mode, `SkipJsonSchema`,
+`WithJsonSchema`) usually solve the problem far more simply — and never invent
+extra "tag" fields to work around routing a `Discriminator` already does.
+
+- Validation overview: <https://pydantic.dev/docs/validation/latest/>
+- Unions & discriminators: <https://pydantic.dev/docs/validation/latest/concepts/unions/>
+- Validators: <https://pydantic.dev/docs/validation/latest/concepts/validators/>
+- Errors: <https://pydantic.dev/docs/validation/latest/errors/errors/>
+
 ### Formatting & Linting (STRICT)
 
 Code must pass `ruff format` and `ruff check`. Run `just check` before committing:

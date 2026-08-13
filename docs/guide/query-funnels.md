@@ -37,7 +37,7 @@ import mixpanel_headless as mp
 
 ws = mp.Workspace()
 
-result = ws.query_funnel(["Signup", "Purchase"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 print(f"Conversion: {result.overall_conversion_rate:.1%}")
 # Conversion: 12.3%
 
@@ -51,11 +51,11 @@ Add a conversion window and time range:
 
 ```python
 # 7-day conversion window over the last 90 days
-result = ws.query_funnel(
-    ["Signup", "Add to Cart", "Checkout", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Add to Cart", "Checkout", "Purchase"],
     conversion_window=7,
     last=90,
-)
+))
 ```
 
 ## Steps
@@ -65,7 +65,7 @@ result = ws.query_funnel(
 The simplest way to define steps — pass event names as strings:
 
 ```python
-result = ws.query_funnel(["Signup", "Add to Cart", "Purchase"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Add to Cart", "Purchase"]))
 ```
 
 At least 2 steps are required, up to a maximum of 100.
@@ -75,16 +75,16 @@ At least 2 steps are required, up to a maximum of 100.
 For per-step configuration, use `FunnelStep` objects:
 
 ```python
-from mixpanel_headless import FunnelStep, Filter
+from mixpanel_headless import FunnelStep, Filter, FunnelQuery
 
-result = ws.query_funnel([
+result = ws.query_funnel(FunnelQuery(steps=[
     FunnelStep("Signup"),
     FunnelStep(
         "Purchase",
         label="High-Value Purchase",
         filters=[Filter.greater_than("amount", 50)],
     ),
-])
+]))
 ```
 
 `FunnelStep` fields:
@@ -100,10 +100,10 @@ result = ws.query_funnel([
 Plain strings and `FunnelStep` objects can be mixed freely:
 
 ```python
-result = ws.query_funnel([
+result = ws.query_funnel(FunnelQuery(steps=[
     "Signup",  # plain string — no filters needed
     FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)]),
-])
+]))
 ```
 
 ### Per-Step Filters
@@ -111,21 +111,21 @@ result = ws.query_funnel([
 Apply filters to individual steps using `FunnelStep.filters`. These restrict which events count for that specific step:
 
 ```python
-from mixpanel_headless import FunnelStep, Filter
+from mixpanel_headless import FunnelStep, Filter, FunnelQuery
 
-result = ws.query_funnel([
+result = ws.query_funnel(FunnelQuery(steps=[
     FunnelStep("Signup", filters=[Filter.equals("source", "organic")]),
     FunnelStep("Purchase", filters=[
         Filter.equals("country", "US"),
         Filter.greater_than("amount", 25),
     ]),
-])
+]))
 ```
 
 By default, multiple per-step filters combine with AND logic. Use `filters_combinator="any"` for OR logic:
 
 ```python
-result = ws.query_funnel([
+result = ws.query_funnel(FunnelQuery(steps=[
     "Signup",
     FunnelStep(
         "Purchase",
@@ -135,7 +135,7 @@ result = ws.query_funnel([
         ],
         filters_combinator="any",  # match US OR CA
     ),
-])
+]))
 ```
 
 See [Insights Queries — Filters](query.md#filters) for the full list of `Filter` factory methods.
@@ -146,13 +146,13 @@ Control how long users have to complete the funnel:
 
 ```python
 # 7 days (default unit is "day")
-result = ws.query_funnel(["Signup", "Purchase"], conversion_window=7)
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], conversion_window=7))
 
 # 2 hours
-result = ws.query_funnel(["View", "Click"], conversion_window=2, conversion_window_unit="hour")
+result = ws.query_funnel(FunnelQuery(steps=["View", "Click"], conversion_window=2, conversion_window_unit="hour"))
 
 # 4 weeks
-result = ws.query_funnel(["Signup", "Purchase"], conversion_window=4, conversion_window_unit="week")
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], conversion_window=4, conversion_window_unit="week"))
 ```
 
 ### Conversion Window Units
@@ -175,12 +175,12 @@ Use `conversion_window_unit="session"` to count conversions within a single Mixp
 
 ```python
 # Users must complete all steps within one session
-result = ws.query_funnel(
-    ["View Product", "Add to Cart", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["View Product", "Add to Cart", "Purchase"],
     conversion_window=1,
     conversion_window_unit="session",
     math="conversion_rate_session",
-)
+))
 ```
 
 !!! note
@@ -197,11 +197,11 @@ The `order` parameter controls how steps must be completed:
 
 ```python
 # Steps in any order
-result = ws.query_funnel(
-    ["Feature A Used", "Feature B Used", "Feature C Used"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Feature A Used", "Feature B Used", "Feature C Used"],
     order="any",
     conversion_window=30,
-)
+))
 ```
 
 ### Per-Step Order Override
@@ -209,14 +209,14 @@ result = ws.query_funnel(
 When the top-level `order` is `"any"`, individual steps can override to `"loose"`:
 
 ```python
-result = ws.query_funnel(
-    [
+result = ws.query_funnel(FunnelQuery(
+    steps=[
         FunnelStep("Signup"),  # must come first (loose)
         FunnelStep("Feature A", order="any"),
         FunnelStep("Feature B", order="any"),
     ],
     order="any",
-)
+))
 ```
 
 ## Aggregation
@@ -233,10 +233,10 @@ The `math` parameter controls what metric is computed. Default: `"conversion_rat
 
 ```python
 # Total-event conversion (counts all events, not just unique users)
-result = ws.query_funnel(
-    ["View", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["View", "Purchase"],
     math="conversion_rate_total",
-)
+))
 ```
 
 ### Raw Counts
@@ -248,7 +248,7 @@ result = ws.query_funnel(
 
 ```python
 # Raw unique user counts at each step
-result = ws.query_funnel(["Signup", "Purchase"], math="unique")
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], math="unique"))
 ```
 
 ### Property Aggregation
@@ -263,18 +263,18 @@ result = ws.query_funnel(["Signup", "Purchase"], math="unique")
 
 ```python
 # Average purchase amount at each step
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     math="average",
     math_property="amount",
-)
+))
 
 # Distribution of purchase amounts at each funnel step
-result = ws.query_funnel(
-    ["Browse", "Add to Cart", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Browse", "Add to Cart", "Purchase"],
     math="histogram",
     math_property="amount",
-)
+))
 ```
 
 ## Filters
@@ -284,22 +284,22 @@ result = ws.query_funnel(
 Apply filters across all steps with `where=`:
 
 ```python
-from mixpanel_headless import Filter
+from mixpanel_headless import Filter, FunnelQuery
 
 # Filter the entire funnel
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    where=Filter.equals("country", "US"),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    where=[Filter.equals("country", "US")],
+))
 
 # Multiple global filters (AND logic)
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     where=[
         Filter.equals("platform", "web"),
         Filter.is_true("is_premium"),
     ],
-)
+))
 ```
 
 Global filters apply to all steps in the funnel. For step-specific filtering, use `FunnelStep.filters` (see [Steps — Per-Step Filters](#per-step-filters)).
@@ -311,22 +311,22 @@ See [Insights Queries — Available Filter Methods](query.md#available-filter-me
 Restrict the funnel to users in a cohort — saved or inline:
 
 ```python
-from mixpanel_headless import Filter, CohortCriteria, CohortDefinition
+from mixpanel_headless import Filter, CohortCriteria, CohortDefinition, FunnelQuery
 
 # Saved cohort
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    where=Filter.in_cohort(123, "Power Users"),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    where=[Filter.in_cohort(123, "Power Users")],
+))
 
 # Inline cohort — no pre-saved cohort needed
 active_users = CohortDefinition(
     CohortCriteria.did_event("Login", at_least=5, within_days=7)
 )
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    where=Filter.in_cohort(active_users, name="Active Users"),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    where=[Filter.in_cohort(active_users, name="Active Users")],
+))
 ```
 
 See [Insights Queries — Cohort Filters](query.md#cohort-filters) for the full cohort filter reference.
@@ -336,12 +336,12 @@ See [Insights Queries — Cohort Filters](query.md#cohort-filters) for the full 
 Use saved or inline custom properties in funnel filters:
 
 ```python
-from mixpanel_headless import Filter, CustomPropertyRef
+from mixpanel_headless import Filter, CustomPropertyRef, FunnelQuery
 
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    where=Filter.greater_than(property=CustomPropertyRef(42), value=100),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    where=[Filter.greater_than(property=CustomPropertyRef(42), value=100)],
+))
 ```
 
 !!! warning
@@ -354,19 +354,19 @@ See [Insights Queries — Custom Properties in Queries](query.md#custom-properti
 Break down funnel results by property values with `group_by`:
 
 ```python
-from mixpanel_headless import GroupBy
+from mixpanel_headless import GroupBy, FunnelQuery
 
 # Simple string breakdown
-result = ws.query_funnel(["Signup", "Purchase"], group_by="platform")
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], group_by=["platform"]))
 
 # Multiple breakdowns
-result = ws.query_funnel(["Signup", "Purchase"], group_by=["country", "platform"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], group_by=["country", "platform"]))
 
 # Numeric bucketing
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    group_by=GroupBy("amount", property_type="number", bucket_size=50),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    group_by=[GroupBy("amount", property_type="number", bucket_size=50)],
+))
 ```
 
 ### Cohort Breakdowns
@@ -374,13 +374,13 @@ result = ws.query_funnel(
 Segment funnel results by cohort membership:
 
 ```python
-from mixpanel_headless import CohortBreakdown
+from mixpanel_headless import CohortBreakdown, FunnelQuery
 
 # Compare power users vs. everyone else through the funnel
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    group_by=CohortBreakdown(123, "Power Users"),
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    group_by=[CohortBreakdown(123, "Power Users")],
+))
 ```
 
 See [Insights Queries — Cohort Breakdowns](query.md#cohort-breakdowns) for inline definitions and options.
@@ -390,16 +390,16 @@ See [Insights Queries — Cohort Breakdowns](query.md#cohort-breakdowns) for inl
 Break down funnel results by a saved or inline custom property:
 
 ```python
-from mixpanel_headless import GroupBy, InlineCustomProperty
+from mixpanel_headless import GroupBy, InlineCustomProperty, FunnelQuery
 
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    group_by=GroupBy(
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    group_by=[GroupBy(
         property=InlineCustomProperty.numeric("A * B", A="price", B="quantity"),
         property_type="number",
         bucket_size=50,
-    ),
-)
+    )],
+))
 ```
 
 See [Insights Queries — Custom Properties in Queries](query.md#custom-properties-in-queries) for `CustomPropertyRef` and full options.
@@ -416,10 +416,10 @@ Pass event names as strings to exclude them between all steps:
 
 ```python
 # Exclude users who log out anywhere in the funnel
-result = ws.query_funnel(
-    ["Signup", "Add to Cart", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Add to Cart", "Purchase"],
     exclusions=["Logout"],
-)
+))
 ```
 
 ### The `Exclusion` Class
@@ -427,15 +427,15 @@ result = ws.query_funnel(
 For targeted exclusion between specific steps, use `Exclusion` objects:
 
 ```python
-from mixpanel_headless import Exclusion
+from mixpanel_headless import Exclusion, FunnelQuery
 
-result = ws.query_funnel(
-    ["Signup", "Add to Cart", "Checkout", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Add to Cart", "Checkout", "Purchase"],
     exclusions=[
         Exclusion("Logout"),  # between all steps (same as string)
         Exclusion("Refund", from_step=2, to_step=3),  # only between Checkout and Purchase
     ],
-)
+))
 ```
 
 `Exclusion` fields:
@@ -459,16 +459,16 @@ Pass property names as strings:
 
 ```python
 # Only count conversions where platform is the same at every step
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
-    holding_constant="platform",
-)
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
+    holding_constant=["platform"],
+))
 
 # Multiple properties
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     holding_constant=["platform", "country"],
-)
+))
 ```
 
 ### The `HoldingConstant` Class
@@ -476,15 +476,15 @@ result = ws.query_funnel(
 For user-profile properties, use `HoldingConstant` objects:
 
 ```python
-from mixpanel_headless import HoldingConstant
+from mixpanel_headless import HoldingConstant, FunnelQuery
 
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     holding_constant=[
         HoldingConstant("platform"),  # event property (default)
         HoldingConstant("plan_tier", resource_type="people"),  # user-profile property
     ],
-)
+))
 ```
 
 `HoldingConstant` fields:
@@ -505,13 +505,13 @@ By default, `query_funnel()` returns the last 30 days. Customize with `last` (al
 
 ```python
 # Last 7 days
-result = ws.query_funnel(["Signup", "Purchase"], last=7)
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], last=7))
 
 # Last 84 days (~12 weeks), weekly granularity
-result = ws.query_funnel(["Signup", "Purchase"], last=84, unit="week")
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], last=84, unit="week"))
 
 # Last 180 days (~6 months), monthly granularity
-result = ws.query_funnel(["Signup", "Purchase"], last=180, unit="month")
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], last=180, unit="month"))
 ```
 
 ### Absolute
@@ -520,11 +520,11 @@ Specify explicit start and end dates:
 
 ```python
 # Q1 2025
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     from_date="2025-01-01",
     to_date="2025-03-31",
-)
+))
 ```
 
 Dates must be in `YYYY-MM-DD` format.
@@ -541,12 +541,12 @@ The `mode` parameter controls result presentation:
 
 ```python
 # Conversion trend over time
-result = ws.query_funnel(
-    ["Signup", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Purchase"],
     mode="trends",
     last=90,
     unit="week",
-)
+))
 ```
 
 ## Reentry Mode
@@ -562,11 +562,11 @@ Control how users re-enter the funnel after conversion using the `reentry_mode` 
 
 ```python
 # Allow aggressive re-entry for repeat purchase funnels
-result = ws.query_funnel(
-    ["Browse", "Add to Cart", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Browse", "Add to Cart", "Purchase"],
     reentry_mode="aggressive",
     last=30,
-)
+))
 ```
 
 !!! note
@@ -577,14 +577,14 @@ result = ws.query_funnel(
 Compare funnel conversion against a previous period using `TimeComparison`:
 
 ```python
-from mixpanel_headless import TimeComparison
+from mixpanel_headless import TimeComparison, FunnelQuery
 
 # Compare this week's funnel against last week
-result = ws.query_funnel(
-    ["Signup", "Activate", "Purchase"],
+result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Activate", "Purchase"],
     time_comparison=TimeComparison.relative("week"),
     last=7,
-)
+))
 ```
 
 See [Insights > Period-over-Period Comparison](query.md#period-over-period-comparison) for all `TimeComparison` factory methods.
@@ -593,7 +593,7 @@ See [Insights > Period-over-Period Comparison](query.md#period-over-period-compa
 
 ```python
 # Scope funnel to a data group
-result = ws.query_funnel(["Signup", "Purchase"], data_group_id=42)
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], data_group_id=42))
 ```
 
 ## Working with Results
@@ -603,7 +603,7 @@ result = ws.query_funnel(["Signup", "Purchase"], data_group_id=42)
 `query_funnel()` returns a `FunnelQueryResult` with:
 
 ```python
-result = ws.query_funnel(["Signup", "Add to Cart", "Purchase"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Add to Cart", "Purchase"]))
 
 # Overall conversion rate (first to last step)
 result.overall_conversion_rate  # 0.12 (12%)
@@ -650,9 +650,9 @@ The DataFrame has one row per funnel step:
 The generated bookmark params can be saved as a Mixpanel report:
 
 ```python
-from mixpanel_headless import CreateBookmarkParams
+from mixpanel_headless import CreateBookmarkParams, FunnelQuery
 
-result = ws.query_funnel(["Signup", "Purchase"], conversion_window=7, last=90)
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"], conversion_window=7, last=90))
 
 ws.create_bookmark(CreateBookmarkParams(
     name="Signup → Purchase Funnel (7d window)",
@@ -668,7 +668,7 @@ Inspect `result.params` to see the exact bookmark JSON sent to the API:
 ```python
 import json
 
-result = ws.query_funnel(["Signup", "Purchase"])
+result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
 print(json.dumps(result.params, indent=2))
 ```
 
@@ -700,13 +700,13 @@ print(json.dumps(result.params, indent=2))
 
 ```python
 import mixpanel_headless as mp
-from mixpanel_headless import FunnelStep, Filter, Exclusion, HoldingConstant
+from mixpanel_headless import FunnelStep, Filter, Exclusion, HoldingConstant, FunnelQuery
 
 ws = mp.Workspace()
 
 # Full purchase funnel with exclusions and filters
-result = ws.query_funnel(
-    [
+result = ws.query_funnel(FunnelQuery(
+    steps=[
         FunnelStep("View Product"),
         FunnelStep("Add to Cart"),
         FunnelStep(
@@ -716,11 +716,11 @@ result = ws.query_funnel(
     ],
     conversion_window=7,
     exclusions=[Exclusion("Remove from Cart", from_step=1, to_step=2)],
-    holding_constant="platform",
-    where=Filter.equals("country", "US"),
-    group_by="platform",
+    holding_constant=["platform"],
+    where=[Filter.equals("country", "US")],
+    group_by=["platform"],
     last=90,
-)
+))
 
 print(f"Overall conversion: {result.overall_conversion_rate:.1%}")
 print(result.df)
@@ -730,8 +730,8 @@ print(result.df)
 
 ```python
 # Track user onboarding completion
-result = ws.query_funnel(
-    [
+result = ws.query_funnel(FunnelQuery(
+    steps=[
         "Create Account",
         "Verify Email",
         "Complete Profile",
@@ -744,7 +744,7 @@ result = ws.query_funnel(
     last=30,
     unit="week",
     mode="trends",  # track onboarding trends over time
-)
+))
 
 # Identify the biggest drop-off point
 for step_data in result.steps_data:
@@ -757,19 +757,19 @@ Use `build_funnel_params()` to generate bookmark params without making an API ca
 
 ```python
 # Same arguments as query_funnel(), returns dict instead of FunnelQueryResult
-params = ws.build_funnel_params(
-    ["Signup", "Add to Cart", "Purchase"],
+params = ws.build_funnel_params(FunnelQuery(
+    steps=["Signup", "Add to Cart", "Purchase"],
     conversion_window=7,
     exclusions=["Logout"],
-    holding_constant="platform",
+    holding_constant=["platform"],
     last=90,
-)
+))
 
 import json
 print(json.dumps(params, indent=2))  # inspect the generated bookmark JSON
 
 # Save as a report directly from params
-from mixpanel_headless import CreateBookmarkParams
+from mixpanel_headless import CreateBookmarkParams, FunnelQuery
 
 ws.create_bookmark(CreateBookmarkParams(
     name="Purchase Funnel (7d)",

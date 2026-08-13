@@ -31,7 +31,6 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -1339,17 +1338,11 @@ class TestQueryUserValueErrorWrapping:
         self,
         workspace_factory: Callable[..., Workspace],
     ) -> None:
-        """Unsupported filter operator raises BookmarkValidationError."""
-        f = Filter("prop", "unsupported_op", "val")  # type: ignore[arg-type]
-        ws = workspace_factory()
-        try:
-            with pytest.raises(BookmarkValidationError):
-                ws.query_user(
-                    mode="profiles",
-                    where=f,
-                )
-        finally:
-            ws.close()
+        """Unsupported filter operator is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
+
+        with pytest.raises(PydanticValidationError, match="literal_error"):
+            Filter("prop", "unsupported_op", "val")  # type: ignore[arg-type]
 
 
 class TestQueryUserAggregatePropertyEscaping:

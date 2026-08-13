@@ -19,6 +19,12 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 from mixpanel_headless.types import (
     CohortBreakdown,
     CohortCriteria,
@@ -100,25 +106,45 @@ class TestBuildFilterEntryCohort:
 
     def test_saved_cohort_filter_entry_resource_type(self, ws: Workspace) -> None:
         """Verify filter entry has resourceType='events'."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "Power Users")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["resourceType"] == "events"
 
     def test_saved_cohort_filter_entry_filter_type(self, ws: Workspace) -> None:
         """Verify filter entry has filterType='list'."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "Power Users")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["filterType"] == "list"
 
     def test_saved_cohort_filter_entry_value_is_cohorts(self, ws: Workspace) -> None:
         """Verify filter entry has value='$cohorts'."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "PU")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["value"] == "$cohorts"
 
     def test_saved_cohort_filter_entry_operator_contains(self, ws: Workspace) -> None:
         """Verify filter entry has filterOperator='contains' for in_cohort."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "PU")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["filterOperator"] == "contains"
 
@@ -126,7 +152,12 @@ class TestBuildFilterEntryCohort:
         self, ws: Workspace
     ) -> None:
         """Verify filterValue contains cohort entry with id and name."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "Power Users")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         fv = entry["filterValue"]
         assert isinstance(fv, list)
@@ -140,7 +171,10 @@ class TestBuildFilterEntryCohort:
         """Verify inline CohortDefinition produces raw_cohort in filterValue."""
         cohort_def = _simple_cohort_def()
         result = ws.build_params(
-            "Login", where=Filter.in_cohort(cohort_def, name="Buyers")
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(cohort_def, name="Buyers")],
+            )
         )
         entry = result["sections"]["filter"][0]
         fv = entry["filterValue"]
@@ -151,13 +185,23 @@ class TestBuildFilterEntryCohort:
 
     def test_not_in_cohort_filter_entry_operator(self, ws: Workspace) -> None:
         """Verify not_in_cohort produces filterOperator='does not contain'."""
-        result = ws.build_params("Login", where=Filter.not_in_cohort(789, "Bots"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.not_in_cohort(789, "Bots")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["filterOperator"] == "does not contain"
 
     def test_not_in_cohort_filter_value_negated(self, ws: Workspace) -> None:
         """Verify not_in_cohort sets negated=True in filterValue."""
-        result = ws.build_params("Login", where=Filter.not_in_cohort(789, "Bots"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.not_in_cohort(789, "Bots")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         cohort = entry["filterValue"][0]["cohort"]
         assert cohort["negated"] is True
@@ -174,11 +218,13 @@ class TestBuildFilterSectionMixed:
     def test_mixed_filters_produce_two_entries(self, ws: Workspace) -> None:
         """Verify mix of cohort and property filters produces two filter entries."""
         result = ws.build_params(
-            "Login",
-            where=[
-                Filter.in_cohort(123, "PU"),
-                Filter.equals("country", "US"),
-            ],
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[
+                    Filter.in_cohort(123, "PU"),
+                    Filter.equals("country", "US"),
+                ],
+            )
         )
         filter_section = result["sections"]["filter"]
         assert len(filter_section) == 2
@@ -186,11 +232,13 @@ class TestBuildFilterSectionMixed:
     def test_mixed_filters_cohort_entry_first(self, ws: Workspace) -> None:
         """Verify cohort filter appears in filter section."""
         result = ws.build_params(
-            "Login",
-            where=[
-                Filter.in_cohort(123, "PU"),
-                Filter.equals("country", "US"),
-            ],
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[
+                    Filter.in_cohort(123, "PU"),
+                    Filter.equals("country", "US"),
+                ],
+            )
         )
         filter_section = result["sections"]["filter"]
         values = [e["value"] for e in filter_section]
@@ -213,14 +261,14 @@ class TestBuildFlowCohortFilter:
     def test_flow_cohort_filter_has_filter_by_cohort_key(self, ws: Workspace) -> None:
         """Verify build_flow_params produces filter_by_cohort key."""
         result = ws.build_flow_params(
-            "Login", where=Filter.in_cohort(123, "Power Users")
+            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
         )
         assert "filter_by_cohort" in result
 
     def test_flow_cohort_filter_id(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has correct id."""
         result = ws.build_flow_params(
-            "Login", where=Filter.in_cohort(123, "Power Users")
+            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
         )
         fbc = result["filter_by_cohort"]
         assert fbc["id"] == 123
@@ -228,23 +276,27 @@ class TestBuildFlowCohortFilter:
     def test_flow_cohort_filter_name(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has correct name."""
         result = ws.build_flow_params(
-            "Login", where=Filter.in_cohort(123, "Power Users")
+            FlowQuery(event="Login", where=[Filter.in_cohort(123, "Power Users")])
         )
         fbc = result["filter_by_cohort"]
         assert fbc["name"] == "Power Users"
 
     def test_flow_cohort_filter_negated_false(self, ws: Workspace) -> None:
         """Verify filter_by_cohort has negated=False for in_cohort."""
-        result = ws.build_flow_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_flow_params(
+            FlowQuery(event="Login", where=[Filter.in_cohort(123, "PU")])
+        )
         fbc = result["filter_by_cohort"]
         assert fbc["negated"] is False
 
-    def test_flow_property_filter_produces_filter_by_event(self, ws: Workspace) -> None:
-        """Verify property filter in flow where= produces filter_by_event."""
-        result = ws.build_flow_params("Login", where=Filter.equals("country", "US"))
-        assert "filter_by_event" in result
-        assert result["filter_by_event"]["operator"] == "and"
-        assert len(result["filter_by_event"]["children"]) == 1
+    def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
+        """Verify property filter in flow where= produces where key."""
+        result = ws.build_flow_params(
+            FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+        )
+        assert "where" in result
+        assert len(result["where"]) == 1
+        assert result["where"][0]["property"] == "country"
 
 
 # =============================================================================
@@ -262,8 +314,10 @@ class TestBuildGroupSectionCohort:
     def test_cohort_breakdown_produces_group_entry(self, ws: Workspace) -> None:
         """Verify CohortBreakdown produces a non-empty sections.group."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "Power Users"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "Power Users")],
+            )
         )
         group_section = result["sections"]["group"]
         assert len(group_section) > 0
@@ -271,8 +325,10 @@ class TestBuildGroupSectionCohort:
     def test_cohort_breakdown_entry_has_cohorts_key(self, ws: Workspace) -> None:
         """Verify group entry has 'cohorts' key."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "Power Users"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "Power Users")],
+            )
         )
         group_entry = result["sections"]["group"][0]
         assert "cohorts" in group_entry
@@ -282,8 +338,10 @@ class TestBuildGroupSectionCohort:
     ) -> None:
         """Verify include_negated=True produces two cohort entries."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "Power Users", include_negated=True),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "Power Users", include_negated=True)],
+            )
         )
         group_entry = result["sections"]["group"][0]
         cohorts = group_entry["cohorts"]
@@ -296,8 +354,10 @@ class TestBuildGroupSectionCohort:
     ) -> None:
         """Verify include_negated=False produces one cohort entry."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "Power Users", include_negated=False),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "Power Users", include_negated=False)],
+            )
         )
         group_entry = result["sections"]["group"][0]
         cohorts = group_entry["cohorts"]
@@ -307,8 +367,10 @@ class TestBuildGroupSectionCohort:
     def test_cohort_breakdown_value_has_names(self, ws: Workspace) -> None:
         """Verify group entry 'value' contains cohort names."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "Power Users", include_negated=True),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "Power Users", include_negated=True)],
+            )
         )
         group_entry = result["sections"]["group"][0]
         value = group_entry["value"]
@@ -319,8 +381,10 @@ class TestBuildGroupSectionCohort:
         """Verify inline CohortDefinition uses raw_cohort in cohorts entry."""
         cohort_def = _simple_cohort_def()
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(cohort_def, "Active"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(cohort_def, "Active")],
+            )
         )
         group_entry = result["sections"]["group"][0]
         cohort = group_entry["cohorts"][0]
@@ -329,8 +393,10 @@ class TestBuildGroupSectionCohort:
     def test_cohort_breakdown_resource_type_events(self, ws: Workspace) -> None:
         """Verify group entry has resourceType='events'."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "PU"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         group_entry = result["sections"]["group"][0]
         assert group_entry["resourceType"] == "events"
@@ -349,8 +415,10 @@ class TestBuildGroupSectionMixed:
     ) -> None:
         """Verify mix of CohortBreakdown and string produces two group entries."""
         result = ws.build_params(
-            "Login",
-            group_by=[CohortBreakdown(123, "PU"), "country"],
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "PU"), GroupBy("country")],
+            )
         )
         group_section = result["sections"]["group"]
         assert len(group_section) == 2
@@ -360,8 +428,10 @@ class TestBuildGroupSectionMixed:
     ) -> None:
         """Verify mix of CohortBreakdown and GroupBy produces two group entries."""
         result = ws.build_params(
-            "Login",
-            group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+            )
         )
         group_section = result["sections"]["group"]
         assert len(group_section) == 2
@@ -381,12 +451,22 @@ class TestBuildParamsCohortFilter:
 
     def test_cohort_filter_populates_filter_section(self, ws: Workspace) -> None:
         """Verify cohort filter appears in sections.filter."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "PU")],
+            )
+        )
         assert len(result["sections"]["filter"]) > 0
 
     def test_cohort_filter_entry_value_is_cohorts(self, ws: Workspace) -> None:
         """Verify the filter entry targets $cohorts property."""
-        result = ws.build_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_params(
+            InsightsQuery(
+                events=[Metric("Login")],
+                where=[Filter.in_cohort(123, "PU")],
+            )
+        )
         entry = result["sections"]["filter"][0]
         assert entry["value"] == "$cohorts"
 
@@ -402,8 +482,10 @@ class TestBuildFunnelParamsCohortFilter:
     def test_cohort_filter_populates_filter_section(self, ws: Workspace) -> None:
         """Verify cohort filter appears in funnel sections.filter."""
         result = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            where=Filter.in_cohort(123, "PU"),
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                where=[Filter.in_cohort(123, "PU")],
+            )
         )
         filter_section = result["sections"]["filter"]
         assert len(filter_section) > 0
@@ -411,8 +493,10 @@ class TestBuildFunnelParamsCohortFilter:
     def test_cohort_filter_entry_value_is_cohorts(self, ws: Workspace) -> None:
         """Verify the filter entry targets $cohorts in funnel params."""
         result = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            where=Filter.in_cohort(123, "PU"),
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                where=[Filter.in_cohort(123, "PU")],
+            )
         )
         entry = result["sections"]["filter"][0]
         assert entry["value"] == "$cohorts"
@@ -429,9 +513,11 @@ class TestBuildRetentionParamsCohortFilter:
     def test_cohort_filter_populates_filter_section(self, ws: Workspace) -> None:
         """Verify cohort filter appears in retention sections.filter."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            where=Filter.in_cohort(123, "PU"),
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                where=[Filter.in_cohort(123, "PU")],
+            )
         )
         filter_section = result["sections"]["filter"]
         assert len(filter_section) > 0
@@ -439,9 +525,11 @@ class TestBuildRetentionParamsCohortFilter:
     def test_cohort_filter_entry_value_is_cohorts(self, ws: Workspace) -> None:
         """Verify the filter entry targets $cohorts in retention params."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            where=Filter.in_cohort(123, "PU"),
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                where=[Filter.in_cohort(123, "PU")],
+            )
         )
         entry = result["sections"]["filter"][0]
         assert entry["value"] == "$cohorts"
@@ -458,16 +546,20 @@ class TestBuildParamsCohortBreakdown:
     def test_cohort_breakdown_populates_group_section(self, ws: Workspace) -> None:
         """Verify CohortBreakdown appears in sections.group."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "PU"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         assert len(result["sections"]["group"]) > 0
 
     def test_cohort_breakdown_entry_has_cohorts(self, ws: Workspace) -> None:
         """Verify the group entry has cohorts key."""
         result = ws.build_params(
-            "Login",
-            group_by=CohortBreakdown(123, "PU"),
+            InsightsQuery(
+                events=[Metric("Login")],
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         entry = result["sections"]["group"][0]
         assert "cohorts" in entry
@@ -484,16 +576,20 @@ class TestBuildFunnelParamsCohortBreakdown:
     def test_cohort_breakdown_populates_group_section(self, ws: Workspace) -> None:
         """Verify CohortBreakdown appears in funnel sections.group."""
         result = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            group_by=CohortBreakdown(123, "PU"),
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         assert len(result["sections"]["group"]) > 0
 
     def test_cohort_breakdown_entry_has_cohorts(self, ws: Workspace) -> None:
         """Verify the funnel group entry has cohorts key."""
         result = ws.build_funnel_params(
-            ["Signup", "Purchase"],
-            group_by=CohortBreakdown(123, "PU"),
+            FunnelQuery(
+                steps=["Signup", "Purchase"],
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         entry = result["sections"]["group"][0]
         assert "cohorts" in entry
@@ -513,9 +609,11 @@ class TestBuildRetentionParamsCohortBreakdown:
     def test_cohort_breakdown_alone_accepted(self, ws: Workspace) -> None:
         """Verify CohortBreakdown alone works in retention group_by."""
         result = ws.build_retention_params(
-            "Signup",
-            "Login",
-            group_by=CohortBreakdown(123, "PU"),
+            RetentionQuery(
+                born_event="Signup",
+                return_event="Login",
+                group_by=[CohortBreakdown(123, "PU")],
+            )
         )
         assert len(result["sections"]["group"]) > 0
 
@@ -523,18 +621,22 @@ class TestBuildRetentionParamsCohortBreakdown:
         """CB3: CohortBreakdown mixed with GroupBy in retention raises."""
         with pytest.raises(BookmarkValidationError):
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+                )
             )
 
     def test_cb3_mixed_with_string_raises(self, ws: Workspace) -> None:
         """CB3: CohortBreakdown mixed with string in retention raises."""
         with pytest.raises(BookmarkValidationError):
             ws.build_retention_params(
-                "Signup",
-                "Login",
-                group_by=[CohortBreakdown(123, "PU"), "platform"],
+                RetentionQuery(
+                    born_event="Signup",
+                    return_event="Login",
+                    group_by=[CohortBreakdown(123, "PU"), GroupBy("platform")],
+                )
             )
 
 
@@ -552,54 +654,72 @@ class TestBuildParamsCohortMetric:
 
     def test_cohort_metric_produces_show_entry(self, ws: Workspace) -> None:
         """Verify CohortMetric produces a non-empty sections.show."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         assert len(result["sections"]["show"]) > 0
 
     def test_cohort_metric_show_type_is_metric(self, ws: Workspace) -> None:
         """Verify show entry has type='metric'."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         entry = result["sections"]["show"][0]
         assert entry.get("type") == "metric"
 
     def test_cohort_metric_behavior_type_is_cohort(self, ws: Workspace) -> None:
         """Verify behavior.type is 'cohort'."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["type"] == "cohort"
 
     def test_cohort_metric_behavior_name(self, ws: Workspace) -> None:
         """Verify behavior.name matches the provided name."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["name"] == "Power Users"
 
     def test_cohort_metric_behavior_id(self, ws: Workspace) -> None:
         """Verify behavior.id matches the cohort ID."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["id"] == 123
 
     def test_cohort_metric_behavior_resource_type(self, ws: Workspace) -> None:
         """Verify behavior.resourceType is 'cohorts'."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["resourceType"] == "cohorts"
 
     def test_cohort_metric_behavior_dataset(self, ws: Workspace) -> None:
         """Verify behavior.dataset is '$mixpanel'."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["dataset"] == "$mixpanel"
 
     def test_cohort_metric_measurement_math_unique(self, ws: Workspace) -> None:
         """Verify measurement.math is 'unique' for cohort metrics."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
 
     def test_cohort_metric_measurement_property_none(self, ws: Workspace) -> None:
         """Verify measurement.property is None for cohort metrics."""
-        result = ws.build_params(CohortMetric(123, "Power Users"))
+        result = ws.build_params(
+            InsightsQuery(events=[CohortMetric(123, "Power Users")])
+        )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["property"] is None
 
@@ -624,31 +744,37 @@ class TestBuildParamsCohortMetricMixed:
     def test_mixed_cohort_metric_and_metric(self, ws: Workspace) -> None:
         """Verify CohortMetric and Metric together produce two show entries."""
         result = ws.build_params(
-            [
-                CohortMetric(123, "Power Users"),
-                Metric("Login"),
-            ]
+            InsightsQuery(
+                events=[
+                    CohortMetric(123, "Power Users"),
+                    Metric("Login"),
+                ],
+            )
         )
         assert len(result["sections"]["show"]) == 2
 
     def test_mixed_cohort_metric_and_string(self, ws: Workspace) -> None:
         """Verify CohortMetric and string event together produce two show entries."""
         result = ws.build_params(
-            [
-                CohortMetric(123, "PU"),
-                "Login",
-            ]
+            InsightsQuery(
+                events=[
+                    CohortMetric(123, "PU"),
+                    Metric("Login"),
+                ],
+            )
         )
         assert len(result["sections"]["show"]) == 2
 
     def test_mixed_cohort_metric_and_formula(self, ws: Workspace) -> None:
         """Verify CohortMetric and Formula together work."""
         result = ws.build_params(
-            [
-                CohortMetric(123, "PU"),
-                Metric("Login"),
-                Formula("A/B", label="Rate"),
-            ]
+            InsightsQuery(
+                events=[
+                    CohortMetric(123, "PU"),
+                    Metric("Login"),
+                    Formula("A/B", label="Rate"),
+                ],
+            )
         )
         show = result["sections"]["show"]
         # Should have at least the cohort metric and metric entries
@@ -671,8 +797,10 @@ class TestBuildParamsCohortMetricMathIgnored:
     def test_math_total_does_not_override_cohort_math(self, ws: Workspace) -> None:
         """Verify math='total' does not change cohort metric's math='unique'."""
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="total",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="total",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
@@ -680,9 +808,11 @@ class TestBuildParamsCohortMetricMathIgnored:
     def test_math_property_does_not_apply(self, ws: Workspace) -> None:
         """Verify math_property does not appear in cohort metric measurement."""
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="average",
-            math_property="amount",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="average",
+                math_property="amount",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["property"] is None
@@ -699,8 +829,10 @@ class TestBuildParamsCohortMetricMathIgnored:
         # math="average" normally requires math_property — but should be
         # ignored when the only consumer is CohortMetric.
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="average",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="average",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
@@ -714,8 +846,10 @@ class TestBuildParamsCohortMetricMathIgnored:
         there are no plain string events to consume the parameter.
         """
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="percentile",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="percentile",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
@@ -729,8 +863,10 @@ class TestBuildParamsCohortMetricMathIgnored:
         no plain string events to consume the parameter.
         """
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="histogram",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="histogram",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
@@ -744,23 +880,24 @@ class TestBuildParamsCohortMetricMathIgnored:
         when there are no plain string events to consume the parameter.
         """
         result = ws.build_params(
-            CohortMetric(123, "PU"),
-            math="unique",
-            per_user="average",
+            InsightsQuery(
+                events=[CohortMetric(123, "PU")],
+                math="unique",
+                per_user="average",
+            )
         )
         measurement = result["sections"]["show"][0]["measurement"]
         assert measurement["math"] == "unique"
 
     def test_mixed_events_still_validate_math(self, ws: Workspace) -> None:
-        """Verify mixed CohortMetric + plain event still validates top-level math.
+        """Verify mixed CohortMetric + plain event still validates math.
 
-        When a plain string event is present, it consumes top-level math,
-        so V1 must still fire for math='average' without math_property.
+        Metric("Login", math="average") requires a property, so
+        construction raises ValueError.
         """
-        with pytest.raises(BookmarkValidationError, match="requires math_property"):
-            ws.build_params(
-                [CohortMetric(123, "PU"), "Login"],
-                math="average",
+        with pytest.raises(ValueError, match="requires a property"):
+            InsightsQuery(
+                events=[CohortMetric(123, "PU"), Metric("Login", math="average")],
             )
 
     def test_per_user_does_not_apply(self, ws: Workspace) -> None:
@@ -772,10 +909,14 @@ class TestBuildParamsCohortMetricMathIgnored:
         verifying the CohortMetric show entry has no perUserAggregation.
         """
         result = ws.build_params(
-            [
-                CohortMetric(123, "PU"),
-                Metric("Login", math="average", property="amount", per_user="average"),
-            ],
+            InsightsQuery(
+                events=[
+                    CohortMetric(123, "PU"),
+                    Metric(
+                        "Login", math="average", property="amount", per_user="average"
+                    ),
+                ],
+            )
         )
         # CohortMetric is first in the show list
         cm_measurement = result["sections"]["show"][0]["measurement"]
@@ -799,38 +940,45 @@ class TestQueryFlowCohortFilter:
         self, ws: Workspace
     ) -> None:
         """Verify build_flow_params with cohort filter produces filter_by_cohort."""
-        result = ws.build_flow_params("Login", where=Filter.in_cohort(123, "PU"))
+        result = ws.build_flow_params(
+            FlowQuery(event="Login", where=[Filter.in_cohort(123, "PU")])
+        )
         assert "filter_by_cohort" in result
 
     def test_flow_params_without_where_has_no_filter_by_cohort(
         self, ws: Workspace
     ) -> None:
         """Verify build_flow_params without where= has no filter_by_cohort."""
-        result = ws.build_flow_params("Login")
+        result = ws.build_flow_params(FlowQuery(event="Login"))
         assert "filter_by_cohort" not in result
 
-    def test_flow_property_filter_produces_filter_by_event(self, ws: Workspace) -> None:
-        """Verify property filter in flow where= produces filter_by_event."""
-        result = ws.build_flow_params("Login", where=Filter.equals("country", "US"))
-        assert "filter_by_event" in result
-        assert result["filter_by_event"]["operator"] == "and"
-        assert len(result["filter_by_event"]["children"]) == 1
+    def test_flow_property_filter_produces_where(self, ws: Workspace) -> None:
+        """Verify property filter in flow where= produces where key."""
+        result = ws.build_flow_params(
+            FlowQuery(event="Login", where=[Filter.equals("country", "US")])
+        )
+        assert "where" in result
+        assert len(result["where"]) == 1
+        assert result["where"][0]["property"] == "country"
 
-    def test_flow_multiple_cohort_filters_raises_value_error(
-        self, ws: Workspace
-    ) -> None:
-        """Verify multiple cohort filters in flow where= raises ValueError."""
+    def test_flow_multiple_cohort_filters_rejected(self, ws: Workspace) -> None:
+        """Multiple cohort filters in flow where= raise a structured error."""
         with pytest.raises(
-            ValueError,
+            BookmarkValidationError,
             match="query_flow supports a single cohort filter, but 2",
-        ):
+        ) as exc_info:
             ws.build_flow_params(
-                "Login",
-                where=[
-                    Filter.in_cohort(123, "A"),
-                    Filter.in_cohort(456, "B"),
-                ],
+                FlowQuery(
+                    event="Login",
+                    where=[
+                        Filter.in_cohort(123, "A"),
+                        Filter.in_cohort(456, "B"),
+                    ],
+                )
             )
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_MULTIPLE_COHORTS"
+        assert err.path == "where"
 
 
 # =============================================================================
@@ -876,22 +1024,28 @@ class TestBuildFlowCohortFilterDirect:
         assert result is not None
         assert result["negated"] is True
 
-    def test_non_cohort_filter_raises(self) -> None:
-        """Non-cohort filter raises ValueError."""
+    def test_non_cohort_filter_raises_runtime_error(self) -> None:
+        """A non-cohort filter reaching this builder is caller misuse — the
+        flow path splits cohort from property filters first — so it crashes
+        as an internal error rather than a user validation failure."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_cohort_filter,
         )
 
-        with pytest.raises(ValueError, match="only accepts cohort filters"):
+        with pytest.raises(RuntimeError, match="only accepts cohort filters"):
             build_flow_cohort_filter(Filter.equals("country", "US"))
 
-    def test_multiple_filters_raises(self) -> None:
-        """Multiple cohort filters raises ValueError."""
+    def test_multiple_filters_rejected(self) -> None:
+        """Multiple cohort filters raise a structured error (user-reachable
+        via FlowQuery.where)."""
         from mixpanel_headless._internal.bookmark_builders import (
             build_flow_cohort_filter,
         )
 
-        with pytest.raises(ValueError, match="single cohort filter, but 2"):
+        with pytest.raises(
+            BookmarkValidationError, match="single cohort filter, but 2"
+        ) as exc_info:
             build_flow_cohort_filter(
                 [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]
             )
+        assert exc_info.value.errors[0].code == "FL_WHERE_MULTIPLE_COHORTS"

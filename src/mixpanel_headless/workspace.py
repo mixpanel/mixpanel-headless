@@ -43,6 +43,8 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
 
+from pydantic import ValidationError as PydanticValidationError
+
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
 from mixpanel_headless._internal.auth.bridge import load_bridge as _load_bridge
@@ -73,7 +75,8 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_filter_entry,
     build_filter_section,
     build_flow_cohort_filter,
-    build_flow_property_filter,
+    build_flow_segment_entries,
+    build_flow_where_entries,
     build_group_section,
     build_time_comparison,
     build_time_section,
@@ -82,6 +85,7 @@ from mixpanel_headless._internal.bookmark_builders import (
 from mixpanel_headless._internal.bookmark_schema import (
     PARTIAL_UPDATE_SUB_MODELS,
     get_root_model_for_bookmark_type,
+    translate_pydantic_exception,
     validate_with_pydantic,
 )
 from mixpanel_headless._internal.config import ConfigManager
@@ -113,14 +117,7 @@ from mixpanel_headless._internal.validation import (
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
-    ConversionWindowUnit,
-    FlowChartType,
-    FlowConversionWindowUnit,
-    FlowCountType,
-    FunnelMode,
-    FunnelOrder,
     FunnelReentryMode,
-    InsightsMode,
     QueryTimeUnit,
     RetentionUnboundedMode,
     TimeUnit,
@@ -136,6 +133,12 @@ from mixpanel_headless.exceptions import (
     ServerError,
     ValidationError,
     WorkspaceScopeError,
+)
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
 )
 from mixpanel_headless.types import (
     BUSINESS_CONTEXT_MAX_CHARS,
@@ -213,7 +216,6 @@ from mixpanel_headless.types import (
     FrequencyFilter,
     FrequencyResult,
     FunnelInfo,
-    FunnelMathType,
     FunnelQueryResult,
     FunnelResult,
     FunnelStep,
@@ -295,6 +297,32 @@ _MIN_LIMIT = 1
 _MAX_LIMIT = 100_000
 
 
+def _normalization_error(
+    exc: PydanticValidationError, section: str
+) -> BookmarkValidationError:
+    """Convert a component-construction pydantic error to the documented type.
+
+    Backstop for the str → component normalization in the
+    ``_resolve_and_build_*`` methods. Layer-1 validators run before
+    normalization and are expected to reject bad inputs first with their
+    structured codes; this converts anything they don't pre-check so the
+    public ``Raises: BookmarkValidationError`` contract holds regardless.
+
+    Args:
+        exc: The ``pydantic.ValidationError`` raised by a component
+            constructor (``FunnelStep``, ``Formula``, ``RetentionEvent``,
+            ``FlowStep``, ...).
+        section: JSONPath-like prefix naming the query section being
+            normalized (e.g. ``"steps"``, ``"formula"``).
+
+    Returns:
+        A ``BookmarkValidationError`` wrapping the translated errors.
+    """
+    return BookmarkValidationError(
+        translate_pydantic_exception(exc, path_prefix=section)
+    )
+
+
 def _check_event_properties_count(event_properties: list[str] | None) -> None:
     """Raise ``ValueError`` when ``event_properties`` exceeds the Insights cap.
 
@@ -316,6 +344,23 @@ def _check_event_properties_count(event_properties: list[str] | None) -> None:
         )
 
 
+def _ms_to_utc_date(timestamp_ms: int) -> str:
+    """Format a unix-ms timestamp as a UTC ``YYYY-MM-DD`` date string.
+
+    Used to convert replay start/end times into the date-window bounds
+    passed to the Insights events join.
+
+    Args:
+        timestamp_ms: Unix timestamp in milliseconds.
+
+    Returns:
+        The UTC calendar date, ISO-formatted (e.g. ``"2026-05-20"``).
+    """
+    return datetime.fromtimestamp(timestamp_ms / 1000, timezone.utc).strftime(
+        "%Y-%m-%d"
+    )
+
+
 def _validate_limit(limit: int | None) -> None:
     """Validate limit is within the allowed range.
 
@@ -334,45 +379,6 @@ def _validate_limit(limit: int | None) -> None:
         raise ValueError(f"limit must be at least {_MIN_LIMIT}, got {limit}")
     if limit > _MAX_LIMIT:
         raise ValueError(f"limit must be at most {_MAX_LIMIT}, got {limit}")
-
-
-def _check_step_direction(
-    value: int | None,
-    name: str,
-    step_path: str,
-) -> list[ValidationError]:
-    """Validate a per-step forward/reverse value for type and range.
-
-    Args:
-        value: The forward or reverse value (None means inherit default).
-        name: Field name (``"forward"`` or ``"reverse"``).
-        step_path: Parent path for error reporting (e.g. ``"steps[0]"``).
-
-    Returns:
-        List of validation errors (empty if valid).
-    """
-    if value is None:
-        return []
-    if isinstance(value, bool) or not isinstance(value, int):
-        return [
-            ValidationError(
-                path=f"{step_path}.{name}",
-                message=(
-                    f"Per-step {name} must be an integer (got {type(value).__name__})"
-                ),
-                code=f"FL_TYPE_{name.upper()}",
-            )
-        ]
-    if value < 0 or value > 5:
-        code = "FL3_FORWARD_RANGE" if name == "forward" else "FL4_REVERSE_RANGE"
-        return [
-            ValidationError(
-                path=f"{step_path}.{name}",
-                message=f"Per-step {name} must be between 0 and 5 (got {value})",
-                code=code,
-            )
-        ]
-    return []
 
 
 class Workspace:
@@ -2265,93 +2271,22 @@ class Workspace:
 
     def query(
         self,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
-        *,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: MathType = "total",
-        math_property: str | None = None,
-        per_user: PerUserAggregation | None = None,
-        percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: Literal["timeseries", "total", "table"] = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: InsightsQuery,
     ) -> QueryResult:
         """Run a typed insights query against the Mixpanel API.
 
-        Generates bookmark params from keyword arguments, POSTs them inline
-        to ``/api/query/insights``, and returns a structured QueryResult
-        with lazy DataFrame conversion.
+        Accepts an ``InsightsQuery`` model, builds bookmark params,
+        POSTs them to ``/api/query/insights``, and returns a structured
+        ``QueryResult`` with lazy DataFrame conversion.
 
         Args:
-            events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a Formula
-                object, or a sequence mixing strings, Metrics,
-                CohortMetrics, and Formulas. Formula objects in the
-                list are extracted and appended as formula show clauses.
-                When events includes a CohortMetric, ``math``,
-                ``math_property``, and ``per_user`` are silently
-                ignored for that entry — cohort size is always counted
-                as unique users (CM3).
-            from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-                Ignored if ``from_date`` is set.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function for plain-string events.
-                Default: ``"total"``.
-            math_property: Property name for property-based math
-                (average, sum, percentiles).
-            per_user: Per-user pre-aggregation (average, total, min, max).
-            percentile_value: Custom percentile value (e.g. 95 for p95).
-                Required when ``math="percentile"``. Maps to ``percentile``
-                in bookmark measurement. Ignored for other math types.
-            group_by: Break down results by property or cohort membership.
-                Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
-                list of any mix.
-            where: Filter results by conditions. Accepts a Filter
-                or list of Filters.
-            formula: Formula expression referencing events by position
-                (A, B, C...). Requires 2+ events. Cannot be combined
-                with Formula objects in ``events``.
-            formula_label: Display label for formula result.
-            rolling: Rolling window size in periods.
-                Mutually exclusive with ``cumulative``.
-            cumulative: Enable cumulative analysis mode.
-                Mutually exclusive with ``rolling``.
-            mode: Result shape. ``"timeseries"`` returns per-period data,
-                ``"total"`` returns a single aggregate, ``"table"`` returns
-                tabular data. Default: ``"timeseries"``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, ``TimeComparison.absolute_start("2026-01-01")``
-                for a fixed start date, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured insights query model.
 
         Returns:
             QueryResult with series data, DataFrame, and metadata.
 
         Raises:
-            ValueError: If arguments violate validation rules.
+            BookmarkValidationError: If arguments violate validation rules.
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid query parameters.
@@ -2359,51 +2294,14 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless import InsightsQuery, Metric
+
             ws = Workspace()
-
-            # Simple event query
-            result = ws.query("Login")
+            result = ws.query(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
             print(result.df.head())
-
-            # With aggregation and time range
-            result = ws.query("Login", math="unique", last=7, unit="day")
-
-            # Multi-event with formula (top-level parameter)
-            result = ws.query(
-                [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
-                formula="(B / A) * 100",
-                formula_label="Conversion Rate",
-            )
-
-            # Multi-event with formula (Formula in list)
-            result = ws.query(
-                [Metric("Signup", math="unique"),
-                 Metric("Purchase", math="unique"),
-                 Formula("(B / A) * 100", label="Conversion Rate")],
-            )
             ```
         """
-        params = self._resolve_and_build_params(
-            events=events,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            group_by=group_by,
-            where=where,
-            formula=formula,
-            formula_label=formula_label,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
+        params = self.build_params(query)
         return self._live_query_service.query(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -2411,72 +2309,19 @@ class Workspace:
 
     def build_params(
         self,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
-        *,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: MathType = "total",
-        math_property: str | None = None,
-        per_user: PerUserAggregation | None = None,
-        percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: Literal["timeseries", "total", "table"] = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: InsightsQuery,
     ) -> dict[str, Any]:
         """Build validated bookmark params without executing the API call.
 
-        Has the same signature as :meth:`query` but returns the generated
-        bookmark params dict instead of querying the Mixpanel API. Useful
-        for debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        Accepts an ``InsightsQuery`` model and returns the generated
+        bookmark params dict instead of querying the Mixpanel API.
+        Useful for debugging, inspecting generated JSON, persisting
+        via :meth:`create_bookmark`, or testing. Handles formula
+        normalization, argument validation (Layer 1), bookmark
+        construction, and bookmark structure validation (Layer 2).
 
         Args:
-            events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``Formula``, or a
-                sequence mixing strings, ``Metric``s, ``CohortMetric``s,
-                and ``Formula``s.
-            from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function for plain-string events.
-                Default: ``"total"``.
-            math_property: Property name for property-based math.
-            per_user: Per-user pre-aggregation.
-            percentile_value: Custom percentile value (e.g. 95).
-                Required when ``math="percentile"``.
-            group_by: Break down results by property or cohort membership.
-                Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
-                list of any mix.
-            where: Filter results by conditions.
-            formula: Formula expression referencing events by position.
-            formula_label: Display label for formula result.
-            rolling: Rolling window size in periods.
-            cumulative: Enable cumulative analysis mode.
-            mode: Result shape. Default: ``"timeseries"``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured insights query model.
 
         Returns:
             Bookmark params dict with ``sections`` and ``displayOptions``
@@ -2488,168 +2333,25 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless import InsightsQuery, Metric
+
             ws = Workspace()
-
-            # Inspect generated bookmark JSON
-            params = ws.build_params("Login", math="unique", last=7)
+            params = ws.build_params(InsightsQuery(events=[Metric("Login", math="unique")], last=7))
             print(json.dumps(params, indent=2))
-
-            # Save as a bookmark (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Daily Unique Logins",
-                bookmark_type="insights",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        return self._resolve_and_build_params(
-            events=events,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            group_by=group_by,
-            where=where,
-            formula=formula,
-            formula_label=formula_label,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
-    def _resolve_and_build_params(
-        self,
-        *,
-        events: str
-        | Metric
-        | CohortMetric
-        | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        math: MathType,
-        math_property: str | None,
-        per_user: PerUserAggregation | None,
-        percentile_value: int | float | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        where: Filter | FrequencyFilter | list[Filter | FrequencyFilter] | None = None,
-        formula: str | None = None,
-        formula_label: str | None = None,
-        rolling: int | None = None,
-        cumulative: bool = False,
-        mode: InsightsMode = "timeseries",
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build bookmark params.
-
-        Shared implementation for :meth:`query` and :meth:`build_params`.
-        Handles type guards, event/formula normalization, argument
-        validation (Layer 1), bookmark construction, and bookmark
-        structure validation (Layer 2).
-
-        Args:
-            events: Raw events input (str, Metric, CohortMetric,
-                Formula, or sequence).
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days.
-            unit: Time aggregation unit.
-            math: Aggregation function.
-            math_property: Property for property-based math.
-            per_user: Per-user pre-aggregation.
-            percentile_value: Custom percentile value. Required when
-                ``math="percentile"``. Maps to ``percentile`` in
-                bookmark measurement JSON.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            formula: Top-level formula expression.
-            formula_label: Display label for formula.
-            rolling: Rolling window size.
-            cumulative: Cumulative analysis mode.
-            mode: Result shape.
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Type guard: events must be str, Metric, CohortMetric, Formula, or sequence thereof
-        if not isinstance(events, (str, Metric, CohortMetric, Formula, list, tuple)):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message=(
-                            f"events must be a string, Metric, CohortMetric, Formula, or "
-                            f"sequence, got {type(events).__name__}"
-                        ),
-                        code="V21_INVALID_EVENT_TYPE",
-                    )
-                ]
-            )
-
-        # Type guard: where must be Filter, FrequencyFilter, or list
-        if where is not None and not isinstance(where, (Filter, FrequencyFilter, list)):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="where",
-                        message=(
-                            f"where must be a Filter, FrequencyFilter, or list, "
-                            f"got {type(where).__name__}"
-                        ),
-                        code="V25_INVALID_FILTER_TYPE",
-                    )
-                ]
-            )
-
-        # Normalize events to sequence, separating Formula objects
-        if isinstance(events, str):
-            events_list: list[str | Metric | CohortMetric] = [events]
-            formulas_from_list: list[Formula] = []
-        elif isinstance(events, (Metric, CohortMetric)):
-            events_list = [events]
-            formulas_from_list = []
-        elif isinstance(events, Formula):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message="Formula cannot be the only item; provide event(s) too",
-                        code="V0_NO_EVENTS",
-                    )
-                ]
-            )
-        else:
-            events_list = []
-            formulas_from_list = []
-            for item in events:
-                if isinstance(item, Formula):
-                    formulas_from_list.append(item)
-                else:
-                    events_list.append(item)
+        # Split Formula objects out of the events list (Layer 1's V0/V21
+        # checks cover empty/invalid events)
+        events_list: list[str | Metric | CohortMetric] = []
+        formulas_from_list: list[Formula] = []
+        for item in query.events:
+            if isinstance(item, Formula):
+                formulas_from_list.append(item)
+            else:
+                events_list.append(item)
 
         # Resolve formulas: can't use both approaches
-        if formula is not None and formulas_from_list:
+        if query.formula is not None and formulas_from_list:
             raise BookmarkValidationError(
                 [
                     ValidationError(
@@ -2663,54 +2365,57 @@ class Workspace:
                 ]
             )
 
-        if formula is not None:
-            resolved_formulas: Sequence[Formula] = [
-                Formula(expression=formula, label=formula_label)
-            ]
+        if query.formula is not None:
+            try:
+                resolved_formulas: Sequence[Formula] = [
+                    Formula(expression=query.formula, label=query.formula_label)
+                ]
+            except PydanticValidationError as exc:
+                raise _normalization_error(exc, "formula") from exc
         else:
             resolved_formulas = formulas_from_list
 
         # Layer 1: Argument validation
         arg_errors = validate_query_args(
             events=events_list,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
             has_formula=bool(resolved_formulas),
-            rolling=rolling,
-            cumulative=cumulative,
-            group_by=group_by,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            group_by=query.group_by,
             formulas=resolved_formulas,
-            data_group_id=data_group_id,
+            data_group_id=query.data_group_id,
         )
         # CP1-CP6: Custom property validation for where filters
-        arg_errors.extend(_scan_custom_properties(where=where))
+        arg_errors.extend(_scan_custom_properties(where=query.where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
         # Build bookmark params
         params = self._build_query_params(
             events=events_list,
-            math=math,
-            math_property=math_property,
-            per_user=per_user,
-            percentile_value=percentile_value,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
+            math=query.math,
+            math_property=query.math_property,
+            per_user=query.per_user,
+            percentile_value=query.percentile_value,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,
+            where=query.where,
             formulas=resolved_formulas,
-            rolling=rolling,
-            cumulative=cumulative,
-            mode=mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+            rolling=query.rolling,
+            cumulative=query.cumulative,
+            mode=query.mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
         )
 
         # Layer 2: Bookmark structure validation
@@ -2908,222 +2613,18 @@ class Workspace:
             "displayOptions": display_options,
         }
 
-    def _resolve_and_build_funnel_params(
-        self,
-        *,
-        steps: list[str | FunnelStep],
-        conversion_window: int,
-        conversion_window_unit: ConversionWindowUnit,
-        order: FunnelOrder,
-        math: FunnelMathType,
-        math_property: str | None,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None,
-        where: Filter | list[Filter] | None,
-        exclusions: list[str | Exclusion] | None,
-        holding_constant: str | HoldingConstant | list[str | HoldingConstant] | None,
-        mode: FunnelMode,
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build funnel bookmark params.
-
-        Shared implementation for :meth:`query_funnel` and
-        :meth:`build_funnel_params`. Handles normalization of
-        string shorthand to typed objects, argument validation
-        (Layer 1), bookmark construction, and structure validation
-        (Layer 2).
-
-        Args:
-            steps: Funnel step specs (strings or FunnelStep objects).
-            conversion_window: Conversion window size.
-            conversion_window_unit: Conversion window time unit.
-            order: Funnel step ordering mode.
-            math: Aggregation function.
-            math_property: Numeric property name for property-aggregation
-                math types, or None.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative date range in days.
-            unit: Time granularity.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            exclusions: Events to exclude, or None.
-            holding_constant: Properties to hold constant, or None.
-            mode: Display mode.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel. Default: ``None`` (omitted).
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Normalize steps: str → FunnelStep
-        normalized_steps = [FunnelStep(s) if isinstance(s, str) else s for s in steps]
-
-        # Normalize exclusions: str → Exclusion
-        normalized_exclusions: list[Exclusion] = []
-        if exclusions is not None:
-            normalized_exclusions = [
-                Exclusion(e) if isinstance(e, str) else e for e in exclusions
-            ]
-
-        # Normalize holding_constant: str → HoldingConstant
-        normalized_hc: list[HoldingConstant] = []
-        if holding_constant is not None:
-            if isinstance(holding_constant, (str, HoldingConstant)):
-                hc_list: list[str | HoldingConstant] = [holding_constant]
-            else:
-                hc_list = list(holding_constant)
-            normalized_hc = [
-                HoldingConstant(h) if isinstance(h, str) else h for h in hc_list
-            ]
-
-        # Layer 1: Argument validation
-        arg_errors = validate_funnel_args(
-            steps=normalized_steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            math=math,
-            math_property=math_property,
-            exclusions=normalized_exclusions if normalized_exclusions else None,
-            holding_constant=normalized_hc if normalized_hc else None,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            group_by=group_by,
-            reentry_mode=reentry_mode,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for where filters
-        arg_errors.extend(_scan_custom_properties(where=where))
-        if any(e.severity == "error" for e in arg_errors):
-            raise BookmarkValidationError(arg_errors)
-
-        # Build bookmark params
-        params = self._build_funnel_params(
-            steps=normalized_steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=normalized_exclusions,
-            holding_constant=normalized_hc,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
-        # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
-        if any(e.severity == "error" for e in bookmark_errors):
-            raise BookmarkValidationError(bookmark_errors)
-
-        return params
-
     def query_funnel(
         self,
-        steps: list[str | FunnelStep],
-        *,
-        conversion_window: int = 14,
-        conversion_window_unit: Literal[
-            "second", "minute", "hour", "day", "week", "month", "session"
-        ] = "day",
-        order: Literal["loose", "any"] = "loose",
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: FunnelMathType = "conversion_rate_unique",
-        math_property: str | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        exclusions: list[str | Exclusion] | None = None,
-        holding_constant: (
-            str | HoldingConstant | list[str | HoldingConstant] | None
-        ) = None,
-        mode: Literal["steps", "trends", "table"] = "steps",
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: FunnelQuery,
     ) -> FunnelQueryResult:
         """Run a typed funnel query against the Mixpanel API.
 
-        Generates funnel bookmark params from keyword arguments, POSTs
-        them inline to ``/api/query/insights``, and returns a structured
-        FunnelQueryResult with lazy DataFrame conversion.
+        Accepts a ``FunnelQuery`` model, builds funnel bookmark params,
+        POSTs them to ``/api/query/insights``, and returns a structured
+        ``FunnelQueryResult`` with lazy DataFrame conversion.
 
         Args:
-            steps: Funnel step specifications. At least 2 required.
-                Accepts event name strings or ``FunnelStep`` objects
-                for per-step filters, labels, and ordering.
-            conversion_window: How long users have to complete the
-                funnel. Default: 14.
-            conversion_window_unit: Time unit for conversion window.
-                Default: ``"day"``.
-            order: Step ordering mode. ``"loose"`` requires steps in
-                order but allows other events between. ``"any"`` allows
-                steps in any order. Default: ``"loose"``.
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Funnel aggregation function. Default:
-                ``"conversion_rate_unique"``.
-            math_property: Numeric property name for property-aggregation
-                math types (``"average"``, ``"median"``, ``"min"``,
-                ``"max"``, ``"p25"``, ``"p75"``, ``"p90"``, ``"p99"``).
-                Required when using those math types; must be ``None``
-                for count/rate math types. Default: ``None``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            exclusions: Events to exclude between steps. Accepts
-                event name strings or ``Exclusion`` objects.
-            holding_constant: Properties to hold constant across
-                steps. Accepts strings, ``HoldingConstant`` objects,
-                or a list mixing both.
-            mode: Result display mode. ``"steps"`` shows step-level
-                data, ``"trends"`` shows conversion over time,
-                ``"table"`` shows tabular breakdown. Default:
-                ``"steps"``.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel after conversion. One of
-                ``"default"``, ``"basic"``, ``"aggressive"``, or
-                ``"optimized"``. Default: ``None`` (server default).
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured funnel query model.
 
         Returns:
             FunnelQueryResult with step data, DataFrame, and metadata.
@@ -3138,43 +2639,14 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FunnelQuery
+
             ws = Workspace()
-
-            # Simple two-step funnel
-            result = ws.query_funnel(["Signup", "Purchase"])
+            result = ws.query_funnel(FunnelQuery(steps=["Signup", "Purchase"]))
             print(result.overall_conversion_rate)
-
-            # Configured funnel
-            result = ws.query_funnel(
-                ["Signup", "Add to Cart", "Checkout", "Purchase"],
-                conversion_window=7,
-                order="loose",
-                last=90,
-            )
-            print(result.df)
             ```
         """
-        params = self._resolve_and_build_funnel_params(
-            steps=steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=exclusions,
-            holding_constant=holding_constant,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
+        params = self.build_funnel_params(query)
         return self._live_query_service.query_funnel(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -3182,72 +2654,20 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep],
-        *,
-        conversion_window: int = 14,
-        conversion_window_unit: Literal[
-            "second", "minute", "hour", "day", "week", "month", "session"
-        ] = "day",
-        order: Literal["loose", "any"] = "loose",
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: FunnelMathType = "conversion_rate_unique",
-        math_property: str | None = None,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        exclusions: list[str | Exclusion] | None = None,
-        holding_constant: (
-            str | HoldingConstant | list[str | HoldingConstant] | None
-        ) = None,
-        mode: Literal["steps", "trends", "table"] = "steps",
-        reentry_mode: FunnelReentryMode | None = None,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: FunnelQuery,
     ) -> dict[str, Any]:
         """Build validated funnel bookmark params without executing.
 
-        Has the same signature as :meth:`query_funnel` but returns the
-        generated bookmark params dict instead of querying the API.
-        Useful for debugging, inspecting generated JSON, persisting
-        via :meth:`create_bookmark`, or testing.
+        Accepts a ``FunnelQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
+        debugging, inspecting generated JSON, persisting via
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to typed objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
-            steps: Funnel step specifications. At least 2 required.
-            conversion_window: Conversion window size. Default: 14.
-            conversion_window_unit: Time unit. Default: ``"day"``.
-            order: Step ordering mode. Default: ``"loose"``.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit. Default: ``"day"``.
-            math: Aggregation function. Default:
-                ``"conversion_rate_unique"``.
-            math_property: Numeric property name for property-aggregation
-                math types. Required for ``"average"``, ``"median"``,
-                etc. Default: ``None``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            exclusions: Events to exclude between steps.
-            holding_constant: Properties to hold constant.
-            mode: Display mode. Default: ``"steps"``.
-            reentry_mode: Funnel reentry mode controlling how users
-                re-enter the funnel after conversion. One of
-                ``"default"``, ``"basic"``, ``"aggressive"``, or
-                ``"optimized"``. Default: ``None`` (server default).
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured funnel query model.
 
         Returns:
             Bookmark params dict with ``sections`` and
@@ -3259,41 +2679,85 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FunnelQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_funnel_params(["Signup", "Purchase"])
+            params = ws.build_funnel_params(FunnelQuery(steps=["Signup", "Purchase"]))
             print(json.dumps(params, indent=2))
-
-            # Save as a report (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Signup → Purchase Funnel",
-                bookmark_type="funnels",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        return self._resolve_and_build_funnel_params(
-            steps=steps,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            order=order,
-            math=math,
-            math_property=math_property,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            exclusions=exclusions,
-            holding_constant=holding_constant,
-            mode=mode,
-            reentry_mode=reentry_mode,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+        # Layer 1: Argument validation on the raw inputs (F2/F4/F8b accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
+        arg_errors = validate_funnel_args(
+            steps=query.steps,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            math=query.math,
+            math_property=query.math_property,
+            exclusions=query.exclusions or None,
+            holding_constant=query.holding_constant or None,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            group_by=query.group_by,
+            reentry_mode=query.reentry_mode,
+            data_group_id=query.data_group_id,
         )
+        # CP1-CP6: Custom property validation for where filters
+        arg_errors.extend(_scan_custom_properties(where=query.where))
+        if any(e.severity == "error" for e in arg_errors):
+            raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            normalized_steps = [
+                FunnelStep(event=s) if isinstance(s, str) else s for s in query.steps
+            ]
+            normalized_exclusions: list[Exclusion] = []
+            if query.exclusions is not None:
+                normalized_exclusions = [
+                    Exclusion(event=e) if isinstance(e, str) else e
+                    for e in query.exclusions
+                ]
+            normalized_hc: list[HoldingConstant] = []
+            if query.holding_constant is not None:
+                normalized_hc = [
+                    HoldingConstant(h) if isinstance(h, str) else h
+                    for h in query.holding_constant
+                ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "funnel") from exc
+
+        # Build bookmark params
+        params = self._build_funnel_params(
+            steps=normalized_steps,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            order=query.order,
+            math=query.math,
+            math_property=query.math_property,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,
+            where=query.where,
+            exclusions=normalized_exclusions,
+            holding_constant=normalized_hc,
+            mode=query.mode,
+            reentry_mode=query.reentry_mode,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
+        )
+
+        # Layer 2: Bookmark structure validation
+        bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
+        if any(e.severity == "error" for e in bookmark_errors):
+            raise BookmarkValidationError(bookmark_errors)
+
+        return params
 
     # =========================================================================
     # Retention Query (Phase 033)
@@ -3487,12 +2951,7 @@ class Workspace:
         mode: str,
         where: Filter | list[Filter] | None = None,
         data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
+        segments: str | GroupBy | list[str | GroupBy] | None = None,
         exclusions: list[str] | None = None,
     ) -> dict[str, Any]:
         """Build a flat flow bookmark params dict from typed arguments.
@@ -3520,7 +2979,7 @@ class Workspace:
             where: Filter results by cohort membership or property
                 conditions. Cohort filters (``Filter.in_cohort`` /
                 ``Filter.not_in_cohort``) produce ``filter_by_cohort``.
-                Property filters produce ``filter_by_event``.
+                Property filters produce ``where`` entries.
                 Default: ``None``.
             data_group_id: Optional data group ID for group-level
                 analytics. Default: ``None``.
@@ -3593,7 +3052,10 @@ class Workspace:
         if data_group_id is not None:
             params["data_group_id"] = data_group_id
 
-        # Add filters if present — route cohort vs property filters
+        # Add filters if present — route cohort vs property filters.
+        # The arb_funnels endpoint uses a flat ``where`` list with
+        # simple ``{property, operator, value}`` entries for property
+        # filters, and a ``filter_by_cohort`` dict for cohort filters.
         if where is not None:
             filter_list = where if isinstance(where, list) else [where]
             cohort_filters = [f for f in filter_list if f._property == "$cohorts"]
@@ -3605,303 +3067,29 @@ class Workspace:
                     params["filter_by_cohort"] = cohort_filter
 
             if property_filters:
-                params["filter_by_event"] = build_flow_property_filter(property_filters)
+                params["where"] = build_flow_where_entries(property_filters)
 
-        # Add segments if present
-        if segments is not None:
-            params["segments"] = build_group_section(segments)
-
-        return params
-
-    def _resolve_and_build_flow_params(
-        self,
-        *,
-        event: str | FlowStep | Sequence[str | FlowStep],
-        forward: int,
-        reverse: int,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        conversion_window: int,
-        conversion_window_unit: FlowConversionWindowUnit,
-        count_type: FlowCountType,
-        cardinality: int,
-        collapse_repeated: bool,
-        hidden_events: list[str] | None,
-        mode: FlowChartType,
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        exclusions: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build flow bookmark params.
-
-        Shared implementation for :meth:`query_flow` and
-        :meth:`build_flow_params`. Handles normalization of string
-        shorthand to ``FlowStep`` objects, argument validation (Layer 1),
-        bookmark construction, and structure validation (Layer 2).
-
-        Args:
-            event: Event specification — a string, ``FlowStep``, or a
-                list of strings/``FlowStep`` objects.
-            forward: Default forward step count for steps without one.
-            reverse: Default reverse step count for steps without one.
-            from_date: Start date (YYYY-MM-DD) or ``None``.
-            to_date: End date (YYYY-MM-DD) or ``None``.
-            last: Relative time range in days.
-            conversion_window: Conversion window size.
-            conversion_window_unit: Conversion window unit.
-            count_type: Counting method.
-            cardinality: Number of top paths to display.
-            collapse_repeated: Whether to merge consecutive repeated
-                events.
-            hidden_events: Events to hide from visualization.
-            mode: Display mode.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters produce ``filter_by_cohort``,
-                property filters produce ``filter_by_event``.
-                Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
-
-        Returns:
-            Validated flow bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Normalize input: str → FlowStep, single → list
-        if isinstance(event, str):
-            raw_steps: list[str | FlowStep] = [FlowStep(event)]
-        elif isinstance(event, FlowStep):
-            raw_steps = [event]
-        else:
-            raw_steps = list(event)
-
-        steps: list[FlowStep] = [
-            FlowStep(s) if isinstance(s, str) else s for s in raw_steps
-        ]
-
-        # Apply top-level forward/reverse defaults to steps where None
-        steps = [
-            FlowStep(
-                event=s.event,
-                forward=s.forward if s.forward is not None else forward,
-                reverse=s.reverse if s.reverse is not None else reverse,
-                label=s.label,
-                filters=s.filters,
-                filters_combinator=s.filters_combinator,
-                session_event=s.session_event,
-            )
-            for s in steps
-        ]
-
-        # Layer 0.5: Per-step validation (FlowStep-level fields that
-        # validate_flow_args cannot see — it only receives event names)
-        step_errors: list[ValidationError] = []
-
-        # Top-level forward/reverse type checks (must be int, not bool/float)
-        for fname, fval in [("forward", forward), ("reverse", reverse)]:
-            if isinstance(fval, bool) or not isinstance(fval, int):
-                step_errors.append(
-                    ValidationError(
-                        path=fname,
-                        message=(
-                            f"{fname} must be an integer (got {type(fval).__name__})"
-                        ),
-                        code=f"FL_TYPE_{fname.upper()}",
-                    )
-                )
-
-        for i, s in enumerate(steps):
-            spath = f"steps[{i}]"
-            # Per-step forward/reverse type + range checks
-            step_errors.extend(_check_step_direction(s.forward, "forward", spath))
-            step_errors.extend(_check_step_direction(s.reverse, "reverse", spath))
-            # Per-step filters_combinator must be "all" or "any"
-            if s.filters_combinator not in ("all", "any"):
-                step_errors.append(
-                    ValidationError(
-                        path=f"{spath}.filters_combinator",
-                        message=(
-                            f"filters_combinator must be 'all' or 'any' "
-                            f"(got {s.filters_combinator!r})"
-                        ),
-                        code="FL_INVALID_FILTERS_COMBINATOR",
-                    )
-                )
-        # Per-step filter property validation
-        for i, s in enumerate(steps):
-            if s.filters:
-                for fi, f in enumerate(s.filters):
-                    if isinstance(f._property, str) and contains_control_chars(
-                        f._property
-                    ):
-                        step_errors.append(
-                            ValidationError(
-                                path=f"steps[{i}].filters[{fi}]",
-                                message=(
-                                    f"Filter property name contains "
-                                    f"control characters: {f._property!r}"
-                                ),
-                                code="FL_FILTER_CONTROL_CHAR",
-                            )
-                        )
-
-        # hidden_events type validation
-        if hidden_events is not None:
-            for i, he in enumerate(hidden_events):
-                if not isinstance(he, str):
-                    step_errors.append(
-                        ValidationError(
-                            path=f"hidden_events[{i}]",
-                            message=(
-                                f"hidden_events values must be strings "
-                                f"(got {type(he).__name__})"
-                            ),
-                            code="FL_INVALID_HIDDEN_EVENT_TYPE",
-                        )
-                    )
-
-        if any(e.severity == "error" for e in step_errors):
-            raise BookmarkValidationError(step_errors)
-
-        # Default to_date to today when from_date is set alone, so the
-        # absolute date isn't silently ignored by build_date_range().
-        if from_date is not None and to_date is None:
-            to_date = _date.today().isoformat()
-
-        # Layer 1: Argument validation — use effective direction values
-        # from normalized steps so per-step overrides aren't rejected by FL5.
-        effective_forward = max(s.forward or 0 for s in steps)
-        effective_reverse = max(s.reverse or 0 for s in steps)
-        event_names = [s.event for s in steps]
-        arg_errors = validate_flow_args(
-            steps=event_names,
-            forward=effective_forward,
-            reverse=effective_reverse,
-            count_type=count_type,
-            mode=mode,
-            cardinality=cardinality,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for flow step filters
-        arg_errors.extend(_scan_custom_properties(flow_steps=steps, where=where))
-        if any(e.severity == "error" for e in arg_errors):
-            raise BookmarkValidationError(arg_errors)
-
-        # Build bookmark params
-        params = self._build_flow_params(
-            steps=steps,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
-        )
-
-        # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_flow_bookmark(params)
-        if any(e.severity == "error" for e in bookmark_errors):
-            raise BookmarkValidationError(bookmark_errors)
+        # Add segments if present — the arb_funnels endpoint uses
+        # ``segment_by`` with simple ``{property}`` entries. An empty
+        # list no-ops, mirroring the ``if property_filters:`` guard.
+        if segments:
+            segment_list = segments if isinstance(segments, list) else [segments]
+            params["segment_by"] = build_flow_segment_entries(segment_list)
 
         return params
 
     def query_flow(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep],
-        *,
-        forward: int = 3,
-        reverse: int = 0,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        conversion_window: int = 7,
-        conversion_window_unit: Literal["day", "week", "month", "session"] = "day",
-        count_type: Literal["unique", "total", "session"] = "unique",
-        cardinality: int = 3,
-        collapse_repeated: bool = False,
-        hidden_events: list[str] | None = None,
-        mode: Literal["sankey", "paths", "tree"] = "sankey",
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        exclusions: list[str] | None = None,
+        query: FlowQuery,
     ) -> FlowQueryResult:
         """Run a typed flow query against the Mixpanel API.
 
-        Generates flow bookmark params from keyword arguments, POSTs
-        them inline to ``/arb_funnels``, and returns a structured
+        Accepts a ``FlowQuery`` model, builds flow bookmark params,
+        POSTs them to ``/arb_funnels``, and returns a structured
         ``FlowQueryResult`` with lazy DataFrame conversion.
 
         Args:
-            event: Event specification. Accepts an event name string,
-                a ``FlowStep`` object for per-step configuration, or
-                a list of strings/``FlowStep`` objects for multi-step
-                flows.
-            forward: Default number of forward steps to trace from
-                each anchor event. Overridden by per-step values.
-                Default: ``3``.
-            reverse: Default number of reverse steps to trace from
-                each anchor event. Overridden by per-step values.
-                Default: ``0``.
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            conversion_window: Conversion window size. Default: 7.
-            conversion_window_unit: Conversion window unit.
-                Default: ``"day"``.
-            count_type: Counting method for flow analysis.
-                Default: ``"unique"``.
-            cardinality: Number of top paths to display.
-                Default: ``3``.
-            collapse_repeated: Whether to merge consecutive repeated
-                events. Default: ``False``.
-            hidden_events: Events to hide from the flow visualization.
-                Default: ``None``.
-            mode: Flow visualization mode. Default: ``"sankey"``.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters (``Filter.in_cohort`` /
-                ``Filter.not_in_cohort``) produce ``filter_by_cohort``.
-                Property filters (``Filter.equals``, etc.) produce
-                ``filter_by_event``. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Accepts a string, ``GroupBy``, or list of
-                strings/``GroupBy`` objects. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
+            query: Fully configured flow query model.
 
         Returns:
             FlowQueryResult with steps, flows, breakdowns, and
@@ -3917,117 +3105,36 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FlowQuery
+
             ws = Workspace()
-
-            # Simple flow query
-            result = ws.query_flow("Login")
-            print(result.overall_conversion_rate)
-
-            # With configuration
-            result = ws.query_flow(
-                FlowStep("Login", forward=5, reverse=2),
-                mode="paths",
-                last=90,
-            )
+            result = ws.query_flow(FlowQuery(event="Login", mode="paths", last=90))
             print(result.df)
-
-            # With property filter and segments
-            result = ws.query_flow(
-                "Login",
-                where=Filter.equals("country", "US"),
-                segments=GroupBy("platform"),
-                exclusions=["Error Event"],
-            )
             ```
         """
-        params = self._resolve_and_build_flow_params(
-            event=event,
-            forward=forward,
-            reverse=reverse,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
-        )
-
+        params = self.build_flow_params(query)
         return self._live_query_service.query_flow(
             bookmark_params=params,
             project_id=int(self._session.project.id),
-            mode=mode,
+            mode=query.mode,
         )
 
     def build_flow_params(
         self,
-        event: str | FlowStep | Sequence[str | FlowStep],
-        *,
-        forward: int = 3,
-        reverse: int = 0,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        conversion_window: int = 7,
-        conversion_window_unit: Literal["day", "week", "month", "session"] = "day",
-        count_type: Literal["unique", "total", "session"] = "unique",
-        cardinality: int = 3,
-        collapse_repeated: bool = False,
-        hidden_events: list[str] | None = None,
-        mode: Literal["sankey", "paths", "tree"] = "sankey",
-        where: Filter | list[Filter] | None = None,
-        data_group_id: int | None = None,
-        segments: str
-        | GroupBy
-        | CohortBreakdown
-        | FrequencyBreakdown
-        | list[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
-        | None = None,
-        exclusions: list[str] | None = None,
+        query: FlowQuery,
     ) -> dict[str, Any]:
         """Build validated flow bookmark params without executing.
 
-        Accepts the same arguments as :meth:`query_flow` but returns
-        the generated bookmark params ``dict`` instead of querying
-        the API. Useful for debugging, inspecting generated JSON,
-        persisting via :meth:`create_bookmark`, or testing.
+        Accepts a ``FlowQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
+        debugging, inspecting generated JSON, persisting via
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to ``FlowStep`` objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
-            event: Event specification. Accepts an event name string,
-                a ``FlowStep`` object, or a list of strings/``FlowStep``
-                objects.
-            forward: Default forward step count. Default: ``3``.
-            reverse: Default reverse step count. Default: ``0``.
-            from_date: Start date (YYYY-MM-DD) or ``None``.
-            to_date: End date (YYYY-MM-DD) or ``None``.
-            last: Relative time range in days. Default: 30.
-            conversion_window: Conversion window size. Default: 7.
-            conversion_window_unit: Conversion window unit.
-                Default: ``"day"``.
-            count_type: Counting method. Default: ``"unique"``.
-            cardinality: Number of top paths. Default: ``3``.
-            collapse_repeated: Merge repeated events. Default: ``False``.
-            hidden_events: Events to hide. Default: ``None``.
-            mode: Display mode. Default: ``"sankey"``.
-            where: Filter results by cohort membership or property
-                conditions. Cohort filters produce ``filter_by_cohort``,
-                property filters produce ``filter_by_event``.
-                Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
-            segments: Segment (breakdown) specification for flow
-                results. Accepts a string, ``GroupBy``, or list of
-                strings/``GroupBy`` objects. Default: ``None``.
-            exclusions: List of event names to exclude from flow
-                paths. Default: ``None``.
+            query: Fully configured flow query model.
 
         Returns:
             Flat bookmark params dict with ``steps``, ``date_range``,
@@ -4039,238 +3146,150 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import FlowQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_flow_params("Login")
+            params = ws.build_flow_params(FlowQuery(event="Login"))
             print(json.dumps(params, indent=2))
-
-            # With segments and exclusions
-            params = ws.build_flow_params(
-                "Login",
-                segments=GroupBy("country"),
-                exclusions=["Error Event"],
-                where=Filter.equals("platform", "iOS"),
-            )
             ```
         """
-        return self._resolve_and_build_flow_params(
-            event=event,
-            forward=forward,
-            reverse=reverse,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            conversion_window=conversion_window,
-            conversion_window_unit=conversion_window_unit,
-            count_type=count_type,
-            cardinality=cardinality,
-            collapse_repeated=collapse_repeated,
-            hidden_events=hidden_events,
-            mode=mode,
-            where=where,
-            data_group_id=data_group_id,
-            segments=segments,
-            exclusions=exclusions,
+        # Shape-normalize input (single → list). Per-step field shapes
+        # (strict ints, 0-5 range, filters_combinator literal) are
+        # already enforced by the FlowStep / FlowQuery models.
+        if isinstance(query.event, (str, FlowStep)):
+            raw_steps: list[str | FlowStep] = [query.event]
+        else:
+            raw_steps = list(query.event)
+
+        # Layer 0.5: Per-step filter property validation (FlowStep-level
+        # fields that validate_flow_args cannot see — it only receives
+        # event names); bare ``str`` steps have no filters and are skipped
+        step_errors: list[ValidationError] = []
+        for i, s in enumerate(raw_steps):
+            if isinstance(s, FlowStep) and s.filters:
+                for fi, f in enumerate(s.filters):
+                    if isinstance(f._property, str) and contains_control_chars(
+                        f._property
+                    ):
+                        step_errors.append(
+                            ValidationError(
+                                path=f"steps[{i}].filters[{fi}]",
+                                message=(
+                                    f"Filter property name contains "
+                                    f"control characters: {f._property!r}"
+                                ),
+                                code="FL_FILTER_CONTROL_CHAR",
+                            )
+                        )
+        if step_errors:
+            raise BookmarkValidationError(step_errors)
+
+        # Layer 1: Argument validation — effective direction values fold
+        # per-step overrides over the top-level defaults so overrides
+        # aren't rejected by FL5
+        forward, reverse = query.forward, query.reverse
+        step_forwards = [
+            s.forward if isinstance(s, FlowStep) and s.forward is not None else forward
+            for s in raw_steps
+        ]
+        step_reverses = [
+            s.reverse if isinstance(s, FlowStep) and s.reverse is not None else reverse
+            for s in raw_steps
+        ]
+        effective_forward = max(step_forwards) if step_forwards else forward
+        effective_reverse = max(step_reverses) if step_reverses else reverse
+        event_names = [s if isinstance(s, str) else s.event for s in raw_steps]
+        arg_errors = validate_flow_args(
+            steps=event_names,
+            forward=effective_forward,
+            reverse=effective_reverse,
+            count_type=query.count_type,
+            mode=query.mode,
+            cardinality=query.cardinality,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            data_group_id=query.data_group_id,
         )
-
-    # =========================================================================
-    # RETENTION QUERY (inline ad-hoc)
-    # =========================================================================
-
-    def _resolve_and_build_retention_params(
-        self,
-        *,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
-        retention_unit: TimeUnit,
-        alignment: RetentionAlignment,
-        bucket_sizes: list[int] | None,
-        math: RetentionMathType,
-        from_date: str | None,
-        to_date: str | None,
-        last: int,
-        unit: QueryTimeUnit,
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None,
-        where: Filter | list[Filter] | None,
-        mode: RetentionMode,
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Normalize, validate, and build retention bookmark params.
-
-        Shared implementation for :meth:`query_retention` and
-        :meth:`build_retention_params`. Handles normalization of
-        string shorthand to RetentionEvent objects, argument validation
-        (Layer 1), bookmark construction, and structure validation
-        (Layer 2).
-
-        Args:
-            born_event: Born event spec (string or RetentionEvent).
-            return_event: Return event spec (string or RetentionEvent).
-            retention_unit: Retention period unit.
-            alignment: Retention alignment mode.
-            bucket_sizes: Custom bucket sizes or None.
-            math: Aggregation function.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative date range in days.
-            unit: Time granularity.
-            group_by: Breakdown specification.
-            where: Filter conditions.
-            mode: Display mode.
-            unbounded_mode: Retention unbounded mode. Default: ``None``.
-            retention_cumulative: Cumulative retention counting.
-                Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-            data_group_id: Optional data group ID for group-level
-                analytics. Default: ``None``.
-
-        Returns:
-            Validated bookmark params dict.
-
-        Raises:
-            BookmarkValidationError: If validation fails at any layer.
-        """
-        # Normalize events: str → RetentionEvent
-        norm_born = (
-            RetentionEvent(born_event) if isinstance(born_event, str) else born_event
-        )
-        norm_return = (
-            RetentionEvent(return_event)
-            if isinstance(return_event, str)
-            else return_event
-        )
-
-        # Layer 1: Argument validation
-        arg_errors = validate_retention_args(
-            born_event=norm_born.event,
-            return_event=norm_return.event,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            mode=mode,
-            unit=unit,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            group_by=group_by,
-            unbounded_mode=unbounded_mode,
-            data_group_id=data_group_id,
-        )
-        # CP1-CP6: Custom property validation for where and event filters
+        # CP1-CP6: Custom property validation for flow step filters
+        # (raw items are position-preserving; bare strings carry no filters)
         arg_errors.extend(
-            _scan_custom_properties(
-                where=where,
-                retention_events=[norm_born, norm_return],
-            )
+            _scan_custom_properties(flow_steps=raw_steps, where=query.where)
         )
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
-        # Build bookmark params
-        params = self._build_retention_params(
-            born_event=norm_born,
-            return_event=norm_return,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+        # Normalization: str → FlowStep with the top-level defaults, and
+        # fold those defaults into per-step ``None`` slots (inputs
+        # validated above; the backstop keeps the documented exception
+        # type for anything the validators don't pre-check)
+        try:
+            steps = [
+                FlowStep(event=s, forward=forward, reverse=reverse)
+                if isinstance(s, str)
+                else FlowStep(
+                    event=s.event,
+                    forward=s.forward if s.forward is not None else forward,
+                    reverse=s.reverse if s.reverse is not None else reverse,
+                    label=s.label,
+                    filters=s.filters,
+                    filters_combinator=s.filters_combinator,
+                    session_event=s.session_event,
+                )
+                for s in raw_steps
+            ]
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "steps") from exc
+
+        # Build bookmark params. The flow builders raise structured
+        # BookmarkValidationError (FL_WHERE_* / FL_SEGMENT_* codes with
+        # where[i]/segments[i] paths) for inputs the flat wire format
+        # cannot express; internal invariant violations crash as
+        # RuntimeError instead of masquerading as user input errors.
+        params = self._build_flow_params(
+            steps=steps,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            conversion_window=query.conversion_window,
+            conversion_window_unit=query.conversion_window_unit,
+            count_type=query.count_type,
+            cardinality=query.cardinality,
+            collapse_repeated=query.collapse_repeated,
+            hidden_events=query.hidden_events,
+            mode=query.mode,
+            where=query.where,
+            data_group_id=query.data_group_id,
+            segments=query.segments,
+            exclusions=query.exclusions,
         )
 
         # Layer 2: Bookmark structure validation
-        bookmark_errors = validate_bookmark(params, bookmark_type="retention")
+        bookmark_errors = validate_flow_bookmark(params)
         if any(e.severity == "error" for e in bookmark_errors):
             raise BookmarkValidationError(bookmark_errors)
 
         return params
 
+    # =========================================================================
+    # RETENTION QUERY (inline ad-hoc)
+    # =========================================================================
+
     def query_retention(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
-        *,
-        retention_unit: TimeUnit = "week",
-        alignment: RetentionAlignment = "birth",
-        bucket_sizes: list[int] | None = None,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: RetentionMathType = "retention_rate",
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        mode: RetentionMode = "curve",
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: RetentionQuery,
     ) -> RetentionQueryResult:
         """Run a typed retention query against the Mixpanel API.
 
-        Generates retention bookmark params from keyword arguments, POSTs
-        them inline to ``/api/query/insights``, and returns a structured
-        RetentionQueryResult with lazy DataFrame conversion.
+        Accepts a ``RetentionQuery`` model, builds retention bookmark
+        params, POSTs them to ``/api/query/insights``, and returns a
+        structured ``RetentionQueryResult`` with lazy DataFrame
+        conversion.
 
         Args:
-            born_event: Event that defines cohort membership. Accepts
-                an event name string or a ``RetentionEvent`` object
-                for per-event filters.
-            return_event: Event that defines return. Accepts an event
-                name string or a ``RetentionEvent`` object.
-            retention_unit: Retention period unit. Default: ``"week"``.
-            alignment: Retention alignment mode. Default: ``"birth"``.
-            bucket_sizes: Custom bucket sizes (positive ints in
-                ascending order). Default: ``None`` (uniform buckets).
-            from_date: Start date (YYYY-MM-DD). If set, overrides
-                ``last``.
-            to_date: End date (YYYY-MM-DD). Requires ``from_date``.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit (``day``, ``week``, or
-                ``month`` — ``hour`` is not supported for retention).
-                Default: ``"day"``.
-            math: Retention aggregation function. Default:
-                ``"retention_rate"``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            mode: Result display mode. Default: ``"curve"``.
-            unbounded_mode: Retention unbounded mode controlling how
-                retention is counted in unbounded periods. One of
-                ``"none"``, ``"carry_back"``, ``"carry_forward"``, or
-                ``"consecutive_forward"``. Default: ``None``
-                (server default).
-            retention_cumulative: Whether to use cumulative retention
-                counting. Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured retention query model.
 
         Returns:
             RetentionQueryResult with cohort data, DataFrame, and
@@ -4286,42 +3305,16 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import RetentionQuery
+
             ws = Workspace()
-
-            # Simple retention query
-            result = ws.query_retention("Signup", "Login")
-            print(result.average)
-
-            # With configuration
             result = ws.query_retention(
-                "Signup", "Login",
-                retention_unit="day",
-                bucket_sizes=[1, 3, 7, 14, 30],
-                last=90,
+                RetentionQuery(born_event="Signup", return_event="Login")
             )
-            print(result.df)
+            print(result.average)
             ```
         """
-        params = self._resolve_and_build_retention_params(
-            born_event=born_event,
-            return_event=return_event,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
-        )
-
+        params = self.build_retention_params(query)
         return self._live_query_service.query_retention(
             bookmark_params=params,
             project_id=int(self._session.project.id),
@@ -4329,69 +3322,20 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
-        *,
-        retention_unit: TimeUnit = "week",
-        alignment: RetentionAlignment = "birth",
-        bucket_sizes: list[int] | None = None,
-        from_date: str | None = None,
-        to_date: str | None = None,
-        last: int = 30,
-        unit: QueryTimeUnit = "day",
-        math: RetentionMathType = "retention_rate",
-        group_by: str
-        | GroupBy
-        | CohortBreakdown
-        | list[str | GroupBy | CohortBreakdown]
-        | None = None,
-        where: Filter | list[Filter] | None = None,
-        mode: RetentionMode = "curve",
-        unbounded_mode: RetentionUnboundedMode | None = None,
-        retention_cumulative: bool = False,
-        time_comparison: TimeComparison | None = None,
-        data_group_id: int | None = None,
+        query: RetentionQuery,
     ) -> dict[str, Any]:
         """Build validated retention bookmark params without executing.
 
-        Accepts the same arguments as :meth:`query_retention` but returns
-        the generated bookmark params ``dict`` (not a
-        ``RetentionQueryResult``) instead of querying the API. Useful for
+        Accepts a ``RetentionQuery`` model and returns the generated
+        bookmark params dict instead of querying the API. Useful for
         debugging, inspecting generated JSON, persisting via
-        :meth:`create_bookmark`, or testing.
+        :meth:`create_bookmark`, or testing. Handles normalization of
+        string shorthand to RetentionEvent objects, argument validation
+        (Layer 1), bookmark construction, and structure validation
+        (Layer 2).
 
         Args:
-            born_event: Event that defines cohort membership.
-            return_event: Event that defines return.
-            retention_unit: Retention period unit. Default: ``"week"``.
-            alignment: Retention alignment mode. Default: ``"birth"``.
-            bucket_sizes: Custom bucket sizes. Default: ``None``.
-            from_date: Start date (YYYY-MM-DD) or None.
-            to_date: End date (YYYY-MM-DD) or None.
-            last: Relative time range in days. Default: 30.
-            unit: Time aggregation unit (``day``, ``week``, or
-                ``month`` — ``hour`` is not supported for retention).
-                Default: ``"day"``.
-            math: Aggregation function. Default:
-                ``"retention_rate"``.
-            group_by: Break down results by property or cohort
-                membership. Accepts a string, ``GroupBy``,
-                ``CohortBreakdown``, or list of any mix.
-            where: Filter results by conditions.
-            mode: Display mode. Default: ``"curve"``.
-            unbounded_mode: Retention unbounded mode controlling how
-                retention is counted in unbounded periods. One of
-                ``"none"``, ``"carry_back"``, ``"carry_forward"``, or
-                ``"consecutive_forward"``. Default: ``None``
-                (server default).
-            retention_cumulative: Whether to use cumulative retention
-                counting. Default: ``False``.
-            time_comparison: Optional period-over-period comparison.
-                Use ``TimeComparison.relative("month")`` for previous
-                month, etc. Default: ``None``.
-            data_group_id: Optional data group ID for group-level
-                analytics. Scopes the query to a specific data group.
-                Default: ``None``.
+            query: Fully configured retention query model.
 
         Returns:
             Bookmark params dict with ``sections`` and
@@ -4403,40 +3347,93 @@ class Workspace:
 
         Example:
             ```python
+            from mixpanel_headless.query_models import RetentionQuery
+
             ws = Workspace()
-
-            # Inspect generated JSON
-            params = ws.build_retention_params("Signup", "Login")
+            params = ws.build_retention_params(
+                RetentionQuery(born_event="Signup", return_event="Login")
+            )
             print(json.dumps(params, indent=2))
-
-            # Save as a report (dashboard_id required)
-            ws.create_bookmark(CreateBookmarkParams(
-                name="Signup → Login Retention",
-                bookmark_type="retention",
-                params=params,
-                dashboard_id=12345,
-            ))
             ```
         """
-        return self._resolve_and_build_retention_params(
-            born_event=born_event,
-            return_event=return_event,
-            retention_unit=retention_unit,
-            alignment=alignment,
-            bucket_sizes=bucket_sizes,
-            math=math,
-            from_date=from_date,
-            to_date=to_date,
-            last=last,
-            unit=unit,
-            group_by=group_by,
-            where=where,
-            mode=mode,
-            unbounded_mode=unbounded_mode,
-            retention_cumulative=retention_cumulative,
-            time_comparison=time_comparison,
-            data_group_id=data_group_id,
+        # Layer 1: Argument validation on the raw event names (R1/R2 accept
+        # bare strings) so structured errors fire before any component
+        # constructor can raise on the same input
+        born_event, return_event = query.born_event, query.return_event
+        born_name = born_event if isinstance(born_event, str) else born_event.event
+        return_name = (
+            return_event if isinstance(return_event, str) else return_event.event
         )
+        arg_errors = validate_retention_args(
+            born_event=born_name,
+            return_event=return_name,
+            retention_unit=query.retention_unit,
+            alignment=query.alignment,
+            bucket_sizes=query.bucket_sizes,
+            math=query.math,
+            mode=query.mode,
+            unit=query.unit,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            group_by=query.group_by,
+            unbounded_mode=query.unbounded_mode,
+            data_group_id=query.data_group_id,
+        )
+        # CP1-CP6: Custom property validation for where and event filters
+        # (raw items are position-preserving: idx 0 = born, idx 1 = return)
+        arg_errors.extend(
+            _scan_custom_properties(
+                where=query.where,
+                retention_events=[born_event, return_event],
+            )
+        )
+        if any(e.severity == "error" for e in arg_errors):
+            raise BookmarkValidationError(arg_errors)
+
+        # Normalization (inputs validated above; the backstop keeps the
+        # documented exception type for anything Layer 1 doesn't pre-check)
+        try:
+            norm_born = (
+                RetentionEvent(event=born_event)
+                if isinstance(born_event, str)
+                else born_event
+            )
+            norm_return = (
+                RetentionEvent(event=return_event)
+                if isinstance(return_event, str)
+                else return_event
+            )
+        except PydanticValidationError as exc:
+            raise _normalization_error(exc, "retention") from exc
+
+        # Build bookmark params
+        params = self._build_retention_params(
+            born_event=norm_born,
+            return_event=norm_return,
+            retention_unit=query.retention_unit,
+            alignment=query.alignment,
+            bucket_sizes=query.bucket_sizes,
+            math=query.math,
+            from_date=query.from_date,
+            to_date=query.to_date,
+            last=query.last,
+            unit=query.unit,
+            group_by=query.group_by,
+            where=query.where,
+            mode=query.mode,
+            unbounded_mode=query.unbounded_mode,
+            retention_cumulative=query.retention_cumulative,
+            time_comparison=query.time_comparison,
+            data_group_id=query.data_group_id,
+        )
+
+        # Layer 2: Bookmark structure validation
+        bookmark_errors = validate_bookmark(params, bookmark_type="retention")
+        if any(e.severity == "error" for e in bookmark_errors):
+            raise BookmarkValidationError(bookmark_errors)
+
+        return params
 
     # =========================================================================
     # ESCAPE HATCHES
@@ -10382,8 +9379,9 @@ class Workspace:
         """List replays for a user, or hydrate summaries for explicit IDs.
 
         Issues one Insights query against ``$mp_session_record`` grouped on
-        ``$mp_replay_id`` and ``$mp_replay_retention_period`` (and ``$time``
-        for the start-time column), then collapses the result rows into
+        ``$mp_replay_id`` and ``$mp_replay_retention_period`` with
+        ``math="min"`` / ``math_property="$time"`` to extract each
+        replay's start time, then collapses the result rows into
         :class:`ReplaySummary` objects.
 
         Exactly one of ``distinct_id`` or ``replay_ids`` MUST be provided.
@@ -10640,12 +9638,8 @@ class Workspace:
         if include_mixpanel_events:
             # Scope the events scan to the replay's own day(s): tight, and
             # correct even for replays older than the default 90-day lookback.
-            win_from = datetime.fromtimestamp(start_time / 1000, timezone.utc).strftime(
-                "%Y-%m-%d"
-            )
-            win_to = datetime.fromtimestamp(end_time / 1000, timezone.utc).strftime(
-                "%Y-%m-%d"
-            )
+            win_from = _ms_to_utc_date(start_time)
+            win_to = _ms_to_utc_date(end_time)
             mixpanel_events = self.events_for_replay(
                 replay_id,
                 event_properties=event_properties,
@@ -10838,9 +9832,7 @@ class Workspace:
                     )
                     failures.append((rid, exc))
         if not results and failures:
-            # Every replay failed — surface the first underlying error rather
-            # than a generic wrapper, preserving its type (ReplayNotFoundError,
-            # SignedURLExpiredError, ...) for callers that branch on it.
+            # Each failure was already logged when caught above; just raise.
             raise failures[0][1]
         ordered = [results[i] for i in sorted(results)]
 
@@ -10848,12 +9840,8 @@ class Workspace:
         # alternative fans out N queries and exhausts the Insights rate limit).
         # The combined window spans the earliest start to the latest end.
         if include_mixpanel_events and ordered:
-            win_from = datetime.fromtimestamp(
-                min(r.start_time for r in ordered) / 1000, timezone.utc
-            ).strftime("%Y-%m-%d")
-            win_to = datetime.fromtimestamp(
-                max(r.end_time for r in ordered) / 1000, timezone.utc
-            ).strftime("%Y-%m-%d")
+            win_from = _ms_to_utc_date(min(r.start_time for r in ordered))
+            win_to = _ms_to_utc_date(max(r.end_time for r in ordered))
             events_by_replay = self.events_for_replays(
                 [r.replay_id for r in ordered],
                 event_properties=event_properties,

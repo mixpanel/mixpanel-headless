@@ -19,6 +19,8 @@ import importlib
 import inspect
 import re
 import sys
+import types
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,15 @@ def get_obj(path: str) -> Any:
 def format_type(annotation: Any) -> str:
     """Format a type annotation for clean display.
 
+    ``Annotated[X, ...]`` renders as ``X`` (per-alternative pydantic ``Field``
+    metadata like ``Annotated[int, Field(strict=True, gt=0)]`` would
+    otherwise leak raw ``FieldInfo(...)`` reprs), unions are re-joined
+    from their cleaned alternatives, and parameterized generics
+    (``list``/``tuple``/``dict``/...) are rebuilt from recursively
+    cleaned arguments so nested ``Annotated`` (e.g.
+    ``list[Annotated[int, Strict(strict=True)]]`` from a
+    ``list[StrictInt]`` field) never leaks metadata reprs either.
+
     Args:
         annotation: A type annotation (class, generic, union, etc.).
 
@@ -49,6 +60,24 @@ def format_type(annotation: Any) -> str:
     """
     if annotation is None or annotation is type(None):
         return "None"
+    if annotation is Ellipsis:
+        return "..."
+    origin = typing.get_origin(annotation)
+    if origin is typing.Annotated:
+        return format_type(typing.get_args(annotation)[0])
+    if origin is typing.Union or origin is types.UnionType:
+        return " | ".join(format_type(arg) for arg in typing.get_args(annotation))
+    if isinstance(origin, type):
+        args = typing.get_args(annotation)
+        if args:
+            rendered = ", ".join(
+                # Callable's first arg is a parameter-type list.
+                f"[{', '.join(format_type(a) for a in arg)}]"
+                if isinstance(arg, list)
+                else format_type(arg)
+                for arg in args
+            )
+            return f"{origin.__name__}[{rendered}]"
     if hasattr(annotation, "__name__") and not hasattr(annotation, "__args__"):
         return annotation.__name__
     s = str(annotation)
@@ -56,6 +85,74 @@ def format_type(annotation: Any) -> str:
     s = s.replace("<class '", "").replace("'>", "")
     s = s.replace("NoneType", "None")
     return s
+
+
+_CONSTRAINT_ATTRS = (
+    "max_length",
+    "min_length",
+    "ge",
+    "le",
+    "gt",
+    "lt",
+    "multiple_of",
+    "pattern",
+)
+
+
+def _constraint_strs(metadata: Any) -> list[str]:
+    """Extract ``attr=value`` constraint strings from pydantic metadata.
+
+    Handles both plain ``annotated_types`` markers (``Ge``, ``Le``, ...)
+    and ``FieldInfo`` objects (whose constraints live in their own
+    ``.metadata`` list, as produced by per-alternative ``Annotated[int,
+    Field(...)]`` annotations).
+
+    Args:
+        metadata: An iterable of metadata objects (``FieldInfo.metadata``
+            or ``Annotated`` extras).
+
+    Returns:
+        Constraint strings like ``["ge=0", "le=100"]``, in encounter order.
+    """
+    parts: list[str] = []
+    for meta in metadata:
+        nested = getattr(meta, "metadata", None)
+        if isinstance(nested, list):
+            parts.extend(_constraint_strs(nested))
+        for attr in _CONSTRAINT_ATTRS:
+            val = getattr(meta, attr, None)
+            if val is not None:
+                parts.append(f"{attr}={val}")
+    return parts
+
+
+def _alternative_constraint_strs(annotation: Any) -> list[str]:
+    """Collect constraint strings from ``Annotated`` union alternatives.
+
+    Bounds declared per union alternative (e.g. ``Annotated[int,
+    Field(strict=True, ge=0, le=100)] | Annotated[float, ...]`` on
+    ``InsightsQuery.percentile_value``) live in the alternative's ``Annotated``
+    metadata rather than ``FieldInfo.metadata``; this walks the alternatives so
+    the field listing still shows the valid range.
+
+    Args:
+        annotation: The field's type annotation (union or single type).
+
+    Returns:
+        Constraint strings in encounter order, possibly repeated (alternatives
+        typically carry identical bounds) — the caller dedups once when
+        merging with field-level constraints.
+    """
+    origin = typing.get_origin(annotation)
+    if origin is typing.Union or origin is types.UnionType:
+        alternatives = typing.get_args(annotation)
+    else:
+        alternatives = (annotation,)
+    parts: list[str] = []
+    for alternative in alternatives:
+        if typing.get_origin(alternative) is typing.Annotated:
+            parts.extend(_constraint_strs(typing.get_args(alternative)[1:]))
+    return parts
 
 
 def _enum_values_inline(annotation: Any) -> str:
@@ -197,22 +294,94 @@ def list_exceptions() -> None:
         print(f"  {name:35s} {desc}")
 
 
+def _print_pydantic_field(fname: str, finfo: Any, obj: type, indent: str) -> None:
+    """Print one pydantic ``FieldInfo`` line (shared by both pydantic shapes).
+
+    Args:
+        fname: The field name.
+        finfo: The pydantic ``FieldInfo`` for the field.
+        obj: The owning class (used to resolve the alias generator).
+        indent: Prefix for indentation.
+    """
+    config = getattr(obj, "model_config", {})
+    alias_gen = config.get("alias_generator") if hasattr(config, "get") else None
+
+    type_str = format_type(finfo.annotation)
+    enum_inline = _enum_values_inline(finfo.annotation)
+
+    # Default value handling (fix PydanticUndefined leak)
+    if finfo.is_required():
+        default = " (required)"
+    elif PydanticUndefined is not None and finfo.default is PydanticUndefined:
+        if finfo.default_factory is not None:
+            factory_name = getattr(finfo.default_factory, "__name__", "factory")
+            default = f" = <factory {factory_name}>"
+        else:
+            default = " (required)"
+    elif finfo.default is None:
+        default = ""
+    else:
+        default = f" = {finfo.default!r}"
+
+    # Field constraints: field-level metadata plus per-union-alternative
+    # Annotated bounds (e.g. percentile_value's ge=0/le=100), deduped.
+    constraints = ""
+    constraint_parts = list(
+        dict.fromkeys(
+            _constraint_strs(finfo.metadata or [])
+            + _alternative_constraint_strs(finfo.annotation)
+        )
+    )
+    if constraint_parts:
+        constraints = f" ({', '.join(constraint_parts)})"
+
+    # Alias resolution (validation_alias covers pydantic dataclasses)
+    alias_info = ""
+    resolved_alias = finfo.alias or getattr(finfo, "validation_alias", None)
+    if not isinstance(resolved_alias, str):
+        resolved_alias = None
+    if resolved_alias is None and alias_gen and callable(alias_gen):
+        with contextlib.suppress(TypeError, ValueError, AttributeError):
+            resolved_alias = alias_gen(fname)
+    if resolved_alias and resolved_alias != fname:
+        alias_info = f' (json: "{resolved_alias}")'
+
+    print(
+        f"{indent}  {fname}: {type_str}{enum_inline}{default}{constraints}{alias_info}"
+    )
+
+
 def show_fields(obj: type, indent: str = "") -> None:
     """Show fields for dataclasses or Pydantic models.
 
+    Pydantic shapes are checked first: pydantic dataclasses also carry
+    ``__dataclass_fields__``, but their stdlib-view defaults are raw
+    ``FieldInfo`` objects — rendering from ``__pydantic_fields__`` shows
+    real defaults, constraints, and aliases instead.
+
     Args:
-        obj: A dataclass or Pydantic BaseModel class.
+        obj: A dataclass (stdlib or pydantic) or Pydantic BaseModel class.
         indent: Prefix for indentation.
     """
-    if hasattr(obj, "__dataclass_fields__"):
+    pydantic_fields = getattr(obj, "__pydantic_fields__", None) or getattr(
+        obj, "model_fields", None
+    )
+    if pydantic_fields:
         print(f"\n{indent}Fields:")
-        for fname, field in obj.__dataclass_fields__.items():
+        for fname, finfo in pydantic_fields.items():
+            _print_pydantic_field(fname, finfo, obj, indent)
+    elif hasattr(obj, "__dataclass_fields__"):
+        print(f"\n{indent}Fields:")
+        # dataclasses.fields() filters ClassVar pseudo-fields that raw
+        # __dataclass_fields__ iteration would leak into the listing
+        for field in dataclasses.fields(obj):
+            fname = field.name
             ftype = format_type(field.type) if hasattr(field, "type") else "?"
             default = ""
             try:
                 if field.default is not dataclasses.MISSING:
                     default = f" = {field.default!r}"
-                elif field.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                elif field.default_factory is not dataclasses.MISSING:
                     factory_name = getattr(
                         field.default_factory, "__name__", repr(field.default_factory)
                     )
@@ -220,64 +389,6 @@ def show_fields(obj: type, indent: str = "") -> None:
             except Exception:
                 pass
             print(f"{indent}  {fname}: {ftype}{default}")
-    elif hasattr(obj, "model_fields"):
-        # Resolve alias generator from model config
-        config = getattr(obj, "model_config", {})
-        alias_gen = config.get("alias_generator")
-
-        print(f"\n{indent}Fields:")
-        for fname, finfo in obj.model_fields.items():
-            type_str = format_type(finfo.annotation)
-            enum_inline = _enum_values_inline(finfo.annotation)
-
-            # Default value handling (fix PydanticUndefined leak)
-            if finfo.is_required():
-                default = " (required)"
-            elif PydanticUndefined is not None and finfo.default is PydanticUndefined:
-                if finfo.default_factory is not None:
-                    factory_name = getattr(finfo.default_factory, "__name__", "factory")
-                    default = f" = <factory {factory_name}>"
-                else:
-                    default = " (required)"
-            elif finfo.default is None:
-                default = ""
-            else:
-                default = f" = {finfo.default!r}"
-
-            # Field constraints from metadata
-            constraints = ""
-            if finfo.metadata:
-                constraint_parts: list[str] = []
-                for meta in finfo.metadata:
-                    for attr in (
-                        "max_length",
-                        "min_length",
-                        "ge",
-                        "le",
-                        "gt",
-                        "lt",
-                        "multiple_of",
-                        "pattern",
-                    ):
-                        val = getattr(meta, attr, None)
-                        if val is not None:
-                            constraint_parts.append(f"{attr}={val}")
-                if constraint_parts:
-                    constraints = f" ({', '.join(constraint_parts)})"
-
-            # Alias resolution
-            alias_info = ""
-            resolved_alias = finfo.alias
-            if resolved_alias is None and alias_gen and callable(alias_gen):
-                with contextlib.suppress(TypeError, ValueError, AttributeError):
-                    resolved_alias = alias_gen(fname)
-            if resolved_alias and resolved_alias != fname:
-                alias_info = f' (json: "{resolved_alias}")'
-
-            print(
-                f"{indent}  {fname}: "
-                f"{type_str}{enum_inline}{default}{constraints}{alias_info}"
-            )
 
 
 def show_model_config(obj: type) -> None:

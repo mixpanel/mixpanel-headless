@@ -58,53 +58,50 @@ enforcement = ws.get_schema_enforcement()
 audit = ws.run_audit()
 
 # Insights queries — typed, composable analytics
-from mixpanel_headless import Metric, Filter, Formula
+from mixpanel_headless import Metric, Filter, Formula, InsightsQuery, FunnelQuery, RetentionQuery, FlowQuery
 
 # Simple event query (last 30 days by default)
-result = ws.query("Login")
+result = ws.query(InsightsQuery(events=["Login"]))
 print(result.df)
 
 # DAU with breakdown
-result = ws.query("Login", math="dau", group_by="platform", last=90)
+result = ws.query(InsightsQuery(events=["Login"], math="dau", group_by=["platform"], last=90))
 
 # Multi-metric formula: conversion rate
-result = ws.query(
-    [Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
+result = ws.query(InsightsQuery(
+    events=[Metric("Signup", math="unique"), Metric("Purchase", math="unique")],
     formula="(B / A) * 100",
     formula_label="Conversion Rate",
     unit="week",
-)
+))
 
 # Filtered aggregation with numeric breakdown
-result = ws.query(
-    "Purchase",
-    math="total",
+result = ws.query(InsightsQuery(
+    events=["Purchase"], math="total",
     math_property="amount",
     where=[Filter.equals("country", "US"), Filter.greater_than("amount", 50)],
-    group_by="platform",
-)
+    group_by=["platform"],
+))
 
 # Typed funnel query — define steps inline
-funnel_result = ws.query_funnel(
-    ["Signup", "Add to Cart", "Purchase"],
+funnel_result = ws.query_funnel(FunnelQuery(
+    steps=["Signup", "Add to Cart", "Purchase"],
     conversion_window=7,
     last=90,
-)
+))
 print(funnel_result.overall_conversion_rate)
 
 # Typed retention query — cohort retention with event pairs
 from mixpanel_headless import RetentionEvent
-retention_result = ws.query_retention(
-    "Signup",
-    "Login",
-    retention_unit="week",
+retention_result = ws.query_retention(RetentionQuery(
+    born_event="Signup", return_event="Login", retention_unit="week",
     last=90,
-)
+))
 print(retention_result.df.head())  # cohort_date | bucket | count | rate
 
 # Typed flow query — analyze user paths through your product
 from mixpanel_headless import FlowStep
-flow_result = ws.query_flow("Purchase", forward=3, reverse=1)
+flow_result = ws.query_flow(FlowQuery(event="Purchase", forward=3, reverse=1))
 print(flow_result.nodes_df.head())   # step | event | type | count
 print(flow_result.top_transitions(5))
 
@@ -127,9 +124,9 @@ from mixpanel_headless import CohortCriteria, CohortDefinition, CohortBreakdown,
 power_users = CohortDefinition(
     CohortCriteria.did_event("Purchase", at_least=3, within_days=30)
 )
-result = ws.query("Login", where=Filter.in_cohort(power_users, name="Power Users"))
-result = ws.query("Login", group_by=CohortBreakdown(power_users, name="Power Users"))
-result = ws.query(CohortMetric(123, "Power Users"), last=90, unit="week")
+result = ws.query(InsightsQuery(events=["Login"], where=[Filter.in_cohort(power_users, name="Power Users")]))
+result = ws.query(InsightsQuery(events=["Login"], group_by=[CohortBreakdown(power_users, name="Power Users")]))
+result = ws.query(InsightsQuery(events=[CohortMetric(123, "Power Users")], last=90, unit="week"))
 
 # Legacy live queries
 segmentation = ws.segmentation(

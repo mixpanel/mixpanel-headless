@@ -993,7 +993,7 @@ ws.update_dashboard(dashboard.id, UpdateDashboardParams(
     content={"action": "create", "content_type": "text",
              "content_params": {"markdown": "<h2>Weekly Product Review</h2><p>Updated every Monday.</p>"}}))
 
-result = ws.query("Login", from_date="2025-01-01", to_date="2025-03-31")
+result = ws.query(InsightsQuery(events=["Login"], from_date="2025-01-01", to_date="2025-03-31"))
 ws.update_dashboard(dashboard.id, UpdateDashboardParams(
     content={"action": "create", "content_type": "report",
              "content_params": {"bookmark": {"name": "DAU Trend", "type": "insights",

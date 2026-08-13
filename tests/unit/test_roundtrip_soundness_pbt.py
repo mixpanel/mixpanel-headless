@@ -21,6 +21,12 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import (
+    FlowQuery,
+    FunnelQuery,
+    InsightsQuery,
+    RetentionQuery,
+)
 from mixpanel_headless.types import (
     Formula,
     FunnelStep,
@@ -210,13 +216,18 @@ class TestInsightsRoundTrip:
             math_args: Valid (math, math_property, per_user) triple.
         """
         ws = _make_workspace()
+        # Build Metric with the appropriate math args
+        metric_kwargs: dict[str, Any] = {"math": math_args["math"]}
+        if math_args["math_property"] is not None:
+            metric_kwargs["property"] = math_args["math_property"]
+        if math_args["per_user"] is not None:
+            metric_kwargs["per_user"] = math_args["per_user"]
         # Should not raise BookmarkValidationError
         ws.build_params(
-            events=event,
-            last=last,
-            math=math_args["math"],
-            math_property=math_args["math_property"],
-            per_user=math_args["per_user"],
+            InsightsQuery(
+                events=[Metric(event, **metric_kwargs)],
+                last=last,
+            )
         )
 
     @given(
@@ -243,7 +254,7 @@ class TestInsightsRoundTrip:
         """
         ws = _make_workspace()
         metric = Metric(event=event, math=math, property=prop)  # type: ignore[arg-type]
-        ws.build_params(events=metric, last=last)
+        ws.build_params(InsightsQuery(events=[metric], last=last))
 
     @given(
         event_a=safe_event_names,
@@ -266,8 +277,10 @@ class TestInsightsRoundTrip:
         """
         ws = _make_workspace()
         ws.build_params(
-            events=[event_a, event_b, Formula(expression="A + B")],
-            last=last,
+            InsightsQuery(
+                events=[Metric(event_a), Metric(event_b), Formula(expression="A + B")],
+                last=last,
+            )
         )
 
 
@@ -306,12 +319,14 @@ class TestFunnelRoundTrip:
             1 if math_args["conversion_window_unit"] == "session" else conversion_window
         )
         ws.build_funnel_params(
-            steps=steps,
-            last=last,
-            math=math_args["math"],
-            math_property=math_args["math_property"],
-            conversion_window=cw,
-            conversion_window_unit=math_args["conversion_window_unit"],
+            FunnelQuery(
+                steps=steps,
+                last=last,
+                math=math_args["math"],
+                math_property=math_args["math_property"],
+                conversion_window=cw,
+                conversion_window_unit=math_args["conversion_window_unit"],
+            )
         )
 
 
@@ -356,13 +371,15 @@ class TestRetentionRoundTrip:
         """
         ws = _make_workspace()
         ws.build_retention_params(
-            born_event=born_event,
-            return_event=return_event,
-            last=last,
-            math=math,  # type: ignore[arg-type]
-            retention_unit=retention_unit,  # type: ignore[arg-type]
-            alignment=alignment,  # type: ignore[arg-type]
-            mode=mode,  # type: ignore[arg-type]
+            RetentionQuery(
+                born_event=born_event,
+                return_event=return_event,
+                last=last,
+                math=math,
+                retention_unit=retention_unit,
+                alignment=alignment,
+                mode=mode,
+            )
         )
 
 
@@ -404,13 +421,15 @@ class TestFlowRoundTrip:
         """
         ws = _make_workspace()
         ws.build_flow_params(
-            event=event,
-            forward=direction[0],
-            reverse=direction[1],
-            last=last,
-            count_type=count_type,  # type: ignore[arg-type]
-            mode=mode,  # type: ignore[arg-type]
-            cardinality=cardinality,
+            FlowQuery(
+                event=event,
+                forward=direction[0],
+                reverse=direction[1],
+                last=last,
+                count_type=count_type,
+                mode=mode,
+                cardinality=cardinality,
+            )
         )
 
     @given(event=safe_event_names, last=valid_last)
@@ -428,9 +447,11 @@ class TestFlowRoundTrip:
         """
         ws = _make_workspace()
         ws.build_flow_params(
-            event=event,
-            last=last,
-            count_type="session",
-            conversion_window_unit="session",
-            conversion_window=1,
+            FlowQuery(
+                event=event,
+                last=last,
+                count_type="session",
+                conversion_window_unit="session",
+                conversion_window=1,
+            )
         )

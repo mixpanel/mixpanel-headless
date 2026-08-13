@@ -1261,7 +1261,7 @@ class TestFrequencyBreakdownValidation:
         """FB1: event must be non-empty."""
         from mixpanel_headless.types import FrequencyBreakdown
 
-        with pytest.raises(ValueError, match="non-empty"):
+        with pytest.raises(ValueError, match="at least 1 character"):
             FrequencyBreakdown("")
 
     def test_fb1_whitespace_event_raises(self) -> None:
@@ -1275,14 +1275,14 @@ class TestFrequencyBreakdownValidation:
         """FB2: bucket_size must be positive (> 0)."""
         from mixpanel_headless.types import FrequencyBreakdown
 
-        with pytest.raises(ValueError, match="positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             FrequencyBreakdown("Purchase", bucket_size=0)
 
     def test_fb2_negative_bucket_size_raises(self) -> None:
         """FB2: negative bucket_size must be rejected."""
         from mixpanel_headless.types import FrequencyBreakdown
 
-        with pytest.raises(ValueError, match="positive"):
+        with pytest.raises(ValueError, match="greater than 0"):
             FrequencyBreakdown("Purchase", bucket_size=-1)
 
     def test_fb3_bucket_min_equals_max_raises(self) -> None:
@@ -1303,7 +1303,7 @@ class TestFrequencyBreakdownValidation:
         """FB4: bucket_min must be >= 0."""
         from mixpanel_headless.types import FrequencyBreakdown
 
-        with pytest.raises(ValueError, match="non-negative"):
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
             FrequencyBreakdown("Purchase", bucket_min=-1)
 
 

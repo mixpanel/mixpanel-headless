@@ -81,6 +81,10 @@ from mixpanel_headless.exceptions import (
     ValidationError,
     WorkspaceScopeError,
 )
+from mixpanel_headless.query_models import FlowQuery as FlowQuery
+from mixpanel_headless.query_models import FunnelQuery as FunnelQuery
+from mixpanel_headless.query_models import InsightsQuery as InsightsQuery
+from mixpanel_headless.query_models import RetentionQuery as RetentionQuery
 from mixpanel_headless.replay_labels import (
     default_label_fn,
     selector_label_fn,
@@ -110,6 +114,7 @@ from mixpanel_headless.types import (
     AnnotationUser,
     AuditResponse,
     AuditViolation,
+    BehavioralCriterion,
     BlueprintCard,
     BlueprintConfig,
     BlueprintFinishParams,
@@ -141,6 +146,7 @@ from mixpanel_headless.types import (
     CohortDefinition,
     CohortInfo,
     CohortMetric,
+    CohortReferenceCriterion,
     ComposedPropertyValue,
     CreateAlertParams,
     CreateAnnotationParams,
@@ -209,6 +215,7 @@ from mixpanel_headless.types import (
     GroupBy,
     HoldingConstant,
     InitSchemaEnforcementParams,
+    InlineCohort,
     InlineCustomProperty,
     LexiconDefinition,
     LexiconMetadata,
@@ -229,6 +236,7 @@ from mixpanel_headless.types import (
     ProfilePageResult,
     ProjectWebhook,
     PropertyCountsResult,
+    PropertyCriterion,
     PropertyDefinition,
     PropertyInput,
     PropertyResourceType,
@@ -470,6 +478,11 @@ __all__ = [
     # Cohort Behaviors (Phase 036)
     "CohortBreakdown",
     "CohortMetric",
+    # Declarative cohort input models (schema-exhaustive, PR #195)
+    "PropertyCriterion",
+    "BehavioralCriterion",
+    "CohortReferenceCriterion",
+    "InlineCohort",
     # Custom Property Query Types (Phase 037)
     "PropertyInput",
     "InlineCustomProperty",
@@ -616,4 +629,9 @@ __all__ = [
     "TimeComparison",
     "FrequencyBreakdown",
     "FrequencyFilter",
+    # Query models (Pydantic input models)
+    "InsightsQuery",
+    "FunnelQuery",
+    "RetentionQuery",
+    "FlowQuery",
 ]

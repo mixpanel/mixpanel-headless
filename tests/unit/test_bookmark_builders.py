@@ -17,10 +17,13 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_date_range,
     build_filter_entry,
     build_filter_section,
+    build_flow_segment_entries,
+    build_flow_where_entries,
     build_group_section,
     build_time_section,
     patch_custom_property_filters_for_transform,
 )
+from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -146,6 +149,20 @@ class TestBuildDateRange:
         )
         assert result["from_date"]["value"] == 7
         assert result["from_date"]["unit"] == "day"
+
+    def test_from_only_fills_today(self) -> None:
+        """Only from_date fills to_date with today (build_time_section parity)."""
+        with patch("mixpanel_headless._internal.bookmark_builders.date") as mock_date:
+            mock_date.today.return_value = date(2025, 6, 15)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            result = build_date_range(
+                from_date="2025-01-01",
+                to_date=None,
+                last=30,
+            )
+        assert result["type"] == "between"
+        assert result["from_date"] == "2025-01-01"
+        assert result["to_date"] == "2025-06-15"
 
 
 class TestBuildFilterSection:
@@ -976,65 +993,76 @@ class TestBuildGroupSectionDataGroupId:
 
 
 # =========================================================================
-# T039: build_flow_property_filter — flow property filter builder (US8)
+# T039: build_flow_where_entries — flow property filter builder (US8)
 # =========================================================================
 
 
-class TestBuildFlowPropertyFilter:
-    """Tests for build_flow_property_filter() — filter_by_event structure."""
+class TestBuildFlowWhereEntries:
+    """Tests for build_flow_where_entries() — flat ``where`` entry list.
 
-    def test_single_filter_structure(self) -> None:
-        """Single Filter produces correct filter_by_event structure."""
+    The arb_funnels endpoint accepts a flat list of
+    ``{property, operator, value}`` dicts. The builder must guard
+    against filter kinds the flat format cannot express, rather than
+    silently corrupting them.
+    """
+
+    def test_equals_entry_includes_value(self) -> None:
+        """Equals filter produces a complete entry — property, operator, value."""
         from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_property_filter,
+            build_flow_where_entries,
         )
 
-        result = build_flow_property_filter([Filter.equals("country", "US")])
-        assert result["operator"] == "and"
-        assert len(result["children"]) == 1
-        child = result["children"][0]
-        assert child["filterOperator"] == "equals"
-        assert child["filterType"] == "string"
-        assert child["propertyName"] == "country"
-        assert child["filterValue"] == ["US"]
-        assert child["resourceType"] == "events"
+        result = build_flow_where_entries([Filter.equals("country", "US")])
+        assert result == [
+            {"property": "country", "operator": "equals", "value": ["US"]}
+        ]
 
-    def test_multiple_filters_produce_children(self) -> None:
-        """Multiple Filters produce a children array with one entry per filter."""
+    def test_multiple_filters_produce_one_entry_each(self) -> None:
+        """Multiple Filters produce one entry per filter, in order."""
         from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_property_filter,
+            build_flow_where_entries,
         )
 
-        result = build_flow_property_filter(
+        result = build_flow_where_entries(
             [
                 Filter.equals("country", "US"),
                 Filter.greater_than("age", 18),
             ]
         )
-        assert result["operator"] == "and"
-        assert len(result["children"]) == 2
-        assert result["children"][0]["propertyName"] == "country"
-        assert result["children"][1]["propertyName"] == "age"
+        assert result == [
+            {"property": "country", "operator": "equals", "value": ["US"]},
+            {"property": "age", "operator": "is greater than", "value": 18},
+        ]
 
-    def test_filter_entry_uses_build_filter_entry(self) -> None:
-        """Each child uses build_filter_entry structure (resourceType, filterType, etc.)."""
+    def test_no_value_operator_omits_value_key(self) -> None:
+        """is_set produces an entry without a value key."""
         from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_property_filter,
+            build_flow_where_entries,
         )
 
-        result = build_flow_property_filter([Filter.contains("name", "test")])
-        child = result["children"][0]
-        assert "resourceType" in child
-        assert "filterType" in child
-        assert "filterOperator" in child
-        assert "filterValue" in child
-        assert "propertyName" in child
+        result = build_flow_where_entries([Filter.is_set("email")])
+        assert result == [{"property": "email", "operator": "is set"}]
 
-    def test_custom_property_ref_raises_type_error(self) -> None:
-        """build_flow_property_filter rejects CustomPropertyRef properties."""
+    def test_absolute_date_range_keeps_both_dates(self) -> None:
+        """date_between carries both dates in the value."""
         from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_property_filter,
+            build_flow_where_entries,
         )
+
+        result = build_flow_where_entries(
+            [Filter.date_between("created", "2024-01-01", "2024-06-30")]
+        )
+        assert result == [
+            {
+                "property": "created",
+                "operator": "was between",
+                "value": ["2024-01-01", "2024-06-30"],
+            }
+        ]
+
+    def test_custom_property_ref_rejected(self) -> None:
+        """Non-string properties are rejected with a structured error at
+        build time, not a crash at json.dumps."""
         from mixpanel_headless.types import CustomPropertyRef
 
         f = Filter(
@@ -1044,17 +1072,148 @@ class TestBuildFlowPropertyFilter:
             _property_type="string",
             _resource_type="events",
         )
-        with pytest.raises(TypeError, match="custom property refs"):
-            build_flow_property_filter([f])
+        with pytest.raises(
+            BookmarkValidationError, match="custom property refs"
+        ) as exc_info:
+            build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED"
+        assert err.path == "where[0]"
 
-    def test_empty_list_raises_value_error(self) -> None:
-        """build_flow_property_filter rejects empty filter list."""
+    def test_list_contains_rejected(self) -> None:
+        """list_contains cannot be expressed in the flat format — rejected
+        with a structured error naming the offending filter."""
+        f = Filter.list_contains("cart", Brand="nike")
+        with pytest.raises(BookmarkValidationError, match="list_contains") as exc_info:
+            build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_LIST_CONTAINS_UNSUPPORTED"
+        assert err.path == "where[0]"
+
+    def test_relative_date_rejected(self) -> None:
+        """Relative-date operators lose their date unit in the flat format —
+        rejected with a pointer to the absolute-date alternatives."""
+        f = Filter.in_the_last("created", 2, "week")
+        with pytest.raises(BookmarkValidationError, match="absolute date") as exc_info:
+            build_flow_where_entries([f])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_WHERE_RELATIVE_DATE_UNSUPPORTED"
+        assert err.path == "where[0]"
+
+    def test_rejection_reports_offending_index(self) -> None:
+        """A rejection names the offending filter's position, not where[0]."""
+        filters = [
+            Filter.equals("country", "US"),
+            Filter.list_contains("cart", Brand="nike"),
+        ]
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            build_flow_where_entries(filters)
+        assert exc_info.value.errors[0].path == "where[1]"
+
+    def test_empty_list_raises_runtime_error(self) -> None:
+        """An empty filter list is caller misuse — the public path guards
+        with ``if property_filters:`` — so it crashes as an internal error
+        rather than reporting user input as invalid."""
+        with pytest.raises(RuntimeError, match="requires at least one filter"):
+            build_flow_where_entries([])
+
+
+class TestBuildFlowSegmentEntries:
+    """Tests for build_flow_segment_entries() — flat ``segment_by`` list.
+
+    The arb_funnels endpoint accepts breakdowns as a flat
+    ``segment_by`` list of ``{property}`` dicts. Breakdown kinds the
+    flat format cannot express (cohort / frequency breakdowns, custom
+    property refs, numeric bucketing) are rejected at build time —
+    forwarding them produced a 200 with silently empty results.
+    """
+
+    def test_string_produces_property_entry(self) -> None:
+        """A plain property name produces a {property} entry."""
         from mixpanel_headless._internal.bookmark_builders import (
-            build_flow_property_filter,
+            build_flow_segment_entries,
         )
 
-        with pytest.raises(ValueError, match="requires at least one filter"):
-            build_flow_property_filter([])
+        assert build_flow_segment_entries(["country"]) == [{"property": "country"}]
+
+    def test_group_by_produces_property_entry(self) -> None:
+        """A GroupBy with a string property produces a {property} entry."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_segment_entries,
+        )
+
+        assert build_flow_segment_entries([GroupBy("country")]) == [
+            {"property": "country"}
+        ]
+
+    def test_mixed_list_preserves_order(self) -> None:
+        """Mixed strings and GroupBy objects produce entries in order."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_segment_entries,
+        )
+
+        assert build_flow_segment_entries(["country", GroupBy("city")]) == [
+            {"property": "country"},
+            {"property": "city"},
+        ]
+
+    def test_cohort_breakdown_rejected(self) -> None:
+        """CohortBreakdown cannot be expressed — structured rejection
+        instead of sending display labels as a property name."""
+        with pytest.raises(
+            BookmarkValidationError, match="CohortBreakdown"
+        ) as exc_info:
+            build_flow_segment_entries([CohortBreakdown(123, "Power Users")])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_TYPE_UNSUPPORTED"
+        assert err.path == "segments[0]"
+
+    def test_frequency_breakdown_rejected(self) -> None:
+        """FrequencyBreakdown cannot be expressed — structured rejection."""
+        from mixpanel_headless.types import FrequencyBreakdown
+
+        with pytest.raises(
+            BookmarkValidationError, match="FrequencyBreakdown"
+        ) as exc_info:
+            build_flow_segment_entries([FrequencyBreakdown("Login")])
+        assert exc_info.value.errors[0].code == "FL_SEGMENT_TYPE_UNSUPPORTED"
+
+    def test_custom_property_ref_rejected(self) -> None:
+        """GroupBy on a CustomPropertyRef has no name to send —
+        structured rejection."""
+        with pytest.raises(BookmarkValidationError, match="property names") as exc_info:
+            build_flow_segment_entries([GroupBy(CustomPropertyRef(id=42))])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED"
+        assert err.path == "segments[0]"
+
+    def test_bucketed_group_by_rejected(self) -> None:
+        """GroupBy with numeric bucketing cannot be expressed — structured
+        rejection naming the offending position."""
+        g = GroupBy("revenue", property_type="number", bucket_size=50)
+        with pytest.raises(BookmarkValidationError, match="bucket") as exc_info:
+            build_flow_segment_entries(["country", g])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_BUCKETING_UNSUPPORTED"
+        assert err.path == "segments[1]"
+
+    def test_list_item_group_by_rejected(self) -> None:
+        """GroupBy.list_item sub-property breakdowns cannot be expressed —
+        rejected instead of silently stripping the sub-property and
+        segmenting by the raw list property."""
+        g = GroupBy.list_item("cart", "Brand")
+        with pytest.raises(BookmarkValidationError, match="list_item") as exc_info:
+            build_flow_segment_entries([g])
+        err = exc_info.value.errors[0]
+        assert err.code == "FL_SEGMENT_LIST_ITEM_UNSUPPORTED"
+        assert err.path == "segments[0]"
+
+    def test_empty_list_raises_runtime_error(self) -> None:
+        """An empty segment list is caller misuse — the public path guards
+        with ``if segments:`` — so it crashes as an internal error rather
+        than reporting user input as invalid."""
+        with pytest.raises(RuntimeError, match="requires at least one segment"):
+            build_flow_segment_entries([])
 
 
 class TestFilterListContains:
@@ -1191,6 +1350,25 @@ class TestFilterListContains:
                 _resource_type="events",
                 _list_item_filters=(Filter.equals("Brand", "nike"),),
                 _list_item_quantifier=None,
+            )
+
+    def test_post_init_rejects_list_contains_with_value(self) -> None:
+        """Direct construction with a non-None ``_value`` on list_contains raises.
+
+        ``_build_list_contains_entry`` emits a hard-coded
+        ``filterValue: True`` and never reads ``_value``, so a supplied
+        value is silently discarded — the query would run semantics the
+        caller never wrote. Reject it instead.
+        """
+        with pytest.raises(ValueError, match="_value"):
+            Filter(
+                _property="cart",
+                _operator="list_contains",
+                _value="nike",
+                _property_type="object",
+                _resource_type="events",
+                _list_item_filters=(Filter.equals("Brand", "adidas"),),
+                _list_item_quantifier="any",
             )
 
     def test_quantifier_runtime_rejects_invalid(self) -> None:

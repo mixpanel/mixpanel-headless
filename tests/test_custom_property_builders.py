@@ -17,12 +17,14 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_filter_entry,
     build_group_section,
 )
+from mixpanel_headless.query_models import InsightsQuery
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
     Filter,
     GroupBy,
     InlineCustomProperty,
+    Metric,
     PropertyInput,
 )
 from tests.conftest import make_session
@@ -370,7 +372,6 @@ class TestMeasurementPropertyBuilder:
         from unittest.mock import MagicMock
 
         from mixpanel_headless import Workspace
-        from mixpanel_headless.types import Metric
 
         creds = make_session(username="u", secret="s", project_id="1", region="us")
         mgr = MagicMock()
@@ -379,7 +380,9 @@ class TestMeasurementPropertyBuilder:
         ws = Workspace(session=_TEST_SESSION, _api_client=MagicMock())
 
         params = ws.build_params(
-            Metric("Purchase", math="average", property="amount"),
+            InsightsQuery(
+                events=[Metric("Purchase", math="average", property="amount")],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -393,7 +396,6 @@ class TestMeasurementPropertyBuilder:
         from unittest.mock import MagicMock
 
         from mixpanel_headless import Workspace
-        from mixpanel_headless.types import Metric
 
         creds = make_session(username="u", secret="s", project_id="1", region="us")
         mgr = MagicMock()
@@ -402,7 +404,11 @@ class TestMeasurementPropertyBuilder:
         ws = Workspace(session=_TEST_SESSION, _api_client=MagicMock())
 
         params = ws.build_params(
-            Metric("Purchase", math="average", property=CustomPropertyRef(42)),
+            InsightsQuery(
+                events=[
+                    Metric("Purchase", math="average", property=CustomPropertyRef(42))
+                ],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -416,7 +422,6 @@ class TestMeasurementPropertyBuilder:
         from unittest.mock import MagicMock
 
         from mixpanel_headless import Workspace
-        from mixpanel_headless.types import Metric
 
         creds = make_session(username="u", secret="s", project_id="1", region="us")
         mgr = MagicMock()
@@ -426,7 +431,9 @@ class TestMeasurementPropertyBuilder:
 
         icp = InlineCustomProperty.numeric("A * B", A="price", B="quantity")
         params = ws.build_params(
-            Metric("Purchase", math="average", property=icp),
+            InsightsQuery(
+                events=[Metric("Purchase", math="average", property=icp)],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]
@@ -449,9 +456,9 @@ class TestMeasurementPropertyBuilder:
         ws = Workspace(session=_TEST_SESSION, _api_client=MagicMock())
 
         params = ws.build_params(
-            "Purchase",
-            math="average",
-            math_property="amount",
+            InsightsQuery(
+                events=[Metric("Purchase", math="average", property="amount")],
+            )
         )
 
         measurement = params["sections"]["show"][0]["measurement"]

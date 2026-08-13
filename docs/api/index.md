@@ -14,10 +14,10 @@ The `mixpanel_headless` Python API provides programmatic access to all library f
 import mixpanel_headless as mp
 
 ws = mp.Workspace()
-result = ws.query("Login", math="unique", last=30)
+result = ws.query(InsightsQuery(events=["Login"], math="unique", last=30))
 
 # Direct imports
-from mixpanel_headless import Workspace, MixpanelHeadlessError
+from mixpanel_headless import Workspace, MixpanelHeadlessError, InsightsQuery
 
 # Insights Query types
 from mixpanel_headless import (

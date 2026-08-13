@@ -9,6 +9,8 @@ Task ID: T004
 
 from __future__ import annotations
 
+import pytest
+
 from mixpanel_headless._internal.query.user_builders import (
     extract_cohort_filter,
     filter_to_selector,
@@ -56,6 +58,23 @@ class TestFilterToSelectorEquals:
         result = filter_to_selector(f)
         assert result == 'properties["plan"] == "premium"'
 
+    def test_scalar_numeric_value_wrapped(self) -> None:
+        """Equals with a scalar numeric value emits one term, not a crash.
+
+        Numeric/bool-typed equals leaves ``_value`` scalar (the bookmark
+        and segfilter paths accept it); the selector wraps the scalar
+        rather than raising "Expected list for 'equals'".
+        """
+        f = Filter(
+            _property="count",
+            _operator="equals",
+            _value=42,
+            _property_type="number",
+            _resource_type="events",
+        )
+        result = filter_to_selector(f)
+        assert result == 'properties["count"] == 42'
+
 
 class TestFilterToSelectorNotEquals:
     """Tests for does-not-equal operator translation."""
@@ -73,6 +92,18 @@ class TestFilterToSelectorNotEquals:
         # Each value must not match -- AND semantics for not-equals
         assert 'properties["status"] != "banned"' in result
         assert 'properties["status"] != "deleted"' in result
+
+    def test_scalar_numeric_value_wrapped(self) -> None:
+        """Not-equals with a scalar numeric value emits one term, not a crash."""
+        f = Filter(
+            _property="count",
+            _operator="does not equal",
+            _value=42,
+            _property_type="number",
+            _resource_type="events",
+        )
+        result = filter_to_selector(f)
+        assert result == 'properties["count"] != 42'
 
 
 class TestFilterToSelectorContains:
@@ -475,29 +506,48 @@ class TestFilterToSelectorBetweenBoundsValidation:
     """Tests for between operator bound type validation."""
 
     def test_string_lower_bound_rejected(self) -> None:
-        """String lower bound raises ValueError."""
-        f = Filter("prop", "is between", ["low", 10])  # type: ignore[arg-type]
-        import pytest
+        """String lower bound is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(ValueError, match="int or float for lower bound"):
-            filter_to_selector(f)
+        with pytest.raises((ValueError, PydanticValidationError)):
+            Filter("prop", "is between", ["low", 10])  # type: ignore[arg-type]
 
     def test_string_upper_bound_rejected(self) -> None:
-        """String upper bound raises ValueError."""
-        f = Filter("prop", "is between", [0, "high"])  # type: ignore[arg-type]
-        import pytest
+        """String upper bound is rejected at construction by Pydantic."""
+        from pydantic import ValidationError as PydanticValidationError
 
-        with pytest.raises(ValueError, match="int or float for upper bound"):
-            filter_to_selector(f)
+        with pytest.raises((ValueError, PydanticValidationError)):
+            Filter("prop", "is between", [0, "high"])  # type: ignore[arg-type]
 
 
 class TestNotEqualsErrorMessage:
     """Tests for not_equals error message correctness."""
 
     def test_error_references_correct_method_name(self) -> None:
-        """Error message references Filter.not_equals(), not does_not_equal()."""
-        f = Filter("prop", "does not equal", [{"nested": True}])
+        """Error message references Filter.not_equals(), not does_not_equal().
+
+        Uses an explicitly list-typed filter — string-typed equals rejects
+        non-string list elements at construction and numeric-typed equals
+        rejects non-numeric ones, so this downstream guard is only
+        reachable for the typed shapes that admit ``list[dict]``.
+        """
+        f = Filter(
+            "prop",
+            "does not equal",
+            [{"nested": True}],
+            _property_type="list",
+        )
         import pytest
 
         with pytest.raises(ValueError, match="Filter.not_equals"):
             filter_to_selector(f)
+
+    def test_string_typed_non_string_values_rejected_at_construction(
+        self,
+    ) -> None:
+        """Default (string-typed) equals rejects non-string list elements
+        at construction, before any selector building."""
+        import pytest
+
+        with pytest.raises(ValueError, match="list of strings"):
+            Filter("prop", "does not equal", [{"nested": True}])

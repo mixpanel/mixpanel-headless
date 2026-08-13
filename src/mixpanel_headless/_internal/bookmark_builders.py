@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
-from typing import Any, Literal, cast
+from typing import Any, Literal, NoReturn, cast
 
 from mixpanel_headless._literal_types import QueryTimeUnit
+from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -26,6 +27,27 @@ from mixpanel_headless.types import (
     TimeComparison,
     _sanitize_raw_cohort,
 )
+
+
+def _reject(path: str, message: str, code: str) -> NoReturn:
+    """Raise a single-error ``BookmarkValidationError``.
+
+    Shared scaffolding for builder-level rejections of inputs the wire
+    format cannot express, so each call site reads as just the rule
+    (path, message, code).
+
+    Args:
+        path: JSONPath-like location of the offending input
+            (e.g. ``"where[0]"``).
+        message: Human-readable explanation of the rejection.
+        code: Stable error code (e.g. ``"FL_WHERE_LIST_CONTAINS_UNSUPPORTED"``).
+
+    Raises:
+        BookmarkValidationError: Always, wrapping the single error.
+    """
+    raise BookmarkValidationError(
+        [ValidationError(path=path, message=message, code=code)]
+    )
 
 
 def _build_composed_properties(
@@ -135,7 +157,10 @@ def build_date_range(
     """Build a flat date range dict for flows (non-sections format).
 
     Flows use a flat ``date_range`` object rather than the sections-based
-    ``sections.time`` array used by insights.
+    ``sections.time`` array used by insights. A lone ``from_date`` fills
+    today's date for the missing ``to_date`` — the same defaulting
+    ``build_time_section`` applies — so an "everything since X" query
+    behaves identically across all four query paths.
 
     Args:
         from_date: Start date (YYYY-MM-DD) or ``None``.
@@ -146,6 +171,7 @@ def build_date_range(
         Date range dict. Structure varies by case:
 
         - Absolute: ``{"type": "between", "from_date": ..., "to_date": ...}``
+          (``to_date`` defaults to today when only ``from_date`` is set)
         - Relative: ``{"type": "in the last", "from_date": {"unit": "day", "value": N}, "to_date": "$now"}``
 
     Example:
@@ -156,11 +182,12 @@ def build_date_range(
         #  "to_date": "$now"}
         ```
     """
-    if from_date is not None and to_date is not None:
+    if from_date is not None:
+        effective_to = to_date if to_date is not None else date.today().isoformat()
         return {
             "type": "between",
             "from_date": from_date,
-            "to_date": to_date,
+            "to_date": effective_to,
         }
     return {
         "type": "in the last",
@@ -577,62 +604,206 @@ def _build_list_contains_entry(f: Filter) -> dict[str, Any]:
     }
 
 
-def build_flow_property_filter(
+def build_flow_where_entries(
     filters: list[Filter],
-) -> dict[str, Any]:
-    """Build the ``filter_by_event`` dict for flow bookmark params.
+) -> list[dict[str, Any]]:
+    """Build the flat ``where`` entry list for flow bookmark params.
 
-    Flows accept global property filters via a ``filter_by_event``
-    top-level key containing an ``operator`` (always ``"and"``) and
-    a ``children`` array of filter entries. Each child is produced
-    by :func:`build_filter_entry` with an added ``propertyName`` key.
+    The arb_funnels endpoint accepts global property filters as a flat
+    ``where`` list of ``{property, operator, value}`` dicts (a simpler
+    schema than the ``sections.filter`` entries used by insights /
+    funnels / retention). Filter kinds the flat format cannot express
+    are rejected at build time rather than silently corrupted:
+
+    - non-string properties (custom property refs) are not addressable
+      by name in the flat format
+    - ``list_contains`` carries nested sub-filters the flat format has
+      no key for
+    - relative-date operators carry a date unit the flat format has no
+      key for; an absolute date filter expresses the same intent
 
     Args:
         filters: List of property ``Filter`` objects. Must not be
-            empty — caller should check before calling.
+            empty — caller should check before calling. Error paths are
+            indexed relative to this list (``where[i]``).
 
     Returns:
-        Dict with ``operator`` and ``children`` keys suitable for
-        the ``filter_by_event`` bookmark key.
+        List of ``{property, operator[, value]}`` dicts suitable for
+        the ``where`` bookmark key. ``value`` is omitted for no-value
+        operators such as ``is set``.
+
+    Raises:
+        BookmarkValidationError: If a filter uses ``list_contains``, a
+            relative-date operator, or a non-string property (custom
+            property refs) — kinds the flat format cannot express. The
+            error carries an ``FL_WHERE_*`` code and a ``where[i]`` path.
+        RuntimeError: If ``filters`` is empty (caller misuse — the flow
+            path guards with ``if property_filters:``).
 
     Example:
         ```python
-        fbe = build_flow_property_filter([Filter.equals("country", "US")])
-        # {"operator": "and", "children": [
-        #   {"filterOperator": "equals", "filterType": "string",
-        #    "propertyName": "country", "filterValue": ["US"],
-        #    "resourceType": "events"}
-        # ]}
+        entries = build_flow_where_entries([Filter.equals("country", "US")])
+        # [{"property": "country", "operator": "equals", "value": ["US"]}]
         ```
     """
     if not filters:
-        raise ValueError(
-            "build_flow_property_filter requires at least one filter; "
+        raise RuntimeError(
+            "build_flow_where_entries requires at least one filter; "
             "caller should check before calling"
         )
-    children: list[dict[str, Any]] = []
-    for f in filters:
-        entry = build_filter_entry(f)
-        # Add propertyName — flow filters only support string property names
+    entries: list[dict[str, Any]] = []
+    for i, f in enumerate(filters):
         prop = f._property
-        if isinstance(prop, str):
-            entry["propertyName"] = prop
-        else:
-            raise TypeError(
-                f"build_flow_property_filter only supports string property "
-                f"filters; got {type(prop).__name__} — custom property refs "
-                f"are not supported in flow filters"
+        if not isinstance(prop, str):
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    f"flow where filters only support string "
+                    f"property names; got {type(prop).__name__} — "
+                    f"custom property refs are not supported in "
+                    f"flow filters"
+                ),
+                code="FL_WHERE_CUSTOM_PROPERTY_UNSUPPORTED",
             )
-        # Remove the "value" key since flow filters use propertyName instead
-        entry.pop("value", None)
-        # Remove defaultType — flow filters don't use it
-        entry.pop("defaultType", None)
-        children.append(entry)
+        if f._operator == "list_contains":
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    "flow where filters cannot express "
+                    "list_contains — the flat where format has "
+                    "no key for nested sub-filters"
+                ),
+                code="FL_WHERE_LIST_CONTAINS_UNSUPPORTED",
+            )
+        if f._operator in Filter._RELATIVE_DATE_OPS:
+            _reject(
+                path=f"where[{i}]",
+                message=(
+                    f"flow where filters cannot express the "
+                    f"relative-date operator '{f._operator}' — the "
+                    f"flat where format has no key for the date "
+                    f"unit. Use an absolute date filter instead "
+                    f"(Filter.date_between / Filter.before / "
+                    f"Filter.since)"
+                ),
+                code="FL_WHERE_RELATIVE_DATE_UNSUPPORTED",
+            )
+        entry: dict[str, Any] = {"property": prop, "operator": f._operator}
+        if f._value is not None:
+            entry["value"] = f._value
+        entries.append(entry)
+    return entries
 
-    return {
-        "operator": "and",
-        "children": children,
-    }
+
+def build_flow_segment_entries(
+    segments: Sequence[str | GroupBy | CohortBreakdown | FrequencyBreakdown],
+) -> list[dict[str, Any]]:
+    """Build the flat ``segment_by`` entry list for flow bookmark params.
+
+    The arb_funnels endpoint accepts breakdowns as a flat ``segment_by``
+    list of ``{property}`` dicts. Breakdown kinds the flat format cannot
+    express are rejected at build time — forwarding them produces an
+    HTTP 200 with silently empty results:
+
+    - ``CohortBreakdown`` / ``FrequencyBreakdown`` have no property
+      name; their group-section entries carry display labels instead
+    - ``GroupBy`` on a custom property ref has no name to send
+    - ``GroupBy`` numeric bucketing has no key in the flat format
+    - ``GroupBy.list_item`` sub-property breakdowns have no key in the
+      flat format (the group-section ``listItemGroup`` shape is
+      insights-only); sending just the list property would run a
+      different query
+
+    Args:
+        segments: List of segment specifications. Must not be empty —
+            caller should check before calling. Only plain property
+            name strings and ``GroupBy`` objects with string properties
+            and no bucketing are expressible. Error paths are indexed
+            relative to this list (``segments[i]``).
+
+    Returns:
+        List of ``{property}`` dicts suitable for the ``segment_by``
+        bookmark key.
+
+    Raises:
+        BookmarkValidationError: If a segment is a ``CohortBreakdown``
+            / ``FrequencyBreakdown``, a ``GroupBy`` on a custom
+            property ref, or a ``GroupBy`` with numeric bucketing —
+            kinds the flat format cannot express. The error carries an
+            ``FL_SEGMENT_*`` code and a ``segments[i]`` path.
+        RuntimeError: If ``segments`` is empty (caller misuse — the
+            flow path guards with ``if segments:``).
+
+    Example:
+        ```python
+        entries = build_flow_segment_entries(["country", GroupBy("city")])
+        # [{"property": "country"}, {"property": "city"}]
+        ```
+    """
+    if not segments:
+        raise RuntimeError(
+            "build_flow_segment_entries requires at least one segment; "
+            "caller should check before calling"
+        )
+    entries: list[dict[str, Any]] = []
+    for i, seg in enumerate(segments):
+        if isinstance(seg, str):
+            entries.append({"property": seg})
+            continue
+        if isinstance(seg, GroupBy):
+            prop = seg.property
+            if not isinstance(prop, str):
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        f"flow segments only support plain property "
+                        f"names; got a GroupBy on "
+                        f"{type(prop).__name__} — custom properties "
+                        f"are not supported in flow segment_by"
+                    ),
+                    code="FL_SEGMENT_CUSTOM_PROPERTY_UNSUPPORTED",
+                )
+            if (
+                seg.bucket_size is not None
+                or seg.bucket_min is not None
+                or seg.bucket_max is not None
+            ):
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        "flow segments cannot express numeric "
+                        "bucketing — the flat segment_by format has "
+                        "no key for bucket parameters. Use a plain "
+                        "GroupBy without buckets"
+                    ),
+                    code="FL_SEGMENT_BUCKETING_UNSUPPORTED",
+                )
+            if seg._list_item_mode is not None:
+                _reject(
+                    path=f"segments[{i}]",
+                    message=(
+                        "flow segments cannot express "
+                        "GroupBy.list_item sub-property breakdowns "
+                        "— the flat segment_by format has no key "
+                        "for the sub-property, and sending just "
+                        "the list property would run a different "
+                        "query. Use a plain property name instead"
+                    ),
+                    code="FL_SEGMENT_LIST_ITEM_UNSUPPORTED",
+                )
+            entries.append({"property": prop})
+            continue
+        _reject(
+            path=f"segments[{i}]",
+            message=(
+                f"flow segments do not support "
+                f"{type(seg).__name__} — the flat segment_by format "
+                f"only carries property names. Use a property name "
+                f"string or GroupBy instead"
+            ),
+            code="FL_SEGMENT_TYPE_UNSUPPORTED",
+        )
+    return entries
 
 
 def build_flow_cohort_filter(
@@ -655,8 +826,13 @@ def build_flow_cohort_filter(
         key, or ``None`` if ``where`` is empty.
 
     Raises:
-        ValueError: If any filter is not a cohort filter
-            (``_property != "$cohorts"``).
+        BookmarkValidationError: If more than one cohort filter is
+            provided (flows support a single cohort filter) — the one
+            user-reachable rejection, code ``FL_WHERE_MULTIPLE_COHORTS``.
+        RuntimeError: If a non-cohort filter reaches this builder (the
+            flow path splits cohort from property filters first), or a
+            cohort filter's ``_value`` structure is malformed — both
+            indicate library bugs, not bad user input.
 
     Example:
         ```python
@@ -670,37 +846,42 @@ def build_flow_cohort_filter(
 
     for f in filters:
         if f._property != "$cohorts":
-            raise ValueError(
+            raise RuntimeError(
                 "build_flow_cohort_filter only accepts cohort filters "
                 "(Filter.in_cohort/not_in_cohort); property filters should "
-                "use build_flow_property_filter instead"
+                "use build_flow_where_entries instead"
             )
 
     if len(filters) > 1:
-        raise ValueError(
-            f"query_flow supports a single cohort filter, but {len(filters)} "
-            "were provided. Pass only one Filter.in_cohort/not_in_cohort."
+        _reject(
+            path="where",
+            message=(
+                f"query_flow supports a single cohort filter, but "
+                f"{len(filters)} were provided. Pass only one "
+                f"Filter.in_cohort/not_in_cohort."
+            ),
+            code="FL_WHERE_MULTIPLE_COHORTS",
         )
 
     f = filters[0]
     # Extract from the _value structure: [{"cohort": {...}}]
     cohort_value = f._value
     if not isinstance(cohort_value, list) or len(cohort_value) == 0:
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value must be a non-empty list; "
             f"got {type(cohort_value).__name__}. This indicates a bug in "
             "Filter._build_cohort_filter."
         )
     first_item = cohort_value[0]
     if not isinstance(first_item, dict):
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value[0] is not a dict; "
             f"got {type(first_item).__name__}. This indicates a bug in "
             "Filter._build_cohort_filter."
         )
     cohort_data = first_item.get("cohort")
     if not isinstance(cohort_data, dict):
-        raise ValueError(
+        raise RuntimeError(
             "Internal error: cohort filter _value[0] is missing 'cohort' key; "
             f"got keys {list(first_item.keys())}. This indicates a bug in "
             "Filter._build_cohort_filter."

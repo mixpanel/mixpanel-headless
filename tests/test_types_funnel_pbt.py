@@ -32,6 +32,7 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.query_models import FunnelQuery
 from mixpanel_headless.types import (
     FunnelMathType,
     FunnelQueryResult,
@@ -580,7 +581,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """Output always has 'sections' and 'displayOptions' keys."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         assert "sections" in result
         assert "displayOptions" in result
 
@@ -590,7 +591,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """sections.show is always a non-empty list."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         show = result["sections"]["show"]
         assert isinstance(show, list)
         assert len(show) > 0
@@ -599,7 +600,7 @@ class TestBuildFunnelParamsProperties:
     def test_behavior_type_is_funnel(self, steps: list[str | FunnelStep]) -> None:
         """sections.show[0].behavior.type is always 'funnel'."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["type"] == "funnel"
 
@@ -612,7 +613,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """displayOptions.chartType maps correctly from mode parameter."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps, mode=mode)  # type: ignore[arg-type]
+        result = ws.build_funnel_params(FunnelQuery(steps=steps, mode=mode))
         expected_map = {
             "steps": "funnel-steps",
             "trends": "line",
@@ -626,7 +627,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """The number of behaviors equals the number of input steps."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert len(behaviors) == len(steps)
 
@@ -636,7 +637,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """Each behavior name matches the corresponding input step string."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         for behavior, step_name in zip(behaviors, steps, strict=True):
             assert behavior["name"] == step_name
@@ -650,7 +651,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """funnelOrder in the behavior block matches the order parameter."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps, order=order)  # type: ignore[arg-type]
+        result = ws.build_funnel_params(FunnelQuery(steps=steps, order=order))
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["funnelOrder"] == order
 
@@ -663,7 +664,9 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """conversionWindowDuration matches the conversion_window parameter."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps, conversion_window=window)
+        result = ws.build_funnel_params(
+            FunnelQuery(steps=steps, conversion_window=window)
+        )
         behavior = result["sections"]["show"][0]["behavior"]
         assert behavior["conversionWindowDuration"] == window
 
@@ -674,7 +677,7 @@ class TestBuildFunnelParamsProperties:
         """FunnelStep objects produce valid output with correct structure."""
         ws = _make_workspace()
         step_input: list[str | FunnelStep] = list(funnel_steps_list)
-        result = ws.build_funnel_params(step_input)
+        result = ws.build_funnel_params(FunnelQuery(steps=step_input))
         behaviors = result["sections"]["show"][0]["behavior"]["behaviors"]
         assert len(behaviors) == len(funnel_steps_list)
         for behavior, step in zip(behaviors, funnel_steps_list, strict=True):
@@ -684,7 +687,7 @@ class TestBuildFunnelParamsProperties:
     def test_output_is_json_serializable(self, steps: list[str | FunnelStep]) -> None:
         """build_funnel_params output is always JSON-serializable."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         json_str = json.dumps(result)
         assert isinstance(json_str, str)
         parsed = json.loads(json_str)
@@ -696,7 +699,7 @@ class TestBuildFunnelParamsProperties:
     ) -> None:
         """sections dict always contains show, time, filter, group, formula."""
         ws = _make_workspace()
-        result = ws.build_funnel_params(steps)
+        result = ws.build_funnel_params(FunnelQuery(steps=steps))
         sections = result["sections"]
         for key in ("show", "time", "filter", "group", "formula"):
             assert key in sections
