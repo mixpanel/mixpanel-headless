@@ -5,6 +5,20 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## 0.2.1 — 2026-08-13
+
+Patch release: workspace-scoped Query API correctness and fresh-install
+fixes.
+
+### Fixed
+
+- Query API requests now inject the pinned `workspace_id`, so data view
+  filters apply to segmentation/funnels/retention and other live queries
+  when a workspace is selected. (#199)
+- Declare the `click` dependency explicitly so fresh installs work, and
+  stop the plugin setup skill from executing `mp login` on the user's
+  behalf. (#200)
+
 ## 0.2.0 — 2026-06-05
 
 Headline feature: **session replay (044)** — discovery, signing, CDN fetch,
