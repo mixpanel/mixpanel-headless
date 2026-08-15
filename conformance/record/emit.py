@@ -1036,7 +1036,18 @@ def _wire_vector(
             if measured.iterator_items is not None
             else measured.result_encoded
         )
+    # GATE-VERDICT R2 (audit L3-F1): ``call.session`` encodes the session
+    # bound at the FIRST wire call of the vector, not the measured call's.
+    # Setup calls like ``use()`` mutate the client session; replay rebuilds
+    # the client in its PRE-setup state and re-executes the setup entries,
+    # so a pin-clearing ``use`` stays discriminating (the pinned-workspace
+    # precondition is preserved). With no setup calls the first wire call
+    # IS the measured call and the encoding is unchanged.
     session = measured.session
+    for call in wire_calls:
+        if call.index < measured.index and call.session is not None:
+            session = call.session
+            break
     resolved_token, token_exclusion = _resolved_session_token(
         capture, session, attributed
     )

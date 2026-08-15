@@ -512,6 +512,112 @@ def test_session_custom_headers_encoded() -> None:
     assert _encode_session(with_headers)["headers"] == {"X-Tenant": "acme"}
 
 
+def test_pre_setup_session_preserved_for_mutating_setup(tmp_path: Path) -> None:
+    """Wire vectors carry the FIRST wire call's bound session (R2).
+
+    Pin-lifecycle tests mutate the client session via a ``use`` setup
+    call before the measured call. ``call.session`` must encode the
+    session as bound at the first setup call (the pre-mutation state) so
+    replay rebuilds the pinned client and re-executes the ``use`` that
+    clears the pin — otherwise the vector is non-discriminating
+    (GATE-VERDICT recommendation R2 / audit finding L3-F1).
+
+    Raises:
+        AssertionError: If the measured call's post-mutation session is
+            emitted instead of the pre-setup session.
+    """
+    import json as jsonlib
+
+    from mixpanel_headless._internal.auth.session import WorkspaceRef
+
+    account = _make_session().account
+    pinned = Session(
+        account=account,
+        project=Project(id="12345"),
+        workspace=WorkspaceRef(id=777),
+    )
+    cleared = Session(account=account, project=Project(id="99999"))
+    setup_call = EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["api_client.use"],
+        input_encoded={"project": "99999"},
+        session=pinned,
+        workspace_session=None,
+        returned=True,
+    )
+    measured_call = EntryCallCapture(
+        index=1,
+        entry=REGISTRY_BY_API["api_client.get_events"],
+        input_encoded={},
+        session=cleared,
+        workspace_session=None,
+        result_encoded=[],
+        returned=True,
+    )
+    capture = CapturedTest(
+        nodeid="tests/unit/test_fake.py::test_pin_clear",
+        entry_calls=[setup_call, measured_call],
+    )
+    capture.interactions.append(
+        RecordedInteraction(
+            seq=0,
+            request=RecordedRequest(
+                method="GET",
+                scheme_host="https://mixpanel.com",
+                path="/api/query/events/names",
+                params={"project_id": "99999", "type": "general"},
+                headers={
+                    "authorization": "Basic dGVzdF91c2VyOnRlc3Rfc2VjcmV0",
+                },
+                content=b"",
+            ),
+            response=RecordedResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                body_bytes=b"[]",
+            ),
+            span_index=1,
+            is_async=False,
+        )
+    )
+    summary = emit_corpus([capture], [capture.nodeid], _options(tmp_path))
+
+    assert summary.total_vectors == 1
+    bundles = sorted(tmp_path.rglob("test_fake.jsonl"))
+    assert len(bundles) == 1
+    lines = [jsonlib.loads(line) for line in bundles[0].read_text().splitlines()]
+    vector = next(line for line in lines if "$bundle" not in line)
+    assert vector["call"]["setup"] == [
+        {"api": "api_client.use", "input": {"project": "99999"}}
+    ]
+    session_obj = vector["call"]["session"]
+    assert session_obj["project_id"] == "12345"
+    assert session_obj["workspace_id"] == 777
+
+
+def test_wire_session_without_setup_stays_measured(tmp_path: Path) -> None:
+    """Setup-free wire vectors keep encoding the measured call's session.
+
+    The R2 pre-setup rule only applies when earlier wire calls exist;
+    single-call captures must be byte-identical to the pre-R2 encoding.
+
+    Raises:
+        AssertionError: If the measured call's session is not emitted.
+    """
+    import json as jsonlib
+
+    capture = _wire_capture("tests/unit/test_fake.py::test_plain_wire")
+    summary = emit_corpus([capture], [capture.nodeid], _options(tmp_path))
+
+    assert summary.total_vectors == 1
+    bundles = sorted(tmp_path.rglob("test_fake.jsonl"))
+    lines = [jsonlib.loads(line) for line in bundles[0].read_text().splitlines()]
+    vector = next(line for line in lines if "$bundle" not in line)
+    assert "setup" not in vector["call"]
+    assert vector["call"]["session"]["project_id"] == "12345"
+    assert "workspace_id" not in vector["call"]["session"]
+
+
 def test_callback_calls_emitted_on_wire_vector(tmp_path: Path) -> None:
     """Non-empty callback logs become ``expect.callback_calls`` (D4.4).
 
