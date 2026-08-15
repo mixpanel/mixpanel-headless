@@ -126,7 +126,7 @@ file stay in B8).
 Call sites: every B4 method (183 `api_client.*` entry points), `pagination.paginate`
 (B4), streaming (B4), all entity clients (B6 delegations).
 
-**B2 — validators** · sonnet. Modules: `_internal/validation.py` (3,090) +
+**B2 — validators** · opus. Modules: `_internal/validation.py` (3,090) +
 `_internal/query/user_validators.py` (580) → `packages/core/src/query/{validation,user-validators}.ts`
 (+ finish the `bookmarks/enums.ts` `TODO(port)` module-privates `_MAX_FUNNEL_STEPS`/
 `_MAX_HOLDING_CONSTANT` — owner per phase2-audit A7). Also ports the deferred export
@@ -176,7 +176,7 @@ mock responses; R6.1 (MAX_PAGES=10000, per-paginator 429 retry ×3), R6.6 (item-
 `api_client` delegate — the packet for each B4 shard carries the api-map rows of the B5/B6
 members that consume that shard's methods.
 
-**B5 — services + rrweb + facade (query half)** · sonnet. Modules:
+**B5 — services + rrweb + facade (query half)** · opus. Modules:
 `_internal/services/discovery.py` (920), `live_query.py` (2,042), `replays.py` (971),
 `_internal/replays/rrweb_analyzer.py` (969), `aggregators.py` (172), `replay_labels.py`
 (145), `_internal/response_validation.py` (103), + `workspace.py` **B5-member methods
@@ -196,7 +196,7 @@ replays CDN walker keeps parallel fetch + 404 sentinel, concurrency identical to
 Call-site packet: B6 facade members that reuse service internals; `Replay*` result classes
 (already B1) consumed per api-map Session Replay rows.
 
-**B6 — workspace facade (remaining 158 members)** · sonnet. Module: `workspace.py`
+**B6 — workspace facade (remaining 158 members)** · opus. Module: `workspace.py`
 (11,292 total; the CRUD/entity-management remainder) → `packages/core/src/workspace.ts` +
 entity-client factories `create<Entity>Client({transport, getScope})` (R2.9) in
 `packages/core/src/services/entities/*`. Vectors: 353 (gate delta 354 — the carried
@@ -348,11 +348,11 @@ model is forbidden, R10.13):
 | Task | Model | Effort |
 |---|---|---|
 | B0 all packets (compat + client internals) | **fable** | ≤ high |
-| B2 module tasks + their Layer-3 translations | **sonnet** | ≤ high |
+| B2 module tasks + their Layer-3 translations | **opus** | ≤ high |
 | B3 module tasks + their Layer-3 translations | **opus** | ≤ high |
 | B4 module tasks + their Layer-3 translations | **fable** | ≤ high |
-| B5 module tasks + their Layer-3 translations | **sonnet** | ≤ high |
-| B6 module tasks + their Layer-3 translations | **sonnet** | ≤ high |
+| B5 module tasks + their Layer-3 translations | **opus** | ≤ high |
+| B6 module tasks + their Layer-3 translations | **opus** | ≤ high |
 | B7 / B8 / B9 module tasks | **fable** | ≤ high |
 | Design-lite packet authoring (per batch, P3-6 step 1) | **fable** | ≤ high |
 | Adversarial review pair, arbiter, batch gates, audits, failure triage | **fable** | ≤ high |
@@ -360,7 +360,7 @@ model is forbidden, R10.13):
 | ANYTHING touching the conformance rig (bindings.ts, batch-status.ts, runner, codecs, oracles, recorder, canonicalizers, referees) | **fable** | ≤ high |
 | R10.9 throwaway differential harness runs | same tier as the module task (policy rule 3: the harness itself is unchanged and tier-independent; a rig CHANGE escalates to fable per the row above) | ≤ high |
 
-**Escalation rule** (policy rule 2): a volume-tier (sonnet/opus) task that misses its
+**Escalation rule** (policy rule 2): a volume-tier (opus) task that misses its
 done-criteria on attempt 1 retries **once on fable**, with the attempt-1 failure context
 (what failed, which vectors/tests, reviewer findings) prepended to the packet. Two failures
 abort the chain per the standing contract — orchestrator stops the batch and escalates to
@@ -374,7 +374,7 @@ there is still no cross-language fuzz surface for auth; compensating controls ar
 Layer-3 translation of every auth test file listed in P3-1 and the Phase-4 live-suite auth
 scenarios.
 
-Sonnet intro pricing note (policy rule 5): expires 2026-08-31; assignments unchanged after.
+TIERING REVISION 2026-08-15 (user directive): Sonnet removed from the program — its harness alias resolved to Sonnet 4.5 on this deployment. Volume tier is Opus 5 (alias pinned to claude-opus-5 via ANTHROPIC_DEFAULT_OPUS_MODEL in .claude/settings.local.json; probe-verified). Two tiers only: fable + opus.
 
 ## P3-4 B0 task packets (IN FULL — the next workflow executes these verbatim)
 
@@ -679,7 +679,7 @@ state + R10.13 protocol + their P3-3 model assignment stated explicitly):
 3. **Binding task per module — fable, volume-tier batches only (B2/B3/B5/B6)**: P3-2
    step (b′) — registers the module's api names in `bindings.ts`/oracle-ts, applies the
    P3-5 rule-3 honesty check, runs the module's vectors to green. Rig code never runs at
-   sonnet/opus (P3-3 rig row; tiering policy "the judge must be stronger than the
+   opus (P3-3 rig row; tiering policy "the judge must be stronger than the
    judged"). Vector failures found here are the MODULE task's attempt-1 failure for
    escalation purposes. After (b′) lands, the module tier runs P3-2 step (c) (the R10.9
    harness — same tier as the module per policy rule 3; a fresh module-tier task if the
@@ -701,7 +701,7 @@ stop-amend-regenerate.
 **B0**: 2 packets (P3-4). **B9**: 2 tasks (CredentialStore + PKCE redirect flow; DCR
 verification folded into the second).
 
-**B2** (3 tasks, sonnet): V1a `validation.py` query-args half; V1b `validation.py`
+**B2** (3 tasks, opus): V1a `validation.py` query-args half; V1b `validation.py`
 bookmark half + `validate_bookmark` export + `bookmarks/enums.ts` TODO closure; V2
 `user_validators.py`. Split V1a/V1b along the file's function families; the design-lite
 packet fixes the exact function lists.
@@ -732,14 +732,14 @@ at B0, listed as B0-owned in the assignment) — and the gate task verifies the
 assignment covers all 183 (mechanical diff against
 `jq -r 'keys[]|select(startswith("api_client."))' corpus/api-index.json`).
 
-**B5** (3 tasks, sonnet): S1 DiscoveryService + lexicon schemas + schema graph + the 12
+**B5** (3 tasks, opus): S1 DiscoveryService + lexicon schemas + schema graph + the 12
 discovery/lexicon facade members; S2 LiveQueryService + `response_validation` + the 22
 query facade members incl. the five `build_*params` (426 builder vectors — the volume
 center of the batch); S3 ReplaysService + rrweb analyzer + aggregators + replay_labels +
 the 10 Session Replay members. S2 creates `workspace.ts` (class skeleton + B5 members);
 S1/S3 extend it — run S2 first or accept a merge point in the packet.
 
-**B6** (8 tasks, sonnet — 158 members by api-map section groups; counts measured from the
+**B6** (8 tasks, opus — 158 members by api-map section groups; counts measured from the
 api-map JSON): W1 Lifecycle & construction 6 + workspace management 2 + /me & project
 discovery 3 + business context 4 = **15**; W2 Dashboard CRUD 6 + dashboard advanced 16 =
 **22**; W3 Bookmark/report CRUD 9 + cohort CRUD 7 = **16**; W4 Feature flags 11 +
@@ -792,7 +792,7 @@ injected interfaces that B8 implements).
 |---|---|---|
 | 1 | **B4 decomposition drift**: splitting the 8.9k-LOC client across 6 shards invites re-implemented internals (the exact failure R10.8 exists to stop) | B0 lands first and exports by name; review checklist item: grep shards for local reimplementations of `_handle_response`/backoff/URL building; gate diff verifies all 183 api-index names bound exactly once |
 | 2 | **Binding dishonesty**: bindings that re-implement the transform or assemble requests themselves would pass vectors while the library diverges (ScanCode mode) | P3-5 rule 3 (ALL bindings, pure/builder included); arbiter check per module; bindings are rig code = fable-only, enforced structurally by the P3-2 (b′) fable binding task for volume-tier batches |
-| 3 | **Sonnet-tier assertion weakening at B6 volume** (158 members, 16 test files) | Fable review pair with mandatory R10.2 diff per file; escalation rule; delegation-equivalence PBT is tier-independent |
+| 3 | **Volume-tier assertion weakening at B6 volume** (158 members, 16 test files) | Fable review pair with mandatory R10.2 diff per file; escalation rule; delegation-equivalence PBT is tier-independent |
 | 4 | **429/backoff nondeterminism** breaking vector replay or flaky Layer-3 timing tests | Injected `sleep`/`random`/`now` seams (P3-5 §2); Layer-3 uses Vitest fake timers; no real timers anywhere in tests |
 | 5 | **Unicode-DB skew** (V8 Unicode 17 vs pinned CPython 16 tables) in the new digit/whitespace tables | Pinned generated tables + caveat headers + regeneration scripts (TS-2 precedent); oracle fuzz biases the affected ranges |
 | 6 | **Facade-growth merge conflicts** (`workspace.ts` touched by S1–S3 then W1–W7) | S2 creates the skeleton first; B6 shards each own disjoint member blocks; gate task is the single integrator |

@@ -1,7 +1,7 @@
 # B2 design-lite packets — validators (P3-6 step 1)
 
 **Status**: v1.0 · 2026-08-15 · fable design-lite packet for batch B2 (playbook P3-6 step 1,
-sharding per P3-6 "B2 (3 tasks, sonnet)"). Location note: the orchestrator task names
+sharding per P3-6 "B2 (3 tasks, opus)"). Location note: the orchestrator task names
 `context/phase3/design/b2-packets.md`; the playbook's generic path is
 `context/phase3/packets/BX-packets.md` — this file is the packet of record for B2.
 Every count below was measured 2026-08-15 against corpus pin `b5c1369`
@@ -11,9 +11,9 @@ Every count below was measured 2026-08-15 against corpus pin `b5c1369`
 
 | Shard | Task | Scope | Vectors |
 |---|---|---|---|
-| V1a | sonnet | `validation.py` argument-validator half (Layer 1 + shared helpers) | **372** |
-| V1b | sonnet | `validation.py` bookmark half (Layer 2) + sorting slice + `validate_bookmark` export + `enums.ts` TODO closure | **140** |
-| V2 | sonnet | `query/user_validators.py` | **178** |
+| V1a | opus | `validation.py` argument-validator half (Layer 1 + shared helpers) | **372** |
+| V1b | opus | `validation.py` bookmark half (Layer 2) + sorting slice + `validate_bookmark` export + `enums.ts` TODO closure | **140** |
+| V2 | opus | `query/user_validators.py` | **178** |
 | (b′) | fable | binding + oracle-ts registration for all three shards | — |
 | Σ | | | **690** |
 
@@ -58,7 +58,7 @@ specified in §Binding-plan below.
 
 ## Packet V1a — argument validators (Layer 1)
 
-**Model**: sonnet, effort ≤ high, R10.13 incremental protocol. **Vectors: 372.**
+**Model**: opus, effort ≤ high, R10.13 incremental protocol. **Vectors: 372.**
 
 ### Python sources (re-read every range before porting; line numbers at support-branch HEAD)
 
@@ -268,7 +268,7 @@ without a flip); R10.9 RUN record in the notes file; `npm run check` green;
 
 ## Packet V1b — bookmark validators (Layer 2) + sorting slice
 
-**Model**: sonnet, effort ≤ high. **Vectors: 140** (110 `validate_bookmark` + 30
+**Model**: opus, effort ≤ high. **Vectors: 140** (110 `validate_bookmark` + 30
 `validate_flow_bookmark` + 0 `validate_sorting_block`). Runs AFTER V1a (imports
 `validation-shared.ts` helpers `_enum_error`/`_suggest`/`_is_finite`/
 `contains_control_chars` and extends the `validation.ts` barrel).
@@ -413,7 +413,7 @@ check` green; `just check` green (strategies additions); commits.
 
 ## Packet V2 — user validators
 
-**Model**: sonnet, effort ≤ high. **Vectors: 178** (143 `validate_user_args` + 35
+**Model**: opus, effort ≤ high. **Vectors: 178** (143 `validate_user_args` + 35
 `validate_user_params`). May run in parallel with V1a/V1b (disjoint files).
 
 ### Python sources

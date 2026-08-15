@@ -307,7 +307,7 @@ standalone library (no singletons — the library is multi-instance by design):
   the selector as a string literal. Builders emitting new-format filter clauses must emit
   native JSON numbers; vectors lock this per clause type.
 - R10.14 `[SA2]` **Model tiering (Phase 3+).** Workflow agents run on fixed per-batch model
-  tiers: volume translation batches on the cheap/mid tiers (B2/B5/B6 sonnet, B3 opus) while
+  tiers: volume translation batches on the cheap/mid tiers (B2/B3/B5/B6 opus — Sonnet removed per user directive 2026-08-15) while
   B0/B4/B7/B8/B9 and everything auth- or client-critical stays on the strongest tier. Design,
   adversarial review, arbitration, audits, gate verdicts, failure triage, and any work
   touching the conformance rig itself NEVER leave the strongest tier. A volume-tier task that
