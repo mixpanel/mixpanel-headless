@@ -36,14 +36,27 @@ Notes:
 
 `exclusions.args` holds extra pytest selector arguments appended to the
 record invocation (word-split via `$(cat ...)` by both the CI drift step and
-`just conformance-record`). It is INTENTIONALLY EMPTY: every D10 exclusion
-besides `-m "not live"` is detected at runtime by the plugin (Hypothesis via
+`just conformance-record`). Since P2-1 it carries exactly one entry:
+
+- `conformance/tests/test_coverage_cases.py` — the Phase-2 recorder-coverage
+  closure cases (phase2-design C10, Discrepancy Log #10). The five
+  previously-uncovered `types.*` guard seams (`FunnelStep`,
+  `RetentionEvent`, `CohortCriteria.did_not_do_event` /
+  `property_is_set` / `property_is_not_set`) need guard-failure calls to
+  record, and `tests/` is frozen during Phase 2 (support-branch rule:
+  `conformance/`-only changes), so the recordable cases live under
+  `conformance/tests/` and join the record run through this file — an
+  INCLUSION selector, not an exclusion. The same file also runs in the
+  normal `just conformance` job.
+
+No D10 *exclusion* selectors live here: every exclusion besides
+`-m "not live"` is detected at runtime by the plugin (Hypothesis via
 `hasattr(item.obj, "hypothesis")`, CLI via `CliRunner.invoke` observation,
 `destructive` via marker, the rest per-capture at emit time), which keeps
 the corpus denominator honest without brittle `-k` selectors (see
-`EXTRACTION-LEDGER.md`). Add selectors here only if a future exclusion
-cannot be runtime-detected; the file must stay shell-word-safe (no comments,
-no quotes needing evaluation).
+`EXTRACTION-LEDGER.md`). Add exclusion selectors here only if a future
+exclusion cannot be runtime-detected; the file must stay shell-word-safe
+(no comments, no quotes needing evaluation).
 
 ## Drift check (D8)
 

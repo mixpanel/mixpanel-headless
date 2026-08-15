@@ -379,6 +379,12 @@ _CODED_GUARD_TARGETS: tuple[tuple[str, str, str], ...] = (
     ("types.FrequencyFilter", "FrequencyFilter.__init__", "bookmarks"),
     ("types.Exclusion", "Exclusion.__init__", "funnels"),
     ("types.HoldingConstant", "HoldingConstant.__init__", "funnels"),
+    # P2-1 coverage closure (phase2-design C10 / Discrepancy Log #10):
+    # FunnelStep and RetentionEvent carry real ``__post_init__`` guards
+    # (``_validate_event_name`` -> EV1/EV2) but were absent from this
+    # table, so their coded raises were invisible to the recorder.
+    ("types.FunnelStep", "FunnelStep.__init__", "funnels"),
+    ("types.RetentionEvent", "RetentionEvent.__init__", "retention"),
     ("types.FlowStep", "FlowStep.__init__", "flows"),
     ("types.CohortCriteria.did_event", "CohortCriteria.did_event", "cohorts"),
     (
@@ -387,6 +393,20 @@ _CODED_GUARD_TARGETS: tuple[tuple[str, str, str], ...] = (
         "cohorts",
     ),
     ("types.CohortCriteria.has_property", "CohortCriteria.has_property", "cohorts"),
+    # P2-1 coverage closure: public factories that delegate to
+    # ``has_property`` (CD7 guard) but were unregistered, so their coded
+    # raises recorded under the inner ``has_property`` seam instead of
+    # their own ``call.api`` names.
+    (
+        "types.CohortCriteria.property_is_set",
+        "CohortCriteria.property_is_set",
+        "cohorts",
+    ),
+    (
+        "types.CohortCriteria.property_is_not_set",
+        "CohortCriteria.property_is_not_set",
+        "cohorts",
+    ),
     ("types.CohortCriteria.in_cohort", "CohortCriteria.in_cohort", "cohorts"),
     ("types.CohortCriteria.not_in_cohort", "CohortCriteria.not_in_cohort", "cohorts"),
     ("types.CohortDefinition", "CohortDefinition.__init__", "cohorts"),
