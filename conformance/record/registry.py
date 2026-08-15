@@ -208,6 +208,27 @@ def _module_builder_entries() -> tuple[RegistryEntry, ...]:
             kind=KIND_BUILDER,
             capability="filters",
         ),
+        # Coding-pass B2 (design §4) — previously-unregistered guard seams:
+        # their BB1-BB8 coded raises were invisible to the recorder. Plain
+        # builder entries (NOT error_only): success outputs are recordable.
+        RegistryEntry(
+            api="bookmark_builders.build_group_section",
+            target=f"{_BUILDERS_MODULE}:build_group_section",
+            kind=KIND_BUILDER,
+            capability="bookmarks",
+        ),
+        RegistryEntry(
+            api="bookmark_builders.build_flow_property_filter",
+            target=f"{_BUILDERS_MODULE}:build_flow_property_filter",
+            kind=KIND_BUILDER,
+            capability="filters",
+        ),
+        RegistryEntry(
+            api="bookmark_builders.build_flow_cohort_filter",
+            target=f"{_BUILDERS_MODULE}:build_flow_cohort_filter",
+            kind=KIND_BUILDER,
+            capability="filters",
+        ),
         # D4.2 item 1 — segmentation-expression dialect.
         RegistryEntry(
             api="segfilter.build_segfilter_entry",

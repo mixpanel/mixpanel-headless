@@ -331,3 +331,32 @@ def test_coded_guard_entries_registered_and_resolvable() -> None:
         assert entry.kind == KIND_BUILDER, api
         owner, attr = resolve_owner(entry)
         assert hasattr(owner, attr), api
+
+
+def test_b2_flow_builder_entries_registered_and_resolvable() -> None:
+    """The B2 bookmark_builders guard seams are registered plain builders.
+
+    Coding-pass design §4 B2: ``build_group_section``,
+    ``build_flow_property_filter``, and ``build_flow_cohort_filter`` carry
+    coded guards (BB1-BB8) but were previously unregistered, leaving those
+    guards invisible to the recorder. They register as ordinary (NOT
+    error_only) builder entries — their success outputs are recordable.
+
+    Raises:
+        AssertionError: If an entry is missing, mis-kinded, flagged
+            error_only, or unresolvable.
+    """
+    expected = (
+        "bookmark_builders.build_group_section",
+        "bookmark_builders.build_flow_property_filter",
+        "bookmark_builders.build_flow_cohort_filter",
+    )
+    for api in expected:
+        entry = REGISTRY_BY_API.get(api)
+        assert entry is not None, api
+        assert entry.kind == KIND_BUILDER, api
+        assert entry.error_only is False, api
+        assert entry.capability, api
+        owner, attr = resolve_owner(entry)
+        assert hasattr(owner, attr), api
+        assert callable(resolve_callable(entry)), api
