@@ -55,6 +55,7 @@ from conformance.record.codecs import (
     UnencodableValueError,
     encode_expect_value,
     encode_input_kwargs,
+    encode_output,
 )
 from conformance.record.registry import (
     KIND_BUILDER,
@@ -605,6 +606,18 @@ class RecordSession:
             if not self._is_client_like(value)
         }
         if (
+            is_method
+            and instance is not None
+            and entry.kind in (KIND_BUILDER, KIND_VALIDATOR)
+            and not self._is_client_like(instance)
+        ):
+            # Method-on-value entries (types.CohortDefinition.to_dict): the
+            # receiver IS the input — encoded under its parameter name so
+            # the runner can decode it via the $type table and re-invoke
+            # (design D4.2 item 8). Client/facade receivers are rebuilt
+            # from call.session instead (design D7).
+            arguments = {"self": instance, **arguments}
+        if (
             excluded is None
             and not is_method
             and entry.kind in (KIND_BUILDER, KIND_VALIDATOR)
@@ -755,6 +768,10 @@ class RecordSession:
     def _record_result(self, call: EntryCallCapture, result: Any) -> None:
         """Encode a completed call's return value (design D1.2).
 
+        Dispatches through the entry's ``output_codec`` (design D4.4) so
+        validator returns serialize structurally per design D4.3 and
+        model-class returns become name strings (D4.2 item 7).
+
         Args:
             call: The entry call that returned.
             result: The raw return value.
@@ -763,7 +780,7 @@ class RecordSession:
         if call.excluded_reason is not None:
             return
         try:
-            call.result_encoded = encode_expect_value(result)
+            call.result_encoded = encode_output(call.entry.output_codec, result)
         except UnencodableValueError:
             call.excluded_reason = "unserializable_input"
 

@@ -1,21 +1,37 @@
-"""Minimal value codecs for record mode (design D4.4 — PR-2 generic subset).
+"""Value codecs for record mode and replay (design D4.4 full ``$type`` table).
 
-PR-3 owns the full per-type ``$type`` codec table (Filter, FunnelStep,
-RetentionEvent, ...). This module ships the GENERIC encoders the PR-2 pilot
-needs:
+One codec table, two directions:
 
-- ``call.input`` values: JSON natives pass through; ``datetime``/``date``,
-  ``SecretStr``, ``bytes``, Pydantic models, dataclasses, and callables are
-  ``$type``-tagged per the vector-schema ``taggedValue`` convention.
-- ``expect.result``/``expect.output`` values: same, except Pydantic models
-  and dataclasses serialize to their plain to-dict shape (schema ``result``
+- **Encode** (record time / oracle requests): ``call.input`` values pass
+  JSON natives through; ``datetime``/``date``, ``SecretStr``, ``bytes``,
+  Pydantic models, dataclasses, and callables are ``$type``-tagged per the
+  vector-schema ``taggedValue`` convention. ``expect.result`` /
+  ``expect.output`` values are the same, except Pydantic models and
+  dataclasses serialize to their plain to-dict shape (schema ``result``
   comment) while ``datetime`` and ``bytes`` stay ``$type``-tagged (design
   D4.2 item 4 / D6 rule 11).
+- **Decode** (Python corpus runner, design D7; oracle-py, design D14):
+  ``$type``-tagged objects reconstruct the original rich values through the
+  :data:`DATACLASS_CODECS` table — the design D4.4 set (``Filter``,
+  ``FunnelStep``, ``RetentionEvent``, ``FlowStep``, ``Metric``,
+  ``CohortMetric``, ``Formula``, ``GroupBy``, ``CohortBreakdown``,
+  ``FrequencyBreakdown``, ``FrequencyFilter``, ``TimeComparison``,
+  ``CohortDefinition``, ``UserAction``) plus the nested types those carry
+  (``CohortCriteria``, ``CustomPropertyRef``, ``InlineCustomProperty``,
+  ``PropertyInput``) and the non-dataclass codecs (``datetime``, ``date``,
+  ``SecretStr``, ``bytes``, ``callback`` — replayed as a
+  :class:`RecordingCallback` stub whose call log is diffed against
+  ``expect.callback_calls``).
+
+Registry entries additionally name an OUTPUT codec (design D4.4);
+:func:`encode_output` dispatches it (``json`` / ``validation_errors`` per
+D4.3 / ``model_name`` per D4.2 item 7 / ``selector_str``).
 
 Anything unencodable raises :class:`UnencodableValueError`, which the plugin
 maps to the manifest ``unserializable_input`` bucket (design D10) — never a
 silent drop. Lone surrogates and non-finite floats are rejected here at
-record time per design D6 rules 2 and 5.
+record time per design D6 rules 2 and 5. Decode failures raise
+:class:`UndecodableValueError` (a runner/vector bug — always loud).
 """
 
 from __future__ import annotations
@@ -23,10 +39,12 @@ from __future__ import annotations
 import base64
 import dataclasses
 import datetime as _dt
+import functools
 import math
+import types as _types
 from collections.abc import Mapping, Sequence
 from enum import Enum
-from typing import Any
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel, SecretStr
 
@@ -41,6 +59,57 @@ class UnencodableValueError(Exception):
     ``unserializable_input`` category (design D10) instead of emitting a
     vector.
     """
+
+
+class UndecodableValueError(Exception):
+    """Raised when a vector value cannot be decoded back to Python.
+
+    Unlike :class:`UnencodableValueError` this is never an exclusion
+    bucket: a committed vector that fails decode is a codec-table or
+    vector bug and must fail the replay run loudly (design D7).
+    """
+
+
+class RecordingCallback:
+    """Replay stub injected for ``$type: callback`` kwargs (design D4.4).
+
+    Both runners inject one of these per callback-tagged kwarg; the stub's
+    call log (positional args, canonicalized via the expect encoder) is
+    diffed against ``expect.callback_calls[<kwarg>]``.
+
+    Attributes:
+        name: The kwarg name the stub replaces (from the tagged object).
+        calls: Ordered list of encoded positional-argument lists.
+
+    Example:
+        ```python
+        stub = RecordingCallback("on_batch")
+        stub([{"event": "Login"}])
+        stub.calls
+        # [[[{"event": "Login"}]]]
+        ```
+    """
+
+    def __init__(self, name: str) -> None:
+        """Create an empty recording stub.
+
+        Args:
+            name: The kwarg name this stub stands in for.
+        """
+        self.name = name
+        self.calls: list[list[Any]] = []
+
+    def __call__(self, *args: Any) -> None:
+        """Record one invocation's positional arguments, encoded.
+
+        Args:
+            *args: The positional arguments the library passed.
+
+        Raises:
+            UnencodableValueError: If an argument has no codec (the design
+                D4.4 ``unserializable_input`` backstop — none known today).
+        """
+        self.calls.append([encode_expect_value(arg) for arg in args])
 
 
 def _reject_bad_string(value: str) -> str:
@@ -251,3 +320,316 @@ def encode_expect_value(value: object) -> Any:
         UnencodableValueError: If the value has no codec.
     """
     return _encode_common(value, 0, tagged_models=False)
+
+
+# ---------------------------------------------------------------------------
+# Decode side — the design D4.4 $type table (runner/oracle consumers)
+# ---------------------------------------------------------------------------
+
+
+@functools.cache
+def _dataclass_codecs() -> Mapping[str, type]:
+    """Build the ``$type`` name -> dataclass table (design D4.4).
+
+    Imported lazily (and cached) so merely importing this module stays
+    cheap; the table is the D4.4 set plus the nested types those
+    dataclasses carry in their fields.
+
+    Returns:
+        Mapping from tag name to the frozen dataclass it reconstructs.
+    """
+    from mixpanel_headless import types as mp_types
+
+    names = (
+        "Filter",
+        "FunnelStep",
+        "RetentionEvent",
+        "FlowStep",
+        "Metric",
+        "CohortMetric",
+        "Formula",
+        "GroupBy",
+        "CohortBreakdown",
+        "FrequencyBreakdown",
+        "FrequencyFilter",
+        "TimeComparison",
+        "UserAction",
+        # Nested types reachable from the D4.4 set's fields:
+        "CohortCriteria",
+        "CustomPropertyRef",
+        "InlineCustomProperty",
+        "PropertyInput",
+    )
+    return {name: getattr(mp_types, name) for name in names}
+
+
+@functools.cache
+def _tuple_fields(cls: type) -> frozenset[str]:
+    """Return the field names of ``cls`` annotated as tuples (possibly optional).
+
+    Vector JSON has no tuple type; decoded lists must be coerced back to
+    tuples where the dataclass declares one (``Filter._list_item_filters``)
+    or reconstructed instances would compare unequal to the originals.
+
+    Args:
+        cls: A dataclass from the codec table.
+
+    Returns:
+        Names of fields whose annotation is ``tuple[...]`` or a union
+        containing one.
+    """
+
+    def is_tuple_hint(hint: Any) -> bool:
+        """Return whether ``hint`` is (or contains) a tuple annotation.
+
+        Args:
+            hint: A resolved type annotation.
+
+        Returns:
+            True for ``tuple[...]`` and unions with a tuple member.
+        """
+        origin = get_origin(hint)
+        if origin is tuple:
+            return True
+        if origin in (Union, _types.UnionType):
+            return any(is_tuple_hint(arg) for arg in get_args(hint))
+        return False
+
+    hints = get_type_hints(cls)
+    return frozenset(
+        field.name
+        for field in dataclasses.fields(cls)
+        if is_tuple_hint(hints.get(field.name))
+    )
+
+
+def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
+    """Reconstruct a frozen dataclass from its tagged-object fields.
+
+    Args:
+        cls: The dataclass named by the payload's ``$type``.
+        payload: The tagged object (``$type`` plus field values).
+
+    Returns:
+        A new ``cls`` instance equal to the encoded original.
+
+    Raises:
+        UndecodableValueError: If the payload carries unknown fields or the
+            constructor rejects the decoded values.
+    """
+    field_names = {field.name for field in dataclasses.fields(cls)}
+    extra = set(payload) - field_names - {"$type"}
+    if extra:
+        raise UndecodableValueError(
+            f"unknown fields {sorted(extra)} for $type {cls.__name__}"
+        )
+    tuple_fields = _tuple_fields(cls)
+    kwargs: dict[str, Any] = {}
+    for name in field_names & set(payload):
+        decoded = decode_value(payload[name])
+        if name in tuple_fields and isinstance(decoded, list):
+            decoded = tuple(decoded)
+        kwargs[name] = decoded
+    try:
+        return cls(**kwargs)
+    except Exception as exc:
+        raise UndecodableValueError(
+            f"could not reconstruct {cls.__name__} from vector fields: {exc}"
+        ) from exc
+
+
+def _decode_cohort_definition(payload: Mapping[str, Any]) -> Any:
+    """Reconstruct a ``CohortDefinition`` (``init=False`` — design D4.4).
+
+    ``CohortDefinition`` hides its fields behind ``all_of``/``any_of``
+    classmethods, so the generic dataclass path cannot rebuild it.
+
+    Args:
+        payload: The tagged object with ``_criteria`` and ``_operator``.
+
+    Returns:
+        The reconstructed ``CohortDefinition``.
+
+    Raises:
+        UndecodableValueError: If the operator is unknown or the criteria
+            list is empty/invalid.
+    """
+    from mixpanel_headless.types import CohortDefinition
+
+    criteria = [decode_value(item) for item in payload.get("_criteria", [])]
+    operator = payload.get("_operator")
+    try:
+        if operator == "or":
+            return CohortDefinition.any_of(*criteria)
+        if operator == "and":
+            return CohortDefinition.all_of(*criteria)
+    except Exception as exc:
+        raise UndecodableValueError(
+            f"could not reconstruct CohortDefinition: {exc}"
+        ) from exc
+    raise UndecodableValueError(
+        f"unknown CohortDefinition operator {operator!r} in vector input"
+    )
+
+
+def _decode_tagged(payload: Mapping[str, Any]) -> Any:
+    """Decode one ``$type``-tagged object (design D4.4 table dispatch).
+
+    Args:
+        payload: A mapping carrying a ``$type`` key.
+
+    Returns:
+        The reconstructed Python value.
+
+    Raises:
+        UndecodableValueError: If the tag is unknown or the payload is
+            malformed for its tag.
+    """
+    tag = payload["$type"]
+    try:
+        if tag == "datetime":
+            return _dt.datetime.fromisoformat(str(payload["iso"]))
+        if tag == "date":
+            return _dt.date.fromisoformat(str(payload["iso"]))
+        if tag == "SecretStr":
+            return SecretStr(str(payload["value"]))
+        if tag == "bytes":
+            if payload.get("encoding") != "base64":
+                raise UndecodableValueError(
+                    f"unknown bytes encoding {payload.get('encoding')!r}"
+                )
+            return base64.b64decode(str(payload["data"]), validate=True)
+        if tag == "callback":
+            return RecordingCallback(str(payload["name"]))
+        if tag == "CohortDefinition":
+            return _decode_cohort_definition(payload)
+    except (KeyError, ValueError) as exc:
+        raise UndecodableValueError(f"malformed $type {tag!r} payload: {exc}") from exc
+    cls = _dataclass_codecs().get(str(tag))
+    if cls is None:
+        raise UndecodableValueError(
+            f"no codec for $type {tag!r} (extend conformance/record/codecs.py "
+            "and its TS mirror together — design D4.4)"
+        )
+    return _decode_dataclass(cls, payload)
+
+
+def decode_value(value: Any) -> Any:
+    """Decode one vector JSON value back to Python (design D7 replay side).
+
+    Plain JSON passes through; ``$type``-tagged objects reconstruct rich
+    values via the codec table; containers decode recursively.
+
+    Args:
+        value: A value loaded from a vector's ``call.input``.
+
+    Returns:
+        The Python value to pass to the registry target.
+
+    Raises:
+        UndecodableValueError: If any nested tag is unknown or malformed.
+    """
+    if isinstance(value, Mapping):
+        if "$type" in value:
+            return _decode_tagged(value)
+        return {str(key): decode_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [decode_value(item) for item in value]
+    return value
+
+
+def decode_input_kwargs(encoded: Mapping[str, Any]) -> dict[str, Any]:
+    """Decode a vector ``call.input`` object into call kwargs (design D7).
+
+    Args:
+        encoded: The vector's ``call.input`` mapping.
+
+    Returns:
+        Keyword arguments for the registry target; ``callback``-tagged
+        values arrive as :class:`RecordingCallback` stubs.
+
+    Raises:
+        UndecodableValueError: If any value fails to decode.
+    """
+    return {name: decode_value(value) for name, value in encoded.items()}
+
+
+# ---------------------------------------------------------------------------
+# Output codecs (registry ``output_codec`` dispatch — design D4.4)
+# ---------------------------------------------------------------------------
+
+
+def _encode_validation_errors(value: object) -> list[dict[str, str]]:
+    """Serialize ``list[ValidationError]`` structurally (design D4.3).
+
+    The contract is ``path`` + ``code`` + ``severity``, order preserved;
+    ``message``/``suggestion``/``fix`` never enter vectors (R5.3/R5.4).
+
+    Args:
+        value: The validator's return value.
+
+    Returns:
+        One ``{path, code, severity}`` object per error, in emission order.
+
+    Raises:
+        UnencodableValueError: If the value is not a list of
+            ``ValidationError`` instances.
+    """
+    from mixpanel_headless.exceptions import ValidationError
+
+    if not isinstance(value, list) or not all(
+        isinstance(item, ValidationError) for item in value
+    ):
+        raise UnencodableValueError(
+            "validation_errors codec expects list[ValidationError], got "
+            f"{type(value).__name__}"
+        )
+    return [
+        {"path": item.path, "code": item.code, "severity": item.severity}
+        for item in value
+    ]
+
+
+def encode_output(codec: str, value: object) -> Any:
+    """Encode a return value per the registry entry's output codec (D4.4).
+
+    Args:
+        codec: The registry ``output_codec`` name.
+        value: The raw return value.
+
+    Returns:
+        The vector-JSON representation:
+
+        - ``json`` — generic :func:`encode_expect_value`;
+        - ``validation_errors`` — structural ``[{path, code, severity}]``
+          (design D4.3);
+        - ``model_name`` — the returned model CLASS as its name string
+          (design D4.2 item 7);
+        - ``selector_str`` — the selector string verbatim (design D4.2
+          item 1; escaping is contract char-for-char).
+
+    Raises:
+        UnencodableValueError: If the value does not fit the named codec,
+            or the codec name is unknown (a registry bug — loud, never a
+            silent fallback).
+    """
+    if codec == "json":
+        return encode_expect_value(value)
+    if codec == "validation_errors":
+        return _encode_validation_errors(value)
+    if codec == "model_name":
+        if not isinstance(value, type):
+            raise UnencodableValueError(
+                f"model_name codec expects a class, got {type(value).__name__}"
+            )
+        return value.__name__
+    if codec == "selector_str":
+        if not isinstance(value, str):
+            raise UnencodableValueError(
+                f"selector_str codec expects str, got {type(value).__name__}"
+            )
+        return _reject_bad_string(value)
+    raise UnencodableValueError(
+        f"unknown output codec {codec!r} (conformance/record/registry.py and "
+        "codecs.py must agree)"
+    )
