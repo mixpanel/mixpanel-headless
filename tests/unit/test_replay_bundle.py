@@ -10,12 +10,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from mixpanel_headless._internal.replays.aggregators import (
     long_pauses,
     rage_clicks,
     top_clicks,
 )
 from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.replay_labels import (
     default_label_fn,
     selector_label_fn,
@@ -472,3 +475,63 @@ class TestAggregatorFunctions:
         """top_clicks module-level matches Bundle.top_clicks."""
         b = _sample_bundle()
         assert top_clicks(b).iloc[0]["target_desc"] == "button.signin"
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedUserActionCodes:
+    """Coded-guard tests for UserAction (UA1/UA2, design §1.4)."""
+
+    def test_zero_timestamp_raises_ua1(self) -> None:
+        """UserAction with timestamp=0 raises UA1_TIMESTAMP_NOT_POSITIVE."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_action(timestamp=0)
+        assert excinfo.value.code == "UA1_TIMESTAMP_NOT_POSITIVE"
+
+    def test_negative_timestamp_raises_ua1(self) -> None:
+        """UserAction with a negative timestamp raises UA1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_action(timestamp=-1)
+        assert excinfo.value.code == "UA1_TIMESTAMP_NOT_POSITIVE"
+
+    def test_empty_target_desc_click_raises_ua2(self) -> None:
+        """UserAction click with empty target_desc raises UA2_EMPTY_TARGET_DESC."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_action(action="click", target_desc="")
+        assert excinfo.value.code == "UA2_EMPTY_TARGET_DESC"
+
+    def test_empty_target_desc_input_raises_ua2(self) -> None:
+        """UserAction input with empty target_desc raises UA2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_action(action="input", target_desc="")
+        assert excinfo.value.code == "UA2_EMPTY_TARGET_DESC"
+
+
+class TestCodedReplayBundleCodes:
+    """Coded-guard tests for ReplayBundle (RB1, design §1.4)."""
+
+    def test_single_mismatched_replay_raises_rb1(self) -> None:
+        """A bundle whose replay has a different project_id raises RB1."""
+        replay = _make_replay("r-1", [_build_action()])
+        with pytest.raises(ParamValidationError) as excinfo:
+            ReplayBundle(
+                replays=[replay],
+                computed_at="2026-08-15T00:00:00Z",
+                project_id=99999,
+            )
+        assert excinfo.value.code == "RB1_PROJECT_ID_MISMATCH"
+
+    def test_one_of_two_mismatched_replays_raises_rb1(self) -> None:
+        """A bundle with one matching and one mismatching replay raises RB1."""
+        r1 = _make_replay("r-1", [_build_action()])
+        r2 = _make_replay("r-2", [_build_action()])
+        with pytest.raises(ParamValidationError) as excinfo:
+            ReplayBundle(
+                replays=[r1, r2],
+                computed_at="2026-08-15T00:00:00Z",
+                project_id=12346,
+            )
+        assert excinfo.value.code == "RB1_PROJECT_ID_MISMATCH"

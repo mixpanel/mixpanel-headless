@@ -6,6 +6,7 @@ Formula dataclass, and QueryResult.df behavior per mode (T045, T049).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -15,11 +16,18 @@ from mixpanel_headless._internal.bookmark_enums import (
     MATH_PROPERTY_OPTIONAL,
     MATH_REQUIRING_PROPERTY,
 )
+from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 from mixpanel_headless.types import (
+    CustomPropertyRef,
     Filter,
     Formula,
+    FrequencyBreakdown,
+    FrequencyFilter,
+    GroupBy,
+    ListItemGroupMode,
     Metric,
     QueryResult,
+    TimeComparison,
 )
 
 # =============================================================================
@@ -1724,3 +1732,488 @@ class TestNewFilterFactoryMethods:
         """Filter.at_most() accepts resource_type='people'."""
         f = Filter.at_most("complaints", 3, resource_type="people")
         assert f._resource_type == "people"
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only; never
+# message text, per R5.4). Two tests per raise site with distinct violating
+# inputs (design §3).
+# =============================================================================
+
+
+class TestCodedTimeComparisonCodes:
+    """Coded-guard tests for the TimeComparison TC* family (design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            # TC0 (types.py TimeComparison.__post_init__ type check)
+            ({"type": "bogus"}, "TC0_INVALID_TYPE"),
+            ({"type": "weekly"}, "TC0_INVALID_TYPE"),
+            # TC1 requires unit
+            ({"type": "relative"}, "TC1_REQUIRES_UNIT"),
+            ({"type": "relative", "date": "2026-01-01"}, "TC1_REQUIRES_UNIT"),
+            # TC1b invalid unit
+            ({"type": "relative", "unit": "fortnight"}, "TC1B_INVALID_UNIT"),
+            ({"type": "relative", "unit": "hours"}, "TC1B_INVALID_UNIT"),
+            # TC1 rejects date
+            (
+                {"type": "relative", "unit": "month", "date": "2026-01-01"},
+                "TC1_REJECTS_DATE",
+            ),
+            (
+                {"type": "relative", "unit": "day", "date": "2025-12-31"},
+                "TC1_REJECTS_DATE",
+            ),
+            # TC2 requires date
+            ({"type": "absolute-start"}, "TC2_REQUIRES_DATE"),
+            ({"type": "absolute-end"}, "TC2_REQUIRES_DATE"),
+            # TC2 rejects unit
+            (
+                {"type": "absolute-start", "date": "2026-01-01", "unit": "month"},
+                "TC2_REJECTS_UNIT",
+            ),
+            (
+                {"type": "absolute-end", "date": "2026-01-01", "unit": "day"},
+                "TC2_REJECTS_UNIT",
+            ),
+            # TC3 date format
+            ({"type": "absolute-start", "date": "2026/01/01"}, "TC3_DATE_FORMAT"),
+            ({"type": "absolute-end", "date": "not-a-date"}, "TC3_DATE_FORMAT"),
+            # TC3b calendar validity
+            ({"type": "absolute-start", "date": "2026-02-30"}, "TC3B_DATE_INVALID"),
+            ({"type": "absolute-end", "date": "2025-13-01"}, "TC3B_DATE_INVALID"),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each TimeComparison guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            TimeComparison(**kwargs)
+        assert excinfo.value.code == code
+
+
+class TestCodedMetricCodes:
+    """Coded-guard tests for Metric guards (V13/V26 twins + MT2, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            # V13 twin (math requires property)
+            ({"event": "e", "math": "average"}, "V13_METRIC_MATH_PROPERTY"),
+            ({"event": "e", "math": "max"}, "V13_METRIC_MATH_PROPERTY"),
+            # V26 twin (percentile requires percentile_value)
+            (
+                {"event": "e", "math": "percentile", "property": "p"},
+                "V26_PERCENTILE_REQUIRES_VALUE",
+            ),
+            (
+                {
+                    "event": "e",
+                    "math": "percentile",
+                    "property": "q",
+                    "percentile_value": None,
+                },
+                "V26_PERCENTILE_REQUIRES_VALUE",
+            ),
+            # MT2 invalid segment_method
+            ({"event": "e", "segment_method": "bogus"}, "MT2_INVALID_SEGMENT_METHOD"),
+            ({"event": "e", "segment_method": "last"}, "MT2_INVALID_SEGMENT_METHOD"),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each Metric guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(**kwargs)
+        assert excinfo.value.code == code
+
+
+class TestCodedEventNameCodes:
+    """Coded-guard tests for _validate_event_name (EV1/EV2, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("event", "code"),
+        [
+            # EV1 (empty event) — 2 distinct violating inputs for the site
+            ("", "EV1_EMPTY_EVENT"),
+            ("   ", "EV1_EMPTY_EVENT"),
+            # EV2 (control characters) — 2 distinct violating inputs
+            ("a\x00b", "EV2_CONTROL_CHAR_EVENT"),
+            ("a\x7fb", "EV2_CONTROL_CHAR_EVENT"),
+        ],
+    )
+    def test_guard_raises_coded_error(self, event: str, code: str) -> None:
+        """Each _validate_event_name guard raises with its code via Metric."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(event)
+        assert excinfo.value.code == code
+
+
+class TestCodedFormulaCodes:
+    """Coded-guard tests for Formula (FM1, design §1.3)."""
+
+    @pytest.mark.parametrize("expression", ["", "   "])
+    def test_empty_expression_raises_coded_error(self, expression: str) -> None:
+        """Formula with an empty expression raises FM1_EMPTY_EXPRESSION."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula(expression)
+        assert excinfo.value.code == "FM1_EMPTY_EXPRESSION"
+
+
+class TestCodedFilterListContainsCodes:
+    """Coded-guard tests for Filter list_contains guards (LC*, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("factory", "code"),
+        [
+            # LC1 (post_init: missing _list_item_filters)
+            (
+                lambda: Filter(
+                    _property="cart",
+                    _operator="list_contains",
+                    _value=None,
+                    _list_item_quantifier="any",
+                ),
+                "LC1_MISSING_ITEM_FILTERS",
+            ),
+            (
+                lambda: Filter(
+                    _property="items",
+                    _operator="list_contains",
+                    _value=None,
+                    _list_item_quantifier="all",
+                ),
+                "LC1_MISSING_ITEM_FILTERS",
+            ),
+            # LC2 (post_init: missing _list_item_quantifier)
+            (
+                lambda: Filter(
+                    _property="cart",
+                    _operator="list_contains",
+                    _value=None,
+                    _list_item_filters=(Filter.equals("Brand", "nike"),),
+                ),
+                "LC2_MISSING_QUANTIFIER",
+            ),
+            (
+                lambda: Filter(
+                    _property="items",
+                    _operator="list_contains",
+                    _value=None,
+                    _list_item_filters=(Filter.equals("Category", "hats"),),
+                ),
+                "LC2_MISSING_QUANTIFIER",
+            ),
+            # LC3 (mixed positional + kwargs)
+            (
+                lambda: Filter.list_contains(
+                    "cart", Filter.equals("Brand", "nike"), Brand="nike"
+                ),
+                "LC3_MIXED_ARGS",
+            ),
+            (
+                lambda: Filter.list_contains(
+                    "items", Filter.greater_than("Price", 50), Category="hats"
+                ),
+                "LC3_MIXED_ARGS",
+            ),
+            # LC4 (invalid quantifier)
+            (
+                lambda: Filter.list_contains("cart", quantifier="some", Brand="nike"),  # type: ignore[arg-type]
+                "LC4_INVALID_QUANTIFIER",
+            ),
+            (
+                lambda: Filter.list_contains("cart", quantifier="every", Brand="nike"),  # type: ignore[arg-type]
+                "LC4_INVALID_QUANTIFIER",
+            ),
+            # LC5 (empty kwarg key)
+            (
+                lambda: Filter.list_contains("cart", **{"": "nike"}),  # type: ignore[arg-type]
+                "LC5_EMPTY_KWARG_KEY",
+            ),
+            (
+                lambda: Filter.list_contains("cart", **{"   ": "nike"}),  # type: ignore[arg-type]
+                "LC5_EMPTY_KWARG_KEY",
+            ),
+            # LC7 (no inner conditions)
+            (lambda: Filter.list_contains("cart"), "LC7_NO_CONDITIONS"),
+            (
+                lambda: Filter.list_contains("items", quantifier="all"),
+                "LC7_NO_CONDITIONS",
+            ),
+            # LC8 (nested list_contains)
+            (
+                lambda: Filter.list_contains(
+                    "cart", Filter.list_contains("inner", Brand="x")
+                ),
+                "LC8_NESTED_LIST_CONTAINS",
+            ),
+            (
+                lambda: Filter.list_contains(
+                    "items",
+                    Filter.list_contains("inner", Category="y"),
+                    quantifier="all",
+                ),
+                "LC8_NESTED_LIST_CONTAINS",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, factory: Callable[[], Filter], code: str
+    ) -> None:
+        """Each list_contains guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            factory()
+        assert excinfo.value.code == code
+
+    @pytest.mark.parametrize(
+        ("factory", "code"),
+        [
+            # LC6 (kwarg value type — TypeError site)
+            (
+                lambda: Filter.list_contains("cart", Brand=42),  # type: ignore[arg-type]
+                "LC6_KWARG_VALUE_TYPE",
+            ),
+            (
+                lambda: Filter.list_contains("cart", Price=4.2),  # type: ignore[arg-type]
+                "LC6_KWARG_VALUE_TYPE",
+            ),
+        ],
+    )
+    def test_type_guard_raises_coded_type_error(
+        self, factory: Callable[[], Filter], code: str
+    ) -> None:
+        """The LC6 kwarg-value type guard raises ParamTypeError with its code."""
+        with pytest.raises(ParamTypeError) as excinfo:
+            factory()
+        assert excinfo.value.code == code
+
+
+class TestCodedFilterDateCodes:
+    """Coded-guard tests for Filter date guards (V8 twins, FD1, FD2)."""
+
+    @pytest.mark.parametrize(
+        ("factory", "code"),
+        [
+            # V8_DATE_FORMAT twin (Filter._validate_date format site)
+            (lambda: Filter.on("created", "2024/01/01"), "V8_DATE_FORMAT"),
+            (lambda: Filter.before("created", "bad-date"), "V8_DATE_FORMAT"),
+            # V8_DATE_INVALID twin (Filter._validate_date calendar site)
+            (lambda: Filter.on("created", "2024-02-30"), "V8_DATE_INVALID"),
+            (lambda: Filter.since("created", "2025-02-29"), "V8_DATE_INVALID"),
+            # FD1 site 1: in_the_last
+            (
+                lambda: Filter.in_the_last("created", 0, "day"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            (
+                lambda: Filter.in_the_last("created", -5, "week"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            # FD1 site 2: not_in_the_last
+            (
+                lambda: Filter.not_in_the_last("created", 0, "week"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            (
+                lambda: Filter.not_in_the_last("created", -3, "day"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            # FD1 site 3: in_the_next
+            (
+                lambda: Filter.in_the_next("renewal", 0, "day"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            (
+                lambda: Filter.in_the_next("renewal", -1, "month"),
+                "FD1_QUANTITY_NOT_POSITIVE",
+            ),
+            # FD2 site 1: date_between
+            (
+                lambda: Filter.date_between("created", "2024-12-31", "2024-01-01"),
+                "FD2_DATE_ORDER",
+            ),
+            (
+                lambda: Filter.date_between("created", "2025-06-02", "2025-06-01"),
+                "FD2_DATE_ORDER",
+            ),
+            # FD2 site 2: date_not_between
+            (
+                lambda: Filter.date_not_between("created", "2024-12-31", "2024-01-01"),
+                "FD2_DATE_ORDER",
+            ),
+            (
+                lambda: Filter.date_not_between("created", "2025-06-02", "2025-06-01"),
+                "FD2_DATE_ORDER",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, factory: Callable[[], Filter], code: str
+    ) -> None:
+        """Each date guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            factory()
+        assert excinfo.value.code == code
+
+
+class TestCodedListItemGroupModeCodes:
+    """Coded-guard tests for ListItemGroupMode (LG1/LG2, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            ({"sub": "", "sub_type": "string"}, "LG1_EMPTY_SUB"),
+            ({"sub": "   ", "sub_type": "number"}, "LG1_EMPTY_SUB"),
+            ({"sub": "Brand", "sub_type": "object"}, "LG2_INVALID_SUB_TYPE"),
+            ({"sub": "Brand", "sub_type": "list"}, "LG2_INVALID_SUB_TYPE"),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each ListItemGroupMode guard raises with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            ListItemGroupMode(**kwargs)
+        assert excinfo.value.code == code
+
+
+class TestCodedGroupByCodes:
+    """Coded-guard tests for GroupBy guards (GB* + V12/V18 twins)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            # GB1 empty property
+            ({"property": ""}, "GB1_EMPTY_PROPERTY"),
+            ({"property": "   "}, "GB1_EMPTY_PROPERTY"),
+            # V12 twin (bucket_size positive)
+            ({"property": "price", "bucket_size": 0}, "V12_BUCKET_SIZE_POSITIVE"),
+            ({"property": "price", "bucket_size": -5}, "V12_BUCKET_SIZE_POSITIVE"),
+            # V18 twin (bucket_min < bucket_max)
+            (
+                {"property": "price", "bucket_min": 5, "bucket_max": 5},
+                "V18_BUCKET_ORDER",
+            ),
+            (
+                {"property": "price", "bucket_min": 10, "bucket_max": 2},
+                "V18_BUCKET_ORDER",
+            ),
+            # GB4 list_item incompatible with bucketing
+            (
+                {
+                    "property": "cart",
+                    "bucket_size": 5,
+                    "_list_item_mode": ListItemGroupMode("Brand", "string"),
+                },
+                "GB4_LIST_ITEM_BUCKETING",
+            ),
+            (
+                {
+                    "property": "cart",
+                    "bucket_max": 10,
+                    "_list_item_mode": ListItemGroupMode("Brand", "string"),
+                },
+                "GB4_LIST_ITEM_BUCKETING",
+            ),
+            # GB5 list_item requires plain str property
+            (
+                {
+                    "property": CustomPropertyRef(42),
+                    "_list_item_mode": ListItemGroupMode("Brand", "string"),
+                },
+                "GB5_LIST_ITEM_PROPERTY_TYPE",
+            ),
+            (
+                {
+                    "property": CustomPropertyRef(7),
+                    "_list_item_mode": ListItemGroupMode("Category", "string"),
+                },
+                "GB5_LIST_ITEM_PROPERTY_TYPE",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each GroupBy guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            GroupBy(**kwargs)
+        assert excinfo.value.code == code
+
+
+class TestCodedFrequencyBreakdownCodes:
+    """Coded-guard tests for FrequencyBreakdown (FB1-FB4, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            ({"event": ""}, "FB1_EMPTY_EVENT"),
+            ({"event": "   "}, "FB1_EMPTY_EVENT"),
+            ({"event": "Purchase", "bucket_size": 0}, "FB2_BUCKET_SIZE_NOT_POSITIVE"),
+            ({"event": "Purchase", "bucket_size": -1}, "FB2_BUCKET_SIZE_NOT_POSITIVE"),
+            ({"event": "Purchase", "bucket_min": -1}, "FB4_BUCKET_MIN_NEGATIVE"),
+            ({"event": "Purchase", "bucket_min": -10}, "FB4_BUCKET_MIN_NEGATIVE"),
+            (
+                {"event": "Purchase", "bucket_min": 5, "bucket_max": 5},
+                "FB3_BUCKET_ORDER",
+            ),
+            (
+                {"event": "Purchase", "bucket_min": 8, "bucket_max": 2},
+                "FB3_BUCKET_ORDER",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each FrequencyBreakdown guard raises with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FrequencyBreakdown(**kwargs)
+        assert excinfo.value.code == code
+
+
+class TestCodedFrequencyFilterCodes:
+    """Coded-guard tests for FrequencyFilter (FF1-FF5, design §1.3)."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "code"),
+        [
+            ({"event": "", "value": 5}, "FF1_EMPTY_EVENT"),
+            ({"event": "   ", "value": 5}, "FF1_EMPTY_EVENT"),
+            (
+                {"event": "Login", "value": 5, "operator": "bogus"},
+                "FF2_INVALID_OPERATOR",
+            ),
+            (
+                {"event": "Login", "value": 5, "operator": "at least"},
+                "FF2_INVALID_OPERATOR",
+            ),
+            ({"event": "Login", "value": -1}, "FF3_VALUE_NEGATIVE"),
+            ({"event": "Login", "value": -0.5}, "FF3_VALUE_NEGATIVE"),
+            (
+                {"event": "Login", "value": 5, "date_range_value": 30},
+                "FF4_DATE_RANGE_PAIR",
+            ),
+            (
+                {"event": "Login", "value": 5, "date_range_unit": "day"},
+                "FF4_DATE_RANGE_PAIR",
+            ),
+            (
+                {
+                    "event": "Login",
+                    "value": 5,
+                    "date_range_value": 0,
+                    "date_range_unit": "day",
+                },
+                "FF5_DATE_RANGE_VALUE_NOT_POSITIVE",
+            ),
+            (
+                {
+                    "event": "Login",
+                    "value": 5,
+                    "date_range_value": -3,
+                    "date_range_unit": "week",
+                },
+                "FF5_DATE_RANGE_VALUE_NOT_POSITIVE",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(self, kwargs: dict[str, Any], code: str) -> None:
+        """Each FrequencyFilter guard raises with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FrequencyFilter(**kwargs)
+        assert excinfo.value.code == code

@@ -8,10 +8,12 @@ validation concern.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CohortCriteria,
@@ -658,3 +660,59 @@ class TestCohortCriteriaAggregationSerialization:
         assert c._behavior is not None
         assert c._behavior["count"]["aggregationOperator"] == agg_type
         assert c._behavior["count"]["property"] == "amount"
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedCohortArgsCodes:
+    """Coded-guard tests for _validate_cohort_args families (CF/CB/CM)."""
+
+    @pytest.mark.parametrize(
+        ("factory", "code"),
+        [
+            # CF1 (Filter cohort family, cohort-id site)
+            (lambda: Filter.in_cohort(0), "CF1_COHORT_ID_NOT_POSITIVE"),
+            (lambda: Filter.not_in_cohort(-1), "CF1_COHORT_ID_NOT_POSITIVE"),
+            # CF2 (Filter cohort family, name site)
+            (lambda: Filter.in_cohort(5, name=""), "CF2_COHORT_NAME_EMPTY"),
+            (lambda: Filter.not_in_cohort(5, name="   "), "CF2_COHORT_NAME_EMPTY"),
+            # CB1 (CohortBreakdown family, cohort-id site)
+            (lambda: CohortBreakdown(0), "CB1_COHORT_ID_NOT_POSITIVE"),
+            (lambda: CohortBreakdown(-3), "CB1_COHORT_ID_NOT_POSITIVE"),
+            # CB2 (CohortBreakdown family, name site)
+            (lambda: CohortBreakdown(5, name=""), "CB2_COHORT_NAME_EMPTY"),
+            (lambda: CohortBreakdown(5, name="   "), "CB2_COHORT_NAME_EMPTY"),
+            # CM1 (CohortMetric family, cohort-id site)
+            (lambda: CohortMetric(0), "CM1_COHORT_ID_NOT_POSITIVE"),
+            (lambda: CohortMetric(-7), "CM1_COHORT_ID_NOT_POSITIVE"),
+            # CM2 (CohortMetric family, name site)
+            (lambda: CohortMetric(5, name=""), "CM2_COHORT_NAME_EMPTY"),
+            (lambda: CohortMetric(5, name="   "), "CM2_COHORT_NAME_EMPTY"),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, factory: Callable[[], object], code: str
+    ) -> None:
+        """Each cohort-args guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            factory()
+        assert excinfo.value.code == code
+
+
+class TestCodedCohortMetricInlineCodes:
+    """Coded-guard tests for the CM5 twin site (design §1.1)."""
+
+    def test_inline_definition_raises_cm5(self) -> None:
+        """CohortMetric with an inline CohortDefinition raises the CM5 twin."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortMetric(_simple_cohort_def())
+        assert excinfo.value.code == "CM5_INLINE_COHORT_METRIC"
+
+    def test_inline_definition_with_name_raises_cm5(self) -> None:
+        """CohortMetric(inline, name=...) also raises the CM5 twin."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortMetric(_simple_cohort_def(), name="Power Users")
+        assert excinfo.value.code == "CM5_INLINE_COHORT_METRIC"

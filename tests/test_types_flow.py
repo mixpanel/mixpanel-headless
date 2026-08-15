@@ -20,6 +20,7 @@ import networkx as nx
 import pandas as pd
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Filter, FlowQueryResult, FlowStep, _safe_int
 
 # =============================================================================
@@ -839,3 +840,48 @@ class TestFlowStepSessionEvent:
         step = FlowStep(event="$session_start", session_event="start")
         with pytest.raises(AttributeError):
             step.session_event = "end"  # type: ignore[misc]
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedFlowStepCodes:
+    """Coded-guard tests for FlowStep guards (FL3/FL4 twins + FS1)."""
+
+    def test_forward_above_range_raises_fl3(self) -> None:
+        """FlowStep.forward above 5 raises the FL3_FORWARD_RANGE twin."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", forward=6)
+        assert excinfo.value.code == "FL3_FORWARD_RANGE"
+
+    def test_forward_negative_raises_fl3(self) -> None:
+        """FlowStep.forward below 0 raises FL3_FORWARD_RANGE."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", forward=-1)
+        assert excinfo.value.code == "FL3_FORWARD_RANGE"
+
+    def test_reverse_above_range_raises_fl4(self) -> None:
+        """FlowStep.reverse above 5 raises the FL4_REVERSE_RANGE twin."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", reverse=6)
+        assert excinfo.value.code == "FL4_REVERSE_RANGE"
+
+    def test_reverse_negative_raises_fl4(self) -> None:
+        """FlowStep.reverse below 0 raises FL4_REVERSE_RANGE."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", reverse=-2)
+        assert excinfo.value.code == "FL4_REVERSE_RANGE"
+
+    def test_session_start_mismatch_raises_fs1(self) -> None:
+        """session_event='start' with a non-session event raises FS1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", session_event="start")
+        assert excinfo.value.code == "FS1_SESSION_EVENT_MISMATCH"
+
+    def test_session_end_mismatch_raises_fs1(self) -> None:
+        """session_event='end' with a non-session event raises FS1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FlowStep("Login", session_event="end")
+        assert excinfo.value.code == "FS1_SESSION_EVENT_MISMATCH"

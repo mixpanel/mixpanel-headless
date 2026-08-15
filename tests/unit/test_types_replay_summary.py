@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import ReplaySummary
 
 
@@ -112,3 +113,33 @@ class TestReplaySummaryDataFrame:
         """Second .df access returns the same cached object."""
         s = _build()
         assert s.df is s.df
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedReplaySummaryCodes:
+    """Coded-guard tests for ReplaySummary (RS1-RS4, design §1.4)."""
+
+    @pytest.mark.parametrize(
+        ("overrides", "code"),
+        [
+            ({"replay_id": ""}, "RS1_EMPTY_REPLAY_ID"),
+            ({"replay_id": None}, "RS1_EMPTY_REPLAY_ID"),
+            ({"project_id": 0}, "RS2_PROJECT_ID_NOT_POSITIVE"),
+            ({"project_id": -1}, "RS2_PROJECT_ID_NOT_POSITIVE"),
+            ({"start_time": 0}, "RS3_START_TIME_NOT_POSITIVE"),
+            ({"start_time": -5}, "RS3_START_TIME_NOT_POSITIVE"),
+            ({"retention_days": 14}, "RS4_INVALID_RETENTION_DAYS"),
+            ({"retention_days": 0}, "RS4_INVALID_RETENTION_DAYS"),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, overrides: dict[str, object], code: str
+    ) -> None:
+        """Each ReplaySummary guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build(**overrides)
+        assert excinfo.value.code == code
