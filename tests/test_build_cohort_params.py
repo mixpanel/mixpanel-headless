@@ -18,7 +18,7 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.exceptions import BookmarkValidationError, ParamValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CohortCriteria,
@@ -895,3 +895,140 @@ class TestBuildFlowCohortFilterDirect:
             build_flow_cohort_filter(
                 [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]
             )
+
+
+# =============================================================================
+# Coded guard errors (E2 coding pass, design §1.5)
+# =============================================================================
+
+
+def _malformed_cohort_filter(value: object) -> Filter:
+    """Build a cohort filter with a deliberately malformed ``_value``.
+
+    Bypasses ``Filter.in_cohort`` to exercise the ``build_flow_cohort_filter``
+    internal-consistency guards (BB6/BB7/BB8), which are unreachable via the
+    public classmethods.
+
+    Args:
+        value: The raw ``_value`` payload to install on the filter.
+
+    Returns:
+        A directly-constructed ``$cohorts`` Filter carrying ``value``.
+    """
+    return Filter(
+        _property="$cohorts",
+        _operator="contains",
+        _value=value,  # type: ignore[arg-type]
+        _property_type="list",
+        _resource_type="events",
+    )
+
+
+class TestCodedFlowCohortFilterCodes:
+    """Coded-guard tests for build_flow_cohort_filter (BB4-BB8, design §1.5)."""
+
+    def test_bb4_property_filter_raises_coded_error(self) -> None:
+        """A non-cohort property filter raises ParamValidationError with BB4."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(Filter.equals("country", "US"))
+        assert excinfo.value.code == "BB4_FLOW_COHORT_FILTER_TYPE"
+
+    def test_bb4_numeric_filter_in_list_raises_coded_error(self) -> None:
+        """A numeric filter inside a list raises BB4 (distinct violating input)."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(
+                [Filter.in_cohort(1, "A"), Filter.greater_than("age", 18)]
+            )
+        assert excinfo.value.code == "BB4_FLOW_COHORT_FILTER_TYPE"
+
+    def test_bb5_two_cohort_filters_raise_coded_error(self) -> None:
+        """Two cohort filters raise ParamValidationError with BB5."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(
+                [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]
+            )
+        assert excinfo.value.code == "BB5_FLOW_MULTIPLE_COHORT_FILTERS"
+
+    def test_bb5_three_cohort_filters_raise_coded_error(self) -> None:
+        """Three cohort filters raise BB5 (distinct violating input)."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(
+                [
+                    Filter.in_cohort(1, "A"),
+                    Filter.in_cohort(2, "B"),
+                    Filter.not_in_cohort(3, "C"),
+                ]
+            )
+        assert excinfo.value.code == "BB5_FLOW_MULTIPLE_COHORT_FILTERS"
+
+    def test_bb5_via_build_flow_params_facade_seam(self, ws: Workspace) -> None:
+        """BB5 surfaces through the registered Workspace.build_flow_params seam."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.build_flow_params(
+                "Login",
+                where=[
+                    Filter.in_cohort(123, "A"),
+                    Filter.in_cohort(456, "B"),
+                ],
+            )
+        assert excinfo.value.code == "BB5_FLOW_MULTIPLE_COHORT_FILTERS"
+
+    @pytest.mark.parametrize("value", ["oops", []])
+    def test_bb6_non_list_value_raises_coded_error(self, value: object) -> None:
+        """A non-list or empty ``_value`` raises ParamValidationError with BB6."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(_malformed_cohort_filter(value))
+        assert excinfo.value.code == "BB6_COHORT_VALUE_NOT_LIST"
+
+    @pytest.mark.parametrize("value", [[42], ["cohort"]])
+    def test_bb7_non_dict_first_item_raises_coded_error(self, value: object) -> None:
+        """A non-dict first ``_value`` item raises ParamValidationError with BB7."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(_malformed_cohort_filter(value))
+        assert excinfo.value.code == "BB7_COHORT_VALUE_NOT_DICT"
+
+    @pytest.mark.parametrize("value", [[{}], [{"other": 1}]])
+    def test_bb8_missing_cohort_key_raises_coded_error(self, value: object) -> None:
+        """A first item without a ``cohort`` key raises ParamValidationError with BB8."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_cohort_filter(_malformed_cohort_filter(value))
+        assert excinfo.value.code == "BB8_COHORT_KEY_MISSING"
+
+    def test_bb_guards_stay_catchable_as_value_error(self) -> None:
+        """Converted BB* guards remain catchable via bare ValueError."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_cohort_filter,
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            build_flow_cohort_filter(Filter.equals("country", "US"))
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "BB4_FLOW_COHORT_FILTER_TYPE"

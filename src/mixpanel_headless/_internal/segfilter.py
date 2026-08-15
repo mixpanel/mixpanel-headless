@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Filter
 
 # =============================================================================
@@ -137,12 +138,14 @@ def _build_string_filter(operator: str, value: Any) -> dict[str, Any]:
         Dict with ``operator`` and ``operand`` keys.
 
     Raises:
-        ValueError: If ``operator`` is not in ``STRING_OPERATOR_MAP``.
+        ParamValidationError: If ``operator`` is not in
+            ``STRING_OPERATOR_MAP`` (``SG1_UNKNOWN_STRING_OPERATOR``).
     """
     if operator not in STRING_OPERATOR_MAP:
-        raise ValueError(
+        raise ParamValidationError(
             f"Unknown string operator '{operator}'. "
-            f"Valid operators: {sorted(STRING_OPERATOR_MAP)}"
+            f"Valid operators: {sorted(STRING_OPERATOR_MAP)}",
+            code="SG1_UNKNOWN_STRING_OPERATOR",
         )
 
     seg_op = STRING_OPERATOR_MAP[operator]
@@ -166,12 +169,14 @@ def _build_number_filter(operator: str, value: Any) -> dict[str, Any]:
         Dict with ``operator`` and ``operand`` keys.
 
     Raises:
-        ValueError: If ``operator`` is not in ``NUMBER_OPERATOR_MAP``.
+        ParamValidationError: If ``operator`` is not in
+            ``NUMBER_OPERATOR_MAP`` (``SG2_UNKNOWN_NUMBER_OPERATOR``).
     """
     if operator not in NUMBER_OPERATOR_MAP:
-        raise ValueError(
+        raise ParamValidationError(
             f"Unknown number operator '{operator}'. "
-            f"Valid operators: {sorted(NUMBER_OPERATOR_MAP)}"
+            f"Valid operators: {sorted(NUMBER_OPERATOR_MAP)}",
+            code="SG2_UNKNOWN_NUMBER_OPERATOR",
         )
 
     seg_op = NUMBER_OPERATOR_MAP[operator]
@@ -221,12 +226,14 @@ def _build_datetime_filter(
         Dict with ``operator``, ``operand``, and optionally ``unit`` keys.
 
     Raises:
-        ValueError: If ``operator`` is not in ``DATETIME_OPERATOR_MAP``.
+        ParamValidationError: If ``operator`` is not in
+            ``DATETIME_OPERATOR_MAP`` (``SG3_UNKNOWN_DATETIME_OPERATOR``).
     """
     if operator not in DATETIME_OPERATOR_MAP:
-        raise ValueError(
+        raise ParamValidationError(
             f"Unknown datetime operator '{operator}'. "
-            f"Valid operators: {sorted(DATETIME_OPERATOR_MAP)}"
+            f"Valid operators: {sorted(DATETIME_OPERATOR_MAP)}",
+            code="SG3_UNKNOWN_DATETIME_OPERATOR",
         )
 
     seg_op = DATETIME_OPERATOR_MAP[operator]
@@ -270,8 +277,10 @@ def build_segfilter_entry(f: Filter) -> dict[str, Any]:
         - ``filter``: dict with ``operator``/``operand`` (and optionally ``unit``)
 
     Raises:
-        ValueError: If the filter's property type or operator is not
-            recognized.
+        ParamValidationError: If the filter's property type is not
+            recognized (``SG4_UNSUPPORTED_PROPERTY_TYPE``) or its
+            operator is unknown for the property type
+            (``SG1``/``SG2``/``SG3`` via the type-specific builders).
 
     Example:
         ```python
@@ -296,9 +305,10 @@ def build_segfilter_entry(f: Filter) -> dict[str, Any]:
     elif prop_type == "datetime":
         filter_dict = _build_datetime_filter(f._operator, f._value, f._date_unit)
     else:
-        raise ValueError(
+        raise ParamValidationError(
             f"Unsupported property type '{prop_type}'. "
-            f"Supported types: string, number, boolean, datetime"
+            f"Supported types: string, number, boolean, datetime",
+            code="SG4_UNSUPPORTED_PROPERTY_TYPE",
         )
 
     return {
