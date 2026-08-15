@@ -1,0 +1,438 @@
+{
+  "$comment": "Canonicalizer selftest (design D6/PR-4) — the cross-language contract artifact. Both canonicalizer implementations (Python conformance/runner/canonical.py; TS conformance-runner/src/canonical.ts) must pass every case: conformance/tests/test_canonical_selftest.py iterates this file on the Python side, a vitest suite on the TS side (D12/TS-3). Case kinds: 'value' — parse input_json, canonicalize, compare to 'canonical' by string equality; 'error' — same via the rule-6 error canonicalization (message/suggestion/fix stripped at known levels only); 'interactions' — same via the rule-9 unordered-group sort; 'headers' — headers_contain vs actual_headers subset/pattern match must equal 'matches'; 'reject' — canonicalization of the input (input_json, or a non-finite double named by 'special') must raise/throw. input_json is a raw JSON text string so number tokens survive the container file's own parsing: the harness MUST parse it with a loader that preserves the int-vs-float token distinction (Python json.loads; TS lossless number capture per D6 rule 3 — plain JSON.parse would collapse 18.0 to 18 and fail the float-token cases by design).",
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "id": "float-plain-integral",
+      "kind": "value",
+      "input_json": "18.0",
+      "canonical": "18.0",
+      "notes": "Rule 3: a token with a fraction part keeps Python's plain '.0' form; NOT unified with int 18."
+    },
+    {
+      "id": "float-plain-fraction",
+      "kind": "value",
+      "input_json": "1.5",
+      "canonical": "1.5",
+      "notes": "Rule 5: shortest round-trip, plain form agrees in both languages."
+    },
+    {
+      "id": "float-plain-1e15",
+      "kind": "value",
+      "input_json": "1e15",
+      "canonical": "1000000000000000.0",
+      "notes": "Below the 1e16 threshold Python repr is plain ('1000000000000000.0') and the '.0' integral marker is kept."
+    },
+    {
+      "id": "float-window-1e16",
+      "kind": "value",
+      "input_json": "1e16",
+      "canonical": "10000000000000000",
+      "notes": "Exponent-threshold window: Python repr '1e+16' converts to the JS plain form (ECMAScript Number::toString)."
+    },
+    {
+      "id": "float-window-1.5e16",
+      "kind": "value",
+      "input_json": "1.5e16",
+      "canonical": "15000000000000000",
+      "notes": "Window case with fractional mantissa."
+    },
+    {
+      "id": "float-window-1e20",
+      "kind": "value",
+      "input_json": "1e20",
+      "canonical": "100000000000000000000",
+      "notes": "Top of the JS plain range (n=21)."
+    },
+    {
+      "id": "float-exp-1e21",
+      "kind": "value",
+      "input_json": "1e21",
+      "canonical": "1e+21",
+      "notes": "JS switches to exponent form at 1e21; 'e+' spelling, no zero-padding."
+    },
+    {
+      "id": "float-exp-1.2345678e22",
+      "kind": "value",
+      "input_json": "1.2345678e22",
+      "canonical": "1.2345678e+22",
+      "notes": "Exponent form with fractional mantissa."
+    },
+    {
+      "id": "float-plain-1e-4",
+      "kind": "value",
+      "input_json": "1e-4",
+      "canonical": "0.0001",
+      "notes": "Both languages render 1e-4 plain."
+    },
+    {
+      "id": "float-window-1e-5",
+      "kind": "value",
+      "input_json": "1e-5",
+      "canonical": "0.00001",
+      "notes": "Small-magnitude window: Python repr '1e-05' converts to JS plain '0.00001'."
+    },
+    {
+      "id": "float-window-9.9e-5",
+      "kind": "value",
+      "input_json": "9.9e-5",
+      "canonical": "0.000099",
+      "notes": "Small-magnitude window, two significant digits."
+    },
+    {
+      "id": "float-window-1e-6",
+      "kind": "value",
+      "input_json": "1e-6",
+      "canonical": "0.000001",
+      "notes": "Bottom of the JS plain range (n=-5)."
+    },
+    {
+      "id": "float-exp-1e-7",
+      "kind": "value",
+      "input_json": "1e-7",
+      "canonical": "1e-7",
+      "notes": "JS exponent form below 1e-6; exponent NOT zero-padded (Python repr is '1e-07')."
+    },
+    {
+      "id": "float-exp-2.5e-7",
+      "kind": "value",
+      "input_json": "2.5e-7",
+      "canonical": "2.5e-7",
+      "notes": "Unpadded negative exponent with fractional mantissa."
+    },
+    {
+      "id": "float-exp-min-subnormal",
+      "kind": "value",
+      "input_json": "5e-324",
+      "canonical": "5e-324",
+      "notes": "Smallest positive subnormal double."
+    },
+    {
+      "id": "float-exp-max-double",
+      "kind": "value",
+      "input_json": "1.7976931348623157e308",
+      "canonical": "1.7976931348623157e+308",
+      "notes": "Largest finite double."
+    },
+    {
+      "id": "float-negative-zero",
+      "kind": "value",
+      "input_json": "-0.0",
+      "canonical": "-0.0",
+      "notes": "Rule 5: -0.0 renders sign-preserving '-0.0' (TS must special-case: String(-0) is '0')."
+    },
+    {
+      "id": "float-int-tokens-not-unified",
+      "kind": "value",
+      "input_json": "{\"a\":18.0,\"b\":18}",
+      "canonical": "{\"a\":18.0,\"b\":18}",
+      "notes": "Rule 3: the raw token is the contract; 18.0 and 18 stay distinct (lossless number parsing required in TS)."
+    },
+    {
+      "id": "int-beyond-2-53",
+      "kind": "value",
+      "input_json": "9007199254740993",
+      "canonical": "9007199254740993",
+      "notes": "Integer token above 2^53 renders exactly; JSON.parse would silently round it (PRECISION_LOSS guard)."
+    },
+    {
+      "id": "int-negative",
+      "kind": "value",
+      "input_json": "-42",
+      "canonical": "-42",
+      "notes": "Integers render without exponent or fraction."
+    },
+    {
+      "id": "segfilter-operand-scalar-normalized",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"18.0\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"18\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4 positive: string operand in number-filter position int-collapses ('18.0' -> '18')."
+    },
+    {
+      "id": "segfilter-operand-array-normalized",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": [\"18.50\", \"2.0\"]}}",
+      "canonical": "{\"filter\":{\"operand\":[\"18.5\",\"2\"],\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4 positive: each string element of an array operand is normalized."
+    },
+    {
+      "id": "segfilter-operand-negative-zero",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"-0.0\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"-0\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4: '-0.0' parses, renders '-0.0', int-collapses to '-0'."
+    },
+    {
+      "id": "segfilter-operand-exponent-string",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"1e2\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"100\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4: exponent-form numeric strings normalize through float parse + canonical rendering."
+    },
+    {
+      "id": "segfilter-operand-large-exponent",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"1e21\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"1e+21\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4: values in the JS exponent range keep exponent form (nothing to collapse)."
+    },
+    {
+      "id": "segfilter-operand-underscore-grammar",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"1_0\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"10\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4 uses the PYTHON float grammar: digit-group underscores parse ('1_0' -> 10)."
+    },
+    {
+      "id": "segfilter-operand-whitespace-grammar",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \" 18 \"}}",
+      "canonical": "{\"filter\":{\"operand\":\"18\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4 Python float grammar: surrounding whitespace is accepted and stripped by parsing."
+    },
+    {
+      "id": "segfilter-operand-unparseable-untouched",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"abc\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"abc\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4: unparseable operand strings are left verbatim (no normalization)."
+    },
+    {
+      "id": "segfilter-operand-nan-untouched",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"nan\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"nan\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}",
+      "notes": "Rule 4: 'nan' parses under the Python grammar but is non-finite -> NOT normalized (rendering NaN is illegal)."
+    },
+    {
+      "id": "segfilter-operand-string-type-untouched",
+      "kind": "value",
+      "input_json": "{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"string\"}, \"type\": \"string\", \"selected_property_type\": \"string\", \"filter\": {\"operator\": \">\", \"operand\": \"18.0\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"18.0\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"string\"},\"selected_property_type\":\"string\",\"type\":\"string\"}",
+      "notes": "Rule 4 negative: selected_property_type != 'number' -> operand untouched."
+    },
+    {
+      "id": "segfilter-no-selected-type-untouched",
+      "kind": "value",
+      "input_json": "{\"filter\":{\"operand\":\"18.0\",\"operator\":\">\"}}",
+      "canonical": "{\"filter\":{\"operand\":\"18.0\",\"operator\":\">\"}}",
+      "notes": "Rule 4 negative: filter.operand without a selected_property_type:'number' sibling is untouched."
+    },
+    {
+      "id": "segfilter-nested-detection",
+      "kind": "value",
+      "input_json": "{\"sections\":{\"filter\":{\"clauses\":[{\"property\": {\"name\": \"amount\", \"source\": \"properties\", \"type\": \"number\"}, \"type\": \"number\", \"selected_property_type\": \"number\", \"filter\": {\"operator\": \">\", \"operand\": \"2.50\"}}]}}}",
+      "canonical": "{\"sections\":{\"filter\":{\"clauses\":[{\"filter\":{\"operand\":\"2.5\",\"operator\":\">\"},\"property\":{\"name\":\"amount\",\"source\":\"properties\",\"type\":\"number\"},\"selected_property_type\":\"number\",\"type\":\"number\"}]}}}",
+      "notes": "Rule 4 detection is structural and applies anywhere in the tree."
+    },
+    {
+      "id": "segfilter-native-float-operand-not-collapsed",
+      "kind": "value",
+      "input_json": "{\"filter\":{\"operand\":18.0,\"operator\":\">\"},\"selected_property_type\":\"number\"}",
+      "canonical": "{\"filter\":{\"operand\":18.0,\"operator\":\">\"},\"selected_property_type\":\"number\"}",
+      "notes": "Rule 4 is numeric-STRING normalization only; a native float operand renders per rule 3 ('18.0')."
+    },
+    {
+      "id": "bookmark-filtervalue-not-normalized",
+      "kind": "value",
+      "input_json": "{\"filterOperator\":\"is greater than\",\"filterValue\":\"18.0\"}",
+      "canonical": "{\"filterOperator\":\"is greater than\",\"filterValue\":\"18.0\"}",
+      "notes": "Rule 4 explicit non-target (R10.12): bookmark filterValue strings are raw passthrough, never normalized."
+    },
+    {
+      "id": "engage-selector-not-normalized",
+      "kind": "value",
+      "input_json": "{\"selector\": \"(properties[\\\"amount\\\"] == \\\"18.0\\\")\"}",
+      "canonical": "{\"selector\":\"(properties[\\\"amount\\\"] == \\\"18.0\\\")\"}",
+      "notes": "Rule 4 explicit non-target: engage selector strings are one opaque string, escaping contractual char-for-char."
+    },
+    {
+      "id": "null-vs-absent-null-kept",
+      "kind": "value",
+      "input_json": "{\"a\":null}",
+      "canonical": "{\"a\":null}",
+      "notes": "Rule 1: key:null is preserved, never dropped (R3.5/R4.11)."
+    },
+    {
+      "id": "null-vs-absent-empty-object",
+      "kind": "value",
+      "input_json": "{}",
+      "canonical": "{}",
+      "notes": "Rule 1: the absent-key form canonicalizes differently from key:null; comparison keeps them distinct."
+    },
+    {
+      "id": "object-key-codepoint-sort",
+      "kind": "value",
+      "input_json": "{\"b\":1,\"a\":2,\"Z\":3,\"é\":4}",
+      "canonical": "{\"Z\":3,\"a\":2,\"b\":1,\"é\":4}",
+      "notes": "Rule 1: keys sort by Unicode codepoint ('Z' < 'a' < 'b' < 'é')."
+    },
+    {
+      "id": "string-minimal-escapes",
+      "kind": "value",
+      "input_json": "\"\\u0001\\n\\t\\\"\\\\é😀\"",
+      "canonical": "\"\\u0001\\n\\t\\\"\\\\é😀\"",
+      "notes": "Rule 2: minimal-escape form — short escapes for \\n/\\t/quote/backslash, \\uXXXX only for other control chars, non-ASCII and non-BMP raw."
+    },
+    {
+      "id": "string-del-not-escaped",
+      "kind": "value",
+      "input_json": "\"\\u007f\"",
+      "canonical": "\"\"",
+      "notes": "Rule 2: DEL (U+007F) is not a JSON control character and is emitted raw in both languages."
+    },
+    {
+      "id": "bytes-tagged-ordinary-object",
+      "kind": "value",
+      "input_json": "{\"$type\":\"bytes\",\"encoding\":\"base64\",\"data\":\"aGVsbG8=\"}",
+      "canonical": "{\"$type\":\"bytes\",\"data\":\"aGVsbG8=\",\"encoding\":\"base64\"}",
+      "notes": "Rule 11: bytes values are $type-tagged objects canonicalized like any object (sorted keys)."
+    },
+    {
+      "id": "error-strip-top-level",
+      "kind": "error",
+      "input_json": "{\"class\": \"BookmarkValidationError\", \"code\": \"BOOKMARK_VALIDATION_ERROR\", \"message\": \"human text — dropped\", \"suggestion\": \"did you mean — dropped\", \"fix\": {\"value\": {\"name\": \"<EVENT_NAME>\"}}}",
+      "canonical": "{\"class\":\"BookmarkValidationError\",\"code\":\"BOOKMARK_VALIDATION_ERROR\"}",
+      "notes": "Rule 6: message/suggestion/fix dropped at the top error level; class/code compared strictly (R5.4)."
+    },
+    {
+      "id": "error-strip-errors-elements",
+      "kind": "error",
+      "input_json": "{\"class\": \"BookmarkValidationError\", \"errors\": [{\"path\": \"events[0]\", \"code\": \"V7_EMPTY_EVENTS\", \"severity\": \"error\", \"message\": \"dropped\", \"suggestion\": \"dropped\", \"fix\": \"dropped\"}, {\"path\": \"unit\", \"code\": \"B16_UNKNOWN_UNIT\", \"severity\": \"warning\", \"message\": \"dropped\"}]}",
+      "canonical": "{\"class\":\"BookmarkValidationError\",\"errors\":[{\"code\":\"V7_EMPTY_EVENTS\",\"path\":\"events[0]\",\"severity\":\"error\"},{\"code\":\"B16_UNKNOWN_UNIT\",\"path\":\"unit\",\"severity\":\"warning\"}]}",
+      "notes": "Rule 6: stripping applies to each errors[] element; order is significant (ordered-list comparison, D4.3)."
+    },
+    {
+      "id": "error-details-contain-message-survives",
+      "kind": "error",
+      "input_json": "{\"class\": \"MixpanelAPIError\", \"code\": \"API_ERROR\", \"message\": \"dropped at this level\", \"details_contain\": {\"response_body\": {\"message\": \"server said no\", \"status\": \"error\"}, \"status_code\": 400}}",
+      "canonical": "{\"class\":\"MixpanelAPIError\",\"code\":\"API_ERROR\",\"details_contain\":{\"response_body\":{\"message\":\"server said no\",\"status\":\"error\"},\"status_code\":400}}",
+      "notes": "Rule 6: stripping is NEVER recursive inside details_contain — an embedded server body's 'message' member IS wire data and survives."
+    },
+    {
+      "id": "interactions-unordered-group-sorted",
+      "kind": "interactions",
+      "input_json": "[{\"seq\": 0, \"unordered_group\": 1, \"request\": {\"method\": \"GET\", \"path\": \"/cdn/z\", \"params\": {\"file\": \"2\"}}, \"response\": {\"status\": 200, \"body\": {\"n\": 2}}}, {\"seq\": 1, \"unordered_group\": 1, \"request\": {\"method\": \"GET\", \"path\": \"/cdn/a\", \"params\": {\"file\": \"1\"}}, \"response\": {\"status\": 200, \"body\": {\"n\": 1}}}]",
+      "canonical": "[{\"request\":{\"method\":\"GET\",\"params\":{\"file\":\"1\"},\"path\":\"/cdn/a\"},\"response\":{\"body\":{\"n\":1},\"status\":200},\"seq\":1,\"unordered_group\":1},{\"request\":{\"method\":\"GET\",\"params\":{\"file\":\"2\"},\"path\":\"/cdn/z\"},\"response\":{\"body\":{\"n\":2},\"status\":200},\"seq\":0,\"unordered_group\":1}]",
+      "notes": "Rule 9: group members sort by the canonical (method, path, params) key — the same sort emit.py applies at write time (D2)."
+    },
+    {
+      "id": "interactions-ordered-positions-kept",
+      "kind": "interactions",
+      "input_json": "[{\"seq\": 0, \"request\": {\"method\": \"GET\", \"path\": \"/z\", \"params\": {}}, \"response\": {\"status\": 200, \"body\": {}}}, {\"seq\": 1, \"unordered_group\": 3, \"request\": {\"method\": \"GET\", \"path\": \"/g/b\", \"params\": {}}, \"response\": {\"status\": 200, \"body\": {}}}, {\"seq\": 2, \"unordered_group\": 3, \"request\": {\"method\": \"GET\", \"path\": \"/g/a\", \"params\": {}}, \"response\": {\"status\": 200, \"body\": {}}}, {\"seq\": 3, \"request\": {\"method\": \"POST\", \"path\": \"/end\", \"params\": {}}, \"response\": {\"status\": 201, \"body\": {}}}]",
+      "canonical": "[{\"request\":{\"method\":\"GET\",\"params\":{},\"path\":\"/z\"},\"response\":{\"body\":{},\"status\":200},\"seq\":0},{\"request\":{\"method\":\"GET\",\"params\":{},\"path\":\"/g/a\"},\"response\":{\"body\":{},\"status\":200},\"seq\":2,\"unordered_group\":3},{\"request\":{\"method\":\"GET\",\"params\":{},\"path\":\"/g/b\"},\"response\":{\"body\":{},\"status\":200},\"seq\":1,\"unordered_group\":3},{\"request\":{\"method\":\"POST\",\"params\":{},\"path\":\"/end\"},\"response\":{\"body\":{},\"status\":201},\"seq\":3}]",
+      "notes": "Rule 9: interactions without unordered_group keep their positions; group members reorder only among the positions the group occupies."
+    },
+    {
+      "id": "headers-ignore-unlisted",
+      "kind": "headers",
+      "headers_contain": {
+        "content-type": "application/json"
+      },
+      "actual_headers": {
+        "content-type": "application/json",
+        "host": "mixpanel.com",
+        "user-agent": "python-httpx/0.28",
+        "accept": "*/*",
+        "content-length": "42"
+      },
+      "matches": true,
+      "notes": "D5.6 mandated case: transport-added headers absent from headers_contain are IGNORED (subset match) on both sides."
+    },
+    {
+      "id": "headers-case-insensitive-keys",
+      "kind": "headers",
+      "headers_contain": {
+        "content-type": "application/json"
+      },
+      "actual_headers": {
+        "Content-Type": "application/json"
+      },
+      "matches": true,
+      "notes": "Rule 8: header keys lowercase on both sides before comparison; values stay case-sensitive."
+    },
+    {
+      "id": "headers-authorization-pattern-match",
+      "kind": "headers",
+      "headers_contain": {
+        "authorization": {
+          "pattern": "^Basic dGVzdF91c2VyOnRlc3Rfc2VjcmV0$"
+        }
+      },
+      "actual_headers": {
+        "Authorization": "Basic dGVzdF91c2VyOnRlc3Rfc2VjcmV0"
+      },
+      "matches": true,
+      "notes": "Rule 7 / D5.2: authorization compared by the vector's stored regex pattern, not string equality."
+    },
+    {
+      "id": "headers-authorization-pattern-mismatch",
+      "kind": "headers",
+      "headers_contain": {
+        "authorization": {
+          "pattern": "^Basic dGVzdF91c2VyOnRlc3Rfc2VjcmV0$"
+        }
+      },
+      "actual_headers": {
+        "authorization": "Bearer some-other-token"
+      },
+      "matches": false,
+      "notes": "Rule 7: a non-matching authorization value fails the vector."
+    },
+    {
+      "id": "headers-value-mismatch",
+      "kind": "headers",
+      "headers_contain": {
+        "content-type": "application/json"
+      },
+      "actual_headers": {
+        "content-type": "text/plain"
+      },
+      "matches": false,
+      "notes": "Listed header present with a different value fails."
+    },
+    {
+      "id": "headers-missing-listed",
+      "kind": "headers",
+      "headers_contain": {
+        "x-custom": "1"
+      },
+      "actual_headers": {
+        "content-type": "application/json"
+      },
+      "matches": false,
+      "notes": "A listed header absent from the captured request fails."
+    },
+    {
+      "id": "reject-lone-surrogate-string",
+      "kind": "reject",
+      "input_json": "\"\\ud800\"",
+      "notes": "Rule 2: lone surrogates are illegal in vectors — the canonicalizer rejects at encode time."
+    },
+    {
+      "id": "reject-lone-surrogate-nested",
+      "kind": "reject",
+      "input_json": "{\"a\":[\"ok\",\"\\udfff tail\"]}",
+      "notes": "Rule 2: rejection applies anywhere in the tree, including inside arrays/objects."
+    },
+    {
+      "id": "reject-nan",
+      "kind": "reject",
+      "special": "nan",
+      "notes": "Rule 5: NaN is illegal in vectors; the harness constructs a NaN double and expects rejection."
+    },
+    {
+      "id": "reject-infinity",
+      "kind": "reject",
+      "special": "infinity",
+      "notes": "Rule 5: Infinity is illegal in vectors."
+    },
+    {
+      "id": "reject-negative-infinity",
+      "kind": "reject",
+      "special": "negative_infinity",
+      "notes": "Rule 5: -Infinity is illegal in vectors."
+    }
+  ]
+}
