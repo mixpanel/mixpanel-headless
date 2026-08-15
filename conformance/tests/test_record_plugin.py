@@ -639,3 +639,112 @@ def test_mock_collaborator_invocation_excludes_capture(
     ]
     assert len(calls) == 1
     assert calls[0].excluded_reason == "unserializable_input"
+
+
+# ---------------------------------------------------------------------------
+# Coded-guard error_only entries (coding-pass design §5 item 2, RR-7 fixes)
+# ---------------------------------------------------------------------------
+
+
+def test_classmethod_entry_records_arguments_not_receiver(
+    record_session: RecordSession,
+) -> None:
+    """A wrapped classmethod entry keeps input fidelity (RR-7 fix a).
+
+    The first REAL argument must be encoded under its parameter name —
+    never dropped as the receiver or emitted as ``self`` — and both
+    class-access and instance-access binding must keep working after the
+    ``classmethod(wrapper)`` re-installation.
+
+    Raises:
+        AssertionError: If input encoding or binding is wrong.
+    """
+    from mixpanel_headless.exceptions import ParamValidationError
+    from mixpanel_headless.types import Filter
+
+    nodeid = "tests/unit/test_fake.py::test_classmethod_fidelity"
+    record_session.begin_test(nodeid, None)
+    with pytest.raises(ParamValidationError):
+        Filter.in_the_last("created", 0, "day")
+    good = Filter.in_the_last("created", 7, "day")
+    via_instance = good.in_the_last("ts", 3, "week")
+    record_session.finish_test(nodeid)
+
+    assert isinstance(good, Filter)
+    assert isinstance(via_instance, Filter)
+    capture = record_session.captures[-1]
+    calls = [
+        c for c in capture.entry_calls if c.entry.api == "types.Filter.in_the_last"
+    ]
+    assert len(calls) == 3
+    failing = calls[0]
+    assert isinstance(failing.error, ParamValidationError)
+    assert failing.error.code == "FD1_QUANTITY_NOT_POSITIVE"
+    assert failing.input_encoded is not None
+    assert "self" not in failing.input_encoded
+    assert "cls" not in failing.input_encoded
+    assert failing.input_encoded["property"] == "created"
+    assert failing.input_encoded["quantity"] == 0
+    assert failing.input_encoded["date_unit"] == "day"
+    # Instance-access binding still passes cls (not the instance) to the
+    # classmethod, so the recorded input is the real arguments only.
+    bound = calls[2]
+    assert bound.input_encoded is not None
+    assert bound.input_encoded["property"] == "ts"
+
+
+def test_error_only_init_success_records_without_receiver(
+    record_session: RecordSession,
+) -> None:
+    """An ``__init__`` guard entry never encodes the receiver (RR-7 fix b).
+
+    Successful constructions must record only the bound non-self
+    arguments — encoding the half-initialized frozen dataclass would
+    raise ``AttributeError`` and fail the host test.
+
+    Raises:
+        AssertionError: If the receiver leaks into the encoded input.
+    """
+    from mixpanel_headless.types import TimeComparison
+
+    nodeid = "tests/unit/test_fake.py::test_init_no_receiver"
+    record_session.begin_test(nodeid, None)
+    tc = TimeComparison("relative", unit="month")
+    record_session.finish_test(nodeid)
+
+    assert tc.unit == "month"
+    capture = record_session.captures[-1]
+    calls = [c for c in capture.entry_calls if c.entry.api == "types.TimeComparison"]
+    assert len(calls) == 1
+    call = calls[0]
+    assert call.returned is True
+    assert call.error is None
+    assert call.input_encoded is not None
+    assert "self" not in call.input_encoded
+    assert call.input_encoded["type"] == "relative"
+    assert call.input_encoded["unit"] == "month"
+
+
+def test_error_only_init_guard_error_captured(
+    record_session: RecordSession,
+) -> None:
+    """A coded constructor-guard raise is captured with class + code.
+
+    Raises:
+        AssertionError: If the captured error is missing or uncoded.
+    """
+    from mixpanel_headless.exceptions import ParamValidationError
+    from mixpanel_headless.types import TimeComparison
+
+    nodeid = "tests/unit/test_fake.py::test_init_guard_error"
+    record_session.begin_test(nodeid, None)
+    with pytest.raises(ParamValidationError):
+        TimeComparison("bogus")  # type: ignore[arg-type]
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    calls = [c for c in capture.entry_calls if c.entry.api == "types.TimeComparison"]
+    assert len(calls) == 1
+    error = calls[0].error
+    assert isinstance(error, ParamValidationError)
+    assert error.code == "TC0_INVALID_TYPE"

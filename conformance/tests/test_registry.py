@@ -127,14 +127,17 @@ def test_every_target_resolves_and_wraps_cleanly() -> None:
         assert signature is not None, entry.api
 
         owner, attr = resolve_owner(entry)
-        original = getattr(owner, attr)
+        # Classmethod access (getattr) mints a fresh bound method per
+        # lookup, so identity checks must compare the STATIC descriptor
+        # (the coded-guard entries register classmethod targets — RR-7).
+        original = inspect.getattr_static(owner, attr)
         patcher = umock.patch.object(owner, attr, _stub)
         patcher.start()
         try:
-            assert getattr(owner, attr) is not original, entry.api
+            assert inspect.getattr_static(owner, attr) is not original, entry.api
         finally:
             patcher.stop()
-        assert getattr(owner, attr) is original, entry.api
+        assert inspect.getattr_static(owner, attr) is original, entry.api
 
 
 def test_wire_enumeration_covers_the_design_seams() -> None:
@@ -256,3 +259,75 @@ def test_replays_wire_entries_carry_replays_capability() -> None:
     replays_entries = [e for e in REGISTRY if e.api.startswith("replays.")]
     assert replays_entries
     assert all(e.capability == "replays" for e in replays_entries)
+
+
+# ---------------------------------------------------------------------------
+# Coded-guard error_only entries (coding-pass design §5 item 2, RR-7)
+# ---------------------------------------------------------------------------
+
+
+def test_error_only_defaults_false_for_existing_entries() -> None:
+    """Pre-existing entries carry ``error_only=False`` (flag is opt-in).
+
+    Raises:
+        AssertionError: If a non-guard entry is marked error_only.
+    """
+    assert REGISTRY_BY_API["workspace.build_params"].error_only is False
+    assert REGISTRY_BY_API["types.CohortDefinition.to_dict"].error_only is False
+
+
+def test_coded_guard_entries_registered_and_resolvable() -> None:
+    """The B1 constructor-guard families are registered as error_only builders.
+
+    Every guard entry must resolve to a patchable owner/attr pair so the
+    plugin can wrap it (classmethods resolve through their class).
+
+    Raises:
+        AssertionError: If an entry is missing, mis-kinded, or unresolvable.
+    """
+    expected = (
+        "types.TimeComparison",
+        "types.Metric",
+        "types.Formula",
+        "types.Filter",
+        "types.Filter.on",
+        "types.Filter.before",
+        "types.Filter.since",
+        "types.Filter.in_the_last",
+        "types.Filter.not_in_the_last",
+        "types.Filter.in_the_next",
+        "types.Filter.date_between",
+        "types.Filter.date_not_between",
+        "types.Filter.list_contains",
+        "types.Filter.in_cohort",
+        "types.Filter.not_in_cohort",
+        "types.ListItemGroupMode",
+        "types.GroupBy",
+        "types.FrequencyBreakdown",
+        "types.FrequencyFilter",
+        "types.Exclusion",
+        "types.HoldingConstant",
+        "types.FlowStep",
+        "types.CohortCriteria.did_event",
+        "types.CohortCriteria.did_not_do_event",
+        "types.CohortCriteria.has_property",
+        "types.CohortCriteria.in_cohort",
+        "types.CohortCriteria.not_in_cohort",
+        "types.CohortDefinition",
+        "types.CohortDefinition.all_of",
+        "types.CohortDefinition.any_of",
+        "types.CohortBreakdown",
+        "types.CohortMetric",
+        "types.ReplaySummary",
+        "types.SignedReplay",
+        "types.UserAction",
+        "types.ReplayEvent",
+        "types.Replay",
+        "types.ReplayBundle",
+    )
+    for api in expected:
+        entry = REGISTRY_BY_API[api]
+        assert entry.error_only is True, api
+        assert entry.kind == KIND_BUILDER, api
+        owner, attr = resolve_owner(entry)
+        assert hasattr(owner, attr), api

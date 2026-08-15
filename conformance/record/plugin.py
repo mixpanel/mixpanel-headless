@@ -510,9 +510,23 @@ class RecordSession:
         """
         for entry in REGISTRY:
             owner, attr = resolve_owner(entry)
-            func = getattr(owner, attr)
-            wrapper = self._build_wrapper(entry, func)
-            patcher = umock.patch.object(owner, attr, wrapper)
+            static = inspect.getattr_static(owner, attr)
+            replacement: Any
+            if isinstance(static, classmethod):
+                # RR-7 fix (a): getattr would return the BOUND classmethod
+                # (signature without ``cls``), making the wrapper treat the
+                # first real argument as the receiver. Wrap ``__func__``
+                # (wrapper receives ``cls`` explicitly) and re-install via
+                # ``classmethod(wrapper)`` so class-access AND
+                # instance-access binding both stay correct.
+                func = static.__func__
+                wrapper = self._build_wrapper(entry, func, is_classmethod=True)
+                replacement = classmethod(wrapper)
+            else:
+                func = getattr(owner, attr)
+                wrapper = self._build_wrapper(entry, func)
+                replacement = wrapper
+            patcher = umock.patch.object(owner, attr, replacement)
             patcher.start()
             self._patchers.append(patcher)
 
@@ -653,14 +667,22 @@ class RecordSession:
     # ------------------------------------------------------------------
 
     def _build_wrapper(
-        self, entry: RegistryEntry, func: Callable[..., Any]
+        self,
+        entry: RegistryEntry,
+        func: Callable[..., Any],
+        *,
+        is_classmethod: bool = False,
     ) -> Callable[..., Any]:
         """Build the recording wrapper for one registry entry.
 
         Args:
             entry: The registry entry being wrapped.
             func: The original callable (plain function off the class or
-                module).
+                module; for classmethod targets, the descriptor's
+                ``__func__`` whose signature includes ``cls``).
+            is_classmethod: True when the wrapper is re-installed via
+                ``classmethod(wrapper)`` and receives ``cls`` as its first
+                positional argument (RR-7 fix a).
 
         Returns:
             A ``functools.wraps``-preserving replacement callable.
@@ -690,7 +712,13 @@ class RecordSession:
             ):
                 return func(*args, **kwargs)
             call, call_args, call_kwargs = self._open_entry_call(
-                entry, func, signature, is_method, args, kwargs
+                entry,
+                func,
+                signature,
+                is_method,
+                args,
+                kwargs,
+                is_classmethod=is_classmethod,
             )
             try:
                 with self._span(call):
@@ -714,6 +742,8 @@ class RecordSession:
         is_method: bool,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        *,
+        is_classmethod: bool = False,
     ) -> tuple[EntryCallCapture, tuple[Any, ...], dict[str, Any]]:
         """Create and append the entry-call capture for one invocation.
 
@@ -729,9 +759,13 @@ class RecordSession:
             entry: The registry entry invoked.
             func: The original callable (for clock-mock module lookup).
             signature: The callable's signature (bound without defaults).
-            is_method: True when the first positional argument is ``self``.
+            is_method: True when the first positional argument is ``self``
+                (or ``cls`` for classmethod targets).
             args: Original positional arguments.
             kwargs: Original keyword arguments.
+            is_classmethod: True when the first positional argument is the
+                owning class — the receiver-encoding branch never runs for
+                classmethod targets (RR-7 fix a).
 
         Returns:
             ``(call, call_args, call_kwargs)`` — the appended capture plus
@@ -768,6 +802,8 @@ class RecordSession:
         if (
             is_method
             and instance is not None
+            and not is_classmethod
+            and not entry.error_only
             and entry.kind in (KIND_BUILDER, KIND_VALIDATOR)
             and not self._is_client_like(instance)
         ):
@@ -775,7 +811,11 @@ class RecordSession:
             # receiver IS the input — encoded under its parameter name so
             # the runner can decode it via the $type table and re-invoke
             # (design D4.2 item 8). Client/facade receivers are rebuilt
-            # from call.session instead (design D7).
+            # from call.session instead (design D7). Never runs for
+            # classmethod targets (the receiver is the class) or
+            # ``error_only`` guard entries — an ``__init__`` receiver is a
+            # not-yet-initialized instance whose attribute access raises
+            # AttributeError (RR-7 fixes a/b).
             arguments = {"self": instance, **arguments}
         if (
             excluded is None

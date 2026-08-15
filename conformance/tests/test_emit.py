@@ -579,3 +579,87 @@ def test_callback_calls_emitted_on_wire_vector(tmp_path: Path) -> None:
     assert vectors[0]["expect"]["callback_calls"] == {
         "on_batch": [[[{"event": "Login"}]]]
     }
+
+
+# ---------------------------------------------------------------------------
+# Coded-guard error_only entries (coding-pass design §5 item 2, RR-7 fix c)
+# ---------------------------------------------------------------------------
+
+
+def test_error_only_success_calls_skipped_silently(tmp_path: Path) -> None:
+    """Successful error_only constructions emit nothing and exclude nothing.
+
+    A success-path construction on an ``error_only`` entry must be a
+    SILENT skip — not an ``uncoded_raise`` (or any other) exclusion —
+    so guard-entry registration cannot inflate the exclusion ledger
+    (RR-7 fix c).
+
+    Raises:
+        AssertionError: If a vector is emitted or an exclusion is counted.
+    """
+    import json as jsonlib
+
+    success = EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["types.TimeComparison"],
+        input_encoded={"type": "relative", "unit": "month"},
+        session=None,
+        workspace_session=None,
+        result_encoded=None,
+        returned=True,
+    )
+    guard_capture = CapturedTest(
+        nodeid="tests/unit/test_fake.py::test_guard_success",
+        entry_calls=[success],
+    )
+    builder = _builder_capture("tests/unit/test_fake.py::test_builder")
+    captures = [guard_capture, builder]
+    nodeids = [capture.nodeid for capture in captures]
+
+    summary = emit_corpus(captures, nodeids, _options(tmp_path))
+
+    assert summary.total_vectors == 1  # only the normal builder vector
+    assert summary.exclusions.get("uncoded_raise", 0) == 0
+    manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert manifest["exclusions"].get("uncoded_raise", 0) == 0
+
+
+def test_error_only_guard_error_emits_builder_error_vector(tmp_path: Path) -> None:
+    """A coded guard raise on an error_only entry emits a builder vector.
+
+    The vector carries ``expect.error`` with the domain class name and
+    registry code (design §5 — R5.2/R5.3 contract).
+
+    Raises:
+        AssertionError: If the error vector is missing or mis-shaped.
+    """
+    from mixpanel_headless.exceptions import ParamValidationError
+
+    failing = EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["types.TimeComparison"],
+        input_encoded={"type": "bogus"},
+        session=None,
+        workspace_session=None,
+        error=ParamValidationError(
+            "TimeComparison type must be one of "
+            "['absolute-end', 'absolute-start', 'relative'], got 'bogus'",
+            code="TC0_INVALID_TYPE",
+        ),
+    )
+    guard_capture = CapturedTest(
+        nodeid="tests/unit/test_fake.py::test_guard_error",
+        entry_calls=[failing],
+    )
+    summary = emit_corpus([guard_capture], [guard_capture.nodeid], _options(tmp_path))
+
+    assert summary.total_vectors == 1
+    bundles = list(tmp_path.rglob("*.jsonl"))
+    assert len(bundles) == 1
+    lines = bundles[0].read_text("utf-8").splitlines()
+    vector = next(line for line in lines if '"types.TimeComparison"' in line)
+    assert (
+        '"kind":"builder"' in vector.replace(" ", "") or '"kind": "builder"' in vector
+    )
+    assert "ParamValidationError" in vector
+    assert "TC0_INVALID_TYPE" in vector

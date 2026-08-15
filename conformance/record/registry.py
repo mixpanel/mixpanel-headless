@@ -56,6 +56,12 @@ class RegistryEntry:
         input_codec: Input codec name; ``kwargs`` is the generic default.
         output_codec: Output codec name; ``json`` is the generic default
             (dispatch table: ``conformance.record.codecs.encode_output``).
+        error_only: When True, only ERROR outcomes are recordable — the
+            emit pass silently skips success-path calls (no vector, no
+            exclusion). Used for the coded constructor/classmethod guard
+            entries added by the E2 coding pass (design §5 item 2): their
+            success outputs are construction side effects covered by the
+            facade seams, but their coded raises are the R5.3 contract.
     """
 
     api: str
@@ -64,6 +70,7 @@ class RegistryEntry:
     capability: str
     input_codec: str = "kwargs"
     output_codec: str = "json"
+    error_only: bool = False
 
 
 _CLIENT_MODULE = "mixpanel_headless._internal.api_client"
@@ -325,6 +332,82 @@ def _module_builder_entries() -> tuple[RegistryEntry, ...]:
     )
 
 
+_TYPES_MODULE = "mixpanel_headless.types"
+
+_CODED_GUARD_TARGETS: tuple[tuple[str, str, str], ...] = (
+    # (api, class attr path, capability) — guard-bearing constructors and
+    # classmethods from the E2 coding pass batch B1 (design §1.1–§1.4).
+    ("types.TimeComparison", "TimeComparison.__init__", "bookmarks"),
+    ("types.Metric", "Metric.__init__", "bookmarks"),
+    ("types.Formula", "Formula.__init__", "bookmarks"),
+    ("types.Filter", "Filter.__init__", "filters"),
+    ("types.Filter.on", "Filter.on", "filters"),
+    ("types.Filter.before", "Filter.before", "filters"),
+    ("types.Filter.since", "Filter.since", "filters"),
+    ("types.Filter.in_the_last", "Filter.in_the_last", "filters"),
+    ("types.Filter.not_in_the_last", "Filter.not_in_the_last", "filters"),
+    ("types.Filter.in_the_next", "Filter.in_the_next", "filters"),
+    ("types.Filter.date_between", "Filter.date_between", "filters"),
+    ("types.Filter.date_not_between", "Filter.date_not_between", "filters"),
+    ("types.Filter.list_contains", "Filter.list_contains", "filters"),
+    ("types.Filter.in_cohort", "Filter.in_cohort", "cohorts"),
+    ("types.Filter.not_in_cohort", "Filter.not_in_cohort", "cohorts"),
+    ("types.ListItemGroupMode", "ListItemGroupMode.__init__", "bookmarks"),
+    ("types.GroupBy", "GroupBy.__init__", "bookmarks"),
+    ("types.FrequencyBreakdown", "FrequencyBreakdown.__init__", "bookmarks"),
+    ("types.FrequencyFilter", "FrequencyFilter.__init__", "bookmarks"),
+    ("types.Exclusion", "Exclusion.__init__", "funnels"),
+    ("types.HoldingConstant", "HoldingConstant.__init__", "funnels"),
+    ("types.FlowStep", "FlowStep.__init__", "flows"),
+    ("types.CohortCriteria.did_event", "CohortCriteria.did_event", "cohorts"),
+    (
+        "types.CohortCriteria.did_not_do_event",
+        "CohortCriteria.did_not_do_event",
+        "cohorts",
+    ),
+    ("types.CohortCriteria.has_property", "CohortCriteria.has_property", "cohorts"),
+    ("types.CohortCriteria.in_cohort", "CohortCriteria.in_cohort", "cohorts"),
+    ("types.CohortCriteria.not_in_cohort", "CohortCriteria.not_in_cohort", "cohorts"),
+    ("types.CohortDefinition", "CohortDefinition.__init__", "cohorts"),
+    ("types.CohortDefinition.all_of", "CohortDefinition.all_of", "cohorts"),
+    ("types.CohortDefinition.any_of", "CohortDefinition.any_of", "cohorts"),
+    ("types.CohortBreakdown", "CohortBreakdown.__init__", "cohorts"),
+    ("types.CohortMetric", "CohortMetric.__init__", "cohorts"),
+    ("types.ReplaySummary", "ReplaySummary.__init__", "replays"),
+    ("types.SignedReplay", "SignedReplay.__init__", "replays"),
+    ("types.UserAction", "UserAction.__init__", "replays"),
+    ("types.ReplayEvent", "ReplayEvent.__init__", "replays"),
+    ("types.Replay", "Replay.__init__", "replays"),
+    ("types.ReplayBundle", "ReplayBundle.__init__", "replays"),
+)
+"""Coded-guard entry table (coding-pass design §5 item 2, RR-7).
+
+Constructor targets register their ``__init__`` under the bare class api
+name (``call.api`` = ``"types.Metric"`` per the design); classmethod
+targets are wrapped via ``classmethod(wrapper)`` re-installation so both
+class-access and instance-access binding stay correct."""
+
+
+def _coded_guard_entries() -> tuple[RegistryEntry, ...]:
+    """Return the error_only builder entries for coded constructor guards.
+
+    Returns:
+        One ``builder`` entry per guard-bearing constructor/classmethod,
+        each flagged ``error_only=True`` (success calls are silently
+        skipped at emit; only coded raises become vectors).
+    """
+    return tuple(
+        RegistryEntry(
+            api=api,
+            target=f"{_TYPES_MODULE}:{attr_path}",
+            kind=KIND_BUILDER,
+            capability=capability,
+            error_only=True,
+        )
+        for api, attr_path, capability in _CODED_GUARD_TARGETS
+    )
+
+
 def _validator_entries() -> tuple[RegistryEntry, ...]:
     """Return the module-level validator entries (design D4.2 items 6/7).
 
@@ -484,6 +567,7 @@ def build_registry() -> tuple[RegistryEntry, ...]:
     return (
         _facade_entries()
         + _module_builder_entries()
+        + _coded_guard_entries()
         + _validator_entries()
         + _gate_entries()
         + client_entries

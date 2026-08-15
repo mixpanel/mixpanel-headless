@@ -1177,6 +1177,12 @@ def _classify_capture(
     for call in capture.entry_calls:
         if call.entry.kind not in (KIND_BUILDER, KIND_VALIDATOR):
             continue
+        if call.entry.error_only and call.error is None:
+            # Success-path constructions on coded-guard entries are a
+            # SILENT skip — not an exclusion category (RR-7 fix c): they
+            # are not "excluded tests", their outputs are construction
+            # side effects already covered by the facade seams.
+            continue
         if call.excluded_reason is not None:
             exclusions.add(call.excluded_reason, nodeid)
             continue
