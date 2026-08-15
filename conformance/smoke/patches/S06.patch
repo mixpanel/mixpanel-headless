@@ -1,0 +1,11 @@
+diff --git a/src/mixpanel_headless/_internal/pagination.py b/src/mixpanel_headless/_internal/pagination.py
+index eb32295..c0a72f4 100644
+--- a/src/mixpanel_headless/_internal/pagination.py
++++ b/src/mixpanel_headless/_internal/pagination.py
+@@ -284,5 +284,5 @@ def paginate_all(
+         else:
+             next_cursor = None
+ 
+-        if next_cursor is None:
++        if next_cursor is not None:
+             break

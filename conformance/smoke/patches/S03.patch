@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/api_client.py b/src/mixpanel_headless/_internal/api_client.py
+index 61d9820..7dd6802 100644
+--- a/src/mixpanel_headless/_internal/api_client.py
++++ b/src/mixpanel_headless/_internal/api_client.py
+@@ -2650,7 +2650,7 @@ class MixpanelAPIClient:
+             QueryError: Invalid query parameters.
+             RateLimitError: Rate limit exceeded.
+         """
+-        url = self._build_url("query", "/segmentation")
++        url = self._build_url("query", "/segment")
+         params: dict[str, Any] = {
+             "event": event,
+             "from_date": from_date,

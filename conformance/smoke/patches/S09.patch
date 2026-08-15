@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/query/user_builders.py b/src/mixpanel_headless/_internal/query/user_builders.py
+index 21df2b1..af7efcc 100644
+--- a/src/mixpanel_headless/_internal/query/user_builders.py
++++ b/src/mixpanel_headless/_internal/query/user_builders.py
+@@ -245,7 +245,7 @@ def filters_to_selector(filters: list[Filter]) -> str:
+     """
+     if not filters:
+         return ""
+-    return " and ".join(filter_to_selector(f) for f in filters)
++    return " or ".join(filter_to_selector(f) for f in filters)
+ 
+ 
+ def extract_cohort_filter(

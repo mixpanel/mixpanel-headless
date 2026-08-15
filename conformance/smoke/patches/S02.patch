@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/validation.py b/src/mixpanel_headless/_internal/validation.py
+index 444acc0..d32cdd2 100644
+--- a/src/mixpanel_headless/_internal/validation.py
++++ b/src/mixpanel_headless/_internal/validation.py
+@@ -378,7 +378,7 @@ def _is_valid_date(date_str: str) -> bool:
+     import datetime
+ 
+     try:
+-        datetime.date.fromisoformat(date_str)
++        pass
+         return True
+     except ValueError:
+         return False

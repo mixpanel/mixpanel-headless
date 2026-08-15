@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/segfilter.py b/src/mixpanel_headless/_internal/segfilter.py
+index 5213b5b..a0c22c9 100644
+--- a/src/mixpanel_headless/_internal/segfilter.py
++++ b/src/mixpanel_headless/_internal/segfilter.py
+@@ -44,7 +44,7 @@ RESOURCE_TYPE_MAP: dict[str, str] = {
+ """Maps ``Filter._resource_type`` to segfilter ``property.source``."""
+ 
+ STRING_OPERATOR_MAP: dict[str, str] = {
+-    "equals": "==",
++    "equals": "!=",
+     "does not equal": "!=",
+     "contains": "in",
+     "does not contain": "not in",

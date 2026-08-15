@@ -1,0 +1,10 @@
+diff --git a/src/mixpanel_headless/_internal/expressions.py b/src/mixpanel_headless/_internal/expressions.py
+index e29c188..54871f9 100644
+--- a/src/mixpanel_headless/_internal/expressions.py
++++ b/src/mixpanel_headless/_internal/expressions.py
+@@ -49,4 +49,4 @@ def normalize_on_expression(on: str) -> str:
+     # Escape backslashes first, then double quotes, to produce valid syntax.
+     # Order matters: escaping quotes first would double-escape the backslash.
+     escaped = on.replace("\\", "\\\\").replace('"', '\\"')
+-    return f'properties["{escaped}"]'
++    return on

@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/api_client.py b/src/mixpanel_headless/_internal/api_client.py
+index 61d9820..22f8fcd 100644
+--- a/src/mixpanel_headless/_internal/api_client.py
++++ b/src/mixpanel_headless/_internal/api_client.py
+@@ -757,7 +757,7 @@ class MixpanelAPIClient:
+                 )
+ 
+                 if response.status_code == 429:
+-                    if attempt >= self._max_retries:
++                    if attempt + 1 >= self._max_retries:
+                         retry_after = self._parse_retry_after(response)
+                         response_body: str | dict[str, Any] | None = None
+                         try:

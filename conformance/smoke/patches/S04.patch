@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/api_client.py b/src/mixpanel_headless/_internal/api_client.py
+index 61d9820..f1afd08 100644
+--- a/src/mixpanel_headless/_internal/api_client.py
++++ b/src/mixpanel_headless/_internal/api_client.py
+@@ -150,7 +150,7 @@ def _iter_jsonl_lines(response: httpx.Response) -> Iterator[str]:
+ # Each region has separate URLs for query APIs and export/data APIs
+ ENDPOINTS: dict[str, dict[str, str]] = {
+     "us": {
+-        "query": "https://mixpanel.com/api/query",
++        "query": "https://eu.mixpanel.com/api/query",
+         "export": "https://data.mixpanel.com/api/2.0",
+         "engage": "https://mixpanel.com/api/query/engage",
+         "app": "https://mixpanel.com/api/app",

@@ -1,0 +1,15 @@
+diff --git a/src/mixpanel_headless/workspace.py b/src/mixpanel_headless/workspace.py
+index c3de59b..efe4325 100644
+--- a/src/mixpanel_headless/workspace.py
++++ b/src/mixpanel_headless/workspace.py
+@@ -2136,9 +2136,7 @@ class Workspace:
+                 item_segment_method = None
+ 
+             # Map user-facing "percentile" to bookmark "custom_percentile"
+-            bookmark_math = (
+-                "custom_percentile" if item_math == "percentile" else item_math
+-            )
++            bookmark_math = item_math
+ 
+             measurement: dict[str, Any] = {"math": bookmark_math}
+             if item_prop is not None:
