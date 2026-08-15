@@ -61,6 +61,12 @@ _SLUG_BAD_CHARS = re.compile(r"[^a-z0-9_-]+")
 _ENTROPY_SHAPE = re.compile(r"^[A-Za-z0-9+/=_-]{40,}$")
 """Base64/hex-shaped string screen for the D5.4 redaction denylist."""
 
+_ENTROPY_MIN_DISTINCT_CHARS = 10
+"""Minimum distinct characters for an entropy-shape hit: real base64/hex
+credentials are high-diversity, while low-diversity fixtures (a 4 KiB
+``"x" * 4096`` truncation body, ``"a" * 64`` filler ids) carry no secret
+entropy and must not abort extraction (design D5.4, PR-5 refinement)."""
+
 _FS_PATH_MARKERS = ("/pytest-", "/tmp/", "/var/folders/", "/private/var/")
 """Substrings marking test-temp filesystem paths (D10 ``fs_dependent``)."""
 
@@ -275,7 +281,9 @@ def build_slug_map(nodeids: Iterable[str]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _encode_session(session: Session) -> dict[str, Any]:
+def _encode_session(
+    session: Session, resolved_token: str | None = None
+) -> dict[str, Any]:
     """Serialize a bound session into the vector ``call.session`` object.
 
     Credentials are recorded VERBATIM — they are fake test values whatever
@@ -284,6 +292,11 @@ def _encode_session(session: Session) -> dict[str, Any]:
 
     Args:
         session: The session bound to the requesting client.
+        resolved_token: Bearer token observed on the wire for
+            resolver-backed accounts (``oauth_browser`` / env-backed
+            ``oauth_token`` whose ``token`` is None) — adopted into the
+            encoded session so replay can reproduce the auth header
+            (design D5.2 PR-5 refinement).
 
     Returns:
         The schema ``$defs.session`` object.
@@ -316,10 +329,14 @@ def _encode_session(session: Session) -> dict[str, Any]:
         encoded["type"] = "oauth_token"
         if account.token is not None:
             encoded["token"] = account.token.get_secret_value()
+        elif resolved_token is not None:
+            encoded["token"] = resolved_token
         if account.default_project is not None:
             encoded["default_project"] = account.default_project
     elif isinstance(account, OAuthBrowserAccount):
         encoded["type"] = "oauth_browser"
+        if resolved_token is not None:
+            encoded["token"] = resolved_token
     else:  # pragma: no cover - the Account union is closed
         raise RecordingAbortError(
             f"unknown account type {type(account).__name__} cannot be recorded"
@@ -437,6 +454,7 @@ def _redaction_scan(vector: Mapping[str, Any], allowed: set[str]) -> None:
                 and _ENTROPY_SHAPE.fullmatch(node)
                 and not node.startswith("/")
                 and node.count("/") <= 2
+                and len(set(node)) >= _ENTROPY_MIN_DISTINCT_CHARS
             ):
                 fail("entropy-shape", node)
             return
@@ -473,6 +491,13 @@ def _emit_request_headers(
     httpx's default (recorded with a ``node_only`` flag). Transport-added
     headers are never emitted.
 
+    When the bound session yields no derivable expectation (resolver-backed
+    accounts, or no session at all — ``probe_region``-style inputs), the
+    pattern is generated from the OBSERVED value: capture-time verification
+    (design D5.2 acceptance paths 2/3) already proved that value is either
+    resolver-resolved for the bound session or carried inside
+    ``call.input``, so it replays from the vector itself.
+
     Args:
         recorded: The captured request snapshot (lowercase header keys).
         session: The session bound to the requesting client, if known.
@@ -481,8 +506,9 @@ def _emit_request_headers(
         ``(headers_contain, headers_node_only)`` — both possibly empty.
 
     Raises:
-        RecordingAbortError: If an ``authorization`` header was observed
-            but no expectation is derivable from the bound session.
+        RecordingAbortError: If an observed ``authorization`` value
+            contradicts a session-derivable expectation (recorder
+            attribution bug surfacing at emit time).
     """
     contain: dict[str, Any] = {}
     node_only: list[str] = []
@@ -492,13 +518,13 @@ def _emit_request_headers(
     for key, value in recorded.headers.items():
         if key == "authorization":
             expected = _session_auth_value(session) if session is not None else None
-            if expected is None or value != expected:
+            if expected is not None and value != expected:
                 raise RecordingAbortError(
-                    "authorization header not derivable from the bound session "
+                    "authorization header contradicts the bound session "
                     f"at emit time ({recorded.method} {recorded.path}) — "
                     "design D5.2"
                 )
-            contain[key] = {"pattern": f"^{re.escape(expected)}$"}
+            contain[key] = {"pattern": f"^{re.escape(expected or value)}$"}
         elif key == "content-type" or key in custom_keys:
             contain[key] = value
         elif key == "accept-encoding":
@@ -781,6 +807,108 @@ def _builder_vector(call: EntryCallCapture, nodeid: str) -> _PendingVector | Non
     )
 
 
+def _interaction_session(
+    capture: TestCapture,
+    interaction: RecordedInteraction,
+    default: Session | None,
+) -> Session | None:
+    """Resolve the session bound to the entry call that fired ``interaction``.
+
+    Setup calls may run under a different session than the measured call
+    (``use(account=...)`` sequences), so per-interaction header allowlisting
+    must consult the interaction's OWN span, not the measured call's.
+
+    Args:
+        capture: The owning test capture.
+        interaction: The attributed transport interaction.
+        default: Fallback session (the measured call's) when the span
+            carries none.
+
+    Returns:
+        The span's session, or ``default`` when unavailable.
+    """
+    index = interaction.span_index
+    if index is not None and 0 <= index < len(capture.entry_calls):
+        session = capture.entry_calls[index].session
+        if session is not None:
+            return session
+    return default
+
+
+def _resolved_session_token(
+    capture: TestCapture,
+    session: Session | None,
+    attributed: Sequence[RecordedInteraction],
+) -> tuple[str | None, str | None]:
+    """Adopt the observed bearer for resolver-backed sessions (design D5.2).
+
+    ``oauth_browser`` and env-backed ``oauth_token`` sessions resolve their
+    bearer via a ``TokenResolver`` at request time, so no expectation is
+    derivable from the session object. When every observed bearer across
+    the vector is IDENTICAL, that value becomes the encoded session's
+    ``token`` (replay reproduces the header). When observed values VARY
+    (rotating-resolver freshness tests), the resolver stub is an
+    unserializable dependency and the vector is excluded.
+
+    Args:
+        capture: The owning test capture.
+        session: The measured call's session.
+        attributed: The vector's attributed interactions.
+
+    Returns:
+        ``(resolved_token, exclusion_category)`` — at most one is non-None.
+    """
+    if session is None or _session_auth_value(session) is not None:
+        return None, None
+    observed: set[str] = set()
+    for interaction in attributed:
+        if _interaction_session(capture, interaction, session) != session:
+            continue
+        value = interaction.request.headers.get("authorization")
+        if value is not None:
+            observed.add(value)
+    if len(observed) > 1:
+        return None, "unserializable_input"
+    if observed:
+        value = next(iter(observed))
+        if value.startswith("Bearer "):
+            return value[len("Bearer ") :], None
+    return None, None
+
+
+def _fallback_auth_strings(capture: TestCapture) -> set[str]:
+    """Collect capture-time-justified auth values for the redaction screen.
+
+    Observed ``authorization`` values that capture-time verification
+    accepted through the D5.2 fallback paths (input-carried credentials,
+    resolver-resolved bearers) legitimately appear in emitted vectors as
+    patterns / adopted session tokens, so they must not trip the
+    ``foreign-bearer`` / entropy rules.
+
+    Args:
+        capture: The finished test capture.
+
+    Returns:
+        Exact strings (value, pattern form, token part) to allow.
+    """
+    allowed: set[str] = set()
+    for interaction in capture.interactions:
+        index = interaction.span_index
+        if index is None or not (0 <= index < len(capture.entry_calls)):
+            continue
+        session = capture.entry_calls[index].session
+        if session is not None and _session_auth_value(session) is not None:
+            continue
+        value = interaction.request.headers.get("authorization")
+        if value is None:
+            continue
+        allowed.add(value)
+        allowed.add(f"^{re.escape(value)}$")
+        if " " in value:
+            allowed.add(value.split(" ", 1)[1])
+    return allowed
+
+
 def _wire_vector(
     capture: TestCapture,
     wire_calls: Sequence[EntryCallCapture],
@@ -828,8 +956,18 @@ def _wire_vector(
             else measured.result_encoded
         )
     session = measured.session
+    resolved_token, token_exclusion = _resolved_session_token(
+        capture, session, attributed
+    )
+    if token_exclusion is not None:
+        return None, token_exclusion
     interactions = sort_unordered_groups(
-        [_emit_interaction(interaction, session) for interaction in attributed]
+        [
+            _emit_interaction(
+                interaction, _interaction_session(capture, interaction, session)
+            )
+            for interaction in attributed
+        ]
     )
     if not interactions:
         return None, "no_seam_hit"
@@ -846,9 +984,11 @@ def _wire_vector(
     if setup:
         call_obj["setup"] = setup
     if session is not None:
-        call_obj["session"] = _encode_session(session)
+        call_obj["session"] = _encode_session(session, resolved_token)
     if measured.workspace_session is not None:
         call_obj["workspace_session"] = _encode_session(measured.workspace_session)
+    if measured.client_options is not None:
+        call_obj["client_options"] = dict(measured.client_options)
     capability = _wire_capability(measured, attributed)
     body: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -872,43 +1012,89 @@ def _wire_vector(
     )
 
 
+_DETAILED_EXCLUSIONS = frozenset(
+    {
+        "uncoded_raise",
+        "unserializable_input",
+        "test_local_clock",
+        "fs_dependent",
+        "layer3_deferred",
+        "raw_transport_no_entrypoint",
+        "freeze_incompatible",
+        "partial_iterator",
+        "post_measured_traffic",
+    }
+)
+"""Exclusion categories whose per-nodeid callsites are written into the
+manifest (design D4.3 ``uncoded_raises`` worklist; D10 "logged with
+callsite so the codec table grows deliberately"). High-volume categories
+(``no_seam_hit``, ``cli``, ``hypothesis``, ...) are counted only."""
+
+
+class _ExclusionLog:
+    """Exclusion counter + per-nodeid callsite log (design D10/D4.3).
+
+    Attributes:
+        counts: Category -> excluded-capture count.
+        details: Category -> sorted-later nodeid list, kept only for
+            :data:`_DETAILED_EXCLUSIONS` categories.
+    """
+
+    def __init__(self) -> None:
+        """Initialize empty counts and details."""
+        self.counts: Counter[str] = Counter()
+        self.details: dict[str, list[str]] = {}
+
+    def add(self, category: str, nodeid: str) -> None:
+        """Count one exclusion, logging the callsite for detail categories.
+
+        Args:
+            category: The D10 exclusion category name.
+            nodeid: The excluded capture's pytest nodeid.
+        """
+        self.counts[category] += 1
+        if category in _DETAILED_EXCLUSIONS:
+            self.details.setdefault(category, []).append(nodeid)
+
+
 def _classify_capture(
-    capture: TestCapture, exclusions: Counter[str]
+    capture: TestCapture, exclusions: _ExclusionLog
 ) -> list[_PendingVector]:
     """Classify one test capture into vectors + exclusion counts (D1.3/D10).
 
     Args:
         capture: The finished test capture.
-        exclusions: Mutable exclusion counter (category -> count).
+        exclusions: Mutable exclusion log (category -> count + callsites).
 
     Returns:
         Pending vectors emitted by this test, in entry-call order.
     """
+    nodeid = capture.nodeid
     if capture.suppressed_category is not None:
-        exclusions[capture.suppressed_category] += 1
+        exclusions.add(capture.suppressed_category, nodeid)
         return []
     if capture.cli_used:
-        exclusions["cli"] += 1
+        exclusions.add("cli", nodeid)
         return []
     if capture.outcome == "skipped":
-        exclusions["skipped_upstream"] += 1
+        exclusions.add("skipped_upstream", nodeid)
         return []
     if capture.outcome == "failed":
-        exclusions["freeze_incompatible"] += 1
+        exclusions.add("freeze_incompatible", nodeid)
         return []
     vectors: list[_PendingVector] = []
     for call in capture.entry_calls:
         if call.entry.kind not in (KIND_BUILDER, KIND_VALIDATOR):
             continue
         if call.excluded_reason is not None:
-            exclusions[call.excluded_reason] += 1
+            exclusions.add(call.excluded_reason, nodeid)
             continue
         if _contains_fs_path(call.input_encoded):
-            exclusions["fs_dependent"] += 1
+            exclusions.add("fs_dependent", nodeid)
             continue
         vector = _builder_vector(call, capture.nodeid)
         if vector is None:
-            exclusions["uncoded_raise"] += 1
+            exclusions.add("uncoded_raise", nodeid)
         else:
             vectors.append(vector)
     wire_calls = [
@@ -925,20 +1111,20 @@ def _classify_capture(
         if interaction.span_index is None
     ]
     if raw:
-        exclusions["raw_transport_no_entrypoint"] += 1
+        exclusions.add("raw_transport_no_entrypoint", nodeid)
     if wire_calls and attributed:
         vector, category = _wire_vector(capture, wire_calls, attributed)
         if vector is not None:
             vectors.append(vector)
         elif category is not None:
-            exclusions[category] += 1
+            exclusions.add(category, nodeid)
     elif wire_calls:
         # Wire entry points ran but never reached the transport (e.g. an
         # input-validation raise before any request) — counted separately
         # from no_seam_hit for D10 denominator honesty.
-        exclusions["wire_call_no_transport"] += 1
+        exclusions.add("wire_call_no_transport", nodeid)
     if not vectors and not capture.entry_calls and not capture.interactions:
-        exclusions["no_seam_hit"] += 1
+        exclusions.add("no_seam_hit", nodeid)
     vectors.sort(key=lambda vector: vector.call_index)
     return vectors
 
@@ -1056,7 +1242,7 @@ def emit_corpus(
         RecordingAbortError: On duplicate final vector ids, redaction hits,
             or schema self-validation failures.
     """
-    exclusions: Counter[str] = Counter()
+    exclusions = _ExclusionLog()
     pending: list[_PendingVector] = []
     for capture in captures:
         pending.extend(_classify_capture(capture, exclusions))
@@ -1071,7 +1257,10 @@ def emit_corpus(
             slug_map.get(vector.nodeid)
             or build_slug_map([vector.nodeid])[vector.nodeid]
         )
-        vector_id = f"{vector.capability}/{vector.api}/{slug}"
+        # The api segment is lowercased for the id ONLY (schema id charset
+        # is ^[a-z0-9_./-]+$; ``types.CohortDefinition.to_dict`` carries
+        # class-name case) — ``call.api`` itself stays verbatim.
+        vector_id = f"{vector.capability}/{vector.api.lower()}/{slug}"
         if per_nodeid[vector.nodeid] > 1:
             ordinal[vector.nodeid] += 1
             vector_id = f"{vector_id}-{ordinal[vector.nodeid]}"
@@ -1099,6 +1288,7 @@ def emit_corpus(
             for call in capture.entry_calls
             for session in (call.session, call.workspace_session)
         )
+        allowed |= _fallback_auth_strings(capture)
         sessions_by_id[capture.nodeid] = allowed
     for vector in pending:
         _validate_vector(vector.body, validator)
@@ -1158,7 +1348,11 @@ def emit_corpus(
             "by_kind": dict(sorted(counts_by_kind.items())),
             "by_capability": dict(sorted(counts_by_capability.items())),
         },
-        "exclusions": dict(sorted(exclusions.items())),
+        "exclusions": dict(sorted(exclusions.counts.items())),
+        "exclusion_details": {
+            category: sorted(set(nodeids))
+            for category, nodeids in sorted(exclusions.details.items())
+        },
         "tool_versions": _tool_versions(),
     }
     (out_dir / "manifest.json").write_text(
@@ -1168,7 +1362,7 @@ def emit_corpus(
     return EmitSummary(
         total_vectors=len(pending),
         bundle_paths=bundle_paths,
-        exclusions=dict(exclusions),
+        exclusions=dict(exclusions.counts),
     )
 
 

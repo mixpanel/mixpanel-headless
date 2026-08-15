@@ -53,6 +53,14 @@
         "workspace_session": {
           "$ref": "#/$defs/session",
           "$comment": "Present only when the Workspace facade session differs from the injected client session (test_workspace_crud.py:50-100 pattern, D5.1)"
+        },
+        "client_options": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_retries": {"type": "integer"}
+          },
+          "$comment": "Extension (12), PR-5 audit finding F4: client CONSTRUCTOR kwargs that change wire behavior, captured only when non-default. max_retries=1 tests emit 2-attempt 429 sequences a default-configured replay client would never reproduce; replay passes these to the client constructor. Only max_retries qualifies today (timeouts never fire against the in-memory transport)."
         }
       }
     },

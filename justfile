@@ -120,6 +120,9 @@ conformance:
 
 # Record-mode vector extraction over the full non-live suite (design D1.3/D3).
 # `-o addopts=""` is required: the repo default addopts pollute collection.
+# `uv run python -m pytest` (NOT bare `uv run pytest`) is required: only the
+# `-m` form puts the repo root on sys.path so `-p conformance.record.plugin`
+# can import (found at PR-5 first invocation).
 # Manual recipe — NOT part of `check`; the extraction commit is a deliberate
 # act (D3 regeneration story). Pass --mp-record-date/--mp-record-commit via
 # args to reproduce committed manifest stamps byte-for-byte (D8 drift check).
@@ -130,7 +133,7 @@ conformance-record *args:
     if [ -f conformance/record/exclusions.args ]; then
         EXCLUSIONS=$(cat conformance/record/exclusions.args)
     fi
-    uv run pytest tests -p conformance.record.plugin \
+    uv run python -m pytest tests -p conformance.record.plugin \
         --mp-record-vectors=conformance/vectors \
         -o addopts="" -m "not live" $EXCLUSIONS {{ args }}
 

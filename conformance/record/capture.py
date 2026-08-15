@@ -120,6 +120,9 @@ class EntryCallCapture:
         excluded_reason: Manifest category excluding this capture from
             emission (``test_local_clock`` / ``unserializable_input``), or
             None when emittable.
+        client_options: Non-default client CONSTRUCTOR kwargs affecting
+            wire behavior (``max_retries`` — PR-5 audit finding F4), or
+            None when the client is default-configured/absent.
     """
 
     index: int
@@ -127,6 +130,7 @@ class EntryCallCapture:
     input_encoded: dict[str, Any] | None
     session: Session | None
     workspace_session: Session | None
+    client_options: dict[str, Any] | None = None
     result_encoded: Any = None
     returned: bool = False
     error: BaseException | None = None

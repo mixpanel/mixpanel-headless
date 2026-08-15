@@ -158,8 +158,21 @@ class RecordClock:
         self._factory = None
 
     def reset_test_state(self) -> None:
-        """Reset per-test determinism state (the UUID counter, design D1.4)."""
+        """Reset per-test determinism state (design D1.4).
+
+        Resets the UUID counter AND moves the frozen clock back to the
+        epoch. Without the clock reset, virtual-sleep ticks accumulate
+        ACROSS tests — and because retry backoff includes ``random``
+        jitter, the accumulated offset is nondeterministic, leaking
+        run-varying sub-second fractions into every later
+        ``datetime.now()``-derived payload (caught by the PR-5 double-run
+        byte-diff on ``OAuthTokens.expires_at``). Per-test epoch reset
+        also makes each vector independent of how much earlier tests
+        slept.
+        """
         self.uuid_stream.reset()
+        if self._factory is not None:
+            self._factory.move_to(self.epoch)
 
     def _virtual_sleep(self, seconds: float | SupportsIndex) -> None:
         """Advance the frozen clock by ``seconds`` instead of waiting.

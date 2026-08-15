@@ -184,6 +184,13 @@ def _snapshot_request(request: httpx.Request) -> RecordedRequest:
     request.read()
     url = request.url
     port = f":{url.port}" if url.port is not None else ""
+    # Record the RAW (percent-ENCODED) path: ``url.path`` percent-decodes,
+    # which erases the library's URL-encoding contract — a port that fails
+    # to encode ``"My Event / Test"`` would replay identically against a
+    # decoded path (PR-5 audit finding F3; test_workspace_schemas.py
+    # ``test_create_schema_url_encodes_names``). Query params stay
+    # structured/decoded (both runners decode consistently).
+    raw_path = url.raw_path.decode("ascii").split("?", 1)[0]
     params: dict[str, str | list[str]] = {}
     for key, value in url.params.multi_items():
         existing = params.get(key)
@@ -196,7 +203,7 @@ def _snapshot_request(request: httpx.Request) -> RecordedRequest:
     return RecordedRequest(
         method=request.method,
         scheme_host=f"{url.scheme}://{url.host}{port}",
-        path=url.path,
+        path=raw_path,
         params=params,
         headers={k.lower(): v for k, v in request.headers.items()},
         content=request.content,
@@ -266,6 +273,31 @@ def _expected_authorization(session: Session) -> str | None:
     if isinstance(account, OAuthTokenAccount) and account.token is not None:
         return "Bearer " + account.token.get_secret_value()
     return None
+
+
+def _input_contains_string(node: Any, needle: str) -> bool:
+    """Return whether ``needle`` appears verbatim among encoded input strings.
+
+    Used by the D5.2 fallback for entry points with no derivable session:
+    ``probe_region(client_factory, headers)`` carries its credential INSIDE
+    ``call.input`` (the ``headers`` dict), so an observed ``authorization``
+    value that replays from the vector's own input is legitimate by
+    construction.
+
+    Args:
+        node: Encoded ``call.input`` JSON node (dict/list/scalar).
+        needle: The observed header value to search for.
+
+    Returns:
+        True when any nested string equals ``needle`` exactly.
+    """
+    if isinstance(node, str):
+        return node == needle
+    if isinstance(node, dict):
+        return any(_input_contains_string(value, needle) for value in node.values())
+    if isinstance(node, list):
+        return any(_input_contains_string(value, needle) for value in node)
+    return False
 
 
 def _module_clock_mocked(func: Callable[..., Any]) -> bool:
@@ -637,9 +669,53 @@ class RecordSession:
             session=session,
             workspace_session=workspace_session,
             excluded_reason=excluded,
+            client_options=self._client_options_for(instance, arguments),
         )
         capture.entry_calls.append(call)
         return call
+
+    @staticmethod
+    def _client_options_for(
+        instance: Any, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Capture non-default client constructor options (finding F4).
+
+        ``max_retries`` changes the WIRE SEQUENCE a 429 family produces
+        (``max_retries=1`` tests record 2 attempts; a default replay
+        client would issue 4), so it must travel in the vector. Default
+        values are omitted so ordinary vectors stay unchanged.
+
+        Args:
+            instance: The receiver for method calls (None for module
+                functions).
+            arguments: Bound non-self arguments (scanned for a client
+                when the receiver itself is not one — the
+                ``paginate_all(client, ...)`` pattern).
+
+        Returns:
+            ``{"max_retries": N}`` when non-default, else None.
+        """
+        from mixpanel_headless._internal.api_client import MixpanelAPIClient
+        from mixpanel_headless.workspace import Workspace
+
+        client: Any = None
+        if isinstance(instance, MixpanelAPIClient):
+            client = instance
+        elif isinstance(instance, Workspace):
+            candidate = getattr(instance, "_api_client", None)
+            if isinstance(candidate, MixpanelAPIClient):
+                client = candidate
+        else:
+            for value in arguments.values():
+                if isinstance(value, MixpanelAPIClient):
+                    client = value
+                    break
+        if client is None:
+            return None
+        max_retries = getattr(client, "_max_retries", None)
+        if isinstance(max_retries, int) and max_retries != 3:
+            return {"max_retries": max_retries}
+        return None
 
     @staticmethod
     def _is_client_like(value: Any) -> bool:
@@ -670,6 +746,11 @@ class RecordSession:
         client that makes the requests; ``workspace_session`` carries the
         facade session only when the two differ (two-session pattern).
 
+        Every attribute is type-gated: builder-only tests construct real
+        ``Workspace`` objects around ``unittest.mock`` clients (no
+        ``_session`` attribute), so a naive attribute walk raises inside
+        the wrapped call and fails the test under record mode.
+
         Args:
             instance: The receiver for method calls (None for module
                 functions).
@@ -677,23 +758,42 @@ class RecordSession:
                 the receiver itself is not one).
 
         Returns:
-            ``(client_session, workspace_session_or_None)``.
+            ``(client_session, workspace_session_or_None)`` — either side
+            is None when no REAL ``Session`` object is derivable.
         """
         from mixpanel_headless._internal.api_client import MixpanelAPIClient
+        from mixpanel_headless._internal.auth.session import (
+            Session as _RealSession,
+        )
         from mixpanel_headless.workspace import Workspace
 
+        def _real(candidate: Any) -> Session | None:
+            """Return ``candidate`` only when it is a real ``Session``.
+
+            Args:
+                candidate: Attribute value that should be a session.
+
+            Returns:
+                The session, or None for mocks/None/other stand-ins.
+            """
+            return candidate if isinstance(candidate, _RealSession) else None
+
         if isinstance(instance, MixpanelAPIClient):
-            return instance._session, None
+            return _real(getattr(instance, "_session", None)), None
         if isinstance(instance, Workspace):
-            client = instance._api_client
-            client_session = client._session if client is not None else None
-            facade_session = instance._session
+            client = getattr(instance, "_api_client", None)
+            client_session = (
+                _real(getattr(client, "_session", None))
+                if isinstance(client, MixpanelAPIClient)
+                else None
+            )
+            facade_session = _real(getattr(instance, "_session", None))
             if client_session is not None and facade_session == client_session:
                 return client_session, None
             return client_session, facade_session
         for value in arguments.values():
             if isinstance(value, MixpanelAPIClient):
-                return value._session, None
+                return _real(getattr(value, "_session", None)), None
         return None, None
 
     @contextlib.contextmanager
@@ -828,31 +928,47 @@ class RecordSession:
     ) -> None:
         """Enforce the D5.2 abort rule on an observed authorization header.
 
+        Three acceptance paths (design D5.2, PR-5 refinement):
+
+        1. Session with a derivable expectation (service_account /
+           token-carrying oauth_token): observed must equal it exactly.
+        2. Session WITHOUT a derivable expectation (``oauth_browser`` or
+           env/resolver-backed ``oauth_token`` — the bearer comes from a
+           ``TokenResolver`` at request time): accepted here; emit adopts
+           the observed bearer as the session token when it is unique
+           across the vector, else excludes as ``unserializable_input``.
+        3. No session at all (``probe_region``-style entry points): the
+           observed value must appear verbatim inside ``call.input`` —
+           the credential replays from the vector itself.
+
         Args:
             nodeid: The current test's nodeid (for the error message).
             span: The attributed entry call carrying the bound session.
             snapshot: The recorded request.
 
         Raises:
-            RecordingAbortError: When the observed value does not decode to
-                the bound session's credentials (attribution bug or
-                credential leakage), or no expectation can be derived for
-                the session (``oauth_browser`` — unsupported in PR-2).
+            RecordingAbortError: When the observed value matches none of
+                the three acceptance paths (attribution bug or credential
+                leakage).
         """
         observed = snapshot.headers.get("authorization")
         if observed is None:
             return
         session = span.session
-        expected = _expected_authorization(session) if session is not None else None
-        if expected is None or observed != expected:
-            message = (
-                f"authorization header on {snapshot.method} {snapshot.path} in "
-                f"{nodeid} does not match the session bound to the requesting "
-                f"client (api={span.entry.api}) — recorder attribution bug or "
-                "credential leakage (design D5.2); record run aborted"
-            )
-            self.fatal_error = message
-            raise RecordingAbortError(message)
+        if session is not None:
+            expected = _expected_authorization(session)
+            if expected is None or observed == expected:
+                return
+        elif _input_contains_string(span.input_encoded, observed):
+            return
+        message = (
+            f"authorization header on {snapshot.method} {snapshot.path} in "
+            f"{nodeid} does not match the session bound to the requesting "
+            f"client (api={span.entry.api}) — recorder attribution bug or "
+            "credential leakage (design D5.2); record run aborted"
+        )
+        self.fatal_error = message
+        raise RecordingAbortError(message)
 
     # ------------------------------------------------------------------
     # Finalization

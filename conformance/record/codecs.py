@@ -213,16 +213,29 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
     if isinstance(value, Enum):
         return _encode_common(value.value, depth + 1, tagged_models=tagged_models)
     if isinstance(value, BaseModel):
+        # Field-level encoding (NOT model_dump): pydantic's JSON mode masks
+        # ``SecretStr`` fields to ``"**********"``, destroying the D5.5
+        # revealed-literal contract inside models (``OAuthTokens`` results
+        # were unreplayable). Attribute access hands each field value to
+        # the scalar branches above, so SecretStr reveals, datetime/date
+        # tag per the codec table, and nested models recurse. Computed
+        # fields are included in expect position only (they are part of
+        # the library's public to-dict contract but must never reach a
+        # constructor at decode time).
+        field_names = list(type(value).model_fields)
+        if not tagged_models:
+            field_names.extend(type(value).model_computed_fields)
         try:
-            dumped = value.model_dump(mode="json")
-        except Exception as exc:  # pydantic serialization is type-dependent
+            encoded = {
+                str(name): _encode_common(
+                    getattr(value, name), depth + 1, tagged_models=tagged_models
+                )
+                for name in field_names
+            }
+        except AttributeError as exc:  # defensive: exotic descriptors
             raise UnencodableValueError(
-                f"pydantic model {type(value).__name__} failed model_dump: {exc}"
+                f"pydantic model {type(value).__name__} field access failed: {exc}"
             ) from exc
-        encoded = {
-            str(k): _encode_common(v, depth + 1, tagged_models=tagged_models)
-            for k, v in dumped.items()
-        }
         if tagged_models:
             return {"$type": type(value).__name__, **encoded}
         return encoded
@@ -294,8 +307,21 @@ def encode_input_kwargs(arguments: Mapping[str, object]) -> dict[str, Any]:
     Raises:
         UnencodableValueError: If any argument value has no codec.
     """
+    import unittest.mock as _umock
+
     encoded: dict[str, Any] = {}
     for name, value in arguments.items():
+        if isinstance(value, _umock.NonCallableMock):
+            # A unittest.mock test double is NOT a callback: encoding it
+            # as one would bake a false contract into the vector (PR-5
+            # audit: MagicMock(spec=CohortDefinition) with a raising
+            # to_dict became ``$type: callback`` and replayed as a valid
+            # cohort). Mock-dependent captures are unserializable.
+            raise UnencodableValueError(
+                f"argument {name!r} is a unittest.mock object — the test "
+                "contract lives in the mock's behavior, which vectors "
+                "cannot encode (excluded as unserializable_input)"
+            )
         if callable(value) and not isinstance(value, type):
             encoded[name] = {"$type": "callback", "name": name}
         else:
@@ -472,6 +498,66 @@ def _decode_cohort_definition(payload: Mapping[str, Any]) -> Any:
     )
 
 
+@functools.cache
+def _public_type_codecs() -> Mapping[str, type]:
+    """Mechanical ``$type`` fallback table over the public types module.
+
+    The hand-audited :func:`_dataclass_codecs` table covers the D4.4
+    builder set; wire entry points additionally take dozens of public
+    Params models (``CreateAnnotationParams``, ``UpdateCohortParams``, …)
+    and ``OAuthTokens``. Enumerating them by hand would rot, so every
+    public BaseModel/dataclass exported by ``mixpanel_headless.types``
+    (plus ``OAuthTokens``) resolves mechanically — the PR-5 audit found
+    61 wire-input tags this closes.
+
+    Returns:
+        Mapping from class name to the class it reconstructs.
+    """
+    from mixpanel_headless import types as mp_types
+    from mixpanel_headless._internal.auth.token import OAuthTokens
+
+    table: dict[str, type] = {}
+    for name in dir(mp_types):
+        if name.startswith("_"):
+            continue
+        candidate = getattr(mp_types, name)
+        if not isinstance(candidate, type):
+            continue
+        if issubclass(candidate, BaseModel) or dataclasses.is_dataclass(candidate):
+            table[name] = candidate
+    table["OAuthTokens"] = OAuthTokens
+    return table
+
+
+def _decode_model(cls: type[BaseModel], payload: Mapping[str, Any]) -> Any:
+    """Reconstruct a Pydantic model from its tagged-object fields.
+
+    Args:
+        cls: The BaseModel subclass named by the payload's ``$type``.
+        payload: The tagged object (``$type`` plus field values).
+
+    Returns:
+        A new ``cls`` instance equal to the encoded original.
+
+    Raises:
+        UndecodableValueError: If the payload carries unknown fields or
+            validation rejects the decoded values.
+    """
+    field_names = set(cls.model_fields)
+    extra = set(payload) - field_names - {"$type"}
+    if extra:
+        raise UndecodableValueError(
+            f"unknown fields {sorted(extra)} for $type {cls.__name__}"
+        )
+    kwargs = {name: decode_value(payload[name]) for name in field_names & set(payload)}
+    try:
+        return cls(**kwargs)
+    except Exception as exc:
+        raise UndecodableValueError(
+            f"could not reconstruct {cls.__name__} from vector fields: {exc}"
+        ) from exc
+
+
 def _decode_tagged(payload: Mapping[str, Any]) -> Any:
     """Decode one ``$type``-tagged object (design D4.4 table dispatch).
 
@@ -505,12 +591,14 @@ def _decode_tagged(payload: Mapping[str, Any]) -> Any:
             return _decode_cohort_definition(payload)
     except (KeyError, ValueError) as exc:
         raise UndecodableValueError(f"malformed $type {tag!r} payload: {exc}") from exc
-    cls = _dataclass_codecs().get(str(tag))
+    cls = _dataclass_codecs().get(str(tag)) or _public_type_codecs().get(str(tag))
     if cls is None:
         raise UndecodableValueError(
             f"no codec for $type {tag!r} (extend conformance/record/codecs.py "
             "and its TS mirror together — design D4.4)"
         )
+    if isinstance(cls, type) and issubclass(cls, BaseModel):
+        return _decode_model(cls, payload)
     return _decode_dataclass(cls, payload)
 
 

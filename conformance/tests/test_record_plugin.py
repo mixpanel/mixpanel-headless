@@ -258,3 +258,250 @@ def test_deterministic_uuid_stream_resets_per_test() -> None:
     assert first == "00000000-0000-4000-8000-000000000000"
     assert second == "00000000-0000-4000-8000-000000000001"
     assert third == first
+
+
+# ---------------------------------------------------------------------------
+# Session extraction Mock-safety + D5.2 acceptance paths (PR-5 fixes)
+# ---------------------------------------------------------------------------
+
+
+def test_sessions_for_tolerates_mock_client() -> None:
+    """A Workspace wrapping a Mock client yields no session, no raise.
+
+    Builder-only tests construct real ``Workspace`` objects around
+    ``unittest.mock`` clients; the extractor must degrade to
+    ``(None, ...)`` instead of raising inside the wrapped call (PR-5
+    regression: 632 facade-builder tests failed under record mode).
+
+    Raises:
+        AssertionError: If a mock leaks through as a session.
+    """
+    from unittest.mock import Mock
+
+    from mixpanel_headless.workspace import Workspace
+
+    workspace = object.__new__(Workspace)
+    workspace._api_client = Mock()
+    workspace._session = Mock()
+    client_session, facade_session = RecordSession._sessions_for(workspace, {})
+    assert client_session is None
+    assert facade_session is None
+
+
+def test_sessions_for_returns_real_facade_session() -> None:
+    """A real facade session survives the type gate.
+
+    Raises:
+        AssertionError: If the real ``Session`` is dropped.
+    """
+    from unittest.mock import Mock
+
+    from mixpanel_headless.workspace import Workspace
+
+    session = _make_session()
+    workspace = object.__new__(Workspace)
+    workspace._api_client = Mock()
+    workspace._session = session
+    client_session, facade_session = RecordSession._sessions_for(workspace, {})
+    assert client_session is None
+    assert facade_session is session
+
+
+def _probe_style_span(input_encoded: dict[str, object]) -> object:
+    """Build a session-less entry-call capture (``probe_region`` shape).
+
+    Args:
+        input_encoded: The encoded ``call.input`` carrying the credential.
+
+    Returns:
+        An :class:`EntryCallCapture` with no bound session.
+    """
+    from conformance.record.capture import EntryCallCapture
+    from conformance.record.registry import REGISTRY_BY_API
+
+    return EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["region_probe.probe_region"],
+        input_encoded=input_encoded,
+        session=None,
+        workspace_session=None,
+    )
+
+
+def test_verify_authorization_accepts_input_carried_credential(
+    tmp_path: Path,
+) -> None:
+    """D5.2 path 3: an auth value present in ``call.input`` is accepted.
+
+    Args:
+        tmp_path: Session output directory (unused beyond construction).
+
+    Raises:
+        AssertionError: If the input-carried credential aborts recording.
+    """
+    from conformance.record.capture import RecordedRequest
+
+    record = RecordSession(
+        RecordOptions(
+            out_dir=tmp_path, extraction_date="2026-08-14", source_commit="0" * 40
+        )
+    )
+    span = _probe_style_span({"headers": {"Authorization": "Basic dTpz"}})
+    snapshot = RecordedRequest(
+        method="GET",
+        scheme_host="https://mixpanel.com",
+        path="/api/app/me",
+        params={},
+        headers={"authorization": "Basic dTpz"},
+        content=b"",
+    )
+    record._verify_authorization("tests/x.py::t", span, snapshot)  # type: ignore[arg-type]
+    assert record.fatal_error is None
+
+
+def test_verify_authorization_rejects_foreign_credential(tmp_path: Path) -> None:
+    """D5.2: an auth value from NOWHERE (no session, not in input) aborts.
+
+    Args:
+        tmp_path: Session output directory (unused beyond construction).
+
+    Raises:
+        AssertionError: If the foreign credential is accepted.
+    """
+    import pytest as _pytest
+
+    from conformance.record.capture import RecordedRequest, RecordingAbortError
+
+    record = RecordSession(
+        RecordOptions(
+            out_dir=tmp_path, extraction_date="2026-08-14", source_commit="0" * 40
+        )
+    )
+    span = _probe_style_span({"headers": {"Authorization": "Basic dTpz"}})
+    snapshot = RecordedRequest(
+        method="GET",
+        scheme_host="https://mixpanel.com",
+        path="/api/app/me",
+        params={},
+        headers={"authorization": "Basic c29tZW9uZTplbHNl"},
+        content=b"",
+    )
+    with _pytest.raises(RecordingAbortError):
+        record._verify_authorization("tests/x.py::t", span, snapshot)  # type: ignore[arg-type]
+    assert record.fatal_error is not None
+
+
+def test_verify_authorization_defers_resolver_backed_session(
+    tmp_path: Path,
+) -> None:
+    """D5.2 path 2: resolver-backed sessions defer verification to emit.
+
+    Args:
+        tmp_path: Session output directory (unused beyond construction).
+
+    Raises:
+        AssertionError: If a resolver-backed bearer aborts recording.
+    """
+    from conformance.record.capture import EntryCallCapture, RecordedRequest
+    from conformance.record.registry import REGISTRY_BY_API
+    from mixpanel_headless._internal.auth.account import OAuthTokenAccount
+
+    record = RecordSession(
+        RecordOptions(
+            out_dir=tmp_path, extraction_date="2026-08-14", source_commit="0" * 40
+        )
+    )
+    session = Session(
+        account=OAuthTokenAccount(name="ci", region="us", token_env="MP_OAUTH_TOKEN"),
+        project=Project(id="12345"),
+    )
+    span = EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["api_client.list_annotations"],
+        input_encoded={},
+        session=session,
+        workspace_session=None,
+    )
+    snapshot = RecordedRequest(
+        method="GET",
+        scheme_host="https://mixpanel.com",
+        path="/api/app/projects/12345/annotations/",
+        params={},
+        headers={"authorization": "Bearer resolved-tok"},
+        content=b"",
+    )
+    record._verify_authorization("tests/x.py::t", span, snapshot)
+    assert record.fatal_error is None
+
+
+def test_reset_test_state_moves_clock_back_to_epoch() -> None:
+    """Per-test reset returns the frozen clock to the epoch (design D1.4).
+
+    Virtual-sleep ticks must not accumulate across tests: jittered backoff
+    durations would otherwise leak a nondeterministic offset into every
+    later ``datetime.now()``-derived payload (PR-5 double-run regression).
+
+    Raises:
+        AssertionError: If time survives the reset.
+    """
+    import datetime as _dt
+    import time as _time
+
+    clock = RecordClock()
+    clock.start()
+    try:
+        epoch_now = _dt.datetime.now(_dt.timezone.utc)
+        _time.sleep(123.456)
+        assert _dt.datetime.now(_dt.timezone.utc) > epoch_now
+        clock.reset_test_state()
+        assert _dt.datetime.now(_dt.timezone.utc) == epoch_now
+    finally:
+        clock.stop()
+
+
+def test_snapshot_request_records_percent_encoded_path() -> None:
+    """The transport snapshot keeps the RAW (encoded) request path.
+
+    ``httpx.URL.path`` percent-decodes, which would erase the library's
+    URL-encoding contract (PR-5 audit finding F3: a port that fails to
+    encode ``"My Event / Test"`` would replay identically).
+
+    Raises:
+        AssertionError: If the decoded path leaks into the snapshot.
+    """
+    from urllib.parse import quote
+
+    from conformance.record.plugin import _snapshot_request
+
+    encoded = quote("My Event / Test", safe="")
+    request = httpx.Request(
+        "POST",
+        f"https://mixpanel.com/api/app/projects/12345/schemas/event/{encoded}",
+        params={"q": "1"},
+    )
+    snapshot = _snapshot_request(request)
+    assert snapshot.path == (
+        "/api/app/projects/12345/schemas/event/My%20Event%20%2F%20Test"
+    )
+    assert snapshot.params == {"q": "1"}
+
+
+def test_client_options_captured_only_when_non_default() -> None:
+    """Non-default ``max_retries`` is captured; the default is omitted (F4).
+
+    Raises:
+        AssertionError: If defaults leak in or non-defaults are dropped.
+    """
+    import httpx as _httpx
+
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    transport = _httpx.MockTransport(lambda _request: _httpx.Response(200))
+    session = _make_session()
+    tuned = MixpanelAPIClient(session=session, max_retries=1, _transport=transport)
+    default = MixpanelAPIClient(session=session, _transport=transport)
+    assert RecordSession._client_options_for(tuned, {}) == {"max_retries": 1}
+    assert RecordSession._client_options_for(default, {}) is None
+    assert RecordSession._client_options_for(None, {"client": tuned}) == {
+        "max_retries": 1
+    }

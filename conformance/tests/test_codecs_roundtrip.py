@@ -311,3 +311,95 @@ def test_malformed_bytes_encoding_raises() -> None:
     """
     with pytest.raises(UndecodableValueError):
         decode_value({"$type": "bytes", "encoding": "hex", "data": "00"})
+
+
+def test_secretstr_inside_pydantic_model_is_revealed() -> None:
+    """SecretStr model fields encode revealed, never masked (design D5.5).
+
+    ``model_dump(mode="json")`` masks secrets to ``"**********"``; the
+    field-level encoder must reveal the fake test literal so replay can
+    reconstruct the value (PR-5 regression: ``OAuthTokens`` vectors).
+
+    Raises:
+        AssertionError: If the mask leaks into the encoding.
+    """
+    from mixpanel_headless._internal.auth.token import OAuthTokens
+
+    tokens = OAuthTokens(
+        access_token=SecretStr("access-tok-123"),
+        refresh_token=SecretStr("refresh-tok-456"),
+        expires_at=datetime.datetime(
+            2026, 1, 15, 13, 0, 0, tzinfo=datetime.timezone.utc
+        ),
+        scope="projects",
+        token_type="Bearer",
+    )
+    from conformance.record.codecs import encode_expect_value
+
+    encoded = encode_input_value(tokens)
+    assert encoded["$type"] == "OAuthTokens"
+    assert encoded["access_token"] == {"$type": "SecretStr", "value": "access-tok-123"}
+    assert encoded["refresh_token"] == {
+        "$type": "SecretStr",
+        "value": "refresh-tok-456",
+    }
+    assert encoded["expires_at"]["$type"] == "datetime"
+    expect_side = encode_expect_value(tokens)
+    assert expect_side["access_token"] == {
+        "$type": "SecretStr",
+        "value": "access-tok-123",
+    }
+
+
+def test_mock_arguments_are_unencodable() -> None:
+    """unittest.mock arguments raise instead of encoding a false callback.
+
+    PR-5 audit regression: ``MagicMock(spec=CohortDefinition)`` with a
+    raising ``to_dict`` was encoded as ``$type: callback`` and replayed as
+    a benign stub, silently flipping the U24 contract.
+
+    Raises:
+        AssertionError: If a mock encodes without error.
+    """
+    from unittest.mock import MagicMock, Mock
+
+    from conformance.record.codecs import UnencodableValueError
+
+    for double in (MagicMock(), Mock(), MagicMock(spec=CohortDefinition)):
+        with pytest.raises(UnencodableValueError):
+            encode_input_kwargs({"cohort": double})
+
+
+def test_public_type_fallback_round_trips_params_models() -> None:
+    """Wire Params models decode via the mechanical public-type fallback.
+
+    The hand table covers builder dataclasses only; the PR-5 audit found
+    61 wire-input tags (Params models, ``OAuthTokens``, ``HoldingConstant``)
+    that must decode for the runner to replay entity CRUD vectors.
+
+    Raises:
+        AssertionError: If a round trip loses equality.
+    """
+    from mixpanel_headless._internal.auth.token import OAuthTokens
+    from mixpanel_headless.types import CreateAnnotationParams, HoldingConstant
+
+    params = CreateAnnotationParams(date="2026-03-31", description="note")
+    encoded = encode_input_value(params)
+    assert encoded["$type"] == "CreateAnnotationParams"
+    assert decode_value(encoded) == params
+
+    holding = HoldingConstant(property="platform")
+    encoded_h = encode_input_value(holding)
+    assert encoded_h["$type"] == "HoldingConstant"
+    assert decode_value(encoded_h) == holding
+
+    tokens = OAuthTokens(
+        access_token=SecretStr("a-tok"),
+        refresh_token=SecretStr("r-tok"),
+        expires_at=datetime.datetime(2026, 1, 15, 13, tzinfo=datetime.timezone.utc),
+        scope="projects",
+        token_type="Bearer",
+    )
+    decoded = decode_value(encode_input_value(tokens))
+    assert decoded.access_token.get_secret_value() == "a-tok"
+    assert decoded.expires_at == tokens.expires_at

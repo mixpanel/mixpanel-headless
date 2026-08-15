@@ -114,6 +114,7 @@ def _wire_entries_for_class(
     module: str,
     state_names: frozenset[str],
     skip_names: frozenset[str],
+    capability: str = "",
 ) -> tuple[RegistryEntry, ...]:
     """Mechanically enumerate a class's public methods as wire entries (D1.2).
 
@@ -124,6 +125,10 @@ def _wire_entries_for_class(
         module: Import path of the defining module for ``target`` strings.
         state_names: Method names registered as ``wire_state``.
         skip_names: Method names excluded from the registry entirely.
+        capability: Fixed capability for every entry, or ``""`` to defer
+            to the emit-time endpoint table. ``ReplaysService`` entries pin
+            ``"replays"`` — their CDN hosts are not in the endpoint table,
+            so deferring misfiled them under ``entities`` (PR-5 audit).
 
     Returns:
         Entries sorted by method name (deterministic registry order).
@@ -140,7 +145,7 @@ def _wire_entries_for_class(
                 api=f"{api_prefix}.{name}",
                 target=f"{module}:{cls.__name__}.{name}",
                 kind=kind,
-                capability="",
+                capability=capability,
             )
         )
     return tuple(entries)
@@ -466,6 +471,7 @@ def build_registry() -> tuple[RegistryEntry, ...]:
         module=_REPLAYS_MODULE,
         state_names=frozenset(),
         skip_names=frozenset(),
+        capability="replays",
     )
     return (
         _facade_entries()

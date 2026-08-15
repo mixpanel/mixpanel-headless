@@ -240,3 +240,19 @@ def test_validators_use_the_structural_output_codec() -> None:
         if entry.kind == KIND_VALIDATOR and entry.output_codec != "validation_errors"
     ]
     assert bad == []
+
+
+def test_replays_wire_entries_carry_replays_capability() -> None:
+    """ReplaysService wire entries pin capability ``replays`` (PR-5 audit).
+
+    CDN hosts are absent from the emit-time endpoint table, so deferring
+    to it misfiled ``replays.fetch_files`` vectors under ``entities``.
+
+    Raises:
+        AssertionError: If any replays entry lacks the capability.
+    """
+    from conformance.record.registry import REGISTRY
+
+    replays_entries = [e for e in REGISTRY if e.api.startswith("replays.")]
+    assert replays_entries
+    assert all(e.capability == "replays" for e in replays_entries)

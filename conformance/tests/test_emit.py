@@ -162,7 +162,7 @@ def _tree_bytes(root: Path) -> dict[str, bytes]:
 @pytest.mark.parametrize(
     ("value", "rule"),
     [
-        ("A" * 45, "entropy-shape"),
+        ("aB3dE5gH7jK9mN1pQ2sT4vW6yZ8xC0rF-_bD3fG5h", "entropy-shape"),
         ("sk-live-abc123", "sk-prefix"),
         ("/Users/someone/secret.txt", "home-path"),
         ("Bearer not-the-session-token", "foreign-bearer"),
@@ -207,6 +207,138 @@ def test_session_derived_credentials_pass_redaction(tmp_path: Path) -> None:
         _options(tmp_path),
     )
     assert summary.total_vectors == 1
+
+
+def test_low_diversity_entropy_shape_passes(tmp_path: Path) -> None:
+    """Low-diversity long strings never trip the entropy screen (D5.4).
+
+    A 4 KiB ``"x" * 4096`` truncation fixture matches the base64 SHAPE but
+    carries no secret entropy; the distinct-character floor keeps such
+    wire data recordable (PR-5 refinement).
+
+    Args:
+        tmp_path: Output directory for the pass.
+
+    Raises:
+        AssertionError: If a low-diversity string aborts emission.
+    """
+    capture = _builder_capture(
+        "tests/unit/test_fake.py::test_low_diversity",
+        input_encoded={"events": ["x" * 4096]},
+    )
+    summary = emit_corpus([capture], [capture.nodeid], _options(tmp_path))
+    assert summary.total_vectors == 1
+
+
+def _resolver_session() -> Session:
+    """Build an env-backed oauth_token session with no inline bearer.
+
+    Returns:
+        A ``Session`` whose auth value is NOT derivable from the session
+        object (resolver-backed — design D5.2 acceptance path 2).
+    """
+    from mixpanel_headless._internal.auth.account import OAuthTokenAccount
+
+    return Session(
+        account=OAuthTokenAccount(name="ci", region="us", token_env="MP_OAUTH_TOKEN"),
+        project=Project(id="12345"),
+    )
+
+
+def _resolver_wire_capture(nodeid: str, bearers: list[str]) -> CapturedTest:
+    """Build a wire capture whose interactions carry resolver bearers.
+
+    Args:
+        nodeid: The owning pytest nodeid.
+        bearers: Observed ``authorization`` bearer token per interaction.
+
+    Returns:
+        A capture with one measured call and ``len(bearers)`` attributed
+        interactions.
+    """
+    session = _resolver_session()
+    call = EntryCallCapture(
+        index=0,
+        entry=REGISTRY_BY_API["api_client.list_annotations"],
+        input_encoded={},
+        session=session,
+        workspace_session=None,
+        result_encoded=[{"id": 1}],
+        returned=True,
+    )
+    interactions = [
+        RecordedInteraction(
+            seq=seq,
+            request=RecordedRequest(
+                method="GET",
+                scheme_host="https://mixpanel.com",
+                path="/api/app/projects/12345/annotations/",
+                params={},
+                headers={"authorization": f"Bearer {bearer}"},
+                content=b"",
+            ),
+            response=RecordedResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                body_bytes=b'{"status": "ok", "results": [{"id": 1}]}',
+            ),
+            span_index=0,
+            is_async=False,
+        )
+        for seq, bearer in enumerate(bearers)
+    ]
+    return CapturedTest(nodeid=nodeid, entry_calls=[call], interactions=interactions)
+
+
+def test_resolver_backed_bearer_adopted_into_session(tmp_path: Path) -> None:
+    """A unique observed bearer becomes the encoded session token (D5.2).
+
+    Args:
+        tmp_path: Output directory for the pass.
+
+    Raises:
+        AssertionError: If the token is not adopted or the auth pattern
+            does not match the observed value.
+    """
+    import json as _json
+
+    nodeid = "tests/unit/test_fake.py::test_resolver_adopted"
+    summary = emit_corpus(
+        [_resolver_wire_capture(nodeid, ["resolved-tok"])],
+        [nodeid],
+        _options(tmp_path),
+    )
+    assert summary.total_vectors == 1
+    bundle = next(tmp_path.rglob("test_fake.jsonl"))
+    vector = _json.loads(bundle.read_text().splitlines()[1])
+    assert vector["call"]["session"]["token"] == "resolved-tok"
+    pattern = vector["expect"]["interactions"][0]["request"]["headers_contain"][
+        "authorization"
+    ]["pattern"]
+    assert "resolved\\-tok" in pattern
+
+
+def test_rotating_bearer_excluded_as_unserializable(tmp_path: Path) -> None:
+    """Distinct observed bearers exclude the vector (rotating resolver).
+
+    The rotating ``TokenResolver`` stub is an unserializable dependency —
+    a single session token cannot reproduce per-request rotation (D5.2).
+
+    Args:
+        tmp_path: Output directory for the pass.
+
+    Raises:
+        AssertionError: If a vector is emitted or the wrong category is
+            counted.
+    """
+    nodeid = "tests/unit/test_fake.py::test_resolver_rotating"
+    summary = emit_corpus(
+        [_resolver_wire_capture(nodeid, ["tok-1", "tok-2"])],
+        [nodeid],
+        _options(tmp_path),
+    )
+    assert summary.total_vectors == 0
+    assert summary.exclusions.get("unserializable_input") == 1
 
 
 # ---------------------------------------------------------------------------
