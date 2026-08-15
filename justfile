@@ -103,20 +103,11 @@ test-cov:
 
 # Conformance tooling tests + corpus runner. Part of `check` per design D8;
 # deliberately excludes the record-mode drift re-extraction (CI-only, slow).
-# Exit code 5 ("no tests collected") from the corpus runner is tolerated
-# until PR-6 lands runner/test_corpus.py; any real failure still fails.
 conformance:
     #!/usr/bin/env bash
     set -euo pipefail
     uv run pytest conformance/tests -o addopts="" -q
-    rc=0
-    uv run pytest conformance/runner -o addopts="" -q || rc=$?
-    if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then
-        exit "$rc"
-    fi
-    if [ "$rc" -eq 5 ]; then
-        echo "conformance/runner: no tests collected yet (corpus runner lands in PR-6)"
-    fi
+    uv run pytest conformance/runner -o addopts="" -q
 
 # Record-mode vector extraction over the full non-live suite (design D1.3/D3).
 # `-o addopts=""` is required: the repo default addopts pollute collection.
