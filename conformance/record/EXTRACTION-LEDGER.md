@@ -7,6 +7,77 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 
+## P2-1 re-extraction (2026-08-15) — Phase-2 recorder-coverage closure
+
+### Invocation
+
+```bash
+uv run python -m pytest tests -p conformance.record.plugin \
+  --mp-record-vectors=conformance/vectors \
+  --mp-record-date=2026-08-15 \
+  --mp-record-commit=0cc33b0ecc750acbe4929408d00542db9d555d2a \
+  -o addopts="" -m "not live" conformance/tests/test_coverage_cases.py -q
+```
+
+The trailing path comes from `conformance/record/exclusions.args` (now an
+INCLUSION selector — see README): `tests/` is frozen during Phase 2, so the
+P2-1 coverage-closure cases live in `conformance/tests/test_coverage_cases.py`
+and join the record run through the existing `$(cat exclusions.args)` seam in
+both the justfile recipe and the CI drift step (no invocation change needed).
+The stamped commit is the `ts-port/phase2-contract-support` code-half commit
+(registry additions + coverage cases + contract generator), per the AD-6
+precedent. Record run: **7,143 passed, 1 skipped, 556 deselected, 0 failed**
+under the D1.4 freeze (+27 collected: the new coverage-case tests).
+
+### Headline counts (manifest `counts`)
+
+| Metric | AD-6 baseline | P2-1 actual | Delta |
+|---|---|---|---|
+| **Extracted vectors (manifest total)** | 3,007 | **3,031** | +24 |
+| `builder` | 1,744 | 1,768 | +24 |
+| `validation-error` | 65 | 65 | 0 |
+| `wire` | 1,198 | 1,198 | 0 |
+| Bundles | 154 | 157 | +3 |
+
+New bundles: `funnels/test_coverage_cases.jsonl`,
+`retention/test_coverage_cases.jsonl`, `cohorts/test_coverage_cases.jsonl`.
+
+### Vector-id churn vs the AD-6 corpus (honest diff)
+
+**25 added, 1 removed, 3,006 shared.** Added, by `call.api`:
+`types.CohortCriteria.did_not_do_event` 10, `types.FunnelStep` 6 (4 from the
+coverage cases + 2 from pre-existing `tests/test_validation_funnel.py`
+constructions whose EV1 raises were previously invisible — the seam did not
+exist), `types.RetentionEvent` 4, `types.CohortCriteria.property_is_set` 3
+(2 coverage cases + 1 RESEATED vector — see below),
+`types.CohortCriteria.property_is_not_set` 2. The 1 removed id is
+`cohorts/types.cohortcriteria.has_property/test_cohort_definition-...-test_cd7_property_is_set_empty_name`:
+that test calls `property_is_set("")`, which previously recorded under the
+inner `has_property` seam; with `property_is_set` registered, the OUTER seam
+now owns the vector (re-entrancy guard) under its own `call.api` — the
+logical contract persists under the corrected name.
+
+`conformance/vectors/api-index.json` now carries **44 `types.*` entries**
+(39 + the 5 P2-1 closures), the Phase-2 design C10/P2-1 done-criterion.
+
+### Determinism / drift proof
+
+Full re-extraction into `/tmp/re-extract` with identical injected stamps,
+then `uv run python -m conformance.record.diff /tmp/re-extract
+conformance/vectors`: byte-clean in both directions (exit 0). Corpus runner
+at this commit: **3,179/3,179 passed** (3,031 extracted + 148 authored).
+
+### Contract artifacts (P2-1, same commit family)
+
+`conformance/contract/{error-codes,literal-aliases,tag-universe,model-coverage}.json`
+were generated AFTER this extraction with
+`--generated-from 0cc33b0ecc750acbe4929408d00542db9d555d2a`; re-runs are
+byte-identical (verified via `cmp` against a second run). The tag universe
+(85 observed tags + zero-filled `date` built-in, 80 rich) is produced by a
+JSON-aware `$type`-key walk and cross-verified in
+`conformance/tests/test_generate_contract.py` against an independently
+implemented `object_pairs_hook` scan — never grep.
+
 ## AD-6 re-extraction (2026-08-15) — post-coding-pass baseline
 
 ### Invocation

@@ -1,2 +1,2 @@
-{"$bundle":{"count":1,"source_commit":"d5627564d7e5a6711c4980f72187563f27e4c7f7","source_file":"tests/unit/test_rrweb_analyzer.py"}}
+{"$bundle":{"count":1,"source_commit":"0cc33b0ecc750acbe4929408d00542db9d555d2a","source_file":"tests/unit/test_rrweb_analyzer.py"}}
 {"call":{"api":"replay_labels.url_normalizer","input":{"url":"/cart"}},"capability":"replays","expect":{"output":"/cart"},"id":"replays/replay_labels.url_normalizer/test_rrweb_analyzer-testmouseinteractions-test_selector_label_fn_uses_propagated_testid","kind":"builder","origin":"extracted","schema_version":"1.0","source_test":"tests/unit/test_rrweb_analyzer.py::TestMouseInteractions::test_selector_label_fn_uses_propagated_testid"}
