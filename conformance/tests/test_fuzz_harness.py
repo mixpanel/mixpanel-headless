@@ -395,12 +395,14 @@ class TestPhase2StrategyTable:
         "sorted_strings",
         "cp_length",
         "cp_slice",
+        "jsonl_chunks",
     )
-    """The B0-1 pythonCompat completion targets (P3-4 packet), in packet
+    """The B0 targets: B0-1 pythonCompat completion + the B0-2
+    ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets), in packet
     order."""
 
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
-        """``ALL_TARGETS`` is Phase 1 + the 8 P2-9 targets + the 6 B0-1 targets.
+        """``ALL_TARGETS`` is Phase 1 + the 8 P2-9 targets + the 7 B0 targets.
 
         Raises:
             AssertionError: On a missing or misordered target.

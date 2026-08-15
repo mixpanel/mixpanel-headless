@@ -104,3 +104,170 @@ Deviations / review-pair flags:
    Python loader split a NEL inside a vector line; emit.py's ensure_ascii=False is
    safe only because recorded strings never carry those codepoints at present).
 4. Pre-existing combined-invocation pytest flake (see Environment note above).
+
+---
+
+# B0-2 — shared client internals (R10.8) — running notes
+
+Status: IN PROGRESS (skeleton). Assembled incrementally per R10.13.
+
+## Scope (playbook P3-4 packet B0-2)
+- TS home: packages/core/src/client/{internals,jsonl,backoff,url,headers,scope,app-request,lossless-json}.ts
+- Python source of record: src/mixpanel_headless/_internal/api_client.py @ support-branch HEAD (post-PR-206)
+  - _error_message :81-106; _iter_jsonl_lines :109-148; ENDPOINTS :151-172; _build_url :417-432;
+    _request_headers :452-481; _handle_response :503-662; _calculate_backoff :664-681;
+    _retry_wait_seconds :683-704; _execute_with_retry :706-820; _parse_retry_after :1159-1185;
+    app_request :1191-1387; maybe_scoped_path :1637-1664; client_metadata.py (QUERY_ORIGIN, get_user_agent)
+- parseLossless relocation: conformance-runner/src/lossless-json.ts -> packages/core/src/client/lossless-json.ts (GF5)
+- Binding: api_client._iter_jsonl_lines (6 authored chunk vectors, corpus/authored/streaming/jsonl-chunks.jsonl)
+- batch-status: add exact-name entry api_client._iter_jsonl_lines -> done
+
+## Work log
+- [x] Read playbook v1.1 fully + review-resolution + rulebook
+- [x] Read Python source ranges (all cited above)
+- [x] Survey TS phase-2 infra (errors, session/auth model, compat, rig)
+- [x] Layer-3 test translation (TDD first)
+- [x] Implementation
+- [x] Binding + batch-status entry + vectors green (539/0/2712)
+- [x] R10.9 throwaway harness + RUN record (see below)
+- [x] npm run check green
+- [ ] just check (Python) + commits
+
+## Design decisions (running)
+1. **Seam shape**: B0 ports the internals as free functions over minimal dependency
+   bags (`RequestExecutor`, `sleep(ms)`, `random()`, `requestHeaders(extra)`,
+   `projectId`) - NOT a client class. B4-C1 builds `createMixpanelClient` + the
+   fetch adapter over these by name (R10.8). The injected `request` executor is
+   contractually required to throw `MixpanelHttpError` for transport failures
+   (R2.10 - adapter-owned normalization); `_execute_with_retry`'s catch is the
+   R2.10 idiom `if (!(e instanceof MixpanelHttpError)) throw e;`.
+2. **MixpanelHttpError lands in B0** (`client/internals.ts`), extending `Error`
+   (NOT MixpanelHeadlessError) - it mirrors `httpx.HTTPError`, an out-of-hierarchy
+   transport error that `_execute_with_retry`/`app_request` always wrap into
+   `MixpanelHeadlessError` code `HTTP_ERROR`. errors.ts said "deferred to B4";
+   pulled forward because the B0 catch clauses need the class.
+3. **parseLossless relocation** takes `json-value.ts` (JsonNumber/JsonValue) along
+   (the parser's value model); rig files become thin re-export shims so
+   `instanceof JsonNumber` identity is preserved rig-wide. Unit tests move to
+   `packages/core/src/client/lossless-json.test.ts`.
+4. **`_handle_response` body model**: parsed bodies are `JsonValue` (JsonNumber
+   tokens intact, GATE-R5). `isinstance(body, dict|list)` translates to
+   plain-record/array checks that EXCLUDE JsonNumber instances. errors.ts
+   `responseBody` option/field types widened to `unknown` (Python's annotation
+   `str | dict | None` is a lie at runtime - `response.json()` returns lists and
+   scalars too, and Python passes them through).
+5. **403 scalar-body TypeError reproduced** (R10.7): Python
+   `body_text = json.dumps(body) if isinstance(body, dict) else (body or "")`
+   raises `TypeError` when the parsed 403 body is a truthy non-dict non-str
+   (`42`, `1.5`, `true`) because `in` is applied to a non-container; a LIST body
+   does Python element-membership (flag only matches as an exact element).
+   TS reproduces: Python-truthiness helper + TypeError throw + comment; filed for
+   a Python-side issue (NOT fixed in TS alone).
+6. **`params` caller-dict mutation reproduced**: `_execute_with_retry` writes
+   `params["query_origin"] = QUERY_ORIGIN` into the CALLER's dict (after None->{}
+   defaulting). TS mutates the passed object identically (observable behavior).
+7. **Retry-After >2^53**: `pythonInt` throws `PY_INT_UNSAFE_INTEGER` where CPython
+   parses arbitrarily large ints; per the playbook packet ("no B0 consumer can
+   produce one legitimately"), both PY_INT error codes map to `null` (header
+   treated as absent). Behavioral difference vs Python exists only for headers
+   with >2^53 seconds; documented here for the review pair.
+8. **User-Agent**: vectors assert headers via `headers_contain` subsets (UA is
+   never byte-locked); `getUserAgent()` ports the STRUCTURE
+   (`mixpanel-headless/{version} (entry={lib|cli}; ...)`) with runtime tag `ts`
+   replacing `python/x.y`, version pinned to packages/core/package.json (0.0.0).
+   `QUERY_ORIGIN` stays byte-identical ("mixpanel-headless") - it IS wire-locked.
+   `set_entry_point`/`get_entry_point` module state ported alongside.
+9. **ENDPOINTS** as nested `ReadonlyMap` (R4.8) + `endpointBase(region, kind)`
+   accessor using `invariant` (R6.8); `buildUrl` is a pure string-concat builder
+   (R2.3/R2.13).
+10. **Env layer of `_request_headers`** is injected (`getCustomHeaderEnv()`
+    provider re-read per call, mirroring Python's per-request `os.environ` read)
+    - core reads no env (R9.1/R9.4); the node package supplies the real reader in
+    B8, tests inject.
+11. **`_iter_jsonl_lines`** -> `async function* iterJsonlLines(source:
+    AsyncIterable<Uint8Array>)` over DECODED bytes (httpx decompresses before
+    `iter_bytes()`; the binding owns gzip via `DecompressionStream`, mirroring
+    conformance/record/adapters.py's httpx-response rebuild). TextDecoder
+    (non-fatal) is the sanctioned `errors="replace"` mapping per the packet.
+12. **oracle-ts async bindings**: `handleLine`/`dispatch`/`executeBound` become
+    async (awaiting binding results) so `api_client._iter_jsonl_lines` - a
+    registry-covered api with an oracle-py surface - is fuzzable through BOTH
+    bridges (P3-2(c)). This closes the server's own "out of oracle scope until
+    Phase 3" note; rig change at fable tier per P3-3.
+13. **Layer-3 entry-point substitution**: Python tests drive the B0 internals
+    through thin B4 wrappers (`get_events`, `request()`, `sign_replays`,
+    `export_events`). Translations preserve every assertion but invoke
+    `executeWithRetry`/`appRequest`/`handleResponse` directly; per-file headers
+    document the substitution (phase2-audit A2 style). Tests whose SUBJECT is
+    B4 streaming/pagination state (TestRetryStateResetRegression incl.
+    test_stream_rate_limit_error_carries_project_id, the export-stream
+    Retry-After case) defer to B4 - their raise site (:1883-1891) is B4 code;
+    noted so B4-C2 picks them up.
+
+## R10.9 RUN record (B0-2)
+
+Driver: `throwaway/b0-2/run-fuzz.sh` (TS repo; derandomized, re-runnable —
+the review pair re-runs this exact command).
+
+1. **Deterministic wire edge set** (`throwaway/b0-2/edge-harness.ts` via
+   `run-edge-harness.mjs`): 47 cases, 47 PASS / 0 FAIL. Every
+   `_handle_response` status branch from the packet's verbatim list
+   (200-object, 200-array, 200-non-JSON, 200-empty, 400, 401, 403-plain,
+   403-sensitive-data, 403-sensitive-string, 403-list-exact,
+   403-list-substring, 403-truthy-scalar TypeError bug-compat,
+   403-falsy-scalar, 404, 412, 422-via-app_request, 429-exhausted,
+   429-then-200, 429-no-header-backoff, 429-hostile, 429-huge-capped, 500,
+   503-string-body, 302-redirect-manual->HTTP_ERROR, network-error, 204-app,
+   app unwrap/raw/no-results, app-429/transport/401, AC1 guard) + the R10.9
+   value edges as 200 scalar bodies (42, 18.0, 1.5, true, null, "ok", [],
+   "", non-BMP) + 5 in-process jsonl line cases. Replayed through
+   `createVectorFetch` hand-built interactions -> a minimal
+   fetch->WireResponse adapter (R2.10/R2.11 prototype, throwaway-only) ->
+   the REAL `executeWithRetry`/`appRequest`/`handleResponse`.
+2. **Oracle-bridge fuzz** — `jsonl_chunks` family
+   (`api_client._iter_jsonl_lines`, the ONE B0-2 api with an oracle call
+   surface; the wire internals are bridge-exempt per the packet):
+   Hypothesis derandomize=True, 500-example budget -> **511 examples, 0
+   skips, 0 divergences** on the final run (edge set attached as @example
+   decorators: empty chunk list, empty chunk, blank-lines, CRLF,
+   mid-codepoint split, R10.9 literals as lines, \x1c strip-set lines,
+   invalid UTF-8, encoded-surrogate bytes, gzip chunk-boundary split).
+3. **DIVERGENCE FOUND AND FIXED mid-run** (the R10.9 payoff): first fuzz
+   run diverged at example 58 — input `b"\xef\xbb\xbf\n"`: Python
+   `bytes.decode("utf-8")` keeps a leading U+FEFF (only utf-8-sig strips,
+   and U+FEFF is not in `str.strip()`'s whitespace set) -> yields
+   `["\ufeff"]`; WHATWG `TextDecoder` EATS a leading BOM by default ->
+   yielded `[]`. Fix: `new TextDecoder("utf-8", { ignoreBOM: true })` in
+   `client/jsonl.ts` + a locking unit test (jsonl.test.ts BOM case).
+   Shrunken repro was written to `conformance/differential/repros/
+   2026-08-15-api_client-_iter_jsonl_lines.json` and removed after the
+   fix + green re-run (repros block the task while present).
+4. **Mechanical both-bridge probe** (`throwaway/b0-2/probe_apis.py`):
+   `api_client._iter_jsonl_lines` answers call DATA on oracle-py AND
+   oracle-ts with identical outputs.
+5. Vector replay after binding: TS conformance **3,251 vectors — 539 PASS /
+   0 FAIL / 2,712 UNPORTED** @ corpus b5c1369 (exactly 533 + the 6 authored
+   jsonl-chunk vectors; UNPORTED down by 6 per the P3-1 B0 row).
+
+## Deviations / review-pair flags (B0-2)
+1. errors.ts responseBody typing widened to `unknown` (see decision 4) - a
+   Phase-2 surface touch, type-level only.
+2. oracle-ts made async-capable (decision 12) - rig change beyond the literal
+   packet text, needed for the packet's own oracle-fuzz mandate on jsonl.
+3. B4 hand-off list: TestRetryStateResetRegression (4 tests),
+   test_export_events_negative_retry_after_uses_backoff, form-encoding
+   content-type assertion in test_form_body_sent_as_form_encoded (adapter-owned),
+   auth-header wire capture tests (Bearer/Basic recorded end-to-end at B4;
+   B0 locks the per-request `getAuthHeader()` seam call pattern).
+4. R10.7 Python-side issue to file (bug reproduced verbatim in TS, never
+   fixed TS-alone): `_handle_response` 403 branch `(response_body or "")`
+   + `in` raises TypeError for truthy non-dict non-str JSON bodies
+   (`42`/`1.5`/`true`), and a LIST body silently uses element-equality
+   membership. Locked by internals.test.ts R10.7 cases + edge harness.
+5. Retry-loop tests that Python pinned via `monkeypatch.setattr(client,
+   "_calculate_backoff", ...)` assert the injected-RNG-deterministic
+   backoff value instead (zero-jitter attempt-0 = 1s -> 1000ms at the
+   sleep seam); the assertion content (negative/garbage header never
+   reaches sleep; fallback path taken) is unchanged.
+6. eslint.config.js: node-globals block extended to `throwaway/**/*.mjs`
+   (harness driver); removed with `throwaway/` at the batch gate.

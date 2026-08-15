@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as _dt
+import gzip
 import json
 import re
 from collections.abc import Mapping
@@ -2036,6 +2037,136 @@ _CP_SLICE_TARGET = FuzzTarget(
     ),
 )
 
+# ---------------------------------------------------------------------------
+# Phase-3 B0-2: api_client._iter_jsonl_lines chunk probes (P3-4 packet B0-2)
+# ---------------------------------------------------------------------------
+
+_JSONL_LINE_TEXT: st.SearchStrategy[str] = st.one_of(
+    st.builds(
+        lambda k, v: json.dumps({k: v}),
+        st.text(max_size=4),
+        st.one_of(
+            st.integers(-100, 100),
+            st.floats(allow_nan=False, allow_infinity=False),
+            st.text(max_size=6),
+        ),
+    ),
+    st.text(max_size=10),  # arbitrary text incl. non-BMP / whitespace-ish
+    st.sampled_from(("18.0", "1.5", "True", "None", "\U0001d4b3", "")),
+    st.sampled_from((" ", "\t", "\x1c", "\x1d\x1e\x1f", "\ufeff")),  # strip set
+)
+"""One JSONL line's text: JSON-ish, arbitrary unicode, R10.9 literals, and
+Python-whitespace-only lines (the ``str.strip()`` vs ``trim()`` trap)."""
+
+
+@st.composite
+def _jsonl_chunks_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one ``api_client._iter_jsonl_lines`` chunk probe.
+
+    Builds a newline-joined payload from drawn lines (LF/CRLF/blank
+    terminators, optional missing final newline), optionally injects raw
+    invalid-UTF-8 bytes (the ``errors="replace"`` decode contract), splits
+    the byte payload at arbitrary positions (chunk boundaries — including
+    mid-codepoint — ARE the contract, design D2), and optionally gzips the
+    whole payload before splitting (httpx decodes via the
+    ``content-encoding: gzip`` header; the TS binding decompresses the
+    same way). Invalid-gzip bodies are deliberately NOT generated: a
+    corrupted stream raises transport-layer errors with runtime-specific
+    classes on both sides (httpx.DecodingError vs the WHATWG
+    DecompressionStream error) — a transport concern outside the library
+    contract (documented omission per the module rules).
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    lines = draw(st.lists(_JSONL_LINE_TEXT, max_size=6))
+    terminator = draw(st.sampled_from(("\n", "\r\n")))
+    payload = "".join(f"{line}{terminator}" for line in lines)
+    if draw(st.booleans()) and payload.endswith(terminator):
+        payload = payload[: -len(terminator)]  # final line without newline
+    data = payload.encode("utf-8")
+    if draw(st.booleans()):
+        # Raw byte injection: invalid UTF-8 must decode with replacement,
+        # never raise (Python errors="replace" == TextDecoder non-fatal).
+        position = draw(st.integers(0, len(data)))
+        junk = draw(st.binary(min_size=1, max_size=4))
+        data = data[:position] + junk + data[position:]
+    headers: dict[str, str] | None = None
+    if draw(st.booleans()):
+        data = gzip.compress(data, mtime=0)
+        headers = {"content-encoding": "gzip"}
+    cuts = sorted(
+        draw(st.lists(st.integers(0, max(len(data), 0)), max_size=4)),
+    )
+    chunks: list[bytes] = []
+    previous = 0
+    for cut in [*cuts, len(data)]:
+        chunks.append(data[previous:cut])
+        previous = cut
+    kwargs: dict[str, Any] = {"chunks": chunks}
+    if headers is not None:
+        kwargs["headers"] = headers
+    return ("api_client._iter_jsonl_lines", kwargs)
+
+
+_JSONL_CHUNKS = FuzzTarget(
+    name="jsonl_chunks",
+    calls=_jsonl_chunks_calls(),
+    # bytes-domain edge set: the R10.9 literals ride as LINE CONTENT
+    # (integral float / fractional float / True / None / empty string /
+    # non-BMP); "empty list" maps to the empty chunk list. Total function
+    # over well-formed transports — no reachable coded error branch
+    # (invalid gzip is a transport error, documented omission above).
+    edge_calls=(
+        ("api_client._iter_jsonl_lines", {"chunks": []}),  # R10.9: empty list
+        ("api_client._iter_jsonl_lines", {"chunks": [b""]}),  # empty chunk
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b'\n\n{"a": 1}\n \n{"b": 2}\n']},  # blank lines skip
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b'{"a": 1}\r\n{"b": 2}\r\n']},  # CRLF strip
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b'{"a": 1}\n{"b', b'": 2}']},  # split + no final \n
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            # 😀 (f0 9f 98 80) split mid-codepoint across chunks.
+            {"chunks": [b'{"emoji": "\xf0\x9f', b'\x98\x80"}\n']},
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b"18.0\n1.5\nTrue\nNone\n\xf0\x9d\x92\xb3\n"]},
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b"\x1c\n", b"a\x1c\n"]},  # Python strip set
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b"a\xffb\n"]},  # invalid UTF-8 -> replacement
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {"chunks": [b"x\xed\xa0\x80y\n"]},  # encoded-surrogate bytes
+        ),
+        (
+            "api_client._iter_jsonl_lines",
+            {
+                "chunks": [
+                    gzip.compress(b'{"a": 1}\n{"b": 2}\n{"c": 3}\n', mtime=0)[:10],
+                    gzip.compress(b'{"a": 1}\n{"b": 2}\n{"c": 3}\n', mtime=0)[10:],
+                ],
+                "headers": {"content-encoding": "gzip"},
+            },
+        ),
+    ),
+)
+
+
 PHASE3_TARGETS: tuple[FuzzTarget, ...] = (
     _PYTHON_INT,
     _PYTHON_FLOAT,
@@ -2043,9 +2174,11 @@ PHASE3_TARGETS: tuple[FuzzTarget, ...] = (
     _SORTED_STRINGS,
     _CP_LENGTH_TARGET,
     _CP_SLICE_TARGET,
+    _JSONL_CHUNKS,
 )
-"""The Phase-3 B0-1 pythonCompat completion targets (P3-4 packet), one
-per api family (>=500-example budget applies per target)."""
+"""The Phase-3 B0 targets: the B0-1 pythonCompat completion families plus
+the B0-2 ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets; the
+>=500-example budget applies per target)."""
 
 
 ALL_TARGETS: tuple[FuzzTarget, ...] = (
