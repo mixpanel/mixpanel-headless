@@ -271,3 +271,32 @@ the review pair re-runs this exact command).
    reaches sleep; fallback path taken) is unchanged.
 6. eslint.config.js: node-globals block extended to `throwaway/**/*.mjs`
    (harness driver); removed with `throwaway/` at the batch gate.
+
+## Arbiter resolution addendum (2026-08-15, b0-review-resolution.md)
+
+Review pair verdicts: both GO; arbiter GO — B0 signed off. Per-finding record
+(full rationale in `context/phase3/design/b0-review-resolution.md`):
+
+1. **F1 FIXED (major)**: `parseLossless` now accepts json.loads' non-finite
+   constants `NaN`/`Infinity`/`-Infinity` behind the opt-in `pythonConstants`
+   flag (native non-finite numbers — exactly Python's floats), enabled at the
+   three wire body-parse sites only; rig vector loading stays strict (D6 rule 5).
+   13 new red-first tests; conformance unchanged (539/0/2712 @ b5c1369).
+2. **F2 BLESSED**: Retry-After >2^53−1 null-vs-raw-big-int deviation is now
+   playbook Discrepancy #6 with a CORRECTED justification — decision 7 above
+   cited the packet's "no B0 consumer can produce one legitimately", which is
+   wrong for attacker-controlled headers; the real shield is the R4.5 2^53
+   policy + the 60s sleep cap + zero vector/Layer-3 exposure.
+3. **F3/assertions-2 FIXED**: the three JSONDecodeError-analog catches now
+   carry the `instanceof LosslessJsonError` guard (RangeError = RecursionError
+   analog propagates; backoff.ts pattern), locked by 1M-deep-nesting tests.
+4. **assertions-1 FIXED**: jsonl.test.ts header now cites
+   TestIterJsonlLines (:2709-2877) as a translation source.
+5. **cp_length budget BLESSED**: combined-bullet reading (≥10 across
+   cp_slice+cp_length; the bullet's named case families are slice-shaped).
+6. **Carried to B4** (gate must verify): (a) R6.7 AbortSignal satisfied via
+   signal-aware `request`/`sleep` closures without touching B0 signatures —
+   state this in the B4-C1 packet; (b) deviation-3 deferrals above actually
+   land at B4 (TestRetryStateResetRegression ×4, streaming project_id raise
+   :1883-1891 lock, negative-retry-after export case, form content-type,
+   auth-header wire captures).

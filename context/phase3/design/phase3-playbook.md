@@ -817,6 +817,19 @@ injected interfaces that B8 implements).
    no scope change, noted for effort estimation only.
 5. **Appendix B puts `me.py` nowhere explicitly** — this playbook splits it: pure
    selection logic → B4-C1; on-disk MeCache → B8-N2.
+6. **Retry-After beyond 2^53−1 reads as ABSENT in TS** (B0 arbiter blessing,
+   `b0-review-resolution.md` F2, 2026-08-15): `parseRetryAfter` maps `pythonInt`'s
+   `PY_INT_UNSAFE_INTEGER` to null where CPython parses the raw big int (Python: sleep
+   `min(x, 60)` unjittered + raw huge int in `RateLimitError.retry_after`; TS: jittered
+   exponential fallback + `retry_after: null`). Sanctioned deviation — the R4.5 2^53
+   policy leaves TS no faithful numeric representation, the 60s cap makes the sleep
+   path behaviorally inert (and unobservable in vectors), and no corpus vector or
+   Layer-3 assert exercises such a header. NOTE the P3-4 B0-1 packet justification
+   "no B0 consumer can produce one legitimately" is INCORRECT for attacker-controlled
+   headers — this entry supersedes it. Re-examine only if Phase-4 burn-in ever sees a
+   live >2^53 Retry-After. (The B0-1 fix F1 — `parseLossless` `pythonConstants` for
+   json.loads' `NaN`/`Infinity`/`-Infinity` at the wire body-parse sites — is a FIX,
+   not a deviation; recorded in the same resolution.)
 
 ### Escalations
 
