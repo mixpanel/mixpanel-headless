@@ -310,9 +310,16 @@ def main() -> int:
             "source_file": SOURCE_FILE,
         }
     }
-    lines = [json.dumps(header, ensure_ascii=True, sort_keys=True)]
+    # Sorted keys + compact separators (emit.py precedent) but ASCII-SAFE
+    # framing (oracle-protocol precedent): several inputs carry U+0085 /
+    # U+2028-class codepoints that str.splitlines() treats as line breaks,
+    # so raw UTF-8 emission would corrupt JSONL framing in both loaders.
+    lines = [
+        json.dumps(header, separators=(",", ":"), ensure_ascii=True, sort_keys=True)
+    ]
     lines.extend(
-        json.dumps(vector, ensure_ascii=True, sort_keys=True) for vector in vectors
+        json.dumps(vector, separators=(",", ":"), ensure_ascii=True, sort_keys=True)
+        for vector in vectors
     )
     OUT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {OUT_PATH} ({len(vectors)} vectors)")
