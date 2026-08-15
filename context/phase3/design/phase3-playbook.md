@@ -36,6 +36,16 @@ orchestrator launches instantiate P3-6 with the batch rows of P3-1 and the loop 
   grouped by prefix; the per-prefix totals sum to exactly 3,179 (= the pinned snapshot) and
   the pending groups sum to exactly 2,718 (= the UNPORTED count). Re-run this measurement
   after any corpus re-pin (P3-7) and update the batch-gate expectations.
+- **B0-1 re-pin update (2026-08-15, follow-up commit per P3-7)**: corpus re-pinned
+  `8ae76314` → `b5c1369` (P3-7 trigger 1: +72 authored `compat.*` vectors, generator
+  `conformance/record/gen_b0_vectors.py`; D8/D9 drift check clean — the 3,031 recorded
+  vectors are byte-identical, only stamps moved). Re-measured totals: **3,251** vectors
+  (`compat` 34→106; every other prefix unchanged), pending groups still sum to exactly
+  **2,718**; conformance at B0-1 exit: **533 PASS / 0 FAIL / 2,718 UNPORTED**. The P3-1
+  per-batch rows and the † cross-batch-setup footnote are unchanged (the new authored
+  vectors carry no `call.setup[]` and no pending prefix); batch-gate PASS baselines shift
+  by +72 (B9-gate expectation instantiates as 3,179+N with N=72 so far, plus B0-2's
+  authored additions when they land).
 
 ## P3-1 Batch sequencing and scope
 
