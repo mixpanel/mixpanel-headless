@@ -48,6 +48,19 @@ Reconciliation with recon `uncoded_sites` (104+13+9+8+4 = 138 across its five fi
 identical scope; the delta in this table is api_client (recon listed it implicitly via
 the manifest worklist, not in `uncoded_sites`) and the exhaustiveness-guard exclusion.
 
+Completeness sweep (AD-1, line-by-line re-grep at HEAD): every one of the 145 raw
+sites matches the line numbers in §1.1–§1.6 exactly; there are no multi-line,
+variable-bound, or otherwise pattern-evading `ValueError`/`TypeError` raises in the
+six modules. The only OTHER builtin raises in scope-module code are all out of scope
+by the same logic as api_client.py:411 and are recorded here so the done-criteria
+grep has a complete exclusion list:
+
+- `bookmark_builders.py:872, 879` — `raise AssertionError` (`pragma: no cover`
+  unreachable TC1/TC2 narrowing guards).
+- `types.py:187` — `raise NotImplementedError` (abstract `df` property placeholder).
+- `workspace.py:10626` — raises the already-coded `ReplayNotFoundError` via the
+  `replay_not_found_error(...)` factory (domain hierarchy, not a builtin).
+
 Code-minting conventions used below (consistent with the R5.3 registry style —
 `FAMILY``N``_SNAKE_GIST`; same-number variants precedented by `F1_MAX_STEPS`/`F1_MIN_STEPS`;
 several sites may share one code when they enforce the same rule, precedented by
@@ -62,9 +75,22 @@ several sites may share one code when they enforce the same rule, precedented by
   `CM1/CM2/CM5`, `CD1–CD9`, `CA1/CA2`, `TC0–TC3b`, `FB1–FB4`, `FF1–FF5`, `FS1`.
 - New families minted here: `TC` `FM` `LC` `FD` `LG` `GB` `EV` `MT` `EX` `HC` `AT`
   `RS` `SR` `UA` `RE` `RP` `RB` `ES` `BB` `SG` `WS` `WR` `AC`, plus full codes for the
-  label families `CF` `CB` `CM` `CD` `CA` `FB` `FF` `FS` (no minted full-code string
-  collides with the 175 existing registry codes — checked against recon `codes`;
-  prefix overlap with `CB3_…`/`CM5_…` is intentional label continuation).
+  label families `CF` `CB` `CM` `CD` `CA` `FB` `FF` `FS`. **Collision check (AD-1,
+  re-run against the full universe):** recon `codes` (175) is NOT the complete code
+  universe — a fresh literal scan of `src/mixpanel_headless/**` for `code="…"` finds
+  220 distinct strings; the union is **227** (recon-only: the `S1–S9` bookmark-schema
+  family, which lives in `_internal/bookmark_schema.py` as mapped values rather than
+  `code=` kwargs; fresh-only: 52 codes incl. `U_FILTER`, `U_COHORT`, `U9`,
+  `V25_INVALID_FILTER_TYPE`, `V4_FORMULA_CONFLICT`, `FL_*`, and the exceptions.py
+  generic codes). Result: the 128 minted full codes have **zero collisions** with the
+  227-code universe and zero duplicates among themselves; all 9 twin codes plus
+  `VALIDATION_ERROR` (exceptions.py:1191 dataclass default) exist at HEAD; no existing
+  prefix token overlaps a newly-minted family token. Prefix continuation next to
+  `CB3_RETENTION_MIXED_BREAKDOWN`/`CM5_INLINE_COHORT_METRIC` is intentional; the
+  same-number-variant style (`TC1_REQUIRES_UNIT`+`TC1_REJECTS_DATE`, `CD3`, `CD5`,
+  `CD6`) is precedented by the existing `FL2_*` (three variants) and `FL7_*` (two).
+  The B1 code-uniqueness guard test (§3) must assert against this 227-code universe
+  (recon `codes` ∪ fresh `code="…"` grep), not recon alone.
 - Generic codes per R5.5: `VALIDATION_ERROR` (param/construction pydantic paths — note
   it is already the `ValidationError` dataclass default, exceptions.py:1191) and
   `RESPONSE_VALIDATION_ERROR` (response `model_validate` paths). Minted once, wired in B3.
@@ -384,6 +410,48 @@ class ResponseValidationError(MixpanelHeadlessError):
   keep winning where ordered first. B3 includes a smoke check (`uv run mp --help` +
   the existing CLI test suite) but no CLI code changes.
 
+### Empirical verification (AD-1 prototype, scratch worktree at HEAD)
+
+The chosen policy was prototyped before acceptance: the three classes were added to
+`exceptions.py` and 8 representative sites converted (`FD1` types.py:7912, `ES11`/
+`ES12`/`ES13` user_builders, `BB1` bookmark_builders:395 — the TypeError case, `WR2`/
+`WR3` workspace `_validate_limit`, `SG1` segfilter:143). Observed:
+
+- Dual inheritance works as designed: `isinstance(…, ValueError)` /
+  `issubclass(ParamTypeError, TypeError)` True; `.code` and `to_dict()` intact; MRO
+  `(MixpanelHeadlessError, ValueError)` initializes cleanly through the existing
+  `super().__init__(message)` chain.
+- Existing suites pass **unmodified** against the converted sites:
+  `tests/test_user_builders.py` + `tests/unit/test_segfilter.py` (100 passed),
+  `tests/unit/test_bookmark_builders.py` (109 passed), `tests/unit/test_workspace.py
+  -k limit` (2), `tests/unit/test_query_types.py -k in_the_last` (8),
+  `tests/test_user_validators.py` + `tests/test_workspace_query_user_integration.py`
+  (184 passed — covers the U24 wrap family).
+- Each converted guard fires with class + code and stays catchable via bare
+  `except ValueError` / `except TypeError` (verified directly).
+- P3 rationale confirmed empirically: raising `ParamValidationError` inside a pydantic
+  `field_validator` is wrapped into `pydantic.ValidationError`; the `.code` is lost
+  (`"Value error, bad x"`). Keeping the builtin raise at the 6 pydantic-internal sites
+  is correct.
+- **Correction to the wrap-site claim**: NO existing test asserts the
+  workspace.py:9170 `U_FILTER` wrap (grep of tests/: zero hits — it is src-only
+  behavior). Preservation there rests on subclass semantics (proven above), not on any
+  regression test. B3's seam tests through `Workspace.query.user(...)`/the U_FILTER
+  path should therefore include at least one test pinning the wrap (converted `ES*`
+  raise still surfaces as `BookmarkValidationError` code `U_FILTER` through the
+  facade), closing that coverage hole while it is being relied upon.
+
+Implementation gotchas the prototype surfaced (binding on the batch implementer):
+
+- `segfilter.py` and `user_builders.py` module docstrings contain example import
+  lines byte-identical to the real imports — anchor-based import insertion lands
+  inside the docstring. Place new imports by editing the real import block explicitly.
+- `bookmark_builders.py` has `from __future__ import annotations`; new imports go
+  after it.
+- `types.py` currently imports nothing from `exceptions.py`; adding the import is
+  safe — exceptions.py's runtime imports are stdlib-only (its only library import,
+  `Region`, is TYPE_CHECKING-guarded), so no circularity.
+
 Docstring policy: every converted site's owning function updates its `Raises:` section
 (`ValueError` → `ParamValidationError` with code named), keeping the repo docstring
 standard (and R5.3 label comments) intact.
@@ -395,6 +463,15 @@ standard (and R5.3 label comments) intact.
 Strict TDD ordering per batch: write the new failing tests first (they assert class +
 `.code` — the code string is the contract; **never** `match=` on message text, R5.4),
 then convert the sites, then `just check`.
+
+R5.4/R5.3 contract note (AD-1 verified): new tests assert **class name + `.code`
+only** — never message text, and never `suggestion`/`fix`/free-text `details` content.
+This matches the recorder exactly: `emit.py::_encode_error` strips the `message`,
+`suggestion`, and `fix` keys from `details` before emission, and the vector schema's
+`expectedError` marks message/suggestion/fix "deliberately unrepresentable" (R5.4).
+No converted site adds `suggestion`/`fix` payloads in this pass — they stay advisory
+wherever they exist today. `details` passed to new coded raises is optional and, when
+provided, must contain only structured, deterministic, codec-encodable values.
 
 Per newly-coded site, **≥2 new tests**:
 
@@ -521,9 +598,15 @@ handled during that re-extraction per their own recommendations — not this des
 Combined coding-pass yield estimate: **~210–305 extracted vectors** (arbiter's
 plausible band was 260–390 for ~130 sites; the honest floor here is 14 recovered
 worklist tests, and the estimate is contingent on the §5 registry extension for
-constructor families). With E1's ~81 storybook parse vectors: 2,609 + ~291–386 →
-**~2,900–2,995**, i.e. the 3,000 target is reachable but not guaranteed; per R1 any
-residual shortfall is documented in EXTRACTION-LEDGER.md, not gated.
+constructor families). Arithmetic audit (AD-1): the 2,609 base is **2,530 extracted
+(manifest.json `total`) + 79 authored** (GATE-VERDICT G1 reconciliation); per-batch
+bands sum correctly (B1 150–200 + B2 25–45 + B3 35–60 = 210–305); test volume is 138
+sites × ≥2 = ≥276 new tests, of which only registered-seam-reaching tests emit
+(hence yield < test count). With E1's ~81 storybook parse vectors:
+2,609 + (210–305) + ~81 = **~2,900–2,995**, i.e. the 3,000 target is reachable but
+not guaranteed; per R1 any residual shortfall is documented in EXTRACTION-LEDGER.md,
+not gated. The E1 storybook vectors are net-new parse-kind vectors and distinct from
+the 79 already-counted authored vectors — no double-counting.
 
 ---
 
@@ -561,23 +644,59 @@ residual shortfall is documented in EXTRACTION-LEDGER.md, not gated.
    sites fire inside `__post_init__`/classmethods during test-side construction —
    outside every registered seam, so their new tests emit no vectors today.
    Extension: register the guard-bearing constructors/classmethods as builder entries
-   (`target="mixpanel_headless.types:Metric.__init__"` style resolves via the existing
-   `Class.method` branch of `resolve_owner`; classmethods like `Filter.in_the_last`,
-   `CohortCriteria.performed`, `CohortDefinition.all` register directly), with a new
-   `RegistryEntry` flag (e.g. `error_only=True`) honored in `_builder_vector` so
-   **success-path constructions emit nothing** (avoids flooding the corpus with
-   trivial construction-output vectors and keeps re-extraction review tractable);
-   the `state.depth > 0` re-entrancy guard in `plugin.py::_build_wrapper` (~686)
-   already suppresses nested constructions inside facades, so no attribution changes
-   are needed. Input encodability is already in place — the codec table encodes these
-   dataclasses as facade inputs today. This is a plugin change under the rig's own
-   standards (mypy --strict on conformance/, tooling tests) and lands with B1's
-   conformance commit; the TS runner needs the mirrored entry-point mapping only when
-   Phase 3 ports these families (unported vectors are counted, not failed).
+   with a new `RegistryEntry` flag `error_only: bool = False`. **AD-1 correction: the
+   original "no attribution changes are needed" claim was wrong** — a code-level read
+   of `plugin.py::_open_entry_call` (742–779) shows the current wrapper machinery
+   mishandles both target shapes this extension needs, so the plugin change must be
+   specced precisely:
+
+   - **Classmethod targets** (`Filter.in_the_last`, `CohortCriteria.performed`,
+     `CohortDefinition.all_of`, …): `resolve_owner` + `getattr(owner, attr)` returns
+     the **bound** classmethod, whose `inspect.signature` already excludes `cls`; but
+     `is_method` is derived purely from `"." in target` (plugin.py:669), so the
+     wrapper would treat the FIRST REAL ARGUMENT as the receiver — skipping it from
+     bound arguments (756–757) and, because builder-kind receivers that aren't
+     client-like get encoded (768–779), emitting it as `"self"`. Silent input
+     corruption. Required fix: detect the descriptor with
+     `inspect.getattr_static(owner, attr)`; when it is a `classmethod`, wrap its
+     `__func__` (wrapper receives `cls` explicitly), re-install via
+     `umock.patch.object(owner, attr, classmethod(wrapper))` so class-access AND
+     instance-access binding both stay correct, skip the `cls` parameter from encoded
+     input, and never run the receiver-encoding branch.
+   - **`__init__` targets** (`types:Metric.__init__`, `TimeComparison.__init__`, …):
+     `getattr` returns the plain function and the `self`-skip works, but the
+     receiver-encoding branch (768–779) would encode the **not-yet-initialized**
+     instance as `"self"`. `encode_input_kwargs` failures are only caught for
+     `UnencodableValueError` (824–826) — attribute access on a half-built frozen
+     dataclass raises `AttributeError`, which would propagate and fail the host test.
+     Required fix: for `error_only` entries the receiver-encoding branch is bypassed
+     unconditionally (input = bound non-self arguments only; `call.api` is the
+     registered entry string, e.g. `"types.Metric"`).
+   - **Success-path suppression accounting**: `_builder_vector` returning `None` is
+     counted as an `uncoded_raise` exclusion by its caller (emit.py:1186–1188), so
+     `error_only` success calls must NOT be routed through that return path. Required
+     fix: in the caller loop, `if call.entry.error_only and call.error is None:
+     continue` **before** `_builder_vector` — a silent skip, not an exclusion
+     category (success-path constructions emit nothing and are not "excluded tests").
+
+   The `state.depth > 0` re-entrancy guard in `plugin.py::_build_wrapper` (~689)
+   already suppresses nested constructions inside facades — that part of the original
+   claim holds, as does input encodability (the codec `$type` table already covers
+   `TimeComparison`, `GroupBy`, `FrequencyBreakdown`, `CohortCriteria`, … as facade
+   inputs; the violating constructor arguments themselves are plain scalars). This is
+   a plugin change under the rig's own standards (mypy --strict on conformance/,
+   tooling tests — including new tests for the three fixes above: classmethod input
+   fidelity, `__init__` no-receiver encoding, and error_only success suppression not
+   inflating exclusions) and lands with B1's conformance commit; the TS runner needs
+   the mirrored entry-point mapping only when Phase 3 ports these families (unported
+   vectors are counted, not failed).
 - Schema: **no `vector.schema.json` change needed** — `expect.error` with
   `class`/`code`/`details_contain` is already the operative shape; new codes are data,
-  not schema. (R3's `message_not_contains` field is a separate addendum decision, out
-  of scope here.)
+  not schema. AD-1 verified: the `expect` object has **no kind-conditional
+  constraints** (no `if`/`then` anywhere in the schema), so `expect.error` is legal on
+  builder AND wire vectors, and `expectedError` requires only `class` (`code`
+  optional, messages/suggestion/fix deliberately unrepresentable). (R3's
+  `message_not_contains` field is a separate addendum decision, out of scope here.)
 - Determinism: re-extraction after the coding pass is expected to differ ONLY by
   (a) former `uncoded_raise` tests now emitting vectors, (b) new tests' vectors,
   (c) manifest counts/exclusion lists; a before/after manifest diff is part of the
@@ -596,3 +715,34 @@ residual shortfall is documented in EXTRACTION-LEDGER.md, not gated.
    commit; commits stay local on `ts-port/phase1-addendum`.
 5. `CLAUDE.md`, `.claude/`, `pyproject.toml` untouched; conformance/ changes limited
    to §5's registry/emit additions + their tooling tests.
+
+---
+
+## 7. Review-Resolution (AD-1 adversarial review, 2026-08-15)
+
+Reviewer/arbiter: AD-1 (addendum workflow). Method: independent line-by-line
+re-greps of all six modules at HEAD `8aefb6d`; full-universe code-collision scan;
+a working prototype of the §2 exception policy in a scratch worktree (3 classes +
+8 converted sites, existing suites run unmodified); code-level verification of
+`conformance/record/{emit,plugin,registry}.py` and `conformance/schema/
+vector.schema.json`; arithmetic audit of §4 against `conformance/vectors/
+manifest.json` and GATE-VERDICT G1. Every change was applied in place; this section
+is the change log.
+
+| # | Verdict | Finding | Resolution |
+|---|---|---|---|
+| RR-1 | Confirmed accurate | Site inventory: all 145 raw sites re-greped independently; every line number in §1.1–§1.6 matches HEAD exactly; no pattern-evading raises (multi-line, variable-bound, bare re-raise) exist in scope. | No inventory change. Added a completeness sweep note to §1 listing the only other builtin raises in scope modules (bookmark_builders.py:872/879 `AssertionError` narrowing guards, types.py:187 `NotImplementedError`, workspace.py:10626 coded `ReplayNotFoundError` factory) so the exclusion story is exhaustive. |
+| RR-2 | **Defect fixed** | Collision check basis was incomplete: recon `codes` (175) omits 52 code strings present in src (incl. `U_FILTER`, `V25_*`, `FL_*`, exceptions.py generics) and includes 7 (`S1–S9`) that live in `bookmark_schema.py` as mapped values. A collision could have hidden in the gap. | Re-ran the check against the full 227-code universe (recon ∪ fresh `code="…"` grep): **zero collisions, zero intra-mint duplicates; all twins + `VALIDATION_ERROR` exist**. §1 bullet rewritten to record the real universe and to bind the B1 uniqueness-guard test to it (not to recon alone). |
+| RR-3 | Confirmed empirically | §2 policy backward-compat: prototyped in a scratch worktree (classes added, 8 representative sites converted across all three batch surfaces incl. the TypeError case). All targeted existing suites pass unmodified (100 + 109 + 2 + 8 + 184 tests); guards fire with class+code and stay catchable as `ValueError`/`TypeError`; pydantic wraps `ValueError` subclasses and drops `.code` (P3 rationale holds). | §2 gains an "Empirical verification" subsection recording the prototype runs, plus three implementation gotchas the prototype surfaced (docstring-identical import anchors in segfilter/user_builders, `__future__` ordering in bookmark_builders, types.py↔exceptions.py import safety). |
+| RR-4 | **Overstatement fixed** | §2 implied the workspace.py:9170 `U_FILTER` wrap was regression-protected; in fact no test in tests/ asserts `U_FILTER` (src-only behavior — the earlier grep hit was the U24 pattern). | §2 correction added: preservation rests on subclass semantics (directly proven), and B3 is now directed to add a seam test pinning the U_FILTER wrap while the pass relies on it. |
+| RR-5 | Confirmed accurate | R5.4/R5.3 contract: §3 already mandates class+code assertions, never `match=`. Verified recorder-side: `_encode_error` strips `message`/`suggestion`/`fix` from details; schema marks them unrepresentable. | Added an explicit R5.4/R5.3 note to §3: no assertions on message/suggestion/fix/free-text details; new raises add no suggestion/fix payloads; `details`, when used, must be structured + codec-encodable. |
+| RR-6 | Confirmed accurate | §5 zero-plugin-change claim **for the 14-test worklist**: verified against `emit.py` at HEAD — `_encode_error` (732) encodes any `MixpanelHeadlessError`; `_builder_vector` (833) routes single-guard coded errors to builder-kind `expect.error`; `_wire_vector` (1031) stops excluding. Schema verified: no kind-conditionals; `expect.error` legal everywhere; `expectedError` requires only `class`. | Schema bullet annotated with the verification result. No change to the worklist claim. |
+| RR-7 | **Defect fixed (material)** | §5 item 2's "no attribution changes are needed" was wrong for the registry extension itself: (a) classmethod targets — `getattr` yields the bound method whose signature drops `cls`, so `is_method` logic silently encodes the first real argument as `"self"` and drops it from inputs (corrupt vectors); (b) `__init__` targets — the receiver-encoding branch (plugin.py:768–779) would encode a half-initialized instance, and `encode_input_kwargs` only catches `UnencodableValueError`, so an `AttributeError` would fail host tests; (c) `_builder_vector` returning `None` is counted as `uncoded_raise` (emit.py:1186–1188), so naive `error_only` success suppression would inflate that exclusion. | §5 item 2 rewritten with a precise three-part plugin spec: `inspect.getattr_static` classmethod detection + `classmethod(wrapper)` re-installation, unconditional receiver-encoding bypass for `error_only` entries, and caller-side `continue` (silent skip, not an exclusion) for error_only success calls — each with a required tooling test. |
+| RR-8 | Confirmed (clarified) | Yield arithmetic: per-batch bands sum to the stated 210–305; 2,609 base = 2,530 manifest-extracted + 79 authored (GATE-VERDICT G1); E1's ~81 storybook vectors are distinct from the 79 authored (no double-count); 2,609 + 291–386 = 2,900–2,995 as stated. | §4 estimate paragraph now shows the decomposition and the test-count-vs-yield relationship explicitly. |
+| RR-9 | Cosmetic | Design header says greps were taken "at `852d718`"; HEAD during AD-0/AD-1 is `8aefb6d` (the design-doc commit, src-identical to `852d718`). | Recorded here; header left unchanged since the src tree is byte-identical for all referenced files. |
+
+No test/code names were changed by this review; no site was added to or removed from
+the coding scope. The operative deltas for implementers are RR-2 (uniqueness-test
+universe), RR-4 (one extra B3 seam test), RR-5 (assertion hygiene), and RR-7 (the
+§5 plugin spec — B1's conformance commit is bigger than the pre-review design
+implied, but bounded and fully specced).
