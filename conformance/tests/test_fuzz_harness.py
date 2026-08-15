@@ -547,3 +547,124 @@ class TestPhase2StrategyTable:
             {"value": {"$type": "float", "value": "18.0"}},
         )
         assert seen[1][0] == "oracle.call"
+
+
+class TestSeededRuns:
+    """The P3-7 fresh-seed mode (``seed=`` threading, added at the B0 gate).
+
+    A batch-gate regression run must use FRESH seeds while staying
+    reproducible from the RUN record (P3-2c/P3-7): ``seed=None`` keeps the
+    historical ``derandomize=True`` behavior; an explicit integer seed
+    switches Hypothesis to seeded generation whose probe sequence is a
+    pure function of the seed.
+    """
+
+    @staticmethod
+    def _recording_call(log: list[tuple[str, str]]) -> Any:
+        """Wrap a fresh in-process server, logging every probe.
+
+        Args:
+            log: Destination list receiving ``(api, canonical-json-input)``
+                entries in call order.
+
+        Returns:
+            An ``OracleCall`` surface backed by :class:`OracleServer`.
+        """
+        server = OracleServer()
+
+        def call(api: str, encoded_input: Mapping[str, Any]) -> Mapping[str, Any]:
+            """Delegate one probe to the server, recording it first.
+
+            Args:
+                api: The dotted registry api name.
+                encoded_input: The codec-encoded kwargs.
+
+            Returns:
+                The call result payload.
+            """
+            log.append((api, json.dumps(encoded_input, sort_keys=True)))
+            return server.call_api(api, encoded_input)
+
+        return call
+
+    def _sequence_for(
+        self, tmp_path: Path, target_name: str, seed: int | None, budget: int
+    ) -> list[tuple[str, str]]:
+        """Run one clean seeded/derandomized pass and return the probe log.
+
+        Args:
+            tmp_path: Repro directory (must stay empty — the run is
+                self-parity, so no divergence may occur).
+            target_name: Key into :data:`TARGETS_BY_NAME`.
+            seed: Hypothesis seed, or None for the derandomized default.
+            budget: Generated-example budget.
+
+        Returns:
+            The left bridge's ``(api, canonical-json-input)`` log.
+
+        Raises:
+            AssertionError: On divergence, bridge error, or repro output.
+        """
+        log: list[tuple[str, str]] = []
+        report = run_target(
+            TARGETS_BY_NAME[target_name],
+            self._recording_call(log),
+            self._recording_call([]),
+            max_examples=budget,
+            repro_dir=tmp_path,
+            seed=seed,
+        )
+        assert report.divergences == 0
+        assert report.error is None
+        assert list(tmp_path.iterdir()) == []
+        return log
+
+    def test_same_seed_reproduces_call_sequence(self, tmp_path: Path) -> None:
+        """Two runs with one seed generate the identical probe sequence.
+
+        This is the review-pair reproducibility contract: the RUN record's
+        seed replays the exact generated corpus (P3-2d item 5).
+
+        Args:
+            tmp_path: Repro directory (must stay empty).
+
+        Raises:
+            AssertionError: If the sequences differ or a run is dirty.
+        """
+        first = self._sequence_for(tmp_path, "python_int", 1234, 25)
+        second = self._sequence_for(tmp_path, "python_int", 1234, 25)
+        assert first == second
+        assert len(first) >= 25
+
+    def test_distinct_seeds_vary_generation(self, tmp_path: Path) -> None:
+        """Different seeds explore different generated corpora.
+
+        Locks the 'fresh seeds' half of P3-7: a gate run with a new seed
+        is not a byte-replay of a previous run (the shared prefix is only
+        the deterministic R10.9 ``@example`` edge set).
+
+        Args:
+            tmp_path: Repro directory (must stay empty).
+
+        Raises:
+            AssertionError: If both seeds generate identical sequences.
+        """
+        alfa = self._sequence_for(tmp_path, "python_int", 0, 30)
+        bravo = self._sequence_for(tmp_path, "python_int", 1, 30)
+        assert alfa != bravo
+
+    def test_default_stays_derandomized(self, tmp_path: Path) -> None:
+        """``seed=None`` keeps the deterministic seedless behavior.
+
+        Two seedless runs must stay byte-identical — the pre-gate
+        contract every earlier RUN record (B0-1/B0-2, P2-9) relies on.
+
+        Args:
+            tmp_path: Repro directory (must stay empty).
+
+        Raises:
+            AssertionError: If seedless runs stop being deterministic.
+        """
+        first = self._sequence_for(tmp_path, "python_int", None, 10)
+        second = self._sequence_for(tmp_path, "python_int", None, 10)
+        assert first == second

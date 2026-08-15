@@ -42,6 +42,7 @@ from types import TracebackType
 from typing import Any
 
 from hypothesis import HealthCheck, example, given, settings
+from hypothesis import seed as hypothesis_seed
 
 from conformance.differential.strategies import (
     ALL_TARGETS,
@@ -406,13 +407,18 @@ def _build_property(
     right: OracleCall,
     state: _RunState,
     max_examples: int,
+    seed: int | None = None,
 ) -> Callable[[], None]:
     """Assemble the Hypothesis property for one target.
 
     Attaches every R10.9 edge call as an explicit ``@example`` (design
     D14), then the target strategy via ``@given``, then deterministic
-    settings (``derandomize=True``, no database, no deadline — bridge
-    round-trips are I/O bound).
+    settings (no database, no deadline — bridge round-trips are I/O
+    bound). Determinism source: ``seed=None`` keeps the historical
+    ``derandomize=True`` seedless mode; an explicit ``seed`` switches to
+    Hypothesis seeded generation (``@seed`` + ``derandomize=False``) so a
+    batch-gate run uses FRESH examples yet replays exactly from the
+    recorded seed (playbook P3-7 / P3-2c reproducibility contract).
 
     Args:
         target: The fuzz target.
@@ -420,6 +426,7 @@ def _build_property(
         right: Right bridge call surface.
         state: Shared run state (counters + minimal divergence).
         max_examples: Generated-example budget per target.
+        seed: Optional Hypothesis seed; None means derandomized.
 
     Returns:
         A zero-arg callable running the property (raises
@@ -455,7 +462,7 @@ def _build_property(
     decorated = given(call=target.calls)(decorated)
     decorated = settings(
         max_examples=max_examples,
-        derandomize=True,
+        derandomize=seed is None,
         database=None,
         deadline=None,
         suppress_health_check=(
@@ -464,6 +471,8 @@ def _build_property(
             HealthCheck.data_too_large,
         ),
     )(decorated)
+    if seed is not None:
+        decorated = hypothesis_seed(seed)(decorated)
     result: Callable[[], None] = decorated
     return result
 
@@ -505,6 +514,7 @@ def run_target(
     *,
     max_examples: int,
     repro_dir: Path,
+    seed: int | None = None,
 ) -> TargetReport:
     """Fuzz one target across both bridges and report the outcome.
 
@@ -514,6 +524,8 @@ def run_target(
         right: Right bridge call surface.
         max_examples: Generated-example budget.
         repro_dir: Where to write a minimal repro on divergence.
+        seed: Optional Hypothesis seed (P3-7 fresh-seed gate runs);
+            None keeps the derandomized seedless default.
 
     Returns:
         The per-target report (never raises for divergences; bridge
@@ -521,7 +533,7 @@ def run_target(
     """
     state = _RunState()
     report = TargetReport(name=target.name)
-    prop = _build_property(target, left, right, state, max_examples)
+    prop = _build_property(target, left, right, state, max_examples, seed)
     try:
         prop()
     except _DivergenceFound:
@@ -546,12 +558,15 @@ class HarnessResult:
         left_info: Left bridge identity (``oracle.info``).
         right_info: Right bridge identity.
         targets: Per-target reports in run order.
+        seed: The Hypothesis seed used (None = derandomized seedless
+            mode) — recorded so a RUN record replays exactly (P3-7).
     """
 
     status: str
     left_info: Mapping[str, Any]
     right_info: Mapping[str, Any]
     targets: list[TargetReport] = field(default_factory=list)
+    seed: int | None = None
 
     def to_payload(self) -> dict[str, Any]:
         """Serialize the result for the ``--report json`` output.
@@ -561,6 +576,7 @@ class HarnessResult:
         """
         return {
             "status": self.status,
+            "seed": self.seed,
             "left_info": dict(self.left_info),
             "right_info": dict(self.right_info),
             "examples_per_target": {t.name: t.examples for t in self.targets},
@@ -588,6 +604,7 @@ def run_harness(
     *,
     max_examples: int,
     repro_dir: Path,
+    seed: int | None = None,
 ) -> HarnessResult:
     """Run the full differential pass over started bridges.
 
@@ -597,6 +614,8 @@ def run_harness(
         targets: Targets to fuzz, in order.
         max_examples: Generated-example budget per target.
         repro_dir: Repro output directory.
+        seed: Optional Hypothesis seed applied to every target (P3-7
+            fresh-seed gate runs); None keeps the seedless default.
 
     Returns:
         The aggregate result (``harness_crashed`` when any target hit a
@@ -607,7 +626,9 @@ def run_harness(
         OracleBridgeError: If either bridge fails ``oracle.info`` before
             any target runs.
     """
-    result = HarnessResult(status="ok", left_info=left.info(), right_info=right.info())
+    result = HarnessResult(
+        status="ok", left_info=left.info(), right_info=right.info(), seed=seed
+    )
     for target in targets:
         report = run_target(
             target,
@@ -615,6 +636,7 @@ def run_harness(
             right.call,
             max_examples=max_examples,
             repro_dir=repro_dir,
+            seed=seed,
         )
         result.targets.append(report)
     if any(t.error for t in result.targets):
@@ -731,6 +753,15 @@ def main(argv: list[str] | None = None) -> int:
         default="text",
         help="Report format.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Hypothesis seed for fresh-yet-reproducible generation "
+            "(P3-7 gate runs); omit for the derandomized seedless default."
+        ),
+    )
     args = parser.parse_args(argv)
     targets = _select_targets(args.targets)
     left_argv = shlex.split(args.left) if args.left else _default_oracle_argv()
@@ -743,6 +774,7 @@ def main(argv: list[str] | None = None) -> int:
                 targets,
                 max_examples=args.examples,
                 repro_dir=args.repro_dir,
+                seed=args.seed,
             )
     except OracleBridgeError as exc:
         print(f"[fuzz_harness] harness_crashed: {exc}", file=sys.stderr)

@@ -300,3 +300,88 @@ Review pair verdicts: both GO; arbiter GO — B0 signed off. Per-finding record
    land at B4 (TestRetryStateResetRegression ×4, streaming project_id raise
    :1883-1891 lock, negative-retry-after export case, form content-type,
    auth-header wire captures).
+
+---
+
+# B0 batch gate (P3-2 step e) — attempt 1, 2026-08-15
+
+**RESULT: GATE FAIL (BLOCKED) at step (4)** — the fresh-seed differential
+full-suite regression found ONE real divergence (a Phase-2 TS types-layer
+bug, repro committed). Steps (1)–(3) and (5) all passed; step (6)
+`throwaway/` cleanup and the gate/checkpoint commits were deliberately NOT
+performed (the gate did not close — the report-JSON archive under
+`context/phase3/reports/` and the throwaway removal belong to the passing
+gate run).
+
+## Gate step results
+- [x] (1) batch-status — PASS. Flip state confirmed: exact-name entry
+  `api_client._iter_jsonl_lines` -> `done` already in the table (landed in
+  the B0-2 commit per the packet's own done-criteria: "NO batch-status flip
+  … beyond the exact-name entry, which IS added as done"); `compat.` has
+  been `done` since Phase 1/2 and the table is PREFIX-granular, so the 6 new
+  `compat.*` api names (python_int/python_float/python_strip/sorted_strings/
+  cp_length/cp_slice) are covered with no name-granular extension needed.
+  Standing no-prefix-collision assertion (P3-5 rule 4) run mechanically over
+  all 419 corpus api names: the ONLY name with
+  `startsWith("api_client._iter_jsonl_lines")` is the exact name itself — no
+  pending name is captured. Corpus per-prefix re-measure sums to exactly
+  3,251 (matches the P3-1 B0-1 re-pin follow-up).
+- [x] (2) conformance checkpoint — COUNTS MATCH. `npm run conformance` @ TS
+  main 629721b / corpus b5c1369: **3,251 vectors — 539 PASS / 0 FAIL /
+  2,712 UNPORTED** (= Phase-2 461 + 72 authored compat + 6 jsonl-chunk; the
+  B0 gate delta of 6-recorded-equivalent + authored per the P3-1 B0 row).
+  Report NOT archived to `context/phase3/reports/` — that archive is the
+  gate-closing checkpoint commit artifact (P3-2e item 2) and the gate is
+  blocked; numbers recorded here instead.
+- [x] (3) oracle surface (GF4) — PASS. Mechanical `oracle.call` probes, one
+  per newly registered api on BOTH bridges (`throwaway/b0-1/probe_apis.py` +
+  `throwaway/b0-2/probe_apis.py`): 7 apis (6 `compat.*` + 
+  `api_client._iter_jsonl_lines`) x 2 bridges = **14/14 non-"unknown api"
+  call-DATA responses**, outputs pairwise identical.
+- [x] (4) differential full-suite regression — **FAIL (1 real divergence)**.
+  Fresh seed **52794688** (recorded; run reproduces exactly), cumulative
+  surface (all 22 `ALL_TARGETS` families), P2-9 budget >=500/family:
+  **11,294 examples, 3,049 skips (all explained — the six Phase-1 families
+  whose apis are B2/B3-pending on oracle-ts, protocol §4.2), 1 divergence.**
+  Full record + triage: `conformance/differential/oracle/RUN.md` + raw JSON
+  `conformance/differential/oracle/2026-08-15-b0-gate-attempt1.json`; repro
+  `conformance/differential/repros/2026-08-15-types-RetentionEvent.json`
+  (BLOCKS the gate while present). Harness gained a `--seed` option for this
+  (fable rig change, TDD: `TestSeededRuns`, 3 tests red-first; `seed=None`
+  preserves the historical derandomized mode byte-for-byte).
+- [x] (5) referees — NOT REQUIRED at B0, per P3-7: referees (a)+(b) run at
+  the B3 and B6 gates (bookmark-touching batches); B0 touched no bookmark
+  construction surface (compat + client internals only). Stated for the
+  record.
+- [ ] (6) throwaway/ cleanup + eslint throwaway-glob revert — DEFERRED to
+  the passing gate run (arbiter sign-off @ a501829 permits it, but deleting
+  the harness while the gate is failing would strand the re-run/probe
+  drivers the remediation + gate re-run need).
+- [x] (7) checks at final HEADs — `just check` green (Python, post-commit);
+  `npm run check` green (TS @ 629721b, unchanged this task — no TS commit).
+
+## Divergence triage summary (full version in oracle/RUN.md)
+
+`types.RetentionEvent(event=<U+0085 NEL, sole char>)`: Python
+`_validate_event_name` uses `not event.strip()` -> `EV1_EMPTY_EVENT`; TS
+`guards.ts:82 validateEventName` uses `!event.trim()` -> accepts (JS trim
+strips neither U+001C–U+001F nor U+0085; it DOES strip U+FEFF, giving an
+inverse divergence Python-accepts/TS-rejects, probed manually). Class-wide
+Phase-2 defect: ~24 trim-based emptiness guards across
+`packages/core/src/types/` (inventory in RUN.md). Remedy: `pythonStrip`
+(B0-1, pinned whitespace.gen.ts) at every guard — TS-only fix (Python is
+arbiter and correct; NOT an R10.7 event; no corpus re-pin). P2-9 missed it
+because seedless derandomized generation never emitted those codepoints for
+these families — the P3-7 fresh-seed mandate caught it on its first run.
+
+## Recommended unblock path
+1. Fable-tier remediation task on TS main: replace trim-emptiness guards in
+   `packages/core/src/types/` with `pythonStrip`-based checks (red-first
+   tests per site incl. the U+0085 and U+FEFF directions; `parseInt` site
+   assessed separately); re-run retention_flow_family + sibling family fuzz
+   (seed 52794688 must go clean) then a review pass per P3-2d norms for a
+   Phase-2 surface touch.
+2. Delete the repro after the green re-run (repros block while present).
+3. Re-run this gate from step (4) (fresh seed again), then perform steps
+   (2)-archive, (6) cleanup, and the gate commits (TS gate commit on main +
+   Python docs/report commit).
