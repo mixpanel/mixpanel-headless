@@ -1,22 +1,22 @@
 {
-  "commit": "c0eefab8d1c58e6cdeed730164dc2f7fdb34d827",
+  "commit": "1dfcde50ba761eb97e15795a4c42531ae0e513b6",
   "control": {
     "error": null,
     "failing_vector_count": 0,
     "first_failing_id": null,
     "patch": "control",
-    "runtime_seconds": 11.899,
+    "runtime_seconds": 12.16,
     "status": "clean",
     "total": 2609
   },
-  "date": "2026-08-14",
+  "date": "2026-08-15",
   "patches": [
     {
       "error": null,
       "failing_vector_count": 13,
       "first_failing_id": "bookmarks/workspace.build_params/test_custom_property_types-testcustompropertyvalidationcp1-test_zero_id_in_group_by",
       "patch": "S01",
-      "runtime_seconds": 11.943,
+      "runtime_seconds": 11.171,
       "status": "caught",
       "total": 2609
     },
@@ -25,7 +25,7 @@
       "failing_vector_count": 2,
       "first_failing_id": "validation/validation.validate_funnel_args/test_validation_funnel-testvalidatefunnelargsf5-test_invalid_calendar_date_returns_v8_invalid",
       "patch": "S02",
-      "runtime_seconds": 11.943,
+      "runtime_seconds": 11.11,
       "status": "caught",
       "total": 2609
     },
@@ -34,7 +34,7 @@
       "failing_vector_count": 10,
       "first_failing_id": "segmentation/api_client.segmentation/test_api_client-testratelimiting-test_successful_response_after_retry",
       "patch": "S03",
-      "runtime_seconds": 11.994,
+      "runtime_seconds": 11.363,
       "status": "caught",
       "total": 2609
     },
@@ -43,7 +43,7 @@
       "failing_vector_count": 228,
       "first_failing_id": "bookmarks/api_client.activity_feed/test_api_client-testactivityfeed-test_between_date_range_when_both_dates",
       "patch": "S04",
-      "runtime_seconds": 12.654,
+      "runtime_seconds": 11.319,
       "status": "caught",
       "total": 2609
     },
@@ -52,7 +52,7 @@
       "failing_vector_count": 4,
       "first_failing_id": "bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_maps_to_custom_percentile",
       "patch": "S05",
-      "runtime_seconds": 14.861,
+      "runtime_seconds": 11.14,
       "status": "caught",
       "total": 2609
     },
@@ -61,7 +61,7 @@
       "failing_vector_count": 28,
       "first_failing_id": "pagination/pagination.paginate_all/test_pagination-testpaginateall-test_canonical_query_origin_wins_over_caller",
       "patch": "S06",
-      "runtime_seconds": 11.888,
+      "runtime_seconds": 11.153,
       "status": "caught",
       "total": 2609
     },
@@ -70,7 +70,7 @@
       "failing_vector_count": 7,
       "first_failing_id": "filters/segfilter.build_segfilter_entry/test_segfilter-testsegfilterresourcetypemapping-test_events_maps_to_properties",
       "patch": "S07",
-      "runtime_seconds": 11.982,
+      "runtime_seconds": 11.181,
       "status": "caught",
       "total": 2609
     },
@@ -79,7 +79,7 @@
       "failing_vector_count": 18,
       "first_failing_id": "segmentation/expressions.normalize_on_expression/test_expressions-testnormalizeonexpression-test_backslash_before_quote_escaping",
       "patch": "S08",
-      "runtime_seconds": 12.261,
+      "runtime_seconds": 11.124,
       "status": "caught",
       "total": 2609
     },
@@ -88,7 +88,7 @@
       "failing_vector_count": 8,
       "first_failing_id": "engage/user_builders.filters_to_selector/test_query_user_structural-testfilterstoselectororandprecedence-test_filters_to_selector_or_and_precedence",
       "patch": "S09",
-      "runtime_seconds": 11.829,
+      "runtime_seconds": 11.235,
       "status": "caught",
       "total": 2609
     },
@@ -97,7 +97,7 @@
       "failing_vector_count": 2,
       "first_failing_id": "funnels/workspace.funnel/authored-four-step-aggregated-across-dates",
       "patch": "S10",
-      "runtime_seconds": 12.39,
+      "runtime_seconds": 11.088,
       "status": "caught",
       "total": 2609
     },
@@ -106,7 +106,7 @@
       "failing_vector_count": 2,
       "first_failing_id": "retention/workspace.retention/authored-empty-cohort-zero-rates",
       "patch": "S11",
-      "runtime_seconds": 12.423,
+      "runtime_seconds": 11.166,
       "status": "caught",
       "total": 2609
     },
@@ -115,7 +115,7 @@
       "failing_vector_count": 8,
       "first_failing_id": "bookmarks/api_client.activity_feed/test_api_client_phase008-testphase008errorhandling-test_activity_feed_rate_limit_on_429",
       "patch": "S12",
-      "runtime_seconds": 12.009,
+      "runtime_seconds": 14.589,
       "status": "caught",
       "total": 2609
     },
@@ -124,7 +124,7 @@
       "failing_vector_count": 21,
       "first_failing_id": "pagination/pagination.paginate_all/test_pagination-testpaginateallretryafter-test_exhausted_retries_backoff_schedule_is_bounded",
       "patch": "S13",
-      "runtime_seconds": 11.847,
+      "runtime_seconds": 11.059,
       "status": "caught",
       "total": 2609
     }
