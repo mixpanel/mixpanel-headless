@@ -219,20 +219,37 @@ def _canonical_tree(value: Any) -> Any:
     return value
 
 
+_LINE_HAZARD_RE = re.compile("[\u0085\u2028\u2029]")
+"""Codepoints ``json.dumps(ensure_ascii=False)`` emits RAW (JSON escapes only
+controls below U+0020) but ``str.splitlines()`` treats as line breaks. Left
+unescaped they corrupt JSONL bundle framing for any ``splitlines()``-based
+reader — hit live during B0-1 when authored vectors carried U+0085 (B0-notes
+deviation 3). :func:`canonical_json` escapes exactly these three; every other
+non-ASCII codepoint stays verbatim, so committed bundles (scanned 2026-08-15:
+zero raw hits) are byte-unaffected and the D8 drift check stays clean."""
+
+
 def canonical_json(value: Any) -> str:
     """Serialize a value as canonical vector JSON (design D3 bundling).
 
     Sorted keys (except :class:`KeepOrderDict` payload subtrees), compact
     separators, UTF-8 (non-ASCII emitted verbatim) — the byte-stable form
-    both the bundles and the D8 drift diff rely on.
+    both the bundles and the D8 drift diff rely on. The sole exception to
+    verbatim non-ASCII: the three :data:`_LINE_HAZARD_RE` codepoints
+    (U+0085/U+2028/U+2029) are emitted as ``\\uXXXX`` escapes so JSONL
+    framing survives ``str.splitlines()``-based readers. The substitution
+    is value-preserving — those codepoints can only occur inside JSON
+    string literals, where the escaped spelling parses identically.
 
     Args:
         value: A JSON-encodable structure.
 
     Returns:
-        The canonical JSON string (no trailing newline).
+        The canonical JSON string (no trailing newline), free of raw
+        line-hazard codepoints.
     """
-    return json.dumps(_canonical_tree(value), separators=(",", ":"), ensure_ascii=False)
+    text = json.dumps(_canonical_tree(value), separators=(",", ":"), ensure_ascii=False)
+    return _LINE_HAZARD_RE.sub(lambda match: f"\\u{ord(match.group()):04x}", text)
 
 
 def interaction_sort_key(interaction: Mapping[str, Any]) -> str:

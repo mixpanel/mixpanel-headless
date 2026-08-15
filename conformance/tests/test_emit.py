@@ -769,3 +769,93 @@ def test_error_only_guard_error_emits_builder_error_vector(tmp_path: Path) -> No
     )
     assert "ParamValidationError" in vector
     assert "TC0_INVALID_TYPE" in vector
+
+
+# ---------------------------------------------------------------------------
+# Line-safe bundle framing (B2-HK rig fix; B0-1 RESULTS deviation 3)
+# ---------------------------------------------------------------------------
+
+_LINE_HAZARDS = ("\u0085", "\u2028", "\u2029")
+"""Codepoints ``json.dumps(ensure_ascii=False)`` emits RAW (JSON only escapes
+controls below U+0020) but ``str.splitlines()`` treats as line breaks — the
+exact set that corrupted JSONL framing when B0-1 authored vectors carried
+them (B0-notes deviation 3)."""
+
+
+def test_canonical_json_escapes_line_hazard_codepoints() -> None:
+    """Line-hazard codepoints serialize as ``\\uXXXX`` escapes, never raw.
+
+    ``str.splitlines()`` splits on U+0085/U+2028/U+2029, so raw emission
+    corrupts JSONL bundle framing (found live during B0-1). The escaped
+    form is value-identical JSON.
+    """
+    import json as _json
+
+    from conformance.record.emit import canonical_json
+
+    value = {
+        "text": "a\u0085b\u2028c\u2029d",
+        "\u0085key": ["\u2028", {"nested": "\u2029"}],
+    }
+    text = canonical_json(value)
+    for hazard in _LINE_HAZARDS:
+        assert hazard not in text
+    assert len(text.splitlines()) == 1
+    assert _json.loads(text) == value
+
+
+def test_canonical_json_unchanged_without_hazards() -> None:
+    """Hazard-free values serialize byte-identically to the historical form.
+
+    The D8 drift guarantee: the framing fix must NOT rewrite committed
+    bundles (scanned 2026-08-15 — zero raw U+0085/U+2028/U+2029 across
+    ``conformance/vectors``), so for hazard-free input the output must
+    equal the pre-fix ``ensure_ascii=False`` serialization exactly,
+    including non-ASCII emitted verbatim.
+    """
+    import json as _json
+
+    from conformance.record.emit import canonical_json
+
+    value = {"text": "\U0001d4b3 café \x1c", "n": 1.5, "flag": True}
+    expected = _json.dumps(
+        value, separators=(",", ":"), ensure_ascii=False, sort_keys=True
+    )
+    assert canonical_json(value) == expected
+
+
+def test_bundle_framing_line_safe_with_hazard_codepoints(tmp_path: Path) -> None:
+    """A vector whose payload carries line-hazard codepoints frames cleanly.
+
+    End-to-end regression for the B0-1 live failure: emit a corpus whose
+    ``call.input`` embeds U+0085/U+2028/U+2029, then verify every written
+    bundle survives a ``str.splitlines()``-based reader — line count
+    matches ``split("\\n")`` framing and every line parses as JSON with
+    the hazard string round-tripped.
+    """
+    import json as _json
+
+    hazard_string = "line one\u0085line two\u2028line three\u2029end"
+    capture = _builder_capture(
+        "tests/unit/test_fake.py::test_hazard_payload",
+        input_encoded={"events": [hazard_string]},
+    )
+    summary = emit_corpus([capture], [capture.nodeid], _options(tmp_path))
+    assert summary.total_vectors == 1
+
+    for bundle in sorted(tmp_path.rglob("*.jsonl")):
+        text = bundle.read_text("utf-8")
+        assert text.endswith("\n")
+        newline_framed = text[:-1].split("\n")
+        assert text.splitlines() == newline_framed
+        for line in newline_framed:
+            _json.loads(line)
+
+    (vector_line,) = [
+        line
+        for bundle in tmp_path.rglob("*.jsonl")
+        for line in bundle.read_text("utf-8").splitlines()
+        if "test_hazard_payload" in line
+    ]
+    vector = _json.loads(vector_line)
+    assert vector["call"]["input"]["events"] == [hazard_string]

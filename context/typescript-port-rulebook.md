@@ -332,6 +332,16 @@ these. (Root cause of parity findings P1, P2, P6 and half the watchlist.)
 - R11.5 Codepoint-aware `sorted` for locale-independent orderings Python produces.
 - R11.6 Codepoint-based `slice`/`length` for every `text[:N]` truncation and `max_length`
   validation (UTF-16 units ≠ codepoints; never split surrogate pairs).
+- R11.7 `[SA3]` Every Python blank/emptiness check (`not s.strip()`) ports via `pythonStrip`,
+  and every `int(str)` parse ports via `pythonInt` — bare `String.trim()`, `parseInt`,
+  `Number(...)`, and `\s`-regex grammars are FORBIDDEN in ported code. The whitespace sets
+  diverge in both directions (Python strips U+001C–U+001F/U+0085 that `.trim()` keeps;
+  `.trim()` eats U+FEFF that Python keeps), and this exact fix pattern recurred 13× at the
+  B0 gate (remediation commit `3c07d4e`; gate report
+  `context/phase3/reports/2026-08-15-b0-gate.json`, R10.4 threshold 3). Rig-internal string
+  handling is exempt only where no Python twin exists; code whose reference semantics are a
+  THIRD parser (e.g. pydantic-core lax coercion in `coerce.ts`) must cite that reference at
+  the call site instead.
 
 ---
 

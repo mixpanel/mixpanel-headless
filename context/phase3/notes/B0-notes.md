@@ -464,3 +464,50 @@ in the remediation commit message).
 **B0 BATCH GATE: CLOSED.** B2 may proceed (B2 was already unblocked at
 B0-1 per P3-1; the gate closure now also releases the B0 hard barrier for
 everything else in sequence).
+
+---
+
+# B2-HK addendum (2026-08-15) — B0 follow-up obligations discharged
+
+Full working record: `context/phase3/notes/B2-HK-notes.md`.
+
+1. **Spot-review of `3c07d4e` (the attempt-2 remediation): verdict GO.**
+   P3-2d checklist executed by an independent fable agent: R10.2 diff —
+   additive-only (numstat 0 deletions in both test files; existing suites
+   untouched); guard order EV1-before-EV2 verified in TS guards.ts AND
+   Python types.py:9116-9125 source order, probe-confirmed; all 22
+   CPython probes reproduce (strip blankness both directions, int(str)
+   grammar, _safe_int library-level, RetentionEvent EV1/FEFF-accept);
+   all 13 cited Python `.strip()` sites confirmed; residual grep clean
+   (zero bare trim-emptiness guards left in `packages/core/src/types/`);
+   62 tests green at TS HEAD 8f79b67; no bindings touched (honesty check
+   N/A); no TODO(port) added. OBSERVATION (not a finding against
+   3c07d4e): `coerce.ts:133,167` use `.trim()` with pydantic-core lax
+   coercion as the Python twin — a THIRD whitespace set; flagged for the
+   review pair of whichever batch first exercises coerce paths in
+   vectors.
+2. **safeInt >2^53−1 deviation: BLESSED** — now playbook Discrepancy #7
+   (R4.5 justification; CPython `_safe_int` returns the exact big int,
+   TS default_ is the least-unfaithful total-function behavior).
+3. **R10.4 amendment FILED**: rulebook R11.7 `[SA3]` (pythonStrip/
+   pythonInt mandatory for `.strip()`-blankness and `int(str)` ports;
+   bare trim/parseInt forbidden in ported code) — the 13× recurrence at
+   the B0 gate crossed the ≥3 threshold.
+4. **Rig fix landed (emit.py)**: `canonical_json` now escapes
+   U+0085/U+2028/U+2029 as `\uXXXX` (the exact `str.splitlines()` -minus-
+   `\n\r` -minus- already-escaped-controls hazard set from B0-1 deviation
+   3). Read-compatible and drift-safe: committed corpus scanned — zero
+   raw hazard hits across all 175 files under `conformance/vectors`, so
+   the substitution is a byte-no-op on every committed bundle (plus a
+   byte-identity drift-lock unit test for hazard-free values). TDD
+   red-first: 3 new tests in `conformance/tests/test_emit.py` (the
+   end-to-end case reproduced the live B0-1 splitlines corruption before
+   the fix). NOTE for a future harvest pass: `harvest_storybook.py`
+   writes bundles with plain `ensure_ascii=False` json.dumps (not
+   canonical_json) — same hazard class if a harvested vector ever
+   carries these codepoints; fix when that tool is next touched.
+5. **R10.7 bug report FILED**:
+   `context/phase3/bug-reports/python-handle-response-403-typeerror.md`
+   (403 truthy-scalar TypeError + list element-membership quirk,
+   live-reproduced matrix, suggested Python-first fix + P3-7 re-pin
+   choreography).

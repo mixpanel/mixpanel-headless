@@ -830,6 +830,18 @@ injected interfaces that B8 implements).
    live >2^53 Retry-After. (The B0-1 fix F1 — `parseLossless` `pythonConstants` for
    json.loads' `NaN`/`Infinity`/`-Infinity` at the wire body-parse sites — is a FIX,
    not a deviation; recorded in the same resolution.)
+7. **`safeInt` on a numeric string beyond 2^53−1 returns `default_` in TS** (B2-HK
+   spot-review blessing, 2026-08-15, remediation commit `3c07d4e`): Python
+   `types._safe_int` (`types.py:10548-10583`) returns the exact big int via `int(str)`;
+   TS `safeInt` (`results/query-engine.ts`) maps `pythonInt`'s `PY_INT_UNSAFE_INTEGER`
+   to the default through the guarded catch. Sanctioned deviation per R4.5 — no
+   faithful TS number exists; throwing would break `_safe_int`'s total-function
+   contract (Python never raises there); the pre-fix `parseInt` path returned an
+   IMPRECISE number (strictly worse); consumers are flows-API `totalCount` fields,
+   where a >2^53 count is not producible by real responses; not vector- or
+   fuzz-observable (no oracle family drives `_safe_int`/`from_response`). Re-examine
+   only if Phase-4 burn-in ever sees such a count. Verified against live CPython
+   (B2-HK probe record, `context/phase3/notes/B2-HK-notes.md`).
 
 ### Escalations
 
