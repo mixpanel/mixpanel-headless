@@ -1,0 +1,30 @@
+{
+  "api": "types.CohortCriteria.has_property",
+  "date": "2026-08-15",
+  "input": {
+    "property": "p",
+    "value": "v",
+    "operator": "junk"
+  },
+  "left": {
+    "ok": false,
+    "error": {
+      "class": "KeyError"
+    }
+  },
+  "right": {
+    "ok": true,
+    "output": {
+      "_selector_node": {
+        "property": "user",
+        "value": "p",
+        "operand": "v",
+        "type": "string"
+      },
+      "_behavior_key": null,
+      "_behavior": null
+    }
+  },
+  "target": "cohort_family",
+  "triage": "REAL PORT BUG, FIXED (TS commit, P2-9): Python has_property raises a bare KeyError (uncoded, R5.5) for operators outside _PROPERTY_OPERATOR_MAP (types.py ~8959); the TS port silently constructed with an undefined selector operator. Fix: file-local KeyError mirror in cohort.ts thrown after the CD7 guard, matching Python's check order; translated tests added. Surfaced as a strategy-generation crash during the first 500-example gate run; this record was captured by replaying the probe against the pre-fix TS oracle."
+}

@@ -1,0 +1,64 @@
+{
+  "api": "types.Filter.in_cohort",
+  "date": "2026-08-15",
+  "input": {
+    "cohort": {
+      "$type": "CohortDefinition",
+      "_criteria": [
+        {
+          "$type": "CohortCriteria",
+          "_behavior": null,
+          "_behavior_key": null,
+          "_selector_node": {
+            "operator": "not in",
+            "property": "cohort",
+            "value": 1
+          }
+        }
+      ],
+      "_operator": "and"
+    },
+    "name": null
+  },
+  "left": {
+    "ok": true,
+    "output": {
+      "_date_unit": null,
+      "_list_item_filters": null,
+      "_list_item_quantifier": null,
+      "_operator": "contains",
+      "_property": "$cohorts",
+      "_property_type": "list",
+      "_resource_type": "events",
+      "_value": [
+        {
+          "cohort": {
+            "name": "",
+            "negated": false,
+            "raw_cohort": {
+              "behaviors": {},
+              "selector": {
+                "children": [
+                  {
+                    "operator": "not in",
+                    "property": "cohort",
+                    "value": 1
+                  }
+                ],
+                "operator": "and"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "right": {
+    "error": {
+      "class": "Error"
+    },
+    "ok": false
+  },
+  "target": "filter_family",
+  "triage": "REAL PORT GAP, FIXED (TS commit, P2-9): Filter.inCohort/notInCohort with an inline CohortDefinition still carried the P2-5a stub `throw new Error('TODO(port, P2-5b)...')` \u2014 P2-5b landed CohortDefinition.toDict + sanitizeRawCohort but never closed the stub (no recorded vector reaches the branch). Fix: buildCohortFilter now embeds sanitizeRawCohort(cohort.toDict()) exactly like Python's _build_cohort_filter; translated tests added (filter.test.ts, inline-definition block)."
+}

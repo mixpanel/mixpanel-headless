@@ -2,8 +2,10 @@
 
 Spawns two oracle bridges as subprocesses (oracle-py vs oracle-py for the
 Phase-1 SELF-PARITY done-criterion; oracle-py vs oracle-ts once TS-7
-lands), generates Hypothesis inputs per Phase-1 priority target
-(``conformance/differential/strategies.py``), calls both bridges with the
+lands), generates Hypothesis inputs per registered fuzz target — the
+Phase-1 priority targets plus the Phase-2 `types.*` api families and the
+protocol-1.1 ``codec.roundtrip`` surface
+(``conformance/differential/strategies.py``) — calls both bridges with the
 SAME codec-encoded input, canonicalizes both responses with the D6
 implementation, and diffs. A divergence is shrunk by Hypothesis and the
 minimal repro is written to ``conformance/differential/repros/``.
@@ -42,7 +44,8 @@ from typing import Any
 from hypothesis import HealthCheck, example, given, settings
 
 from conformance.differential.strategies import (
-    PHASE1_TARGETS,
+    ALL_TARGETS,
+    CODEC_ROUNDTRIP_API,
     TARGETS_BY_NAME,
     FuzzCall,
     FuzzTarget,
@@ -223,8 +226,13 @@ class OracleProcess:
     def call(self, api: str, encoded_input: Mapping[str, Any]) -> Mapping[str, Any]:
         """Execute one ``oracle.call`` and return its result payload.
 
+        The sentinel api :data:`CODEC_ROUNDTRIP_API` routes to the
+        protocol-1.1 ``codec.roundtrip`` METHOD (oracle-protocol.md §8)
+        with ``params.value`` = the probe's encoded ``value`` kwarg;
+        every other api goes through ``oracle.call``.
+
         Args:
-            api: The dotted registry api name.
+            api: The dotted registry api name (or the roundtrip sentinel).
             encoded_input: The codec-encoded kwargs.
 
         Returns:
@@ -234,6 +242,10 @@ class OracleProcess:
             OracleBridgeError: On any protocol failure (JSON-RPC ``error``
                 response, dead pipe, malformed response line).
         """
+        if api == CODEC_ROUNDTRIP_API:
+            return self._request(
+                "codec.roundtrip", {"value": encoded_input.get("value")}
+            )
         return self._request("oracle.call", {"api": api, "input": dict(encoded_input)})
 
     def _request(
@@ -662,7 +674,7 @@ def _select_targets(spec: str) -> list[FuzzTarget]:
         SystemExit: Via ``argparse``-style error for unknown names.
     """
     if spec == "all":
-        return list(PHASE1_TARGETS)
+        return list(ALL_TARGETS)
     selected: list[FuzzTarget] = []
     for name in spec.split(","):
         name = name.strip()

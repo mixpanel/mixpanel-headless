@@ -22,6 +22,7 @@ import pytest
 from conformance.differential.fuzz_harness import (
     Divergence,
     OracleBridgeError,
+    OracleProcess,
     compare_call,
     run_target,
 )
@@ -371,3 +372,161 @@ class TestStrategyTable:
         for api, kwargs in target.edge_calls:
             payload = server.call_api(api, encode_input_kwargs(kwargs))
             assert "ok" in payload, (api, payload)
+
+
+class TestPhase2StrategyTable:
+    """Structural invariants of the Phase-2 target table (P2-9, C9)."""
+
+    _PHASE2_NAMES = (
+        "filter_family",
+        "metric_group_family",
+        "cohort_family",
+        "funnel_family",
+        "retention_flow_family",
+        "frequency_family",
+        "replay_family",
+        "codec_roundtrip",
+    )
+
+    def test_all_targets_extends_phase1_with_phase2(self) -> None:
+        """``ALL_TARGETS`` is the Phase-1 table plus the 8 P2-9 targets.
+
+        Raises:
+            AssertionError: On a missing or misordered target.
+        """
+        from conformance.differential.strategies import ALL_TARGETS
+
+        names = tuple(target.name for target in ALL_TARGETS)
+        assert names == (*_EXPECTED_TARGET_NAMES, *self._PHASE2_NAMES)
+
+    def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
+        """The corpus harvest closes the R10.9 "every error branch" item.
+
+        One probe per Phase-2 guard code (all 81 per the generated
+        registry artifact) and one per `types.*` api (all 44 per the
+        api-index) — the completeness the checked-in coverage artifact
+        records.
+
+        Raises:
+            AssertionError: On any uncovered code or api.
+        """
+        from conformance.differential.strategies import (
+            edge_coverage_report,
+            phase2_guard_codes,
+        )
+
+        report = edge_coverage_report()
+        assert set(report["guard_codes"]) == set(phase2_guard_codes())
+        types_apis = sorted(api for api in REGISTRY_BY_API if api.startswith("types."))
+        assert sorted(report["apis"]) == types_apis
+        assert len(types_apis) == 44
+
+    def test_checked_in_coverage_artifact_is_in_sync(self) -> None:
+        """`phase2-edge-coverage.json` matches a fresh report build.
+
+        Raises:
+            AssertionError: On drift (re-generate and re-commit).
+        """
+        import json as _json
+        from pathlib import Path as _Path
+
+        from conformance.differential.strategies import edge_coverage_report
+
+        artifact = _Path(__file__).resolve().parents[1] / "differential"
+        committed = _json.loads(
+            (artifact / "phase2-edge-coverage.json").read_text(encoding="utf-8")
+        )
+        assert committed == _json.loads(
+            _json.dumps(edge_coverage_report(), ensure_ascii=True)
+        )
+
+    def test_phase2_edge_calls_resolve(self) -> None:
+        """Every Phase-2 edge call names a registry entry or the sentinel.
+
+        Raises:
+            AssertionError: On an unknown api or empty edge set.
+        """
+        from conformance.differential.strategies import (
+            CODEC_ROUNDTRIP_API,
+            PHASE2_TARGETS,
+        )
+
+        for target in PHASE2_TARGETS:
+            assert target.edge_calls, target.name
+            for api, kwargs in target.edge_calls:
+                assert isinstance(kwargs, dict)
+                if api == CODEC_ROUNDTRIP_API:
+                    assert target.name == "codec_roundtrip"
+                    assert "value" in kwargs
+                    continue
+                entry = REGISTRY_BY_API.get(api)
+                assert entry is not None, f"edge api {api!r} not registered"
+                assert entry.kind in (KIND_BUILDER, KIND_VALIDATOR)
+
+    def test_phase2_edge_calls_execute_on_oracle_py(self) -> None:
+        """Every Phase-2 edge call is call DATA (never a protocol error).
+
+        Roundtrip edges go through ``codec_roundtrip``; api edges through
+        ``call_api`` — both must produce ``ok`` payloads on oracle-py.
+
+        Raises:
+            AssertionError: If an edge call fails at the protocol level.
+        """
+        from conformance.differential.strategies import (
+            CODEC_ROUNDTRIP_API,
+            PHASE2_TARGETS,
+        )
+        from conformance.record.codecs import encode_input_kwargs
+
+        server = OracleServer()
+        for target in PHASE2_TARGETS:
+            for api, kwargs in target.edge_calls:
+                encoded = encode_input_kwargs(kwargs)
+                if api == CODEC_ROUNDTRIP_API:
+                    payload = server.codec_roundtrip({"value": encoded["value"]})
+                else:
+                    payload = server.call_api(api, encoded)
+                assert "ok" in payload, (target.name, api, payload)
+
+    def test_roundtrip_probe_routes_to_the_protocol_method(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`OracleProcess.call` routes the sentinel api to §8's method.
+
+        Args:
+            monkeypatch: Pytest monkeypatch fixture.
+
+        Raises:
+            AssertionError: If the request method/params are wrong.
+        """
+        from conformance.differential.strategies import CODEC_ROUNDTRIP_API
+
+        seen: list[tuple[str, Any]] = []
+
+        def fake_request(
+            _self: OracleProcess, method: str, params: Any
+        ) -> dict[str, Any]:
+            """Record the outgoing request instead of using a pipe.
+
+            Args:
+                _self: The process wrapper (unused by the double).
+                method: The JSON-RPC method.
+                params: The params object.
+
+            Returns:
+                A canned ok payload.
+            """
+            seen.append((method, params))
+            return {"ok": True, "output": None}
+
+        monkeypatch.setattr(OracleProcess, "_request", fake_request)
+        process = OracleProcess(["unused"])
+        process.call(
+            CODEC_ROUNDTRIP_API, {"value": {"$type": "float", "value": "18.0"}}
+        )
+        process.call("types.Filter.on", {"property": "p", "date": "d"})
+        assert seen[0] == (
+            "codec.roundtrip",
+            {"value": {"$type": "float", "value": "18.0"}},
+        )
+        assert seen[1][0] == "oracle.call"

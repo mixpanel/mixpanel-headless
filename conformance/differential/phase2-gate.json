@@ -1,0 +1,103 @@
+{
+  "examples_per_target": {
+    "codec_roundtrip": 512,
+    "cohort_family": 533,
+    "filter_family": 529,
+    "frequency_family": 515,
+    "funnel_family": 508,
+    "metric_group_family": 523,
+    "replay_family": 524,
+    "retention_flow_family": 507
+  },
+  "left_info": {
+    "language": "python",
+    "library_version": "0.2.1",
+    "protocol_version": "1.1",
+    "source_commit": "8ae76314a0a6d2420812473181b509364417a243"
+  },
+  "right_info": {
+    "language": "typescript",
+    "library_version": "0.0.0",
+    "protocol_version": "1.1",
+    "source_commit": "8ae76314a0a6d2420812473181b509364417a243"
+  },
+  "skipped_per_target": {
+    "codec_roundtrip": 0,
+    "cohort_family": 0,
+    "filter_family": 0,
+    "frequency_family": 0,
+    "funnel_family": 0,
+    "metric_group_family": 0,
+    "replay_family": 0,
+    "retention_flow_family": 0
+  },
+  "status": "ok",
+  "targets": [
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 529,
+      "name": "filter_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 523,
+      "name": "metric_group_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 533,
+      "name": "cohort_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 508,
+      "name": "funnel_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 507,
+      "name": "retention_flow_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 515,
+      "name": "frequency_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 524,
+      "name": "replay_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 512,
+      "name": "codec_roundtrip",
+      "repro_path": null,
+      "skipped": 0
+    }
+  ],
+  "total_divergences": 0,
+  "total_examples": 4151
+}

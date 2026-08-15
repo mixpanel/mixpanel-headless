@@ -459,3 +459,130 @@ class TestSubprocessRoundTrip:
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
+
+
+class TestPhase2TypesSurface:
+    """The Phase-2 ``types.*`` call surface (oracle-protocol.md §8 note)."""
+
+    def test_variadic_target_binds_recorder_parameter_names(self) -> None:
+        """`types.CohortDefinition.all_of` replays the `criteria` binding.
+
+        The oracle must split VAR_POSITIONAL kwargs exactly like the
+        corpus runner (`_bind_variadic`) — a plain ``target(**decoded)``
+        call would land ``criteria`` in the wrong slot.
+
+        Raises:
+            AssertionError: On a protocol error or non-ok payload.
+        """
+        from conformance.record.codecs import encode_input_kwargs
+        from mixpanel_headless.types import CohortCriteria
+
+        criterion = CohortCriteria.did_event("login", at_least=1, within_days=30)
+        payload = OracleServer().call_api(
+            "types.CohortDefinition.all_of",
+            encode_input_kwargs({"criteria": [criterion]}),
+        )
+        assert payload["ok"] is True, payload
+        assert payload["output"]["_operator"] == "and"
+        assert len(payload["output"]["_criteria"]) == 1
+
+    def test_guard_failures_are_coded_error_data(self) -> None:
+        """Constructor guards return ``{class, code}`` DATA (R5.4).
+
+        Raises:
+            AssertionError: On a missing class/code member.
+        """
+        payload = OracleServer().call_api(
+            "types.Filter.in_the_last",
+            {"property": "p", "quantity": 0, "date_unit": "day"},
+        )
+        assert payload == {
+            "ok": False,
+            "error": {
+                "class": "ParamValidationError",
+                "code": "FD1_QUANTITY_NOT_POSITIVE",
+            },
+        }
+
+
+class TestCodecRoundtrip:
+    """The protocol-1.1 ``codec.roundtrip`` method (oracle-protocol.md §8)."""
+
+    def test_tagged_payload_round_trips_to_itself(self) -> None:
+        """A valid rich payload encodes back to the identical value.
+
+        Raises:
+            AssertionError: On any member drift.
+        """
+        from conformance.record.codecs import encode_input_value
+        from mixpanel_headless.types import Filter
+
+        payload = encode_input_value(Filter.equals("plan", "pro"))
+        result = _serve(OracleServer(), "codec.roundtrip", {"value": payload})["result"]
+        assert result == {"ok": True, "output": payload}
+
+    def test_plain_values_round_trip_through_identity(self) -> None:
+        """Untagged scalars/containers pass through unchanged (§8).
+
+        Raises:
+            AssertionError: On value or float-kind drift.
+        """
+        result = _serve(
+            OracleServer(),
+            "codec.roundtrip",
+            {"value": [18.0, 1.5, 18, True, None, "", "\U0001d4b3"]},
+        )["result"]
+        assert result["ok"] is True
+        output = result["output"]
+        assert output == [18.0, 1.5, 18, True, None, "", "\U0001d4b3"]
+        assert isinstance(output[0], float)  # 18.0 stays a float
+        assert isinstance(output[2], int)  # 18 stays an int
+
+    def test_missing_value_is_invalid_params(self) -> None:
+        """A params object without ``value`` is a ``-32602`` (§8).
+
+        Raises:
+            AssertionError: On the wrong error code.
+        """
+        response = _serve(OracleServer(), "codec.roundtrip", {})
+        assert response["error"]["code"] == JSONRPC_INVALID_PARAMS
+
+    def test_unknown_tag_is_invalid_params(self) -> None:
+        """An undecodable tag is a ``-32602`` protocol error (§8).
+
+        Raises:
+            AssertionError: On the wrong error code.
+        """
+        response = _serve(
+            OracleServer(),
+            "codec.roundtrip",
+            {"value": {"$type": "NoSuchTag", "x": 1}},
+        )
+        assert response["error"]["code"] == JSONRPC_INVALID_PARAMS
+
+    def test_guard_failure_during_reconstruction_is_invalid_params(self) -> None:
+        """A payload whose constructor guard fires is a ``-32602`` (§8).
+
+        The harness only ships payloads it encoded from live instances,
+        so a decode-time guard failure is a strategy/codec bug — never
+        comparison data.
+
+        Raises:
+            AssertionError: On the wrong error code.
+        """
+        response = _serve(
+            OracleServer(),
+            "codec.roundtrip",
+            {
+                "value": {
+                    "$type": "ReplaySummary",
+                    "replay_id": "",
+                    "distinct_id": None,
+                    "project_id": 1,
+                    "start_time": 1,
+                    "retention_days": 7,
+                    "_df_cache": None,
+                }
+            },
+        )
+        assert response["error"]["code"] == JSONRPC_INVALID_PARAMS

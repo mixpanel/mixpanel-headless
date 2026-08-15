@@ -33,6 +33,8 @@ from conformance.record.codecs import (
     UndecodableValueError,
     UnencodableValueError,
     decode_input_kwargs,
+    decode_value,
+    encode_input_value,
 )
 from conformance.record.emit import _encode_error
 from conformance.record.registry import (
@@ -47,14 +49,16 @@ from conformance.runner.canonical import (
     canonicalize_error,
 )
 from conformance.runner.execute import (
+    _bind_variadic,
     _encode_result,
     _isolated_home,
     _resolve_builder_target,
 )
 from conformance.runner.targets import TargetConstructionError
 
-PROTOCOL_VERSION = "1.0"
-"""Version stamp returned by ``oracle.info`` (oracle-protocol.md §2)."""
+PROTOCOL_VERSION = "1.1"
+"""Version stamp returned by ``oracle.info`` (oracle-protocol.md §2; "1.1"
+adds the §8 ``codec.roundtrip`` method — the Phase-2 P2-9 addendum)."""
 
 JSONRPC_PARSE_ERROR = -32700
 """JSON-RPC 2.0: the request line was not valid JSON."""
@@ -63,7 +67,9 @@ JSONRPC_INVALID_REQUEST = -32600
 """JSON-RPC 2.0: the request object was malformed."""
 
 JSONRPC_METHOD_NOT_FOUND = -32601
-"""JSON-RPC 2.0: the method is not one of the three oracle methods."""
+"""JSON-RPC 2.0: the method is not one of the four protocol methods
+(``oracle.info`` / ``oracle.call`` / ``oracle.shutdown`` /
+``codec.roundtrip`` — oracle-protocol.md §5/§8)."""
 
 JSONRPC_INVALID_PARAMS = -32602
 """JSON-RPC 2.0: params failed validation (unknown api, undecodable input)."""
@@ -255,6 +261,12 @@ class OracleServer:
                     JSONRPC_INVALID_PARAMS, "oracle.call requires a params object"
                 )
             return self._call_from_params(params)
+        if method == "codec.roundtrip":
+            if not isinstance(params, Mapping):
+                raise OracleProtocolError(
+                    JSONRPC_INVALID_PARAMS, "codec.roundtrip requires a params object"
+                )
+            return self.codec_roundtrip(params)
         raise OracleProtocolError(
             JSONRPC_METHOD_NOT_FOUND, f"unknown method {method!r}"
         )
@@ -312,6 +324,56 @@ class OracleServer:
             session=session,
             interactions=interactions,
         )
+
+    def codec_roundtrip(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """Round-trip one ``$type``-tagged value through the codec table.
+
+        The protocol 1.1 addendum (oracle-protocol.md §8, phase2-design
+        C9): decode ``params.value`` with the FULL input-codec mirror
+        (rich tags reconstruct the REAL library instances) and re-encode
+        with the input-side tagged encoder, turning the codec table into
+        a fuzzable cross-language surface.
+
+        Args:
+            params: The raw params object; must carry a ``value`` member
+                (any vector-JSON value — untagged values round-trip
+                through the identity path).
+
+        Returns:
+            ``{ok: true, output: encode(decode(value))}``.
+
+        Raises:
+            OracleProtocolError: ``-32602`` when ``value`` is missing or
+                undecodable (unknown tag, malformed payload, constructor
+                guard failure during reconstruction — the harness only
+                ships payloads it encoded from live instances, §8);
+                ``-32000`` when the round-tripped product cannot be
+                encoded or fails D6 canonicalization.
+        """
+        if "value" not in params:
+            raise OracleProtocolError(
+                JSONRPC_INVALID_PARAMS, "codec.roundtrip requires params.value"
+            )
+        try:
+            decoded = decode_value(params["value"])
+        except Exception as exc:  # noqa: BLE001 - §8: decode failures are -32602
+            raise OracleProtocolError(
+                JSONRPC_INVALID_PARAMS, f"value decode failed: {exc}"
+            ) from exc
+        try:
+            output = encode_input_value(decoded)
+        except UnencodableValueError as exc:
+            raise OracleProtocolError(
+                JSONRPC_INTERNAL_ERROR, f"round-trip encode failed: {exc}"
+            ) from exc
+        try:
+            canonicalize(output)
+        except CanonicalizationError as exc:
+            raise OracleProtocolError(
+                JSONRPC_INTERNAL_ERROR,
+                f"round-trip canonicalization failed: {exc}",
+            ) from exc
+        return {"ok": True, "output": output}
 
     def call_api(
         self,
@@ -472,9 +534,14 @@ class OracleServer:
         """
         raised: BaseException | None = None
         output: Any = None
+        # Recorder parameter-name binding for VAR_POSITIONAL targets
+        # (`Filter.list_contains(*item_filters)` records
+        # `input.item_filters = [...]`) — replay through the SAME helper
+        # the corpus runner uses so oracle and runner can never disagree.
+        args, kwargs = _bind_variadic(target, dict(decoded))
         with _isolated_home():
             try:
-                output = _encode_result(entry, target(**decoded))
+                output = _encode_result(entry, target(*args, **kwargs))
             except UnencodableValueError as exc:
                 raise OracleProtocolError(
                     JSONRPC_INTERNAL_ERROR, f"output encode failed: {exc}"

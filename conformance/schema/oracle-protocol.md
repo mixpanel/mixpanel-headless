@@ -3,7 +3,8 @@
 Status: normative for BOTH bridges — `conformance/oracle_py/` (Python repo)
 and `differential/oracle/` (TS repo, task TS-7). The fuzz harness
 (`conformance/differential/fuzz_harness.py`) is the reference consumer.
-Version: `protocol_version = "1.0"`.
+Version: `protocol_version = "1.1"` (§8 Phase-2 addendum; "1.0" bridges
+lack `codec.roundtrip` and the Phase-2 `types.*` oracle-ts surface).
 
 ## 1. Transport and framing
 
@@ -150,7 +151,7 @@ Only HARNESS bugs surface as JSON-RPC `error` objects (design D14):
 |---|---|
 | `-32700` | Request line is not valid JSON |
 | `-32600` | Request object malformed (`jsonrpc`/`method` invalid) |
-| `-32601` | Method not one of `oracle.info` / `oracle.call` / `oracle.shutdown` |
+| `-32601` | Method not one of `oracle.info` / `oracle.call` / `oracle.shutdown` / `codec.roundtrip` (§8) |
 | `-32602` | Invalid params: unknown api name, undecodable `input`, wrong member types |
 | `-32000` | Internal: output unencodable or fails D6 canonicalization (incl. lone surrogates), unexpected dispatch failure |
 
@@ -171,3 +172,54 @@ corpus runners (design D1.4/D7/D12):
 - oracle-py additionally sandboxes `$HOME` + `MP_*` env per call (the
   corpus-runner `_isolated_home` sandbox) so ambient credentials/config
   can never leak into outputs.
+
+## 8. `codec.roundtrip` (protocol 1.1 addendum — Phase 2, design C9)
+
+Added by the Phase-2 differential gate (phase2-design C9): the `$type`
+codec table itself becomes a fuzzable cross-language surface. The harness
+generates random library *instances* via strategies, encodes them on the
+Python side, round-trips the tagged JSON through BOTH bridges, and diffs
+the canonical outputs.
+
+Request:
+
+```json
+{"jsonrpc": "2.0", "id": 9, "method": "codec.roundtrip",
+ "params": {"value": <any vector-JSON value, $type-tagged per D4.4>}}
+```
+
+Result: `{"ok": true, "output": <encode(decode(value))>}`.
+
+- `decode` is the bridge's FULL input-codec mirror (rich tags included:
+  dataclasses, Pydantic/entity models, built-ins). The decoded product
+  must be the REAL library instance (`Secret`, `Filter`,
+  `CohortDefinition`, ... — the C8(a) anti-vacuity rule applies here too:
+  a raw-payload-passthrough "decoder" round-trips vacuously and is a
+  bridge bug).
+- `encode` is the INPUT-side tagged encoder (`tagged_models=True`,
+  `$type` first; oracle-py: `encode_input_value`, oracle-ts:
+  `CodecRegistry.encodeValue`) — NOT the plain expect encoder — so a
+  valid tagged payload round-trips to itself modulo D6 canonicalization.
+- An undecodable `value` (unknown tag, malformed payload, constructor
+  guard failure during reconstruction) is a `-32602` protocol error on
+  BOTH bridges: the harness only ships payloads it encoded from instances
+  it successfully constructed, so a decode failure is a codec-table or
+  strategy bug — never comparison data.
+- A round-trip product that cannot be encoded or fails D6
+  canonicalization is `-32000`.
+- `params.value` MAY be any JSON value (scalars and untagged containers
+  round-trip through the identity path); a missing `value` member is
+  `-32602`.
+
+Bridges implementing this method report `protocol_version = "1.1"` from
+`oracle.info`.
+
+**Phase-2 `oracle.call` scope note**: oracle-py's surface is unchanged
+(every builder/validator registry entry — which since P2-1 includes all
+44 `types.*` entries). oracle-ts additionally serves those same 44
+`types.*` entries by reusing the SAME bindings module as its conformance
+runner (`conformance-runner/src/bindings.ts` — one registration module,
+so runner and oracle can never disagree); everything else keeps answering
+the `UNPORTED` skip payload. Variadic Python signatures replay on both
+sides exactly as the corpus runner binds them (recorder parameter-name
+binding, e.g. `types.CohortDefinition.all_of` input key `criteria`).
