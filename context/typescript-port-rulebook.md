@@ -289,6 +289,15 @@ standalone library (no singletons — the library is multi-instance by design):
   conformance canonicalizer normalizes numeric strings ONLY in number-filter operand positions
   (narrow, field-scoped — not a general weakening). `pythonFloatStr` (R11.2) stays in
   `pythonCompat` for any other contractual `str(float)` site vectors reveal.
+- R10.13 `[ST2]` **Pipeline hygiene — no xhigh workflow agents.** Subagents doing large
+  synthesis or implementation tasks run at effort ≤ high WITH an explicit incremental work
+  protocol (write a skeleton to disk first; one section/function at a time; frequent tool
+  calls; assemble the final answer from a running notes file). Evidence: the Phase-1
+  designer and the PR-2 record-plugin builder — both inheriting session xhigh — were killed
+  repeatedly (6 and 5 attempts) by the harness's 3-minute silent-thinking stall detector,
+  always at whole-artifact planning/synthesis moments; every effort-high agent with the
+  protocol completed first try. The orchestrator sets effort explicitly on every workflow
+  agent; silently inheriting session effort is forbidden.
 - R10.12 `[ST]` **New-format insights `filterValue` takes JSON numbers, not strings.** Unlike
   segfilter `operand` (strings, coerced server-side), `filterValue` is passed through as-is
   (`backend/util/arb_selector.py:1862` `_get_filter_value`) and a string would be quoted into
