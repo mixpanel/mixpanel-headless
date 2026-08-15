@@ -7,6 +7,7 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "conformance/**"
       - "pyproject.toml"
       - "justfile"
       - ".github/**"
@@ -16,6 +17,7 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "conformance/**"
       - "pyproject.toml"
       - "justfile"
       - ".github/**"
@@ -73,3 +75,56 @@ jobs:
       - name: Build package
         if: matrix.python-version == '3.12'
         run: uv build
+
+  # TS-port Phase-1 verification rig (design D8). Sibling of `test`, runs in
+  # parallel: it re-syncs its own env, and a conformance failure is meaningful
+  # even if `test` also fails. Every step except the drift check has a
+  # `just check` counterpart (typecheck / conformance recipes); the drift
+  # re-extraction is CI-only but derives purely from committed state.
+  conformance:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Typecheck conformance tooling
+        run: uv run mypy conformance/
+
+      - name: Conformance tooling unit tests
+        run: uv run pytest conformance/tests -o addopts="" -q
+
+      - name: Corpus runner
+        run: uv run pytest conformance/runner -o addopts="" -q
+
+      # Re-extracts the full corpus with the committed manifest's own stamps
+      # injected back in (D3: date/commit are inputs, never wall clock or
+      # git rev-parse), then byte-diffs bidirectionally against the committed
+      # vectors (conformance.record.diff, D8 normative semantics). Any drift
+      # fails the PR. `uv run python -m pytest` (not bare `uv run pytest`) is
+      # required so the repo root lands on sys.path for the plugin import
+      # (PR-5 finding, see conformance/record/README.md).
+      - name: Record-mode drift check
+        run: |
+          uv run python -m pytest tests -p conformance.record.plugin \
+            --mp-record-vectors=/tmp/re-extract \
+            --mp-record-date=$(jq -r .extraction_date conformance/vectors/manifest.json) \
+            --mp-record-commit=$(jq -r .source_commit conformance/vectors/manifest.json) \
+            -o addopts="" -m "not live" $(cat conformance/record/exclusions.args)
+          uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors
+        env:
+          HYPOTHESIS_PROFILE: ci
