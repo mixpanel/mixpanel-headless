@@ -53,9 +53,21 @@ from tests.test_user_query_pbt import filter_strategy
 
 from conformance.record.codecs import decode_input_kwargs
 from mixpanel_headless.types import (
+    CohortBreakdown,
+    CohortCriteria,
+    CohortDefinition,
+    CohortMetric,
+    CustomPropertyRef,
+    Exclusion,
     Filter,
+    Formula,
+    GroupBy,
+    InlineCustomProperty,
+    Metric,
+    PropertyInput,
     Replay,
     ReplayEvent,
+    TimeComparison,
     UserAction,
 )
 
@@ -2167,6 +2179,2582 @@ _JSONL_CHUNKS = FuzzTarget(
 )
 
 
+# ---------------------------------------------------------------------------
+# Phase-3 B2 targets — the validator families (b2-packets.md §"R10.9 harness
+# spec" for V1a/V1b/V2, formalized by the (b′) binding task per the
+# B2-M1/M2/M3 deferral notes; oracle-ts answers these apis through the
+# shared bindings registration).
+#
+# Domain notes (documented omissions, module-header rule / :253-257 style):
+# - NON-FINITE floats are unshippable through ``encode_input_kwargs``
+#   (D6 rule 5, ``_reject_bad_float`` rejects them in EVERY position), so
+#   the branches that need NaN/Infinity INPUT — V24_BUCKET_NOT_FINITE,
+#   the V12/V18 NaN-probe arms, B20B_FILTER_VALUE_NOT_FINITE, and the
+#   sorting ``finite_number`` route — are locked by the authored corpus
+#   vectors + the module Layer-3 twins instead (the module tasks'
+#   throwaway harnesses hand-built those payloads; this table cannot).
+# - Constructor-guarded instances cannot be GENERATED here (Python raises
+#   at strategy-definition time): GroupBy V12/V18 orderings, Exclusion
+#   EX1/EX2 shapes, control-char Exclusion events, Metric property-math
+#   guards, inline-cohort CohortMetric. The validator codes those inputs
+#   would hit (V12_BUCKET_SIZE_POSITIVE, V13_METRIC_MATH_PROPERTY,
+#   V18_BUCKET_ORDER, CM5_INLINE_COHORT_METRIC, F4_CONTROL_CHAR_EXCLUSION,
+#   F4_EMPTY_EXCLUSION_EVENT, F4_EXCLUSION_NEGATIVE_STEP) are unreachable
+#   post-Phase-2 (B2-M1 notes); each is pinned by its nearest reachable
+#   arm below.
+# - ``workers=None`` is outside BOTH signatures (B2-M3 "known boundary":
+#   CPython raises a bare TypeError) and is excluded from the fuzz domain.
+# - B0_MISSING_FIELD / B0_VALIDATOR_ERROR are unreachable through
+#   ``validate_sorting_block`` (B2-M2 probe finding 5); their nearest
+#   reachable neighbours are pinned in the sorting edge set.
+# ---------------------------------------------------------------------------
+
+_B2_NON_BMP = "\U0001d4b3"
+"""The R10.9 non-BMP edge string ("𝒳")."""
+
+_B2_NUL = "\x00"
+"""Control character for the *_CONTROL_CHAR_* branches."""
+
+_B2_ZWSP = "​"
+"""Zero-width space for the *_INVISIBLE_* branches."""
+
+_ABSENT = object()
+"""Sentinel: drop this key from a generated kwargs/params dict."""
+
+
+def _b2_compact(entries: dict[str, Any]) -> dict[str, Any]:
+    """Drop :data:`_ABSENT` values so a key is truly absent (R3.5).
+
+    Args:
+        entries: Drawn key/value pairs, absent keys carrying the sentinel.
+
+    Returns:
+        The dict without sentinel-valued keys.
+    """
+    return {key: value for key, value in entries.items() if value is not _ABSENT}
+
+
+def _b2_maybe(strategy: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+    """Wrap a strategy so the drawn key may be absent entirely.
+
+    Args:
+        strategy: The value strategy.
+
+    Returns:
+        A strategy drawing either :data:`_ABSENT` or a value.
+    """
+    return st.one_of(st.just(_ABSENT), strategy)
+
+
+_B2_DATES: st.SearchStrategy[Any] = st.one_of(
+    st.none(),
+    st.dates().map(str),
+    st.sampled_from(
+        [
+            "2024-01-01",
+            "2024-12-31",
+            "2024-02-29",
+            "2023-02-29",
+            "2024-02-30",
+            "0000-01-01",
+            "9999-12-31",
+            "01/01/2024",
+            "not-a-date",
+            "",
+            "2024-1-1",
+            "20240101",
+            "2024-01-01\n",
+            _B2_NON_BMP,
+            "٢٠٢٤-٠١-٠١",
+        ]
+    ),
+)
+"""Date mix: valid, malformed-family, None, junk (V8/V9/V10/V15 space)."""
+
+_B2_LAST: st.SearchStrategy[Any] = st.sampled_from(
+    (-100, -1, 0, 1, 29, 30, 31, 3650, 3651, 5000, True, 1.5, 30.0)
+)
+"""``last`` pool: bounds, bool, fractional, integral float (carrier probe)."""
+
+_B2_EVENTS: st.SearchStrategy[str] = st.sampled_from(
+    (
+        "Login",
+        "Purchase",
+        "",
+        "   ",
+        f"A{_B2_NUL}B",
+        _B2_ZWSP,
+        _B2_NON_BMP,
+        "­",
+        "⁠",
+        "\t",
+    )
+)
+"""Event-name pool: valid, blank, control-char, invisible, non-BMP."""
+
+_B2_DGID: st.SearchStrategy[Any] = st.sampled_from(
+    (None, 1, 0, -1, True, False, 1.5, 2.0, "3", ())
+)
+"""``data_group_id`` pool (DG1 branch coverage; 2.0 rides as the carrier)."""
+
+_B2_GROUP_BY_POOL: tuple[Any, ...] = (
+    None,
+    "country",
+    "",
+    "  ",
+    _B2_NON_BMP,
+    ["country", "platform"],
+    ["", _B2_NON_BMP],
+    GroupBy(
+        property="revenue",
+        property_type="number",
+        bucket_size=50,
+        bucket_min=0,
+        bucket_max=500,
+    ),
+    GroupBy(
+        property="revenue",
+        property_type="number",
+        bucket_size=10.0,
+        bucket_min=0.0,
+        bucket_max=100.0,
+    ),
+    GroupBy(
+        property="revenue",
+        property_type="number",
+        bucket_size=1.5,
+        bucket_min=0,
+        bucket_max=10,
+    ),
+    GroupBy(property="a", bucket_min=0),  # V11_BUCKET_REQUIRES_SIZE
+    GroupBy(  # V12B_BUCKET_REQUIRES_NUMBER
+        property="a",
+        property_type="string",
+        bucket_size=10,
+        bucket_min=0,
+        bucket_max=20,
+    ),
+    GroupBy(property="a", property_type="number", bucket_size=10),  # V12C
+    GroupBy(property=_B2_NON_BMP, property_type="datetime"),
+    GroupBy(property=CustomPropertyRef(id=0)),  # CP1_INVALID_ID
+    GroupBy(property=CustomPropertyRef(id=7)),
+    GroupBy(  # CP2_EMPTY_FORMULA
+        property=InlineCustomProperty(
+            formula="   ", inputs={"A": PropertyInput(name="p")}
+        )
+    ),
+    GroupBy(property=InlineCustomProperty(formula="A", inputs={})),  # CP3
+    GroupBy(  # CP4_INVALID_INPUT_KEY
+        property=InlineCustomProperty(
+            formula="A", inputs={"aa": PropertyInput(name="p")}
+        )
+    ),
+    GroupBy(  # CP6_EMPTY_INPUT_NAME
+        property=InlineCustomProperty(
+            formula="A", inputs={"A": PropertyInput(name="  ")}
+        )
+    ),
+    [GroupBy(property="a", bucket_min=0), "platform"],
+)
+"""Prebuilt breakdowns: every constructible V11/V12B/V12C/CP* shape."""
+
+_B2_GROUP_BY_SCALARS: tuple[Any, ...] = tuple(
+    member for member in _B2_GROUP_BY_POOL if not isinstance(member, list)
+)
+"""Pool members legal as list ELEMENTS (no nested lists)."""
+
+_B2_GROUP_BY: st.SearchStrategy[Any] = st.one_of(
+    st.sampled_from(_B2_GROUP_BY_POOL),
+    st.lists(st.sampled_from(_B2_GROUP_BY_SCALARS), max_size=3),
+)
+"""Breakdown strategy: the prebuilt pool + generated mixed lists (the
+combinatorial space keeps the family above the >=500-example budget —
+a bare ``sampled_from`` exhausts after ~pool-size unique examples)."""
+
+_B2_COHORT_GROUP_BY: st.SearchStrategy[Any] = st.one_of(
+    _B2_GROUP_BY,
+    st.sampled_from(
+        (
+            [CohortBreakdown(cohort=123, name="PU")],
+            [CohortBreakdown(cohort=123, name="PU"), "platform"],  # CB3
+        )
+    ),
+)
+"""Retention breakdowns: the shared pool + CohortBreakdown mixes (CB3)."""
+
+
+def _b2_call(api: str) -> Any:
+    """Build a kwargs→probe mapper for one validator api.
+
+    Args:
+        api: The dotted registry api name.
+
+    Returns:
+        A mapper suitable for ``strategy.map(...)``.
+    """
+
+    def make(kwargs: dict[str, Any]) -> FuzzCall:
+        """Wrap drawn kwargs as a probe.
+
+        Args:
+            kwargs: The drawn kwargs.
+
+        Returns:
+            The ``(api, kwargs)`` probe.
+        """
+        return (api, kwargs)
+
+    return make
+
+
+_TIME_ARGS_API = "validation.validate_time_args"
+_GROUP_BY_API = "validation.validate_group_by_args"
+_QUERY_ARGS_API = "validation.validate_query_args"
+_FUNNEL_ARGS_API = "validation.validate_funnel_args"
+_RETENTION_ARGS_API = "validation.validate_retention_args"
+_FLOW_ARGS_API = "validation.validate_flow_args"
+_BOOKMARK_API = "validation.validate_bookmark"
+_FLOW_BOOKMARK_API = "validation.validate_flow_bookmark"
+_SORTING_API = "validation.validate_sorting_block"
+_USER_ARGS_API = "user_validators.validate_user_args"
+_USER_PARAMS_API = "user_validators.validate_user_params"
+
+_B2_TIME_BASE: dict[str, Any] = {"from_date": None, "to_date": None, "last": 30}
+"""All-valid time kwargs (edge-call base)."""
+
+_B2_QUERY_BASE: dict[str, Any] = {
+    "events": ["Login"],
+    "math": "total",
+    "math_property": None,
+    "per_user": None,
+    "from_date": None,
+    "to_date": None,
+    "last": 30,
+    "has_formula": False,
+    "rolling": None,
+    "cumulative": False,
+    "group_by": None,
+}
+"""All-valid query kwargs (edge-call base)."""
+
+_B2_FUNNEL_BASE: dict[str, Any] = {
+    "steps": ["Signup", "Purchase"],
+    "conversion_window": 14,
+    "conversion_window_unit": "day",
+    "math": "conversion_rate_unique",
+    "math_property": None,
+    "exclusions": None,
+    "holding_constant": None,
+    "from_date": None,
+    "to_date": None,
+    "last": 30,
+    "group_by": None,
+}
+"""All-valid funnel kwargs (edge-call base)."""
+
+_B2_RETENTION_BASE: dict[str, Any] = {
+    "born_event": "Signup",
+    "return_event": "Login",
+    "retention_unit": "week",
+    "alignment": "birth",
+    "bucket_sizes": None,
+    "math": "retention_rate",
+    "mode": "curve",
+    "unit": "day",
+    "from_date": None,
+    "to_date": None,
+    "last": 30,
+    "group_by": None,
+}
+"""All-valid retention kwargs (edge-call base)."""
+
+_B2_FLOW_BASE: dict[str, Any] = {
+    "steps": ["Purchase"],
+    "forward": 3,
+    "reverse": 0,
+    "count_type": "unique",
+    "mode": "sankey",
+    "cardinality": 3,
+    "conversion_window": 7,
+    "from_date": None,
+    "to_date": None,
+    "last": 30,
+}
+"""All-valid flow kwargs (edge-call base)."""
+
+
+def _b2_edge(api: str, base: dict[str, Any], **over: Any) -> FuzzCall:
+    """Build one edge probe from a base kwargs dict plus overrides.
+
+    Args:
+        api: The dotted registry api name.
+        base: The family's all-valid kwargs base.
+        over: Overriding kwargs.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return (api, {**base, **over})
+
+
+_TIME_ARGS_FAMILY = FuzzTarget(
+    name="time_args_family",
+    calls=st.fixed_dictionaries(
+        {"from_date": _B2_DATES, "to_date": _B2_DATES, "last": _B2_LAST}
+    ).map(_b2_call(_TIME_ARGS_API)),
+    # Codes V7/V8(x2)/V9/V10/V15/V20 + the R10.9 value edges (integral
+    # float 18.0 arrives as the PyFloat carrier on the TS side; True /
+    # fractional / empty-string / non-BMP / all-None per input domain).
+    edge_calls=(
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, last=18.0),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, last=1.5),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, last=True),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, from_date=""),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, from_date=_B2_NON_BMP),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, last=0),  # V7
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, from_date="01/01/2024"),  # V8
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, from_date="2024-02-30"),  # V8b
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, to_date="2024-01-31"),  # V9
+        _b2_edge(  # V10
+            _TIME_ARGS_API, _B2_TIME_BASE, from_date="2024-01-01", last=7
+        ),
+        (  # V15
+            _TIME_ARGS_API,
+            {"from_date": "2024-02-01", "to_date": "2024-01-01", "last": 30},
+        ),
+        _b2_edge(_TIME_ARGS_API, _B2_TIME_BASE, last=5000),  # V20
+    ),
+)
+
+_GROUP_BY_ARGS_FAMILY = FuzzTarget(
+    name="group_by_args_family",
+    calls=st.fixed_dictionaries({"group_by": _B2_GROUP_BY}).map(
+        _b2_call(_GROUP_BY_API)
+    ),
+    # V11/V12B/V12C + CP1..CP6 (CP5 below) ride the prebuilt pool; V24 /
+    # V12 / V18 need non-finite floats (unshippable — see section header).
+    edge_calls=(
+        (_GROUP_BY_API, {"group_by": None}),
+        (_GROUP_BY_API, {"group_by": []}),
+        (_GROUP_BY_API, {"group_by": ""}),
+        (_GROUP_BY_API, {"group_by": _B2_NON_BMP}),
+        (_GROUP_BY_API, {"group_by": _B2_GROUP_BY_POOL[8]}),  # 10.0 carriers
+        (_GROUP_BY_API, {"group_by": _B2_GROUP_BY_POOL[9]}),  # 1.5 buckets
+        (_GROUP_BY_API, {"group_by": _B2_GROUP_BY_POOL[10]}),  # V11
+        (_GROUP_BY_API, {"group_by": _B2_GROUP_BY_POOL[11]}),  # V12B
+        (_GROUP_BY_API, {"group_by": _B2_GROUP_BY_POOL[12]}),  # V12C
+        (  # CP5_FORMULA_TOO_LONG (codepoint length > 20_000, R11.6)
+            _GROUP_BY_API,
+            {
+                "group_by": GroupBy(
+                    property=InlineCustomProperty(
+                        formula=_B2_NON_BMP * 20_001,
+                        inputs={"A": PropertyInput(name="p")},
+                    )
+                )
+            },
+        ),
+        *(
+            (_GROUP_BY_API, {"group_by": member})
+            for member in _B2_GROUP_BY_POOL[14:20]  # CP1..CP6 shapes
+        ),
+    ),
+)
+
+_B2_QUERY_EVENTS: st.SearchStrategy[Any] = st.one_of(
+    st.lists(_B2_EVENTS, max_size=3),
+    st.sampled_from(
+        (
+            [123],  # V21_INVALID_EVENT_TYPE
+            [Metric(event="P", math="total")],
+            [Metric(event="P", math="unique", property="amount")],  # V14
+            [CohortMetric(cohort=42, name="c")],
+            ["a", Metric(event="P", math="dau"), _B2_NON_BMP],
+        )
+    ),
+)
+"""Query events: strings, bad types, Metric/CohortMetric instances."""
+
+_B2_FORMULAS: st.SearchStrategy[Any] = st.sampled_from(
+    (
+        None,
+        (),
+        (Formula(expression="A + B"),),
+        (Formula(expression="1 + 2"),),  # V16_FORMULA_SYNTAX
+        (Formula(expression="A + Z"),),  # V19_FORMULA_BOUNDS
+        (Formula(expression=_B2_NON_BMP),),
+        (Formula(expression="A"), Formula(expression="ZZ")),
+    )
+)
+"""Formula pool (V16/V19 + valid shapes)."""
+
+_QUERY_ARGS_FAMILY = FuzzTarget(
+    name="query_args_family",
+    calls=st.fixed_dictionaries(
+        {
+            "events": _B2_QUERY_EVENTS,
+            "math": st.sampled_from(
+                (
+                    "total",
+                    "unique",
+                    "average",
+                    "median",
+                    "p99",
+                    "dau",
+                    "wau",
+                    "mau",
+                    "histogram",
+                    "percentile",
+                    "totl",
+                    "",
+                    _B2_NON_BMP,
+                )
+            ),
+            "math_property": st.sampled_from((None, "amount", "", _B2_NON_BMP)),
+            "per_user": st.sampled_from((None, "total", "average", "min", "max")),
+            "percentile_value": st.sampled_from((None, 95, 1.5)),
+            "from_date": _B2_DATES,
+            "to_date": _B2_DATES,
+            "last": _B2_LAST,
+            "has_formula": st.booleans(),
+            "rolling": st.sampled_from((None, 0, 7, 400, -1, 1.5, True, 7.0)),
+            "cumulative": st.booleans(),
+            "group_by": _B2_GROUP_BY,
+            "formulas": _B2_FORMULAS,
+            "data_group_id": _B2_DGID,
+        }
+    ).map(_b2_call(_QUERY_ARGS_API)),
+    edge_calls=(
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, events=[]),  # V0
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, events=[""]),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, events=[_B2_NON_BMP]),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, math="average"),  # V1
+        _b2_edge(  # V2
+            _QUERY_ARGS_API, _B2_QUERY_BASE, math="unique", math_property="amount"
+        ),
+        _b2_edge(  # V3
+            _QUERY_ARGS_API, _B2_QUERY_BASE, math="dau", per_user="average"
+        ),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, per_user="average"),  # V3B
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, has_formula=True),  # V4
+        _b2_edge(  # V5
+            _QUERY_ARGS_API, _B2_QUERY_BASE, rolling=7, cumulative=True
+        ),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, rolling=0),  # V6
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, rolling=7.0),  # carrier
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, rolling=1.5),
+        _b2_edge(  # V16
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=["a", "b"],
+            has_formula=True,
+            formulas=(Formula(expression="1 + 2"),),
+        ),
+        _b2_edge(  # V19 (source-only in the corpus)
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=["a", "b"],
+            has_formula=True,
+            formulas=(Formula(expression="A + Z"),),
+        ),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, events=[123]),  # V21
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, events=["   "]),  # V17
+        _b2_edge(  # V22_CONTROL_CHAR_EVENT
+            _QUERY_ARGS_API, _B2_QUERY_BASE, events=[f"Log{_B2_NUL}in"]
+        ),
+        _b2_edge(  # V22_INVISIBLE_EVENT
+            _QUERY_ARGS_API, _B2_QUERY_BASE, events=[_B2_ZWSP]
+        ),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, rolling=400),  # V23
+        _b2_edge(  # V26_PERCENTILE_REQUIRES_VALUE
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            math="percentile",
+            math_property="amount",
+        ),
+        _b2_edge(  # V27_HISTOGRAM_REQUIRES_PER_USER
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            math="histogram",
+            math_property="amount",
+        ),
+        _b2_edge(  # V14_METRIC_REJECTS_PROPERTY
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=[Metric(event="P", math="unique", property="amount")],
+        ),
+        _b2_edge(  # V13 unreachable (Metric ctor guard); pins the ok arm
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=[Metric(event="P", math="total")],
+        ),
+        _b2_edge(  # CM5 unreachable (inline defs rejected by ctor); ok arm
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=[CohortMetric(cohort=42, name="c")],
+        ),
+        _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, data_group_id=0),  # DG1
+        _b2_edge(  # CP1 via the shared scan
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            group_by=GroupBy(property=CustomPropertyRef(id=0)),
+        ),
+    ),
+)
+
+_B2_EXCLUSIONS: st.SearchStrategy[Any] = st.sampled_from(
+    (
+        None,
+        (),
+        (Exclusion(event="X", from_step=0, to_step=5),),  # F4 bounds
+        (Exclusion(event="Logout", from_step=2, to_step=None),),
+        (Exclusion(event="X", from_step=0, to_step=1),),
+    )
+)
+"""Constructible exclusions (EX1/EX2/control-char shapes cannot exist)."""
+
+_FUNNEL_ARGS_FAMILY = FuzzTarget(
+    name="funnel_args_family",
+    calls=st.fixed_dictionaries(
+        {
+            "steps": st.lists(_B2_EVENTS, max_size=4),
+            "conversion_window": st.sampled_from(
+                (0, 1, 2, 14, 368, -1, 1.5, True, None, 14.0, "7")
+            ),
+            "conversion_window_unit": st.sampled_from(
+                (
+                    "second",
+                    "minute",
+                    "hour",
+                    "day",
+                    "week",
+                    "month",
+                    "session",
+                    "hou",
+                    "",
+                    _B2_NON_BMP,
+                )
+            ),
+            "math": st.sampled_from(
+                (
+                    "conversion_rate_unique",
+                    "conversion_rate_session",
+                    "unique",
+                    "total",
+                    "average",
+                    "median",
+                    "p99",
+                    "uniqe",
+                    "",
+                )
+            ),
+            "math_property": st.sampled_from((None, "amount", "", _B2_NON_BMP)),
+            "exclusions": _B2_EXCLUSIONS,
+            "holding_constant": st.sampled_from(
+                (None, (), ("a",), ("a", "b", "c", "d"), ("", "b"), (1,))
+            ),
+            "from_date": _B2_DATES,
+            "to_date": _B2_DATES,
+            "last": _B2_LAST,
+            "group_by": _B2_GROUP_BY,
+            "reentry_mode": st.sampled_from(
+                (None, "default", "basic", "aggressive", "optimized", "invalid", "")
+            ),
+            "data_group_id": _B2_DGID,
+        }
+    ).map(_b2_call(_FUNNEL_ARGS_API)),
+    edge_calls=(
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE),
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=[]),  # F1_MIN
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=["A"]),  # F1_MIN
+        _b2_edge(  # F1_MAX_STEPS
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=["A"] * 101
+        ),
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=["", "B"]),  # F2
+        _b2_edge(  # F2_CONTROL_CHAR_STEP_EVENT
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=[f"A{_B2_NUL}B", "C"]
+        ),
+        _b2_edge(  # F2_INVISIBLE_STEP_EVENT
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, steps=[_B2_ZWSP, "C"]
+        ),
+        _b2_edge(  # F3_CONVERSION_WINDOW_POSITIVE
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=0
+        ),
+        _b2_edge(  # F3_CONVERSION_WINDOW_MAX
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=368
+        ),
+        _b2_edge(  # F3_CONVERSION_WINDOW_TYPE (fractional)
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=14.5
+        ),
+        _b2_edge(  # F3 TYPE via integral float (carrier stays a carrier)
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=14.0
+        ),
+        _b2_edge(  # F3 TYPE via bool
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=True
+        ),
+        _b2_edge(  # F3 TYPE via None
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window=None
+        ),
+        _b2_edge(  # F4_EXCLUSION_STEP_BOUNDS
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            exclusions=(Exclusion(event="X", from_step=0, to_step=5),),
+        ),
+        _b2_edge(  # F4 order arm reachable through validator re-check
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            exclusions=(Exclusion(event="X", from_step=0, to_step=1),),
+        ),
+        _b2_edge(  # F7_INVALID_WINDOW_UNIT (+ _suggest content path)
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, conversion_window_unit="hou"
+        ),
+        _b2_edge(  # F7_SECOND_MIN_WINDOW
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            conversion_window=1,
+            conversion_window_unit="second",
+        ),
+        _b2_edge(  # F8_MAX_HOLDING_CONSTANT
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            holding_constant=("a", "b", "c", "d"),
+        ),
+        _b2_edge(  # F8_EMPTY_HOLDING_CONSTANT_PROPERTY (source-only)
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, holding_constant=("", "b")
+        ),
+        _b2_edge(  # F9_SESSION_WINDOW_REQUIRES_ONE
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            conversion_window_unit="session",
+            conversion_window=2,
+        ),
+        _b2_edge(  # F9_SESSION_MATH_REQUIRES_SESSION_WINDOW
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, math="conversion_rate_session"
+        ),
+        _b2_edge(  # F10_MATH_MISSING_PROPERTY
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, math="average"
+        ),
+        _b2_edge(  # F11_MATH_REJECTS_PROPERTY
+            _FUNNEL_ARGS_API,
+            _B2_FUNNEL_BASE,
+            math="unique",
+            math_property="amount",
+        ),
+        _b2_edge(  # F12_INVALID_REENTRY_MODE
+            _FUNNEL_ARGS_API, _B2_FUNNEL_BASE, reentry_mode="invalid"
+        ),
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE, data_group_id=0),  # DG1
+        _b2_edge(_FUNNEL_ARGS_API, _B2_FUNNEL_BASE, last=18.0),  # carrier
+    ),
+)
+
+_RETENTION_ARGS_FAMILY = FuzzTarget(
+    name="retention_args_family",
+    calls=st.fixed_dictionaries(
+        {
+            "born_event": _B2_EVENTS,
+            "return_event": _B2_EVENTS,
+            "retention_unit": st.sampled_from(
+                ("day", "week", "month", "wek", "Week", "", _B2_NON_BMP)
+            ),
+            "alignment": st.sampled_from(
+                ("birth", "interval_start", "brith", "", _B2_NON_BMP)
+            ),
+            "bucket_sizes": st.one_of(
+                st.none(),
+                st.lists(
+                    st.sampled_from(
+                        (1, 2, 3, 7, 0, -1, 1.5, True, False, 2.0, "3", None, 731)
+                    ),
+                    max_size=6,
+                ),
+            ),
+            "math": st.sampled_from(
+                (
+                    "retention_rate",
+                    "unique",
+                    "total",
+                    "average",
+                    "uniue",
+                    "",
+                    _B2_NON_BMP,
+                )
+            ),
+            "mode": st.sampled_from(
+                ("curve", "trends", "table", "curv", None, "", _B2_NON_BMP)
+            ),
+            "unit": st.sampled_from(("day", "week", "month", "dya", "", _B2_NON_BMP)),
+            "from_date": _B2_DATES,
+            "to_date": _B2_DATES,
+            "last": _B2_LAST,
+            "group_by": _B2_COHORT_GROUP_BY,
+            "unbounded_mode": st.sampled_from(
+                (
+                    None,
+                    "none",
+                    "carry_back",
+                    "carry_forward",
+                    "consecutive_forward",
+                    "invalid",
+                    "",
+                )
+            ),
+            "data_group_id": _B2_DGID,
+        }
+    ).map(_b2_call(_RETENTION_ARGS_API)),
+    edge_calls=(
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, born_event=""),  # R1
+        _b2_edge(  # R1_CONTROL_CHAR_BORN_EVENT
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, born_event=f"S{_B2_NUL}p"
+        ),
+        _b2_edge(  # R1_INVISIBLE_BORN_EVENT
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, born_event=_B2_ZWSP
+        ),
+        _b2_edge(  # R2 family
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, return_event=""
+        ),
+        _b2_edge(
+            _RETENTION_ARGS_API,
+            _B2_RETENTION_BASE,
+            return_event=f"L{_B2_NUL}n",
+        ),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, return_event=_B2_ZWSP),
+        _b2_edge(  # R5_BUCKET_SIZES_INTEGER (fractional + carrier + bool)
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[1.5, 3]
+        ),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[1.0, 3]),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[True, 3]),
+        _b2_edge(  # R5_BUCKET_SIZES_POSITIVE
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[0, 3]
+        ),
+        _b2_edge(  # R5_BUCKET_SIZES_TOO_MANY (> _MAX_RETENTION_BUCKETS)
+            _RETENTION_ARGS_API,
+            _B2_RETENTION_BASE,
+            bucket_sizes=list(range(1, 1001)),
+        ),
+        _b2_edge(  # R6_BUCKET_SIZES_ASCENDING
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[7, 3, 1]
+        ),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, bucket_sizes=[]),
+        _b2_edge(  # R7 (+ suggestion content "week")
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, retention_unit="wek"
+        ),
+        _b2_edge(  # R8
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, alignment="brith"
+        ),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, math="uniue"),  # R9
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, mode="curv"),  # R10
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, unit="dya"),  # R11
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, group_by=""),  # R12
+        _b2_edge(  # R13
+            _RETENTION_ARGS_API, _B2_RETENTION_BASE, unbounded_mode="invalid"
+        ),
+        _b2_edge(  # CB3_RETENTION_MIXED_BREAKDOWN
+            _RETENTION_ARGS_API,
+            _B2_RETENTION_BASE,
+            group_by=[CohortBreakdown(cohort=123, name="PU"), "platform"],
+        ),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, data_group_id=0),
+        _b2_edge(_RETENTION_ARGS_API, _B2_RETENTION_BASE, last=18.0),
+        _b2_edge(
+            _RETENTION_ARGS_API,
+            _B2_RETENTION_BASE,
+            born_event=_B2_NON_BMP,
+            return_event=_B2_NON_BMP,
+        ),
+    ),
+)
+
+_FLOW_ARGS_FAMILY = FuzzTarget(
+    name="flow_args_family",
+    calls=st.fixed_dictionaries(
+        {
+            "steps": st.lists(_B2_EVENTS, max_size=3),
+            "forward": st.sampled_from((-1, 0, 1, 3, 5, 6, True, 1.5, 3.0)),
+            "reverse": st.sampled_from((-1, 0, 1, 5, 6, True)),
+            "count_type": st.sampled_from(
+                ("unique", "total", "session", "uniqe", "", _B2_NON_BMP)
+            ),
+            "mode": st.sampled_from(
+                ("sankey", "paths", "tree", "sanke", "", _B2_NON_BMP)
+            ),
+            "cardinality": st.sampled_from((0, 1, 3, 50, 51, -1, 1.5)),
+            "conversion_window": st.sampled_from((0, 1, 7, 366, 367, 400, -1, 1.5)),
+            "conversion_window_unit": st.sampled_from(
+                ("day", "week", "month", "session", "dya", "", _B2_NON_BMP)
+            ),
+            "from_date": _B2_DATES,
+            "to_date": _B2_DATES,
+            "last": _B2_LAST,
+            "time_comparison": st.sampled_from(
+                (None, TimeComparison(type="relative", unit="month"))
+            ),
+            "data_group_id": _B2_DGID,
+        }
+    ).map(_b2_call(_FLOW_ARGS_API)),
+    edge_calls=(
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, steps=[]),  # FL1
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, steps=[""]),  # FL2
+        _b2_edge(  # FL2_CONTROL_CHAR_STEP_EVENT
+            _FLOW_ARGS_API, _B2_FLOW_BASE, steps=[f"{_B2_NUL}Login"]
+        ),
+        _b2_edge(  # FL2_INVISIBLE_STEP_EVENT
+            _FLOW_ARGS_API, _B2_FLOW_BASE, steps=[_B2_ZWSP]
+        ),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, steps=[_B2_NON_BMP]),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, forward=6),  # FL3
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, reverse=-1),  # FL4
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, forward=0, reverse=0),  # FL5
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, cardinality=51),  # FL6
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, cardinality=3.0),  # carrier
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, cardinality=1.5),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, conversion_window=0),  # FL7
+        _b2_edge(  # FL7_CONVERSION_WINDOW_MAX
+            _FLOW_ARGS_API, _B2_FLOW_BASE, conversion_window=400
+        ),
+        _b2_edge(  # FL9_SESSION_REQUIRES_SESSION_WINDOW
+            _FLOW_ARGS_API, _B2_FLOW_BASE, count_type="session"
+        ),
+        _b2_edge(  # FL10_SESSION_WINDOW_REQUIRES_ONE
+            _FLOW_ARGS_API,
+            _B2_FLOW_BASE,
+            count_type="session",
+            conversion_window_unit="session",
+            conversion_window=7,
+        ),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, count_type="uniqe"),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, mode="sanke"),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, conversion_window_unit="dya"),
+        _b2_edge(  # FL_TIME_COMPARISON_NOT_SUPPORTED
+            _FLOW_ARGS_API,
+            _B2_FLOW_BASE,
+            time_comparison=TimeComparison(type="relative", unit="month"),
+        ),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, forward=True),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, data_group_id=None),
+        _b2_edge(_FLOW_ARGS_API, _B2_FLOW_BASE, last=18.0),
+    ),
+)
+
+# ---- V1b — bookmark / flow-bookmark / sorting families --------------------
+
+
+def _b2_bookmark(**over: Any) -> dict[str, Any]:
+    """Build the minimal valid insights bookmark params dict.
+
+    Mirrors ``tests/unit/test_validation.py::_minimal_bookmark`` (the
+    B2-M2 harness base).
+
+    Args:
+        over: Top-level key overrides.
+
+    Returns:
+        A fresh params dict.
+    """
+    params: dict[str, Any] = {
+        "sections": {
+            "show": [
+                {
+                    "behavior": {
+                        "type": "event",
+                        "resourceType": "events",
+                        "value": {"name": "Login"},
+                    },
+                    "measurement": {"math": "total"},
+                }
+            ],
+            "time": [{"unit": "day", "dateRangeType": "in the last", "value": 30}],
+            "filter": [],
+            "group": [],
+        },
+        "displayOptions": {"chartType": "line", "analysis": "linear"},
+    }
+    params.update(over)
+    return params
+
+
+def _b2_bm_show(clause: Any) -> dict[str, Any]:
+    """Bookmark params with one replaced show clause.
+
+    Args:
+        clause: The show-clause value.
+
+    Returns:
+        The params dict.
+    """
+    base = _b2_bookmark()
+    base["sections"] = {**base["sections"], "show": [clause]}
+    return base
+
+
+def _b2_bm_section(section: str, clause: Any) -> dict[str, Any]:
+    """Bookmark params with one clause in the given section.
+
+    Args:
+        section: ``"filter"`` / ``"group"`` / ``"time"``.
+        clause: The clause value.
+
+    Returns:
+        The params dict.
+    """
+    base = _b2_bookmark()
+    base["sections"] = {**base["sections"], section: [clause]}
+    return base
+
+
+def _b2_cohort_show(
+    behavior: dict[str, Any], measurement: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Bookmark params with a cohort-flavored show clause (B22-B26).
+
+    Args:
+        behavior: The behavior dict.
+        measurement: The measurement dict (default ``{"math": "unique"}``).
+
+    Returns:
+        The params dict.
+    """
+    return _b2_bm_show(
+        {"behavior": behavior, "measurement": measurement or {"math": "unique"}}
+    )
+
+
+def _b2_flow_bookmark(**over: Any) -> dict[str, Any]:
+    """Build the minimal valid flow bookmark params dict.
+
+    Mirrors ``tests/test_validation_flow.py::_valid_flow_bookmark``.
+
+    Args:
+        over: Top-level key overrides.
+
+    Returns:
+        A fresh params dict.
+    """
+    params: dict[str, Any] = {
+        "steps": [{"event": "Purchase", "forward": 3, "reverse": 0}],
+        "date_range": {
+            "type": "in the last",
+            "from_date": {"unit": "day", "value": 30},
+            "to_date": "$now",
+        },
+        "chartType": "sankey",
+        "count_type": "unique",
+        "version": 2,
+    }
+    params.update(over)
+    return params
+
+
+_B2_STRS: st.SearchStrategy[Any] = st.sampled_from(
+    ("Login", "", "  ", _B2_NON_BMP, f"A{_B2_NUL}B", _B2_ZWSP, "country")
+)
+"""Generic string pool for bookmark clause fields."""
+
+_B2_SORT_BY: st.SearchStrategy[Any] = st.sampled_from(
+    ("value", "column", "label", "liftComparisonValue", "bogus", "", None, (), 5)
+)
+"""``sortBy`` pool: every discriminator route + near-misses + bad types."""
+
+_B2_SORT_ORDER: st.SearchStrategy[Any] = st.sampled_from(
+    ("asc", "desc", "ascending", "", None, 3)
+)
+"""``sortOrder`` pool (S6/S9 space)."""
+
+_B2_VIEWN: st.SearchStrategy[Any] = st.sampled_from(
+    (None, 5, 0, -1, 5.5, True, "5", "x", " 5 ", "1_0", "5.0", 5.0, (), {})
+)
+"""``viewNLimit`` pool: pydantic lax int coercion space (B0_WRONG_TYPE)."""
+
+_B2_VALUE_FIELD: st.SearchStrategy[Any] = st.sampled_from(
+    (None, "averageValue", "", 3, True, _B2_NON_BMP, ())
+)
+"""``valueField`` pool (string_type route)."""
+
+_B2_CHART_KEYS: st.SearchStrategy[str] = st.sampled_from(
+    (
+        "bar",
+        "table",
+        "line",
+        "pie",
+        "insights-metric",
+        "retention-curve",
+        "funnel-steps",
+        "sankey",
+        "column",
+        "barz",
+        "",
+        _B2_NON_BMP,
+    )
+)
+"""Sorting chart-type keys: the seven modeled + S4 near-misses."""
+
+
+@st.composite
+def _b2_flat_sort_attr(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one ``colSortAttrs`` element (flat sort config).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A flat sort-attribute dict (keys possibly absent).
+    """
+    return _b2_compact(
+        {
+            "sortBy": draw(_b2_maybe(_B2_SORT_BY)),
+            "sortOrder": draw(_b2_maybe(_B2_SORT_ORDER)),
+            "valueField": draw(_b2_maybe(_B2_VALUE_FIELD)),
+            "viewNLimit": draw(_b2_maybe(_B2_VIEWN)),
+            "zz": draw(_b2_maybe(st.just(1))),
+        }
+    )
+
+
+@st.composite
+def _b2_sort_config(draw: st.DrawFn) -> Any:
+    """Draw one per-chart-type sorting config.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A config dict, or a non-dict poison value (S5 route).
+    """
+    if draw(st.integers(0, 11)) == 0:
+        return draw(st.sampled_from(("asc", 5, (), None, True)))
+    return _b2_compact(
+        {
+            "sortBy": draw(_b2_maybe(_B2_SORT_BY)),
+            "sortOrder": draw(_b2_maybe(_B2_SORT_ORDER)),
+            "valueField": draw(_b2_maybe(_B2_VALUE_FIELD)),
+            "viewNLimit": draw(_b2_maybe(_B2_VIEWN)),
+            "sortColumn": draw(
+                _b2_maybe(st.sampled_from((None, "Linear", "sum", "value", "nope")))
+            ),
+            "colSortAttrs": draw(
+                _b2_maybe(
+                    st.one_of(
+                        st.lists(_b2_flat_sort_attr(), max_size=2),
+                        st.sampled_from(("x", {}, None, (None,))),
+                    )
+                )
+            ),
+            "segmentation": draw(_b2_maybe(st.just("value"))),
+        }
+    )
+
+
+@st.composite
+def _b2_sorting(draw: st.DrawFn) -> Any:
+    """Draw one whole ``sorting`` block.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A sorting dict keyed by chart type, or a poison value.
+    """
+    if draw(st.integers(0, 15)) == 0:
+        return draw(st.sampled_from(("asc", (), None, 5, True)))
+    out: dict[str, Any] = {}
+    for _ in range(draw(st.integers(0, 3))):
+        key = draw(_B2_CHART_KEYS)
+        out[key] = None if draw(st.integers(0, 9)) == 0 else draw(_b2_sort_config())
+    return out
+
+
+@st.composite
+def _b2_filter_clause(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one bookmark filter clause (B14-B21 space).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A filter-clause dict (keys possibly absent).
+    """
+    return _b2_compact(
+        {
+            "filterType": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            None,
+                            "string",
+                            "number",
+                            "boolean",
+                            "datetime",
+                            "list",
+                            "FAKE",
+                            "",
+                        )
+                    )
+                )
+            ),
+            "filterOperator": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            None,
+                            "equals",
+                            "contains",
+                            "does not contain",
+                            "in",
+                            "approximately",
+                            "was on",
+                            "",
+                            _B2_NON_BMP,
+                        )
+                    )
+                )
+            ),
+            "value": draw(
+                _b2_maybe(
+                    st.one_of(_B2_STRS, st.sampled_from(("$cohorts", None, 0, (), {})))
+                )
+            ),
+            "propertyName": draw(_b2_maybe(_B2_STRS)),
+            "customPropertyId": draw(
+                _b2_maybe(
+                    st.sampled_from((None, 0, 1, -3, True, False, 1.5, 42.0, "42", ()))
+                )
+            ),
+            "customProperty": draw(
+                _b2_maybe(st.sampled_from((None, {"displayFormula": "A"})))
+            ),
+            "resourceType": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (None, "events", "people", "cohorts", "BOGUS", "", 4)
+                    )
+                )
+            ),
+            # NOTE: non-finite filterValue members (B20B) are unshippable
+            # here (section header) — locked by the authored corpus pair.
+            "filterValue": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            None,
+                            (),
+                            ("US",),
+                            (1, 2, 3),
+                            "2024-01-01",
+                            5,
+                            ({"cohort": {"id": 1}},),
+                            ({"notcohort": 1},),
+                            {},
+                        )
+                    )
+                )
+            ),
+        }
+    )
+
+
+@st.composite
+def _b2_behavior(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one show-clause behavior dict (B6-B8, B19, B22-B23 space).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A behavior dict (keys possibly absent).
+    """
+    return _b2_compact(
+        {
+            "type": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            "event",
+                            "simple",
+                            "custom-event",
+                            "cohort",
+                            "funnel",
+                            "formula",
+                            "evnt",
+                            None,
+                            "",
+                            7,
+                        )
+                    )
+                )
+            ),
+            "name": draw(_b2_maybe(_B2_STRS)),
+            "value": draw(
+                _b2_maybe(
+                    st.sampled_from(({"name": "Login"}, {}, None, "x", {"name": None}))
+                )
+            ),
+            "id": draw(
+                _b2_maybe(st.sampled_from((1, 0, -1, True, False, None, 1.5, 3.0, "7")))
+            ),
+            "raw_cohort": draw(_b2_maybe(st.sampled_from((None, {"selector": {}})))),
+            "resourceType": draw(
+                _b2_maybe(
+                    st.sampled_from((None, "events", "people", "cohorts", "BOGUS", ""))
+                )
+            ),
+            "filtersDeterminer": draw(
+                _b2_maybe(st.sampled_from((None, "all", "any", "some", 3)))
+            ),
+            "filters": draw(
+                _b2_maybe(
+                    st.one_of(
+                        st.lists(_b2_filter_clause(), max_size=1),
+                        st.just("x"),
+                    )
+                )
+            ),
+        }
+    )
+
+
+@st.composite
+def _b2_show_clause(draw: st.DrawFn) -> Any:
+    """Draw one show clause (B6-B11 space).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A show-clause dict or a poison value.
+    """
+    if draw(st.integers(0, 15)) == 0:
+        return draw(st.sampled_from(("x", None, 5, ())))
+    return _b2_compact(
+        {
+            "formula": draw(_b2_maybe(st.sampled_from(("", {"definition": "A/B"})))),
+            "type": draw(_b2_maybe(st.sampled_from(("formula", "metric", None)))),
+            "behavior": draw(
+                _b2_maybe(st.one_of(_b2_behavior(), st.sampled_from((None, "x", {}))))
+            ),
+            "measurement": draw(
+                _b2_maybe(
+                    st.builds(
+                        lambda math, prop, pua: _b2_compact(
+                            {
+                                "math": math,
+                                "property": prop,
+                                "perUserAggregation": pua,
+                            }
+                        ),
+                        st.sampled_from(
+                            (
+                                "total",
+                                "unique",
+                                "average",
+                                "median",
+                                "dau",
+                                "retention_rate",
+                                "conversion_rate_unique",
+                                "totl",
+                                "",
+                                _B2_NON_BMP,
+                                None,
+                                5,
+                                (),
+                            )
+                        ),
+                        _b2_maybe(
+                            st.sampled_from(
+                                (
+                                    None,
+                                    {"type": "number", "resourceType": "events"},
+                                    "x",
+                                )
+                            )
+                        ),
+                        _b2_maybe(st.sampled_from((None, "total", "average", "nope"))),
+                    )
+                )
+            ),
+        }
+    )
+
+
+@st.composite
+def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one ``validate_bookmark`` kwargs bag.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        ``{"params": ..., "bookmark_type"?: ...}`` kwargs.
+    """
+    sections: Any = _b2_compact(
+        {
+            "show": draw(
+                _b2_maybe(
+                    st.one_of(
+                        st.lists(_b2_show_clause(), max_size=2),
+                        st.sampled_from(("x", None)),
+                    )
+                )
+            ),
+            "time": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            (),
+                            ({"unit": "day", "dateRangeType": "in the last"},),
+                            ({"unit": "fortnite"},),
+                            ({"unit": "day", "dateRangeType": "whenever"},),
+                            "x",
+                            (None,),
+                        )
+                    )
+                )
+            ),
+            "filter": draw(
+                _b2_maybe(
+                    st.one_of(
+                        st.lists(_b2_filter_clause(), max_size=2),
+                        st.sampled_from(("x", (None,))),
+                    )
+                )
+            ),
+            "group": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            (),
+                            ({"propertyName": "p", "propertyType": "string"},),
+                            ({"propertyName": "p", "propertyType": "FAKE"},),
+                            ({"propertyName": "p", "resourceType": "BOGUS"},),
+                            ({"propertyName": "p", "cohorts": ()},),
+                            ({"propertyName": "p", "cohorts": ({"id": 1},)},),
+                            ({"propertyName": "p", "cohorts": "x"},),
+                            ("nope",),
+                            (None,),
+                        )
+                    )
+                )
+            ),
+        }
+    )
+    if draw(st.integers(0, 9)) == 0:
+        sections = draw(st.sampled_from(("x", None, ())))
+    params = _b2_compact(
+        {
+            "sections": sections,
+            "displayOptions": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            {"chartType": "line"},
+                            {"chartType": "barchart"},
+                            {"chartType": ""},
+                            {"analysis": "linear"},
+                            {},
+                            "x",
+                            None,
+                        )
+                    )
+                )
+            ),
+            "sorting": draw(_b2_maybe(_b2_sorting())),
+        }
+    )
+    return _b2_compact(
+        {
+            "params": params,
+            "bookmark_type": draw(
+                _b2_maybe(
+                    st.sampled_from(("insights", "funnels", "retention", "bogus"))
+                )
+            ),
+        }
+    )
+
+
+_BOOKMARK_FAMILY = FuzzTarget(
+    name="bookmark_family",
+    calls=_b2_bookmark_params().map(_b2_call(_BOOKMARK_API)),
+    edge_calls=(
+        # R10.9 value edges (B20B non-finite arms are corpus-authored —
+        # unshippable here, see the section header).
+        (_BOOKMARK_API, {"params": _b2_bookmark()}),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"value": "c", "filterValue": 18.0})},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"value": "c", "filterValue": 1.5})},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter", {"value": True, "customPropertyId": True}
+                )
+            },
+        ),
+        (_BOOKMARK_API, {"params": {"sections": None, "displayOptions": None}}),
+        (
+            _BOOKMARK_API,
+            {"params": {"sections": {"show": []}, "displayOptions": {}}},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"value": "", "propertyName": ""})},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {
+                            "type": _B2_NON_BMP,
+                            "value": {"name": _B2_NON_BMP},
+                        },
+                        "measurement": {"math": _B2_NON_BMP},
+                    }
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bookmark(), "bookmark_type": _B2_NON_BMP},
+        ),
+        # One call per B* code.
+        (_BOOKMARK_API, {"params": {"displayOptions": {"chartType": "line"}}}),
+        (
+            _BOOKMARK_API,
+            {"params": {"sections": ["x"], "displayOptions": {"chartType": "line"}}},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": {"sections": {"show": [{"behavior": {"type": "event"}}]}}},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": {
+                    "sections": {"time": [], "filter": []},
+                    "displayOptions": {"chartType": "line"},
+                }
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": {
+                    "sections": {"show": []},
+                    "displayOptions": {"chartType": "line"},
+                }
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bookmark(displayOptions={"chartType": "barchart"})},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bookmark(displayOptions={"analysis": "linear"})},
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_show({"measurement": {"math": "total"}})}),
+        (_BOOKMARK_API, {"params": _b2_bm_show("nope")}),
+        (_BOOKMARK_API, {"params": _b2_bm_show({"behavior": "nope"})}),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {"behavior": {"type": "evnt", "value": {"name": "L"}}}
+                )
+            },
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_show({"behavior": {"type": "event"}})}),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {"type": "event", "value": {"name": "L"}},
+                        "measurement": {"math": "totl"},
+                    }
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {"type": "event", "value": {"name": "L"}},
+                        "measurement": {"math": "average"},
+                    }
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {"type": "event", "value": {"name": "L"}},
+                        "measurement": {"math": "total", "perUserAggregation": "nope"},
+                    }
+                )
+            },
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_section("time", {"unit": "fortnite"})}),
+        (_BOOKMARK_API, {"params": _b2_bm_section("time", "nope")}),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "time", {"unit": "day", "dateRangeType": "whenever"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter",
+                    {
+                        "filterType": "nope",
+                        "filterOperator": "equals",
+                        "value": "country",
+                        "filterValue": ["US"],
+                    },
+                )
+            },
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_section("filter", "nope")}),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter",
+                    {
+                        "filterType": "string",
+                        "filterOperator": "approximately",
+                        "value": "country",
+                        "filterValue": ["US"],
+                    },
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "group", {"propertyName": "p", "resourceType": "BOGUS"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "group", {"propertyName": "p", "propertyType": "FAKE"}
+                )
+            },
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_section("group", "nope")}),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter",
+                    {
+                        "filterType": "string",
+                        "filterOperator": "equals",
+                        "filterValue": ["US"],
+                    },
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"customPropertyId": 0})},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"customPropertyId": 42.0})},
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"customPropertyId": True})},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {
+                            "type": "event",
+                            "value": {"name": "L"},
+                            "filtersDeterminer": "some",
+                        }
+                    }
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter", {"value": "country", "filterValue": []}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter",
+                    {"value": "c", "filterValue": [f"v{i}" for i in range(1001)]},
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_cohort_show(
+                    {"type": "cohort", "id": 0, "resourceType": "cohorts"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_cohort_show(
+                    {"type": "cohort", "id": True, "resourceType": "cohorts"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_cohort_show(
+                    {"type": "cohort", "id": False, "resourceType": "cohorts"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_cohort_show({"type": "cohort", "resourceType": "cohorts"})},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_cohort_show(
+                    {"type": "cohort", "id": 1, "resourceType": "events"}
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_cohort_show(
+                    {"type": "cohort", "id": 1, "resourceType": "cohorts"},
+                    {"math": "total"},
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_section(
+                    "filter",
+                    {
+                        "resourceType": "events",
+                        "filterType": "list",
+                        "value": "wrong",
+                        "filterOperator": "contains",
+                        "filterValue": [
+                            {"cohort": {"id": 1, "name": "PU", "negated": False}}
+                        ],
+                    },
+                )
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("group", {"propertyName": "p", "cohorts": []})},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {"behavior": {"type": "funnel"}, "measurement": {"math": "dau"}}
+                ),
+                "bookmark_type": "funnels",
+            },
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": _b2_bm_show(
+                    {
+                        "behavior": {"type": "event", "value": {"name": "S"}},
+                        "measurement": {"math": "dau"},
+                    }
+                ),
+                "bookmark_type": "retention",
+            },
+        ),
+        # Emission-order pin (Caution §11): every section contributes.
+        (
+            _BOOKMARK_API,
+            {
+                "params": {
+                    "sections": {
+                        "show": [{"behavior": {"type": "bogus"}}, {"measurement": {}}],
+                        "time": [{"unit": "nope"}],
+                        "filter": [{"filterType": "nope"}],
+                        "group": [{"propertyType": "nope"}],
+                    },
+                    "displayOptions": {"chartType": "nope"},
+                    "sorting": {"bar": {"sortBy": "nope"}},
+                }
+            },
+        ),
+    ),
+)
+
+_FLOW_BOOKMARK_FAMILY = FuzzTarget(
+    name="flow_bookmark_family",
+    calls=st.builds(
+        lambda steps, date_range, chart, count, version: {
+            "params": _b2_compact(
+                {
+                    "steps": steps,
+                    "date_range": date_range,
+                    "chartType": chart,
+                    "count_type": count,
+                    "version": version,
+                }
+            )
+        },
+        st.one_of(
+            st.just(_ABSENT),
+            st.sampled_from(
+                (
+                    (),
+                    ({"event": "Login"},),
+                    ({"event": ""}, {"event": "Buy"}),
+                    (None,),
+                    ("Purchase",),
+                    "Purchase",
+                    ({},),
+                )
+            ),
+        ),
+        st.one_of(
+            st.just(_ABSENT),
+            st.sampled_from((None, {"type": "in the last"}, "x")),
+        ),
+        st.one_of(
+            st.just(_ABSENT),
+            st.sampled_from(
+                ("sankey", "top-paths", "tree", "sanke", "", None, _B2_NON_BMP, 5)
+            ),
+        ),
+        st.one_of(
+            st.just(_ABSENT),
+            st.sampled_from(("unique", "total", "session", "uniqe", "", None, 7)),
+        ),
+        st.one_of(
+            st.just(_ABSENT),
+            st.sampled_from((2, 1, 3, "2", True, None, 2.0, 2.5)),
+        ),
+    ).map(_b2_call(_FLOW_BOOKMARK_API)),
+    edge_calls=(
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark()}),
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=2.0)}),
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=1.5)}),
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=True)}),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(count_type=None, chartType=None)},
+        ),
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(steps=[])}),  # FLB1
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(steps="Purchase")},
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(steps=[{"event": "   "}])},  # FLB2
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(steps=[{"event": f"A{_B2_NUL}B"}])},
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(steps=[{"event": _B2_ZWSP}])},
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(steps=[{"event": _B2_NON_BMP}])},
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(count_type="uniqe")},  # FLB3
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(chartType="sanke")},  # FLB4
+        ),
+        (  # FLB5_MISSING_DATE_RANGE
+            _FLOW_BOOKMARK_API,
+            {
+                "params": {
+                    key: value
+                    for key, value in _b2_flow_bookmark().items()
+                    if key != "date_range"
+                }
+            },
+        ),
+        (
+            _FLOW_BOOKMARK_API,
+            {"params": _b2_flow_bookmark(version=1)},  # FLB6
+        ),
+    ),
+)
+
+
+def _b2_sorting_probe(config: Any) -> FuzzCall:
+    """Wrap one bar-chart sorting config as a sorting probe.
+
+    Args:
+        config: The per-chart-type config value.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return (_SORTING_API, {"sorting": {"bar": config}})
+
+
+_B2_INT_COERCION_STRINGS: tuple[str, ...] = (
+    "5",
+    " 5 ",
+    " 5",
+    "﻿5",
+    "​5",
+    "+5",
+    "-5",
+    "1_0",
+    "1__0",
+    "_1",
+    "1_",
+    "0x5",
+    "5.0",
+    "5.",
+    ".5",
+    "1e3",
+    "10.01",
+    "1.0_0",
+    "٤٢",
+    "９",
+    "",
+    "  ",
+    "9007199254740993",
+    "1.000000000000000000000000",
+    "1.0000000000000001",
+    "  +1_0.0  ",
+    "5​",
+)
+"""B2-M2 probe-pinned lax ``str -> int`` grammar corners (third-parser
+carve-out; the twin's accept/reject decisions are pinned to these)."""
+
+_SORTING_FAMILY = FuzzTarget(
+    name="sorting_family",
+    calls=st.fixed_dictionaries({"sorting": _b2_sorting()}).map(_b2_call(_SORTING_API)),
+    # NOTE: the ``finite_number`` route needs a non-finite viewNLimit —
+    # unshippable here (section header); B0_MISSING_FIELD /
+    # B0_VALIDATOR_ERROR are unreachable (B2-M2 probe finding 5) and
+    # their nearest reachable neighbours are pinned below.
+    edge_calls=(
+        (_SORTING_API, {"sorting": None}),
+        (_SORTING_API, {"sorting": []}),
+        (_SORTING_API, {"sorting": {}}),
+        (_SORTING_API, {"sorting": ""}),
+        (_SORTING_API, {"sorting": {"": {}}}),
+        (_SORTING_API, {"sorting": {_B2_NON_BMP: {}}}),
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": 5.0,
+            }
+        ),
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": 1.5,
+            }
+        ),
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": True,
+            }
+        ),
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "valueField": _B2_NON_BMP,
+            }
+        ),
+        _b2_sorting_probe({"sortBy": "totally bogus", "colSortAttrs": []}),  # S1
+        _b2_sorting_probe({"sortBy": "value"}),  # S2
+        _b2_sorting_probe(
+            {"sortBy": "value", "colSortAttrs": [], "segmentation": "x"}
+        ),  # S3
+        (_SORTING_API, {"sorting": {"sankey": {"sortBy": "value"}}}),  # S3/S4
+        (
+            _SORTING_API,
+            {"sorting": {"barz": {"sortBy": "column", "colSortAttrs": []}}},
+        ),  # S4 (severity "warning")
+        (_SORTING_API, {"sorting": ["asc"]}),  # S5
+        _b2_sorting_probe("asc"),  # S5 config
+        _b2_sorting_probe({"sortBy": "column", "colSortAttrs": ["x"]}),  # S5 elem
+        _b2_sorting_probe(
+            {"sortBy": "value", "sortOrder": "ascending", "colSortAttrs": []}
+        ),  # S6
+        _b2_sorting_probe({"sortBy": "column", "colSortAttrs": {}}),  # S7
+        _b2_sorting_probe({"sortBy": "column", "colSortAttrs": None}),  # S7
+        _b2_sorting_probe(
+            {"sortBy": "column", "colSortAttrs": [{"sortOrder": "asc"}]}
+        ),  # S8
+        _b2_sorting_probe(
+            {"sortBy": "column", "colSortAttrs": [{"sortBy": "label"}]}
+        ),  # S9
+        _b2_sorting_probe(
+            {"sortBy": "value", "sortOrder": "asc", "colSortAttrs": [], "valueField": 3}
+        ),  # B0_WRONG_TYPE string_type
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": "x",
+            }
+        ),  # B0_WRONG_TYPE int_parsing
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": [],
+            }
+        ),  # B0_WRONG_TYPE int_type
+        (
+            _SORTING_API,
+            {
+                "sorting": {
+                    "table": {
+                        "sortBy": "value",
+                        "sortOrder": "asc",
+                        "sortColumn": "nope",
+                        "colSortAttrs": [],
+                    }
+                }
+            },
+        ),  # B0_INVALID_LITERAL
+        _b2_sorting_probe(
+            {
+                "sortBy": "value",
+                "sortOrder": "asc",
+                "colSortAttrs": [],
+                "viewNLimit": 5.5,
+            }
+        ),  # VALIDATION_ERROR int_from_float
+        (
+            _SORTING_API,
+            {
+                "sorting": {
+                    "table": {
+                        "sortColumn": None,
+                        "sortOrder": "asc",
+                        "colSortAttrs": [],
+                    }
+                }
+            },
+        ),  # B0_MISSING_FIELD nearest-reachable
+        (
+            _SORTING_API,
+            {
+                "sorting": {
+                    "table": {
+                        "sortBy": "value",
+                        "sortOrder": "asc",
+                        "sortColumn": None,
+                        "colSortAttrs": [],
+                    }
+                }
+            },
+        ),  # B0_VALIDATOR_ERROR nearest-reachable
+        # Emission-order pins (B2-M2 probe finding 1).
+        (
+            _SORTING_API,
+            {
+                "sorting": {
+                    "pie": {"sortBy": "nope", "colSortAttrs": []},
+                    "sankey": {},
+                    "bar": {"sortBy": "nope", "colSortAttrs": []},
+                    "funnel-steps": {"sortBy": "nope", "colSortAttrs": []},
+                    "column": {},
+                    "table": {"sortBy": "nope", "colSortAttrs": []},
+                    "barz": {},
+                }
+            },
+        ),
+        (
+            _SORTING_API,
+            {
+                "sorting": {
+                    "bar": {"zz": 1, "sortBy": "nope", "aa": 2, "colSortAttrs": []}
+                }
+            },
+        ),
+        _b2_sorting_probe(
+            {
+                "sortBy": "column",
+                "colSortAttrs": [
+                    {"sortBy": "label"},
+                    {"sortBy": "value", "sortOrder": "x"},
+                    {},
+                ],
+            }
+        ),
+        # Lax int-coercion grammar corners (B2-M2 probe finding 4).
+        *(
+            _b2_sorting_probe(
+                {
+                    "sortBy": "value",
+                    "sortOrder": "asc",
+                    "colSortAttrs": [],
+                    "viewNLimit": text,
+                }
+            )
+            for text in _B2_INT_COERCION_STRINGS
+        ),
+    ),
+)
+
+# ---- V2 — user validator families ------------------------------------------
+
+_B2_COHORT_DEF_AND = CohortDefinition.all_of(
+    CohortCriteria.did_event("Purchase", at_least=1, within_days=30)
+)
+"""Valid AND-combined inline cohort definition (U2/U24 happy path)."""
+
+_B2_COHORT_DEF_OR = CohortDefinition.any_of(
+    CohortCriteria.did_event("Purchase", at_least=1, within_days=30),
+    CohortCriteria.did_event("Login", at_least=2, within_days=7),
+)
+"""Valid OR-combined inline cohort definition."""
+
+_B2_USER_STRS: tuple[Any, ...] = (
+    "",
+    "   ",
+    "$last_seen",
+    _B2_NON_BMP,
+    _B2_ZWSP,
+    "a\nb",
+)
+"""String pool for the user-args str-typed fields."""
+
+_B2_WHERE_POOL: tuple[Any, ...] = (
+    None,
+    "",
+    'properties["a"] == 1',
+    Filter.equals("plan", "premium"),
+    Filter.equals("", "x"),
+    Filter.equals(_B2_NON_BMP, "x"),
+    Filter.equals(CustomPropertyRef(id=9), "x"),
+    Filter.in_cohort(1),
+    Filter.not_in_cohort(2),
+    (),
+    (Filter.equals("plan", "pro"),),
+    (Filter.in_cohort(1), Filter.in_cohort(2)),
+    (Filter.in_cohort(1), Filter.not_in_cohort(2)),
+    (Filter.equals("a", "b"), "not-a-filter"),
+    ("not-a-filter",),
+    (42,),
+    (Filter.equals(CustomPropertyRef(id=1), "x"), Filter.equals("", "y")),
+)
+"""``where`` pool: str/Filter/list shapes incl. cohort filters (U0/U12/U13/U25)."""
+
+_B2_USER_NUMS: tuple[Any, ...] = (
+    0,
+    1,
+    -1,
+    5,
+    6,
+    100,
+    -100,
+    True,
+    False,
+    1.5,
+    -1.5,
+    0.0,
+    5.0,
+    None,
+)
+"""Numeric pool for limit/percentile (non-finite floats unshippable)."""
+
+_B2_AS_OF_POOL: tuple[Any, ...] = (
+    "2026-01-14",
+    "2026-01-15",
+    "2026-01-16",
+    "2025-12-31",
+    "2027-01-01",
+    "2026-02-30",
+    "2026-13-01",
+    "2026-00-10",
+    "20260114",
+    "2026-1-4",
+    "2026-01-14\n",
+    "٢٠٢٦-٠١-١٤",
+    "0000-01-01",
+    "9999-12-31",
+    "not-a-date",
+    "",
+    _B2_NON_BMP,
+    1700000000,
+    0,
+    -1,
+    18.0,
+    True,
+    None,
+)
+"""``as_of`` pool: frozen-clock boundary dates + grammar corners (U6/U8)."""
+
+
+@st.composite
+def _b2_user_args(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one ``validate_user_args`` kwargs bag.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        Kwargs with keys possibly absent (Python defaults apply).
+    """
+    return _b2_compact(
+        {
+            "mode": draw(
+                st.sampled_from(("profiles", "aggregate", "Profiles", "", None))
+            ),
+            "aggregate": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            "count",
+                            "extremes",
+                            "percentile",
+                            "numeric_summary",
+                            "Count",
+                            "",
+                            None,
+                        )
+                    )
+                )
+            ),
+            "aggregate_property": draw(
+                _b2_maybe(st.sampled_from((*_B2_USER_STRS, None)))
+            ),
+            "percentile": draw(_b2_maybe(st.sampled_from(_B2_USER_NUMS))),
+            "limit": draw(_b2_maybe(st.sampled_from(_B2_USER_NUMS))),
+            # workers=None is outside both signatures (section header).
+            "workers": draw(
+                _b2_maybe(
+                    st.sampled_from(tuple(v for v in _B2_USER_NUMS if v is not None))
+                )
+            ),
+            "segment_by": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (
+                            None,
+                            (),
+                            (1, 2),
+                            (0,),
+                            (-1,),
+                            (1, 0, -1),
+                            (2.0,),
+                            (-1.5,),
+                            (True,),
+                        )
+                    )
+                )
+            ),
+            "where": draw(_b2_maybe(st.sampled_from(_B2_WHERE_POOL))),
+            "cohort": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (None, 1, 0, -3, _B2_COHORT_DEF_AND, _B2_COHORT_DEF_OR)
+                    )
+                )
+            ),
+            "properties": draw(
+                _b2_maybe(
+                    st.sampled_from(
+                        (None, (), ("$email",), ("", "a"), (_B2_NON_BMP,), ("   ",))
+                    )
+                )
+            ),
+            "sort_by": draw(_b2_maybe(st.sampled_from((*_B2_USER_STRS, None)))),
+            "search": draw(_b2_maybe(st.sampled_from((*_B2_USER_STRS, None)))),
+            "distinct_id": draw(_b2_maybe(st.sampled_from((*_B2_USER_STRS, None)))),
+            "distinct_ids": draw(
+                _b2_maybe(st.sampled_from((None, (), ("u1",), ("u1", "u2"))))
+            ),
+            "group_id": draw(_b2_maybe(st.sampled_from((*_B2_USER_STRS, None)))),
+            "as_of": draw(_b2_maybe(st.sampled_from(_B2_AS_OF_POOL))),
+            "parallel": draw(_b2_maybe(st.booleans())),
+            "include_all_users": draw(_b2_maybe(st.booleans())),
+            "sort_order": draw(
+                _b2_maybe(st.sampled_from(("ascending", "descending", "asc")))
+            ),
+        }
+    )
+
+
+_B2_ACTION_POOL: tuple[Any, ...] = (
+    "count()",
+    "count()\n",
+    "count()\n\n",
+    'extremes(properties["ltv"])',
+    'extremes(properties[""])',
+    f'extremes(properties["{_B2_NON_BMP}"])',
+    'extremes(properties["a\nb"])',
+    'extremes(properties["a\rb"])',
+    'numeric_summary(properties["revenue"])',
+    'percentile(properties["age"], 50)',
+    'percentile(properties["age"],50)',
+    'percentile(properties["age"],\t50)',
+    'percentile(properties["age"], 50)',
+    'percentile(properties["age"], 50)',
+    'percentile(properties["age"],﻿50)',
+    'percentile(properties["age"], ٠١)',
+    'percentile(properties["age"], ..)',
+    'percentile(properties["age"], 5"], 7)',
+    'percentile(properties["age"], )',
+    "median(ltv)",
+    "",
+    "  count()  ",
+    42,
+    None,
+    True,
+    ("count()",),
+)
+"""``action`` pool: UP4 grammar corners (\\s/\\d/./$ Python semantics)."""
+
+_B2_FBC_POOL: tuple[Any, ...] = (
+    None,
+    {},
+    {"id": 1},
+    {"raw_cohort": {"selector": {}}},
+    {"name": "x"},
+    {"id": None},
+    '{"id": 1}',
+    '{"name": "x"}',
+    "123",
+    "NaN",
+    "Infinity",
+    "nope",
+    "{",
+    "[]",
+    "[{}]",
+    (),
+    ({"id": 1},),
+    42,
+    True,
+    "",
+    _B2_NON_BMP,
+)
+"""``filter_by_cohort`` pool: dict / JSON-string / bad-JSON shapes (UP2)."""
+
+_B2_OP_POOL: tuple[Any, ...] = (
+    None,
+    (),
+    ("$email",),
+    "[]",
+    '["$email"]',
+    "notjson",
+    "{}",
+    '{"a":1}',
+    "",
+    42,
+    True,
+    {},
+)
+"""``output_properties`` pool (UP3 JSON round-trips)."""
+
+
+@st.composite
+def _b2_user_params(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw one ``validate_user_params`` kwargs bag.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        ``{"params": ...}`` kwargs.
+    """
+    return {
+        "params": _b2_compact(
+            {
+                "sort_order": draw(
+                    _b2_maybe(
+                        st.sampled_from(
+                            (
+                                "ascending",
+                                "descending",
+                                "asc",
+                                "",
+                                None,
+                                1,
+                                True,
+                                _B2_NON_BMP,
+                            )
+                        )
+                    )
+                ),
+                "filter_by_cohort": draw(_b2_maybe(st.sampled_from(_B2_FBC_POOL))),
+                "output_properties": draw(_b2_maybe(st.sampled_from(_B2_OP_POOL))),
+                "action": draw(_b2_maybe(st.sampled_from(_B2_ACTION_POOL))),
+                "distinct_id": draw(_b2_maybe(st.just("u1"))),
+            }
+        )
+    }
+
+
+def _ua(**kwargs: Any) -> FuzzCall:
+    """Shorthand for one ``validate_user_args`` probe.
+
+    Args:
+        kwargs: The call kwargs.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return (_USER_ARGS_API, kwargs)
+
+
+def _up(params: dict[str, Any]) -> FuzzCall:
+    """Shorthand for one ``validate_user_params`` probe.
+
+    Args:
+        params: The engage params dict.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return (_USER_PARAMS_API, {"params": params})
+
+
+_USER_ARGS_FAMILY = FuzzTarget(
+    name="user_args_family",
+    calls=_b2_user_args().map(_b2_call(_USER_ARGS_API)),
+    # One call per code U0-U30 (no U9 — call-site rule; U24 unreachable
+    # from a serialisable input, B2-M3 notes — its nearest arms are the
+    # cohortdef happy paths) + the R10.9 value edges + the frozen-clock
+    # U8 boundary + the as_of grammar corners (B2-M3 finding 1).
+    edge_calls=(
+        _ua(where=["not-a-filter"], mode="profiles"),  # U0
+        _ua(distinct_id="a", distinct_ids=["b"], mode="profiles"),  # U1
+        _ua(cohort=7, where=[Filter.in_cohort(1)], mode="profiles"),  # U2
+        _ua(limit=0, mode="profiles"),  # U3
+        _ua(distinct_ids=[], mode="profiles"),  # U4
+        _ua(sort_by="   ", mode="profiles"),  # U5
+        _ua(as_of="2025-02-30", mode="profiles"),  # U6
+        _ua(include_all_users=True, mode="profiles"),  # U7
+        _ua(as_of="2026-06-01", mode="profiles"),  # U8
+        _ua(where=Filter.equals("", "t"), mode="profiles"),  # U10
+        _ua(properties=["ok", "  "], mode="profiles"),  # U11
+        _ua(where=Filter.not_in_cohort(3), mode="profiles"),  # U12
+        _ua(  # U13
+            where=[Filter.in_cohort(1), Filter.in_cohort(2)], mode="profiles"
+        ),
+        _ua(mode="aggregate", aggregate="extremes"),  # U14
+        _ua(mode="aggregate", aggregate="count", aggregate_property="ltv"),  # U15
+        _ua(segment_by=[1], mode="profiles"),  # U16
+        _ua(segment_by=[0], mode="aggregate", aggregate="count"),  # U17
+        _ua(parallel=True, mode="aggregate", aggregate="count"),  # U18
+        _ua(sort_by="s", mode="aggregate", aggregate="count"),  # U19
+        _ua(search="j", mode="aggregate", aggregate="count"),  # U20
+        _ua(distinct_id="u", mode="aggregate", aggregate="count"),  # U21
+        _ua(properties=["p"], mode="aggregate", aggregate="count"),  # U22
+        _ua(workers=9, mode="profiles"),  # U23
+        _ua(  # U25
+            where=Filter.equals(CustomPropertyRef(id=42), "x"), mode="profiles"
+        ),
+        _ua(mode="aggregate", aggregate="percentile", aggregate_property="a"),  # U26
+        _ua(mode="aggregate", aggregate="count", percentile=50),  # U27
+        _ua(  # U28
+            mode="aggregate",
+            aggregate="percentile",
+            aggregate_property="a",
+            percentile=0,
+        ),
+        _ua(properties=[], mode="profiles"),  # U29
+        _ua(as_of="2025-01-01", mode="aggregate", aggregate="count"),  # U30
+        # R10.9 value edges (carrier probes on the numeric args).
+        _ua(limit=18.0, mode="profiles"),
+        _ua(workers=18.0, mode="profiles"),
+        _ua(
+            mode="aggregate",
+            aggregate="percentile",
+            aggregate_property="a",
+            percentile=50.0,
+        ),
+        _ua(segment_by=[2.0], mode="aggregate", aggregate="count"),
+        _ua(as_of=18.0, mode="profiles"),
+        _ua(cohort=18.0, mode="profiles"),
+        _ua(limit=1.5, mode="profiles"),
+        _ua(workers=1.5, mode="profiles"),
+        _ua(
+            mode="aggregate",
+            aggregate="percentile",
+            aggregate_property="a",
+            percentile=1.5,
+        ),
+        _ua(segment_by=[-1.5], mode="aggregate", aggregate="count"),
+        _ua(parallel=True, mode="profiles"),
+        _ua(include_all_users=True, cohort=1),
+        _ua(limit=True, mode="profiles"),
+        _ua(workers=True, mode="profiles"),
+        _ua(
+            mode="aggregate",
+            aggregate="percentile",
+            aggregate_property="a",
+            percentile=True,
+        ),
+        _ua(segment_by=[True], mode="aggregate", aggregate="count"),
+        _ua(),
+        _ua(
+            where=None,
+            cohort=None,
+            properties=None,
+            sort_by=None,
+            limit=None,
+            search=None,
+            distinct_id=None,
+            distinct_ids=None,
+            group_id=None,
+            as_of=None,
+            aggregate_property=None,
+            percentile=None,
+            segment_by=None,
+            mode="profiles",
+        ),
+        _ua(where=[], mode="profiles"),
+        _ua(properties=[], mode="profiles"),
+        _ua(distinct_ids=[], mode="profiles"),
+        _ua(segment_by=[], mode="aggregate", aggregate="count"),
+        _ua(sort_by="", mode="profiles"),
+        _ua(search="", mode="profiles"),
+        _ua(as_of="", mode="profiles"),
+        _ua(where="", mode="profiles"),
+        _ua(distinct_id="", mode="profiles"),
+        _ua(properties=[""], mode="profiles"),
+        _ua(where=Filter.equals("", "v"), mode="profiles"),
+        _ua(sort_by=_B2_NON_BMP, mode="profiles"),
+        _ua(properties=[_B2_NON_BMP], mode="profiles"),
+        _ua(as_of=_B2_NON_BMP, mode="profiles"),
+        _ua(where=Filter.equals(_B2_NON_BMP, _B2_NON_BMP), mode="profiles"),
+        _ua(search=_B2_NON_BMP, mode="profiles"),
+        # today-seam boundary (frozen-1 / frozen / frozen+1).
+        _ua(as_of="2026-01-14", mode="profiles"),
+        _ua(as_of="2026-01-15", mode="profiles"),
+        _ua(as_of="2026-01-16", mode="profiles"),
+        # _DATE_RE / fromisoformat grammar corners (B2-M3 finding 1).
+        _ua(as_of="20260114", mode="profiles"),
+        _ua(as_of="2026-1-4", mode="profiles"),
+        _ua(as_of="2026-01-14\n", mode="profiles"),
+        _ua(as_of="٢٠٢٦-٠١-١٤", mode="profiles"),
+        _ua(as_of="0000-01-01", mode="profiles"),
+        _ua(as_of="2024-02-29", mode="profiles"),
+        _ua(as_of="2025-02-29", mode="profiles"),
+        # Inline cohort definitions (U2/U24 happy path).
+        _ua(cohort=_B2_COHORT_DEF_AND, mode="profiles"),
+        _ua(cohort=_B2_COHORT_DEF_OR, mode="profiles"),
+    ),
+)
+
+_USER_PARAMS_FAMILY = FuzzTarget(
+    name="user_params_family",
+    calls=_b2_user_params().map(_b2_call(_USER_PARAMS_API)),
+    edge_calls=(
+        _up({"sort_order": "asc"}),  # UP1
+        _up({"filter_by_cohort": {}}),  # UP2
+        _up({"output_properties": []}),  # UP3
+        _up({"action": "median(x)"}),  # UP4
+        _up({}),
+        _up({"sort_order": 18.0}),
+        _up({"output_properties": 1.5}),
+        _up({"sort_order": True, "action": True}),
+        _up(
+            {
+                "sort_order": None,
+                "filter_by_cohort": None,
+                "output_properties": None,
+                "action": None,
+            }
+        ),
+        _up({"output_properties": [], "filter_by_cohort": []}),
+        _up(
+            {
+                "sort_order": "",
+                "filter_by_cohort": "",
+                "output_properties": "",
+                "action": "",
+            }
+        ),
+        _up(
+            {
+                "sort_order": _B2_NON_BMP,
+                "action": f'extremes(properties["{_B2_NON_BMP}"])',
+            }
+        ),
+        _up({"filter_by_cohort": '{"id": 1}'}),
+        _up({"filter_by_cohort": "123"}),
+        _up({"filter_by_cohort": "NaN"}),  # json.loads pythonConstants
+        _up({"filter_by_cohort": "nope", "action": "bad", "sort_order": "x"}),
+        _up({"output_properties": "[]"}),
+        _up({"output_properties": '["$email"]'}),
+        _up({"output_properties": "notjson"}),
+        _up({"action": "count()"}),
+        _up({"action": "count()\n"}),
+        _up({"action": "count()\n\n"}),
+        _up({"action": 'percentile(properties["a"], 50)'}),
+        _up({"action": 'percentile(properties["a"],\t50)'}),
+        _up({"action": 'percentile(properties["a"], 50)'}),
+        _up({"action": 'percentile(properties["a"],﻿50)'}),
+        _up({"action": 'percentile(properties["a"], ٠١)'}),
+        _up({"action": 'percentile(properties["a"], ..)'}),
+        _up({"action": 'percentile(properties["a"], 5"], 7)'}),
+        _up({"action": 'extremes(properties["a\rb"])'}),
+        _up({"action": 'extremes(properties["a\nb"])'}),
+        _up({"action": 'extremes(properties[""])'}),
+    ),
+)
+
 PHASE3_TARGETS: tuple[FuzzTarget, ...] = (
     _PYTHON_INT,
     _PYTHON_FLOAT,
@@ -2181,10 +4769,30 @@ the B0-2 ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets; the
 >=500-example budget applies per target)."""
 
 
+PHASE3_B2_TARGETS: tuple[FuzzTarget, ...] = (
+    _TIME_ARGS_FAMILY,
+    _GROUP_BY_ARGS_FAMILY,
+    _QUERY_ARGS_FAMILY,
+    _FUNNEL_ARGS_FAMILY,
+    _RETENTION_ARGS_FAMILY,
+    _FLOW_ARGS_FAMILY,
+    _BOOKMARK_FAMILY,
+    _FLOW_BOOKMARK_FAMILY,
+    _SORTING_FAMILY,
+    _USER_ARGS_FAMILY,
+    _USER_PARAMS_FAMILY,
+)
+"""The Phase-3 B2 validator families (b2-packets.md R10.9 harness specs;
+``time_args_family`` supersets the Phase-1 ``validators_by_code`` target
+with the carrier/bool value edges). Registered at the (b′) binding task —
+oracle-ts answers these apis through the shared bindings registration."""
+
+
 ALL_TARGETS: tuple[FuzzTarget, ...] = (
     *PHASE1_TARGETS,
     *PHASE2_TARGETS,
     *PHASE3_TARGETS,
+    *PHASE3_B2_TARGETS,
 )
 """Every registered fuzz target (Phases 1-3), in phase order."""
 

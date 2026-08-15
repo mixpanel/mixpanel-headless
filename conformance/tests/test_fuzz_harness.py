@@ -401,8 +401,24 @@ class TestPhase2StrategyTable:
     ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets), in packet
     order."""
 
+    _PHASE3_B2_NAMES = (
+        "time_args_family",
+        "group_by_args_family",
+        "query_args_family",
+        "funnel_args_family",
+        "retention_args_family",
+        "flow_args_family",
+        "bookmark_family",
+        "flow_bookmark_family",
+        "sorting_family",
+        "user_args_family",
+        "user_params_family",
+    )
+    """The B2 validator families (b2-packets.md R10.9 harness specs,
+    registered at the B2-BIND (b') task), in packet V1a/V1b/V2 order."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
-        """``ALL_TARGETS`` is Phase 1 + the 8 P2-9 targets + the 7 B0 targets.
+        """``ALL_TARGETS`` is Phase 1 + P2-9 + the B0 targets + the B2 families.
 
         Raises:
             AssertionError: On a missing or misordered target.
@@ -414,6 +430,7 @@ class TestPhase2StrategyTable:
             *_EXPECTED_TARGET_NAMES,
             *self._PHASE2_NAMES,
             *self._PHASE3_NAMES,
+            *self._PHASE3_B2_NAMES,
         )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
