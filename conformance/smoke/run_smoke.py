@@ -59,6 +59,13 @@ SYNC_TIMEOUT_SECONDS = 900
 RUNNER_TIMEOUT_SECONDS = 900
 """Timeout for one corpus-runner CLI invocation (budget is <=5 min, D7)."""
 
+INFRA_REASON_PREFIX = "replay infrastructure error inside vector"
+"""Reason prefix ``runner.execute.run_vector`` uses for in-vector harness
+exceptions (decode failures, target construction crashes). A sabotage
+"catch" whose failure reasons are ALL of this shape proves nothing about
+behavioral divergence and is flagged for manual review (GATE-VERDICT
+recommendation R9, audit finding L2-F2)."""
+
 
 @dataclass(frozen=True)
 class RunOutcome:
@@ -73,6 +80,9 @@ class RunOutcome:
         total: Total vectors the runner executed (0 on crash).
         runtime_seconds: Runner-reported wall time (0.0 on crash).
         error: Infrastructure-failure description when ``status == "error"``.
+        infrastructure_only: True when the run failed vectors but EVERY
+            failure reason carries the :data:`INFRA_REASON_PREFIX` shape —
+            a catch that needs manual review, not trust (R9).
     """
 
     patch: str
@@ -82,6 +92,7 @@ class RunOutcome:
     total: int
     runtime_seconds: float
     error: str | None
+    infrastructure_only: bool = False
 
 
 def _run(
@@ -274,6 +285,12 @@ def _classify(
         status = "clean" if failing_count == 0 else "dirty"
     else:
         status = "caught" if failing_count >= 1 else "missed"
+    reasons = [
+        str(reason) for failure in failures for reason in (failure.get("reasons") or [])
+    ]
+    infrastructure_only = bool(reasons) and all(
+        reason.startswith(INFRA_REASON_PREFIX) for reason in reasons
+    )
     return RunOutcome(
         patch=patch,
         status=status,
@@ -282,6 +299,7 @@ def _classify(
         total=int(report.get("total", 0)),
         runtime_seconds=float(report.get("runtime_seconds", 0.0)),
         error=None,
+        infrastructure_only=infrastructure_only,
     )
 
 
@@ -322,6 +340,8 @@ def _print_table(outcomes: list[RunOutcome]) -> None:
     for outcome in outcomes:
         first = outcome.first_failing_id or "-"
         suffix = f"  [{outcome.error}]" if outcome.error else ""
+        if outcome.infrastructure_only:
+            suffix += "  [INFRA-ONLY: needs manual review (R9)]"
         print(
             f"{outcome.patch:<9} {outcome.status:<8} "
             f"{outcome.failing_vector_count:>8}  {first}{suffix}"
@@ -420,6 +440,17 @@ def main(argv: list[str] | None = None) -> int:
 
     print("== smoke summary ==")
     _print_table(outcomes)
+
+    flagged = [o.patch for o in outcomes if o.infrastructure_only]
+    if flagged:
+        # R9: an all-infrastructure-reason "catch" is not evidence of a
+        # behavioral diff — surface it loudly without changing the D9.3
+        # verdict (the flag rides last-run.json for the reviewer).
+        print(
+            "WARNING (R9): failure reasons are ALL replay-infrastructure "
+            f"errors for: {', '.join(flagged)} — review these catches "
+            "manually before trusting them."
+        )
 
     control_ok = args.skip_control or any(
         o.patch == "control" and o.status == "clean" for o in outcomes
