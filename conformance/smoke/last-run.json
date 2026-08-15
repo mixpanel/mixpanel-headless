@@ -1,14 +1,14 @@
 {
-  "commit": "1c6378085d1428882de5b1ca1cbbe191b677c27c",
+  "commit": "5f5f2c02587dbd6494325242a12aac4fc3861f6c",
   "control": {
     "error": null,
     "failing_vector_count": 0,
     "first_failing_id": null,
     "infrastructure_only": false,
     "patch": "control",
-    "runtime_seconds": 12.325,
+    "runtime_seconds": 15.32,
     "status": "clean",
-    "total": 3155
+    "total": 3179
   },
   "date": "2026-08-15",
   "patches": [
@@ -18,9 +18,9 @@
       "first_failing_id": "bookmarks/workspace.build_params/test_custom_property_types-testcustompropertyvalidationcp1-test_zero_id_in_group_by",
       "infrastructure_only": false,
       "patch": "S01",
-      "runtime_seconds": 11.294,
+      "runtime_seconds": 11.623,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -28,9 +28,9 @@
       "first_failing_id": "validation/validation.validate_funnel_args/test_validation_funnel-testvalidatefunnelargsf5-test_invalid_calendar_date_returns_v8_invalid",
       "infrastructure_only": false,
       "patch": "S02",
-      "runtime_seconds": 11.622,
+      "runtime_seconds": 11.478,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -38,9 +38,9 @@
       "first_failing_id": "segmentation/api_client.segmentation/test_api_client-testratelimiting-test_successful_response_after_retry",
       "infrastructure_only": false,
       "patch": "S03",
-      "runtime_seconds": 14.504,
+      "runtime_seconds": 11.744,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -48,9 +48,9 @@
       "first_failing_id": "bookmarks/api_client.activity_feed/test_api_client-testactivityfeed-test_between_date_range_when_both_dates",
       "infrastructure_only": false,
       "patch": "S04",
-      "runtime_seconds": 11.62,
+      "runtime_seconds": 11.691,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -58,9 +58,9 @@
       "first_failing_id": "bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_maps_to_custom_percentile",
       "infrastructure_only": false,
       "patch": "S05",
-      "runtime_seconds": 11.298,
+      "runtime_seconds": 11.565,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -68,9 +68,9 @@
       "first_failing_id": "pagination/pagination.paginate_all/test_pagination-testpaginateall-test_canonical_query_origin_wins_over_caller",
       "infrastructure_only": false,
       "patch": "S06",
-      "runtime_seconds": 12.484,
+      "runtime_seconds": 12.005,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -78,9 +78,9 @@
       "first_failing_id": "filters/segfilter.build_segfilter_entry/test_segfilter-testsegfilterresourcetypemapping-test_events_maps_to_properties",
       "infrastructure_only": false,
       "patch": "S07",
-      "runtime_seconds": 11.244,
+      "runtime_seconds": 11.593,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -88,9 +88,9 @@
       "first_failing_id": "segmentation/expressions.normalize_on_expression/test_expressions-testnormalizeonexpression-test_backslash_before_quote_escaping",
       "infrastructure_only": false,
       "patch": "S08",
-      "runtime_seconds": 11.322,
+      "runtime_seconds": 11.321,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -98,9 +98,9 @@
       "first_failing_id": "engage/user_builders.filters_to_selector/test_query_user_structural-testfilterstoselectororandprecedence-test_filters_to_selector_or_and_precedence",
       "infrastructure_only": false,
       "patch": "S09",
-      "runtime_seconds": 11.421,
+      "runtime_seconds": 11.469,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -108,9 +108,9 @@
       "first_failing_id": "funnels/workspace.funnel/authored-four-step-aggregated-across-dates",
       "infrastructure_only": false,
       "patch": "S10",
-      "runtime_seconds": 11.618,
+      "runtime_seconds": 11.443,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -118,9 +118,9 @@
       "first_failing_id": "retention/workspace.retention/authored-empty-cohort-zero-rates",
       "infrastructure_only": false,
       "patch": "S11",
-      "runtime_seconds": 11.252,
+      "runtime_seconds": 11.38,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -128,9 +128,9 @@
       "first_failing_id": "bookmarks/api_client.activity_feed/test_api_client_phase008-testphase008errorhandling-test_activity_feed_rate_limit_on_429",
       "infrastructure_only": false,
       "patch": "S12",
-      "runtime_seconds": 11.3,
+      "runtime_seconds": 11.536,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -138,9 +138,9 @@
       "first_failing_id": "pagination/pagination.paginate_all/test_pagination-testpaginateallretryafter-test_exhausted_retries_backoff_schedule_is_bounded",
       "infrastructure_only": false,
       "patch": "S13",
-      "runtime_seconds": 11.412,
+      "runtime_seconds": 11.473,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     },
     {
       "error": null,
@@ -148,9 +148,9 @@
       "first_failing_id": "engage/user_builders.filter_to_selector/test_user_builders-testcodedengageselectorcodes-test_es6_direct_raises_coded_error",
       "infrastructure_only": false,
       "patch": "S14",
-      "runtime_seconds": 11.991,
+      "runtime_seconds": 11.544,
       "status": "caught",
-      "total": 3155
+      "total": 3179
     }
   ],
   "result": "PASS"
