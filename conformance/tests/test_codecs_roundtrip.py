@@ -422,17 +422,91 @@ def test_nonfinite_float_tag_decodes_for_authored_vectors() -> None:
     assert math.isnan(decode_value({"$type": "float", "value": "NaN"}))
 
 
-def test_finite_float_tag_spelling_rejected() -> None:
-    """Finite spellings of the float tag are rejected (D6 rule 3).
+def test_integral_float_tag_spelling_decodes() -> None:
+    """Canonical integral spellings of the float tag decode to floats.
 
-    Finite floats must stay raw JSON number tokens so the raw-token
-    contract (and the TS lossless loader) keeps working.
+    P2-5a amendment to the D6 rule-3 posture (Risk #3 vector-flip fix):
+    an integral-valued float INSIDE a rich ``$type`` payload cannot stay
+    a raw number token, because the TS twin's double-only number model
+    collapses ``1716810000.0`` to the integer ``1716810000`` on decode
+    and the C8(a) round-trip sweep then diffs. Such floats are tagged
+    ``{"$type": "float", "value": repr(value)}`` at record time and both
+    decoders accept the canonical integral spellings.
 
     Raises:
-        AssertionError: If a finite spelling decodes instead of raising.
+        AssertionError: If a canonical integral spelling fails to decode.
+    """
+    assert decode_value({"$type": "float", "value": "18.0"}) == 18.0
+    assert isinstance(decode_value({"$type": "float", "value": "18.0"}), float)
+    assert decode_value({"$type": "float", "value": "-0.0"}) == 0.0
+    assert (
+        decode_value({"$type": "float", "value": "1000000000000000.0"})
+        == 1000000000000000.0
+    )
+    assert decode_value({"$type": "float", "value": "1e+16"}) == 1e16
+
+
+def test_noncanonical_float_tag_spelling_rejected() -> None:
+    """Non-canonical / non-integral finite spellings are rejected (D6 rule 3).
+
+    Non-integral floats round-trip fine as raw number tokens on both
+    sides, so they must NEVER be tagged; a spelling that is not exactly
+    ``repr(float(spelling))`` is not canonical and must fail loudly.
+
+    Raises:
+        AssertionError: If a non-canonical spelling decodes.
     """
     with pytest.raises(UndecodableValueError, match="non-canonical spelling"):
-        decode_value({"$type": "float", "value": "18.0"})
+        decode_value({"$type": "float", "value": "1.5"})  # non-integral
+    with pytest.raises(UndecodableValueError, match="non-canonical spelling"):
+        decode_value({"$type": "float", "value": "18"})  # missing .0 marker
+    with pytest.raises(UndecodableValueError, match="non-canonical spelling"):
+        # repr(1e15) is "1000000000000000.0", so "1e15" is non-canonical.
+        decode_value({"$type": "float", "value": "1e15"})
+    with pytest.raises(UndecodableValueError, match="malformed"):
+        decode_value({"$type": "float", "value": "bogus"})
+
+
+def test_integral_float_tagged_inside_rich_payloads_only() -> None:
+    """Integral floats are tagged inside rich payloads, raw elsewhere.
+
+    The bare-kwarg encoding must stay a raw number (the ``compat.*``
+    gate's ``rawInput`` float-vs-int branch depends on raw ``18.0``
+    tokens), while dataclass/model field walks — including floats nested
+    in lists/dicts UNDER a rich payload — emit the tagged form so the TS
+    sweep can round-trip them.
+
+    Raises:
+        AssertionError: If either position encodes the wrong shape.
+    """
+    # Bare kwarg position: raw float, unchanged.
+    assert encode_input_kwargs({"value": 18.0}) == {"value": 18.0}
+    # Directly-held dataclass field (union-typed in Python source).
+    tagged = encode_input_value(Filter.greater_than("age", 1e15))
+    assert tagged["_value"] == {"$type": "float", "value": "1000000000000000.0"}
+    # Nested inside a list under a dataclass field.
+    nested = encode_input_value(Filter.between("age", 1.0, 2.5))
+    assert nested["_value"] == [{"$type": "float", "value": "1.0"}, 2.5]
+    # Round-trip: decode reconstructs the SAME dataclass.
+    assert decode_value(tagged) == Filter.greater_than("age", 1e15)
+    assert decode_value(nested) == Filter.between("age", 1.0, 2.5)
+
+
+def test_integral_float_stays_raw_in_expect_position() -> None:
+    """Expect-position encoding (plain to-dict shapes) never tags floats.
+
+    ``expect.result`` payloads are diffed against live library output
+    (D6 rule 3 keeps the ``18.0``-vs-``18`` distinction VISIBLE there);
+    only replayable ``call.input`` rich payloads get the tagged form.
+
+    Raises:
+        AssertionError: If the expect encoder tags a float.
+    """
+    from conformance.record.codecs import encode_expect_value
+
+    assert encode_expect_value({"signed_at": 1716810000.0}) == {
+        "signed_at": 1716810000.0
+    }
 
 
 def test_nonfinite_floats_still_unencodable_at_record_time() -> None:

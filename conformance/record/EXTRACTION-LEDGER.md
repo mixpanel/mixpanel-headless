@@ -333,3 +333,32 @@ See `conformance/record/EXTRACTION-AUDIT.md` for the full finding list
 (F1–F4 plus the pre-audit fixes B1–B5); every fix landed as code +
 regression test in the PR-5 fix commit, and the corpus was re-extracted —
 vectors were never hand-edited.
+
+### P2-5a codec amendment — integral floats inside rich payloads (Risk #3)
+
+Flipping the 159 `types.*` filter/metric/group vectors live in the TS
+runner exposed a recorder-representability artifact: 13 INTEGRAL-valued
+float leaves inside rich `$type` payloads (`Filter._value` `1e15`,
+`SignedReplay.signed_at` `1716810000.0` ×8, `CreateFeatureFlagParams`
+variant splits `1.0`/`0.0` ×4 across 2 vectors). A raw `1716810000.0`
+token cannot survive the TS double-only decode (it collapses to the
+integer and the C8(a) round-trip sweep diffs — phase2-design Risk #4
+makes that drift deliberately visible). Per the Risk #3 workflow the fix
+is recorder-side, never a hand-edit:
+
+- `_encode_common` now emits integral floats **inside tagged
+  dataclass/model payloads (input position only)** as
+  `{"$type": "float", "value": repr(value)}`.
+- the decode-side `float` arm accepts the canonical integral spellings
+  (`repr(parsed) == spelling and parsed.is_integer()`) in addition to
+  `Infinity`/`-Infinity`/`NaN`; non-integral finite floats stay raw JSON
+  number tokens (D6 rule 3 unchanged for them) and bare-kwarg floats are
+  untouched (the `compat.python_str` raw-token contract depends on
+  them).
+- the TS twin (`conformance-runner/src/codecs.ts`) gains the matching
+  decode arm + `PyFloat` wrapper and the tag leaves the sweep's
+  DECODE_GAP (the sweep header had assigned this closure to the P2-5a
+  flip).
+
+Corpus re-extracted and re-pinned after this change; the vector diff is
+exactly the 13 float positions (verified before the re-pin commit).

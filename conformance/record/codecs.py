@@ -182,7 +182,9 @@ def _encode_bytes(value: bytes) -> dict[str, str]:
     }
 
 
-def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
+def _encode_common(
+    value: object, depth: int, *, tagged_models: bool, in_rich_payload: bool = False
+) -> Any:
     """Shared recursive encoder behind the input/expect entry points.
 
     Args:
@@ -192,6 +194,16 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
             dataclasses become ``{"$type": <ClassName>, ...fields}`` tagged
             objects; when False (expect position), they serialize to their
             plain to-dict shape.
+        in_rich_payload: True once the walk has entered a tagged
+            dataclass/model payload (any depth below its fields). Inside a
+            rich payload, INTEGRAL-valued floats encode as
+            ``{"$type": "float", "value": repr(value)}`` — a raw
+            ``1716810000.0`` token cannot survive the TS twin's
+            double-only decode (it collapses to the integer and the C8(a)
+            round-trip sweep diffs); the tagged form carries the float
+            marker explicitly. Only set when ``tagged_models`` is True
+            (expect-position payloads keep raw tokens — D6 rule 3 keeps
+            the ``18.0``-vs-``18`` distinction visible in output diffs).
 
     Returns:
         A JSON-encodable structure.
@@ -204,7 +216,10 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
     if value is None or isinstance(value, bool | int):
         return value
     if isinstance(value, float):
-        return _reject_bad_float(value)
+        checked = _reject_bad_float(value)
+        if in_rich_payload and checked.is_integer():
+            return {"$type": "float", "value": repr(checked)}
+        return checked
     if isinstance(value, str):
         return _reject_bad_string(value)
     if isinstance(value, bytes | bytearray):
@@ -221,7 +236,12 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
             "value": _reject_bad_string(value.get_secret_value()),
         }
     if isinstance(value, Enum):
-        return _encode_common(value.value, depth + 1, tagged_models=tagged_models)
+        return _encode_common(
+            value.value,
+            depth + 1,
+            tagged_models=tagged_models,
+            in_rich_payload=in_rich_payload,
+        )
     if isinstance(value, BaseModel):
         # Field-level encoding (NOT model_dump): pydantic's JSON mode masks
         # ``SecretStr`` fields to ``"**********"``, destroying the D5.5
@@ -238,7 +258,10 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
         try:
             encoded = {
                 str(name): _encode_common(
-                    getattr(value, name), depth + 1, tagged_models=tagged_models
+                    getattr(value, name),
+                    depth + 1,
+                    tagged_models=tagged_models,
+                    in_rich_payload=in_rich_payload or tagged_models,
                 )
                 for name in field_names
             }
@@ -252,7 +275,10 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         fields = {
             f.name: _encode_common(
-                getattr(value, f.name), depth + 1, tagged_models=tagged_models
+                getattr(value, f.name),
+                depth + 1,
+                tagged_models=tagged_models,
+                in_rich_payload=in_rich_payload or tagged_models,
             )
             for f in dataclasses.fields(value)
         }
@@ -267,12 +293,21 @@ def _encode_common(value: object, depth: int, *, tagged_models: bool) -> Any:
                     f"non-string mapping key {k!r} cannot enter vector JSON"
                 )
             out[_reject_bad_string(k)] = _encode_common(
-                v, depth + 1, tagged_models=tagged_models
+                v,
+                depth + 1,
+                tagged_models=tagged_models,
+                in_rich_payload=in_rich_payload,
             )
         return out
     if isinstance(value, Sequence):
         return [
-            _encode_common(v, depth + 1, tagged_models=tagged_models) for v in value
+            _encode_common(
+                v,
+                depth + 1,
+                tagged_models=tagged_models,
+                in_rich_payload=in_rich_payload,
+            )
+            for v in value
         ]
     if isinstance(value, set | frozenset):
         raise UnencodableValueError(
@@ -599,13 +634,31 @@ def _decode_tagged(payload: Mapping[str, Any]) -> Any:
             return RecordingCallback(str(payload["name"]))
         if tag == "float":
             spelling = str(payload["value"])
-            if spelling not in ("Infinity", "-Infinity", "NaN"):
+            if spelling in ("Infinity", "-Infinity", "NaN"):
+                return float(spelling)
+            # P2-5a amendment (Risk #3): INTEGRAL-valued floats inside
+            # rich payloads are tagged at record time (see
+            # ``_encode_common``), so their canonical ``repr`` spellings
+            # decode here too. Non-integral finite floats stay raw JSON
+            # number tokens (D6 rule 3) and are rejected as tag payloads.
+            try:
+                parsed = float(spelling)
+            except ValueError as exc:
+                raise UndecodableValueError(
+                    f"malformed $type float spelling {spelling!r}"
+                ) from exc
+            if not (
+                math.isfinite(parsed)
+                and parsed.is_integer()
+                and repr(parsed) == spelling
+            ):
                 raise UndecodableValueError(
                     f"$type float carries non-canonical spelling {spelling!r} "
-                    "(finite floats must be raw JSON number tokens — design "
-                    "D6 rule 3; only Infinity/-Infinity/NaN are taggable)"
+                    "(non-integral finite floats must be raw JSON number "
+                    "tokens — design D6 rule 3; taggable spellings are "
+                    "Infinity/-Infinity/NaN and canonical integral reprs)"
                 )
-            return float(spelling)
+            return parsed
         if tag == "CohortDefinition":
             return _decode_cohort_definition(payload)
     except (KeyError, ValueError) as exc:
