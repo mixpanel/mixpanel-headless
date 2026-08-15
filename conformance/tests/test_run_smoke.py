@@ -122,3 +122,33 @@ def test_empty_reason_lists_do_not_vacuously_flag() -> None:
     outcome = _classify("S04", 1, report, None)
     assert outcome.status == "caught"
     assert outcome.infrastructure_only is False
+
+
+def test_patch_protocol_is_fourteen_patches() -> None:
+    """The sabotage protocol is S01..S14 (D9.1 + AD-7 addendum S14).
+
+    AD-7 extends the fixed 13-patch D9.1 table with S14, which flips a
+    newly-coded validation guard from the E2 coding pass so the new
+    coded-guard (error_only) vectors prove they can catch sabotage.
+
+    Raises:
+        AssertionError: If ``PATCH_IDS`` is not exactly ``S01``..``S14``.
+    """
+    from conformance.smoke.run_smoke import PATCH_IDS
+
+    assert tuple(f"S{n:02d}" for n in range(1, 15)) == PATCH_IDS
+
+
+def test_every_patch_id_has_a_patch_file() -> None:
+    """Every id in ``PATCH_IDS`` has a committed unified-diff patch file.
+
+    Guards against a registered id whose ``.patch`` file was never
+    committed (the smoke run would only discover it mid-run, per patch).
+
+    Raises:
+        AssertionError: If any ``S*.patch`` file is missing on disk.
+    """
+    from conformance.smoke.run_smoke import PATCH_IDS, PATCHES_DIR
+
+    missing = [p for p in PATCH_IDS if not (PATCHES_DIR / f"{p}.patch").is_file()]
+    assert missing == []

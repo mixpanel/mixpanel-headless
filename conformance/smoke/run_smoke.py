@@ -1,12 +1,15 @@
 """Deliberate-break smoke test for the conformance corpus (design D9).
 
-Executes the fixed 13-patch sabotage protocol from the Phase-1 design of
-record (D9.1 patch table, D9.2 worktree mechanics, D9.3 pass criterion):
+Executes the 14-patch sabotage protocol: the fixed 13 patches from the
+Phase-1 design of record (D9.1 patch table, D9.2 worktree mechanics,
+D9.3 pass criterion) plus the AD-7 addendum patch S14, which flips a
+newly-coded validation guard from the E2 coding pass so the coded-guard
+(error_only) vectors prove they catch sabotage:
 
 1. A CONTROL worktree at the rig branch HEAD, bootstrapped with
    ``uv sync --all-extras``, must replay the committed corpus with
    0 ``vector_failed`` and 0 crashes.
-2. Each sabotage patch ``S01..S13`` is applied to a fresh worktree at the
+2. Each sabotage patch ``S01..S14`` is applied to a fresh worktree at the
    SAME ref; the pytest-free corpus-runner CLI must report >=1
    ``vector_failed`` (status ``caught``) with no crash.
 3. A runner crash (exit 2, unparseable report, timeout, bootstrap failure)
@@ -20,7 +23,7 @@ Usage:
     ```
 
 ``conformance/smoke/last-run.json`` (committed provenance, design D9.3) is
-written ONLY on a full run (control + all 13 patches) so partial re-runs
+written ONLY on a full run (control + all 14 patches) so partial re-runs
 never masquerade as a complete smoke record.
 """
 
@@ -42,13 +45,16 @@ REPO_ROOT = SMOKE_DIR.parents[1]
 """Repository root of the invoking checkout (worktrees are added from here)."""
 
 PATCHES_DIR = SMOKE_DIR / "patches"
-"""Directory holding the fixed ``S01..S13`` unified-diff patch files."""
+"""Directory holding the ``S01..S14`` unified-diff patch files (the fixed
+D9.1 set plus the AD-7 addendum patch S14)."""
 
 LAST_RUN_PATH = SMOKE_DIR / "last-run.json"
 """Committed provenance file written after every FULL smoke run (D9.3)."""
 
-PATCH_IDS: tuple[str, ...] = tuple(f"S{n:02d}" for n in range(1, 14))
-"""The fixed D9.1 patch identifiers, in run order."""
+PATCH_IDS: tuple[str, ...] = tuple(f"S{n:02d}" for n in range(1, 15))
+"""The patch identifiers in run order: the fixed D9.1 set (S01..S13) plus
+the AD-7 addendum patch S14 (flipped coded-guard condition,
+``ES6_CONTAINS_EXPECTS_STR`` in ``user_builders.filter_to_selector``)."""
 
 WORKTREE_PARENT = Path("/tmp")
 """Parent directory for throwaway smoke worktrees (design D9.2)."""
@@ -72,7 +78,7 @@ class RunOutcome:
     """Result of one worktree run (control or one sabotage patch).
 
     Args:
-        patch: Patch id (``"S01"``..``"S13"``) or ``"control"``.
+        patch: Patch id (``"S01"``..``"S14"``) or ``"control"``.
         status: ``caught`` / ``missed`` / ``error`` for patches;
             ``clean`` / ``dirty`` / ``error`` for the control run (D9.3).
         failing_vector_count: Number of vectors that diffed red.
@@ -389,7 +395,7 @@ def main(argv: list[str] | None = None) -> int:
         "--patches",
         default=None,
         help="Comma-separated subset (e.g. 'S05,S07') for D9.3 re-runs; "
-        "default runs all 13.",
+        "default runs all 14.",
     )
     parser.add_argument(
         "--skip-control",
