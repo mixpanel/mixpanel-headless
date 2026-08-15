@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 if TYPE_CHECKING:
     from conformance.record.registry import RegistryEntry
     from mixpanel_headless._internal.auth.session import Session
@@ -66,6 +68,12 @@ class RecordedResponse:
         stream_chunks: TEE-captured chunks in consumption order.
         transport_error: Exception class name when the handler raised
             (design D1.1 ``transport_error`` representation).
+        transport_error_message: ``str(exc)`` of the handler-raised
+            exception, when non-empty. Captured because library error
+            DETAILS may embed the message verbatim (``probe_region``
+            attempt bodies are ``f"{type(e).__name__}: {e}"``), so replay
+            must re-raise with the same message to reproduce
+            ``details_contain`` (PR-6 replay finding).
     """
 
     status: int | None = None
@@ -73,6 +81,7 @@ class RecordedResponse:
     body_bytes: bytes | None = None
     stream_chunks: list[bytes] | None = None
     transport_error: str | None = None
+    transport_error_message: str | None = None
 
 
 @dataclass
@@ -123,6 +132,17 @@ class EntryCallCapture:
         client_options: Non-default client CONSTRUCTOR kwargs affecting
             wire behavior (``max_retries`` — PR-5 audit finding F4), or
             None when the client is default-configured/absent.
+        callback_calls: Observed call log per callback-tagged kwarg name
+            (design D4.4): encoded positional-argument lists in call order,
+            recorded by the plugin's callback proxy and emitted as
+            ``expect.callback_calls``.
+        mock_collaborator: A ``unittest.mock`` collaborator held by the
+            receiver (``ReplaysService._api`` pattern) whose invocation
+            during the span makes the capture unreplayable — the mock's
+            configured behavior IS part of the test contract and vectors
+            cannot encode it (PR-6 replay finding).
+        mock_collaborator_calls_before: ``len(mock_calls)`` snapshot taken
+            at call open, so only calls made DURING the span count.
     """
 
     index: int
@@ -137,6 +157,9 @@ class EntryCallCapture:
     iterator_items: list[Any] | None = None
     iterator_finished: bool = False
     excluded_reason: str | None = None
+    callback_calls: dict[str, list[list[Any]]] = field(default_factory=dict)
+    mock_collaborator: Any = None
+    mock_collaborator_calls_before: int = 0
 
 
 @dataclass
@@ -161,3 +184,46 @@ class TestCapture:
     interactions: list[RecordedInteraction] = field(default_factory=list)
     cli_used: bool = False
     outcome: str = "passed"
+
+
+def snapshot_request(request: httpx.Request) -> RecordedRequest:
+    """Snapshot an outgoing request at the transport seam (design D1.1).
+
+    Shared by the record plugin (capture side) and the corpus runner's
+    ``VectorTransport`` (replay side, design D7) so both sides serialize
+    live requests identically — the diff can never disagree with the
+    recorder about method/path/params representation.
+
+    Args:
+        request: The httpx request about to reach the handler.
+
+    Returns:
+        The immutable capture-side request representation.
+    """
+    request.read()
+    url = request.url
+    port = f":{url.port}" if url.port is not None else ""
+    # Record the RAW (percent-ENCODED) path: ``url.path`` percent-decodes,
+    # which erases the library's URL-encoding contract — a port that fails
+    # to encode ``"My Event / Test"`` would replay identically against a
+    # decoded path (PR-5 audit finding F3; test_workspace_schemas.py
+    # ``test_create_schema_url_encodes_names``). Query params stay
+    # structured/decoded (both runners decode consistently).
+    raw_path = url.raw_path.decode("ascii").split("?", 1)[0]
+    params: dict[str, str | list[str]] = {}
+    for key, value in url.params.multi_items():
+        existing = params.get(key)
+        if existing is None:
+            params[key] = value
+        elif isinstance(existing, list):
+            existing.append(value)
+        else:
+            params[key] = [existing, value]
+    return RecordedRequest(
+        method=request.method,
+        scheme_host=f"{url.scheme}://{url.host}{port}",
+        path=raw_path,
+        params=params,
+        headers={k.lower(): v for k, v in request.headers.items()},
+        content=request.content,
+    )

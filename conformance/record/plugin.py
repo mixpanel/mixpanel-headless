@@ -49,6 +49,7 @@ from conformance.record.capture import (
     RecordedResponse,
     RecordingAbortError,
     TestCapture,
+    snapshot_request,
 )
 from conformance.record.clock import RecordClock
 from conformance.record.codecs import (
@@ -172,44 +173,6 @@ class _TeeAsyncStream(httpx.AsyncByteStream):
         await self._inner.aclose()
 
 
-def _snapshot_request(request: httpx.Request) -> RecordedRequest:
-    """Snapshot an outgoing request at the transport seam (design D1.1).
-
-    Args:
-        request: The httpx request about to reach the mock handler.
-
-    Returns:
-        The immutable capture-side request representation.
-    """
-    request.read()
-    url = request.url
-    port = f":{url.port}" if url.port is not None else ""
-    # Record the RAW (percent-ENCODED) path: ``url.path`` percent-decodes,
-    # which erases the library's URL-encoding contract — a port that fails
-    # to encode ``"My Event / Test"`` would replay identically against a
-    # decoded path (PR-5 audit finding F3; test_workspace_schemas.py
-    # ``test_create_schema_url_encodes_names``). Query params stay
-    # structured/decoded (both runners decode consistently).
-    raw_path = url.raw_path.decode("ascii").split("?", 1)[0]
-    params: dict[str, str | list[str]] = {}
-    for key, value in url.params.multi_items():
-        existing = params.get(key)
-        if existing is None:
-            params[key] = value
-        elif isinstance(existing, list):
-            existing.append(value)
-        else:
-            params[key] = [existing, value]
-    return RecordedRequest(
-        method=request.method,
-        scheme_host=f"{url.scheme}://{url.host}{port}",
-        path=raw_path,
-        params=params,
-        headers={k.lower(): v for k, v in request.headers.items()},
-        content=request.content,
-    )
-
-
 def _fill_response(
     recorded: RecordedResponse, response: httpx.Response, *, is_async: bool
 ) -> None:
@@ -244,6 +207,163 @@ def _fill_response(
             response.stream,  # type: ignore[arg-type]
             chunks,
         )
+
+
+class _CallbackProxy:
+    """Recording pass-through for callback-valued arguments (design D4.4).
+
+    The recorder substitutes one of these for every callback-eligible
+    argument before delegating, so the callback's OBSERVED CALLS become
+    vector data (``expect.callback_calls``) while the test's own callable
+    still runs unchanged — the retry-state-reset contract (batch counts
+    restarting across a 429 retry) lives entirely in the call log.
+
+    Example:
+        ```python
+        log: list[list[Any]] = []
+        proxy = _CallbackProxy(call, "on_batch", original, log)
+        proxy([{"event": "Login"}])  # delegates AND records
+        ```
+    """
+
+    def __init__(
+        self,
+        call: EntryCallCapture,
+        name: str,
+        inner: Callable[..., Any],
+        log: list[list[Any]],
+    ) -> None:
+        """Bind the proxy to its capture slot and delegate.
+
+        Args:
+            call: The owning entry-call capture (for exclusion marking).
+            name: The kwarg name this proxy stands in for.
+            inner: The test-provided callable to delegate to.
+            log: The capture's per-name call log to append into.
+        """
+        self._call = call
+        self._name = name
+        self._inner = inner
+        self._log = log
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Record one invocation's positional args, then delegate.
+
+        Keyword-argument invocations are unrepresentable in the schema
+        (``callback_calls`` records positional lists only) and mark the
+        capture ``unserializable_input`` — delegation still happens so the
+        test behaves identically.
+
+        Args:
+            *args: Positional arguments the library passed.
+            **kwargs: Keyword arguments the library passed (schema gap).
+
+        Returns:
+            Whatever the inner callable returns.
+        """
+        if self._call.excluded_reason is None:
+            if kwargs:
+                self._call.excluded_reason = "unserializable_input"
+            else:
+                try:
+                    self._log.append([encode_expect_value(arg) for arg in args])
+                except UnencodableValueError:
+                    self._call.excluded_reason = "unserializable_input"
+        return self._inner(*args, **kwargs)
+
+
+def _callback_eligible(value: Any) -> bool:
+    """Return whether an argument value records as a ``$type: callback``.
+
+    Mirrors the tagging rule in
+    :func:`conformance.record.codecs.encode_input_kwargs`: callables that
+    are not classes. ``unittest.mock`` objects are NOT eligible even when
+    callable — a spec'd MagicMock stands in for a VALUE (it passes the
+    library's ``isinstance`` checks via ``__class__``), and wrapping it in
+    a proxy changes test behavior; the codec table already excludes
+    mock-dependent captures as ``unserializable_input``.
+
+    Args:
+        value: Candidate argument value.
+
+    Returns:
+        True when the value is a non-class, non-mock callable.
+    """
+    return (
+        callable(value)
+        and not isinstance(value, type)
+        and not isinstance(value, umock.NonCallableMock)
+    )
+
+
+def _substitute_callback_proxies(
+    call: EntryCallCapture,
+    signature: inspect.Signature,
+    bound: inspect.BoundArguments,
+    arguments: dict[str, Any],
+    is_method: bool,
+) -> bool:
+    """Swap callback-eligible arguments for recording proxies (design D4.4).
+
+    Mutates ``bound.arguments`` in place so the delegated call receives the
+    proxies; ``arguments`` (the encode-side view) keeps the ORIGINAL
+    callables — :func:`conformance.record.codecs.encode_input_kwargs` tags
+    any callable as ``$type: callback`` either way.
+
+    Args:
+        call: The entry-call capture receiving the per-name call logs.
+        signature: The wrapped callable's signature.
+        bound: The bound arguments about to be delegated.
+        arguments: The flattened non-self argument view (VAR_KEYWORD
+            members appear under their own names).
+        is_method: True when the first parameter is the receiver.
+
+    Returns:
+        True when at least one proxy was substituted.
+    """
+    parameters = list(signature.parameters.values())
+    receiver_name = parameters[0].name if (is_method and parameters) else None
+    substituted = False
+    for name, value in arguments.items():
+        if name == "self" or not _callback_eligible(value):
+            continue
+        log: list[list[Any]] = []
+        proxy = _CallbackProxy(call, name, value, log)
+        call.callback_calls[name] = log
+        if name in bound.arguments and name != receiver_name:
+            bound.arguments[name] = proxy
+            substituted = True
+            continue
+        for pname, pvalue in bound.arguments.items():
+            param = signature.parameters[pname]
+            if (
+                param.kind is inspect.Parameter.VAR_KEYWORD
+                and isinstance(pvalue, dict)
+                and name in pvalue
+            ):
+                pvalue[name] = proxy
+                substituted = True
+                break
+    return substituted
+
+
+def _me_service_stubbed(instance: Any) -> bool:
+    """Detect a test-injected ``_me_service`` stand-in on a Workspace.
+
+    Args:
+        instance: The receiver of the wrapped call (any type).
+
+    Returns:
+        True when the instance carries a non-None ``_me_service`` that is
+        NOT the library's real ``MeService`` — canned /me state a vector
+        cannot rebuild (PR-6 replay finding).
+    """
+    me_service = getattr(instance, "_me_service", None)
+    if me_service is None:
+        return False
+    from mixpanel_headless._internal.me import MeService
+
+    return not isinstance(me_service, MeService)
 
 
 def _expected_authorization(session: Session) -> str | None:
@@ -421,6 +541,7 @@ class RecordSession:
                 response = original_sync(transport_self, request)
             except BaseException as exc:
                 interaction.response.transport_error = type(exc).__name__
+                interaction.response.transport_error_message = str(exc) or None
                 raise
             _fill_response(interaction.response, response, is_async=False)
             return response
@@ -445,6 +566,7 @@ class RecordSession:
                 response = await original_async(transport_self, request)
             except BaseException as exc:
                 interaction.response.transport_error = type(exc).__name__
+                interaction.response.transport_error_message = str(exc) or None
                 raise
             _fill_response(interaction.response, response, is_async=True)
             return response
@@ -567,14 +689,15 @@ class RecordSession:
                 or state.depth > 0
             ):
                 return func(*args, **kwargs)
-            call = self._open_entry_call(
+            call, call_args, call_kwargs = self._open_entry_call(
                 entry, func, signature, is_method, args, kwargs
             )
             try:
                 with self._span(call):
-                    result = func(*args, **kwargs)
+                    result = func(*call_args, **call_kwargs)
             except BaseException as exc:
                 call.error = exc
+                self._check_mock_collaborator(call)
                 raise
             if isinstance(result, Iterator):
                 return self._wrap_iterator(call, result)
@@ -591,13 +714,16 @@ class RecordSession:
         is_method: bool,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-    ) -> EntryCallCapture:
+    ) -> tuple[EntryCallCapture, tuple[Any, ...], dict[str, Any]]:
         """Create and append the entry-call capture for one invocation.
 
         Encodes ``call.input`` AT CALL TIME (before mutation is possible),
         binds only explicitly-passed arguments (defaults stay defaults —
-        design D1.2), extracts bound sessions, and applies the test-local
-        clock-mock check for module-level builder entries.
+        design D1.2), extracts bound sessions, applies the test-local
+        clock-mock check for module-level builder entries, substitutes a
+        :class:`_CallbackProxy` for every callback-eligible argument
+        (design D4.4 ``expect.callback_calls``), and snapshots mock
+        collaborators for the post-call replayability check.
 
         Args:
             entry: The registry entry invoked.
@@ -608,13 +734,15 @@ class RecordSession:
             kwargs: Original keyword arguments.
 
         Returns:
-            The appended :class:`EntryCallCapture`.
+            ``(call, call_args, call_kwargs)`` — the appended capture plus
+            the (possibly proxy-substituted) arguments to delegate with.
         """
         capture = self._current
         assert capture is not None  # guarded by the wrapper
         instance: Any = args[0] if (is_method and args) else None
         excluded: str | None = None
         arguments: dict[str, Any] = {}
+        bound: inspect.BoundArguments | None = None
         try:
             bound = signature.bind(*args, **kwargs)
         except TypeError:
@@ -656,23 +784,48 @@ class RecordSession:
             and _module_clock_mocked(func)
         ):
             excluded = "test_local_clock"
-        input_encoded: dict[str, Any] | None = None
-        if excluded is None:
-            try:
-                input_encoded = encode_input_kwargs(arguments)
-            except UnencodableValueError:
-                excluded = "unserializable_input"
         call = EntryCallCapture(
             index=len(capture.entry_calls),
             entry=entry,
-            input_encoded=input_encoded,
+            input_encoded=None,
             session=session,
             workspace_session=workspace_session,
             excluded_reason=excluded,
             client_options=self._client_options_for(instance, arguments),
         )
+        if (
+            instance is not None
+            and not self._is_client_like(instance)
+            and entry.kind not in (KIND_BUILDER, KIND_VALIDATOR)
+        ):
+            # ReplaysService-style receivers hold their MixpanelAPIClient
+            # as ``_api``; when the test wired a mock there and the call
+            # actually INVOKES it, the mock's configured behavior is part
+            # of the contract and the capture is unreplayable (PR-6).
+            collaborator = getattr(instance, "_api", None)
+            if isinstance(collaborator, umock.NonCallableMock):
+                call.mock_collaborator = collaborator
+                call.mock_collaborator_calls_before = len(collaborator.mock_calls)
+        if call.excluded_reason is None and _me_service_stubbed(instance):
+            # A test-injected ``_me_service`` stand-in (the business-context
+            # ``_StubMeSvc`` pattern) feeds org/project resolution from
+            # state no vector can rebuild — replay would fetch /me over
+            # the wire instead and diverge (PR-6 replay finding).
+            call.excluded_reason = "unserializable_input"
+        call_args, call_kwargs = args, dict(kwargs)
+        if call.excluded_reason is None and bound is not None:
+            substituted = _substitute_callback_proxies(
+                call, signature, bound, arguments, is_method
+            )
+            if substituted:
+                call_args, call_kwargs = bound.args, dict(bound.kwargs)
+        if call.excluded_reason is None:
+            try:
+                call.input_encoded = encode_input_kwargs(arguments)
+            except UnencodableValueError:
+                call.excluded_reason = "unserializable_input"
         capture.entry_calls.append(call)
-        return call
+        return call, call_args, call_kwargs
 
     @staticmethod
     def _client_options_for(
@@ -853,6 +1006,7 @@ class RecordSession:
                     break
                 except BaseException as exc:
                     call.error = exc
+                    self._check_mock_collaborator(call)
                     raise
                 if call.excluded_reason is None:
                     try:
@@ -862,6 +1016,7 @@ class RecordSession:
                 yield item
             call.iterator_finished = True
             call.returned = True
+            self._check_mock_collaborator(call)
 
         return _generator()
 
@@ -877,11 +1032,32 @@ class RecordSession:
             result: The raw return value.
         """
         call.returned = True
+        self._check_mock_collaborator(call)
         if call.excluded_reason is not None:
             return
         try:
             call.result_encoded = encode_output(call.entry.output_codec, result)
         except UnencodableValueError:
+            call.excluded_reason = "unserializable_input"
+
+    @staticmethod
+    def _check_mock_collaborator(call: EntryCallCapture) -> None:
+        """Exclude the capture when its mock collaborator was invoked (PR-6).
+
+        A ``ReplaysService`` whose ``_api`` is a ``unittest.mock`` object
+        emits perfectly replayable vectors as long as the mock is never
+        touched (pure CDN walks); once the call INVOKES the mock (the
+        403 re-sign path calls ``_api.sign_replays``), the mock's
+        configured return value is contract the vector cannot carry — a
+        real client at replay would fire unrecorded transport traffic.
+
+        Args:
+            call: The completed entry call to check.
+        """
+        mock = call.mock_collaborator
+        if mock is None or call.excluded_reason is not None:
+            return
+        if len(mock.mock_calls) > call.mock_collaborator_calls_before:
             call.excluded_reason = "unserializable_input"
 
     # ------------------------------------------------------------------
@@ -910,7 +1086,7 @@ class RecordSession:
         span = (
             self._thread_state.span_stack[-1] if self._thread_state.span_stack else None
         )
-        snapshot = _snapshot_request(request)
+        snapshot = snapshot_request(request)
         if span is not None:
             self._verify_authorization(capture.nodeid, span, snapshot)
         interaction = RecordedInteraction(

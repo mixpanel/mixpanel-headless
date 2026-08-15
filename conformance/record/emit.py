@@ -165,11 +165,66 @@ class _PendingVector:
     body: dict[str, Any]
 
 
+class KeepOrderDict(dict[str, Any]):
+    """Marker dict whose key ORDER is data, not presentation (PR-6).
+
+    Sorted-keys storage is lossy for order-sensitive payload subtrees:
+    ``call.input`` dicts pass through the library into form bodies /
+    ``json.dumps``'d strings in USER order, and served response-body
+    object order drives outputs like ``get_event_properties`` (dict-key
+    iteration). Subtrees wrapped in this marker serialize in insertion
+    order — still fully deterministic across re-extraction (the order
+    comes from test source), so the D8 drift byte-diff is unaffected.
+    Everything else keeps sorted keys per design D3.
+    """
+
+
+def keep_order_tree(value: Any) -> Any:
+    """Recursively mark a payload subtree as order-preserving.
+
+    Args:
+        value: A JSON-encodable structure (dicts preserve insertion order).
+
+    Returns:
+        The same structure with every dict converted to
+        :class:`KeepOrderDict`.
+    """
+    if isinstance(value, dict):
+        return KeepOrderDict(
+            (key, keep_order_tree(member)) for key, member in value.items()
+        )
+    if isinstance(value, list):
+        return [keep_order_tree(member) for member in value]
+    return value
+
+
+def _canonical_tree(value: Any) -> Any:
+    """Rebuild a structure with canonical key order for serialization.
+
+    Args:
+        value: A JSON-encodable structure, possibly carrying
+            :class:`KeepOrderDict` subtrees.
+
+    Returns:
+        A new structure whose plain dicts are rebuilt in sorted-key order
+        (codepoint sort, matching ``json.dumps(sort_keys=True)``) and whose
+        :class:`KeepOrderDict` nodes keep insertion order.
+    """
+    if isinstance(value, KeepOrderDict):
+        return {key: _canonical_tree(member) for key, member in value.items()}
+    if isinstance(value, dict):
+        return {key: _canonical_tree(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_canonical_tree(member) for member in value]
+    return value
+
+
 def canonical_json(value: Any) -> str:
     """Serialize a value as canonical vector JSON (design D3 bundling).
 
-    Sorted keys, compact separators, UTF-8 (non-ASCII emitted verbatim) —
-    the byte-stable form both the bundles and the D8 drift diff rely on.
+    Sorted keys (except :class:`KeepOrderDict` payload subtrees), compact
+    separators, UTF-8 (non-ASCII emitted verbatim) — the byte-stable form
+    both the bundles and the D8 drift diff rely on.
 
     Args:
         value: A JSON-encodable structure.
@@ -177,7 +232,7 @@ def canonical_json(value: Any) -> str:
     Returns:
         The canonical JSON string (no trailing newline).
     """
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(_canonical_tree(value), separators=(",", ":"), ensure_ascii=False)
 
 
 def interaction_sort_key(interaction: Mapping[str, Any]) -> str:
@@ -319,6 +374,14 @@ def _encode_session(
     }
     if session.workspace is not None:
         encoded["workspace_id"] = session.workspace.id
+    if session.headers:
+        # Custom headers attached at resolution time are LIBRARY-sent
+        # traffic (they appear in headers_contain via the D5.6 custom-key
+        # allowlist), so replay must rebuild the session with them or the
+        # header diff can never pass (PR-6 replay finding).
+        encoded["headers"] = {
+            str(key): str(value) for key, value in session.headers.items()
+        }
     if isinstance(account, ServiceAccount):
         encoded["type"] = "service_account"
         encoded["username"] = account.username
@@ -592,7 +655,12 @@ def _emit_response(recorded: RecordedResponse) -> dict[str, Any]:
             transport error — a recorder bug).
     """
     if recorded.transport_error is not None:
-        return {"transport_error": recorded.transport_error}
+        error: dict[str, Any] = {"transport_error": recorded.transport_error}
+        if recorded.transport_error_message is not None:
+            # Library error details may embed the message verbatim
+            # (probe_region attempt bodies) — replay re-raises with it.
+            error["message"] = recorded.transport_error_message
+        return error
     if recorded.status is None:
         raise RecordingAbortError(
             "recorded response has neither status nor transport_error — "
@@ -601,6 +669,9 @@ def _emit_response(recorded: RecordedResponse) -> dict[str, Any]:
     response: dict[str, Any] = {"status": recorded.status}
     if recorded.headers:
         response["headers"] = dict(recorded.headers)
+    # NOTE: parsed JSON bodies below are wrapped keep_order_tree — served
+    # object key order is mock-environment data the replay must reproduce
+    # (get_event_properties returns keys in body order, PR-6).
     if recorded.stream_chunks is not None:
         chunks: list[dict[str, str]] = []
         for chunk in recorded.stream_chunks:
@@ -620,7 +691,7 @@ def _emit_response(recorded: RecordedResponse) -> dict[str, Any]:
         body: dict[str, Any] | None = None
         if "json" in content_type:
             try:
-                body = {"body": json.loads(recorded.body_bytes)}
+                body = {"body": keep_order_tree(json.loads(recorded.body_bytes))}
             except (ValueError, UnicodeDecodeError):
                 body = None
         if body is None:
@@ -775,7 +846,12 @@ def _builder_vector(call: EntryCallCapture, nodeid: str) -> _PendingVector | Non
         "source_test": nodeid,
         "origin": "extracted",
         "capability": call.entry.capability or "validation",
-        "call": {"api": call.entry.api, "input": call.input_encoded or {}},
+        "call": {
+            "api": call.entry.api,
+            # keep_order_tree: input dicts flow through the library in
+            # USER order (form bodies, json.dumps'd strings — PR-6).
+            "input": keep_order_tree(call.input_encoded or {}),
+        },
     }
     if call.error is not None:
         encoded_error = _encode_error(call.error)
@@ -797,6 +873,11 @@ def _builder_vector(call: EntryCallCapture, nodeid: str) -> _PendingVector | Non
             else call.result_encoded
         )
         body["expect"] = {"output": output}
+    callback_calls = {name: log for name, log in call.callback_calls.items() if log}
+    if callback_calls:
+        # Observed call logs for $type:callback kwargs (design D4.4); the
+        # runners diff their recording stubs' logs against this.
+        body["expect"]["callback_calls"] = callback_calls
     return _PendingVector(
         nodeid=nodeid,
         call_index=call.index,
@@ -972,12 +1053,22 @@ def _wire_vector(
     if not interactions:
         return None, "no_seam_hit"
     expect["interactions"] = interactions
+    callback_calls = {name: log for name, log in measured.callback_calls.items() if log}
+    if callback_calls:
+        # Observed call logs for $type:callback kwargs (design D4.4); the
+        # runners inject recording stubs and diff their logs against this.
+        expect["callback_calls"] = callback_calls
     call_obj: dict[str, Any] = {
         "api": measured.entry.api,
-        "input": measured.input_encoded or {},
+        # keep_order_tree: input dicts flow through the library in USER
+        # order (form bodies, json.dumps'd strings — PR-6).
+        "input": keep_order_tree(measured.input_encoded or {}),
     }
     setup = [
-        {"api": call.entry.api, "input": call.input_encoded or {}}
+        {
+            "api": call.entry.api,
+            "input": keep_order_tree(call.input_encoded or {}),
+        }
         for call in wire_calls
         if call.index < measured.index
     ]

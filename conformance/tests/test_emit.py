@@ -472,3 +472,110 @@ def test_unordered_group_members_sorted_by_canonical_key() -> None:
     assert result[0] is ordered
     assert result[1]["request"]["path"] == "/a"
     assert result[2]["request"]["path"] == "/z"
+
+
+def test_transport_error_message_emitted() -> None:
+    """``_emit_response`` carries the handler exception message (PR-6).
+
+    Raises:
+        AssertionError: If the message is dropped or fabricated.
+    """
+    from conformance.record.emit import _emit_response
+
+    with_message = RecordedResponse(
+        transport_error="ConnectError",
+        transport_error_message="DNS lookup failed",
+    )
+    assert _emit_response(with_message) == {
+        "transport_error": "ConnectError",
+        "message": "DNS lookup failed",
+    }
+    without_message = RecordedResponse(transport_error="ReadTimeout")
+    assert _emit_response(without_message) == {"transport_error": "ReadTimeout"}
+
+
+def test_session_custom_headers_encoded() -> None:
+    """``_encode_session`` records resolution-time custom headers (PR-6).
+
+    Raises:
+        AssertionError: If headers are dropped or fabricated.
+    """
+    from conformance.record.emit import _encode_session
+
+    plain = _make_session()
+    assert "headers" not in _encode_session(plain)
+    with_headers = Session(
+        account=plain.account,
+        project=plain.project,
+        headers={"X-Tenant": "acme"},
+    )
+    assert _encode_session(with_headers)["headers"] == {"X-Tenant": "acme"}
+
+
+def test_callback_calls_emitted_on_wire_vector(tmp_path: Path) -> None:
+    """Non-empty callback logs become ``expect.callback_calls`` (D4.4).
+
+    Raises:
+        AssertionError: If the log is dropped or an empty log is emitted.
+    """
+    import json
+
+    session = _make_session()
+    entry = REGISTRY_BY_API["api_client.export_events"]
+    call = EntryCallCapture(
+        index=0,
+        entry=entry,
+        input_encoded={
+            "from_date": "2024-01-01",
+            "to_date": "2024-01-02",
+            "on_batch": {"$type": "callback", "name": "on_batch"},
+        },
+        session=session,
+        workspace_session=None,
+        iterator_items=[{"event": "Login"}],
+        iterator_finished=True,
+        returned=True,
+    )
+    call.callback_calls = {"on_batch": [[[{"event": "Login"}]]], "unused": []}
+    capture = CapturedTest(nodeid="tests/unit/test_fake.py::test_cb")
+    capture.entry_calls.append(call)
+    capture.interactions.append(
+        RecordedInteraction(
+            seq=0,
+            request=RecordedRequest(
+                method="GET",
+                scheme_host="https://data.mixpanel.com",
+                path="/api/2.0/export",
+                params={"from_date": "2024-01-01", "to_date": "2024-01-02"},
+                headers={
+                    "authorization": "Basic dGVzdF91c2VyOnRlc3Rfc2VjcmV0",
+                },
+                content=b"",
+            ),
+            response=RecordedResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                body_bytes=b'{"event": "Login"}',
+            ),
+            span_index=0,
+            is_async=False,
+        )
+    )
+    out_dir = tmp_path / "vectors"
+    emit_corpus(
+        [capture],
+        [capture.nodeid],
+        EmitOptions(
+            out_dir=out_dir,
+            extraction_date="2026-08-14",
+            source_commit="0" * 40,
+        ),
+    )
+    bundles = sorted(out_dir.rglob("test_fake.jsonl"))
+    assert len(bundles) == 1
+    lines = [json.loads(line) for line in bundles[0].read_text().splitlines()]
+    vectors = [line for line in lines if "$bundle" not in line]
+    assert len(vectors) == 1
+    assert vectors[0]["expect"]["callback_calls"] == {
+        "on_batch": [[[{"event": "Login"}]]]
+    }

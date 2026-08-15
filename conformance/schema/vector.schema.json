@@ -107,7 +107,12 @@
         "secret": { "type": "string", "$comment": "service_account only; fake test value from the bound session; D5.4 entropy/length screening is the real-secret tripwire" },
         "token": { "type": "string", "$comment": "oauth types only; fake test value from the bound session" },
         "default_project": { "type": ["string", "null"] },
-        "account_name": { "type": "string" }
+        "account_name": { "type": "string" },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "$comment": "Custom headers attached to the Session at resolution time ([settings].custom_header / bridge.headers). Library-sent traffic — they appear in headers_contain via the D5.6 custom-key allowlist — so replay rebuilds the session with them (PR-6)."
+        }
       }
     },
     "interaction": {
@@ -239,6 +244,10 @@
         "transport_error": {
           "type": "string",
           "$comment": "httpx exception class name raised by the handler, e.g. 'ConnectError', 'HTTPError'. TS runner maps per R2.10 (MixpanelHttpError normalization)."
+        },
+        "message": {
+          "type": "string",
+          "$comment": "str(exc) of the handler-raised exception, when non-empty. The Python runner re-raises with it because library error DETAILS may embed the message verbatim (probe_region attempt bodies, PR-6). The TS runner may ignore it: R5.4 keeps messages out of cross-language comparison, and details embedding Python exception reprs are Python-side contract only."
         }
       }
     },

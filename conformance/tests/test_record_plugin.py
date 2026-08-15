@@ -471,7 +471,7 @@ def test_snapshot_request_records_percent_encoded_path() -> None:
     """
     from urllib.parse import quote
 
-    from conformance.record.plugin import _snapshot_request
+    from conformance.record.capture import snapshot_request
 
     encoded = quote("My Event / Test", safe="")
     request = httpx.Request(
@@ -479,7 +479,7 @@ def test_snapshot_request_records_percent_encoded_path() -> None:
         f"https://mixpanel.com/api/app/projects/12345/schemas/event/{encoded}",
         params={"q": "1"},
     )
-    snapshot = _snapshot_request(request)
+    snapshot = snapshot_request(request)
     assert snapshot.path == (
         "/api/app/projects/12345/schemas/event/My%20Event%20%2F%20Test"
     )
@@ -505,3 +505,137 @@ def test_client_options_captured_only_when_non_default() -> None:
     assert RecordSession._client_options_for(None, {"client": tuned}) == {
         "max_retries": 1
     }
+
+
+def test_transport_error_message_captured(record_session: RecordSession) -> None:
+    """A handler-raised exception records class name AND message (PR-6).
+
+    ``probe_region`` embeds ``f"{type(e).__name__}: {e}"`` in its error
+    details, so replay must re-raise with the recorded message to
+    reproduce ``details_contain`` byte-for-byte.
+
+    Raises:
+        AssertionError: If the class name or message is missing.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+    from mixpanel_headless.exceptions import MixpanelHeadlessError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Raise a transport error for every request.
+
+        Args:
+            request: The incoming request.
+
+        Raises:
+            httpx.ConnectError: Always, with a fixed message.
+        """
+        del request
+        raise httpx.ConnectError("DNS lookup failed")
+
+    record_session.begin_test("tests/unit/test_fake.py::test_transport_error", None)
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(handler)
+    )
+    with pytest.raises((httpx.ConnectError, MixpanelHeadlessError)):
+        client.list_annotations()
+    record_session.finish_test("tests/unit/test_fake.py::test_transport_error")
+
+    capture = record_session.captures[-1]
+    assert capture.interactions, "transport interaction was not captured"
+    response = capture.interactions[0].response
+    assert response.transport_error == "ConnectError"
+    assert response.transport_error_message == "DNS lookup failed"
+
+
+def test_callback_proxy_records_call_log(record_session: RecordSession) -> None:
+    """Callback-eligible kwargs are proxied and their calls logged (D4.4).
+
+    Drives ``region_probe.probe_region`` whose ``client_factory`` kwarg is
+    callback-tagged; the proxy must record the positional args of every
+    invocation while delegating to the test factory unchanged.
+
+    Raises:
+        AssertionError: If the call log is missing or wrong.
+    """
+    from mixpanel_headless._internal.auth.region_probe import probe_region
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Serve a 200 for the /me probe.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            An empty 200 response.
+        """
+        del request
+        return httpx.Response(200, json={"results": {}})
+
+    def factory(region: str) -> httpx.Client:
+        """Build a probe client over the mock transport.
+
+        Args:
+            region: Region being probed.
+
+        Returns:
+            A client whose traffic hits the mock transport.
+        """
+        del region
+        return httpx.Client(
+            transport=httpx.MockTransport(handler),
+            base_url="https://mixpanel.com",
+        )
+
+    record_session.begin_test("tests/unit/test_fake.py::test_callback_proxy", None)
+    result = probe_region(factory, {"Authorization": "Basic xxx"})
+    record_session.finish_test("tests/unit/test_fake.py::test_callback_proxy")
+
+    assert result.region == "us"
+    calls = [
+        c
+        for c in record_session.captures[-1].entry_calls
+        if c.entry.api == "region_probe.probe_region"
+    ]
+    assert len(calls) == 1
+    assert calls[0].excluded_reason is None
+    assert calls[0].callback_calls == {"client_factory": [["us"]]}
+    encoded_input = calls[0].input_encoded
+    assert encoded_input is not None
+    assert encoded_input["client_factory"] == {
+        "$type": "callback",
+        "name": "client_factory",
+    }
+
+
+def test_mock_collaborator_invocation_excludes_capture(
+    record_session: RecordSession,
+) -> None:
+    """Invoking a mocked ``_api`` collaborator excludes the capture (PR-6).
+
+    ``ReplaysService.sign`` delegates to ``_api.sign_replays``; when the
+    test wired a mock client there, the mock's configured return value is
+    contract the vector cannot carry, so the capture must be excluded as
+    ``unserializable_input``.
+
+    Raises:
+        AssertionError: If the capture stays includable.
+    """
+    import unittest.mock as umock
+
+    from mixpanel_headless._internal.services.replays import ReplaysService
+
+    mock_api = umock.MagicMock()
+    mock_api.sign_replays.return_value = []
+    service = ReplaysService(mock_api)
+
+    record_session.begin_test("tests/unit/test_fake.py::test_mock_collab", None)
+    assert service.sign(["r-1"]) == []
+    record_session.finish_test("tests/unit/test_fake.py::test_mock_collab")
+
+    calls = [
+        c
+        for c in record_session.captures[-1].entry_calls
+        if c.entry.api == "replays.sign"
+    ]
+    assert len(calls) == 1
+    assert calls[0].excluded_reason == "unserializable_input"
