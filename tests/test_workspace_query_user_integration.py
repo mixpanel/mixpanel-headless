@@ -34,7 +34,10 @@ from mixpanel_headless import (
 )
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.exceptions import BookmarkValidationError
+from mixpanel_headless.exceptions import (
+    BookmarkValidationError,
+    ParamValidationError,
+)
 from mixpanel_headless.types import ProfilePageResult, UserQueryResult
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -1101,5 +1104,38 @@ class TestCrossEngineCohortIdFromFunnel:
 
             call_kwargs = mock_api_client.export_profiles_page.call_args
             assert call_kwargs.kwargs.get("include_all_users") is False
+        finally:
+            ws.close()
+
+
+# =============================================================================
+# U_FILTER wrap preservation over converted ES* guards (E2 pass, RR-4)
+# =============================================================================
+
+
+class TestUFilterWrapPreservation:
+    """The facade's U_FILTER wrap still fires over converted ES* raises.
+
+    workspace.py's ``except ValueError`` around ``filters_to_selector``
+    must keep catching the converted (subclassed) guard errors and
+    re-raise them as ``BookmarkValidationError`` code ``U_FILTER``
+    (design §2 correction / review finding RR-4).
+    """
+
+    def test_converted_es_guard_surfaces_as_u_filter(
+        self,
+        workspace_factory: Callable[..., Workspace],
+    ) -> None:
+        """A converted ES11 raise surfaces as U_FILTER through the facade."""
+        bad = Filter("prop", "is between", ["low", 10])  # type: ignore[arg-type]
+
+        ws = workspace_factory()
+        try:
+            with pytest.raises(BookmarkValidationError) as excinfo:
+                ws.build_user_params(where=[bad])
+            assert [e.code for e in excinfo.value.errors] == ["U_FILTER"]
+            # The chained cause is the converted coded guard error itself.
+            assert isinstance(excinfo.value.__cause__, ParamValidationError)
+            assert excinfo.value.__cause__.code == "ES11_BETWEEN_LOWER_NOT_NUMBER"
         finally:
             ws.close()

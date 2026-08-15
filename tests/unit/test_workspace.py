@@ -13,6 +13,7 @@ from mixpanel_headless import (
 )
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     ActivityFeedResult,
     EventCountsResult,
@@ -31,6 +32,7 @@ from mixpanel_headless.types import (
     SegmentationResult,
     TopEvent,
 )
+from mixpanel_headless.workspace import _validate_limit
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -907,3 +909,118 @@ class TestProjectsMethod:
 # legacy ``workspace_id=`` constructor kwarg, all of which are gone.
 # Workspace ID propagation from a v3 Session is exercised in
 # tests/unit/test_workspace_init.py.
+
+
+# =============================================================================
+# Coded guard errors — WR*/WS* families (E2 coding pass, design §1.6)
+# =============================================================================
+
+
+class TestCodedWorkspaceGuardCodes:
+    """Coded-guard tests for the workspace WR*/WS* families (design §1.6).
+
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    def test_wr2_direct_raises_coded_error(self) -> None:
+        """_validate_limit below the minimum raises WR2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _validate_limit(0)
+        assert excinfo.value.code == "WR2_LIMIT_TOO_SMALL"
+
+    def test_wr2_seam_raises_coded_error(self, mock_api_client: MagicMock) -> None:
+        """stream_events surfaces WR2 for a negative limit."""
+        ws = Workspace(session=_TEST_SESSION, _api_client=mock_api_client)
+        try:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    ws.stream_events(
+                        from_date="2024-01-01",
+                        to_date="2024-01-31",
+                        limit=-5,
+                    )
+                )
+            assert excinfo.value.code == "WR2_LIMIT_TOO_SMALL"
+        finally:
+            ws.close()
+
+    def test_wr3_direct_raises_coded_error(self) -> None:
+        """_validate_limit above the maximum raises WR3."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _validate_limit(100_001)
+        assert excinfo.value.code == "WR3_LIMIT_TOO_LARGE"
+
+    def test_wr3_seam_raises_coded_error(self, mock_api_client: MagicMock) -> None:
+        """stream_events surfaces WR3 for an oversized limit."""
+        ws = Workspace(session=_TEST_SESSION, _api_client=mock_api_client)
+        try:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    ws.stream_events(
+                        from_date="2024-01-01",
+                        to_date="2024-01-31",
+                        limit=200_000,
+                    )
+                )
+            assert excinfo.value.code == "WR3_LIMIT_TOO_LARGE"
+        finally:
+            ws.close()
+
+    def test_ws1_init_target_with_account_raises_coded_error(self) -> None:
+        """Workspace(target=..., account=...) raises WS1 before resolution."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Workspace(target="ecom", account="team")
+        assert excinfo.value.code == "WS1_TARGET_MUTUALLY_EXCLUSIVE"
+
+    def test_ws1_init_target_with_workspace_raises_coded_error(self) -> None:
+        """Workspace(target=..., workspace=...) raises WS1 before resolution."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Workspace(target="ecom", workspace=123)
+        assert excinfo.value.code == "WS1_TARGET_MUTUALLY_EXCLUSIVE"
+
+    def test_ws1_use_target_with_account_raises_coded_error(
+        self, mock_api_client: MagicMock
+    ) -> None:
+        """Workspace.use(target=..., account=...) raises WS1."""
+        ws = Workspace(session=_TEST_SESSION, _api_client=mock_api_client)
+        try:
+            with pytest.raises(ParamValidationError) as excinfo:
+                ws.use(target="ecom", account="team")
+            assert excinfo.value.code == "WS1_TARGET_MUTUALLY_EXCLUSIVE"
+        finally:
+            ws.close()
+
+    def test_ws1_use_target_with_project_raises_coded_error(
+        self, mock_api_client: MagicMock
+    ) -> None:
+        """Workspace.use(target=..., project=...) raises WS1."""
+        ws = Workspace(session=_TEST_SESSION, _api_client=mock_api_client)
+        try:
+            with pytest.raises(ParamValidationError) as excinfo:
+                ws.use(target="ecom", project="99")
+            assert excinfo.value.code == "WS1_TARGET_MUTUALLY_EXCLUSIVE"
+        finally:
+            ws.close()
+
+    def test_ws2_direct_raises_coded_error(self) -> None:
+        """_validate_level rejects a non-literal level with WS2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Workspace._validate_level("org")
+        assert excinfo.value.code == "WS2_INVALID_LEVEL"
+
+    def test_ws2_seam_raises_coded_error(self, mock_api_client: MagicMock) -> None:
+        """get_business_context surfaces WS2 before any client call."""
+        ws = Workspace(session=_TEST_SESSION, _api_client=mock_api_client)
+        try:
+            with pytest.raises(ParamValidationError) as excinfo:
+                ws.get_business_context(level="organisation")  # type: ignore[arg-type]
+            assert excinfo.value.code == "WS2_INVALID_LEVEL"
+        finally:
+            ws.close()
+
+    def test_ws_guards_stay_catchable_as_value_error(self) -> None:
+        """Converted WS*/WR* guards remain catchable via bare ValueError."""
+        with pytest.raises(ValueError) as excinfo:
+            Workspace(target="ecom", project="99")
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "WS1_TARGET_MUTUALLY_EXCLUSIVE"

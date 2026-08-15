@@ -21,8 +21,10 @@ from mixpanel_headless._internal.auth.session import Session
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
+    ParamValidationError,
     QueryError,
     RateLimitError,
+    ResponseValidationError,
     ServerError,
     WorkspaceScopeError,
 )
@@ -819,13 +821,13 @@ class TestListWorkspacesEdgeCases:
     def test_list_workspaces_missing_required_fields(
         self, oauth_credentials: Session
     ) -> None:
-        """Verify list_workspaces() raises ValidationError when fields are missing.
+        """Verify list_workspaces() raises ResponseValidationError on bad items.
 
         When the API returns workspace objects missing required fields
-        (like ``id``), Pydantic's ``model_validate()`` should raise
-        ``ValidationError`` during deserialization.
+        (like ``id``), the response-validation seam wraps the Pydantic
+        failure in ``ResponseValidationError`` carrying the generic
+        ``RESPONSE_VALIDATION_ERROR`` code (E2 coding pass, design §1.7).
         """
-        from pydantic import ValidationError
 
         def handler(request: httpx.Request) -> httpx.Response:
             """Return workspace data missing the required 'id' field."""
@@ -838,5 +840,90 @@ class TestListWorkspacesEdgeCases:
             )
 
         client = create_mock_client(oauth_credentials, handler)
-        with client, pytest.raises(ValidationError):
+        with client, pytest.raises(ResponseValidationError) as excinfo:
             client.list_workspaces()
+        assert excinfo.value.code == "RESPONSE_VALIDATION_ERROR"
+
+    def test_list_workspaces_missing_name_raises_coded_error(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A workspace entry missing ``name`` also surfaces the coded wrap."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return workspace data missing the required 'name' field."""
+            return httpx.Response(
+                200,
+                json={
+                    "results": [{"id": 1}],
+                    "status": "ok",
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(ResponseValidationError) as excinfo:
+            client.list_workspaces()
+        assert excinfo.value.code == "RESPONSE_VALIDATION_ERROR"
+
+
+# =============================================================================
+# Coded guard errors — AC1 app_request guard (E2 coding pass, design §1.6)
+# =============================================================================
+
+
+class TestCodedAppRequestCodes:
+    """Coded-guard tests for the app_request AC1 site (design §1.6).
+
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    def test_ac1_post_both_bodies_raises_coded_error(
+        self, oauth_credentials: Session
+    ) -> None:
+        """POST with both json_body and form_body raises AC1."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Never reached — the guard fires pre-transport."""
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        with create_mock_client(oauth_credentials, handler) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                client.app_request(
+                    "POST", "/projects/12345/x", json_body={}, form_body={}
+                )
+            assert excinfo.value.code == "AC1_BODY_MUTUALLY_EXCLUSIVE"
+
+    def test_ac1_put_both_bodies_raises_coded_error(
+        self, oauth_credentials: Session
+    ) -> None:
+        """PUT with both non-empty bodies raises AC1."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Never reached — the guard fires pre-transport."""
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        with create_mock_client(oauth_credentials, handler) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                client.app_request(
+                    "PUT",
+                    "/projects/12345/x",
+                    json_body={"a": 1},
+                    form_body={"b": "2"},
+                )
+            assert excinfo.value.code == "AC1_BODY_MUTUALLY_EXCLUSIVE"
+
+    def test_ac1_stays_catchable_as_value_error(
+        self, oauth_credentials: Session
+    ) -> None:
+        """The converted AC1 guard remains catchable via bare ValueError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Never reached — the guard fires pre-transport."""
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        with create_mock_client(oauth_credentials, handler) as client:
+            with pytest.raises(ValueError) as excinfo:
+                client.app_request(
+                    "POST", "/projects/12345/x", json_body={}, form_body={}
+                )
+            assert isinstance(excinfo.value, ParamValidationError)
+            assert excinfo.value.code == "AC1_BODY_MUTUALLY_EXCLUSIVE"

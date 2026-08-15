@@ -22,6 +22,7 @@ from pydantic import SecretStr
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.exceptions import ResponseValidationError
 from mixpanel_headless.types import (
     BlueprintCard,
     BlueprintFinishParams,
@@ -29,8 +30,11 @@ from mixpanel_headless.types import (
     BulkUpdateCohortEntry,
     CreateBookmarkParams,
     CreateCohortParams,
+    CreateCustomEventParams,
     CreateDashboardParams,
     CreateRcaDashboardParams,
+    CreateTagParams,
+    CreateWebhookParams,
     RcaSourceData,
     UpdateDashboardParams,
     UpdateReportLinkParams,
@@ -244,36 +248,40 @@ class TestEmptyResponseHandling:
     """Tests verifying behavior when API returns empty or minimal responses (Bug B3)."""
 
     def test_create_dashboard_empty_response_raises(self, temp_dir: Path) -> None:
-        """Verify create_dashboard raises ValidationError when response is empty dict.
+        """Verify create_dashboard raises ResponseValidationError on empty dict.
 
         An empty dict ``{}`` passes the ``is None`` check but fails Pydantic
         validation because required fields (``id``, ``title``) are missing.
+        The response-validation seam wraps that failure in
+        ``ResponseValidationError`` (E2 coding pass, design §1.7).
         """
-        from pydantic import ValidationError
 
         def handler(request: httpx.Request) -> httpx.Response:
             """Return an empty results dict for dashboard creation."""
             return httpx.Response(200, json={"status": "ok", "results": {}})
 
         ws = _make_workspace(temp_dir, handler)
-        with pytest.raises(ValidationError):
+        with pytest.raises(ResponseValidationError) as excinfo:
             ws.create_dashboard(CreateDashboardParams(title="X"))
+        assert excinfo.value.code == "RESPONSE_VALIDATION_ERROR"
 
     def test_get_bookmark_empty_response_raises(self, temp_dir: Path) -> None:
-        """Verify get_bookmark raises ValidationError when response is empty dict.
+        """Verify get_bookmark raises ResponseValidationError on empty dict.
 
         An empty dict ``{}`` passes the ``is None`` check but fails Pydantic
-        validation because required fields (``id``, ``name``, ``type``) are missing.
+        validation because required fields (``id``, ``name``, ``type``) are
+        missing. The response-validation seam wraps that failure in
+        ``ResponseValidationError`` (E2 coding pass, design §1.7).
         """
-        from pydantic import ValidationError
 
         def handler(request: httpx.Request) -> httpx.Response:
             """Return an empty results dict for bookmark retrieval."""
             return httpx.Response(200, json={"status": "ok", "results": {}})
 
         ws = _make_workspace(temp_dir, handler)
-        with pytest.raises(ValidationError):
+        with pytest.raises(ResponseValidationError) as excinfo:
             ws.get_bookmark(1)
+        assert excinfo.value.code == "RESPONSE_VALIDATION_ERROR"
 
     def test_list_dashboards_empty_list_ok(self, temp_dir: Path) -> None:
         """Verify list_dashboards returns empty list when API returns empty results."""
@@ -371,3 +379,263 @@ class TestWorkspaceMethodDelegation:
         url = captured["url"]
         assert "type=" not in url
         assert "ids=" not in url
+
+
+# =============================================================================
+# Coded response-validation seams (E2 coding pass, design §1.7)
+# =============================================================================
+
+
+def _make_results_workspace(
+    results: Any, *, workspace_id: int | None = None
+) -> Workspace:
+    """Create a Workspace whose transport always returns ``results``.
+
+    Args:
+        results: The JSON value placed under the ``results`` envelope key
+            for every request.
+        workspace_id: Optional workspace ID to pin on the client so
+            workspace-scoped methods skip workspace resolution.
+
+    Returns:
+        A Workspace wired to the canned-response mock transport.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Return the canned results envelope for any request."""
+        return httpx.Response(200, json={"status": "ok", "results": results})
+
+    creds = _make_creds()
+    transport = httpx.MockTransport(handler)
+    client = MixpanelAPIClient(session=creds, _transport=transport)
+    if workspace_id is not None:
+        client.set_workspace_id(workspace_id)
+    return Workspace(session=_TEST_SESSION, _api_client=client)
+
+
+class TestCodedResponseValidationCodes:
+    """Response seams raise ResponseValidationError with the generic code.
+
+    One test pair per swept ``model_validate`` method family (design §1.7).
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    def _assert_coded(self, exc: ResponseValidationError) -> None:
+        """Assert the generic response-validation contract on *exc*.
+
+        Args:
+            exc: The captured ResponseValidationError.
+        """
+        assert exc.code == "RESPONSE_VALIDATION_ERROR"
+
+    def test_list_dashboards_invalid_item_raises_coded_error(self) -> None:
+        """Dashboards family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_dashboards()
+        self._assert_coded(excinfo.value)
+
+    def test_list_bookmarks_v2_invalid_item_raises_coded_error(self) -> None:
+        """Bookmarks family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_bookmarks_v2()
+        self._assert_coded(excinfo.value)
+
+    def test_get_cohort_invalid_response_raises_coded_error(self) -> None:
+        """Cohorts family (single member): empty dict response is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_cohort(1)
+        self._assert_coded(excinfo.value)
+
+    def test_list_cohorts_full_invalid_item_raises_coded_error(self) -> None:
+        """Cohorts family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_cohorts_full()
+        self._assert_coded(excinfo.value)
+
+    def test_get_feature_flag_invalid_response_raises_coded_error(self) -> None:
+        """Flags family (single member): empty dict response is wrapped."""
+        ws = _make_results_workspace({}, workspace_id=777)
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_feature_flag("f1")
+        self._assert_coded(excinfo.value)
+
+    def test_list_feature_flags_invalid_item_raises_coded_error(self) -> None:
+        """Flags family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}], workspace_id=777)
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_feature_flags()
+        self._assert_coded(excinfo.value)
+
+    def test_get_experiment_invalid_response_raises_coded_error(self) -> None:
+        """Experiments family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_experiment("e1")
+        self._assert_coded(excinfo.value)
+
+    def test_list_experiments_invalid_item_raises_coded_error(self) -> None:
+        """Experiments family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_experiments()
+        self._assert_coded(excinfo.value)
+
+    def test_get_annotation_invalid_response_raises_coded_error(self) -> None:
+        """Annotations family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_annotation(1)
+        self._assert_coded(excinfo.value)
+
+    def test_list_annotations_invalid_item_raises_coded_error(self) -> None:
+        """Annotations family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_annotations()
+        self._assert_coded(excinfo.value)
+
+    def test_create_webhook_invalid_response_raises_coded_error(self) -> None:
+        """Webhooks family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.create_webhook(CreateWebhookParams(name="W", url="https://x.test/h"))
+        self._assert_coded(excinfo.value)
+
+    def test_list_webhooks_invalid_item_raises_coded_error(self) -> None:
+        """Webhooks family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_webhooks()
+        self._assert_coded(excinfo.value)
+
+    def test_get_alert_invalid_response_raises_coded_error(self) -> None:
+        """Alerts family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_alert(1)
+        self._assert_coded(excinfo.value)
+
+    def test_list_alerts_invalid_item_raises_coded_error(self) -> None:
+        """Alerts family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_alerts()
+        self._assert_coded(excinfo.value)
+
+    def test_get_event_definitions_invalid_item_raises_coded_error(self) -> None:
+        """Lexicon-definitions family: invalid event definition is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_event_definitions(names=["x"])
+        self._assert_coded(excinfo.value)
+
+    def test_get_property_definitions_invalid_item_raises_coded_error(self) -> None:
+        """Lexicon-definitions family: invalid property definition is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_property_definitions(names=["p"])
+        self._assert_coded(excinfo.value)
+
+    def test_create_lexicon_tag_invalid_response_raises_coded_error(self) -> None:
+        """Lexicon-tags family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.create_lexicon_tag(CreateTagParams(name="T"))
+        self._assert_coded(excinfo.value)
+
+    def test_list_lexicon_tags_invalid_item_raises_coded_error(self) -> None:
+        """Lexicon-tags family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_lexicon_tags()
+        self._assert_coded(excinfo.value)
+
+    def test_get_drop_filter_limits_invalid_response_raises_coded_error(self) -> None:
+        """Drop-filters family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_drop_filter_limits()
+        self._assert_coded(excinfo.value)
+
+    def test_list_drop_filters_invalid_item_raises_coded_error(self) -> None:
+        """Drop-filters family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_drop_filters()
+        self._assert_coded(excinfo.value)
+
+    def test_get_custom_property_invalid_response_raises_coded_error(self) -> None:
+        """Custom-properties family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_custom_property("cp1")
+        self._assert_coded(excinfo.value)
+
+    def test_list_custom_properties_invalid_item_raises_coded_error(self) -> None:
+        """Custom-properties family (list member): invalid item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_custom_properties()
+        self._assert_coded(excinfo.value)
+
+    def test_get_lookup_upload_url_invalid_response_raises_coded_error(self) -> None:
+        """Lookup-tables family (single member): type-invalid url is wrapped."""
+        ws = _make_results_workspace({"url": 123, "path": "p", "key": "k"})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.get_lookup_upload_url()
+        self._assert_coded(excinfo.value)
+
+    def test_list_lookup_tables_invalid_item_raises_coded_error(self) -> None:
+        """Lookup-tables family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_lookup_tables()
+        self._assert_coded(excinfo.value)
+
+    def test_create_custom_event_invalid_response_raises_coded_error(self) -> None:
+        """Custom-events family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.create_custom_event(
+                CreateCustomEventParams(name="CE", alternatives=["A"])
+            )
+        self._assert_coded(excinfo.value)
+
+    def test_list_custom_events_invalid_item_raises_coded_error(self) -> None:
+        """Custom-events family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_custom_events()
+        self._assert_coded(excinfo.value)
+
+    def test_delete_schemas_invalid_response_raises_coded_error(self) -> None:
+        """Schemas family (single member): empty dict is wrapped."""
+        ws = _make_results_workspace({})
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.delete_schemas()
+        self._assert_coded(excinfo.value)
+
+    def test_list_schema_registry_invalid_item_raises_coded_error(self) -> None:
+        """Schemas family (list member): invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_schema_registry()
+        self._assert_coded(excinfo.value)
+
+    def test_cancel_deletion_request_invalid_item_raises_coded_error(self) -> None:
+        """Governance-monitoring family: invalid deletion entry is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.cancel_deletion_request(42)
+        self._assert_coded(excinfo.value)
+
+    def test_list_deletion_requests_invalid_item_raises_coded_error(self) -> None:
+        """Governance-monitoring family: invalid list item is wrapped."""
+        ws = _make_results_workspace([{}])
+        with pytest.raises(ResponseValidationError) as excinfo:
+            ws.list_deletion_requests()
+        self._assert_coded(excinfo.value)

@@ -233,8 +233,30 @@ class TestOracleCall:
     def test_uncoded_raise_is_bare_class_data(self) -> None:
         """Uncoded builtin raises encode as ``{class}`` only (§4.1).
 
-        ``filter_to_selector`` rejects cohort filters with a plain
-        ``ValueError`` — comparable across bridges as the bare class name.
+        The E2 coding pass (AD-B3) converted ``filter_to_selector``'s own
+        ``ValueError`` guards to coded ``ParamValidationError``s, so this
+        test now exercises the bare-class fallback with a raise that stays
+        outside the coded hierarchy: a wrong-typed input triggers a plain
+        ``AttributeError`` — comparable across bridges as the bare class
+        name.
+
+        Raises:
+            AssertionError: On the wrong payload shape.
+        """
+        from conformance.record.codecs import encode_input_kwargs
+
+        encoded = encode_input_kwargs({"f": "not-a-filter"})
+        result = _call(OracleServer(), "user_builders.filter_to_selector", encoded)
+        assert result == {"ok": False, "error": {"class": "AttributeError"}}
+
+    def test_converted_guard_raise_is_coded_error_data(self) -> None:
+        """Converted guard raises encode as class + code DATA (E2 / AD-B3).
+
+        ``filter_to_selector`` on a cohort filter now raises the coded
+        ``ParamValidationError`` (``ES6_CONTAINS_EXPECTS_STR`` — the cohort
+        filter's list-of-dicts value fails the ``contains`` shape guard),
+        which the oracle serializes through the recorder's structural
+        encoder as class name + code.
 
         Raises:
             AssertionError: On the wrong payload shape.
@@ -244,7 +266,13 @@ class TestOracleCall:
 
         encoded = encode_input_kwargs({"f": Filter.in_cohort(7)})
         result = _call(OracleServer(), "user_builders.filter_to_selector", encoded)
-        assert result == {"ok": False, "error": {"class": "ValueError"}}
+        assert result == {
+            "ok": False,
+            "error": {
+                "class": "ParamValidationError",
+                "code": "ES6_CONTAINS_EXPECTS_STR",
+            },
+        }
 
     def test_wire_api_is_out_of_scope_skip_payload(self) -> None:
         """``wire_api`` registry entries answer the §4.2 skip payload.

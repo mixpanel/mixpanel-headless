@@ -47,9 +47,11 @@ from mixpanel_headless._internal.me import (
     WorkspaceView,
     select_workspace_id,
 )
+from mixpanel_headless._internal.response_validation import validate_response_models
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
+    ParamValidationError,
     QueryError,
     RateLimitError,
     ServerError,
@@ -1235,7 +1237,8 @@ class MixpanelAPIClient:
             response dict is returned without unwrapping ``results``.
 
         Raises:
-            ValueError: Both ``json_body`` and ``form_body`` were provided.
+            ParamValidationError: Both ``json_body`` and ``form_body`` were
+                provided (``AC1_BODY_MUTUALLY_EXCLUSIVE``).
             AuthenticationError: Invalid credentials (401).
             RateLimitError: Rate limit exceeded after max retries (429).
             QueryError: Invalid parameters or resource not found (400, 404, 422).
@@ -1258,8 +1261,9 @@ class MixpanelAPIClient:
             ```
         """
         if json_body is not None and form_body is not None:
-            raise ValueError(
-                "app_request: json_body and form_body are mutually exclusive"
+            raise ParamValidationError(
+                "app_request: json_body and form_body are mutually exclusive",
+                code="AC1_BODY_MUTUALLY_EXCLUSIVE",
             )
 
         url = self._build_url("app", path)
@@ -1788,7 +1792,10 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
             ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: Network/connection errors.
+            ResponseValidationError: A workspace entry fails model
+                validation (``RESPONSE_VALIDATION_ERROR``).
+            MixpanelHeadlessError: Network/connection errors, or a
+                non-list response payload.
 
         Example:
             ```python
@@ -1807,7 +1814,9 @@ class MixpanelAPIClient:
                 f"Unexpected response format from list_workspaces: "
                 f"expected list, got {type(results).__name__}",
             )
-        return [PublicWorkspace.model_validate(ws) for ws in results]
+        return validate_response_models(
+            PublicWorkspace, results, endpoint="list_workspaces"
+        )
 
     # =========================================================================
     # Export API - Streaming
@@ -2001,44 +2010,54 @@ class MixpanelAPIClient:
             Profile dictionaries with '$distinct_id' and '$properties' keys.
 
         Raises:
-            ValueError: If mutually exclusive parameters are provided together,
-                or if include_all_users is used without cohort_id.
+            ParamValidationError: If mutually exclusive parameters are
+                provided together (``AC2_DISTINCT_ID_CONFLICT`` /
+                ``AC3_BEHAVIORS_COHORT_CONFLICT``), include_all_users is
+                used without cohort_id
+                (``AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT``), behaviors is
+                not a list (``AC5_BEHAVIORS_NOT_LIST``), or as_of_timestamp
+                is in the future (``AC6_AS_OF_TIMESTAMP_FUTURE``).
             AuthenticationError: Invalid credentials.
             RateLimitError: Rate limit exceeded after max retries.
             ServerError: Server-side errors (5xx).
         """
         # Validate mutually exclusive parameters
         if distinct_id is not None and distinct_ids is not None:
-            raise ValueError(
+            raise ParamValidationError(
                 "distinct_id and distinct_ids are mutually exclusive. "
-                "Provide only one to fetch specific profiles."
+                "Provide only one to fetch specific profiles.",
+                code="AC2_DISTINCT_ID_CONFLICT",
             )
 
         if behaviors is not None and cohort_id is not None:
-            raise ValueError(
+            raise ParamValidationError(
                 "behaviors and cohort_id are mutually exclusive. "
-                "Use behaviors for behavioral filtering or cohort_id for cohort membership."
+                "Use behaviors for behavioral filtering or cohort_id for cohort membership.",
+                code="AC3_BEHAVIORS_COHORT_CONFLICT",
             )
 
         if include_all_users and cohort_id is None:
-            raise ValueError(
+            raise ParamValidationError(
                 "include_all_users requires cohort_id. "
-                "This parameter is only valid for cohort membership queries."
+                "This parameter is only valid for cohort membership queries.",
+                code="AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT",
             )
 
         # Validate behaviors type
         if behaviors is not None and not isinstance(behaviors, list):
-            raise ValueError(
-                "behaviors must be a list of behavioral filter dictionaries."
+            raise ParamValidationError(
+                "behaviors must be a list of behavioral filter dictionaries.",
+                code="AC5_BEHAVIORS_NOT_LIST",
             )
 
         # Validate as_of_timestamp is not in the future
         if as_of_timestamp is not None:
             current_time = int(time.time())
             if as_of_timestamp > current_time:
-                raise ValueError(
+                raise ParamValidationError(
                     "as_of_timestamp cannot be in the future. "
-                    "Provide a Unix timestamp in the past to query historical profile state."
+                    "Provide a Unix timestamp in the past to query historical profile state.",
+                    code="AC6_AS_OF_TIMESTAMP_FUTURE",
                 )
 
         # Handle empty distinct_ids list - return early without API call

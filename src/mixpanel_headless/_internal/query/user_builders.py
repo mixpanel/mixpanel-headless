@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Filter
 
 logger = logging.getLogger(__name__)
@@ -49,12 +50,17 @@ def _prop_ref(f: Filter) -> str:
 
     Returns:
         String of the form ``properties["<name>"]``.
+
+    Raises:
+        ParamValidationError: The filter's property is not a plain string
+            (``ES1_PROPERTY_NOT_STRING``).
     """
     if not isinstance(f._property, str):
-        raise ValueError(
+        raise ParamValidationError(
             f"Engage selector requires a string property name, "
             f"got {type(f._property).__name__}. Custom properties "
-            f"are not supported in query_user() filters."
+            f"are not supported in query_user() filters.",
+            code="ES1_PROPERTY_NOT_STRING",
         )
     escaped = f._property.replace("\\", "\\\\").replace('"', '\\"')
     return f'properties["{escaped}"]'
@@ -93,7 +99,10 @@ def filter_to_selector(f: Filter) -> str:
         Selector string for the engage API ``where`` parameter.
 
     Raises:
-        ValueError: If the Filter has an unsupported operator.
+        ParamValidationError: If the Filter's property is not a string
+            (``ES1_PROPERTY_NOT_STRING``), its value has the wrong shape
+            for the operator (``ES2``–``ES12`` family codes), or the
+            operator is unsupported (``ES13_UNSUPPORTED_OPERATOR``).
 
     Example:
         ```python
@@ -110,8 +119,9 @@ def filter_to_selector(f: Filter) -> str:
 
     if op == "equals":
         if not isinstance(value, list):
-            raise ValueError(
-                f"Expected list for 'equals' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected list for 'equals' operator, got {type(value).__name__}",
+                code="ES2_EQUALS_EXPECTS_LIST",
             )
         parts = [
             f"{prop} == {_format_value(v)}"
@@ -126,9 +136,10 @@ def filter_to_selector(f: Filter) -> str:
                 dropped,
             )
         if not parts:
-            raise ValueError(
+            raise ParamValidationError(
                 f"Filter.equals() produced no valid selector terms. "
-                f"All values were non-scalar: {value!r}"
+                f"All values were non-scalar: {value!r}",
+                code="ES3_EQUALS_NO_TERMS",
             )
         if len(parts) > 1:
             return f"({' or '.join(parts)})"
@@ -136,8 +147,9 @@ def filter_to_selector(f: Filter) -> str:
 
     if op == "does not equal":
         if not isinstance(value, list):
-            raise ValueError(
-                f"Expected list for 'does not equal' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected list for 'does not equal' operator, got {type(value).__name__}",
+                code="ES4_NOT_EQUALS_EXPECTS_LIST",
             )
         parts = [
             f"{prop} != {_format_value(v)}"
@@ -152,9 +164,10 @@ def filter_to_selector(f: Filter) -> str:
                 dropped,
             )
         if not parts:
-            raise ValueError(
+            raise ParamValidationError(
                 f"Filter.not_equals() produced no valid selector terms. "
-                f"All values were non-scalar: {value!r}"
+                f"All values were non-scalar: {value!r}",
+                code="ES5_NOT_EQUALS_NO_TERMS",
             )
         # AND-combine: "!= a AND != b" means "not in [a, b]"
         # (contrast: equals uses OR — "== a OR == b" means "in [a, b]")
@@ -162,45 +175,52 @@ def filter_to_selector(f: Filter) -> str:
 
     if op == "contains":
         if not isinstance(value, str):
-            raise ValueError(
-                f"Expected str for 'contains' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected str for 'contains' operator, got {type(value).__name__}",
+                code="ES6_CONTAINS_EXPECTS_STR",
             )
         return f"{_format_value(value)} in {prop}"
 
     if op == "does not contain":
         if not isinstance(value, str):
-            raise ValueError(
-                f"Expected str for 'does not contain' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected str for 'does not contain' operator, got {type(value).__name__}",
+                code="ES7_NOT_CONTAINS_EXPECTS_STR",
             )
         return f"not {_format_value(value)} in {prop}"
 
     if op == "is greater than":
         if not isinstance(value, (int, float)):
-            raise ValueError(
-                f"Expected int or float for 'is greater than' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected int or float for 'is greater than' operator, got {type(value).__name__}",
+                code="ES8_GT_EXPECTS_NUMBER",
             )
         return f"{prop} > {_format_value(value)}"
 
     if op == "is less than":
         if not isinstance(value, (int, float)):
-            raise ValueError(
-                f"Expected int or float for 'is less than' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected int or float for 'is less than' operator, got {type(value).__name__}",
+                code="ES9_LT_EXPECTS_NUMBER",
             )
         return f"{prop} < {_format_value(value)}"
 
     if op == "is between":
         if not isinstance(value, list) or len(value) != 2:
-            raise ValueError(
-                f"Expected list of length 2 for 'is between' operator, got {type(value).__name__}"
+            raise ParamValidationError(
+                f"Expected list of length 2 for 'is between' operator, got {type(value).__name__}",
+                code="ES10_BETWEEN_EXPECTS_PAIR",
             )
         lo, hi = value[0], value[1]
         if not isinstance(lo, (int, float)):
-            raise ValueError(
-                f"Expected int or float for lower bound, got {type(lo).__name__}"
+            raise ParamValidationError(
+                f"Expected int or float for lower bound, got {type(lo).__name__}",
+                code="ES11_BETWEEN_LOWER_NOT_NUMBER",
             )
         if not isinstance(hi, (int, float)):
-            raise ValueError(
-                f"Expected int or float for upper bound, got {type(hi).__name__}"
+            raise ParamValidationError(
+                f"Expected int or float for upper bound, got {type(hi).__name__}",
+                code="ES12_BETWEEN_UPPER_NOT_NUMBER",
             )
         return f"{prop} >= {_format_value(lo)} and {prop} <= {_format_value(hi)}"
 
@@ -216,7 +236,10 @@ def filter_to_selector(f: Filter) -> str:
     if op == "false":
         return f"{prop} == false"
 
-    raise ValueError(f"Unsupported filter operator: {op!r}")
+    raise ParamValidationError(
+        f"Unsupported filter operator: {op!r}",
+        code="ES13_UNSUPPORTED_OPERATOR",
+    )
 
 
 def filters_to_selector(filters: list[Filter]) -> str:
@@ -230,6 +253,10 @@ def filters_to_selector(filters: list[Filter]) -> str:
 
     Returns:
         AND-combined selector string. Returns empty string if list is empty.
+
+    Raises:
+        ParamValidationError: Propagated from ``filter_to_selector()`` for
+            any invalid Filter (``ES1``–``ES13`` family codes).
 
     Example:
         ```python

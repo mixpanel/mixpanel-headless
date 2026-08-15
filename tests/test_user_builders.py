@@ -9,11 +9,14 @@ Task ID: T004
 
 from __future__ import annotations
 
+import pytest
+
 from mixpanel_headless._internal.query.user_builders import (
     extract_cohort_filter,
     filter_to_selector,
     filters_to_selector,
 )
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import CohortCriteria, CohortDefinition, Filter
 
 # =============================================================================
@@ -501,3 +504,207 @@ class TestNotEqualsErrorMessage:
 
         with pytest.raises(ValueError, match="Filter.not_equals"):
             filter_to_selector(f)
+
+
+# =============================================================================
+# Coded guard errors — ES* family (E2 coding pass, design §1.6)
+# =============================================================================
+
+
+class TestCodedEngageSelectorCodes:
+    """Coded-guard tests for the engage-selector ES* family (design §1.6).
+
+    Each converted raise site gets a direct ``filter_to_selector`` test and
+    a seam test through the registered ``filters_to_selector`` entry point.
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    def test_es1_direct_raises_coded_error(self) -> None:
+        """_prop_ref rejects a non-string property with ES1."""
+        f = Filter(123, "is set", None)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES1_PROPERTY_NOT_STRING"
+
+    def test_es1_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES1 for non-string properties."""
+        f = Filter(("tup",), "is set", None)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES1_PROPERTY_NOT_STRING"
+
+    def test_es2_direct_raises_coded_error(self) -> None:
+        """Non-list value for 'equals' raises ES2."""
+        f = Filter("p", "equals", "notalist")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES2_EQUALS_EXPECTS_LIST"
+
+    def test_es2_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES2 for non-list equals values."""
+        f = Filter("p", "equals", 7)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES2_EQUALS_EXPECTS_LIST"
+
+    def test_es3_direct_raises_coded_error(self) -> None:
+        """All-non-scalar equals values raise ES3."""
+        f = Filter("p", "equals", [None])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES3_EQUALS_NO_TERMS"
+
+    def test_es3_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES3 when no valid equals terms remain."""
+        f = Filter("p", "equals", [[1, 2]])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES3_EQUALS_NO_TERMS"
+
+    def test_es4_direct_raises_coded_error(self) -> None:
+        """Non-list value for 'does not equal' raises ES4."""
+        f = Filter("p", "does not equal", "notalist")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES4_NOT_EQUALS_EXPECTS_LIST"
+
+    def test_es4_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES4 for non-list not-equals values."""
+        f = Filter("p", "does not equal", 3.5)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES4_NOT_EQUALS_EXPECTS_LIST"
+
+    def test_es5_direct_raises_coded_error(self) -> None:
+        """All-non-scalar not-equals values raise ES5."""
+        f = Filter("p", "does not equal", [None])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES5_NOT_EQUALS_NO_TERMS"
+
+    def test_es5_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES5 when no valid not-equals terms remain."""
+        f = Filter("p", "does not equal", [[1]])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES5_NOT_EQUALS_NO_TERMS"
+
+    def test_es6_direct_raises_coded_error(self) -> None:
+        """Non-str value for 'contains' raises ES6."""
+        f = Filter("p", "contains", 5)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES6_CONTAINS_EXPECTS_STR"
+
+    def test_es6_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES6 for non-str contains values."""
+        f = Filter("p", "contains", ["list"])
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES6_CONTAINS_EXPECTS_STR"
+
+    def test_es7_direct_raises_coded_error(self) -> None:
+        """Non-str value for 'does not contain' raises ES7."""
+        f = Filter("p", "does not contain", 5)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES7_NOT_CONTAINS_EXPECTS_STR"
+
+    def test_es7_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES7 for non-str not-contains values."""
+        f = Filter("p", "does not contain", 0.5)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES7_NOT_CONTAINS_EXPECTS_STR"
+
+    def test_es8_direct_raises_coded_error(self) -> None:
+        """Non-number value for 'is greater than' raises ES8."""
+        f = Filter("p", "is greater than", "x")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES8_GT_EXPECTS_NUMBER"
+
+    def test_es8_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES8 for non-number greater-than values."""
+        f = Filter("p", "is greater than", [1])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES8_GT_EXPECTS_NUMBER"
+
+    def test_es9_direct_raises_coded_error(self) -> None:
+        """Non-number value for 'is less than' raises ES9."""
+        f = Filter("p", "is less than", "x")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES9_LT_EXPECTS_NUMBER"
+
+    def test_es9_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES9 for non-number less-than values."""
+        f = Filter("p", "is less than", None)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES9_LT_EXPECTS_NUMBER"
+
+    def test_es10_direct_raises_coded_error(self) -> None:
+        """Wrong-length list for 'is between' raises ES10."""
+        f = Filter("p", "is between", [1])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES10_BETWEEN_EXPECTS_PAIR"
+
+    def test_es10_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES10 for non-list between values."""
+        f = Filter("p", "is between", "nope")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES10_BETWEEN_EXPECTS_PAIR"
+
+    def test_es11_direct_raises_coded_error(self) -> None:
+        """Non-number lower bound raises ES11."""
+        f = Filter("p", "is between", ["low", 10])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES11_BETWEEN_LOWER_NOT_NUMBER"
+
+    def test_es11_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES11 for non-number lower bounds."""
+        f = Filter("p", "is between", [None, 10])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES11_BETWEEN_LOWER_NOT_NUMBER"
+
+    def test_es12_direct_raises_coded_error(self) -> None:
+        """Non-number upper bound raises ES12."""
+        f = Filter("p", "is between", [0, "high"])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES12_BETWEEN_UPPER_NOT_NUMBER"
+
+    def test_es12_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES12 for non-number upper bounds."""
+        f = Filter("p", "is between", [0, None])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES12_BETWEEN_UPPER_NOT_NUMBER"
+
+    def test_es13_direct_raises_coded_error(self) -> None:
+        """Unsupported operator raises ES13."""
+        f = Filter("p", "was frobnicated", None)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
+
+    def test_es13_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES13 for unsupported operators."""
+        f = Filter("p", "is within", None)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
+
+    def test_es_guards_stay_catchable_as_value_error(self) -> None:
+        """Converted ES* guards remain catchable via bare ValueError."""
+        f = Filter("p", "was frobnicated", None)  # type: ignore[arg-type]
+        with pytest.raises(ValueError) as excinfo:
+            filter_to_selector(f)
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
