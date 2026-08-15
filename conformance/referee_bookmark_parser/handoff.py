@@ -88,7 +88,8 @@ def _execute_builder(body: Mapping[str, Any]) -> object:
 def produce_handoff(vectors_root: Path) -> list[dict[str, object]]:
     """Produce the referee handoff entries from the committed corpus.
 
-    Selects every ``kind == "builder"`` vector whose API is in
+    Selects every ``kind == "builder"`` vector with a SUCCESS expectation
+    (coded-guard ``expect.error`` vectors carry no payload) whose API is in
     :data:`conformance.referee_bookmark_parser.harness.HANDOFF_ROUTES`
     (the six bookmark-payload builders across the bookmarks / funnels /
     retention / flows capabilities), re-executes each live under the
@@ -115,6 +116,10 @@ def produce_handoff(vectors_root: Path) -> list[dict[str, object]]:
         for vector in vectors
         if vector.kind == "builder"
         and str(vector.body.get("call", {}).get("api", "")) in HANDOFF_ROUTES
+        # Coded-guard error vectors (E2 coding pass) have no payload to
+        # referee — re-executing them raises by design, so they are
+        # excluded from the handoff selection.
+        and "error" not in vector.body.get("expect", {})
     ]
     if not selected:
         raise HandoffError(

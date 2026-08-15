@@ -86,13 +86,23 @@ class TestInfoAndLifecycle:
         Raises:
             AssertionError: On a missing or malformed member.
         """
+        import json
+        from pathlib import Path
+
         result = _serve(OracleServer(), "oracle.info")["result"]
         assert result["language"] == "python"
         assert result["protocol_version"] == PROTOCOL_VERSION
         assert isinstance(result["library_version"], str)
         # The committed corpus manifest pins the extraction commit; info
-        # must surface it (never `git rev-parse`, design D3 stamp rule).
-        assert result["source_commit"] == "52696743b913a0c4c152deb48af987ae412b5aee"
+        # must surface EXACTLY the manifest stamp (never `git rev-parse`,
+        # design D3 stamp rule) — asserted against the manifest itself so
+        # sanctioned re-extractions do not stale-pin this test.
+        manifest_path = (
+            Path(__file__).resolve().parents[1] / "vectors" / "manifest.json"
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert result["source_commit"] == manifest["source_commit"]
+        assert len(str(result["source_commit"])) == 40
 
     def test_shutdown_acknowledges_then_flags_exit(self) -> None:
         """``oracle.shutdown`` returns ``{ok: true}`` and sets the flag.

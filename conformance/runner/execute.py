@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import inspect
 import json
 import os
 import tempfile
@@ -36,6 +37,7 @@ from conformance.record.registry import (
     REGISTRY_BY_API,
     RegistryEntry,
     resolve_callable,
+    resolve_owner,
 )
 from conformance.runner.canonical import (
     canonicalize,
@@ -582,9 +584,12 @@ def _resolve_builder_target(entry: RegistryEntry, decoded: dict[str, Any]) -> An
 
     Module-level targets resolve through the registry; ``Workspace``
     facade methods bind to a synthetic-session facade over an EMPTY
-    ``VectorTransport`` (any network attempt fails loudly); method-on-value
-    targets (``types.CohortDefinition.to_dict``) bind to the decoded
-    ``self`` receiver from ``call.input``.
+    ``VectorTransport`` (any network attempt fails loudly); ``error_only``
+    coded-guard entries (coding-pass design §5 item 2) resolve to the
+    class itself for ``__init__`` targets and to the bound classmethod
+    otherwise — never to a decoded receiver; method-on-value targets
+    (``types.CohortDefinition.to_dict``) bind to the decoded ``self``
+    receiver from ``call.input``.
 
     Args:
         entry: The registry entry for ``call.api``.
@@ -600,6 +605,15 @@ def _resolve_builder_target(entry: RegistryEntry, decoded: dict[str, Any]) -> An
     if "." not in attr_path:
         return resolve_callable(entry)
     cls_name, method_name = attr_path.split(".", 1)
+    if entry.error_only:
+        # Coded-guard entries (coding-pass design §5 item 2): constructor
+        # targets register ``<Class>.__init__`` under the bare class api —
+        # replay calls the CLASS with the decoded kwargs; classmethod
+        # targets bind through the class (never a decoded receiver).
+        owner, attr = resolve_owner(entry)
+        if attr == "__init__":
+            return owner
+        return getattr(owner, attr)
     if cls_name == "Workspace":
         session_obj = default_builder_session()
         client = make_api_client(session_obj, VectorTransport([]), None)
@@ -612,6 +626,59 @@ def _resolve_builder_target(entry: RegistryEntry, decoded: dict[str, Any]) -> An
             "receiver in call.input"
         )
     return getattr(receiver, method_name)
+
+
+def _bind_variadic(
+    target: Any, decoded: dict[str, Any]
+) -> tuple[list[Any], dict[str, Any]]:
+    """Split decoded kwargs into (args, kwargs) for VAR_POSITIONAL targets.
+
+    The recorder binds a ``*args`` parameter under its parameter NAME
+    (``Filter.list_contains(*item_filters, **equals)`` records
+    ``input.item_filters = [...]``); replaying that name as a keyword
+    would land it in ``**equals`` instead and silently change behavior.
+    When the target signature carries a VAR_POSITIONAL parameter present
+    in ``decoded``, every preceding parameter present in ``decoded`` is
+    passed positionally (they cannot be keywords once positional variadic
+    values follow), then the variadic list is splatted.
+
+    Args:
+        target: The resolved callable.
+        decoded: Decoded ``call.input`` kwargs.
+
+    Returns:
+        ``(args, kwargs)`` to invoke the target with. Targets without a
+        recorded VAR_POSITIONAL binding get ``([], decoded)`` unchanged.
+    """
+    try:
+        signature = inspect.signature(target)
+    except (TypeError, ValueError):
+        return [], decoded
+    variadic = next(
+        (
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.kind is inspect.Parameter.VAR_POSITIONAL
+        ),
+        None,
+    )
+    if variadic is None or variadic.name not in decoded:
+        return [], decoded
+    kwargs = dict(decoded)
+    args: list[Any] = []
+    for parameter in signature.parameters.values():
+        if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+            values = kwargs.pop(parameter.name)
+            args.extend(values if isinstance(values, (list, tuple)) else [values])
+            break
+        if parameter.name not in kwargs:
+            # A preceding parameter is absent from the recorded input;
+            # positional replay is impossible (the original call cannot
+            # have omitted a positional before variadic values), so fall
+            # back to the plain keyword call untouched.
+            return [], decoded
+        args.append(kwargs.pop(parameter.name))
+    return args, kwargs
 
 
 def _run_builder(vector: LoadedVector) -> list[str]:
@@ -636,8 +703,9 @@ def _run_builder(vector: LoadedVector) -> list[str]:
     failures: list[str] = []
     raised: BaseException | None = None
     result: Any = None
+    args, kwargs = _bind_variadic(target, decoded)
     try:
-        raw = target(**decoded)
+        raw = target(*args, **kwargs)
         result = _encode_result(entry, raw)
     except Exception as exc:
         raised = exc

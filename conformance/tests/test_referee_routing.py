@@ -198,6 +198,39 @@ class TestProduceHandoff:
             assert entry["bookmark_type"] in BOOKMARK_TYPES
             assert isinstance(entry["params"], dict)
 
+    def test_handoff_skips_error_expectation_vectors(self, tmp_path: Path) -> None:
+        """Coded-guard error vectors carry no payload and are never handed off.
+
+        The E2 coding pass added builder-kind vectors with ``expect.error``
+        on handoff-routed apis (e.g. ``workspace.build_flow_params`` BB5
+        guards); re-executing them raises by design, so the handoff must
+        exclude them from selection instead of aborting.
+
+        Args:
+            tmp_path: Temporary corpus root.
+        """
+        import json
+
+        bundle = tmp_path / "bookmarks" / "test_guard.jsonl"
+        bundle.parent.mkdir(parents=True)
+        vector = {
+            "schema_version": "1.0",
+            "id": "bookmarks/workspace.build_flow_params/guard-error",
+            "kind": "builder",
+            "origin": "extracted",
+            "capability": "bookmarks",
+            "call": {"api": "workspace.build_flow_params", "input": {}},
+            "expect": {
+                "error": {
+                    "class": "ParamValidationError",
+                    "code": "BB5_FLOW_MULTIPLE_COHORT_FILTERS",
+                }
+            },
+        }
+        bundle.write_text(json.dumps(vector) + "\n", encoding="utf-8")
+        with pytest.raises(HandoffError, match="no bookmark-capability"):
+            produce_handoff(tmp_path)
+
     def test_missing_corpus_root_raises(self) -> None:
         """A bad vectors root fails loudly, never an empty handoff."""
         with pytest.raises(HandoffError, match="corpus load failed"):
