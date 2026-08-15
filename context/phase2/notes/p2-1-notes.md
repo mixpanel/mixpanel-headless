@@ -28,3 +28,11 @@
 - TS: sync-corpus.sh extended (contract/*.json -> corpus/contract/, RIG_BRANCH default -> phase2-contract-support, artifact presence gate). TS baseline npm test green (3155 corpus: 42 PASS/3113 skip, 386 passed).
 ## Remaining
 - Wait drift -> commit2 (vectors+artifacts+ledger+notes?) -> smoke (background, full 14-patch) -> TS: pin corpus.config.json to 0cc33b0..., run sync, npm test (expect 3179 corpus tests), npm run check, one TS commit.
+- Commit2 (vectors+artifacts+ledger) = 5f5f2c02587dbd6494325242a12aac4fc3861f6c.
+- Drift check: CLEAN both directions (p21-drift.log EXIT=0 DIFF_EXIT=0).
+- TS commit da3fe5c: sync-corpus extension + pin 0cc33b0e + snapshot (3179 corpus vectors; 42 PASS unchanged) + naming-exceptions 3 rows (generator flagged; C7 verify-then-add) + api-map.gen regen (407 entries). npm run check EXIT=0.
+- Smoke (D9 full 14-patch) running; will commit conformance/smoke/last-run.json on PASS. Then just check.
+- Smoke: PASS (control clean + S01..S14 all caught); commit 9d2e71d (last-run.json).
+- Oracle path: all 5 new apis resolve via REGISTRY_BY_API (oracle_py/server.py uses the same table).
+- TS naming-exceptions: generator flagged the 3 class-qualified factory names (C7 verify-then-add rule) -> 3 rows added, api-map.gen regenerated (407 entries).
+- just check running (bhalydi20 -> /tmp/p21-justcheck.log).
