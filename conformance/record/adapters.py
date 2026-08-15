@@ -1,6 +1,6 @@
 """Invocable-shape adapters for registry entries (design D4.2 items 5 and 9).
 
-Two D4.2 builder contracts have no directly-registrable callable of the
+Some recorded contracts have no directly-registrable callable of the
 right shape, so the registry targets these thin adapters instead:
 
 - ``replay_labels.selector_label_fn`` is a FACTORY returning a closure; the
@@ -12,17 +12,23 @@ right shape, so the registry targets these thin adapters instead:
   hand-authored chunk vectors (design D2/D4.2 item 9).
   :func:`iter_jsonl_lines` rebuilds a stream-backed response from raw
   chunks (preserving boundaries) and returns the reassembled lines.
+- ``RrwebAnalyzer.analyze`` is a method on a stateless class; the design
+  D3.1 item-3 rrweb seed golden freezes its output over
+  ``tests/fixtures/rrweb/sample-replay-001.json``. :func:`analyze_rrweb`
+  flattens construction + call into one registrable function.
 
-Both adapters delegate to the real library code — they add shape, never
+All adapters delegate to the real library code — they add shape, never
 behavior.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 
+from mixpanel_headless._internal.replays.rrweb_analyzer import AnalyzerResult
 from mixpanel_headless.types import UserAction
 
 
@@ -105,3 +111,31 @@ def iter_jsonl_lines(
 
     response = httpx.Response(200, headers=headers, stream=_ChunkStream(list(chunks)))
     return list(_iter_jsonl_lines(response))
+
+
+def analyze_rrweb(events: list[dict[str, Any]]) -> AnalyzerResult:
+    """Run the rrweb analyzer over a raw event stream (design D3.1 item 3).
+
+    Flattens ``RrwebAnalyzer().analyze(events)`` into one registrable
+    callable so the rrweb seed-golden vectors (PR-7) can freeze the
+    analyzer's Python output — the plan's Layer-3 rrweb golden-file
+    mandate, exercised early via the corpus.
+
+    Args:
+        events: Raw rrweb event dicts (the fixture body; order-insensitive
+            — the analyzer sorts by timestamp).
+
+    Returns:
+        The ``AnalyzerResult`` dataclass (actions, markdown_summary,
+        pages, errors) — encoded to its plain to-dict shape in expect
+        position by the generic codec.
+
+    Example:
+        ```python
+        result = analyze_rrweb([{"type": 4, "data": {"href": "/"}, "timestamp": 0}])
+        # AnalyzerResult(actions=[...], markdown_summary="...", ...)
+        ```
+    """
+    from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
+
+    return RrwebAnalyzer().analyze(events)

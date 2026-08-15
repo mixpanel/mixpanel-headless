@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 from typing import Any
 
 import pytest
@@ -20,6 +21,7 @@ from pydantic import SecretStr
 from conformance.record.codecs import (
     RecordingCallback,
     UndecodableValueError,
+    UnencodableValueError,
     decode_input_kwargs,
     decode_value,
     encode_input_kwargs,
@@ -403,3 +405,43 @@ def test_public_type_fallback_round_trips_params_models() -> None:
     decoded = decode_value(encode_input_value(tokens))
     assert decoded.access_token.get_secret_value() == "a-tok"
     assert decoded.expires_at == tokens.expires_at
+
+
+def test_nonfinite_float_tag_decodes_for_authored_vectors() -> None:
+    """The decode-only ``$type: float`` tag yields non-finite floats (PR-7).
+
+    Design D4.3's ``B20B_FILTER_VALUE_NOT_FINITE`` seed vector must pass a
+    non-finite float into the validator while D6 rule 5 keeps bare
+    ``Infinity`` tokens out of vector JSON.
+
+    Raises:
+        AssertionError: If a spelling decodes to the wrong value.
+    """
+    assert decode_value({"$type": "float", "value": "Infinity"}) == math.inf
+    assert decode_value({"$type": "float", "value": "-Infinity"}) == -math.inf
+    assert math.isnan(decode_value({"$type": "float", "value": "NaN"}))
+
+
+def test_finite_float_tag_spelling_rejected() -> None:
+    """Finite spellings of the float tag are rejected (D6 rule 3).
+
+    Finite floats must stay raw JSON number tokens so the raw-token
+    contract (and the TS lossless loader) keeps working.
+
+    Raises:
+        AssertionError: If a finite spelling decodes instead of raising.
+    """
+    with pytest.raises(UndecodableValueError, match="non-canonical spelling"):
+        decode_value({"$type": "float", "value": "18.0"})
+
+
+def test_nonfinite_floats_still_unencodable_at_record_time() -> None:
+    """The ENCODE side keeps rejecting non-finite floats (D6 rule 5).
+
+    The decode-only tag must not weaken record-time rejection.
+
+    Raises:
+        AssertionError: If a non-finite float encodes.
+    """
+    with pytest.raises(UnencodableValueError, match="non-finite float"):
+        encode_input_value(math.inf)

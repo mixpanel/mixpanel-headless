@@ -314,6 +314,14 @@ def _module_builder_entries() -> tuple[RegistryEntry, ...]:
             kind=KIND_BUILDER,
             capability="streaming",
         ),
+        # D3.1 item 3 — rrweb analyzer seed golden (PR-7 authored vectors
+        # freeze Python outputs over the sample-replay-001 fixture).
+        RegistryEntry(
+            api="rrweb_analyzer.analyze",
+            target=f"{_ADAPTERS_MODULE}:analyze_rrweb",
+            kind=KIND_BUILDER,
+            capability="replays",
+        ),
     )
 
 

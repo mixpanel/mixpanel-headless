@@ -32,6 +32,16 @@ maps to the manifest ``unserializable_input`` bucket (design D10) — never a
 silent drop. Lone surrogates and non-finite floats are rejected here at
 record time per design D6 rules 2 and 5. Decode failures raise
 :class:`UndecodableValueError` (a runner/vector bug — always loud).
+
+One decode-only tag exists for AUTHORED vectors: ``{"$type": "float",
+"value": "Infinity" | "-Infinity" | "NaN"}``. Design D6 rule 5 bans
+non-finite JSON NUMBER TOKENS from vectors (and the encoder keeps
+rejecting them), but the design D4.3 seed vector for
+``B20B_FILTER_VALUE_NOT_FINITE`` must pass a non-finite float INTO the
+validator under test — the tag carries it as data without ever putting a
+bare ``Infinity`` token in the JSON. Finite floats must stay raw number
+tokens (the D6 rule 3 raw-token contract); the decoder rejects finite
+spellings of this tag.
 """
 
 from __future__ import annotations
@@ -587,6 +597,15 @@ def _decode_tagged(payload: Mapping[str, Any]) -> Any:
             return base64.b64decode(str(payload["data"]), validate=True)
         if tag == "callback":
             return RecordingCallback(str(payload["name"]))
+        if tag == "float":
+            spelling = str(payload["value"])
+            if spelling not in ("Infinity", "-Infinity", "NaN"):
+                raise UndecodableValueError(
+                    f"$type float carries non-canonical spelling {spelling!r} "
+                    "(finite floats must be raw JSON number tokens — design "
+                    "D6 rule 3; only Infinity/-Infinity/NaN are taggable)"
+                )
+            return float(spelling)
         if tag == "CohortDefinition":
             return _decode_cohort_definition(payload)
     except (KeyError, ValueError) as exc:
