@@ -1,0 +1,3899 @@
+{
+ "generated": "2026-08-14",
+ "workspace_members": [
+  {
+   "name": "account",
+   "kind": "property",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [],
+   "returns": "_AccountUnion",
+   "iterator": false,
+   "lineno": 515,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "get account(): _AccountUnion"
+  },
+  {
+   "name": "project",
+   "kind": "property",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [],
+   "returns": "_Project",
+   "iterator": false,
+   "lineno": 520,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "get project(): _Project"
+  },
+  {
+   "name": "workspace",
+   "kind": "property",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [],
+   "returns": "_WorkspaceRef | None",
+   "iterator": false,
+   "lineno": 525,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "get workspace(): _WorkspaceRef | None"
+  },
+  {
+   "name": "session",
+   "kind": "property",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [],
+   "returns": "_Session",
+   "iterator": false,
+   "lineno": 530,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "get session(): _Session"
+  },
+  {
+   "name": "use",
+   "kind": "method",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [
+    "account",
+    "project",
+    "workspace",
+    "target",
+    "persist"
+   ],
+   "returns": "Workspace",
+   "iterator": false,
+   "lineno": 536,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async use(account, project, workspace, \u2026): Promise<Workspace>"
+  },
+  {
+   "name": "close",
+   "kind": "method",
+   "public": true,
+   "section": "LIFECYCLE & CONSTRUCTION",
+   "params": [],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 725,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async close(): Promise<void>"
+  },
+  {
+   "name": "list_workspaces",
+   "kind": "method",
+   "public": true,
+   "section": "WORKSPACE MANAGEMENT",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[PublicWorkspace]",
+   "iterator": false,
+   "lineno": 782,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_workspaces(): Promise<list[PublicWorkspace]>"
+  },
+  {
+   "name": "resolve_workspace_id",
+   "kind": "method",
+   "public": true,
+   "section": "WORKSPACE MANAGEMENT",
+   "params": [],
+   "kwonly": [],
+   "returns": "int",
+   "iterator": false,
+   "lineno": 808,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async resolve_workspace_id(): Promise<number>"
+  },
+  {
+   "name": "me",
+   "kind": "method",
+   "public": true,
+   "section": "/ME & PROJECT DISCOVERY",
+   "params": [],
+   "kwonly": [
+    "force_refresh"
+   ],
+   "returns": "Any",
+   "iterator": false,
+   "lineno": 867,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async me(force_refresh): Promise<Any>"
+  },
+  {
+   "name": "projects",
+   "kind": "method",
+   "public": true,
+   "section": "/ME & PROJECT DISCOVERY",
+   "params": [],
+   "kwonly": [
+    "refresh"
+   ],
+   "returns": "list[_Project]",
+   "iterator": false,
+   "lineno": 894,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async projects(refresh): Promise<list[_Project]>"
+  },
+  {
+   "name": "workspaces",
+   "kind": "method",
+   "public": true,
+   "section": "/ME & PROJECT DISCOVERY",
+   "params": [],
+   "kwonly": [
+    "project_id",
+    "refresh"
+   ],
+   "returns": "list[_WorkspaceRef]",
+   "iterator": false,
+   "lineno": 939,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async workspaces(project_id, refresh): Promise<list[_WorkspaceRef]>"
+  },
+  {
+   "name": "events",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [],
+   "kwonly": [
+    "limit",
+    "from_date",
+    "to_date"
+   ],
+   "returns": "list[str]",
+   "iterator": false,
+   "lineno": 1020,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async events(limit, from_date, to_date): Promise<list[str]>"
+  },
+  {
+   "name": "properties",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [
+    "event"
+   ],
+   "kwonly": [],
+   "returns": "list[str]",
+   "iterator": false,
+   "lineno": 1071,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async properties(event): Promise<list[str]>"
+  },
+  {
+   "name": "property_values",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [
+    "property_name"
+   ],
+   "kwonly": [
+    "event",
+    "limit"
+   ],
+   "returns": "list[str]",
+   "iterator": false,
+   "lineno": 1087,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async property_values(property_name, event, limit): Promise<list[str]>"
+  },
+  {
+   "name": "subproperties",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [
+    "property_name"
+   ],
+   "kwonly": [
+    "event",
+    "sample_size"
+   ],
+   "returns": "list[SubPropertyInfo]",
+   "iterator": false,
+   "lineno": 1113,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async subproperties(property_name, event, sample_size): Promise<list[SubPropertyInfo]>"
+  },
+  {
+   "name": "funnels",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[FunnelInfo]",
+   "iterator": false,
+   "lineno": 1174,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async funnels(): Promise<list[FunnelInfo]>"
+  },
+  {
+   "name": "cohorts",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[SavedCohort]",
+   "iterator": false,
+   "lineno": 1187,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async cohorts(): Promise<list[SavedCohort]>"
+  },
+  {
+   "name": "list_bookmarks",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [
+    "bookmark_type"
+   ],
+   "kwonly": [],
+   "returns": "list[BookmarkInfo]",
+   "iterator": false,
+   "lineno": 1200,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async list_bookmarks(bookmark_type): Promise<list[BookmarkInfo]>"
+  },
+  {
+   "name": "top_events",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [],
+   "kwonly": [
+    "type",
+    "limit"
+   ],
+   "returns": "list[TopEvent]",
+   "iterator": false,
+   "lineno": 1224,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async top_events(type, limit): Promise<list[TopEvent]>"
+  },
+  {
+   "name": "clear_discovery_cache",
+   "kind": "method",
+   "public": true,
+   "section": "DISCOVERY METHODS",
+   "params": [],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 1254,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async clear_discovery_cache(): Promise<void>"
+  },
+  {
+   "name": "lexicon_schemas",
+   "kind": "method",
+   "public": true,
+   "section": "LEXICON SCHEMA METHODS",
+   "params": [],
+   "kwonly": [
+    "entity_type"
+   ],
+   "returns": "list[LexiconSchema]",
+   "iterator": false,
+   "lineno": 1266,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async lexicon_schemas(entity_type): Promise<list[LexiconSchema]>"
+  },
+  {
+   "name": "lexicon_schema",
+   "kind": "method",
+   "public": true,
+   "section": "LEXICON SCHEMA METHODS",
+   "params": [
+    "entity_type",
+    "name"
+   ],
+   "kwonly": [],
+   "returns": "LexiconSchema",
+   "iterator": false,
+   "lineno": 1296,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async lexicon_schema(entity_type, name): Promise<LexiconSchema>"
+  },
+  {
+   "name": "schema_graph",
+   "kind": "method",
+   "public": true,
+   "section": "LEXICON SCHEMA METHODS",
+   "params": [],
+   "kwonly": [
+    "include_density",
+    "include_user_properties",
+    "force_refresh"
+   ],
+   "returns": "SchemaGraphResult",
+   "iterator": false,
+   "lineno": 1327,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async schema_graph(include_density, include_user_properties, force_refresh): Promise<SchemaGraphResult>"
+  },
+  {
+   "name": "stream_events",
+   "kind": "method",
+   "public": true,
+   "section": "STREAMING METHODS",
+   "params": [],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "events",
+    "where",
+    "limit",
+    "raw"
+   ],
+   "returns": "Iterator[dict[str, Any]]",
+   "iterator": true,
+   "lineno": 1381,
+   "batch": "B4",
+   "package": "core",
+   "ts_signature": "stream_events(from_date, to_date, events, \u2026): AsyncIterable<dict[str, Any]>"
+  },
+  {
+   "name": "stream_profiles",
+   "kind": "method",
+   "public": true,
+   "section": "STREAMING METHODS",
+   "params": [],
+   "kwonly": [
+    "where",
+    "cohort_id",
+    "output_properties",
+    "raw",
+    "distinct_id",
+    "distinct_ids",
+    "group_id",
+    "behaviors",
+    "as_of_timestamp",
+    "include_all_users"
+   ],
+   "returns": "Iterator[dict[str, Any]]",
+   "iterator": true,
+   "lineno": 1450,
+   "batch": "B4",
+   "package": "core",
+   "ts_signature": "stream_profiles(where, cohort_id, output_properties, \u2026): AsyncIterable<dict[str, Any]>"
+  },
+  {
+   "name": "segmentation",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "on",
+    "unit",
+    "where"
+   ],
+   "returns": "SegmentationResult",
+   "iterator": false,
+   "lineno": 1564,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async segmentation(event, from_date, to_date, \u2026): Promise<SegmentationResult>"
+  },
+  {
+   "name": "funnel",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "funnel_id"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "unit",
+    "on"
+   ],
+   "returns": "FunnelResult",
+   "iterator": false,
+   "lineno": 1599,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async funnel(funnel_id, from_date, to_date, \u2026): Promise<FunnelResult>"
+  },
+  {
+   "name": "retention",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [],
+   "kwonly": [
+    "born_event",
+    "return_event",
+    "from_date",
+    "to_date",
+    "born_where",
+    "return_where",
+    "interval",
+    "interval_count",
+    "unit"
+   ],
+   "returns": "RetentionResult",
+   "iterator": false,
+   "lineno": 1631,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async retention(born_event, return_event, from_date, \u2026): Promise<RetentionResult>"
+  },
+  {
+   "name": "event_counts",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "events"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "type",
+    "unit"
+   ],
+   "returns": "EventCountsResult",
+   "iterator": false,
+   "lineno": 1675,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async event_counts(events, from_date, to_date, \u2026): Promise<EventCountsResult>"
+  },
+  {
+   "name": "property_counts",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "event",
+    "property_name"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "type",
+    "unit",
+    "values",
+    "limit"
+   ],
+   "returns": "PropertyCountsResult",
+   "iterator": false,
+   "lineno": 1707,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async property_counts(event, property_name, from_date, \u2026): Promise<PropertyCountsResult>"
+  },
+  {
+   "name": "activity_feed",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "distinct_ids"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "limit",
+    "include_events",
+    "exclude_events",
+    "sentinel_event",
+    "paging_window",
+    "search",
+    "search_properties",
+    "use_custom_events"
+   ],
+   "returns": "ActivityFeedResult",
+   "iterator": false,
+   "lineno": 1748,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async activity_feed(distinct_ids, from_date, to_date, \u2026): Promise<ActivityFeedResult>"
+  },
+  {
+   "name": "query_saved_report",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [
+    "bookmark_type",
+    "from_date",
+    "to_date"
+   ],
+   "returns": "SavedReportResult",
+   "iterator": false,
+   "lineno": 1827,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_saved_report(bookmark_id, bookmark_type, from_date, \u2026): Promise<SavedReportResult>"
+  },
+  {
+   "name": "query_saved_flows",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "FlowsResult",
+   "iterator": false,
+   "lineno": 1863,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_saved_flows(bookmark_id): Promise<FlowsResult>"
+  },
+  {
+   "name": "frequency",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "unit",
+    "addiction_unit",
+    "event",
+    "where"
+   ],
+   "returns": "FrequencyResult",
+   "iterator": false,
+   "lineno": 1881,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async frequency(from_date, to_date, unit, \u2026): Promise<FrequencyResult>"
+  },
+  {
+   "name": "segmentation_numeric",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "on",
+    "unit",
+    "where",
+    "type"
+   ],
+   "returns": "NumericBucketResult",
+   "iterator": false,
+   "lineno": 1916,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async segmentation_numeric(event, from_date, to_date, \u2026): Promise<NumericBucketResult>"
+  },
+  {
+   "name": "segmentation_sum",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "on",
+    "unit",
+    "where"
+   ],
+   "returns": "NumericSumResult",
+   "iterator": false,
+   "lineno": 1954,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async segmentation_sum(event, from_date, to_date, \u2026): Promise<NumericSumResult>"
+  },
+  {
+   "name": "segmentation_average",
+   "kind": "method",
+   "public": true,
+   "section": "LIVE QUERY METHODS",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "on",
+    "unit",
+    "where"
+   ],
+   "returns": "NumericAverageResult",
+   "iterator": false,
+   "lineno": 1989,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async segmentation_average(event, from_date, to_date, \u2026): Promise<NumericAverageResult>"
+  },
+  {
+   "name": "query",
+   "kind": "method",
+   "public": true,
+   "section": "INSIGHTS QUERY API (Phase 029)",
+   "params": [
+    "events"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "math_property",
+    "per_user",
+    "percentile_value",
+    "group_by",
+    "where",
+    "formula",
+    "formula_label",
+    "rolling",
+    "cumulative",
+    "mode",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "QueryResult",
+   "iterator": false,
+   "lineno": 2266,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query(events, from_date, to_date, \u2026): Promise<QueryResult>"
+  },
+  {
+   "name": "build_params",
+   "kind": "method",
+   "public": true,
+   "section": "INSIGHTS QUERY API (Phase 029)",
+   "params": [
+    "events"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "math_property",
+    "per_user",
+    "percentile_value",
+    "group_by",
+    "where",
+    "formula",
+    "formula_label",
+    "rolling",
+    "cumulative",
+    "mode",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 2412,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async build_params(events, from_date, to_date, \u2026): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "query_funnel",
+   "kind": "method",
+   "public": true,
+   "section": "Funnel Query (Phase 032)",
+   "params": [
+    "steps"
+   ],
+   "kwonly": [
+    "conversion_window",
+    "conversion_window_unit",
+    "order",
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "math_property",
+    "group_by",
+    "where",
+    "exclusions",
+    "holding_constant",
+    "mode",
+    "reentry_mode",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "FunnelQueryResult",
+   "iterator": false,
+   "lineno": 3045,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_funnel(steps, conversion_window, conversion_window_unit, \u2026): Promise<FunnelQueryResult>"
+  },
+  {
+   "name": "build_funnel_params",
+   "kind": "method",
+   "public": true,
+   "section": "Funnel Query (Phase 032)",
+   "params": [
+    "steps"
+   ],
+   "kwonly": [
+    "conversion_window",
+    "conversion_window_unit",
+    "order",
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "math_property",
+    "group_by",
+    "where",
+    "exclusions",
+    "holding_constant",
+    "mode",
+    "reentry_mode",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 3183,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async build_funnel_params(steps, conversion_window, conversion_window_unit, \u2026): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "query_flow",
+   "kind": "method",
+   "public": true,
+   "section": "FLOW QUERY (inline ad-hoc)",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "forward",
+    "reverse",
+    "from_date",
+    "to_date",
+    "last",
+    "conversion_window",
+    "conversion_window_unit",
+    "count_type",
+    "cardinality",
+    "collapse_repeated",
+    "hidden_events",
+    "mode",
+    "where",
+    "data_group_id",
+    "segments",
+    "exclusions"
+   ],
+   "returns": "FlowQueryResult",
+   "iterator": false,
+   "lineno": 3833,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_flow(event, forward, reverse, \u2026): Promise<FlowQueryResult>"
+  },
+  {
+   "name": "build_flow_params",
+   "kind": "method",
+   "public": true,
+   "section": "FLOW QUERY (inline ad-hoc)",
+   "params": [
+    "event"
+   ],
+   "kwonly": [
+    "forward",
+    "reverse",
+    "from_date",
+    "to_date",
+    "last",
+    "conversion_window",
+    "conversion_window_unit",
+    "count_type",
+    "cardinality",
+    "collapse_repeated",
+    "hidden_events",
+    "mode",
+    "where",
+    "data_group_id",
+    "segments",
+    "exclusions"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 3969,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async build_flow_params(event, forward, reverse, \u2026): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "query_retention",
+   "kind": "method",
+   "public": true,
+   "section": "RETENTION QUERY (inline ad-hoc)",
+   "params": [
+    "born_event",
+    "return_event"
+   ],
+   "kwonly": [
+    "retention_unit",
+    "alignment",
+    "bucket_sizes",
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "group_by",
+    "where",
+    "mode",
+    "unbounded_mode",
+    "retention_cumulative",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "RetentionQueryResult",
+   "iterator": false,
+   "lineno": 4206,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_retention(born_event, return_event, retention_unit, \u2026): Promise<RetentionQueryResult>"
+  },
+  {
+   "name": "build_retention_params",
+   "kind": "method",
+   "public": true,
+   "section": "RETENTION QUERY (inline ad-hoc)",
+   "params": [
+    "born_event",
+    "return_event"
+   ],
+   "kwonly": [
+    "retention_unit",
+    "alignment",
+    "bucket_sizes",
+    "from_date",
+    "to_date",
+    "last",
+    "unit",
+    "math",
+    "group_by",
+    "where",
+    "mode",
+    "unbounded_mode",
+    "retention_cumulative",
+    "time_comparison",
+    "data_group_id"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 4330,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async build_retention_params(born_event, return_event, retention_unit, \u2026): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "api",
+   "kind": "property",
+   "public": true,
+   "section": "ESCAPE HATCHES",
+   "params": [],
+   "kwonly": [],
+   "returns": "MixpanelAPIClient",
+   "iterator": false,
+   "lineno": 4446,
+   "batch": "B4",
+   "package": "core",
+   "ts_signature": "get api(): MixpanelAPIClient"
+  },
+  {
+   "name": "list_dashboards",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [],
+   "kwonly": [
+    "ids"
+   ],
+   "returns": "list[Dashboard]",
+   "iterator": false,
+   "lineno": 4487,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_dashboards(ids): Promise<list[Dashboard]>"
+  },
+  {
+   "name": "create_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4517,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_dashboard(params): Promise<Dashboard>"
+  },
+  {
+   "name": "get_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4548,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_dashboard(dashboard_id): Promise<Dashboard>"
+  },
+  {
+   "name": "update_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [
+    "dashboard_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4577,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_dashboard(dashboard_id, params): Promise<Dashboard>"
+  },
+  {
+   "name": "delete_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4613,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_dashboard(dashboard_id): Promise<void>"
+  },
+  {
+   "name": "bulk_delete_dashboards",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD CRUD (Phase 024)",
+   "params": [
+    "ids"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4634,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_delete_dashboards(ids): Promise<void>"
+  },
+  {
+   "name": "favorite_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4659,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async favorite_dashboard(dashboard_id): Promise<void>"
+  },
+  {
+   "name": "unfavorite_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4680,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async unfavorite_dashboard(dashboard_id): Promise<void>"
+  },
+  {
+   "name": "pin_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4701,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async pin_dashboard(dashboard_id): Promise<void>"
+  },
+  {
+   "name": "unpin_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4722,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async unpin_dashboard(dashboard_id): Promise<void>"
+  },
+  {
+   "name": "remove_report_from_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id",
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4743,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async remove_report_from_dashboard(dashboard_id, bookmark_id): Promise<Dashboard>"
+  },
+  {
+   "name": "add_report_to_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id",
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4771,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async add_report_to_dashboard(dashboard_id, bookmark_id): Promise<Dashboard>"
+  },
+  {
+   "name": "list_blueprint_templates",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [],
+   "kwonly": [
+    "include_reports"
+   ],
+   "returns": "list[BlueprintTemplate]",
+   "iterator": false,
+   "lineno": 4806,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_blueprint_templates(include_reports): Promise<list[BlueprintTemplate]>"
+  },
+  {
+   "name": "create_blueprint",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "template_type"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4832,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_blueprint(template_type): Promise<Dashboard>"
+  },
+  {
+   "name": "get_blueprint_config",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "BlueprintConfig",
+   "iterator": false,
+   "lineno": 4861,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_blueprint_config(dashboard_id): Promise<BlueprintConfig>"
+  },
+  {
+   "name": "update_blueprint_cohorts",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "cohorts"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 4890,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_blueprint_cohorts(cohorts): Promise<void>"
+  },
+  {
+   "name": "finalize_blueprint",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4911,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async finalize_blueprint(params): Promise<Dashboard>"
+  },
+  {
+   "name": "create_rca_dashboard",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Dashboard",
+   "iterator": false,
+   "lineno": 4946,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_rca_dashboard(params): Promise<Dashboard>"
+  },
+  {
+   "name": "get_bookmark_dashboard_ids",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "list[int]",
+   "iterator": false,
+   "lineno": 4981,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_bookmark_dashboard_ids(bookmark_id): Promise<list[int]>"
+  },
+  {
+   "name": "get_dashboard_erf",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 5005,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_dashboard_erf(dashboard_id): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "update_report_link",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id",
+    "report_link_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5029,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_report_link(dashboard_id, report_link_id, params): Promise<void>"
+  },
+  {
+   "name": "update_text_card",
+   "kind": "method",
+   "public": true,
+   "section": "DASHBOARD ADVANCED OPERATIONS (Phase 024)",
+   "params": [
+    "dashboard_id",
+    "text_card_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5063,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_text_card(dashboard_id, text_card_id, params): Promise<void>"
+  },
+  {
+   "name": "list_bookmarks_v2",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [],
+   "kwonly": [
+    "bookmark_type",
+    "ids"
+   ],
+   "returns": "list[Bookmark]",
+   "iterator": false,
+   "lineno": 5101,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_bookmarks_v2(bookmark_type, ids): Promise<list[Bookmark]>"
+  },
+  {
+   "name": "create_bookmark",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Bookmark",
+   "iterator": false,
+   "lineno": 5196,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_bookmark(params): Promise<Bookmark>"
+  },
+  {
+   "name": "get_bookmark",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "Bookmark",
+   "iterator": false,
+   "lineno": 5273,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_bookmark(bookmark_id): Promise<Bookmark>"
+  },
+  {
+   "name": "update_bookmark",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "bookmark_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Bookmark",
+   "iterator": false,
+   "lineno": 5302,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_bookmark(bookmark_id, params): Promise<Bookmark>"
+  },
+  {
+   "name": "delete_bookmark",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5359,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_bookmark(bookmark_id): Promise<void>"
+  },
+  {
+   "name": "bulk_delete_bookmarks",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "ids"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5380,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_delete_bookmarks(ids): Promise<void>"
+  },
+  {
+   "name": "bulk_update_bookmarks",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "entries"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5401,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_update_bookmarks(entries): Promise<void>"
+  },
+  {
+   "name": "bookmark_linked_dashboard_ids",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [],
+   "returns": "list[int]",
+   "iterator": false,
+   "lineno": 5424,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bookmark_linked_dashboard_ids(bookmark_id): Promise<list[int]>"
+  },
+  {
+   "name": "get_bookmark_history",
+   "kind": "method",
+   "public": true,
+   "section": "BOOKMARK/REPORT CRUD (Phase 024)",
+   "params": [
+    "bookmark_id"
+   ],
+   "kwonly": [
+    "cursor",
+    "page_size"
+   ],
+   "returns": "BookmarkHistoryResponse",
+   "iterator": false,
+   "lineno": 5448,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_bookmark_history(bookmark_id, cursor, page_size): Promise<BookmarkHistoryResponse>"
+  },
+  {
+   "name": "list_cohorts_full",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [],
+   "kwonly": [
+    "data_group_id",
+    "ids"
+   ],
+   "returns": "list[Cohort]",
+   "iterator": false,
+   "lineno": 5487,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_cohorts_full(data_group_id, ids): Promise<list[Cohort]>"
+  },
+  {
+   "name": "get_cohort",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "cohort_id"
+   ],
+   "kwonly": [],
+   "returns": "Cohort",
+   "iterator": false,
+   "lineno": 5523,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_cohort(cohort_id): Promise<Cohort>"
+  },
+  {
+   "name": "create_cohort",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Cohort",
+   "iterator": false,
+   "lineno": 5552,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_cohort(params): Promise<Cohort>"
+  },
+  {
+   "name": "update_cohort",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "cohort_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Cohort",
+   "iterator": false,
+   "lineno": 5583,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_cohort(cohort_id, params): Promise<Cohort>"
+  },
+  {
+   "name": "delete_cohort",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "cohort_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5615,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_cohort(cohort_id): Promise<void>"
+  },
+  {
+   "name": "bulk_delete_cohorts",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "ids"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5636,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_delete_cohorts(ids): Promise<void>"
+  },
+  {
+   "name": "bulk_update_cohorts",
+   "kind": "method",
+   "public": true,
+   "section": "COHORT CRUD (Phase 024)",
+   "params": [
+    "entries"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5657,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_update_cohorts(entries): Promise<void>"
+  },
+  {
+   "name": "list_feature_flags",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG CRUD (Phase 025)",
+   "params": [],
+   "kwonly": [
+    "include_archived"
+   ],
+   "returns": "list[FeatureFlag]",
+   "iterator": false,
+   "lineno": 5684,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_feature_flags(include_archived): Promise<list[FeatureFlag]>"
+  },
+  {
+   "name": "create_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG CRUD (Phase 025)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "FeatureFlag",
+   "iterator": false,
+   "lineno": 5713,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_feature_flag(params): Promise<FeatureFlag>"
+  },
+  {
+   "name": "get_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG CRUD (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [],
+   "returns": "FeatureFlag",
+   "iterator": false,
+   "lineno": 5744,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_feature_flag(flag_id): Promise<FeatureFlag>"
+  },
+  {
+   "name": "update_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG CRUD (Phase 025)",
+   "params": [
+    "flag_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "FeatureFlag",
+   "iterator": false,
+   "lineno": 5773,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_feature_flag(flag_id, params): Promise<FeatureFlag>"
+  },
+  {
+   "name": "delete_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG CRUD (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5811,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_feature_flag(flag_id): Promise<void>"
+  },
+  {
+   "name": "archive_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG LIFECYCLE (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5836,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async archive_feature_flag(flag_id): Promise<void>"
+  },
+  {
+   "name": "restore_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG LIFECYCLE (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [],
+   "returns": "FeatureFlag",
+   "iterator": false,
+   "lineno": 5857,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async restore_feature_flag(flag_id): Promise<FeatureFlag>"
+  },
+  {
+   "name": "duplicate_feature_flag",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG LIFECYCLE (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [],
+   "returns": "FeatureFlag",
+   "iterator": false,
+   "lineno": 5882,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async duplicate_feature_flag(flag_id): Promise<FeatureFlag>"
+  },
+  {
+   "name": "set_flag_test_users",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG OPERATIONS (Phase 025)",
+   "params": [
+    "flag_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 5911,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async set_flag_test_users(flag_id, params): Promise<void>"
+  },
+  {
+   "name": "get_flag_history",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG OPERATIONS (Phase 025)",
+   "params": [
+    "flag_id"
+   ],
+   "kwonly": [
+    "page",
+    "page_size"
+   ],
+   "returns": "FlagHistoryResponse",
+   "iterator": false,
+   "lineno": 5936,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_flag_history(flag_id, page, page_size): Promise<FlagHistoryResponse>"
+  },
+  {
+   "name": "get_flag_limits",
+   "kind": "method",
+   "public": true,
+   "section": "FEATURE FLAG OPERATIONS (Phase 025)",
+   "params": [],
+   "kwonly": [],
+   "returns": "FlagLimitsResponse",
+   "iterator": false,
+   "lineno": 5976,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_flag_limits(): Promise<FlagLimitsResponse>"
+  },
+  {
+   "name": "list_experiments",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT CRUD (Phase 025)",
+   "params": [],
+   "kwonly": [
+    "include_archived"
+   ],
+   "returns": "list[Experiment]",
+   "iterator": false,
+   "lineno": 6003,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_experiments(include_archived): Promise<list[Experiment]>"
+  },
+  {
+   "name": "create_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT CRUD (Phase 025)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6030,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_experiment(params): Promise<Experiment>"
+  },
+  {
+   "name": "get_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT CRUD (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6061,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_experiment(experiment_id): Promise<Experiment>"
+  },
+  {
+   "name": "update_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT CRUD (Phase 025)",
+   "params": [
+    "experiment_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6090,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_experiment(experiment_id, params): Promise<Experiment>"
+  },
+  {
+   "name": "delete_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT CRUD (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6126,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_experiment(experiment_id): Promise<void>"
+  },
+  {
+   "name": "launch_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT LIFECYCLE (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6151,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async launch_experiment(experiment_id): Promise<Experiment>"
+  },
+  {
+   "name": "conclude_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT LIFECYCLE (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [
+    "params"
+   ],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6176,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async conclude_experiment(experiment_id, params): Promise<Experiment>"
+  },
+  {
+   "name": "decide_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT LIFECYCLE (Phase 025)",
+   "params": [
+    "experiment_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6210,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async decide_experiment(experiment_id, params): Promise<Experiment>"
+  },
+  {
+   "name": "archive_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT MANAGEMENT (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6247,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async archive_experiment(experiment_id): Promise<void>"
+  },
+  {
+   "name": "restore_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT MANAGEMENT (Phase 025)",
+   "params": [
+    "experiment_id"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6268,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async restore_experiment(experiment_id): Promise<Experiment>"
+  },
+  {
+   "name": "duplicate_experiment",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT MANAGEMENT (Phase 025)",
+   "params": [
+    "experiment_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Experiment",
+   "iterator": false,
+   "lineno": 6293,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async duplicate_experiment(experiment_id, params): Promise<Experiment>"
+  },
+  {
+   "name": "list_erf_experiments",
+   "kind": "method",
+   "public": true,
+   "section": "EXPERIMENT MANAGEMENT (Phase 025)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[dict[str, Any]]",
+   "iterator": false,
+   "lineno": 6330,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_erf_experiments(): Promise<list[dict[str, Any]]>"
+  },
+  {
+   "name": "list_annotations",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "tags"
+   ],
+   "returns": "list[Annotation]",
+   "iterator": false,
+   "lineno": 6355,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_annotations(from_date, to_date, tags): Promise<list[Annotation]>"
+  },
+  {
+   "name": "create_annotation",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Annotation",
+   "iterator": false,
+   "lineno": 6392,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_annotation(params): Promise<Annotation>"
+  },
+  {
+   "name": "get_annotation",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [
+    "annotation_id"
+   ],
+   "kwonly": [],
+   "returns": "Annotation",
+   "iterator": false,
+   "lineno": 6422,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_annotation(annotation_id): Promise<Annotation>"
+  },
+  {
+   "name": "update_annotation",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [
+    "annotation_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "Annotation",
+   "iterator": false,
+   "lineno": 6448,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_annotation(annotation_id, params): Promise<Annotation>"
+  },
+  {
+   "name": "delete_annotation",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [
+    "annotation_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6479,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_annotation(annotation_id): Promise<void>"
+  },
+  {
+   "name": "list_annotation_tags",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[AnnotationTag]",
+   "iterator": false,
+   "lineno": 6500,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_annotation_tags(): Promise<list[AnnotationTag]>"
+  },
+  {
+   "name": "create_annotation_tag",
+   "kind": "method",
+   "public": true,
+   "section": "Annotations (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "AnnotationTag",
+   "iterator": false,
+   "lineno": 6524,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_annotation_tag(params): Promise<AnnotationTag>"
+  },
+  {
+   "name": "list_webhooks",
+   "kind": "method",
+   "public": true,
+   "section": "Webhook CRUD (Phase 026)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[ProjectWebhook]",
+   "iterator": false,
+   "lineno": 6556,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_webhooks(): Promise<list[ProjectWebhook]>"
+  },
+  {
+   "name": "create_webhook",
+   "kind": "method",
+   "public": true,
+   "section": "Webhook CRUD (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "WebhookMutationResult",
+   "iterator": false,
+   "lineno": 6580,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_webhook(params): Promise<WebhookMutationResult>"
+  },
+  {
+   "name": "update_webhook",
+   "kind": "method",
+   "public": true,
+   "section": "Webhook CRUD (Phase 026)",
+   "params": [
+    "webhook_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "WebhookMutationResult",
+   "iterator": false,
+   "lineno": 6609,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_webhook(webhook_id, params): Promise<WebhookMutationResult>"
+  },
+  {
+   "name": "delete_webhook",
+   "kind": "method",
+   "public": true,
+   "section": "Webhook CRUD (Phase 026)",
+   "params": [
+    "webhook_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6641,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_webhook(webhook_id): Promise<void>"
+  },
+  {
+   "name": "test_webhook",
+   "kind": "method",
+   "public": true,
+   "section": "Webhook CRUD (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "WebhookTestResult",
+   "iterator": false,
+   "lineno": 6662,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async test_webhook(params): Promise<WebhookTestResult>"
+  },
+  {
+   "name": "list_alerts",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [],
+   "kwonly": [
+    "bookmark_id",
+    "skip_user_filter"
+   ],
+   "returns": "list[CustomAlert]",
+   "iterator": false,
+   "lineno": 6696,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_alerts(bookmark_id, skip_user_filter): Promise<list[CustomAlert]>"
+  },
+  {
+   "name": "create_alert",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "CustomAlert",
+   "iterator": false,
+   "lineno": 6731,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_alert(params): Promise<CustomAlert>"
+  },
+  {
+   "name": "get_alert",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "alert_id"
+   ],
+   "kwonly": [],
+   "returns": "CustomAlert",
+   "iterator": false,
+   "lineno": 6767,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_alert(alert_id): Promise<CustomAlert>"
+  },
+  {
+   "name": "update_alert",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "alert_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "CustomAlert",
+   "iterator": false,
+   "lineno": 6793,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_alert(alert_id, params): Promise<CustomAlert>"
+  },
+  {
+   "name": "delete_alert",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "alert_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6822,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_alert(alert_id): Promise<void>"
+  },
+  {
+   "name": "bulk_delete_alerts",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "ids"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 6843,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_delete_alerts(ids): Promise<void>"
+  },
+  {
+   "name": "get_alert_count",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [],
+   "kwonly": [
+    "alert_type"
+   ],
+   "returns": "AlertCount",
+   "iterator": false,
+   "lineno": 6864,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_alert_count(alert_type): Promise<AlertCount>"
+  },
+  {
+   "name": "get_alert_history",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "alert_id"
+   ],
+   "kwonly": [
+    "page_size",
+    "next_cursor",
+    "previous_cursor"
+   ],
+   "returns": "AlertHistoryResponse",
+   "iterator": false,
+   "lineno": 6891,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_alert_history(alert_id, page_size, next_cursor, \u2026): Promise<AlertHistoryResponse>"
+  },
+  {
+   "name": "test_alert",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 6933,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async test_alert(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "get_alert_screenshot_url",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "gcs_key"
+   ],
+   "kwonly": [],
+   "returns": "AlertScreenshotResponse",
+   "iterator": false,
+   "lineno": 6964,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_alert_screenshot_url(gcs_key): Promise<AlertScreenshotResponse>"
+  },
+  {
+   "name": "validate_alerts_for_bookmark",
+   "kind": "method",
+   "public": true,
+   "section": "Alert CRUD (Phase 026)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "ValidateAlertsForBookmarkResponse",
+   "iterator": false,
+   "lineno": 6990,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async validate_alerts_for_bookmark(params): Promise<ValidateAlertsForBookmarkResponse>"
+  },
+  {
+   "name": "get_event_definitions",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [],
+   "kwonly": [
+    "names"
+   ],
+   "returns": "list[EventDefinition]",
+   "iterator": false,
+   "lineno": 7034,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_event_definitions(names): Promise<list[EventDefinition]>"
+  },
+  {
+   "name": "update_event_definition",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "event_name",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "EventDefinition",
+   "iterator": false,
+   "lineno": 7064,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_event_definition(event_name, params): Promise<EventDefinition>"
+  },
+  {
+   "name": "delete_event_definition",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "event_name"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 7097,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_event_definition(event_name): Promise<void>"
+  },
+  {
+   "name": "bulk_update_event_definitions",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[EventDefinition]",
+   "iterator": false,
+   "lineno": 7118,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_update_event_definitions(params): Promise<list[EventDefinition]>"
+  },
+  {
+   "name": "get_property_definitions",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [],
+   "kwonly": [
+    "names",
+    "resource_type"
+   ],
+   "returns": "list[PropertyDefinition]",
+   "iterator": false,
+   "lineno": 7152,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_property_definitions(names, resource_type): Promise<list[PropertyDefinition]>"
+  },
+  {
+   "name": "update_property_definition",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "property_name",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "PropertyDefinition",
+   "iterator": false,
+   "lineno": 7192,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_property_definition(property_name, params): Promise<PropertyDefinition>"
+  },
+  {
+   "name": "bulk_update_property_definitions",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[PropertyDefinition]",
+   "iterator": false,
+   "lineno": 7225,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_update_property_definitions(params): Promise<list[PropertyDefinition]>"
+  },
+  {
+   "name": "list_lexicon_tags",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[LexiconTag]",
+   "iterator": false,
+   "lineno": 7269,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_lexicon_tags(): Promise<list[LexiconTag]>"
+  },
+  {
+   "name": "create_lexicon_tag",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "LexiconTag",
+   "iterator": false,
+   "lineno": 7307,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_lexicon_tag(params): Promise<LexiconTag>"
+  },
+  {
+   "name": "update_lexicon_tag",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "tag_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "LexiconTag",
+   "iterator": false,
+   "lineno": 7333,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_lexicon_tag(tag_id, params): Promise<LexiconTag>"
+  },
+  {
+   "name": "delete_lexicon_tag",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Data Definitions / Lexicon (Phase 027)",
+   "params": [
+    "tag_name"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 7362,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_lexicon_tag(tag_name): Promise<void>"
+  },
+  {
+   "name": "list_drop_filters",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Drop Filters (Phase 027)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[DropFilter]",
+   "iterator": false,
+   "lineno": 7387,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_drop_filters(): Promise<list[DropFilter]>"
+  },
+  {
+   "name": "create_drop_filter",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Drop Filters (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[DropFilter]",
+   "iterator": false,
+   "lineno": 7410,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_drop_filter(params): Promise<list[DropFilter]>"
+  },
+  {
+   "name": "update_drop_filter",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Drop Filters (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[DropFilter]",
+   "iterator": false,
+   "lineno": 7441,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_drop_filter(params): Promise<list[DropFilter]>"
+  },
+  {
+   "name": "delete_drop_filter",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Drop Filters (Phase 027)",
+   "params": [
+    "drop_filter_id"
+   ],
+   "kwonly": [],
+   "returns": "list[DropFilter]",
+   "iterator": false,
+   "lineno": 7471,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_drop_filter(drop_filter_id): Promise<list[DropFilter]>"
+  },
+  {
+   "name": "get_drop_filter_limits",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Drop Filters (Phase 027)",
+   "params": [],
+   "kwonly": [],
+   "returns": "DropFilterLimitsResponse",
+   "iterator": false,
+   "lineno": 7496,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_drop_filter_limits(): Promise<DropFilterLimitsResponse>"
+  },
+  {
+   "name": "list_custom_properties",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[CustomProperty]",
+   "iterator": false,
+   "lineno": 7523,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_custom_properties(): Promise<list[CustomProperty]>"
+  },
+  {
+   "name": "create_custom_property",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "CustomProperty",
+   "iterator": false,
+   "lineno": 7568,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_custom_property(params): Promise<CustomProperty>"
+  },
+  {
+   "name": "get_custom_property",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [
+    "property_id"
+   ],
+   "kwonly": [],
+   "returns": "CustomProperty",
+   "iterator": false,
+   "lineno": 7604,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_custom_property(property_id): Promise<CustomProperty>"
+  },
+  {
+   "name": "update_custom_property",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [
+    "property_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "CustomProperty",
+   "iterator": false,
+   "lineno": 7630,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_custom_property(property_id, params): Promise<CustomProperty>"
+  },
+  {
+   "name": "delete_custom_property",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [
+    "property_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 7662,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_custom_property(property_id): Promise<void>"
+  },
+  {
+   "name": "validate_custom_property",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Properties (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 7683,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async validate_custom_property(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "list_lookup_tables",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [],
+   "kwonly": [
+    "data_group_id"
+   ],
+   "returns": "list[LookupTable]",
+   "iterator": false,
+   "lineno": 7722,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_lookup_tables(data_group_id): Promise<list[LookupTable]>"
+  },
+  {
+   "name": "upload_lookup_table",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [
+    "poll_interval",
+    "max_poll_seconds"
+   ],
+   "returns": "LookupTable",
+   "iterator": false,
+   "lineno": 7750,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async upload_lookup_table(params, poll_interval, max_poll_seconds): Promise<LookupTable>"
+  },
+  {
+   "name": "mark_lookup_table_ready",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "LookupTable",
+   "iterator": false,
+   "lineno": 7905,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async mark_lookup_table_ready(params): Promise<LookupTable>"
+  },
+  {
+   "name": "get_lookup_upload_url",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "content_type"
+   ],
+   "kwonly": [],
+   "returns": "LookupTableUploadUrl",
+   "iterator": false,
+   "lineno": 7945,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_lookup_upload_url(content_type): Promise<LookupTableUploadUrl>"
+  },
+  {
+   "name": "get_lookup_upload_status",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "upload_id"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 7973,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_lookup_upload_status(upload_id): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "update_lookup_table",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "data_group_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "LookupTable",
+   "iterator": false,
+   "lineno": 7998,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_lookup_table(data_group_id, params): Promise<LookupTable>"
+  },
+  {
+   "name": "delete_lookup_tables",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "data_group_ids"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 8030,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_lookup_tables(data_group_ids): Promise<void>"
+  },
+  {
+   "name": "download_lookup_table",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "data_group_id"
+   ],
+   "kwonly": [
+    "file_name",
+    "limit"
+   ],
+   "returns": "bytes",
+   "iterator": false,
+   "lineno": 8051,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async download_lookup_table(data_group_id, file_name, limit): Promise<bytes>"
+  },
+  {
+   "name": "get_lookup_download_url",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Lookup Tables (Phase 027)",
+   "params": [
+    "data_group_id"
+   ],
+   "kwonly": [],
+   "returns": "str",
+   "iterator": false,
+   "lineno": 8086,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_lookup_download_url(data_group_id): Promise<string>"
+  },
+  {
+   "name": "create_custom_event",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Events (Phase 027)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "CustomEvent",
+   "iterator": false,
+   "lineno": 8115,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_custom_event(params): Promise<CustomEvent>"
+  },
+  {
+   "name": "list_custom_events",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Events (Phase 027)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[EventDefinition]",
+   "iterator": false,
+   "lineno": 8156,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_custom_events(): Promise<list[EventDefinition]>"
+  },
+  {
+   "name": "update_custom_event",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Events (Phase 027)",
+   "params": [
+    "custom_event_id",
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "EventDefinition",
+   "iterator": false,
+   "lineno": 8179,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_custom_event(custom_event_id, params): Promise<EventDefinition>"
+  },
+  {
+   "name": "delete_custom_event",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Custom Events (Phase 027)",
+   "params": [
+    "custom_event_id"
+   ],
+   "kwonly": [],
+   "returns": "None",
+   "iterator": false,
+   "lineno": 8233,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_custom_event(custom_event_id): Promise<void>"
+  },
+  {
+   "name": "get_tracking_metadata",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Tracking & History (Phase 027)",
+   "params": [
+    "event_name"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8269,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_tracking_metadata(event_name): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "get_event_history",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Tracking & History (Phase 027)",
+   "params": [
+    "event_name"
+   ],
+   "kwonly": [],
+   "returns": "list[dict[str, Any]]",
+   "iterator": false,
+   "lineno": 8297,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_event_history(event_name): Promise<list[dict[str, Any]]>"
+  },
+  {
+   "name": "get_property_history",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Tracking & History (Phase 027)",
+   "params": [
+    "property_name",
+    "entity_type"
+   ],
+   "kwonly": [],
+   "returns": "list[dict[str, Any]]",
+   "iterator": false,
+   "lineno": 8324,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_property_history(property_name, entity_type): Promise<list[dict[str, Any]]>"
+  },
+  {
+   "name": "export_lexicon",
+   "kind": "method",
+   "public": true,
+   "section": "Data Governance \u2014 Tracking & History (Phase 027)",
+   "params": [],
+   "kwonly": [
+    "export_types"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8357,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async export_lexicon(export_types): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "list_schema_registry",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [],
+   "kwonly": [
+    "entity_type"
+   ],
+   "returns": "list[SchemaEntry]",
+   "iterator": false,
+   "lineno": 8393,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_schema_registry(entity_type): Promise<list[SchemaEntry]>"
+  },
+  {
+   "name": "create_schema",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [
+    "entity_type",
+    "entity_name",
+    "schema_json"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8424,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_schema(entity_type, entity_name, schema_json): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "create_schemas_bulk",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "BulkCreateSchemasResponse",
+   "iterator": false,
+   "lineno": 8457,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_schemas_bulk(params): Promise<BulkCreateSchemasResponse>"
+  },
+  {
+   "name": "update_schema",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [
+    "entity_type",
+    "entity_name",
+    "schema_json"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8491,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_schema(entity_type, entity_name, schema_json): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "update_schemas_bulk",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[BulkPatchResult]",
+   "iterator": false,
+   "lineno": 8524,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_schemas_bulk(params): Promise<list[BulkPatchResult]>"
+  },
+  {
+   "name": "delete_schemas",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Registry CRUD (Phase 028)",
+   "params": [],
+   "kwonly": [
+    "entity_type",
+    "entity_name"
+   ],
+   "returns": "DeleteSchemasResponse",
+   "iterator": false,
+   "lineno": 8557,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_schemas(entity_type, entity_name): Promise<DeleteSchemasResponse>"
+  },
+  {
+   "name": "get_schema_enforcement",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Enforcement (Phase 028)",
+   "params": [],
+   "kwonly": [
+    "fields"
+   ],
+   "returns": "SchemaEnforcementConfig",
+   "iterator": false,
+   "lineno": 8602,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_schema_enforcement(fields): Promise<SchemaEnforcementConfig>"
+  },
+  {
+   "name": "init_schema_enforcement",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Enforcement (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8632,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async init_schema_enforcement(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "update_schema_enforcement",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Enforcement (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8662,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_schema_enforcement(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "replace_schema_enforcement",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Enforcement (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8692,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async replace_schema_enforcement(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "delete_schema_enforcement",
+   "kind": "method",
+   "public": true,
+   "section": "Schema Enforcement (Phase 028)",
+   "params": [],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8724,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async delete_schema_enforcement(): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "run_audit",
+   "kind": "method",
+   "public": true,
+   "section": "Data Auditing (Phase 028)",
+   "params": [],
+   "kwonly": [],
+   "returns": "AuditResponse",
+   "iterator": false,
+   "lineno": 8748,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async run_audit(): Promise<AuditResponse>"
+  },
+  {
+   "name": "run_audit_events_only",
+   "kind": "method",
+   "public": true,
+   "section": "Data Auditing (Phase 028)",
+   "params": [],
+   "kwonly": [],
+   "returns": "AuditResponse",
+   "iterator": false,
+   "lineno": 8784,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async run_audit_events_only(): Promise<AuditResponse>"
+  },
+  {
+   "name": "list_data_volume_anomalies",
+   "kind": "method",
+   "public": true,
+   "section": "Data Volume Anomalies (Phase 028)",
+   "params": [],
+   "kwonly": [
+    "query_params"
+   ],
+   "returns": "list[DataVolumeAnomaly]",
+   "iterator": false,
+   "lineno": 8821,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_data_volume_anomalies(query_params): Promise<list[DataVolumeAnomaly]>"
+  },
+  {
+   "name": "update_anomaly",
+   "kind": "method",
+   "public": true,
+   "section": "Data Volume Anomalies (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8850,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async update_anomaly(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "bulk_update_anomalies",
+   "kind": "method",
+   "public": true,
+   "section": "Data Volume Anomalies (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 8878,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async bulk_update_anomalies(params): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "list_deletion_requests",
+   "kind": "method",
+   "public": true,
+   "section": "Event Deletion Requests (Phase 028)",
+   "params": [],
+   "kwonly": [],
+   "returns": "list[EventDeletionRequest]",
+   "iterator": false,
+   "lineno": 8911,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async list_deletion_requests(): Promise<list[EventDeletionRequest]>"
+  },
+  {
+   "name": "create_deletion_request",
+   "kind": "method",
+   "public": true,
+   "section": "Event Deletion Requests (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[EventDeletionRequest]",
+   "iterator": false,
+   "lineno": 8932,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async create_deletion_request(params): Promise<list[EventDeletionRequest]>"
+  },
+  {
+   "name": "cancel_deletion_request",
+   "kind": "method",
+   "public": true,
+   "section": "Event Deletion Requests (Phase 028)",
+   "params": [
+    "request_id"
+   ],
+   "kwonly": [],
+   "returns": "list[EventDeletionRequest]",
+   "iterator": false,
+   "lineno": 8967,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async cancel_deletion_request(request_id): Promise<list[EventDeletionRequest]>"
+  },
+  {
+   "name": "preview_deletion_filters",
+   "kind": "method",
+   "public": true,
+   "section": "Event Deletion Requests (Phase 028)",
+   "params": [
+    "params"
+   ],
+   "kwonly": [],
+   "returns": "list[dict[str, Any]]",
+   "iterator": false,
+   "lineno": 8991,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async preview_deletion_filters(params): Promise<list[dict[str, Any]]>"
+  },
+  {
+   "name": "query_user",
+   "kind": "method",
+   "public": true,
+   "section": "QUERY USER ENGINE",
+   "params": [],
+   "kwonly": [
+    "where",
+    "cohort",
+    "properties",
+    "sort_by",
+    "sort_order",
+    "limit",
+    "search",
+    "distinct_id",
+    "distinct_ids",
+    "group_id",
+    "as_of",
+    "mode",
+    "aggregate",
+    "aggregate_property",
+    "percentile",
+    "segment_by",
+    "parallel",
+    "workers",
+    "include_all_users"
+   ],
+   "returns": "UserQueryResult",
+   "iterator": false,
+   "lineno": 9417,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async query_user(where, cohort, properties, \u2026): Promise<UserQueryResult>"
+  },
+  {
+   "name": "build_user_params",
+   "kind": "method",
+   "public": true,
+   "section": "QUERY USER ENGINE",
+   "params": [],
+   "kwonly": [
+    "where",
+    "cohort",
+    "properties",
+    "sort_by",
+    "sort_order",
+    "search",
+    "distinct_id",
+    "distinct_ids",
+    "group_id",
+    "as_of",
+    "mode",
+    "aggregate",
+    "aggregate_property",
+    "percentile",
+    "segment_by",
+    "limit",
+    "parallel",
+    "workers",
+    "include_all_users"
+   ],
+   "returns": "dict[str, Any]",
+   "iterator": false,
+   "lineno": 9578,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async build_user_params(where, cohort, properties, \u2026): Promise<Record<string, unknown>>"
+  },
+  {
+   "name": "get_business_context",
+   "kind": "method",
+   "public": true,
+   "section": "Markdown documentation that grounds AI assistants in the",
+   "params": [],
+   "kwonly": [
+    "level",
+    "organization_id"
+   ],
+   "returns": "BusinessContext",
+   "iterator": false,
+   "lineno": 10099,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_business_context(level, organization_id): Promise<BusinessContext>"
+  },
+  {
+   "name": "set_business_context",
+   "kind": "method",
+   "public": true,
+   "section": "Markdown documentation that grounds AI assistants in the",
+   "params": [
+    "content"
+   ],
+   "kwonly": [
+    "level",
+    "organization_id"
+   ],
+   "returns": "BusinessContext",
+   "iterator": false,
+   "lineno": 10175,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async set_business_context(content, level, organization_id): Promise<BusinessContext>"
+  },
+  {
+   "name": "clear_business_context",
+   "kind": "method",
+   "public": true,
+   "section": "Markdown documentation that grounds AI assistants in the",
+   "params": [],
+   "kwonly": [
+    "level",
+    "organization_id"
+   ],
+   "returns": "BusinessContext",
+   "iterator": false,
+   "lineno": 10262,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async clear_business_context(level, organization_id): Promise<BusinessContext>"
+  },
+  {
+   "name": "get_business_context_chain",
+   "kind": "method",
+   "public": true,
+   "section": "Markdown documentation that grounds AI assistants in the",
+   "params": [],
+   "kwonly": [],
+   "returns": "BusinessContextChain",
+   "iterator": false,
+   "lineno": 10306,
+   "batch": "B6",
+   "package": "core",
+   "ts_signature": "async get_business_context_chain(): Promise<BusinessContextChain>"
+  },
+  {
+   "name": "list_replays",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [],
+   "kwonly": [
+    "distinct_id",
+    "replay_ids",
+    "from_date",
+    "to_date",
+    "limit"
+   ],
+   "returns": "list[ReplaySummary]",
+   "iterator": false,
+   "lineno": 10373,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async list_replays(distinct_id, replay_ids, from_date, \u2026): Promise<list[ReplaySummary]>"
+  },
+  {
+   "name": "events_for_replay",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_id"
+   ],
+   "kwonly": [
+    "event_properties",
+    "from_date",
+    "to_date"
+   ],
+   "returns": "list[ReplayEvent]",
+   "iterator": false,
+   "lineno": 10446,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async events_for_replay(replay_id, event_properties, from_date, \u2026): Promise<list[ReplayEvent]>"
+  },
+  {
+   "name": "events_for_replays",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_ids"
+   ],
+   "kwonly": [
+    "event_properties",
+    "from_date",
+    "to_date"
+   ],
+   "returns": "dict[str, list[ReplayEvent]]",
+   "iterator": false,
+   "lineno": 10484,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async events_for_replays(replay_ids, event_properties, from_date, \u2026): Promise<dict[str, list[ReplayEvent]]>"
+  },
+  {
+   "name": "sign_replay",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_id"
+   ],
+   "kwonly": [
+    "env"
+   ],
+   "returns": "SignedReplay",
+   "iterator": false,
+   "lineno": 10521,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async sign_replay(replay_id, env): Promise<SignedReplay>"
+  },
+  {
+   "name": "sign_replays",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_ids"
+   ],
+   "kwonly": [
+    "env"
+   ],
+   "returns": "list[SignedReplay]",
+   "iterator": false,
+   "lineno": 10543,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async sign_replays(replay_ids, env): Promise<list[SignedReplay]>"
+  },
+  {
+   "name": "fetch_replay",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_id"
+   ],
+   "kwonly": [
+    "distinct_id",
+    "env",
+    "retention_days",
+    "max_files",
+    "include_mixpanel_events",
+    "event_properties",
+    "cdn_concurrency"
+   ],
+   "returns": "Replay",
+   "iterator": false,
+   "lineno": 10564,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async fetch_replay(replay_id, distinct_id, env, \u2026): Promise<Replay>"
+  },
+  {
+   "name": "stream_replay",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_id"
+   ],
+   "kwonly": [
+    "env",
+    "retention_days",
+    "max_files",
+    "re_sign_on_expiry",
+    "cdn_concurrency"
+   ],
+   "returns": "Iterator[dict[str, Any]]",
+   "iterator": true,
+   "lineno": 10672,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "stream_replay(replay_id, env, retention_days, \u2026): AsyncIterable<dict[str, Any]>"
+  },
+  {
+   "name": "fetch_replays",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_ids"
+   ],
+   "kwonly": [
+    "env",
+    "max_files",
+    "include_mixpanel_events",
+    "event_properties",
+    "concurrency",
+    "cdn_concurrency",
+    "retention_by_id",
+    "distinct_id_by_id"
+   ],
+   "returns": "ReplayBundle",
+   "iterator": false,
+   "lineno": 10734,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async fetch_replays(replay_ids, env, max_files, \u2026): Promise<ReplayBundle>"
+  },
+  {
+   "name": "replays_for_user",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "distinct_id"
+   ],
+   "kwonly": [
+    "from_date",
+    "to_date",
+    "limit",
+    "include_mixpanel_events",
+    "event_properties"
+   ],
+   "returns": "ReplayBundle",
+   "iterator": false,
+   "lineno": 10875,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async replays_for_user(distinct_id, from_date, to_date, \u2026): Promise<ReplayBundle>"
+  },
+  {
+   "name": "analyze_replay",
+   "kind": "method",
+   "public": true,
+   "section": "Session Replay (044-session-replay)",
+   "params": [
+    "replay_id"
+   ],
+   "kwonly": [],
+   "returns": "str",
+   "iterator": false,
+   "lineno": 10940,
+   "batch": "B5",
+   "package": "core",
+   "ts_signature": "async analyze_replay(replay_id): Promise<string>"
+  }
+ ],
+ "exports": [
+  "Workspace",
+  "Account",
+  "AccountType",
+  "OAuthBrowserAccount",
+  "OAuthTokenAccount",
+  "Region",
+  "ServiceAccount",
+  "Project",
+  "Session",
+  "WorkspaceRef",
+  "AccountSummary",
+  "AccountTestResult",
+  "OAuthLoginResult",
+  "Target",
+  "accounts",
+  "session",
+  "targets",
+  "login_unified",
+  "AccountInUseError",
+  "validate_bookmark",
+  "TimeUnit",
+  "HourDayUnit",
+  "QueryTimeUnit",
+  "CountType",
+  "MathType",
+  "PerUserAggregation",
+  "FunnelMathType",
+  "ConversionWindowUnit",
+  "FunnelOrder",
+  "FunnelMode",
+  "RetentionAlignment",
+  "RetentionMode",
+  "RetentionMathType",
+  "FlowCountType",
+  "FlowChartType",
+  "FlowConversionWindowUnit",
+  "FlowNodeType",
+  "FlowAnchorType",
+  "InsightsMode",
+  "CustomPropertyType",
+  "FilterOperator",
+  "FilterPropertyType",
+  "FilterDateUnit",
+  "FiltersCombinator",
+  "SegmentMethod",
+  "FunnelReentryMode",
+  "RetentionUnboundedMode",
+  "TimeComparisonType",
+  "TimeComparisonUnit",
+  "CohortAggregationType",
+  "FlowSessionEvent",
+  "FrequencyFilterOperator",
+  "QueryMeta",
+  "FunnelStepData",
+  "RetentionCohortData",
+  "FlowStepNode",
+  "FlowEdge",
+  "MixpanelHeadlessError",
+  "BookmarkValidationError",
+  "ValidationError",
+  "APIError",
+  "ConfigError",
+  "InvalidArgumentError",
+  "AccountNotFoundError",
+  "AccountExistsError",
+  "ProjectNotFoundError",
+  "AuthenticationError",
+  "RateLimitError",
+  "QueryError",
+  "ServerError",
+  "EventNotFoundError",
+  "DateRangeTooLargeError",
+  "OAuthError",
+  "RegionProbeError",
+  "RegionProbeNetworkError",
+  "WorkspaceScopeError",
+  "BusinessContextValidationError",
+  "SessionReplayError",
+  "SessionReplayAccessError",
+  "SignedURLExpiredError",
+  "ReplayNotFoundError",
+  "UnsupportedReplayFormatError",
+  "Replay",
+  "ReplayBundle",
+  "ReplayEvent",
+  "ReplaySummary",
+  "SignedReplay",
+  "UserAction",
+  "default_label_fn",
+  "selector_label_fn",
+  "url_normalizer",
+  "SegmentationResult",
+  "FunnelResult",
+  "FunnelResultStep",
+  "RetentionResult",
+  "CohortInfo",
+  "FunnelInfo",
+  "SavedCohort",
+  "SubPropertyInfo",
+  "TopEvent",
+  "EventCountsResult",
+  "PropertyCountsResult",
+  "BookmarkInfo",
+  "BookmarkType",
+  "SavedReportResult",
+  "SavedReportType",
+  "SchemaGraphResult",
+  "FlowsResult",
+  "UserEvent",
+  "ActivityFeedResult",
+  "FrequencyResult",
+  "NumericBucketResult",
+  "NumericSumResult",
+  "NumericAverageResult",
+  "EntityType",
+  "LexiconMetadata",
+  "LexiconProperty",
+  "LexiconDefinition",
+  "LexiconSchema",
+  "ProfilePageResult",
+  "PublicWorkspace",
+  "CursorPagination",
+  "PaginatedResponse",
+  "Dashboard",
+  "CreateDashboardParams",
+  "DashboardRow",
+  "DashboardRowContent",
+  "UpdateDashboardParams",
+  "BlueprintTemplate",
+  "BlueprintConfig",
+  "BlueprintCard",
+  "BlueprintFinishParams",
+  "CreateRcaDashboardParams",
+  "RcaSourceData",
+  "UpdateReportLinkParams",
+  "UpdateTextCardParams",
+  "Bookmark",
+  "BookmarkMetadata",
+  "CreateBookmarkParams",
+  "UpdateBookmarkParams",
+  "BulkUpdateBookmarkEntry",
+  "BookmarkHistoryResponse",
+  "BookmarkHistoryPagination",
+  "CohortCriteria",
+  "CohortDefinition",
+  "CohortBreakdown",
+  "CohortMetric",
+  "PropertyInput",
+  "InlineCustomProperty",
+  "CustomPropertyRef",
+  "PropertySpec",
+  "Cohort",
+  "CohortCreator",
+  "CreateCohortParams",
+  "UpdateCohortParams",
+  "BulkUpdateCohortEntry",
+  "FeatureFlagStatus",
+  "ServingMethod",
+  "FlagContractStatus",
+  "ExperimentStatus",
+  "ExperimentCreator",
+  "FeatureFlag",
+  "CreateFeatureFlagParams",
+  "UpdateFeatureFlagParams",
+  "SetTestUsersParams",
+  "FlagHistoryParams",
+  "FlagHistoryResponse",
+  "FlagLimitsResponse",
+  "Experiment",
+  "CreateExperimentParams",
+  "UpdateExperimentParams",
+  "ExperimentConcludeParams",
+  "ExperimentDecideParams",
+  "DuplicateExperimentParams",
+  "Annotation",
+  "AnnotationUser",
+  "AnnotationTag",
+  "CreateAnnotationParams",
+  "UpdateAnnotationParams",
+  "CreateAnnotationTagParams",
+  "ProjectWebhook",
+  "WebhookAuthType",
+  "CreateWebhookParams",
+  "UpdateWebhookParams",
+  "WebhookTestParams",
+  "WebhookTestResult",
+  "WebhookMutationResult",
+  "CustomAlert",
+  "AlertBookmark",
+  "AlertCreator",
+  "AlertWorkspace",
+  "AlertProject",
+  "AlertFrequencyPreset",
+  "CreateAlertParams",
+  "UpdateAlertParams",
+  "AlertCount",
+  "AlertHistoryResponse",
+  "AlertHistoryPagination",
+  "AlertScreenshotResponse",
+  "AlertValidation",
+  "ValidateAlertsForBookmarkParams",
+  "ValidateAlertsForBookmarkResponse",
+  "PropertyResourceType",
+  "CustomPropertyResourceType",
+  "EventDefinition",
+  "PropertyDefinition",
+  "UpdateEventDefinitionParams",
+  "UpdatePropertyDefinitionParams",
+  "BulkEventUpdate",
+  "BulkUpdateEventsParams",
+  "BulkPropertyUpdate",
+  "BulkUpdatePropertiesParams",
+  "LexiconTag",
+  "CreateTagParams",
+  "UpdateTagParams",
+  "DropFilter",
+  "CreateDropFilterParams",
+  "UpdateDropFilterParams",
+  "DropFilterLimitsResponse",
+  "ComposedPropertyValue",
+  "CustomProperty",
+  "CreateCustomPropertyParams",
+  "UpdateCustomPropertyParams",
+  "LookupTable",
+  "UploadLookupTableParams",
+  "MarkLookupTableReadyParams",
+  "LookupTableUploadUrl",
+  "UpdateLookupTableParams",
+  "CustomEvent",
+  "CustomEventAlternative",
+  "CreateCustomEventParams",
+  "BUSINESS_CONTEXT_MAX_CHARS",
+  "BusinessContext",
+  "BusinessContextChain",
+  "MathType",
+  "PerUserAggregation",
+  "Metric",
+  "Filter",
+  "Formula",
+  "GroupBy",
+  "ListItemGroupMode",
+  "CustomPropertyType",
+  "FilterDateUnit",
+  "FilterOperator",
+  "FilterPropertyType",
+  "QueryResult",
+  "SchemaEntry",
+  "BulkCreateSchemasParams",
+  "BulkCreateSchemasResponse",
+  "BulkPatchResult",
+  "DeleteSchemasResponse",
+  "SchemaEnforcementConfig",
+  "InitSchemaEnforcementParams",
+  "UpdateSchemaEnforcementParams",
+  "ReplaceSchemaEnforcementParams",
+  "AuditResponse",
+  "AuditViolation",
+  "DataVolumeAnomaly",
+  "UpdateAnomalyParams",
+  "BulkUpdateAnomalyParams",
+  "BulkAnomalyEntry",
+  "EventDeletionRequest",
+  "CreateDeletionRequestParams",
+  "PreviewDeletionFiltersParams",
+  "FunnelStep",
+  "Exclusion",
+  "HoldingConstant",
+  "FunnelMathType",
+  "FunnelQueryResult",
+  "RetentionAlignment",
+  "RetentionEvent",
+  "RetentionMathType",
+  "RetentionMode",
+  "RetentionQueryResult",
+  "FlowStep",
+  "FlowTreeNode",
+  "FlowQueryResult",
+  "UserQueryResult",
+  "TimeComparison",
+  "FrequencyBreakdown",
+  "FrequencyFilter"
+ ]
+}

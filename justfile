@@ -9,7 +9,7 @@ default:
 # CI runs the same commands plus HYPOTHESIS_PROFILE=ci for tests; that
 # profile is the only documented difference (deterministic seed, 200 examples
 # vs default 100). Locally we use the default profile for faster iteration.
-check: lint fmt-check typecheck docstring-cov test-cov build
+check: lint fmt-check typecheck docstring-cov test-cov conformance build
 
 # Install git hooks so commits are blocked on lint/format failures BEFORE
 # they reach CI. Run once after cloning the repo.
@@ -98,6 +98,48 @@ mutate-check threshold="80":
 test-cov:
     uv run pytest --cov=src/mixpanel_headless --cov-report=term-missing --cov-fail-under=90
 
+# === Conformance (TS-port Phase-1 verification rig) ===
+# Design of record: context/phase1/design/phase1-design.md (D8 for CI parity).
+
+# Conformance tooling tests + corpus runner. Part of `check` per design D8;
+# deliberately excludes the record-mode drift re-extraction (CI-only, slow).
+# Exit code 5 ("no tests collected") from the corpus runner is tolerated
+# until PR-6 lands runner/test_corpus.py; any real failure still fails.
+conformance:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run pytest conformance/tests -o addopts="" -q
+    rc=0
+    uv run pytest conformance/runner -o addopts="" -q || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then
+        exit "$rc"
+    fi
+    if [ "$rc" -eq 5 ]; then
+        echo "conformance/runner: no tests collected yet (corpus runner lands in PR-6)"
+    fi
+
+# Record-mode vector extraction over the full non-live suite (design D1.3/D3).
+# `-o addopts=""` is required: the repo default addopts pollute collection.
+# Manual recipe — NOT part of `check`; the extraction commit is a deliberate
+# act (D3 regeneration story). Pass --mp-record-date/--mp-record-commit via
+# args to reproduce committed manifest stamps byte-for-byte (D8 drift check).
+conformance-record *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    EXCLUSIONS=""
+    if [ -f conformance/record/exclusions.args ]; then
+        EXCLUSIONS=$(cat conformance/record/exclusions.args)
+    fi
+    uv run pytest tests -p conformance.record.plugin \
+        --mp-record-vectors=conformance/vectors \
+        -o addopts="" -m "not live" $EXCLUSIONS {{ args }}
+
+# Deliberate-break smoke test: control worktree + 13 sabotage patches (D9).
+# Manual/release-gate recipe — tens of minutes of worktree+sync cycles;
+# never part of `check` or per-PR CI. Lands with PR-8.
+conformance-smoke *args:
+    uv run python -m conformance.smoke.run_smoke {{ args }}
+
 # === Hypothesis CLI ===
 
 # Refactor deprecated Hypothesis code (e.g., just hypo-codemod src/)
@@ -126,7 +168,7 @@ fmt-check:
 
 # Type check with mypy
 typecheck:
-    uv run mypy src/ tests/
+    uv run mypy src/ tests/ conformance/
 
 # Docstring coverage — src is gated at 99% (see [tool.interrogate] in
 # pyproject.toml); tests is gated at 95% via the second invocation. Bump
@@ -134,6 +176,7 @@ typecheck:
 docstring-cov:
     uv run interrogate src/
     uv run interrogate tests/ --fail-under=95
+    uv run interrogate conformance/ --fail-under=95
 
 # Sync dependencies
 sync:

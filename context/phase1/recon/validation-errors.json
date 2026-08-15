@@ -1,0 +1,1451 @@
+{
+  "generated": "2026-08-14",
+  "commit": "52696743b913a0c4c152deb48af987ae412b5aee",
+  "scope_note": "Coded validation rules emitted as ValidationError(code=...) in _internal/validation.py, _internal/query/user_validators.py, and _internal/bookmark_schema.py (pydantic adapter). Family labels CF1-CF2, CB1-CB2, CM1-CM4, U9, V22a/b, B22b exist only as comments/docstrings, not as code strings.",
+  "totals": {
+    "codes_in_source": 175,
+    "codes_with_direct_code_string_test": 155,
+    "codes_with_prefix_style_test_only": 4,
+    "codes_with_message_match_test_only": 7,
+    "codes_with_no_test_found": 9
+  },
+  "codes": {
+    "B0_INVALID_LITERAL": {
+      "tests": [
+        "tests/unit/test_bookmark_schema_pbt.py",
+        "tests/unit/test_bookmark_schema.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "B10_MATH_MISSING_PROPERTY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B11_INVALID_PER_USER": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "B12_INVALID_TIME_UNIT": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B13_INVALID_DATE_RANGE_TYPE": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "B14_INVALID_FILTER_TYPE": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B15_INVALID_FILTER_OPERATOR": {
+      "tests": [
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_validation_pbt.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "B16_INVALID_RESOURCE_TYPE": {
+      "tests": [
+        "tests/test_validation_bypass.py"
+      ],
+      "count": 0,
+      "coverage": "prefix-in-code"
+    },
+    "B17_INVALID_PROPERTY_TYPE": {
+      "tests": [
+        "tests/test_validation_bypass.py",
+        "tests/unit/test_validation.py"
+      ],
+      "count": 0,
+      "coverage": "prefix-in-code"
+    },
+    "B18B_INVALID_CP_ID": {
+      "tests": [
+        "tests/test_validation_bypass.py"
+      ],
+      "count": 0,
+      "coverage": "prefix-in-code"
+    },
+    "B18_MISSING_FILTER_PROPERTY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "B19_INVALID_FILTERS_DETERMINER": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "B1_MISSING_SECTIONS": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B20B_FILTER_VALUE_NOT_FINITE": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "B20_EMPTY_FILTER_VALUE": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B21_FILTER_VALUE_TOO_MANY": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B22_COHORT_BEHAVIOR_ID": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "B22_COHORT_MISSING_IDENTIFIER": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B23_COHORT_RESOURCE_TYPE": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "B24_COHORT_MATH": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "B25_COHORT_FILTER_VALUE": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "B26_EMPTY_COHORTS": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "B2_MISSING_DISPLAY_OPTIONS": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B3_MISSING_SHOW": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B4_SHOW_EMPTY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B5_INVALID_CHART_TYPE": {
+      "tests": [
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_validation_pbt.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "B6_MISSING_BEHAVIOR": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "B7_INVALID_BEHAVIOR_TYPE": {
+      "tests": [
+        "tests/unit/test_bookmark_schema_pbt.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "B8_MISSING_EVENT_NAME": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "B9_INVALID_MATH": {
+      "tests": [
+        "tests/test_workspace_funnel.py",
+        "tests/test_validation_retention.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_validation_pbt.py"
+      ],
+      "count": 12,
+      "coverage": "code-string"
+    },
+    "CB3_RETENTION_MIXED_BREAKDOWN": {
+      "tests": [
+        "tests/test_validation_cohort.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "CM5_INLINE_COHORT_METRIC": {
+      "tests": [
+        "tests/test_types_cohort_behaviors.py",
+        "tests/test_cohort_behaviors_pbt.py",
+        "tests/test_build_cohort_params.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "CP1_INVALID_ID": {
+      "tests": [
+        "tests/unit/test_validation_pbt.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "CP2_EMPTY_FORMULA": {
+      "tests": [
+        "tests/unit/test_validation_pbt.py",
+        "tests/live/test_custom_property_queries_live.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "CP3_EMPTY_INPUTS": {
+      "tests": [
+        "tests/live/test_custom_property_queries_live.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "CP4_INVALID_INPUT_KEY": {
+      "tests": [
+        "tests/test_custom_property_types.py",
+        "tests/test_custom_property_pbt.py",
+        "tests/unit/test_validation_pbt.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "CP5_FORMULA_TOO_LONG": {
+      "tests": [
+        "tests/test_custom_property_types.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "CP6_EMPTY_INPUT_NAME": {
+      "tests": [
+        "tests/test_custom_property_types.py",
+        "tests/test_custom_property_pbt.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "DG1_INVALID_DATA_GROUP_ID": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_validation.py"
+      ],
+      "count": 18,
+      "coverage": "code-string"
+    },
+    "F10_MATH_MISSING_PROPERTY": {
+      "tests": [
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "F11_MATH_REJECTS_PROPERTY": {
+      "tests": [
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "F12_INVALID_REENTRY_MODE": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "F1_MAX_STEPS": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F1_MIN_STEPS": {
+      "tests": [
+        "tests/test_workspace_funnel.py",
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 14,
+      "coverage": "code-string"
+    },
+    "F2_CONTROL_CHAR_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F2_EMPTY_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 12,
+      "coverage": "code-string"
+    },
+    "F2_INVISIBLE_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F3_CONVERSION_WINDOW_MAX": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "F3_CONVERSION_WINDOW_POSITIVE": {
+      "tests": [
+        "tests/test_workspace_funnel.py",
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 14,
+      "coverage": "code-string"
+    },
+    "F3_CONVERSION_WINDOW_TYPE": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F4_CONTROL_CHAR_EXCLUSION": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "F4_EMPTY_EXCLUSION_EVENT": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "F4_EXCLUSION_NEGATIVE_STEP": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "F4_EXCLUSION_STEP_BOUNDS": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "F4_EXCLUSION_STEP_ORDER": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "F7_INVALID_WINDOW_UNIT": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "F7_SECOND_MIN_WINDOW": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F8_EMPTY_HOLDING_CONSTANT_PROPERTY": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "F8_MAX_HOLDING_CONSTANT": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "F9_SESSION_MATH_REQUIRES_SESSION_WINDOW": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "F9_SESSION_WINDOW_REQUIRES_ONE": {
+      "tests": [
+        "tests/test_validation_funnel.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "FL10_SESSION_WINDOW_REQUIRES_ONE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "FL1_EMPTY_STEPS": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "FL2_CONTROL_CHAR_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_flow.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "FL2_EMPTY_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_flow.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "FL2_INVISIBLE_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_flow.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "FL3_FORWARD_RANGE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "FL4_REVERSE_RANGE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "FL5_NO_DIRECTION": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "FL6_CARDINALITY_RANGE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "FL7_CONVERSION_WINDOW_MAX": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "FL7_CONVERSION_WINDOW_POSITIVE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "FL9_SESSION_REQUIRES_SESSION_WINDOW": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "FLB1_EMPTY_STEPS": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "FLB2_EMPTY_STEP_EVENT": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "FLB3_INVALID_COUNT_TYPE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "FLB4_INVALID_CHART_TYPE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "FLB5_MISSING_DATE_RANGE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "FLB6_INVALID_VERSION": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "FL_INVALID_COUNT_TYPE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "FL_INVALID_MODE": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "FL_INVALID_WINDOW_UNIT": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "FL_TIME_COMPARISON_NOT_SUPPORTED": {
+      "tests": [
+        "tests/test_validation_flow.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "R10_INVALID_MODE": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "R11_INVALID_UNIT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "R12_EMPTY_GROUP_BY": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "R13_INVALID_UNBOUNDED_MODE": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "R1_CONTROL_CHAR_BORN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "R1_EMPTY_BORN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "R1_INVISIBLE_BORN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "R2_CONTROL_CHAR_RETURN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "R2_EMPTY_RETURN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "R2_INVISIBLE_RETURN_EVENT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "R5_BUCKET_SIZES_INTEGER": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "R5_BUCKET_SIZES_POSITIVE": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "R5_BUCKET_SIZES_TOO_MANY": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "R6_BUCKET_SIZES_ASCENDING": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "R7_INVALID_RETENTION_UNIT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "R8_INVALID_ALIGNMENT": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "R9_INVALID_MATH": {
+      "tests": [
+        "tests/test_validation_retention.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "S1_INVALID_SORT_BY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "S2_MISSING_COL_SORT_ATTRS": {
+      "tests": [
+        "tests/unit/test_workspace_crud.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_schema.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "S3_UNKNOWN_FIELD": {
+      "tests": [
+        "tests/unit/test_workspace_crud.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_schema_pbt.py",
+        "tests/unit/test_bookmark_schema.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "S4_UNKNOWN_CHART_TYPE": {
+      "tests": [
+        "tests/unit/test_workspace_crud.py",
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "S5_NOT_A_DICT": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "S6_INVALID_SORT_ORDER": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "S7_NOT_A_LIST": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "S8_MISSING_SORT_BY": {
+      "tests": [
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_schema.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "S9_MISSING_SORT_ORDER": {
+      "tests": [
+        "tests/unit/test_validation.py",
+        "tests/unit/test_bookmark_schema.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "U0": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "U1": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "U10": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "U11": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "U12": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "U13": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "U14": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "U15": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "U16": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "U17": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "U18": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_parallel.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "U19": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "U2": {
+      "tests": [
+        "tests/test_workspace_query_user_integration.py",
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "U20": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "U21": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_workspace_query_user_aggregate.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "U22": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_workspace_query_user_aggregate.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "U23": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_query_user_edge_cases.py",
+        "tests/test_workspace_query_user_parallel.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "U24": {
+      "tests": [
+        "tests/test_workspace_query_user_integration.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "U25": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "U26": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "U27": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "U28": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "U29": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "U3": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_query_user_edge_cases.py"
+      ],
+      "count": 12,
+      "coverage": "code-string"
+    },
+    "U30": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_workspace_query_user_aggregate.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "U4": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "U5": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "U6": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "U7": {
+      "tests": [
+        "tests/test_workspace_build_user_params.py",
+        "tests/test_user_validators.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "U8": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 3,
+      "coverage": "code-string"
+    },
+    "UP1": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "UP2": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_query_user_edge_cases.py"
+      ],
+      "count": 7,
+      "coverage": "code-string"
+    },
+    "UP3": {
+      "tests": [
+        "tests/test_user_validators.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "UP4": {
+      "tests": [
+        "tests/test_user_validators.py",
+        "tests/test_query_user_edge_cases.py"
+      ],
+      "count": 10,
+      "coverage": "code-string"
+    },
+    "V0_NO_EVENTS": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V10_DATE_LAST_EXCLUSIVE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "V11_BUCKET_REQUIRES_SIZE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 11,
+      "coverage": "code-string"
+    },
+    "V12B_BUCKET_REQUIRES_NUMBER": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 12,
+      "coverage": "code-string"
+    },
+    "V12C_BUCKET_REQUIRES_BOUNDS": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 10,
+      "coverage": "code-string"
+    },
+    "V12_BUCKET_SIZE_POSITIVE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "V13_METRIC_MATH_PROPERTY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V14_METRIC_REJECTS_PROPERTY": {
+      "tests": [
+        "tests/unit/test_query_validation.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "V15_DATE_ORDER": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 8,
+      "coverage": "code-string"
+    },
+    "V16_FORMULA_SYNTAX": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "V17_EMPTY_EVENT": {
+      "tests": [
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V18_BUCKET_ORDER": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 9,
+      "coverage": "code-string"
+    },
+    "V19_FORMULA_BOUNDS": {
+      "tests": [
+        "tests/unit/test_query_pbt.py"
+      ],
+      "count": 0,
+      "coverage": "prefix-in-code"
+    },
+    "V1_MATH_REQUIRES_PROPERTY": {
+      "tests": [
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py"
+      ],
+      "count": 5,
+      "coverage": "code-string"
+    },
+    "V20_LAST_TOO_LARGE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 6,
+      "coverage": "code-string"
+    },
+    "V21_INVALID_EVENT_TYPE": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "V22_CONTROL_CHAR_EVENT": {
+      "tests": [
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V22_INVISIBLE_EVENT": {
+      "tests": [
+        "tests/unit/test_delegation_equivalence_pbt.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V23_ROLLING_TOO_LARGE": {
+      "tests": [],
+      "count": 0,
+      "coverage": "none-found"
+    },
+    "V24_BUCKET_NOT_FINITE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 12,
+      "coverage": "code-string"
+    },
+    "V26_PERCENTILE_REQUIRES_VALUE": {
+      "tests": [
+        "tests/test_build_cohort_params.py",
+        "tests/unit/test_query_validation.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "V27_HISTOGRAM_REQUIRES_PER_USER": {
+      "tests": [
+        "tests/test_build_cohort_params.py",
+        "tests/unit/test_query_validation.py"
+      ],
+      "count": 0,
+      "coverage": "message-match-only"
+    },
+    "V2_MATH_REJECTS_PROPERTY": {
+      "tests": [
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py"
+      ],
+      "count": 4,
+      "coverage": "code-string"
+    },
+    "V3B_PER_USER_REQUIRES_PROPERTY": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V3_PER_USER_INCOMPATIBLE": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V4_FORMULA_MIN_EVENTS": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 2,
+      "coverage": "code-string"
+    },
+    "V5_ROLLING_CUMULATIVE_EXCLUSIVE": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V6_ROLLING_POSITIVE": {
+      "tests": [
+        "tests/unit/test_validation.py"
+      ],
+      "count": 1,
+      "coverage": "code-string"
+    },
+    "V7_LAST_POSITIVE": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_validation_pbt.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 21,
+      "coverage": "code-string"
+    },
+    "V8_DATE_FORMAT": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_query_validation_pbt.py",
+        "tests/unit/test_query_validation.py"
+      ],
+      "count": 18,
+      "coverage": "code-string"
+    },
+    "V8_DATE_INVALID": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 10,
+      "coverage": "code-string"
+    },
+    "V9_TO_REQUIRES_FROM": {
+      "tests": [
+        "tests/test_validation_retention.py",
+        "tests/test_validation_flow.py",
+        "tests/test_validation_funnel.py",
+        "tests/unit/test_delegation_equivalence_pbt.py",
+        "tests/unit/test_validation.py",
+        "tests/unit/test_query_validation.py",
+        "tests/unit/test_query_validation_pbt.py"
+      ],
+      "count": 10,
+      "coverage": "code-string"
+    }
+  },
+  "assertion_styles": {
+    "pytest_raises_total": 1079,
+    "match_keyword_total_occurrences": 442,
+    "pytest_raises_with_match_same_line": 368,
+    "dot_code_equality_comparisons": 346,
+    "e_code_attribute_references_total": 423,
+    "exc_value_code_checks": 34,
+    "errors_index_code_checks": 4,
+    "pytest_raises_BookmarkValidationError_total": 127,
+    "pytest_raises_BookmarkValidationError_with_match_same_line": 70,
+    "pytest_raises_ValueError_total": 227,
+    "pytest_raises_ValueError_with_match_same_line": 208,
+    "pytest_raises_TypeError_total": 7,
+    "pytest_raises_pydantic_ValidationError": 124,
+    "suggestion_field_references_in_tests": 85,
+    "notes": "Rule-level validator tests (tests/test_validation_*.py, tests/test_user_validators.py) call validate_*() directly and assert on returned ValidationError.code \u2014 code-based, extraction-safe. Workspace-facade tests (ws.query/query_funnel/...) predominantly use pytest.raises(BookmarkValidationError, match='<message text>') \u2014 message-based, NOT extraction-safe per R5.4."
+  },
+  "family_label_mapping": {
+    "V22a": "V22_CONTROL_CHAR_EVENT (validation.py:1996-2005)",
+    "V22b": "V22_INVISIBLE_EVENT (validation.py:2009-2015)",
+    "B22b": "B22_COHORT_MISSING_IDENTIFIER (validation.py:2523-2530)",
+    "CF1/CF2": "plain ValueError in types.py _validate_cohort_args (types.py:8991-8994) via Filter.in_cohort/not_in_cohort \u2014 uncoded",
+    "CB1/CB2": "plain ValueError via CohortBreakdown.__post_init__ (types.py:9228) -> _validate_cohort_args \u2014 uncoded",
+    "CB3": "CB3_RETENTION_MIXED_BREAKDOWN (validation.py:1452) \u2014 coded",
+    "CM1/CM2": "plain ValueError via CohortMetric.__post_init__ (types.py:9281) \u2014 uncoded",
+    "CM5": "dual enforcement: ValueError at construction (types.py:9282) AND CM5_INLINE_COHORT_METRIC (validation.py:1978)",
+    "U9": "enforced as runtime type guard in _resolve_and_build_user_params, not a ValidationError code (user_validators.py:233)",
+    "V25": "does not exist in source (gap in numbering: V24 -> V26)"
+  },
+  "difflib_suggestion_sites": [
+    {
+      "file": "src/mixpanel_headless/_internal/validation.py",
+      "line": 427,
+      "context": "_suggest() \u2014 sole get_close_matches call (n=3, cutoff=0.5)"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/validation.py",
+      "line": 452,
+      "context": "_enum_error() calls _suggest; _enum_error used at 26 call sites in validation.py"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/validation.py",
+      "line": 1142,
+      "context": "validate_funnel_args F12 reentry_mode suggestion"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/validation.py",
+      "line": 1464,
+      "context": "validate_retention_args R13 unbounded_mode suggestion"
+    },
+    {
+      "file": "src/mixpanel_headless/exceptions.py",
+      "line": 1231,
+      "context": "ValidationError.__str__ appends 'Did you mean ...' from suggestion tuple (feeds BookmarkValidationError message)"
+    },
+    {
+      "file": "src/mixpanel_headless/exceptions.py",
+      "line": 707,
+      "context": "EventNotFoundError 'Did you mean' from similar_events (not difflib; discovery-side matching)"
+    }
+  ],
+  "uncoded_sites": [
+    {
+      "file": "src/mixpanel_headless/types.py",
+      "raise_count": 104,
+      "kind": "ValueError/TypeError",
+      "note": "fail-fast construction guards: _validate_cohort_args (CF1/CF2/CB1/CB2/CM1/CM2, lines 8991-8994), Metric math-requires-property (V13 fail-fast), Filter._validate_date, FunnelStep/Exclusion/RetentionEvent/FlowStep/InlineCustomProperty guards; plus pydantic model validation on CRUD params (pydantic.ValidationError propagates)"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/query/user_builders.py",
+      "raise_count": 13,
+      "kind": "ValueError",
+      "note": "engage selector builders, e.g. _prop_ref non-string property (line 54), unsupported filter operator (line 219)"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/bookmark_builders.py",
+      "raise_count": 8,
+      "kind": "ValueError/TypeError",
+      "note": "lines 395, 609, 621, 673, 680, 689, 696, 703"
+    },
+    {
+      "file": "src/mixpanel_headless/_internal/segfilter.py",
+      "raise_count": 4,
+      "kind": "ValueError",
+      "note": "lines 143, 172, 227, 299 \u2014 segmentation where-expression builder"
+    },
+    {
+      "file": "src/mixpanel_headless/workspace.py",
+      "raise_count": 9,
+      "kind": "ValueError/TypeError",
+      "note": "facade arg guards (mixed pure/impure)"
+    }
+  ],
+  "uncoded_test_estimates": {
+    "raises_ValueError_in_pure_builder_test_files": 38,
+    "raises_ValueError_all_tests": 227,
+    "raises_pydantic_ValidationError_all_tests": 124,
+    "note": "ESTIMATE by file-scope grep; the 38 counts pytest.raises(ValueError in tests/test_types_*, test_build_*, test_validation_*, test_user_builders, test_custom_property_types, test_cohort_*_pbt. Remaining ~189 ValueError raises are mostly auth/config/CLI, out of validation scope."
+  }
+}
