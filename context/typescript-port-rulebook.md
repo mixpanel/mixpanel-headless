@@ -111,9 +111,12 @@ standalone library (no singletons — the library is multi-instance by design):
   what has no schema source.
 - R4.2 Validation: JSON-Schema at trust boundaries (API responses in debug mode, config files).
   **No Zod** — generated static types + boundary validation (house pattern).
-- R4.3 Enums: string `enum` for closed domain values with wire meaning (`BookmarkType`);
-  string-literal unions for option bags and the ~50 Python `Literal` aliases; `const` objects +
-  literal unions for rrweb numeric IntEnums (preserve numeric values).
+- R4.3 Enums: string `enum` for closed domain values with wire meaning that Python defines as
+  `Enum` classes (`FeatureFlagStatus`); string-literal unions for option bags and the ~50
+  Python `Literal` aliases (`BookmarkType` is a `Literal` alias, so it takes the union form —
+  source kind wins); `const` objects + literal unions for rrweb numeric IntEnums (preserve
+  numeric values). (Editorial fix per phase2-design Discrepancy Log #3: an earlier revision
+  named `BookmarkType` as the string-enum example.)
 - R4.4 Discriminated unions on a `type` field (Account), narrowed via exhaustive `switch` with
   `never` check.
 - R4.5 **Numbers policy** (iron precedent: `data_group_id?: string`): IDs documented/observed to
@@ -303,6 +306,15 @@ standalone library (no singletons — the library is multi-instance by design):
   (`backend/util/arb_selector.py:1862` `_get_filter_value`) and a string would be quoted into
   the selector as a string literal. Builders emitting new-format filter clauses must emit
   native JSON numbers; vectors lock this per clause type.
+- R10.14 `[SA2]` **Model tiering (Phase 3+).** Workflow agents run on fixed per-batch model
+  tiers: volume translation batches on the cheap/mid tiers (B2/B5/B6 sonnet, B3 opus) while
+  B0/B4/B7/B8/B9 and everything auth- or client-critical stays on the strongest tier. Design,
+  adversarial review, arbitration, audits, gate verdicts, failure triage, and any work
+  touching the conformance rig itself NEVER leave the strongest tier. A volume-tier task that
+  misses its done-criteria retries once on the strongest tier with the failure context (two
+  failures still aborts the chain), and R10.13 effort discipline (effort ≤ high + incremental
+  work protocol) applies unchanged on every tier. Normative assignment table:
+  `context/phase3/model-tiering-policy.md`.
 
 ## 11. Python stdlib semantics — the `pythonCompat` module `[ST]`
 
