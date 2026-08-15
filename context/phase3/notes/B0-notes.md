@@ -385,3 +385,82 @@ these families — the P3-7 fresh-seed mandate caught it on its first run.
 3. Re-run this gate from step (4) (fresh seed again), then perform steps
    (2)-archive, (6) cleanup, and the gate commits (TS gate commit on main +
    Python docs/report commit).
+
+---
+
+# B0 gate — attempt 2 (2026-08-15): **GATE PASS**
+
+Attempt 1 blocked at step (4) on the real trim-vs-strip divergence (record
+above + `conformance/differential/oracle/RUN.md`). The unblock path was
+executed exactly as written; the gate re-ran from step (4) and closed.
+
+## Remediation (between attempts, TS main `3c07d4e`)
+Fable-tier, red-first (R10.1): `pythonStrip` at all 13 trim-based emptiness
+guard sites (`guards.ts` EV1 + `*2_COHORT_NAME_EMPTY`, `metric.ts` FM1,
+`funnel.ts` HC1, `filter.ts` LG1+LC5, `cohort.ts` CD4+CA2+CD7,
+`group-by.ts` GB1, `frequency.ts` FB1+FF1, `data-governance.ts`
+alternatives), and `safeInt` (`results/query-engine.ts`) string branch
+rewritten from `\s`-regex+`parseInt` to `pythonInt` with the guarded-catch
+pattern (b0-review-resolution F3/A2). 15 new tests in
+`strip-guards.test.ts` (all 13 sites, BOTH divergence directions, guard
+ORDER lock: U+001C-only event => EV1 not EV2) + 7 safeInt CPython-grammar
+tests in `flow-query-result.test.ts`; 20 red before the fix, all green
+after; every expectation verified against live CPython (probe run recorded
+in the remediation commit message).
+- **R10.2**: zero assertions weakened — the change is purely additive
+  (existing suites untouched except the appended safeInt describe).
+- **Deviation (process)**: the remediation + its review-quality checks ran
+  INSIDE the gate task (single fable agent) rather than as a separate
+  remediation task + P3-2d review pair. Self-review executed against the
+  P3-2d checklist (R10.2 diff, rulebook pass, TODO(port) triage: none
+  added). FLAG for the next review pair/arbiter to spot-check
+  `3c07d4e` (suggested: fold into the B2-gate review load).
+- **Deviation (behavioral, needs arbiter blessing like Discrepancy #6)**:
+  `safeInt` on a numeric string with magnitude >2^53−1 returns `default_`
+  where CPython `_safe_int` returns the exact big int (R4.5 leaves no
+  faithful representation; the OLD code returned an imprecise number
+  there, which was no more faithful). Not vector- or fuzz-observable
+  today (no oracle family drives `_safe_int`/`from_response`).
+- **Proposed R10.4 amendment** (fix pattern recurred 13×): "Porting a
+  Python blank/emptiness check (`not s.strip()`) MUST use `pythonStrip`,
+  never `String.trim()`; porting `int(str)` MUST use `pythonInt`, never
+  `parseInt`/`Number`/`\s`-regex grammars." For the arbiter to file.
+
+## Gate step results (attempt 2)
+- [x] (1) batch-status — PASS, unchanged from attempt 1 and re-verified
+  mechanically at gate HEAD: exact-name `api_client._iter_jsonl_lines` ->
+  `done` (landed at B0-2 per the packet); `compat.` prefix-granular `done`
+  since Phase 1/2 covers the 6 new apis; no-prefix-collision assertion
+  over all 419 corpus api names — only the exact name matches; per-prefix
+  counts re-sum to exactly 3,251. No flip in the gate commit (nothing to
+  flip; the P3-2e "same commit" rule is satisfied vacuously, packet-
+  sanctioned).
+- [x] (2) conformance checkpoint — COUNTS MATCH at BOTH final HEADs
+  (remediation `3c07d4e` and gate `8f79b67`): **3,251 vectors — 539 PASS /
+  0 FAIL / 2,712 UNPORTED** @ corpus b5c1369. Report JSON archived:
+  `context/phase3/reports/2026-08-15-b0-gate.json`.
+- [x] (3) oracle surface (GF4) — PASS, re-run at final HEADs before
+  throwaway cleanup: 7 apis (6 `compat.*` + `api_client._iter_jsonl_lines`)
+  x 2 bridges = **14/14 non-"unknown api" call-DATA responses**, outputs
+  pairwise identical.
+- [x] (4) differential full-suite regression — **PASS**. Fresh seed
+  **28631260**: 22 families, **11,281 examples, 3,049 explained skips
+  (protocol §4.2, six B2/B3-pending Phase-1 families), 0 divergences**.
+  Attempt-1's divergent seed **52794688** re-run in full as verification:
+  identical totals, 0 divergences. Records + raw JSON in
+  `conformance/differential/oracle/`. Repro
+  `2026-08-15-types-RetentionEvent.json` DELETED (resolved); the two
+  remaining repro files are resolved P2-9 triage records and do not block.
+- [x] (5) referees — NOT REQUIRED at B0 per P3-7 (referees (a)+(b) run at
+  the B3/B6 bookmark-touching gates; B0 touched no bookmark construction
+  surface). Stated for the record.
+- [x] (6) throwaway/ cleanup + eslint throwaway-glob revert — DONE in the
+  TS gate commit `8f79b67` (arbiter sign-off @ a501829; GF4 probes were
+  re-run BEFORE deletion).
+- [x] (7) checks at final HEADs — `npm run check` green @ `3c07d4e` and
+  @ `8f79b67` (74 test files, 2,215 passed, browser smoke OK);
+  `just check` green on the Python support branch at the gate commit.
+
+**B0 BATCH GATE: CLOSED.** B2 may proceed (B2 was already unblocked at
+B0-1 per P3-1; the gate closure now also releases the B0 hard barrier for
+everything else in sequence).
