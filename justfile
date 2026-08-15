@@ -146,19 +146,19 @@ hypo-write *args:
 
 # Lint code with ruff
 lint *args:
-    uv run ruff check src/ tests/ {{ args }}
+    uv run ruff check src/ tests/ conformance/ {{ args }}
 
 # Fix lint errors automatically
 lint-fix:
-    uv run ruff check --fix src/ tests/
+    uv run ruff check --fix src/ tests/ conformance/
 
 # Format code with ruff
 fmt:
-    uv run ruff format src/ tests/
+    uv run ruff format src/ tests/ conformance/
 
 # Check formatting without applying changes
 fmt-check:
-    uv run ruff format --check src/ tests/
+    uv run ruff format --check src/ tests/ conformance/
 
 # Type check with mypy
 typecheck:

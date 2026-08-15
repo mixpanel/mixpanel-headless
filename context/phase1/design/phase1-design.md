@@ -5,6 +5,14 @@ Date: 2026-08-14
 Source commit (Python repo): 52696743b913a0c4c152deb48af987ae412b5aee (branch fix/latent-bugs-stress-test)
 Scope amendment (2026-08-14): MUTATION TESTING OUT OF SCOPE — no mutmut judge validation, no StrykerJS, no mutation-score gates anywhere in this design. Plan/rulebook references to mutmut/StrykerJS for the port are void; judge validation is the D9 deliberate-break smoke test.
 
+## Post-gate amendments (2026-08-15)
+
+Recorded per gate-verdict recommendation R12 (`context/phase1/audit/GATE-VERDICT.md` §8). These amendments supersede the corresponding wording below; the underlying sections are left as written for the historical record.
+
+1. **D3 amendment — payload subtrees keep insertion order (KeepOrderDict).** D3's blanket "canonical JSON serialization (sorted keys …)" wording is superseded for payload subtrees: `call.input`, `call.setup[]` inputs, and served response bodies are emitted via `KeepOrderDict` and preserve insertion order in the committed JSONL bundles (the TS loader must preserve object order there). Comparisons remain canonical-sorted per D6; only the on-disk bundle serialization of those subtrees changed. Rationale and deviation trail: `context/phase1/pr6-notes.md` (landed in commit 4eb0b9f, drift-enforced).
+2. **D17 wording — whitelist reality.** `uv.lock` changes (mechanical, additions-only fallout of the permitted dev-dependency additions) and the justfile lint-scope expansion (adding `conformance/` to the `lint` / `lint-fix` / `fmt` / `fmt-check` recipe path arguments, per R8) are whitelisted under D17. Typed-stub companions of whitelisted dev dependencies (e.g. `types-jsonschema`) are permitted alongside them; D17.7's "the ONE permitted pyproject edit" wording is amended accordingly.
+3. **Operative schema of record.** `conformance/schema/vector.schema.json` is the OPERATIVE conformance-vector schema of record. The copy at `context/phase1/design/vector.schema.json` is the historical design artifact; the two now differ by the `client_options` extension (additive, `$comment`-documented in the operative copy).
+
 How to read this: D1–D10 define the Python-side rig (record plugin → corpus → runner → CI → smoke test); D11–D15 define the TS-side rig (scaffold → runner → gate → oracles → referees); D16–D18 define process (branches, standards, task breakdown). Rule IDs `Rx.y` cite `context/typescript-port-rulebook.md` v1.1; "plan" cites `context/typescript-port-plan.md`; recon citations name files under `context/phase1/recon/`. All src/test line numbers are pinned to the source commit above.
 
 Companion files:

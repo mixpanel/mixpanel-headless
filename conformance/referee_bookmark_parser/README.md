@@ -164,3 +164,22 @@ decided from builder vectors alone (needs a wire-level probe); until
 resolved, the TS port must replicate the library's shape byte-for-byte
 (bug-compatibility rule R2.x) and this divergence stays on the escalation
 list.
+
+## Caveat — structural ACCEPT is near-vacuous for modern-dialect payloads (gate-verdict R6)
+
+The draft-04 `funnels/schema/bookmark.json` covers ONLY the legacy flat
+`steps` dialect, so every modern sections-dialect payload — including all
+88 modern-dialect funnel payloads in the corpus — routes to the permissive
+`common/schema/bookmark.json` (see "Routing rules" above). That schema
+constrains almost nothing about the modern sections shape, so a structural
+ACCEPT on a modern-dialect payload carries near-zero discriminating power:
+the 314/314 structural PASS should not be read as deep validation of
+modern payloads. The routing itself is verified sound (a deliberate
+misroute of the 88 modern funnel payloads to the funnels schema rejects
+every one), and the insights side is independently covered by the deep
+voluptuous oracle and the TS Ajv referee — but the modern FUNNELS payloads
+currently have minimal oracle coverage. **Deep-oracle coverage for
+modern-dialect funnels (a vendored sections schema or wire-level probes)
+is a tracked Phase-2+ gap** (GATE-VERDICT.md finding L5-F2 /
+recommendation R6); do not treat structural ACCEPT alone as evidence of
+modern-funnels conformance.
