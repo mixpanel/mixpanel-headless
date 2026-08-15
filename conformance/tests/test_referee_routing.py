@@ -27,6 +27,7 @@ from conformance.referee_bookmark_parser.harness import (
     FUNNELS_SCHEMA,
     HANDOFF_ROUTES,
     detect_dialect,
+    normalize_reject_error,
     structural_schema_for,
     wrap_payload,
 )
@@ -175,6 +176,84 @@ class TestStructuralSchemaRouting:
         """bookmark_type outside the D15b vocabulary is a hard error."""
         with pytest.raises(ValueError, match="bookmark_type"):
             structural_schema_for("retention", {})
+
+
+class _FakeMultiError(Exception):
+    """Stand-in for ``voluptuous.error.MultipleInvalid`` (has ``.errors``).
+
+    The oracle wheels are not importable in the repo environment (harness
+    imports are lazy by design), so normalization is unit-tested against a
+    duck-typed fake carrying the same ``errors`` attribute contract.
+    """
+
+    def __init__(self, errors: list[BaseException]) -> None:
+        """Store the sub-errors and mimic voluptuous' str() behavior.
+
+        Args:
+            errors: The aggregated sub-errors (``str(exc)`` renders only
+                the first one, which is exactly the nondeterminism GATE-
+                VERDICT L5-F1 observed).
+        """
+        super().__init__(str(errors[0]) if errors else "")
+        self.errors = errors
+
+
+class TestNormalizeRejectError:
+    """R11: deterministic REJECT-error rendering for committed artifacts.
+
+    voluptuous aggregates equally-ranked required-key errors in
+    nondeterministic order and ``str(MultipleInvalid)`` shows only the
+    first, so committed deep-run artifacts churned across identical runs
+    (GATE-VERDICT L5-F1 / recommendation R11). Normalization renders ALL
+    sub-errors, first-line each, deduplicated and sorted.
+    """
+
+    def test_multi_error_rendering_is_sorted(self) -> None:
+        """All sub-errors appear, sorted, joined with '; '."""
+        exc = _FakeMultiError(
+            [
+                Exception("required key not provided @ data['x']['filterType']"),
+                Exception("required key not provided @ data['x']['filterOperator']"),
+            ]
+        )
+        assert normalize_reject_error(exc) == (
+            "required key not provided @ data['x']['filterOperator']; "
+            "required key not provided @ data['x']['filterType']"
+        )
+
+    def test_sub_error_order_does_not_change_rendering(self) -> None:
+        """The rendering is invariant under sub-error permutation."""
+        first = Exception("b-error")
+        second = Exception("a-error")
+        assert normalize_reject_error(
+            _FakeMultiError([first, second])
+        ) == normalize_reject_error(_FakeMultiError([second, first]))
+
+    def test_duplicate_sub_errors_are_deduplicated(self) -> None:
+        """Identical sub-error lines collapse to one entry."""
+        exc = _FakeMultiError([Exception("same"), Exception("same")])
+        assert normalize_reject_error(exc) == "same"
+
+    def test_plain_exception_falls_back_to_first_line(self) -> None:
+        """Errors without an ``errors`` list render their first line."""
+        assert normalize_reject_error(Exception("line one\nline two")) == "line one"
+
+    def test_non_exception_errors_attribute_falls_back(self) -> None:
+        """A non-exception ``errors`` payload never crashes normalization."""
+        exc = Exception("fallback")
+        exc.errors = ["not-an-exception"]  # type: ignore[attr-defined]
+        assert normalize_reject_error(exc) == "fallback"
+
+    def test_empty_errors_list_falls_back(self) -> None:
+        """An empty ``errors`` list renders the outer first line."""
+        exc = Exception("outer")
+        exc.errors = []  # type: ignore[attr-defined]
+        assert normalize_reject_error(exc) == "outer"
+
+    def test_multiline_sub_errors_use_first_line_truncated(self) -> None:
+        """Each sub-error contributes only its first line, capped at 200."""
+        exc = _FakeMultiError([Exception(("x" * 300) + "\ntail")])
+        assert normalize_reject_error(exc) == "x" * 200
 
 
 class TestProduceHandoff:

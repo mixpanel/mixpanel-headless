@@ -132,13 +132,27 @@ alongside the legacy flat clause; verified empirically at pin time.
   trees pass unvalidated in both languages — never use deep nesting as a
   discriminating vector (D6 rule 4).
 
-## Batch results — 2026-08-14 (corpus @ source commit 5269674)
+## Recorded-error normalization (GATE-VERDICT R11)
+
+voluptuous aggregates equally-ranked sub-errors (e.g. the two missing
+required keys on one filter clause) in nondeterministic order, and
+`str(MultipleInvalid)` shows only the first — so raw first-line recording
+churned `last-run-deep.json` across identical runs (L5-F1: `filterType`
+one run, `filterOperator` the next). The harness now records REJECT
+errors via `normalize_reject_error`: when the exception carries a
+`.errors` list, ALL sub-error first lines are recorded, deduplicated and
+sorted; verified deterministic by back-to-back batch runs (reports
+byte-identical modulo `runtime_seconds`). Verdict semantics are
+unchanged (D15b comparison stays verdict-level, never message equality).
+
+## Batch results — 2026-08-15 (AD-8 refresh; corpus @ source commit d562756, AD-6 re-extraction)
 
 **Structural (gate criterion): 314/314 ACCEPT, 0 REJECT — PASS.**
 Breakdown: 251 modern-nested, 47 legacy-flat (flows), 16 neutral; all via
 `common/schema/bookmark.json` (no legacy-dialect funnel payloads exist in
 the corpus, so the funnels schema never fired on corpus payloads — it is
-exercised by the selftest control only).
+exercised by the selftest control only). Selftest controls re-passed for
+both oracles before the batches (3/3 structural, 4/4 deep).
 
 **Deep: 123 ACCEPT, 2 REJECT, 189 SKIP_NON_INSIGHTS** (125 insights
 entries validated). **The 2 REJECTs are a REAL, OPEN finding (escalated,
@@ -147,7 +161,9 @@ not papered over):**
 - `bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section`
 - `bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_mixed_with_filter`
 
-Both: `required key not provided @ data['sections']['filter'][N]['filterType']`.
+Both (R11-normalized): `required key not provided @
+data['sections']['filter'][N]['filterOperator']; required key not
+provided @ data['sections']['filter'][N]['filterType']`.
 Triage: `build_frequency_filter_entry`
 (`src/mixpanel_headless/_internal/bookmark_builders.py:784`) emits
 `{"behaviorType": "$frequency", "customProperty": {"behavior": {...}},

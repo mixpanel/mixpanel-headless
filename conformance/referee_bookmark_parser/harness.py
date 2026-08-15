@@ -252,6 +252,36 @@ def _first_line(exc: BaseException) -> str:
     return str(exc).split("\n", 1)[0][:200]
 
 
+def normalize_reject_error(exc: BaseException) -> str:
+    """Render a deterministic one-line representation of a REJECT error.
+
+    ``voluptuous.error.MultipleInvalid`` aggregates equally-ranked
+    sub-errors (e.g. the two missing required keys on one filter clause) in
+    nondeterministic order, and ``str(exc)`` shows only the first — so raw
+    first-line recording churned the committed deep-run artifact across
+    identical runs (GATE-VERDICT L5-F1 / recommendation R11). When the
+    error carries a ``.errors`` list of exceptions (duck-typed: the oracle
+    wheels are not importable in the repo environment), ALL sub-error first
+    lines are recorded, deduplicated and sorted; otherwise the plain first
+    line is used.
+
+    Args:
+        exc: The validation error raised by an oracle.
+
+    Returns:
+        The normalized error string — invariant under sub-error ordering,
+        so artifact diffs reflect only real verdict changes.
+    """
+    sub_errors = getattr(exc, "errors", None)
+    if (
+        isinstance(sub_errors, list)
+        and sub_errors
+        and all(isinstance(sub, BaseException) for sub in sub_errors)
+    ):
+        return "; ".join(sorted({_first_line(sub) for sub in sub_errors}))
+    return _first_line(exc)
+
+
 def _resolved_versions(oracle: str) -> dict[str, str]:
     """Record the wheel versions the current environment resolved.
 
@@ -406,7 +436,9 @@ def _judge(
         oracle: Oracle name (for crash diagnostics).
 
     Returns:
-        ``("ACCEPT", None)`` or ``("REJECT", first-line-error)``.
+        ``("ACCEPT", None)`` or ``("REJECT", normalized-error)`` — the
+        error rendered via :func:`normalize_reject_error` so committed
+        artifacts stay deterministic across runs (R11).
 
     Raises:
         HarnessError: When the oracle raises anything OTHER than its
@@ -417,7 +449,7 @@ def _judge(
         check()
     except Exception as exc:
         if _class_name(exc) == reject_class:
-            return "REJECT", _first_line(exc)
+            return "REJECT", normalize_reject_error(exc)
         raise HarnessError(
             f"{oracle} oracle crashed with {_class_name(exc)}: {_first_line(exc)}"
         ) from exc

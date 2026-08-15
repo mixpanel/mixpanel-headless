@@ -131,7 +131,7 @@
       "bookmark_type": "insights",
       "dialect": "modern-nested",
       "error": null,
-      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_inline_cohort_filter_entry_has_raw_cohort-3",
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_inline_cohort_filter_entry_has_raw_cohort",
       "verdict": "ACCEPT"
     },
     {
@@ -620,14 +620,14 @@
     {
       "bookmark_type": "insights",
       "dialect": "modern-nested",
-      "error": "required key not provided @ data['sections']['filter'][0]['filterType']",
+      "error": "required key not provided @ data['sections']['filter'][0]['filterOperator']; required key not provided @ data['sections']['filter'][0]['filterType']",
       "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section",
       "verdict": "REJECT"
     },
     {
       "bookmark_type": "insights",
       "dialect": "modern-nested",
-      "error": "required key not provided @ data['sections']['filter'][1]['filterType']",
+      "error": "required key not provided @ data['sections']['filter'][1]['filterOperator']; required key not provided @ data['sections']['filter'][1]['filterType']",
       "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_mixed_with_filter",
       "verdict": "REJECT"
     },
