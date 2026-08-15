@@ -1,6 +1,8 @@
 # Phase 3 Playbook — dependency-ordered batch pipeline (EXECUTABLE)
 
-**Status**: v1.0 · 2026-08-15 · Phase-3 designer output. Precedent: `phase1-design.md` (D18)
+**Status**: v1.1 · 2026-08-15 · Phase-3 designer output, revised per the adversarial review
+pair (`review-fidelity.md`, `review-gates.md`) and arbiter resolution
+(`review-resolution.md` — all 14 findings confirmed and applied). Precedent: `phase1-design.md` (D18)
 and `phase2-design.md` (C10) — an agent with zero prior context builds from this document alone.
 Everything here is numbered P3-1..P3-8 per the design brief; the per-batch workflows the
 orchestrator launches instantiate P3-6 with the batch rows of P3-1 and the loop of P3-2.
@@ -63,9 +65,20 @@ via `types.`/`compat.`/`wirestub.`):
 | B0 | `compat.` additions (authored, new) + `api_client._iter_jsonl_lines` (exact name) | 6 recorded-equivalent (authored chunk vectors) + new authored | 6 |
 | B2 | `validation.` 512 + `user_validators.` 178 | 690 | 696 |
 | B3 | `bookmark_builders.` 134 + `segfilter.` 51 + `user_builders.` 82 + `expressions.` 30 + `transforms.` 2 | 299 | 995 |
-| B4 | `api_client.` 810 − 6 (bound at B0) + `pagination.` 39 | 843 | 1,838 |
-| B5 | `workspace.<the 44 B5 member names>` 480 + `replays.` 8 + `replay_labels.` 16 + `rrweb_analyzer.` 2 | 506 | 2,344 |
-| B6 | `workspace.<the 158 B6 member names>` | 353 | 2,697 |
+| B4 | `api_client.` 810 − 6 (bound at B0) + `pagination.` 39 | 843 (gate delta **842**†) | 1,838 (1,837 at the B4 gate†) |
+| B5 | `workspace.<the 44 B5 member names>` 480 + `replays.` 8 + `replay_labels.` 16 + `rrweb_analyzer.` 2 | 506 | 2,344 (2,343 at the B5 gate†) |
+| B6 | `workspace.<the 158 B6 member names>` | 353 (gate delta **354**†) | 2,697 |
+
+† **Cross-batch setup carry-over (standing rule)**: the runner gates a vector on its
+measured api AND every `call.setup[]` api (`runner.ts:368-386`), so gate-time PASS/UNPORTED
+deltas are computed over vectors whose measured **and** setup apis are all owned by flipped
+batches. Exactly one corpus vector crosses batches backwards:
+`auth/api_client.resolve_workspace_id/test_workspace_resolution-testfacaderesolverwiring-test_resolves_from_me_cache_without_public_call`
+(measured `api_client.resolve_workspace_id`, setup `workspace.me` — a B6 member). It stays
+UNPORTED through the B4 and B5 gates (workspace. is pending, so no FAIL) and first passes at
+the B6 gate: B4's gate delta is 842, B6's is 354. The 22 forward setups
+(workspace-measured vectors with `api_client.*` setups) are benign — B4 lands first.
+After any corpus re-pin, re-derive this footnote by re-running the cross-batch setup scan.
 | B7 | `region_probe.` | 14 | 2,711 |
 | B8 | `oauth_flow.` | 7 | 2,718 |
 | B9 | (none — spike-scoped, tests only) | 0 | 2,718 |
@@ -93,9 +106,13 @@ into the packet, never a reference to "see the api-map".
 **B0 — pythonCompat completion + shared client internals** (R10.8; full packets in P3-4).
 Modules: `conformance/record/pycompat_ref.py` extensions (Python side) +
 `packages/core/src/compat/{python-int,python-float,python-strip,codepoint}.ts` +
-`packages/core/src/client/{internals,jsonl,backoff,url}.ts`. Owning package: `core`.
+`packages/core/src/client/{internals,jsonl,backoff,url,headers,scope,app-request,lossless-json}.ts`.
+Owning package: `core`.
 Layer-3: `tests/unit/test_api_client.py` retry/backoff/`_parse_retry_after`/
-`_handle_response` test classes; `tests/unit/test_app_api_client.py` `app_request` suites.
+`_handle_response` test classes; `tests/unit/test_app_api_client.py` `app_request` suites;
+`tests/unit/test_settings_headers.py::TestSessionHeadersOnOutboundRequests` (the
+`_request_headers` merge/precedence lock — the config/bridge attachment classes of that
+file stay in B8).
 Call sites: every B4 method (183 `api_client.*` entry points), `pagination.paginate`
 (B4), streaming (B4), all entity clients (B6 delegations).
 
@@ -103,7 +120,9 @@ Call sites: every B4 method (183 `api_client.*` entry points), `pagination.pagin
 `_internal/query/user_validators.py` (580) → `packages/core/src/query/{validation,user-validators}.ts`
 (+ finish the `bookmarks/enums.ts` `TODO(port)` module-privates `_MAX_FUNNEL_STEPS`/
 `_MAX_HOLDING_CONSTANT` — owner per phase2-audit A7). Also ports the deferred export
-`validate_bookmark`. Vectors: 690 (all `kind: validation-error` or builder). Layer-3:
+`validate_bookmark`. Vectors: 690 (all `kind: builder` — error cases are expressed via
+`expect.error` on builder-kind vectors; the corpus carries zero `kind: validation-error`
+entries for these prefixes). Layer-3:
 `tests/unit/test_validation.py`, `test_validation_pbt.py`, `test_query_validation.py`,
 `test_query_validation_pbt.py`, `test_bookmark_validation_pbt.py`,
 `tests/test_validation_{funnel,retention,flow,cohort}.py`,
@@ -136,7 +155,7 @@ B0 internals; 183 `api_client.*` entry points incl. all domain wire methods),
 `_internal/client_metadata.py` (73: `QUERY_ORIGIN`, `get_user_agent`) →
 `packages/core/src/client/*` + per-domain modules per R7.2 (`services/queries/*`,
 entity-client factories per R2.9 arrive here as the client-side halves the B6 facade
-delegates to). Vectors: 843 wire. Layer-3: `tests/unit/test_api_client.py` +
+delegates to). Vectors: 843 wire (gate delta 842 — see the P3-1 † footnote). Layer-3: `tests/unit/test_api_client.py` +
 `test_api_client_{alerts,annotations,bookmarks,crud,crud_edge,data_governance,experiments,flags,governance,pbt,phase008,schemas,session,webhooks}.py`,
 `test_app_api_client.py`, `test_pagination.py`, `test_query_workspace_scoping.py`,
 `tests/unit/_internal/test_api_client_sign_replays.py`, `tests/test_api_client_engage_stats.py`.
@@ -170,7 +189,8 @@ Call-site packet: B6 facade members that reuse service internals; `Replay*` resu
 **B6 — workspace facade (remaining 158 members)** · sonnet. Module: `workspace.py`
 (11,292 total; the CRUD/entity-management remainder) → `packages/core/src/workspace.ts` +
 entity-client factories `create<Entity>Client({transport, getScope})` (R2.9) in
-`packages/core/src/services/entities/*`. Vectors: 353. Layer-3: the `test_workspace_*.py`
+`packages/core/src/services/entities/*`. Vectors: 353 (gate delta 354 — the carried
+`api_client.resolve_workspace_id` vector, P3-1 † footnote). Layer-3: the `test_workspace_*.py`
 CRUD suites (`alerts,annotations,bookmarks,business_context,crud,crud_edge,
 data_governance,experiments,flags,flow,governance,init,schemas,streaming,use,webhooks`)
 + `test_workspace.py` + `test_delegation_equivalence_pbt.py` (the async-equivalence PBT
@@ -200,7 +220,9 @@ env precedence table from CLAUDE.md (env > param > target > bridge > config) is 
 `test_io_utils.py`, `test_auth_storage.py`, `test_storage.py`, `test_token_resolver.py`,
 `test_bridge_export.py`, `test_auth_flow.py`, `test_auth_pkce.py`,
 `test_auth_registration.py`, `test_auth_callback.py`, `test_me.py`,
-`test_settings_headers.py`. R9.2 verbatim (atomic write + chmod 0600, symlink refusal
+`test_settings_headers.py` (the config/bridge attachment classes —
+`TestSettingsHeaderAttachment`, `TestBridgeHeaderAttachment`, `TestNoEnvMutation`; the
+outbound-request merge class translated at B0 is not re-translated here). R9.2 verbatim (atomic write + chmod 0600, symlink refusal
 kept, fd-flag hardening dropped, callback ports 19284–19287). Call-site packet: B7
 surfaces consume every one of these via the injected seams defined in B7's packet.
 
@@ -226,14 +248,24 @@ fast-check, colocated `*.test.ts`. Hypothesis PBT suites translate to fast-check
 same strategy shapes; pandas-`.df` assertions map to `toRows()` per the C6 precedent.
 
 **(b) Implement to green.** Done for the step = `tsc --strict` clean (workspace typecheck) +
-the module's conformance vectors PASS (bind the api names in
-`conformance-runner/src/bindings.ts`'s registration modules — one registration point, shared
-with oracle-ts) + translated tests green. Wire modules (B4+): every response body flows
+translated tests green + the module's conformance vectors PASS once bound per step (b′).
+
+**(b′) Binding + oracle registration — ALWAYS fable (rig code).** The api names are bound in
+`conformance-runner/src/bindings.ts`'s registration modules (one registration point, shared
+with oracle-ts). `bindings.ts` and the oracle registration are conformance-rig code, so the
+fable-only rig rule (P3-3 table, tiering policy "the judge must be stronger than the
+judged") applies: for **fable-tier batches (B0, B4, B7–B9)** the module task lands the
+binding inline as part of (b); for **volume-tier batches (B2, B3, B5, B6)** the binding +
+oracle-ts registration is a SEPARATE fable task (P3-6 step 3) that (i) writes the thin
+adapter bindings, (ii) applies the P3-5 rule-3 binding-honesty check (which covers
+pure/builder bindings too), and (iii) runs the module's vectors to green. Vector failures
+surfaced at (b′) are the MODULE task's failure for escalation purposes (P3-3 rule: the
+attempt-1 failure context goes back to the module, not the binder). Wire modules (B4+): every response body flows
 through `parseLossless` (GATE-VERDICT R5 — grep-audited at review: zero `response.json()`
 or bare `JSON.parse` on response text in `packages/*/src`; `wirestub.ts:198` is the sole
 grandfathered test-double exception).
 
-**(c) R10.9 throwaway differential harness** before review, per module. Mandatory edge set,
+**(c) R10.9 throwaway differential harness** after (b′), before review, per module. Mandatory edge set,
 verbatim: integral float (`18.0`), fractional float (`1.5`), `True`, `None`, empty list,
 empty string, non-BMP string (`"𝒳"`), and **every error branch** of the module (enumerate
 from the module's registry codes; for wire modules, every `_handle_response` status branch
@@ -241,11 +273,15 @@ via canned responses). Then fixed-budget fuzz through the oracle bridges: **≥5
 per api family** (P2-9 precedent) over the module's `oracle.call` entry points, zero
 unexplained divergences; shrunken repros to `conformance/differential/repros/` block the
 task. Oracle-py already exposes every registry entry point; oracle-ts gains the module's
-apis in the same commit via the shared bindings module. Wire methods have no oracle
+apis via the (b′) binding commit (fable for volume-tier batches) BEFORE the harness runs.
+Wire methods have no oracle
 `call` surface (the bridges are pure/builder-scoped) — for those, (c) reduces to the edge
 set replayed through `VectorFetch` with hand-built interactions covering every status
-branch. Throwaway harness code is deleted after the run; the RUN record (counts, seeds,
-divergence table) is appended to the batch notes file.
+branch. The harness is NOT deleted by the module task: it lives in a `throwaway/`
+directory inside the module commit, the RUN record (counts, seeds, divergence table) is
+appended to the batch notes file, the review pair re-runs or spot-checks it from the
+recorded seeds (step d item 5), and the BATCH GATE task removes `throwaway/` after
+arbiter sign-off.
 
 **(d) Adversarial review PAIR + arbiter — ALWAYS fable tier** (policy: review never
 downgrades). Two independent reviewers, then an arbiter. Each reviewer explicitly executes:
@@ -256,7 +292,11 @@ clients, injectable fetch R2.4, string-concat URLs R2.13, redirect:'manual' R2.1
 R2.12), R3.9/R4.10/R4.11 optionality, R4.8 ReadonlyMap, R5 codes-not-messages, R6.6/R6.7,
 watchlist §8 items 1/6/7 (destructuring arity, truthiness, prototype membership); (3) the
 GATE-R5 lossless-parse grep for wire modules; (4) `TODO(port)` triage (every marker gets an
-owner or a fix). Arbiter resolves splits and files R10.4 rulebook amendments when a fix
+owner or a fix); (5) **R10.9 harness re-run/spot-check** — re-run the module's `throwaway/`
+harness (or a seeded subset) from the RUN record's seeds and confirm the recorded counts
+and zero-divergence claim reproduce; a RUN record that cannot be reproduced is a finding.
+Arbiter resolves splits, verifies (b′) binding honesty for the module (P3-5 rule 3 — ALL
+bindings, not just wire), and files R10.4 rulebook amendments when a fix
 pattern recurs ≥3 times (stop, amend, regenerate affected modules).
 
 **(e) Batch-done gate** (one task per batch, after all module tasks + reviews):
@@ -265,12 +305,19 @@ pattern recurs ≥3 times (stop, amend, regenerate affected modules).
    commit** as the gate checkpoint (the module's batch-status unit test's full-corpus
    prefix-coverage check must stay green).
 2. Conformance report checkpoint: run `npm run conformance`, verify counts match the P3-1
-   row's expectation (PASS grows by exactly the batch's vector count; FAIL = 0; UNPORTED
+   row's expectation (PASS grows by exactly the batch's **gate delta** — the vector count
+   adjusted per the P3-1 † cross-batch-setup rule; FAIL = 0; UNPORTED
    shrinks by the same), archive the report JSON under `context/phase3/reports/` in the
    Python repo, commit both repos (TS: gate commit on `main`; Python: docs/report commit on
    the support branch).
-3. Oracle-ts surface extended to the batch's apis (via the shared bindings registration —
-   verify `oracle.info` lists them) + a **differential full-suite regression run** (P3-7)
+3. Oracle-ts surface extended to the batch's apis (via the shared bindings registration).
+   Verification is a **mechanical probe**, not `oracle.info` (protocol-1.1 `oracle.info`
+   returns only `{language, library_version, source_commit, protocol_version}` on both
+   bridges — it has no api list): issue one `oracle.call` per newly registered
+   registry-covered api against BOTH bridges and require a non-"unknown api" response
+   (oracle-py raises `OracleProtocolError` "unknown api …" for unregistered names,
+   `oracle_py/server.py:414-418`; wire api names have no oracle call surface and are
+   exempt from the probe). Then a **differential full-suite regression run** (P3-7)
    green.
 4. `npm run check` green (TS) — includes typecheck/lint/prettier/vitest/browser smoke;
    `just check` green (Python) if the batch touched the Python repo.
@@ -299,6 +346,7 @@ model is forbidden, R10.13):
 | B7 / B8 / B9 module tasks | **fable** | ≤ high |
 | Design-lite packet authoring (per batch, P3-6 step 1) | **fable** | ≤ high |
 | Adversarial review pair, arbiter, batch gates, audits, failure triage | **fable** | ≤ high |
+| Binding + oracle registration tasks (P3-2 step b′) for volume-tier batches (B2/B3/B5/B6) | **fable** | ≤ high |
 | ANYTHING touching the conformance rig (bindings.ts, batch-status.ts, runner, codecs, oracles, recorder, canonicalizers, referees) | **fable** | ≤ high |
 | R10.9 throwaway differential harness runs | same tier as the module task (policy rule 3: the harness itself is unchanged and tier-independent; a rig CHANGE escalates to fable per the row above) | ≤ high |
 
@@ -406,8 +454,18 @@ is byte-for-byte from source read 2026-08-15; the builder MUST re-read each cite
 | retry/backoff trio | `_calculate_backoff` `:664-681`, `_retry_wait_seconds` `:683-704`, `_parse_retry_after` `:1159-1185` | `client/backoff.ts` | translated `test_api_client.py:444-540,1436-1560,1762-1800,3467-3520` (429 loops, hostile Retry-After) with injected sleep + injected RNG | 429-sequence wire vectors |
 | `_handle_response` | `api_client.py:503-662` | `client/internals.ts` | translated handler tests — EVERY branch, see checklist below | every non-200 wire vector |
 | `_execute_with_retry` | `api_client.py:706-820` | `client/internals.ts` | translated tests (429 loop, `httpx.HTTPError`→`HTTP_ERROR` mapping per R2.10) | all Query-host wire vectors |
+| `_request_headers` | `api_client.py:452-481` | `client/headers.ts` | translated `test_settings_headers.py::TestSessionHeadersOnOutboundRequests` (merge order + env/session precedence-on-collision) | every wire vector's request headers |
 | `app_request` | `api_client.py:1191-1387` | `client/app-request.ts` | translated `test_app_api_client.py` | all App-API wire vectors (the bulk of the 810) |
 | `maybe_scoped_path` | `api_client.py:1637-1664` | `client/scope.ts` | translated path tests (workspace set / unset) | scoped-path wire vectors |
+| `parseLossless` relocation | (rig code, no Python source) `conformance-runner/src/lossless-json.ts:52` | `client/lossless-json.ts` — MOVE into core with its existing unit tests; `conformance-runner` re-imports from core thereafter (judge-uses-library direction; the library must NEVER import from the rig) | the moved lossless-json unit suite | every wire vector's body parse (GATE-R5) |
+
+R10.8 ownership note: `_request_headers` is consumed by BOTH B0 wire functions
+(`_execute_with_retry` at `:747`, `app_request` at `:1264`) and by streaming/replay call
+sites (`:1862`, `:7720`, `:7923`) — it is B0-owned, single implementation in
+`client/headers.ts` (4-layer merge, each later layer overriding on name collision:
+(1) `User-Agent` from `getUserAgent()`; (2) `MP_CUSTOM_HEADER_NAME`/`MP_CUSTOM_HEADER_VALUE`
+env pair; (3) `session.headers`; (4) caller extras). B4-C1 IMPORTS it by name and must not
+re-implement any header merging.
 
 Byte-for-byte behavior checklist (each line = an assertion the review pair verifies):
 
@@ -420,21 +478,40 @@ Byte-for-byte behavior checklist (each line = an assertion the review pair verif
   founding example; note the `int()` coercion of project id uses `pythonInt`); other 403 →
   `QueryError` default `"Permission denied"`; 400 → `QueryError` default `"Unknown
   error"`; 404 → `QueryError` default `"Resource not found"`; other 4xx → `QueryError`
-  default `"Request failed"`; 5xx → `ServerError` with `"Server error: "` prefix;
-  2xx/other → return parsed body if object/array, else re-raise-for-status helper
-  (R2.11: explicit throwing helper, transport at `redirect: 'manual'`); non-JSON 2xx →
-  `MixpanelHeadlessError` code `INVALID_RESPONSE`. All error constructors carry
+  default `"Request failed"`; 5xx → `ServerError` with `"Server error: "` prefix.
+  **Fallthrough tail, in EXACT source order (`api_client.py:652-662`)**: (i)
+  `response.raise_for_status()` runs FIRST — any remaining non-2xx status (including 3xx,
+  reachable in TS because R2.11 mandates `redirect: 'manual'`) goes through the explicit
+  throwing helper, which MUST throw a `MixpanelHttpError`-normalized error so that
+  `_execute_with_retry`'s catch (`:801`) wraps it as `MixpanelHeadlessError` code
+  `HTTP_ERROR` — a 3xx with a JSON object body is an ERROR, never a success return; (ii)
+  parsed body is object/array → return it; (iii) otherwise re-parse the body: a JSON
+  **scalar** (`42`, `"ok"`, `true`, `null`) is RETURNED as the result (verified against
+  httpx: `Response(200, b"42").json()` → `42`); only a parse FAILURE raises
+  `MixpanelHeadlessError` code `INVALID_RESPONSE` with `cpSlice(text, 0, 500)` in the
+  message. All error constructors carry
   `status_code`/`response_body`/`request_method`/`request_url`/`request_params`/
   `request_body` (serialized detail bags keep Python spelling, R7.6). Message text is out
   of contract (R5.4) but defaults above are ported anyway (they flow into `expect.error`
   details only via codes — do not vector-assert text).
-- **`_error_message`**: dict with `error` key → string as-is, non-string `error` →
-  `pythonStr(raw)`; string body → `cpSlice(body, 0, 200)`; blank/whitespace-only (Python
-  `.strip()` → `pythonStrip`) falls back to the default.
+- **`_error_message`** (`api_client.py:98-100`): dict body — `error` key ABSENT **or
+  `null`** → the default (Python `body.get("error") is None` cannot distinguish the two;
+  never map `{"error": null}` to the string `"None"`); string `error` → as-is; other
+  non-null `error` → `pythonStr(raw)`; string body → `cpSlice(body, 0, 200)`;
+  blank/whitespace-only result (Python `.strip()` → `pythonStrip`) falls back to the
+  default.
 - **Retry policy (R2.5, clarified against source — see Discrepancy #1)**: 429-only; loop
   `for attempt in 0..maxRetries` (default `maxRetries = 3`, `api_client.py:312`); on final
   attempt raise `RateLimitError` with `retry_after` (parsed header, may be null) +
-  lossless-parsed body; otherwise wait = header present ? `min(pythonFloat-of-int, 60)`
+  lossless-parsed body + **`project_id`** — EVERY raise site passes
+  `project_id=self.project_id` (`api_client.py:779, :819, :1322, :1386, :1890`; Python
+  spelling in the detail bag, R7.6; the corpus's `details_contain` subset matching does
+  NOT assert it, so only faithful translation of the Layer-3 asserts at
+  `test_api_client.py:504,527,1567,4090` locks it). Constructor shapes vary by site: the
+  type-checker fallthrough raises (`:814-820`, `:1381-1387`) omit
+  `retry_after`/`status_code`/`response_body`; the streaming-export site (`:1883-1891`)
+  omits `response_body` only — port each shape verbatim.
+  Otherwise wait = header present ? `min(pythonFloat-of-int, 60)`
   **without jitter** : `min(1.0 * 2^attempt, 60) + uniform(0, delay*0.1)` **with jitter**
   (`random.uniform` ports to an injectable `random: () => number` seam; conformance/tests
   inject a fixed source). `_parse_retry_after`: `pythonInt(header)`; unparseable or
@@ -498,6 +575,20 @@ model (`accountAuthHeader`/`sessionAuthHeader`) and diffed byte-exactly against 
 headers (fake creds make exact match safe; the canonicalizer's pattern-matching for auth
 headers stays as the backstop per plan Appendix A).
 
+**`call.setup[]` + shared state (MANDATORY)**: the runner creates ONE `state` map and ONE
+`createVectorFetch` harness per vector and executes every `call.setup[]` entry through the
+bindings with that shared context BEFORE the measured call (`runner.ts:446`, `:478-500`;
+doc comment `:51-52`). `clientFromSession` therefore MUST memoize the constructed client
+in `context.state` (single well-known key) so setup entries and the measured call operate
+on the SAME instance — a fresh client per binding invocation would let the 97
+`api_client.set_workspace_id` setup entries (plus `close` 8, `retention` 4,
+`list_bookmarks` 4, `use` 2, `resolve_workspace` 2, `resolve_workspace_id` 2, and the
+other discovery prerequisites) mutate a throwaway object, and every workspace-scoped wire
+vector would FAIL_REQUEST with a project-scoped path. Corollary: every api name appearing
+in ANY `call.setup[]` needs a binding by the time its vectors replay (all setup names are
+within the 183 `api_client.*` api-index names except `workspace.me` — see the P3-1 †
+footnote), or `gateApis` (`runner.ts:368-386`) short-circuits the vector.
+
 **2. The R2.4 injected-fetch seam.** `createMixpanelClient` accepts `fetch?: typeof fetch`.
 The runner passes `harness.fetch` from `createVectorFetch(interactions)` — already built
 (positional serving, unordered-group keying, `transport_error` rejection tables,
@@ -508,13 +599,22 @@ injected by every wire binding: `sleep: () => Promise.resolve()` (zero-delay),
 vector-observable, only request sequences are), `now: () => recordEpoch` (D1.4 clock
 freeze). Timing-sensitive behavior is Layer-3's job (fake timers), never Layer-2's.
 
-**3. Binding honesty rule.** A wire binding calls the same public entry point the recorder
-wrapped (`api_client.X` → the ported client method; `workspace.X` → the real facade
-member). Bindings NEVER re-implement request assembly or bypass the facade — that is the
-ScanCode failure mode. The arbiter checks new bindings against this rule explicitly.
+**3. Binding honesty rule (ALL bindings, not only wire).** A binding calls the same public
+entry point the recorder wrapped (`api_client.X` → the ported client method;
+`workspace.X` → the real facade member; `validation.X`/`bookmark_builders.X`/… → the
+ported pure function). Bindings NEVER re-implement request assembly, re-derive the
+transform, or bypass the facade — that is the ScanCode failure mode. Every binding commit
+is fable-authored (P3-2 b′), and the arbiter checks each module's new bindings against
+this rule explicitly for pure/builder batches exactly as for wire batches.
 
-**4. Flip granularity (decision).** `batch-status.ts` longest-prefix matching supports
-exact names, so flips track the OWNING BATCH, not the raw prefix:
+**4. Flip granularity (decision).** `batch-status.ts` matching is `api.startsWith(prefix)`
+with longest-prefix-wins (`batch-status.ts:90-95`) — an "exact name" entry is still a
+PREFIX and also captures every longer api name it prefixes. Flips track the OWNING BATCH,
+not the raw prefix, with the following standing safety rule: **after generating any set of
+exact-name entries, mechanically assert that no still-pending corpus api name
+`startsWith` a generated entry** (scan the corpus api names against the new entries; any
+hit requires a longer overriding entry pinned to `pending`). One such collision exists
+today and is resolved explicitly below (`workspace.list_bookmarks` → `_v2`):
 
 - **B0**: add exact-name entry `api_client._iter_jsonl_lines` → `done`.
 - **B2 gate**: `validation.` + `user_validators.` → `done`.
@@ -528,13 +628,23 @@ exact names, so flips track the OWNING BATCH, not the raw prefix:
 - **B5 gate**: 44 exact-name entries `workspace.<member>` → `done` (generated
   mechanically: `jq -r '.workspace_members[] | select(.batch=="B5") | "workspace." + .name'
   context/typescript-port-api-map.json`), plus `replays.` + `replay_labels.` +
-  `rrweb_analyzer.` → `done`.
-- **B6 gate**: replace the 44 exact-name entries with the single `workspace.` → `done`
+  `rrweb_analyzer.` → `done`, **plus the longer overriding entry
+  `workspace.list_bookmarks_v2` → `pending`**: the generated B5 entry
+  `workspace.list_bookmarks` (a B5 member with ZERO corpus vectors) prefix-captures the
+  B6 member `workspace.list_bookmarks_v2` (7 corpus vectors) under `startsWith` matching
+  and would flip those 7 unported B6 vectors to FAIL_ERROR; the longer `pending` entry
+  wins the longest-prefix resolution and keeps them UNPORTED until B6. Run the standing
+  collision assertion above after generating the list (this is the only collision at the
+  current pin).
+- **B6 gate**: replace the 44 exact-name entries AND the `workspace.list_bookmarks_v2`
+  pending override with the single `workspace.` → `done`
   (longest-prefix keeps them equivalent; collapsing keeps the table readable).
 - **B7 gate**: `region_probe.` → `done`. **B8 gate**: `oauth_flow.` → `done`.
 
 Every flip commit re-runs the batch-status unit suite (full-corpus prefix coverage) and
-the conformance report; UNPORTED must drop by exactly the batch's P3-1 vector count.
+the conformance report; UNPORTED must drop by exactly the batch's **gate delta** (the
+P3-1 vector count adjusted per the † cross-batch-setup footnote: B4 −842, B6 −354, all
+other batches equal to their vector count).
 
 **5. B4-before-B5/B6 semantics.** Landing B4 flips only `api_client.`/`pagination.`;
 `workspace.*` vectors stay UNPORTED (not FAIL) until their owning member's batch gate.
@@ -554,13 +664,23 @@ state + R10.13 protocol + their P3-3 model assignment stated explicitly):
    this step (P3-4 IS the packet).
 2. **N module tasks** (batch tier; sequential or parallel per the dependency notes in the
    packet — default: parallel within a shard group, sequential across groups that share
-   files): each runs the P3-2 loop steps (a)-(c).
-3. **Review pair task ×2 per module** (fable; ×4 for B7/B8/B9 per P3-3 doubling) then
-   **arbiter task** (fable): P3-2 step (d). Arbiter output: findings resolved, rulebook
-   amendments filed, GO/NO-GO per module.
-4. **Batch gate task** (fable): P3-2 step (e) — flips, report checkpoint, oracle
-   extension, differential regression, referee runs where scheduled (P3-7), notes
-   finalization, commits.
+   files): each runs the P3-2 loop steps (a)+(b). For fable-tier batches (B0, B4, B7–B9)
+   the module task also performs (b′) inline and continues into (c).
+3. **Binding task per module — fable, volume-tier batches only (B2/B3/B5/B6)**: P3-2
+   step (b′) — registers the module's api names in `bindings.ts`/oracle-ts, applies the
+   P3-5 rule-3 honesty check, runs the module's vectors to green. Rig code never runs at
+   sonnet/opus (P3-3 rig row; tiering policy "the judge must be stronger than the
+   judged"). Vector failures found here are the MODULE task's attempt-1 failure for
+   escalation purposes. After (b′) lands, the module tier runs P3-2 step (c) (the R10.9
+   harness — same tier as the module per policy rule 3; a fresh module-tier task if the
+   original agent has exited).
+4. **Review pair task ×2 per module** (fable; ×4 for B7/B8/B9 per P3-3 doubling) then
+   **arbiter task** (fable): P3-2 step (d), including the harness re-run/spot-check
+   (item 5) and the binding-honesty verification. Arbiter output: findings resolved,
+   rulebook amendments filed, GO/NO-GO per module.
+5. **Batch gate task** (fable): P3-2 step (e) — flips, report checkpoint, oracle
+   extension probe, differential regression, referee runs where scheduled (P3-7),
+   `throwaway/` harness cleanup after arbiter sign-off, notes finalization, commits.
 
 Failure handling: module task misses done-criteria → P3-3 escalation (retry once on fable
 with failure context); second miss aborts the chain. Recurring fix patterns (≥3) → R10.4
@@ -582,7 +702,9 @@ K3 `segfilter` + `expressions` + `transforms`; K4 `user_builders`
 examples with adversarial Unicode/quote/backslash inputs). K2–K4 depend on K1's tables.
 
 **B4** (6 tasks, fable): C1 client assembly (constructor/`_ensure_client`/`_request`/
-headers/`with_project`/`resolve_workspace_id`+`require_scoped_path`+me-selection logic) —
+`with_project`/`resolve_workspace_id`+`require_scoped_path`+me-selection logic; header
+composition is NOT re-implemented here — C1 imports the B0-owned `client/headers.ts`
+`_request_headers` by name, R10.8) —
 first, everything depends on it; C2 Query-host methods (segmentation family, funnels,
 retention, flows, activity feed, frequency, engage/user profiles, top events) +
 streaming (`stream_events`/`stream_profiles`, export) — the 3 B4 api-map members land
@@ -591,7 +713,12 @@ experiments + annotations + webhooks + alerts; C5 data governance (lexicon, drop
 custom properties, lookup tables, custom events, tracking/history) + schemas + audit +
 anomalies + deletion requests + business context + replays signing; C6 `pagination.py`
 (after C1; R6.1/R6.6/R6.7 apply in full). The design-lite packet assigns each of the 183
-`api_client.*` api-index names to exactly one of C2–C5 and the gate task verifies the
+`api_client.*` api-index names to exactly one of **C1–C6** — the 183 include the
+client-assembly/scoping names (`use`, `set_workspace_id`, `close`, `with_project`,
+`resolve_workspace`, `resolve_workspace_id`, `require_scoped_path`, `request`) which
+belong to C1, plus the two B0-ported names bound in B4 shards (`maybe_scoped_path` —
+B0 module, C1 binds/imports it by name; `api_client._iter_jsonl_lines` — already bound
+at B0, listed as B0-owned in the assignment) — and the gate task verifies the
 assignment covers all 183 (mechanical diff against
 `jq -r 'keys[]|select(startswith("api_client."))' corpus/api-index.json`).
 
@@ -654,7 +781,7 @@ injected interfaces that B8 implements).
 | # | Risk | Mitigation |
 |---|---|---|
 | 1 | **B4 decomposition drift**: splitting the 8.9k-LOC client across 6 shards invites re-implemented internals (the exact failure R10.8 exists to stop) | B0 lands first and exports by name; review checklist item: grep shards for local reimplementations of `_handle_response`/backoff/URL building; gate diff verifies all 183 api-index names bound exactly once |
-| 2 | **Binding dishonesty**: wire bindings that assemble requests themselves would pass vectors while the library diverges (ScanCode mode) | P3-5 rule 3; arbiter check; bindings are rig code = fable-only |
+| 2 | **Binding dishonesty**: bindings that re-implement the transform or assemble requests themselves would pass vectors while the library diverges (ScanCode mode) | P3-5 rule 3 (ALL bindings, pure/builder included); arbiter check per module; bindings are rig code = fable-only, enforced structurally by the P3-2 (b′) fable binding task for volume-tier batches |
 | 3 | **Sonnet-tier assertion weakening at B6 volume** (158 members, 16 test files) | Fable review pair with mandatory R10.2 diff per file; escalation rule; delegation-equivalence PBT is tier-independent |
 | 4 | **429/backoff nondeterminism** breaking vector replay or flaky Layer-3 timing tests | Injected `sleep`/`random`/`now` seams (P3-5 §2); Layer-3 uses Vitest fake timers; no real timers anywhere in tests |
 | 5 | **Unicode-DB skew** (V8 Unicode 17 vs pinned CPython 16 tables) in the new digit/whitespace tables | Pinned generated tables + caveat headers + regeneration scripts (TS-2 precedent); oracle fuzz biases the affected ranges |
