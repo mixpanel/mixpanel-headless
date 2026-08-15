@@ -378,6 +378,86 @@ def build_tag_universe(vectors_dir: Path, generated_from: str) -> dict[str, Any]
 # model-coverage.json (C5 item 5)
 # ---------------------------------------------------------------------------
 
+DEFAULT_OVERRIDES_PATH: Path = (
+    Path(__file__).resolve().parent / "coverage_overrides.json"
+)
+"""The hand-maintained P2-7 coverage-override table.
+
+Models with neither a corpus ``$type`` tag nor an entity-golden wire
+vector get their lock evidence here: an ``authored_fixtures`` entry
+(TS test path holding the authored full-field payload lock) or a
+``deferrals`` entry (``{"reason", "owner"}``). Keeping the table in a
+separate hand-maintained input preserves the generator's determinism
+guarantee: re-run = byte-identical for a fixed corpus + override state.
+"""
+
+
+def load_coverage_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> dict[str, Any]:
+    """Load the hand-maintained coverage-override table.
+
+    Args:
+        path: Override-table location (defaults to the committed file).
+
+    Returns:
+        The parsed table with ``authored_fixtures`` and ``deferrals``
+        mappings (both empty when the file does not exist).
+
+    Raises:
+        ValueError: If the file exists but is not a JSON object or
+            carries keys other than ``$comment`` / ``authored_fixtures``
+            / ``deferrals``.
+    """
+    if not path.exists():
+        return {"authored_fixtures": {}, "deferrals": {}}
+    parsed = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError(f"coverage overrides must be a JSON object: {path}")
+    unknown_keys = set(parsed) - {"$comment", "authored_fixtures", "deferrals"}
+    if unknown_keys:
+        raise ValueError(f"unknown coverage-override keys: {sorted(unknown_keys)}")
+    return {
+        "authored_fixtures": dict(parsed.get("authored_fixtures", {})),
+        "deferrals": dict(parsed.get("deferrals", {})),
+    }
+
+
+def _apply_coverage_overrides(
+    coverage: dict[str, dict[str, Any]], overrides: dict[str, Any]
+) -> None:
+    """Resolve ``unresolved`` coverage rows from the override table.
+
+    Args:
+        coverage: The computed per-model rows (mutated in place).
+        overrides: The parsed override table.
+
+    Raises:
+        ValueError: If an override names an unknown model, names a model
+            in both maps, or targets a model whose mechanical evidence
+            already resolves it (a stale row that must be deleted).
+    """
+    fixtures: dict[str, Any] = overrides["authored_fixtures"]
+    deferrals: dict[str, Any] = overrides["deferrals"]
+    doubled = fixtures.keys() & deferrals.keys()
+    if doubled:
+        raise ValueError(f"models in BOTH override maps: {sorted(doubled)}")
+    unknown = (fixtures.keys() | deferrals.keys()) - coverage.keys()
+    if unknown:
+        raise ValueError(f"coverage overrides name unknown models: {sorted(unknown)}")
+    for name, row in coverage.items():
+        if row["status"] != "unresolved":
+            if name in fixtures or name in deferrals:
+                raise ValueError(
+                    f"stale coverage override for {name}: mechanical evidence "
+                    f"already gives status {row['status']!r} — delete the row"
+                )
+            continue
+        if name in fixtures:
+            row["authored_fixture"] = fixtures[name]
+            row["status"] = "authored_fixture"
+        elif name in deferrals:
+            row["deferral"] = deferrals[name]
+            row["status"] = "deferred"
+
 
 def _exported_models() -> dict[str, type[BaseModel]]:
     """Collect the exported Pydantic models (the 125 entity/param models).
@@ -451,7 +531,11 @@ def _wire_api_model_map(
     return api_models, sorted(failures)
 
 
-def build_model_coverage(vectors_dir: Path, generated_from: str) -> dict[str, Any]:
+def build_model_coverage(
+    vectors_dir: Path,
+    generated_from: str,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build the ``model-coverage.json`` artifact body (design C5 item 5).
 
     Per exported Pydantic model, the P2-1-mechanical lock evidence:
@@ -461,17 +545,28 @@ def build_model_coverage(vectors_dir: Path, generated_from: str) -> dict[str, An
     - ``entity_golden_vector_ids``: wire vectors carrying a plain
       ``expect.result`` whose api's return annotation references the
       model (entity-golden lock, C8b extension).
-    - ``authored_fixture`` / ``deferral``: null here — P2-7 fills them for
-      every ``status: "unresolved"`` model; a model with none of the four
-      is a P2-7 failure.
+    - ``authored_fixture`` / ``deferral``: resolved from the
+      hand-maintained P2-7 override table
+      (``coverage_overrides.json``) for models with neither mechanical
+      evidence source; a model with none of the four is a P2-7 failure
+      (enforced by the TS-side entity-golden suite, which rejects any
+      remaining ``unresolved`` row).
 
     Args:
         vectors_dir: The corpus root.
         generated_from: The externally-injected provenance SHA.
+        overrides: Pre-parsed override table (tests); ``None`` loads the
+            committed ``coverage_overrides.json``.
 
     Returns:
         The artifact body keyed by model name, plus the hint-failure list.
+
+    Raises:
+        ValueError: If the override table is malformed or stale (see
+            ``_apply_coverage_overrides``).
     """
+    if overrides is None:
+        overrides = load_coverage_overrides()
     models = _exported_models()
     model_names = frozenset(models)
     tag_counts = collect_tag_counts(vectors_dir)
@@ -510,6 +605,7 @@ def build_model_coverage(vectors_dir: Path, generated_from: str) -> dict[str, An
             "deferral": None,
             "status": status,
         }
+    _apply_coverage_overrides(coverage, overrides)
     return {
         "generated_from": generated_from,
         "model_count": len(coverage),

@@ -26,6 +26,7 @@ from conformance.contract.generate_contract import (
     build_model_coverage,
     build_tag_universe,
     collect_tag_counts,
+    load_coverage_overrides,
     main,
     write_artifacts,
 )
@@ -423,8 +424,17 @@ class TestModelCoverageArtifact:
         assert model_coverage["model_count"] == 125
         assert len(model_coverage["models"]) == 125
         for name, row in model_coverage["models"].items():
-            assert row["status"] in ("corpus_tag", "entity_golden", "unresolved"), name
-            assert row["authored_fixture"] is None, name
+            assert row["status"] in (
+                "corpus_tag",
+                "entity_golden",
+                "authored_fixture",
+                "deferred",
+            ), name
+            if row["status"] == "authored_fixture":
+                assert isinstance(row["authored_fixture"], str), name
+                assert row["authored_fixture"], name
+            else:
+                assert row["authored_fixture"] is None, name
             assert row["deferral"] is None, name
 
     def test_status_reflects_evidence(self, model_coverage: dict[str, Any]) -> None:
@@ -442,7 +452,10 @@ class TestModelCoverageArtifact:
             elif row["entity_golden_vector_ids"]:
                 assert row["status"] == "entity_golden", name
             else:
-                assert row["status"] == "unresolved", name
+                # P2-7: every mechanically-unresolved model is resolved by
+                # the committed coverage_overrides.json table — NO model
+                # may remain unresolved (design C5 item 5 done-criterion).
+                assert row["status"] in ("authored_fixture", "deferred"), name
 
     def test_known_models_spot_checks(self, model_coverage: dict[str, Any]) -> None:
         """Known models land in their expected coverage buckets.
@@ -477,6 +490,96 @@ class TestModelCoverageArtifact:
             AssertionError: If the known failure set changes silently.
         """
         assert model_coverage["hint_failures"] == ["pagination.paginate_all"]
+
+
+class TestCoverageOverrides:
+    """The P2-7 hand-maintained override table (design C5 item 5)."""
+
+    def test_committed_table_resolves_every_model(
+        self, model_coverage: dict[str, Any]
+    ) -> None:
+        """No model remains ``unresolved`` with the committed table.
+
+        Args:
+            model_coverage: The artifact body.
+
+        Raises:
+            AssertionError: If any model lacks all four evidence kinds.
+        """
+        unresolved = [
+            name
+            for name, row in model_coverage["models"].items()
+            if row["status"] == "unresolved"
+        ]
+        assert unresolved == []
+
+    def test_committed_table_shape(self) -> None:
+        """The committed table parses and points at TS test paths.
+
+        Raises:
+            AssertionError: If a fixture value is not a TS test path.
+        """
+        overrides = load_coverage_overrides()
+        assert overrides["deferrals"] == {}
+        assert len(overrides["authored_fixtures"]) == 31
+        for name, path in overrides["authored_fixtures"].items():
+            assert path.endswith(".test.ts"), name
+
+    def test_unknown_model_rejected(self) -> None:
+        """An override naming a non-model is a hard error.
+
+        Raises:
+            AssertionError: If the generator accepts the bogus row.
+        """
+        overrides = {
+            "authored_fixtures": {"NotAModel": "x.test.ts"},
+            "deferrals": {},
+        }
+        with pytest.raises(ValueError, match="unknown models"):
+            build_model_coverage(DEFAULT_VECTORS_DIR, _STAMP, overrides)
+
+    def test_stale_override_rejected(self) -> None:
+        """An override for a mechanically-resolved model is a hard error.
+
+        Raises:
+            AssertionError: If the generator accepts the stale row.
+        """
+        overrides = {
+            "authored_fixtures": {"Dashboard": "x.test.ts"},
+            "deferrals": {},
+        }
+        with pytest.raises(ValueError, match="stale coverage override"):
+            build_model_coverage(DEFAULT_VECTORS_DIR, _STAMP, overrides)
+
+    def test_double_booking_rejected(self) -> None:
+        """A model in BOTH maps is a hard error.
+
+        Raises:
+            AssertionError: If the generator accepts the double row.
+        """
+        overrides = {
+            "authored_fixtures": {"Target": "x.test.ts"},
+            "deferrals": {"Target": {"reason": "r", "owner": "o"}},
+        }
+        with pytest.raises(ValueError, match="BOTH override maps"):
+            build_model_coverage(DEFAULT_VECTORS_DIR, _STAMP, overrides)
+
+    def test_deferral_rows_apply(self) -> None:
+        """A deferral row lands as ``status: deferred`` with its payload.
+
+        Raises:
+            AssertionError: If the deferral row is not applied.
+        """
+        base = load_coverage_overrides()
+        fixtures = dict(base["authored_fixtures"])
+        deferral = {"reason": "phase-3 accounts batch", "owner": "B7"}
+        fixtures.pop("Target")
+        overrides = {"authored_fixtures": fixtures, "deferrals": {"Target": deferral}}
+        body = build_model_coverage(DEFAULT_VECTORS_DIR, _STAMP, overrides)
+        row = body["models"]["Target"]
+        assert row["status"] == "deferred"
+        assert row["deferral"] == deferral
+        assert row["authored_fixture"] is None
 
 
 class TestDeterminismAndCli:
