@@ -175,11 +175,16 @@ analytics' own insights-API fixtures
 filter clause differently: top-level `filterType`/`filterOperator`/
 `filterValue` with the `$frequency` marker nested under
 `behavior.behaviorType` — not the library's `customProperty`-nested form.
-Whether the live query API tolerates the library's shape cannot be
-decided from builder vectors alone (needs a wire-level probe); until
-resolved, the TS port must replicate the library's shape byte-for-byte
-(bug-compatibility rule R2.x) and this divergence stays on the escalation
-list.
+**Settled by the GATE-VERDICT R7 live probe (2026-08-15,
+`context/phase1/addendum/frequency-filter-probe.md`): the live query
+engine REJECTS the library's shape (HTTP 500 on an otherwise-identical
+query that succeeds without the clause).** The deep validator is not
+stale — these 2 REJECTs are true positives. Filed per R10.7 as
+`context/phase1/bug-reports/mixpanel-headless-frequency-filter-clause-shape.md`
+(fix in Python first, regenerate vectors, then port); until that cycle
+lands, the TS port keeps replicating the library's shape byte-for-byte
+(bug-compatibility rule R2.x) and these 2 REJECTs remain
+expected-and-disclosed (exit 1 by design).
 
 ## Caveat — structural ACCEPT is near-vacuous for modern-dialect payloads (gate-verdict R6)
 
