@@ -22,9 +22,15 @@ vectors like any other vector.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import httpx
+
+from mixpanel_headless.exceptions import MixpanelHeadlessError
+
+_MAX_SAFE_INT = 2**53 - 1
+"""The canonicalizer's exact-integer bound (rulebook R4.5)."""
 
 
 def zfill(value: str, width: int) -> str:
@@ -87,6 +93,178 @@ def python_float_str(value: float) -> str:
         ```
     """
     return repr(value)
+
+
+def python_int(value: str) -> int:
+    """Reference CPython ``int(str)`` parse under the R4.5 safe bound (R11.3).
+
+    CPython is the oracle for the grammar (underscores between digits,
+    signed, Unicode digit/whitespace fold); two rig-contract translations
+    apply on top (B0-notes design decision 1):
+
+    - ``ValueError`` re-raises as :class:`MixpanelHeadlessError` code
+      ``PY_INT_INVALID_LITERAL`` — uncoded builtin raises are R5.5-excluded
+      from vectors, so the wrapper defines a coded, vector-comparable form.
+    - Results beyond ±(2^53 − 1) raise code ``PY_INT_UNSAFE_INTEGER``: the
+      TS port returns a JS ``number`` and deliberately rejects unsafe
+      magnitudes (the canonicalizer 2^53 policy, R4.5); the wrapper mirrors
+      that deviation so both sides stay vector-comparable.
+
+    Args:
+        value: The string to parse.
+
+    Returns:
+        ``int(value)`` when valid and within ±(2^53 − 1).
+
+    Raises:
+        MixpanelHeadlessError: Code ``PY_INT_INVALID_LITERAL`` for invalid
+            literals; code ``PY_INT_UNSAFE_INTEGER`` beyond the bound.
+
+    Example:
+        ```python
+        python_int("  1_5  ")
+        # 15
+        ```
+    """
+    try:
+        result = int(value)
+    except ValueError as exc:
+        raise MixpanelHeadlessError(str(exc), code="PY_INT_INVALID_LITERAL") from exc
+    if abs(result) > _MAX_SAFE_INT:
+        raise MixpanelHeadlessError(
+            f"int literal magnitude exceeds 2^53 - 1 (canonicalizer policy R4.5): "
+            f"{value!r}",
+            code="PY_INT_UNSAFE_INTEGER",
+        )
+    return result
+
+
+def python_float(value: str) -> float | str:
+    """Reference CPython ``float(str)`` parse (R11.3).
+
+    CPython is the oracle for the grammar (decimal/exponent forms,
+    dangling dots, underscores, signed case-insensitive inf/nan, Unicode
+    digit/whitespace fold, silent overflow to infinity). Two rig-contract
+    translations apply (B0-notes design decisions 1–2):
+
+    - ``ValueError`` re-raises as :class:`MixpanelHeadlessError` code
+      ``PY_FLOAT_INVALID_LITERAL`` (R5.5: uncoded raises cannot ride
+      vectors).
+    - Non-finite results return the ``repr`` sentinel string (``"inf"`` /
+      ``"-inf"`` / ``"nan"``): non-finite floats are illegal in vector
+      JSON (design D6 rule 5), and the TS binding mirrors the sentinel.
+      The TS LIBRARY function itself returns the real non-finite double.
+
+    Args:
+        value: The string to parse.
+
+    Returns:
+        ``float(value)`` when finite; ``repr(float(value))`` otherwise.
+
+    Raises:
+        MixpanelHeadlessError: Code ``PY_FLOAT_INVALID_LITERAL`` for
+            invalid literals.
+
+    Example:
+        ```python
+        python_float("1_0.5")
+        # 10.5
+        python_float("-iNf")
+        # "-inf"
+        ```
+    """
+    try:
+        result = float(value)
+    except ValueError as exc:
+        raise MixpanelHeadlessError(str(exc), code="PY_FLOAT_INVALID_LITERAL") from exc
+    if math.isfinite(result):
+        return result
+    return repr(result)
+
+
+def python_strip(value: str) -> str:
+    """Reference CPython ``str.strip()`` (R11.3 enabling dependency).
+
+    CPython itself is the oracle: the strip set is the ``str.isspace()``
+    table, which differs from the JS ``String.prototype.trim()`` set
+    (Python strips U+001C..U+001F; JS trims U+FEFF).
+
+    Args:
+        value: The string to strip.
+
+    Returns:
+        ``value.strip()``.
+
+    Example:
+        ```python
+        python_strip("\\x1chi\\x1f")
+        # "hi"
+        ```
+    """
+    return value.strip()
+
+
+def sorted_strings(values: list[str]) -> list[str]:
+    """Reference Python ``sorted()`` over strings (R11.5).
+
+    Python compares strings by codepoint; JS default ``sort()`` compares
+    UTF-16 units, inverting e.g. ``"｡"`` (U+FF61) vs ``"😀"`` (U+1F600).
+
+    Args:
+        values: The strings to sort (not mutated).
+
+    Returns:
+        ``sorted(values)`` — a new list.
+
+    Example:
+        ```python
+        sorted_strings(["😀", "｡"])
+        # ["｡", "😀"]
+        ```
+    """
+    return sorted(values)
+
+
+def cp_length(value: str) -> int:
+    """Reference Python ``len(str)`` — codepoints, not UTF-16 units (R11.6).
+
+    Args:
+        value: The string to measure.
+
+    Returns:
+        ``len(value)``.
+
+    Example:
+        ```python
+        cp_length("𝒳")
+        # 1
+        ```
+    """
+    return len(value)
+
+
+def cp_slice(value: str, start: int | None = None, end: int | None = None) -> str:
+    """Reference Python two-argument string slice (R11.6).
+
+    Negative indices count from the end, out-of-range indices clamp, and
+    a surrogate pair is never split (Python strings ARE codepoints) — the
+    invariant behind every ``text[:N]`` truncation the port carries.
+
+    Args:
+        value: The string to slice.
+        start: Inclusive start; ``None`` (or absent) for the open end.
+        end: Exclusive end; ``None`` (or absent) for the open end.
+
+    Returns:
+        ``value[start:end]``.
+
+    Example:
+        ```python
+        cp_slice("a𝒳b", start=0, end=2)
+        # "a𝒳"
+        ```
+    """
+    return value[start:end]
 
 
 class WireStubClient:

@@ -388,8 +388,19 @@ class TestPhase2StrategyTable:
         "codec_roundtrip",
     )
 
+    _PHASE3_NAMES = (
+        "python_int",
+        "python_float",
+        "python_strip",
+        "sorted_strings",
+        "cp_length",
+        "cp_slice",
+    )
+    """The B0-1 pythonCompat completion targets (P3-4 packet), in packet
+    order."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
-        """``ALL_TARGETS`` is the Phase-1 table plus the 8 P2-9 targets.
+        """``ALL_TARGETS`` is Phase 1 + the 8 P2-9 targets + the 6 B0-1 targets.
 
         Raises:
             AssertionError: On a missing or misordered target.
@@ -397,7 +408,11 @@ class TestPhase2StrategyTable:
         from conformance.differential.strategies import ALL_TARGETS
 
         names = tuple(target.name for target in ALL_TARGETS)
-        assert names == (*_EXPECTED_TARGET_NAMES, *self._PHASE2_NAMES)
+        assert names == (
+            *_EXPECTED_TARGET_NAMES,
+            *self._PHASE2_NAMES,
+            *self._PHASE3_NAMES,
+        )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
         """The corpus harvest closes the R10.9 "every error branch" item.

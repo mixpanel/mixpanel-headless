@@ -1748,8 +1748,312 @@ PHASE2_TARGETS: tuple[FuzzTarget, ...] = (
 C10 packet order: the seven `types.*` api families plus the protocol-1.1
 `codec.roundtrip` surface."""
 
-ALL_TARGETS: tuple[FuzzTarget, ...] = (*PHASE1_TARGETS, *PHASE2_TARGETS)
-"""Every registered fuzz target (Phase 1 + Phase 2), in phase order."""
+
+# ============================================================================
+# Phase-3 targets (P3-4 packet B0-1) - the pythonCompat completion wrappers.
+#
+# One target per api family so the playbook's ">=500 examples per api
+# family" budget is a per-target `--examples` knob. String inputs are
+# biased toward the CPython parse grammar's live edges: digits with
+# underscores, hex-ish prefixes, float-ish forms, non-ASCII decimal
+# digits, the two pinned whitespace sets (including the U+001C..U+001F
+# isspace-vs-numeric trap and U+FEFF), and inf/nan casings.
+# ============================================================================
+
+_UNICODE_DIGIT_STRINGS: tuple[str, ...] = (
+    "\u0664\u0662",  # Arabic-Indic 42
+    "\u0967_\u0966",  # Devanagari 1_0 (underscore between Nd digits)
+    "\uff14\uff12",  # fullwidth 42
+    "-\u0e51\u0e52\u0e53",  # Thai -123
+    "\U0001d7d9\U0001d7da",  # non-BMP double-struck 12
+    "\u00b2",  # superscript two: digit-like but NOT decimal (rejects)
+    "\u3007",  # ideographic zero: numeric but NOT decimal (rejects)
+)
+"""Non-ASCII digit probes (accepting and rejecting members both biased)."""
+
+_WS_WRAP_CHARS: tuple[str, ...] = (
+    "",
+    " ",
+    "\t",
+    "\n",
+    "\x85",
+    "\xa0",
+    "\u2003",
+    "\u3000",
+    "\x1c",  # isspace-true but numeric-parse-REJECTED (the B0 trap)
+    "\ufeff",  # JS-trim-only; Python always rejects/keeps
+)
+"""Whitespace-wrap universe: pinned members of BOTH sets plus the traps."""
+
+
+@st.composite
+def _wrapped_numeric_text(draw: st.DrawFn, core: st.SearchStrategy[str]) -> str:
+    """Wrap a drawn numeric core with drawn whitespace-universe members.
+
+    Args:
+        draw: The Hypothesis draw function.
+        core: Strategy for the numeric core text.
+
+    Returns:
+        ``left + core + right``.
+    """
+    left = draw(st.sampled_from(_WS_WRAP_CHARS))
+    right = draw(st.sampled_from(_WS_WRAP_CHARS))
+    return left + draw(core) + right
+
+
+_INT_CORE: st.SearchStrategy[str] = st.one_of(
+    # Crosses the 2^53 policy boundary in both directions.
+    st.integers(min_value=-(2**53) - 10, max_value=2**53 + 10).map(str),
+    st.from_regex(r"[+-]?[0-9_]{1,24}", fullmatch=True),
+    st.from_regex(r"0[xob][0-9a-fA-F]{1,6}", fullmatch=True),
+    st.sampled_from(_UNICODE_DIGIT_STRINGS),
+    st.text(alphabet="0123456789_+-. eE", max_size=12),
+    st.text(max_size=8),
+)
+"""Digit-biased core universe for ``python_int`` probes."""
+
+_FLOAT_CORE: st.SearchStrategy[str] = st.one_of(
+    st.floats(allow_nan=False, allow_infinity=False).map(repr),
+    st.floats(allow_nan=False, allow_infinity=False).map(str),
+    st.from_regex(
+        r"[+-]?([0-9_]{1,8})?(\.([0-9_]{1,8})?)?([eE][+-]?[0-9_]{1,4})?",
+        fullmatch=True,
+    ),
+    st.from_regex(r"[+-]?(?i:inf|infinity|nan|in|infinit|nans)", fullmatch=True),
+    st.sampled_from(_UNICODE_DIGIT_STRINGS),
+    st.sampled_from(("1e400", "-1e400", "1e-400", "9" * 400)),
+    st.text(max_size=8),
+)
+"""Grammar-adjacent core universe for ``python_float`` probes."""
+
+
+def _python_int_call(value: str) -> FuzzCall:
+    """Wrap one drawn string as a ``python_int`` probe.
+
+    Args:
+        value: The drawn literal.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.python_int", {"value": value})
+
+
+def _python_float_call(value: str) -> FuzzCall:
+    """Wrap one drawn string as a ``python_float`` probe.
+
+    Args:
+        value: The drawn literal.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.python_float", {"value": value})
+
+
+_PYTHON_INT = FuzzTarget(
+    name="python_int",
+    calls=_wrapped_numeric_text(_INT_CORE).map(_python_int_call),
+    # R10.9 edge items outside the str input domain (True/None/empty
+    # list/raw floats) are inapplicable - documented omission (module
+    # rule, normalize_on_expression precedent). Error branches: invalid
+    # literal + unsafe magnitude (the wrapper's full code set).
+    edge_calls=(
+        ("compat.python_int", {"value": ""}),  # R10.9: empty string + error
+        ("compat.python_int", {"value": "\U0001d4b3"}),  # R10.9: non-BMP + error
+        ("compat.python_int", {"value": "42"}),
+        ("compat.python_int", {"value": "-1_0"}),
+        ("compat.python_int", {"value": "  1_5  "}),
+        ("compat.python_int", {"value": "\x1c42\x1f"}),  # error: isspace trap
+        ("compat.python_int", {"value": "\ufeff42"}),  # error: BOM
+        ("compat.python_int", {"value": "\u0664\u0662"}),  # Nd digits
+        ("compat.python_int", {"value": "5.5"}),  # error: float form
+        ("compat.python_int", {"value": "0x5"}),  # error: hex prefix
+        ("compat.python_int", {"value": "9007199254740991"}),
+        ("compat.python_int", {"value": "9007199254740992"}),  # error: unsafe
+        ("compat.python_int", {"value": "-9007199254740992"}),  # error: unsafe
+    ),
+)
+
+_PYTHON_FLOAT = FuzzTarget(
+    name="python_float",
+    calls=_wrapped_numeric_text(_FLOAT_CORE).map(_python_float_call),
+    # Same str-domain omissions as python_int. Error branch: invalid
+    # literal (overflow is NOT an error - it returns the inf sentinel).
+    edge_calls=(
+        ("compat.python_float", {"value": ""}),  # R10.9: empty string + error
+        ("compat.python_float", {"value": "\U0001d4b3"}),  # R10.9: non-BMP + error
+        ("compat.python_float", {"value": "18.0"}),  # R10.9: integral float
+        ("compat.python_float", {"value": "1.5"}),  # R10.9: fractional float
+        ("compat.python_float", {"value": "-0.0"}),  # sign-preserving zero
+        ("compat.python_float", {"value": "5."}),
+        ("compat.python_float", {"value": ".5"}),
+        ("compat.python_float", {"value": "."}),  # error: bare dot
+        ("compat.python_float", {"value": "1_0e1_0"}),
+        ("compat.python_float", {"value": "1._5"}),  # error: underscore
+        ("compat.python_float", {"value": "-iNf"}),  # sentinel: -inf
+        ("compat.python_float", {"value": "+nAn"}),  # sentinel: nan
+        ("compat.python_float", {"value": "1e400"}),  # sentinel via overflow
+        ("compat.python_float", {"value": "\u0661\u0662.\u0663\u0664"}),  # Nd
+    ),
+)
+
+
+def _python_strip_call(value: str) -> FuzzCall:
+    """Wrap one drawn string as a ``python_strip`` probe.
+
+    Args:
+        value: The drawn string.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.python_strip", {"value": value})
+
+
+_PYTHON_STRIP = FuzzTarget(
+    name="python_strip",
+    calls=_wrapped_numeric_text(st.text(max_size=10)).map(_python_strip_call),
+    # str-domain omissions as above; total function - no error branch
+    # (documented omission).
+    edge_calls=(
+        ("compat.python_strip", {"value": ""}),  # R10.9: empty string
+        ("compat.python_strip", {"value": "\U0001d4b3"}),  # R10.9: non-BMP
+        ("compat.python_strip", {"value": " \U0001d4b3 "}),
+        ("compat.python_strip", {"value": "\x1chi\x1f"}),  # Python-only strip
+        ("compat.python_strip", {"value": "\ufeffhi\ufeff"}),  # JS-only trim
+        ("compat.python_strip", {"value": " \t\u3000\x1c"}),  # all-whitespace
+        ("compat.python_strip", {"value": "  a \t b  "}),  # interior kept
+    ),
+)
+
+_SURROGATE_ADJACENT_TEXT: st.SearchStrategy[str] = st.text(
+    alphabet=st.one_of(
+        st.characters(max_codepoint=0x7F),
+        st.characters(min_codepoint=0xD000, max_codepoint=0xD7FF),
+        st.characters(min_codepoint=0xE000, max_codepoint=0xFFFF),
+        st.characters(min_codepoint=0x10000, max_codepoint=0x10FFFF),
+    ),
+    max_size=6,
+)
+"""Strings biased around the surrogate range (R11.5: the UTF-16-unit-order
+vs codepoint-order divergence lives at BMP >= U+E000 vs non-BMP)."""
+
+
+def _sorted_strings_call(values: list[str]) -> FuzzCall:
+    """Wrap one drawn string list as a ``sorted_strings`` probe.
+
+    Args:
+        values: The drawn list.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.sorted_strings", {"values": values})
+
+
+_SORTED_STRINGS = FuzzTarget(
+    name="sorted_strings",
+    calls=st.lists(_SURROGATE_ADJACENT_TEXT, max_size=8).map(_sorted_strings_call),
+    # List-of-str domain: True/None/float items inapplicable (documented
+    # omission); total function - no error branch.
+    edge_calls=(
+        ("compat.sorted_strings", {"values": []}),  # R10.9: empty list
+        ("compat.sorted_strings", {"values": [""]}),  # R10.9: empty string
+        ("compat.sorted_strings", {"values": ["\U0001f600", "\uff61"]}),  # inversion
+        ("compat.sorted_strings", {"values": ["\U0001d4b3", "\U0001d4b2", "z"]}),
+        ("compat.sorted_strings", {"values": ["abc", "ab", "a", ""]}),  # prefixes
+        ("compat.sorted_strings", {"values": ["b", "a", "b", "a"]}),  # stability
+        ("compat.sorted_strings", {"values": ["True", "None", "18.0", "1.5"]}),
+    ),
+)
+
+
+def _cp_length_call(value: str) -> FuzzCall:
+    """Wrap one drawn string as a ``cp_length`` probe.
+
+    Args:
+        value: The drawn string.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.cp_length", {"value": value})
+
+
+_CP_LENGTH_TARGET = FuzzTarget(
+    name="cp_length",
+    calls=_SURROGATE_ADJACENT_TEXT.map(_cp_length_call),
+    # str domain; total function - no error branch (documented omission).
+    edge_calls=(
+        ("compat.cp_length", {"value": ""}),  # R10.9: empty string
+        ("compat.cp_length", {"value": "\U0001d4b3"}),  # R10.9: non-BMP
+        ("compat.cp_length", {"value": "a\U0001d4b3b\U0001f600"}),
+        ("compat.cp_length", {"value": "True"}),
+    ),
+)
+
+
+@st.composite
+def _cp_slice_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one ``cp_slice`` probe with optional/None/absent bounds.
+
+    Bounds are drawn small (|i| <= 12) so clamping, negatives, and the
+    non-BMP cut points are all dense; absent and explicit-``None``
+    spellings are both exercised (the tri-state rig note: for this api
+    they are the same Python ``None``).
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    value = draw(_SURROGATE_ADJACENT_TEXT)
+    kwargs: dict[str, Any] = {"value": value}
+    bound = st.one_of(st.none(), st.integers(min_value=-12, max_value=12))
+    if draw(st.booleans()):
+        kwargs["start"] = draw(bound)
+    if draw(st.booleans()):
+        kwargs["end"] = draw(bound)
+    return ("compat.cp_slice", kwargs)
+
+
+_CP_SLICE_TARGET = FuzzTarget(
+    name="cp_slice",
+    calls=_cp_slice_calls(),
+    # str + int|None domain; slicing is total over it (documented
+    # omission of the error-branch item - the non-int TypeError guard is
+    # unreachable through vector JSON, which has no non-integral index
+    # spelling that decodes to a Python int slot).
+    edge_calls=(
+        ("compat.cp_slice", {"value": ""}),  # R10.9: empty string
+        ("compat.cp_slice", {"value": "\U0001d4b3", "start": 0, "end": 1}),
+        ("compat.cp_slice", {"value": "a\U0001d4b3b", "start": 0, "end": 2}),
+        ("compat.cp_slice", {"value": "a\U0001d4b3b", "start": -2}),
+        ("compat.cp_slice", {"value": "hello", "start": 3, "end": 2}),
+        ("compat.cp_slice", {"value": "abc", "start": -500, "end": 500}),
+        ("compat.cp_slice", {"value": "hello", "start": None, "end": None}),
+        ("compat.cp_slice", {"value": "hello", "end": -1}),
+    ),
+)
+
+PHASE3_TARGETS: tuple[FuzzTarget, ...] = (
+    _PYTHON_INT,
+    _PYTHON_FLOAT,
+    _PYTHON_STRIP,
+    _SORTED_STRINGS,
+    _CP_LENGTH_TARGET,
+    _CP_SLICE_TARGET,
+)
+"""The Phase-3 B0-1 pythonCompat completion targets (P3-4 packet), one
+per api family (>=500-example budget applies per target)."""
+
+
+ALL_TARGETS: tuple[FuzzTarget, ...] = (
+    *PHASE1_TARGETS,
+    *PHASE2_TARGETS,
+    *PHASE3_TARGETS,
+)
+"""Every registered fuzz target (Phases 1-3), in phase order."""
 
 TARGETS_BY_NAME: dict[str, FuzzTarget] = {target.name: target for target in ALL_TARGETS}
 """Lookup for the harness ``--targets`` selector."""

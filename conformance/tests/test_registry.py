@@ -226,6 +226,13 @@ def test_builder_registry_covers_the_design_d42_list() -> None:
         "compat.zfill",
         "compat.python_str",
         "compat.python_float_str",
+        # B0-1 (P3-4): pythonCompat completion wrappers
+        "compat.python_int",
+        "compat.python_float",
+        "compat.python_strip",
+        "compat.sorted_strings",
+        "compat.cp_length",
+        "compat.cp_slice",
     }
     missing = sorted(required - set(REGISTRY_BY_API))
     assert missing == []

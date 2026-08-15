@@ -519,7 +519,18 @@ def _gate_entries() -> tuple[RegistryEntry, ...]:
             kind=KIND_BUILDER,
             capability="compat",
         )
-        for name in ("zfill", "python_str", "python_float_str")
+        for name in (
+            "zfill",
+            "python_str",
+            "python_float_str",
+            # B0-1 (P3-4): the R11.3/R11.5/R11.6 completion wrappers.
+            "python_int",
+            "python_float",
+            "python_strip",
+            "sorted_strings",
+            "cp_length",
+            "cp_slice",
+        )
     )
     wirestub = tuple(
         RegistryEntry(
