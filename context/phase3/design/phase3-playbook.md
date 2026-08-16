@@ -842,6 +842,35 @@ injected interfaces that B8 implements).
    fuzz-observable (no oracle family drives `_safe_int`/`from_response`). Re-examine
    only if Phase-4 burn-in ever sees such a count. Verified against live CPython
    (B2-HK probe record, `context/phase3/notes/B2-HK-notes.md`).
+8. **Out-of-annotation scalars: CPython raises, TS returns** (B2 arbiter class ruling,
+   `b2-review-resolution.md` F2, 2026-08-15). Inputs that violate a validator's declared
+   parameter annotation (`last="30"` for `last: int`; `params=5.0` for `dict[str, Any]`;
+   a str element in `segment_by: list[int]`; `workers=None`; 15 oracle-confirmed sites
+   across all three B2 shards) make CPython raise TypeError/AttributeError at guard-free
+   comparison/`.strip()`/`len()` sites, while the TS port — whose compile-time types
+   reject those inputs outright — returns normally (sometimes with codes Python never
+   reaches). **Sanctioned as a CLASS with the boundary at the annotation**: the port's
+   behavioral contract covers exactly the in-annotation domain (including every value
+   inside `dict[str, Any]`/`Any` interiors — which is why the requireHashable R10.7
+   raise-emulation stands: those sites are IN-annotation); out-of-annotation behavior is
+   unspecified and the fuzz domains are annotation-constrained by construction
+   (documented in `conformance/differential/strategies.py` §B2 domain notes, superseding
+   the earlier lone `workers=None` mention). Rationale: emulating CPython's comparison
+   TypeErrors would require an unbounded Python-type-model layer with zero benefit to TS
+   consumers (the compiler already polices these), and Python library users keep Python's
+   raises. Re-examine only if a B5-facade path is found that forwards out-of-annotation
+   values across the language boundary at runtime.
+9. **S4 warning emission order flips for integer-like unknown chart-type keys** (B2
+   arbiter blessing, `b2-review-resolution.md` F4, 2026-08-15). JS objects order
+   integer-like keys first, so `validate_sorting_block({"zzz": {}, "1": {}})` emits the
+   two S4 warnings in reversed order vs Python's insertion order. Sanctioned deviation:
+   plain JS objects CANNOT hold integer-like keys in insertion order (the loss happens at
+   object construction for library consumers and at `JSON.parse` for the rig — a code fix
+   would require an ordered-map value domain end-to-end). Emission order stays contract
+   everywhere else; integer-like unknown chart keys are excluded from the sorting fuzz
+   domain (documented omission). The `{path, code, severity}` triples are order-flipped
+   only — no code/path/severity difference. Re-examine only if a real consumer workflow
+   is found to depend on S4 ordering across integer-like keys.
 
 ### Escalations
 

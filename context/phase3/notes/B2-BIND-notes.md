@@ -190,3 +190,27 @@ transcript; one representative valid input per api).
 - Non-finite spellings ALWAYS unwrap to native non-finite (vector-codecs precedent).
 - `bookmark_schema.validate_with_pydantic` NOT bound at B2 (B3's; record for gate).
 - Encoder: `[{path, code, severity}]` exactly, emission order preserved.
+
+## B2 arbiter addendum (2026-08-15, b2-review-resolution.md)
+
+- Fuzz-domain omission update: the lone `workers=None` note is
+  SUPERSEDED by the class-level out-of-annotation constraint (playbook
+  Discrepancy #8) — see the strategies.py §B2 domain-notes header.
+  Integer-like unknown chart-type keys added as a documented sorting
+  omission (Discrepancy #9).
+- Domains EXTENDED post-review (arbiter F1/F3 ripple): floats, `Filter`
+  instances and literal `{"spelling": ...}` plain dicts at
+  dict-expected positions (bookmark/flow_bookmark/sorting/user_params
+  pools + edge calls); `CohortMetric(cohort=True)` / `cohort=5.0`
+  arms in query_args (CM5 is now pinned by REACHABLE non-CohortDefinition
+  arms, not only the ok arm).
+- **Post-fix R10.9 RUN RECORD** (seed **83155107**, `--examples 500`,
+  oracle-py ↔ oracle-ts, corpus pin b5c1369, TS tree at the arbiter fix
+  commit): status **ok**, **5,882 examples, 0 skips, 0 divergences**.
+  Per family: time_args 513 · group_by_args 516 · query_args 530 ·
+  funnel_args 526 · retention_args 525 · flow_args 523 · bookmark 560 ·
+  flow_bookmark 516 · sorting 564 · user_args 575 · user_params 534
+  (every family ≥ 513; +19 examples over the pre-fix 5,863 from the new
+  edges). The three module throwaway harnesses also reproduce their
+  recorded-seed counts post-fix (m1 3,828/506/0 · m2 1,921/8/0 ·
+  m3 1,510/0/0).

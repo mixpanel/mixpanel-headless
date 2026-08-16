@@ -231,3 +231,35 @@ prettier + 2,734 tests + browser smoke).
    third-parser carve-out cited at the call site.
 4. Adjudicate finding 2 (`TypeError` bug-compatibility) and finding 1
    (carrier policy) before (b′) writes the bindings.
+
+## B2 arbiter corrections (2026-08-15, b2-review-resolution.md)
+
+- **Skip-class correction (fidelity review F5)**: after the B2-BIND
+  commit `2015565` landed the R10.7 `requireHashable` adjudication, the
+  8 recorded-seed harness skips changed CLASS: they are now BILATERAL
+  ("ts threw + python errored" in `report.json` skip_reasons — the TS
+  port raises the same `TypeError` at the 16 frozenset-membership
+  sites). Open-item 1's phrase "every skip must be the `TypeError`
+  class" is satisfied by the BILATERAL TypeError class; the RUN.md
+  prose describing a unilateral "TS returned the enum error" class is
+  pre-`2015565` and superseded (correction paragraph added to
+  `throwaway/b2-m2/RUN.md` before gate deletion). Counts unchanged:
+  1,921 compared / 8 skips / 0 divergences at seed 20260815 —
+  re-verified post-arbiter-fixes.
+- **Finding-4 correction (fidelity review F4)**: the M2 claim that the
+  S4 pre-filter makes key ordering unreachable is true only for the
+  model walk over `known` (valid chart types are never integer-like),
+  NOT for the S4 warning loop itself: integer-like UNKNOWN chart keys
+  flip the S4 emission order (JS integer-like-key ordering). Blessed as
+  playbook Discrepancy #9; integer-like keys are a documented omission
+  in the sorting fuzz domain.
+- **isDict correction (fidelity review F1, blocker — fixed)**: M2's
+  `isDict`/`isPlainObject` classified PyFloat carriers and class
+  instances as dicts (11 oracle-confirmed divergent shapes), and the
+  carrier duck-shape misclassified plain `{"spelling": ...}` dicts in
+  the OTHER direction (4 more oracle-confirmed shapes incl. a
+  PY_FLOAT_INVALID_LITERAL crash where Python returns `bool(dict)`).
+  Both directions fixed by the shared prototype-based `isPythonDict`
+  (`validation-shared.ts`; rulebook watchlist #13). Locks:
+  `packages/core/test/query/validation-dict-fidelity.test.ts` (19
+  tests) + bookmark/sorting/flow/user_params strategy-domain edges.

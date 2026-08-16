@@ -2202,8 +2202,28 @@ _JSONL_CHUNKS = FuzzTarget(
 #   F4_EMPTY_EXCLUSION_EVENT, F4_EXCLUSION_NEGATIVE_STEP) are unreachable
 #   post-Phase-2 (B2-M1 notes); each is pinned by its nearest reachable
 #   arm below.
-# - ``workers=None`` is outside BOTH signatures (B2-M3 "known boundary":
-#   CPython raises a bare TypeError) and is excluded from the fuzz domain.
+# - OUT-OF-ANNOTATION scalars are excluded from every B2 domain as a CLASS
+#   (B2 arbiter ruling, playbook Discrepancy #8 / b2-review-resolution.md
+#   F2, 2026-08-15 — supersedes the earlier lone ``workers=None`` note):
+#   values violating a validator's declared parameter annotation (e.g.
+#   ``last="30"`` for ``last: int``, ``params=5.0`` for
+#   ``dict[str, Any]``, a str element in ``segment_by: list[int]``) make
+#   CPython raise TypeError/AttributeError at guard-free comparison /
+#   ``.strip()`` / ``len()`` sites while the TS port (whose compile-time
+#   types reject them outright) returns normally. The port's contract
+#   stops at the annotation boundary; IN-annotation raise behavior
+#   (``dict[str, Any]`` interiors — the requireHashable sites) IS
+#   contract and stays in-domain. ``workers=None`` is one member of this
+#   class.
+# - Plain dicts (and every JSON value) INSIDE ``dict[str, Any]`` params
+#   are in-domain, including floats/instances at dict-expected positions
+#   and dicts carrying a literal ``"spelling"`` key (the F1 arbiter fix
+#   locks the carrier-vs-dict discrimination; see the bookmark/sorting/
+#   user_params edge sets below).
+# - Integer-like UNKNOWN chart-type keys (e.g. ``{"1": {}}``) are excluded
+#   from the sorting domain: JS objects order integer-like keys first, so
+#   the S4 warning EMISSION ORDER flips (playbook Discrepancy #9 — blessed;
+#   plain-object inputs cannot preserve insertion order in TS at all).
 # - B0_MISSING_FIELD / B0_VALIDATOR_ERROR are unreachable through
 #   ``validate_sorting_block`` (B2-M2 probe finding 5); their nearest
 #   reachable neighbours are pinned in the sorting edge set.
@@ -2570,6 +2590,10 @@ _B2_QUERY_EVENTS: st.SearchStrategy[Any] = st.one_of(
             [Metric(event="P", math="total")],
             [Metric(event="P", math="unique", property="amount")],  # V14
             [CohortMetric(cohort=42, name="c")],
+            [CohortMetric(cohort=True)],  # F3: bool cohort, no CM5
+            # F3: float cohort, no CM5 (out-of-declared-type but
+            # ctor-accepted in BOTH languages — the point of the arm).
+            [CohortMetric(cohort=5.0)],  # type: ignore[arg-type]
             ["a", Metric(event="P", math="dau"), _B2_NON_BMP],
         )
     ),
@@ -2694,6 +2718,22 @@ _QUERY_ARGS_FAMILY = FuzzTarget(
             _QUERY_ARGS_API,
             _B2_QUERY_BASE,
             events=[CohortMetric(cohort=42, name="c")],
+        ),
+        _b2_edge(  # F3 arbiter lock: bool cohort is NOT a CohortDefinition
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=[CohortMetric(cohort=True)],
+        ),
+        _b2_edge(  # F3 arbiter lock: float cohort (carrier in TS) — no CM5
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            # Out-of-declared-type but ctor-accepted in BOTH languages.
+            events=[CohortMetric(cohort=5.0)],  # type: ignore[arg-type]
+        ),
+        _b2_edge(  # F3 arbiter lock: mixed list positioning
+            _QUERY_ARGS_API,
+            _B2_QUERY_BASE,
+            events=["Login", CohortMetric(cohort=True)],
         ),
         _b2_edge(_QUERY_ARGS_API, _B2_QUERY_BASE, data_group_id=0),  # DG1
         _b2_edge(  # CP1 via the shared scan
@@ -3259,11 +3299,17 @@ def _b2_sorting(draw: st.DrawFn) -> Any:
         A sorting dict keyed by chart type, or a poison value.
     """
     if draw(st.integers(0, 15)) == 0:
-        return draw(st.sampled_from(("asc", (), None, 5, True)))
+        # F1: 5.0 is an in-annotation non-dict sorting block (S5).
+        return draw(st.sampled_from(("asc", (), None, 5, True, 5.0)))
     out: dict[str, Any] = {}
     for _ in range(draw(st.integers(0, 3))):
         key = draw(_B2_CHART_KEYS)
-        out[key] = None if draw(st.integers(0, 9)) == 0 else draw(_b2_sort_config())
+        out[key] = (
+            # F1: float / spelling-dict at the per-chart config position.
+            draw(st.sampled_from((None, 5.0, {"spelling": "5.0"})))
+            if draw(st.integers(0, 9)) == 0
+            else draw(_b2_sort_config())
+        )
     return out
 
 
@@ -3509,6 +3555,7 @@ def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
                             ({"unit": "day", "dateRangeType": "whenever"},),
                             "x",
                             (None,),
+                            (5.0,),  # F1: float at a dict position
                         )
                     )
                 )
@@ -3517,7 +3564,17 @@ def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
                 _b2_maybe(
                     st.one_of(
                         st.lists(_b2_filter_clause(), max_size=2),
-                        st.sampled_from(("x", (None,))),
+                        st.sampled_from(
+                            (
+                                "x",
+                                (None,),
+                                # F1: float / class instance / spelling-dict
+                                # at dict positions.
+                                (5.0,),
+                                (Filter.equals("a", "b"),),
+                                ({"value": {"spelling": "hi"}},),
+                            )
+                        ),
                     )
                 )
             ),
@@ -3534,6 +3591,7 @@ def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
                             ({"propertyName": "p", "cohorts": "x"},),
                             ("nope",),
                             (None,),
+                            (5.0,),  # F1: float at a dict position
                         )
                     )
                 )
@@ -3541,7 +3599,8 @@ def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
         }
     )
     if draw(st.integers(0, 9)) == 0:
-        sections = draw(st.sampled_from(("x", None, ())))
+        # F1: floats and spelling-dicts are in-annotation section values.
+        sections = draw(st.sampled_from(("x", None, (), 5.0, {"spelling": "5.0"})))
     params = _b2_compact(
         {
             "sections": sections,
@@ -3556,6 +3615,7 @@ def _b2_bookmark_params(draw: st.DrawFn) -> dict[str, Any]:
                             {},
                             "x",
                             None,
+                            5.0,  # F1: float at a dict position
                         )
                     )
                 )
@@ -3599,6 +3659,36 @@ _BOOKMARK_FAMILY = FuzzTarget(
             },
         ),
         (_BOOKMARK_API, {"params": {"sections": None, "displayOptions": None}}),
+        # F1 arbiter locks (b2-review-resolution.md, 2026-08-15): floats,
+        # class instances and spelling-dicts at dict-expected positions —
+        # Python's isinstance(x, dict) is False for the first two and
+        # True for the third.
+        (
+            _BOOKMARK_API,
+            {"params": {"sections": 5.0, "displayOptions": {"chartType": "line"}}},
+        ),
+        (
+            _BOOKMARK_API,
+            {
+                "params": {
+                    "sections": {"spelling": "5.0"},
+                    "displayOptions": {"chartType": "line"},
+                }
+            },
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_section("time", 5.0)}),
+        (_BOOKMARK_API, {"params": _b2_bm_section("group", 5.0)}),
+        (_BOOKMARK_API, {"params": _b2_bm_section("filter", Filter.equals("a", "b"))}),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bm_section("filter", {"value": {"spelling": "hi"}})},
+        ),
+        (_BOOKMARK_API, {"params": _b2_bm_show({"behavior": 5.0})}),
+        (_BOOKMARK_API, {"params": _b2_bookmark(displayOptions=5.0)}),
+        (
+            _BOOKMARK_API,
+            {"params": _b2_bookmark(displayOptions={"chartType": {"spelling": "2.0"}})},
+        ),
         (
             _BOOKMARK_API,
             {"params": {"sections": {"show": []}, "displayOptions": {}}},
@@ -3973,6 +4063,8 @@ _FLOW_BOOKMARK_FAMILY = FuzzTarget(
     ).map(_b2_call(_FLOW_BOOKMARK_API)),
     edge_calls=(
         (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark()}),
+        # F1 arbiter lock: a float step is skipped by the isinstance gate.
+        (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(steps=[5.0])}),
         (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=2.0)}),
         (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=1.5)}),
         (_FLOW_BOOKMARK_API, {"params": _b2_flow_bookmark(version=True)}),
@@ -4083,6 +4175,15 @@ _SORTING_FAMILY = FuzzTarget(
         (_SORTING_API, {"sorting": []}),
         (_SORTING_API, {"sorting": {}}),
         (_SORTING_API, {"sorting": ""}),
+        # F1 arbiter locks: float / spelling-dict at dict positions
+        # (S5 vs the model walk).
+        (_SORTING_API, {"sorting": 5.0}),
+        (_SORTING_API, {"sorting": {"bar": 5.0}}),
+        (_SORTING_API, {"sorting": {"bar": {"spelling": "1.5"}}}),
+        (
+            _SORTING_API,
+            {"sorting": {"table": {"sortBy": "column", "colSortAttrs": [5.0]}}},
+        ),
         (_SORTING_API, {"sorting": {"": {}}}),
         (_SORTING_API, {"sorting": {_B2_NON_BMP: {}}}),
         _b2_sorting_probe(
@@ -4734,6 +4835,10 @@ _USER_PARAMS_FAMILY = FuzzTarget(
         ),
         _up({"filter_by_cohort": '{"id": 1}'}),
         _up({"filter_by_cohort": "123"}),
+        # F1 arbiter locks: a float is not a dict (no UP2); a plain dict
+        # carrying a literal "spelling" key IS a dict (UP2).
+        _up({"filter_by_cohort": 5.0}),
+        _up({"filter_by_cohort": {"spelling": "5.0"}}),
         _up({"filter_by_cohort": "NaN"}),  # json.loads pythonConstants
         _up({"filter_by_cohort": "nope", "action": "bad", "sort_order": "x"}),
         _up({"output_properties": "[]"}),

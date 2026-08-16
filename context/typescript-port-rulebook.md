@@ -232,6 +232,16 @@ standalone library (no singletons — the library is multi-instance by design):
 11. **Unicode**: no implicit NFC/NFD changes; `[ST]` Python slicing/`max_length` count
     codepoints, JS `.slice`/`.length` count UTF-16 units (see R11.6).
 12. **Float equality in validators**: identical comparison semantics; no epsilon introduction.
+13. `[ST2]` **`isinstance(x, dict)` discrimination** (R10.4 amendment, B2 arbiter
+    2026-08-15): a bare `typeof x === "object" && !Array.isArray(x)` test classifies class
+    instances (reconstructed core types, the rig's `PyFloat` carrier) as dicts, where Python's
+    `isinstance(x, dict)` is False — and duck-typing the carrier by its `spelling` field
+    misclassifies real dicts in the other direction. The ONE correct discrimination is by
+    prototype: a Python dict is a plain object (`Object.getPrototypeOf(x) === Object.prototype`
+    or `null`); carriers/instances are class instances. Import `isPythonDict` from
+    `query/validation-shared.ts` — never re-derive (pattern recurred 4×: `requireHashable`'s
+    dict branch, `validation-bookmark.ts` `isDict`, `schema-sorting.ts` `isPlainObject`,
+    `user-builders.ts` `isPythonDict` — all now unified; `b2-review-resolution.md` F1).
 
 ## 9. Platform boundaries
 
