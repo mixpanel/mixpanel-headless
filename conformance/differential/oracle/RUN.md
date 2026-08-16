@@ -389,3 +389,69 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   · C3 65/65 · C4 59/59 · C5 75/75 · C6 56/56, re-run at arbitration)
   — wire methods are locked by the 843 corpus vectors + translated
   Layer-3, not by this bridge suite (D14 scope).
+
+---
+
+## 2026-08-16 — B5 gate: **GATE CLOSED (all clean, after one rig-strategy remediation)**
+
+- Standard full-suite form (P3-7): all **54** registered `ALL_TARGETS`
+  families — the cumulative surface grew by the 9 B5-BIND registrations
+  (`PHASE3_B5_TARGETS`: the five `workspace.build_*params` facade
+  families + `replay_{url_normalizer,default_label,selector_label}` +
+  `rrweb_analyze_family`). The B5 wire members (all other
+  `workspace.*`/`replays.*` names) have no oracle call surface and are
+  exempt (D14).
+
+  ```bash
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 47824574 --report json    # fresh
+  # prior-gate seed replays: --seed 3343231 / 28631260 / 52794688 / 40075993 / 53062695
+  ```
+
+- **Rig-strategy remediation (B3-gate precedent, one iteration)**: the
+  first replay pass was clean on 4 of 6 seeds; seeds **3343231** and
+  **52794688** each drew ONE `rrweb_analyze_family` divergence — the
+  console-payload member `[18.0, None]` joined into the console message
+  (py `"18.0 None"` / ts `"18 None"`), i.e. the **Discrepancy #12
+  sanctioned class** (the "rrweb console-message join" surface named in
+  the discrepancy itself) surfacing through a strategy-domain gap: the
+  B5-BIND F1 exclusions covered filter-value/bucket/metadata slots but
+  left the integral float in the console-payload slot. Remediated in
+  `strategies.py` (`[18.0, None]` → `[18.5, None]` + #12 domain note —
+  fractional floats spell identically in both runtimes; the shrunken
+  repro `2026-08-16-rrweb_analyzer-analyze.json` was verified
+  #12-class and deleted with the fix). ALL SIX seeds then re-run
+  full-suite against the final domain.
+- Totals, ALL SIX seeds identical: **27,577 examples / 0 skips /
+  0 divergences** per seed; exit 0, status `ok`, no repros written.
+  Seeds: fresh **47824574** + replays of EVERY prior gate seed —
+  **3343231** (B2 fresh), **28631260** (B0), **52794688** (B0),
+  **40075993** (B3 fresh), **53062695** (B4 fresh). Raw JSONs:
+  `2026-08-16-b5-gate-seed{47824574,3343231,28631260,52794688,40075993,53062695}.json`.
+- Under-500 families: only the two documented finite-domain exhaustions
+  (`build_date_range_family` 101, `build_time_section_family` 485).
+  `skipped_per_target` all-zero (ledger empty since B3).
+- Bridges: oracle-py 0.2.1 @ ts-port/phase2-contract-support, oracle-ts
+  0.0.0 @ main (B5 gate working tree — post-flip `c66b2d9`+), both
+  `source_commit 70c904dc598d…`, protocol 1.1, corpus pin 70c904d.
+- Oracle probes (P3-2e step 3): **9/9 newly registered builder-kind
+  apis** answer call DATA on BOTH bridges, canonical outcomes pairwise
+  equal (probe = the family's first R10.9 edge call; the five
+  `workspace.build_*params`, three `replay_labels.*`,
+  `rrweb_analyzer.analyze`; wire names exempt).
+- `repros/` back to exactly the two RESOLVED P2-9 triage records —
+  non-blocking.
+- Referees at this gate (P3-7 conditional clause, b5-packets.md §7.4 —
+  `workspace.build_params` EMITS insights bookmark params): (a) ajv —
+  feed extended with the 115 `build_params` full payloads AS-IS (213
+  fed total): 208 ACCEPT + **5 pinned expected-and-disclosed
+  dataGroupId REJECTs** (the 4 standing B3 clause-level pins + ONE NEW
+  SITE: sections-level `dataGroupId` int, `workspace.py:2278`, rejected
+  as `/sections: must NOT have additional properties` — addendum filed
+  in `context/phase3/bug-reports/mixpanel-headless-datagroupid-int-clause.md`);
+  (b) bookmark_parser round-trip over the regenerated (byte-identical)
+  handoff: structural **314/314 ACCEPT**, deep **123 ACCEPT / 2 REJECT
+  / 189 SKIP** — the 2 are the standing frequency-filter true positives
+  (expected-and-disclosed, exit 1 by design), reports byte-identical to
+  B3 modulo `runtime_seconds`. No NEW reject on either referee.

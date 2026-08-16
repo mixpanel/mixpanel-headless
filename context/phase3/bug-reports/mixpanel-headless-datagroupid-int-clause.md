@@ -64,3 +64,23 @@ spelling saved bookmarks actually store. Then re-extract vectors, re-pin, and po
 The 4 ajv REJECTs are expected-and-disclosed, pinned exactly in
 `differential/test/bookmark-referee-feed.test.ts` (TS repo) the same way referee (b) carries
 its 2 frequency-filter REJECTs — new rejects beyond the pinned set still block.
+
+## B5-gate addendum (2026-08-16): the SAME threading family at a NEW site — sections-level `dataGroupId`
+
+`Workspace.build_params(..., data_group_id=...)` also emits the parameter verbatim at the
+SECTIONS level: `sections["dataGroupId"] = data_group_id` (`workspace.py:2278`; same pattern
+at `:2923` [funnel params] and `:3457` [retention params]). The generated analytics contract's
+`Sections` model (`vendor/mixpanel-contracts/bookmark.json`, `additionalProperties: false`)
+carries NO `dataGroupId` property at all — the closest spelling is
+`globalDataGroupId: string | null` — so the B5-gate ajv feed (the first oracle to see
+`build_params` outputs AS-IS through the generated schema) REJECTs the one corpus vector
+threading it (`bookmarks/workspace.build_params/test_query_params-testdatagroupidinsights-
+test_build_params_with_data_group_id`) with `/sections: must NOT have additional properties`
+(a key-placement error, not a `dataGroupId` type error).
+
+The deep voluptuous referee (b) ACCEPTS the same payload (its sections-level model tolerates
+the extra key), which is why the B3-gate referee-(b) runs over the identical handoff never
+surfaced this site. Disposition unchanged: the REJECT is expected-and-disclosed, pinned in
+`differential/test/bookmark-referee-feed.test.ts` (now 5 pins, each with its required error
+substring); the Python-first fix cycle should decide between `globalDataGroupId` (string) and
+the current spelling alongside the clause-level resolution above.

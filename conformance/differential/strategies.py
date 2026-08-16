@@ -7858,6 +7858,17 @@ def _b5_rrweb_event(draw: st.DrawFn, node_ids: list[int]) -> dict[str, Any]:
                 ),
                 "payload": {
                     "level": draw(st.sampled_from(("error", "warn", "log"))),
+                    # Discrepancy #12 (playbook): INTEGRAL floats are OUT of
+                    # the console-payload member slot — the analyzer joins
+                    # members through CPython ``str()`` into the console
+                    # message ("18.0 None"), where the TS twin can only
+                    # render the native number ("18 None"); the fractional
+                    # ``18.5`` keeps float+None coverage (spelled
+                    # identically by both runtimes). Domain gap found by
+                    # the B5-gate seed replays (3343231, 52794688) —
+                    # remediated per the B3-gate rig-strategy precedent;
+                    # the sanctioned class surface "rrweb console-message
+                    # join" is named in Discrepancy #12 itself.
                     "payload": draw(
                         st.sampled_from(
                             (
@@ -7865,7 +7876,7 @@ def _b5_rrweb_event(draw: st.DrawFn, node_ids: list[int]) -> dict[str, Any]:
                                 ['"boom"'],
                                 ['"a"', '"\U0001d4b3"'],
                                 ['""'],
-                                [18.0, None],
+                                [18.5, None],
                             )
                         )
                     ),
