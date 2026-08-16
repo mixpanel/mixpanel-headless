@@ -242,6 +242,18 @@ standalone library (no singletons — the library is multi-instance by design):
     `query/validation-shared.ts` — never re-derive (pattern recurred 4×: `requireHashable`'s
     dict branch, `validation-bookmark.ts` `isDict`, `schema-sorting.ts` `isPlainObject`,
     `user-builders.ts` `isPythonDict` — all now unified; `b2-review-resolution.md` F1).
+    **B6-ARB extension (R10.4 second strike, 2026-08-16, `b6-review-resolution.md`
+    Finding D — the family recurred a further 2× after the B2 unification: B5's
+    `isPlainDict`, B6-BIND's `isPlainRecordValue`)**: (i) the canonical implementation now
+    lives in the LEAF module `compat/python-dict.ts` so ANY layer (including
+    `types/entities/model-base.ts`, which `validation-shared.ts` transitively imports) can
+    import it without an evaluation cycle; `query/validation-shared.ts` re-exports it, so
+    both import paths are valid. (ii) Standing rule, all future batches: **one named guard
+    per discrimination semantics, import-only** — `isPythonDict` (prototype-based,
+    `isinstance(x, dict)` twin, rejects class instances) vs `client/internals.ts`
+    `isPlainRecord` (JSON-shape guard for PARSED WIRE payloads, admits class instances).
+    Writing a new local helper whose body reproduces either semantics is a per-se review
+    finding regardless of behavioral equivalence.
 
 ## 9. Platform boundaries
 
