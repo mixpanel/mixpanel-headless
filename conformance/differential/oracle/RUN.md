@@ -348,3 +348,44 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   are the standing frequency-filter true positives (expected-and-
   disclosed, exit 1 by design), byte-identical reports modulo
   `runtime_seconds`.
+
+---
+
+## 2026-08-16 — B4 gate: **GATE CLOSED (all clean, first attempt)**
+
+- Standard full-suite form (P3-7): all **45** registered `ALL_TARGETS`
+  families — the cumulative surface is UNCHANGED from B3 by design:
+  B4's 184 wire api names have no oracle `call` surface (D14 / packet
+  b4-packets.md §Binding plan — "nothing to register beyond the
+  bindings"), so the gate registers no new fuzz targets and the
+  newly-registered-api probe of P3-2e step 3 is vacuously satisfied
+  (stated for the record; the B3 17/17 probe record stands as the
+  latest registration probe).
+
+  ```bash
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 53062695 --report json    # fresh
+  # prior-gate seed replays: --seed 3343231 / 28631260 / 52794688 / 40075993
+  ```
+
+- Totals, ALL FIVE seeds identical: **23,022 examples / 0 skips /
+  0 divergences** per seed; exit 0, status `ok`, no repros written.
+  Seeds: fresh **53062695** + replays of EVERY prior gate seed —
+  **3343231** (B2 fresh), **28631260** (B0), **52794688** (B0),
+  **40075993** (B3 fresh). Raw JSONs:
+  `2026-08-16-b4-gate-seed{53062695,3343231,28631260,52794688,40075993}.json`.
+- Under-500 families: only the two documented finite-domain exhaustions
+  (`build_date_range_family` 101, `build_time_section_family` 485).
+  `skipped_per_target` all-zero (the ledger stays empty since B3).
+- Bridges: oracle-py 0.2.1 @ ts-port/phase2-contract-support, oracle-ts
+  0.0.0 @ main (B4 gate working tree — post-flip, library surface
+  identical to the arbitrated HEAD `a24a58d`), both
+  `source_commit 70c904dc598d…`, protocol 1.1, corpus pin 70c904d.
+- `repros/` unchanged: exactly the two RESOLVED P2-9 triage records —
+  non-blocking.
+- Wire coverage note: the B4 R10.9 evidence lives in the six shard
+  RUN records (VectorFetch status-branch matrices, C1 39/39 · C2 52/52
+  · C3 65/65 · C4 59/59 · C5 75/75 · C6 56/56, re-run at arbitration)
+  — wire methods are locked by the 843 corpus vectors + translated
+  Layer-3, not by this bridge suite (D14 scope).
