@@ -172,6 +172,59 @@ independent mini-model, zero divergences.
 - `TestSummaryTableDynamicWidth` exclusion **RATIFIED by the arbiter**
   (ASR-F1) — now an arbiter decision, not an implementer deviation.
 
+## Pair-B arbiter follow-up (2026-08-16, `b7-reviewB-resolution.md`)
+
+- **Reveal-site enumeration (CRED-F1 remediation — the packet §3.3
+  "enumerate each reveal call in the shard notes" duty, previously
+  satisfied only by the `accounts-ops.ts` module header)**. The
+  complete `reveal()` allowlist after B7, arbiter-re-verified by grep
+  against both repos, exactly 1:1 with Python's `get_secret_value()`
+  sites:
+
+  | TS `reveal()` site | Python twin | Purpose |
+  |---|---|---|
+  | `auth/account.ts:585` (`accountAuthHeader`, Phase-2) | SA header build (accountAuthHeader twin) | Basic header |
+  | `auth/region-probe.ts:382` | `region_probe.py:246` | SA Basic probe header |
+  | `auth/region-probe.ts:387` | `region_probe.py:250` | inline oauth_token Bearer |
+  | `accounts/accounts-ops.ts:726` | `accounts.py:844` | `login` → `freshBrowserBearer` (in-memory pre-persist probe) |
+  | `accounts/login-unified.ts:593` | `accounts.py:1665` | `_login_unified_new_browser` → `freshBrowserBearer` |
+
+  No extra reveal introduced, none dropped. Distinct-but-allowed
+  plaintext surfaces (NOT `reveal()` sites): `accounts.token()` returns
+  the plaintext bearer (Python's documented public behavior,
+  `accounts.py:931-962`); test-side `reveal()` calls in
+  `fake-auth-effects.ts` are the designated store writes (ConfigManager
+  persists plaintext in `config.toml` on the Python side too).
+- **Disclosure 13 (CRED-F2, cosmetic, SAFE direction)**: TS `Secret`
+  renders `'**********'` for an EMPTY wrapped value where Pydantic
+  `SecretStr('')` renders `''` (arbiter re-verified against live
+  CPython: `str`/JSON both `''`). Phase-2-owned `secret.ts`, unchanged
+  in B7 but newly load-bearing here; the only B7 `new Secret("")` site
+  (`login-unified.ts:763`) is a defensive unreachable fallback in the
+  SA arm. MORE redaction, never less — no code change; carry into
+  `B7-notes.md` at the gate. Re-examine only if a serialized bag is
+  ever byte-diffed against Python output containing an empty SecretStr.
+- **B-E2E-F1 fix (duplicate `accounts.add` error class)**: the
+  `ConfigWrites.addAccount` JSDoc + `fake-auth-effects.ts` throw site
+  claimed/raised `AccountExistsError` (ACCOUNT_EXISTS) where Python's
+  `ConfigManager._apply_add_account` raises PLAIN `ConfigError`
+  (`config.py:446`; `AccountExistsError` is the login_unified
+  name-collision path only, `accounts.py:1689`). Fixed red-first
+  (new lock in `accounts-namespace.test.ts`: duplicate add →
+  CONFIG_ERROR, constructor === ConfigError, message byte-equal).
+- **B-E2E-N1 (promotion layering, docs)**: `ConfigWrites` JSDoc now
+  attributes the FR-045 first-account promotion to the `accounts.add`
+  NAMESPACE transaction (`accounts.py:472-489`), not to
+  `ConfigManager.add_account` (which does not promote); B8-N1
+  implements it exactly once in the adapter transaction and keeps the
+  ConfigManager twin non-promoting (`test_config.py` asserts are that
+  layer's lock).
+- **CRED-F3 (outbound B8 rule, docs)**: `auth-effects.ts` module header
+  now carries the SECRET SERIALIZATION RULE — on-disk credential
+  writers must `reveal()` at the designated write site, never route a
+  `Secret` through `JSON.stringify` (which would persist the literal
+  mask); B8 adds a write→read round-trip Layer-3 lock.
+
 ## Deferral notes for B8 / the gate
 
 - B8 implements BY NAME: everything in `UNPORTED_AUTH_SEAMS`
