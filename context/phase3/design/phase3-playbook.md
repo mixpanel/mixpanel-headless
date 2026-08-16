@@ -943,6 +943,26 @@ injected interfaces that B8 implements).
     accept both spellings) or if a `FloatCarrier`-style tagged number ever enters
     the public TS API surface.
 
+13. **First-organization pick + org/project listing order flip for
+    integer-like keys in `/me`-derived Records** (B7 pair-A arbiter
+    ruling R2, `b7-reviewA-resolution.md`, 2026-08-16; pasted at the B7
+    gate per the ruling's follow-through directive). The #9/#10
+    JS-engine mechanism at three B7 sites: `defaultAccountName`'s
+    first-org pick (`naming.py:122` insertion order vs JS ascending
+    integer-key hoisting on `MeResponse.organizations`), the
+    "Accessible projects:" error-message listing order, and picker-list
+    tie order for case-folded key collisions. Divergent only when `/me`
+    emits orgs/projects out of ascending-id order (no recorded fixture
+    does); the first site can change the DERIVED ACCOUNT NAME, the
+    other two are message-text/degenerate-tie only. Naming fuzz domain
+    ascending-id (documented omission). Re-examine if Phase-4 burn-in
+    meets a live out-of-order `/me` or an ordered container ever enters
+    the `MeResponse` surface. (Pair B independently reproduced the
+    divergence blind, including its Phase-4 reachability note — the
+    optional user HUMAN-CALL on an order-insensitive-comparison
+    ratification stays open and non-blocking,
+    `b7-reviewA-resolution.md` / `b7-reviewB-resolution.md`.)
+
 ### Escalations
 
 None. All open questions encountered during design were resolvable inside existing
