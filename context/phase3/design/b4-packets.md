@@ -1137,3 +1137,56 @@ checkpoint must reproduce those exact counts.
 
 
 
+
+## Addendum (B4-ARB, 2026-08-16) — full `tests/unit/test_api_client.py` class→owner map
+
+Resolves b4-review-assertions.md F2 (packet C1 §Layer-3 under-enumeration; see
+`b4-review-resolution.md` §A-F2). The packet's prose enumerations left three
+classes assigned to no shard — they landed at arbitration in
+`packages/core/test/client/client-authenticated-requests.test.ts`. Authoritative
+per-class owner table (mechanical grep over `packages/core/test/`; every class has
+a primary owner; `_IterableByteStream` (:2681) is a fixture helper, not a class of
+tests):
+
+| Python class (line) | Primary TS owner |
+|---|---|
+| TestEndpoints (:83) | client/url.test.ts |
+| TestClientInit (:118) | client/client-core.test.ts |
+| TestClientLifecycle (:146) | client/client-core.test.ts |
+| TestAuthHeader (:172) | client/client-core.test.ts (+ client-pbt.test.ts) |
+| TestBuildUrl (:281) | client/url.test.ts |
+| TestAuthenticatedRequests (:332) | client/client-authenticated-requests.test.ts (B4-ARB) |
+| TestRateLimiting (:441) | client/internals.test.ts |
+| TestEventExport (:557) | client/client-export.test.ts |
+| TestSegmentation (:705) | client/client-query-host.test.ts (+ types/results/types.test.ts) |
+| TestDiscovery (:765) | client/client-query-host.test.ts (+ client-scoping.test.ts) |
+| TestProfileExport (:965) | client/client-engage.test.ts |
+| TestFunnelAndRetention (:1119) | client/client-query-host.test.ts |
+| TestErrorHandling (:1258) | client/internals.test.ts |
+| TestServerErrors (:1314) | client/internals.test.ts |
+| TestRequestEncodingRegression (:1370) | client/client-export.test.ts |
+| TestRetryStateResetRegression (:1401) | client/client-export.test.ts |
+| TestPublicRequest (:1575) | client/client-request.test.ts (+ internals.test.ts) |
+| TestAPIClientProperties (:1828) | client/client-core.test.ts |
+| TestEngageParameterValidation (:1861) | client/client-engage.test.ts |
+| TestEngageParameterEdgeCases (:1942) | client/client-engage.test.ts |
+| TestEngageDistinctIdParameter (:2042) | client/client-engage.test.ts |
+| TestEngageGroupIdParameter (:2130) | client/client-engage.test.ts |
+| TestEngageBehaviorsParameter (:2163) | client/client-engage.test.ts |
+| TestEngageIncludeAllUsersParameter (:2220) | client/client-engage.test.ts |
+| TestExportProfilesPage (:2319) | client/client-engage.test.ts |
+| TestExportProfilesPagePagination (:2554) | client/client-engage.test.ts |
+| TestIterJsonlLines (:2709) | client/jsonl.test.ts (+ client-pbt.test.ts) |
+| TestWithProject (:2885) | client/client-authenticated-requests.test.ts (B4-ARB) |
+| TestClientIdentificationHeaders (:2974) | client/client-authenticated-requests.test.ts (B4-ARB) |
+| TestActivityFeed (:3130) | client/client-query-host.test.ts (+ types/results/types-phase008.test.ts, client PBT suites) |
+| TestParseRetryAfter (:3499) | client/backoff.test.ts |
+| TestRetryWaitSeconds (:3554) | client/backoff.test.ts |
+| TestRetryAfterHardening (:3595) | client/internals.test.ts (+ client-export.test.ts, app-request.test.ts) |
+| TestBlankErrorBodyFallbacks (:3859) | client/internals.test.ts |
+| TestErrorContextSymmetry (:3995) | client/internals.test.ts (+ app-request.test.ts) |
+| TestCodedExportProfilesCodes (:4124) | client/client-engage.test.ts |
+
+**Binding instruction to B5/B6 packet authors**: enumerate each Layer-3 row against
+the source file's COMPLETE `grep -n '^class '` list and give every class an owner or
+a cited exclusion — risk-register #3 is exactly this failure mode at B6 volume.
