@@ -7706,9 +7706,16 @@ _B5_RRWEB_TIMESTAMPS: tuple[Any, ...] = (
     2500,
     "3000",
     1716810000000,
+    None,
 )
 """Float and string timestamps exercise the CPython `int()` ladder
-(packet §9 Caution #3 — truncate toward zero, CPython parse grammar)."""
+(packet §9 Caution #3 — truncate toward zero, CPython parse grammar).
+
+``None`` locks the B5-ARB FID-F3 fix (`b5-review-resolution.md`):
+``int(e.get("timestamp", 0))`` defaults only when the key is ABSENT —
+an explicit JSON ``null`` reaches ``int(None)`` and raises
+``TypeError`` on both sides (the pre-fix TS ``?? 0`` silently coerced
+it to ``0``)."""
 
 
 def _b5_rrweb_node(draw: st.DrawFn, node_id: int, depth: int) -> dict[str, Any]:

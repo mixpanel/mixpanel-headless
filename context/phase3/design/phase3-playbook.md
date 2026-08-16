@@ -920,6 +920,29 @@ injected interfaces that B8 implements).
     the band or the port targets a platform with a different `gmtime` overflow
     boundary.
 
+12. **Integral-float string-spelling narrowing: Python renders `18.0`, TS renders
+    `18` wherever a float-typed value is interpolated into library OUTPUT text**
+    (B5 arbiter promotion of the recurring S2/S3/BIND disclosure, per both B5
+    reviewers' recommendation, `b5-review-resolution.md` ASR-F6a, 2026-08-16).
+    Known surfaces (all disclosed in RUN records/shard notes before this entry):
+    flow `filter.operand` rendering (`"18.0"` → `"18"`), the engage `where`
+    expression render (`"… <= 18.0"` → `"… <= 18"`), the rrweb console-message
+    join (`"18.0 None"` → `"18 None"`), and the `GroupBy.bucket_max` render
+    (B5-BIND decision 3, option (b) accepted). Mechanism: a JS caller CANNOT
+    express `18.0` distinct from `18` (one IEEE-754 number type), so the TS
+    library legitimately renders the native number; the divergence exists only
+    for Python callers passing float-typed integral values, and for the rig only
+    through JSON transport (which also collapses the spelling — R10.11 keeps
+    operand rendering contract-faithful for everything the WIRE can carry).
+    Sanctioned as a CLASS per the Discrepancy #7 R4.5 reasoning (no faithful TS
+    representation exists); float-token twins on the recorder side handle the
+    vector-observable cases; residual fuzz divergences of this class (S2 12/2,678,
+    S3 20/2,080 at the recorded seeds) are the documented, expected remainder and
+    each strategy site carries a domain note. Re-examine only if a wire body is
+    found where the SPELLING itself is contract (none known — Mixpanel APIs
+    accept both spellings) or if a `FloatCarrier`-style tagged number ever enters
+    the public TS API surface.
+
 ### Escalations
 
 None. All open questions encountered during design were resolvable inside existing
