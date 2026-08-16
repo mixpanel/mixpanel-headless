@@ -119,3 +119,103 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   RESOLVED P2-9 triage records (bugs fixed in Phase 2; the P2-9 gate and
   the B0 attempt-1 gate steps both closed with them present) — they do
   not block.
+
+---
+
+## 2026-08-15 — B2 gate, attempt 1: **DIVERGENCE — GATE BLOCKED**
+
+- Commands (re-runnable; all three seeded runs reproduce exactly):
+
+  ```bash
+  # step-(4) fresh-seed run (clean):
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 21091621 --report json
+  # B0-gate seed replays (28631260 clean; 52794688 DIVERGES):
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 28631260 --report json
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 52794688 --report json
+  ```
+
+- Bridges: oracle-py @ ts-port/phase2-contract-support (post-cc12030
+  tree), oracle-ts @ main 6c1e43f (the B2 arbiter-fix HEAD), corpus pin
+  b5c1369.
+- Targets: all **33** registered (`ALL_TARGETS`, cumulative through B2 —
+  the 22 B0-gate families + the 11 `PHASE3_B2_TARGETS`).
+- Totals:
+  - fresh seed **21091621**: **17,163 examples, 2,539 skips, 0
+    divergences** → status `ok`;
+  - seed **28631260** replay: **17,163 examples, 2,539 skips, 0
+    divergences** → status `ok`;
+  - seed **52794688** replay: **16,770 examples, 2,539 skips, 1
+    divergence** (`codec_roundtrip` stopped at 119 examples on the
+    shrunken repro) → exit 1, status `divergence`.
+- Skips (all explained, protocol §4.2, identical across all three runs —
+  2,539 = the five B3-pending Phase-1 families): `build_filter_entry`
+  508, `build_segfilter_entry` 508, `filter_to_selector` 508,
+  `filters_to_selector` 510, `normalize_on_expression` 505.
+  `validators_by_code` (510 skips at the B0 gate) now runs both-bridge
+  with 0 skips — the B2-BIND registration un-skipped it as predicted in
+  `context/phase3/notes/B2-BIND-notes.md`. Every both-bridge family ran
+  >= 504 examples (>= the P2-9 500 budget) except the divergence-stopped
+  `codec_roundtrip` in the 52794688 run.
+- Raw harness JSON: `2026-08-15-b2-gate-attempt1-seed21091621.json` +
+  `2026-08-15-b2-gate-attempt1-seed28631260-verify.json` +
+  `2026-08-15-b2-gate-attempt1-seed52794688-verify.json`.
+- **Divergence (REAL — conformance-rig codec regression, introduced by
+  the B2-BIND rig fix in TS commit `2015565`)**: `codec.roundtrip` of
+  `GroupBy(property="plan", property_type="string", bucket_size=18.0)`
+  (input `bucket_size` rides as the PyFloat carrier
+  `{"$type": "float", "value": "18.0"}`). Python round-trips the float —
+  re-encode yields the identical `$type: float` spelling; TS re-encodes
+  `bucket_size` as plain `18` (float-ness lost). Shrunken repro:
+  `conformance/differential/repros/2026-08-16-codec-roundtrip.json`
+  (harness UTC date stamp; BLOCKS the gate while present, P3-2c/P3-7).
+- Triage (root cause verified in both sources):
+  - `2015565` fixed the V18 ctor-guard carrier crash by unwrapping the
+    three GroupBy bucket fields (`bucket_size`/`bucket_min`/`bucket_max`)
+    to native numbers at the codec `construct`
+    (`packages/core/src/types/vector-codecs.ts:414-437`) — but ported
+    only HALF of its own cited precedent: the `SignedReplay` `signed_at`
+    codec pairs the decode-side unwrap with an ENCODE-side re-tag
+    (`{$type: "float", value: pythonFloatStr(v)}` for integral values,
+    vector-codecs.ts:640-645). GroupBy kept the generic dataclass encode,
+    so a decoded float-carrier bucket re-encodes as a bare JSON integer.
+  - The SignedReplay-style unconditional integral re-tag is NOT the
+    right fix here: Python's `GroupBy` buckets are annotated
+    `int | float | None` (`types.py:8367-8373`), so `bucket_size=18`
+    (int) must re-encode as `18` while `18.0` (float) must re-encode as
+    the carrier — the TS instance's plain `number` cannot carry that
+    distinction by itself. Remedy sketch for the remediation task
+    (fable, rig code): remember float-ness at decode (e.g. a codec-module
+    WeakMap from the constructed `GroupBy` to the set of float-spelled
+    bucket fields, consulted by a custom encode; or a custom tag codec
+    like `signedReplayCodec` with the same memory), red-first lock in
+    `conformance-runner/test/codecs.test.ts` (roundtrip both directions:
+    int stays int, float stays float), then re-run `codec_roundtrip` at
+    seed 52794688 (must go clean) plus the other two gate seeds.
+  - Scope: GroupBy's three bucket fields only — the sweep of
+    `vector-codecs.ts` shows no other decode-side unwrap without an
+    encode twin (`signed_at` has both halves).
+  - Library code is NOT affected: `packages/core/src/query` validators
+    and the `GroupBy` class are untouched; the defect lives entirely in
+    the rig's contract codec (fable-owned, P3-3 rig row). Vector replay
+    is green (1,229/0/2,022) because no corpus vector re-encodes a
+    GroupBy carrying a float-spelled bucket through an output diff.
+- Why the B2-BIND/arbiter fuzz missed it: both post-`2015565` runs
+  (seed 83155107, 5,863 then 5,882 examples) were `--targets`-restricted
+  to the 11 B2 validator families — `codec_roundtrip` last ran at the B0
+  gate, BEFORE the codec change. Process note for the standing posture:
+  a rig-codec change must re-run `codec_roundtrip` (at minimum) before
+  its task closes, not wait for the next batch gate.
+- Why seed 52794688 caught it and 21091621/28631260 did not: the
+  divergence needs `codec.roundtrip` to draw a GroupBy with a
+  float-valued bucket; the draw is seed-dependent, and `strategies.py`
+  grew between the B0 gate and now (B2 families + arbiter domain
+  extensions), so the same seed explores a different value sequence than
+  it did at the B0 gate (where 52794688 ran codec_roundtrip 512/512
+  clean against the PRE-`2015565` codec that round-tripped carriers
+  unchanged).
