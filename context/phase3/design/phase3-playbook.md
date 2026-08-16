@@ -47,6 +47,17 @@ orchestrator launches instantiate P3-6 with the batch rows of P3-1 and the loop 
   by +72 (B9-gate expectation instantiates as 3,179+N with N=72 so far, plus B0-2's
   authored additions when they land).
 
+- **B3-BIND re-pin update (2026-08-15, follow-up per P3-7)**: corpus re-pinned
+  `b5c1369` → `70c904d` (P3-7 trigger 1: the `validate_with_pydantic`
+  name-resolving adapter retarget in `conformance/record/{adapters,registry}.py`;
+  zero vectors carry the api). D9 drift check CLEAN — all 3,031 recorded vectors
+  byte-identical, only `$bundle` stamps + manifest moved. Re-measured totals:
+  **3,251** vectors, every per-prefix count UNCHANGED from the B0-1 measurement —
+  the P3-1 table and all batch-gate expectations stand as written. B3 gate closed
+  at this pin: **1,528 PASS / 0 FAIL / 1,723 UNPORTED**
+  (`context/phase3/reports/2026-08-15-b3-gate.json`; batch notes
+  `context/phase3/notes/B3-notes.md`).
+
 ## P3-1 Batch sequencing and scope
 
 **Sequence (strict): B0 → B2 → B3 → B4 → B5 → B6 → B7 → B8 → B9.**
