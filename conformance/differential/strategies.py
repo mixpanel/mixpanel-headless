@@ -39,7 +39,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from hypothesis import assume
 from hypothesis import strategies as st
@@ -61,8 +61,11 @@ from mixpanel_headless.types import (
     Exclusion,
     Filter,
     Formula,
+    FrequencyBreakdown,
+    FrequencyFilter,
     GroupBy,
     InlineCustomProperty,
+    ListItemGroupMode,
     Metric,
     PropertyInput,
     Replay,
@@ -5370,9 +5373,602 @@ _ROOT_MODEL_FAMILY = FuzzTarget(
 )
 
 
+# ---------------------------------------------------------------------------
+# B3-K2 — bookmark_builders families (b3-packets.md §"R10.9 harness spec (K2)")
+# ---------------------------------------------------------------------------
+
+_BB_FILTER_SECTION_API = "bookmark_builders.build_filter_section"
+_BB_GROUP_SECTION_API = "bookmark_builders.build_group_section"
+_BB_FLOW_PROPERTY_API = "bookmark_builders.build_flow_property_filter"
+_BB_FLOW_COHORT_API = "bookmark_builders.build_flow_cohort_filter"
+_BB_FREQ_FILTER_API = "bookmark_builders.build_frequency_filter_entry"
+_BB_TIME_SECTION_API = "bookmark_builders.build_time_section"
+_BB_DATE_RANGE_API = "bookmark_builders.build_date_range"
+
+_BB_FOREIGN: tuple[Any, ...] = (42, None, 1.5, True, [], {}, " x", "")
+"""Foreign elements: BB1 material for ``build_group_section`` and
+skip-branch material for ``build_filter_section`` (which has NO ``else``
+and silently drops them, ``bookmark_builders.py:200-204``)."""
+
+
+@st.composite
+def _bb_frequency_filter(draw: st.DrawFn) -> FrequencyFilter:
+    """Draw a FrequencyFilter across the operator x value x label x
+    date_range x event_filters grid.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A constructed ``FrequencyFilter`` (FF1-FF5 all satisfied).
+    """
+    paired = draw(st.booleans())
+    return FrequencyFilter(
+        event=draw(st.sampled_from(("Login", "Purchase", _B2_NON_BMP))),
+        value=draw(st.sampled_from((0, 1, 5, 18.0, 1.5, True))),
+        operator=draw(
+            st.sampled_from(
+                (
+                    "is at least",
+                    "is at most",
+                    "is equal to",
+                    "is greater than",
+                    "is less than",
+                )
+            )
+        ),
+        date_range_value=draw(st.sampled_from((7, 30))) if paired else None,
+        date_range_unit=(
+            draw(st.sampled_from(("day", "week", "month"))) if paired else None
+        ),
+        event_filters=draw(
+            st.one_of(st.none(), st.lists(filter_strategy(), max_size=2))
+        ),
+        label=draw(st.sampled_from((None, "", "Active Users", _B2_NON_BMP))),
+    )
+
+
+@st.composite
+def _bb_group_element(draw: st.DrawFn) -> Any:
+    """Draw one ``build_group_section`` element.
+
+    Covers str / GroupBy plain / GroupBy+CustomPropertyRef /
+    GroupBy+InlineCustomProperty / GroupBy list_item mode /
+    CohortBreakdown (saved + inline, +/- include_negated) /
+    FrequencyBreakdown / BB1 foreign values.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A group-by element (valid) or a foreign value (BB1 material).
+    """
+    kind = draw(
+        st.sampled_from(
+            (
+                "str",
+                "plain",
+                "ref",
+                "inline",
+                "list_item",
+                "cohort",
+                "frequency",
+                "foreign",
+            )
+        )
+    )
+    bucket_size = draw(st.sampled_from((None, 1, 10, 2.5)))
+    bucket_min = draw(st.sampled_from((None, 0, -5)))
+    bucket_max = draw(st.sampled_from((None, 100, 1000.5)))
+    property_type = cast(
+        'Literal["string", "number", "boolean", "datetime"]',
+        draw(st.sampled_from(("string", "number", "boolean", "datetime"))),
+    )
+    if kind == "str":
+        return draw(st.sampled_from(("country", "$browser", _B2_NON_BMP)))
+    if kind == "foreign":
+        return draw(st.sampled_from(_BB_FOREIGN))
+    if kind == "list_item":
+        # GB4 forbids bucketing on list-item mode; draw it unbucketed.
+        return GroupBy(
+            property=draw(st.sampled_from(("cart", _B2_NON_BMP))),
+            _list_item_mode=ListItemGroupMode(
+                sub=draw(st.sampled_from(("Brand", "Price", _B2_NON_BMP))),
+                sub_type=property_type,
+            ),
+        )
+    if kind == "cohort":
+        return CohortBreakdown(
+            cohort=draw(
+                st.one_of(
+                    st.integers(min_value=1, max_value=99999),
+                    definition_trees(),
+                )
+            ),
+            name=draw(st.sampled_from((None, "PU", _B2_NON_BMP))),
+            include_negated=draw(st.booleans()),
+        )
+    if kind == "frequency":
+        return FrequencyBreakdown(
+            event=draw(st.sampled_from(("Purchase", _B2_NON_BMP))),
+            bucket_size=draw(st.sampled_from((1, 5))),
+            bucket_min=draw(st.sampled_from((0, 2))),
+            bucket_max=draw(st.sampled_from((10, 50))),
+            label=draw(st.sampled_from((None, "", "Buy Count", _B2_NON_BMP))),
+        )
+    if kind == "ref":
+        prop: Any = CustomPropertyRef(id=draw(st.integers(min_value=1, max_value=999)))
+    elif kind == "inline":
+        prop = InlineCustomProperty(
+            formula=draw(st.sampled_from(("A", "A * B"))),
+            inputs={
+                "A": PropertyInput(
+                    name=draw(st.sampled_from(("price", _B2_NON_BMP))),
+                    type="number",
+                )
+            },
+            property_type=draw(
+                st.sampled_from((None, "string", "number", "boolean", "datetime"))
+            ),
+            resource_type=draw(st.sampled_from(("events", "people"))),
+        )
+    else:
+        prop = draw(st.sampled_from(("revenue", "$browser", _B2_NON_BMP)))
+    # V12/V18 reject non-positive sizes and inverted min/max at
+    # construction; keep the draw inside the constructible domain.
+    assume(bucket_size is None or bucket_size > 0)
+    assume(bucket_min is None or bucket_max is None or bucket_min < bucket_max)
+    return GroupBy(
+        property=prop,
+        property_type=property_type,
+        bucket_size=bucket_size,
+        bucket_min=bucket_min,
+        bucket_max=bucket_max,
+    )
+
+
+_BB_COHORT_SHAPES: tuple[Any, ...] = (
+    [{"cohort": {"negated": False, "name": "PU", "id": 123}}],
+    [{"cohort": {"negated": True, "name": "Bots", "id": 7}}],
+    [{"cohort": {"name": _B2_NON_BMP, "raw_cohort": {"selector": {}}}}],
+    [{"cohort": {"id": 1, "raw_cohort": {"a": 1}, "name": None}}],
+    [{"cohort": {}}],
+    [{"cohort": None}],
+    [{"nope": {}}],
+    [{}],
+    [42],
+    ["cohort"],
+    [],
+    "oops",
+    None,
+    17,
+)
+"""``_value`` shapes for the ``$cohorts`` Filter: the first four are
+well-formed (saved id / negated / inline raw_cohort / both keys), the rest
+are the BB6 / BB7 / BB8 malformed material, reachable only by direct field
+construction (``Filter.in_cohort`` always builds a well-formed value)."""
+
+
+@st.composite
+def _bb_cohort_shaped_filter(draw: st.DrawFn) -> Filter:
+    """Draw a ``$cohorts`` Filter, well-formed or malformed.
+
+    The malformed ``_value`` shapes are the BB6 / BB7 / BB8 material;
+    they are reachable only by direct field construction (the
+    ``Filter.in_cohort`` factory always builds a well-formed value).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A Filter whose ``_property`` is ``"$cohorts"``.
+    """
+    shape: Any = draw(st.sampled_from(_BB_COHORT_SHAPES))
+    return Filter(
+        _property="$cohorts",
+        _operator=draw(st.sampled_from(("contains", "does not contain"))),
+        _value=shape,
+        _property_type="list",
+        _resource_type="events",
+    )
+
+
+_BUILD_FILTER_SECTION_FAMILY = FuzzTarget(
+    name="build_filter_section_family",
+    calls=st.fixed_dictionaries(
+        {
+            "where": st.one_of(
+                st.none(),
+                filter_strategy(),
+                _bb_frequency_filter(),
+                st.lists(
+                    st.one_of(
+                        filter_strategy(),
+                        _bb_frequency_filter(),
+                        st.sampled_from(_BB_FOREIGN),
+                    ),
+                    max_size=4,
+                ),
+            )
+        }
+    ).map(_b2_call(_BB_FILTER_SECTION_API)),
+    edge_calls=(
+        (_BB_FILTER_SECTION_API, {"where": None}),
+        (_BB_FILTER_SECTION_API, {"where": []}),
+        # The skip branch: foreign elements are DROPPED, not rejected.
+        (_BB_FILTER_SECTION_API, {"where": list(_BB_FOREIGN)}),
+        (
+            _BB_FILTER_SECTION_API,
+            {"where": [_EDGE_FILTERS[0], 42, None, _EDGE_FILTERS[1]]},
+        ),
+        *(
+            (_BB_FILTER_SECTION_API, {"where": edge_filter})
+            for edge_filter in _EDGE_FILTERS
+        ),
+        (_BB_FILTER_SECTION_API, {"where": list(_EDGE_FILTERS)}),
+    ),
+)
+
+_BUILD_GROUP_SECTION_FAMILY = FuzzTarget(
+    name="build_group_section_family",
+    calls=st.fixed_dictionaries(
+        {
+            "group_by": st.one_of(
+                st.none(),
+                _bb_group_element(),
+                st.lists(_bb_group_element(), max_size=4),
+            ),
+            "data_group_id": st.sampled_from((None, 0, 5, 42)),
+        }
+    ).map(_b2_call(_BB_GROUP_SECTION_API)),
+    edge_calls=(
+        (_BB_GROUP_SECTION_API, {"group_by": None, "data_group_id": 5}),
+        (_BB_GROUP_SECTION_API, {"group_by": [], "data_group_id": None}),
+        # BB1: every foreign shape, bare and inside a list.
+        *(
+            (_BB_GROUP_SECTION_API, {"group_by": foreign, "data_group_id": None})
+            for foreign in _BB_FOREIGN
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {"group_by": ["country", 42], "data_group_id": None},
+        ),
+        # customBucket conditional-insert matrix (R4.11).
+        (
+            _BB_GROUP_SECTION_API,
+            {
+                "group_by": GroupBy("a", property_type="number", bucket_size=10),
+                "data_group_id": None,
+            },
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {
+                "group_by": GroupBy(
+                    "a", property_type="number", bucket_size=10, bucket_min=0
+                ),
+                "data_group_id": None,
+            },
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {
+                "group_by": GroupBy(
+                    "a", property_type="number", bucket_size=10, bucket_max=9
+                ),
+                "data_group_id": None,
+            },
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {
+                "group_by": GroupBy(
+                    "a",
+                    property_type="number",
+                    bucket_size=10,
+                    bucket_min=0,
+                    bucket_max=9,
+                ),
+                "data_group_id": 7,
+            },
+        ),
+        # Cohort entries: saved vs inline, +/- include_negated, and the
+        # empty-name label collapse (`name = cb.name or ""`).
+        (
+            _BB_GROUP_SECTION_API,
+            {"group_by": CohortBreakdown(123, "PU"), "data_group_id": 7},
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {
+                "group_by": CohortBreakdown(123, "PU", include_negated=False),
+                "data_group_id": None,
+            },
+        ),
+        (
+            _BB_GROUP_SECTION_API,
+            {"group_by": CohortBreakdown(7), "data_group_id": None},
+        ),
+        # Non-BMP / empty string properties.
+        (_BB_GROUP_SECTION_API, {"group_by": _B2_NON_BMP, "data_group_id": None}),
+        (
+            _BB_GROUP_SECTION_API,
+            {"group_by": GroupBy.list_item("cart", "Brand"), "data_group_id": 5},
+        ),
+    ),
+)
+
+_BUILD_FLOW_PROPERTY_FILTER_FAMILY = FuzzTarget(
+    name="build_flow_property_filter_family",
+    calls=st.fixed_dictionaries(
+        {"filters": st.lists(filter_strategy(), max_size=3)}
+    ).map(_b2_call(_BB_FLOW_PROPERTY_API)),
+    edge_calls=(
+        # BB2.
+        (_BB_FLOW_PROPERTY_API, {"filters": []}),
+        # BB3 (both non-string property kinds; the raise happens AFTER
+        # build_filter_entry succeeds, so an earlier error wins).
+        (
+            _BB_FLOW_PROPERTY_API,
+            {
+                "filters": [
+                    Filter(
+                        _property=CustomPropertyRef(id=123),
+                        _operator="equals",
+                        _value=["high"],
+                    )
+                ]
+            },
+        ),
+        (
+            _BB_FLOW_PROPERTY_API,
+            {
+                "filters": [
+                    Filter(
+                        _property=InlineCustomProperty(
+                            formula="A",
+                            inputs={"A": PropertyInput("plan")},
+                            property_type="string",
+                        ),
+                        _operator="equals",
+                        _value=["a"],
+                    )
+                ]
+            },
+        ),
+        # A good filter FOLLOWED by a BB3 filter — order lock.
+        (
+            _BB_FLOW_PROPERTY_API,
+            {
+                "filters": [
+                    Filter.equals("country", "US"),
+                    Filter(
+                        _property=CustomPropertyRef(id=1),
+                        _operator="equals",
+                        _value=["x"],
+                    ),
+                ]
+            },
+        ),
+        *(
+            (_BB_FLOW_PROPERTY_API, {"filters": [edge_filter]})
+            for edge_filter in _EDGE_FILTERS
+        ),
+    ),
+)
+
+_BB_COHORT_EDGE_SHAPES: tuple[Any, ...] = (
+    "oops",
+    [],
+    None,
+    [42],
+    ["cohort"],
+    [{}],
+    [{"cohort": "nope"}],
+    [{"cohort": {"id": 9}}],
+    [{"cohort": {"name": "n"}}],
+)
+"""One malformed (or minimal) ``_value`` per BB6 / BB7 / BB8 branch plus the
+two ``cohort_data.get("name", "")`` / conditional-``id`` shapes."""
+
+
+_BUILD_FLOW_COHORT_FILTER_FAMILY = FuzzTarget(
+    name="build_flow_cohort_filter_family",
+    calls=st.fixed_dictionaries(
+        {
+            "where": st.one_of(
+                _bb_cohort_shaped_filter(),
+                filter_strategy(),
+                st.lists(
+                    st.one_of(_bb_cohort_shaped_filter(), filter_strategy()),
+                    max_size=3,
+                ),
+            )
+        }
+    ).map(_b2_call(_BB_FLOW_COHORT_API)),
+    edge_calls=(
+        # Empty list -> None (NOT an error).
+        (_BB_FLOW_COHORT_API, {"where": []}),
+        # Saved id vs raw_cohort, negated operator.
+        (_BB_FLOW_COHORT_API, {"where": Filter.in_cohort(123, "PU")}),
+        (_BB_FLOW_COHORT_API, {"where": Filter.not_in_cohort(123, "Bots")}),
+        # BB4 (bare and second-in-list: BB4 wins over BB5).
+        (_BB_FLOW_COHORT_API, {"where": [Filter.equals("country", "US")]}),
+        (
+            _BB_FLOW_COHORT_API,
+            {"where": [Filter.in_cohort(1, "A"), Filter.equals("country", "US")]},
+        ),
+        # BB5.
+        (
+            _BB_FLOW_COHORT_API,
+            {"where": [Filter.in_cohort(1, "A"), Filter.in_cohort(2, "B")]},
+        ),
+        # BB6 / BB7 / BB8 malformed `_value` shapes.
+        *(
+            (
+                _BB_FLOW_COHORT_API,
+                {
+                    "where": Filter(
+                        _property="$cohorts",
+                        _operator="contains",
+                        _value=shape,
+                        _property_type="list",
+                    )
+                },
+            )
+            for shape in _BB_COHORT_EDGE_SHAPES
+        ),
+    ),
+)
+
+_BUILD_FREQUENCY_FILTER_ENTRY_FAMILY = FuzzTarget(
+    name="build_frequency_filter_entry_family",
+    calls=st.fixed_dictionaries({"ff": _bb_frequency_filter()}).map(
+        _b2_call(_BB_FREQ_FILTER_API)
+    ),
+    edge_calls=(
+        # R10.7 bug-compat grid: every conditional key, present + absent.
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=5)}),
+        (
+            _BB_FREQ_FILTER_API,
+            {
+                "ff": FrequencyFilter(
+                    "Login", value=5, date_range_value=30, date_range_unit="day"
+                )
+            },
+        ),
+        (
+            _BB_FREQ_FILTER_API,
+            {"ff": FrequencyFilter("Login", value=5, event_filters=[])},
+        ),
+        (
+            _BB_FREQ_FILTER_API,
+            {
+                "ff": FrequencyFilter(
+                    "Login", value=5, event_filters=list(_EDGE_FILTERS[:3])
+                )
+            },
+        ),
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=5, label="L")}),
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=5, label="")}),
+        # R10.12: integral float / fractional float / bool thresholds pass
+        # through `filterValue` natively.
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=18.0)}),
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=1.5)}),
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter("Login", value=True)}),
+        (_BB_FREQ_FILTER_API, {"ff": FrequencyFilter(_B2_NON_BMP, value=0)}),
+    ),
+)
+
+_BB_DATES: tuple[str | None, ...] = (None, "2026-01-01", "1999-12-31", "")
+_BB_LASTS: tuple[int, ...] = (0, 1, 7, 30, 365, -5)
+
+_BUILD_TIME_SECTION_FAMILY = FuzzTarget(
+    name="build_time_section_family",
+    calls=st.fixed_dictionaries(
+        {
+            "from_date": st.sampled_from(_BB_DATES),
+            "to_date": st.sampled_from(_BB_DATES),
+            "last": st.sampled_from(_BB_LASTS),
+            "unit": st.sampled_from(("hour", "day", "week", "month", "quarter")),
+        }
+    ).map(_b2_call(_BB_TIME_SECTION_API)),
+    edge_calls=(
+        # The from-only branch is the module's ONLY clock read; the
+        # recorder's frozen epoch makes it deterministic (D1.4).
+        (
+            _BB_TIME_SECTION_API,
+            {
+                "from_date": "2026-01-01",
+                "to_date": None,
+                "last": 30,
+                "unit": "day",
+            },
+        ),
+        (
+            _BB_TIME_SECTION_API,
+            {
+                "from_date": "2026-01-01",
+                "to_date": "2026-02-01",
+                "last": 30,
+                "unit": "week",
+            },
+        ),
+        (
+            _BB_TIME_SECTION_API,
+            {"from_date": None, "to_date": None, "last": 7, "unit": "hour"},
+        ),
+        (
+            _BB_TIME_SECTION_API,
+            {
+                "from_date": None,
+                "to_date": "2026-02-01",
+                "last": 14,
+                "unit": "day",
+            },
+        ),
+        (
+            _BB_TIME_SECTION_API,
+            {"from_date": "", "to_date": None, "last": 0, "unit": "quarter"},
+        ),
+    ),
+)
+
+_BUILD_DATE_RANGE_FAMILY = FuzzTarget(
+    name="build_date_range_family",
+    calls=st.fixed_dictionaries(
+        {
+            "from_date": st.sampled_from(_BB_DATES),
+            "to_date": st.sampled_from(_BB_DATES),
+            "last": st.sampled_from(_BB_LASTS),
+        }
+    ).map(_b2_call(_BB_DATE_RANGE_API)),
+    edge_calls=(
+        (
+            _BB_DATE_RANGE_API,
+            {"from_date": "2026-01-01", "to_date": "2026-02-01", "last": 30},
+        ),
+        # From-only falls back to the RELATIVE shape here (unlike
+        # build_time_section, which fills `to_date` from the clock).
+        (_BB_DATE_RANGE_API, {"from_date": "2026-01-01", "to_date": None, "last": 14}),
+        (_BB_DATE_RANGE_API, {"from_date": None, "to_date": None, "last": 30}),
+        (_BB_DATE_RANGE_API, {"from_date": None, "to_date": "2026-02-01", "last": 0}),
+        (_BB_DATE_RANGE_API, {"from_date": "", "to_date": "", "last": -5}),
+    ),
+)
+
+PHASE3_B3_K2_TARGETS: tuple[FuzzTarget, ...] = (
+    _BUILD_FILTER_SECTION_FAMILY,
+    _BUILD_GROUP_SECTION_FAMILY,
+    _BUILD_FLOW_PROPERTY_FILTER_FAMILY,
+    _BUILD_FLOW_COHORT_FILTER_FAMILY,
+    _BUILD_FREQUENCY_FILTER_ENTRY_FAMILY,
+    _BUILD_TIME_SECTION_FAMILY,
+    _BUILD_DATE_RANGE_FAMILY,
+)
+"""The Phase-3 B3-K2 ``bookmark_builders`` families (b3-packets.md
+§"R10.9 harness spec (K2)"). ``build_filter_entry`` needs no new target —
+the Phase-1 ``_BUILD_FILTER_ENTRY`` target already drives it and starts
+ANSWERING once the (b′) binding task registers the TS side.
+
+**Documented omissions (no registry name, so not oracle-fuzzable — same
+posture as the note at the ``normalize_on_expression`` target):**
+``build_time_comparison``, ``build_frequency_group_entry``,
+``patch_custom_property_filters_for_transform`` and
+``_build_composed_properties`` are unregistered helpers. They are locked
+by the translated Layer-3 suite now, by the B5
+``workspace.build_*params`` vectors later, and — for this batch — by the
+K2 module task's throwaway harness (``throwaway/b3-k2/``, TS repo), which
+drives all twelve entry points including these four against the same
+CPython reference. The two ``build_time_comparison`` ``AssertionError``
+branches are unreachable by ``TimeComparison.__post_init__`` (TC1/TC2)
+and are deliberately NOT fuzzed for."""
+
+
 PHASE3_B3_TARGETS: tuple[FuzzTarget, ...] = (
     _BOOKMARK_SCHEMA_FAMILY,
     _ROOT_MODEL_FAMILY,
+    *PHASE3_B3_K2_TARGETS,
 )
 """The Phase-3 B3-K1 ``bookmark_schema`` families (b3-packets.md §"R10.9
 harness spec (K1)"). Declared here by the module task; SERVED once the

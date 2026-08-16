@@ -426,6 +426,21 @@ class TestPhase2StrategyTable:
     B3 (b′) binding task lands the name-resolving
     ``validate_with_pydantic`` adapter and retargets the registry entry."""
 
+    _PHASE3_B3_K2_NAMES = (
+        "build_filter_section_family",
+        "build_group_section_family",
+        "build_flow_property_filter_family",
+        "build_flow_cohort_filter_family",
+        "build_frequency_filter_entry_family",
+        "build_time_section_family",
+        "build_date_range_family",
+    )
+    """The B3-K2 ``bookmark_builders`` families (b3-packets.md §"R10.9
+    harness spec (K2)"), in packet order. Declared by the K2 module task;
+    SERVED once the B3 (b′) binding task registers the TS builders.
+    ``build_filter_entry`` is absent by design — the Phase-1
+    ``build_filter_entry`` target already drives it."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
         """``ALL_TARGETS`` is Phase 1 + P2-9 + B0 + the B2/B3 families.
 
@@ -441,6 +456,7 @@ class TestPhase2StrategyTable:
             *self._PHASE3_NAMES,
             *self._PHASE3_B2_NAMES,
             *self._PHASE3_B3_NAMES,
+            *self._PHASE3_B3_K2_NAMES,
         )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
