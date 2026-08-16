@@ -417,8 +417,17 @@ class TestPhase2StrategyTable:
     """The B2 validator families (b2-packets.md R10.9 harness specs,
     registered at the B2-BIND (b') task), in packet V1a/V1b/V2 order."""
 
+    _PHASE3_B3_NAMES = (
+        "bookmark_schema_family",
+        "get_root_model_family",
+    )
+    """The B3-K1 ``bookmark_schema`` families (b3-packets.md §"R10.9
+    harness spec (K1)"). Declared by the K1 module task; SERVED once the
+    B3 (b′) binding task lands the name-resolving
+    ``validate_with_pydantic`` adapter and retargets the registry entry."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
-        """``ALL_TARGETS`` is Phase 1 + P2-9 + the B0 targets + the B2 families.
+        """``ALL_TARGETS`` is Phase 1 + P2-9 + B0 + the B2/B3 families.
 
         Raises:
             AssertionError: On a missing or misordered target.
@@ -431,6 +440,7 @@ class TestPhase2StrategyTable:
             *self._PHASE2_NAMES,
             *self._PHASE3_NAMES,
             *self._PHASE3_B2_NAMES,
+            *self._PHASE3_B3_NAMES,
         )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:

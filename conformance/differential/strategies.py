@@ -4874,6 +4874,516 @@ the B0-2 ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets; the
 >=500-example budget applies per target)."""
 
 
+# ---------------------------------------------------------------------------
+# Phase-3 B3-K1 — bookmark_schema families (b3-packets.md §"R10.9 harness
+# spec (K1)")
+#
+# ``validate_with_pydantic`` takes a MODEL CLASS, which is not
+# JSON-transportable, so both the recorder registry and these strategies
+# address models by NAME; the (b′) binding task points the registry entry
+# at the name-resolving adapter in ``conformance/record/adapters.py`` and
+# forwards with the DEFAULT code mapper (the ``_sorting_code_mapper`` path
+# is already fuzz-covered through ``validation.validate_sorting_block``,
+# bound at B2). Until that adapter lands these two targets are declared
+# but unserved — the same "registered at (b′)" posture the B2 validator
+# families were declared under.
+#
+# Reference semantics are pydantic-core in LAX mode, pinned by the B3-K1
+# CPython probe (``context/phase3/notes/B3-K1-notes.md`` §Probe).
+# ---------------------------------------------------------------------------
+
+_BOOKMARK_SCHEMA_API = "bookmark_schema.validate_with_pydantic"
+_ROOT_MODEL_API = "bookmark_schema.get_root_model_for_bookmark_type"
+
+_B3_MODEL_NAMES: tuple[str, ...] = (
+    "InsightsBookmarkSortConfig",
+    "InsightsBookmarkParams",
+    "FlowsBookmarkParams",
+    "Sections",
+    "DisplayOptions",
+)
+"""The five models the (b′) adapter resolves by name."""
+
+
+def _b3_sections_base() -> dict[str, Any]:
+    """Return a minimal VALID ``Sections`` dict."""
+    return {
+        "show": [
+            {
+                "type": "metric",
+                "behavior": {"type": "event", "name": "Login"},
+                "measurement": {"math": "total"},
+            }
+        ],
+        "time": [],
+    }
+
+
+def _b3_display_base() -> dict[str, Any]:
+    """Return a minimal VALID ``DisplayOptions`` dict."""
+    return {"chartType": "bar", "plotStyle": "standard"}
+
+
+def _b3_insights_base() -> dict[str, Any]:
+    """Return a minimal VALID ``InsightsBookmarkParams`` dict."""
+    return {"displayOptions": _b3_display_base(), "sections": _b3_sections_base()}
+
+
+def _b3_flows_base() -> dict[str, Any]:
+    """Return a minimal VALID ``FlowsBookmarkParams`` dict."""
+    return {
+        "steps": [{"event": "Login", "forward": 1}],
+        "date_range": {"from_date": "2025-01-01"},
+    }
+
+
+def _b3_sorting_base() -> dict[str, Any]:
+    """Return a minimal VALID ``InsightsBookmarkSortConfig`` dict."""
+    return {"bar": {"sortBy": "column", "colSortAttrs": []}}
+
+
+_B3_BASES: dict[str, Any] = {
+    "InsightsBookmarkSortConfig": _b3_sorting_base,
+    "InsightsBookmarkParams": _b3_insights_base,
+    "FlowsBookmarkParams": _b3_flows_base,
+    "Sections": _b3_sections_base,
+    "DisplayOptions": _b3_display_base,
+}
+
+_B3_LEAF_PATHS: dict[str, tuple[tuple[Any, ...], ...]] = {
+    "InsightsBookmarkSortConfig": (
+        ("bar",),
+        ("bar", "sortBy"),
+        ("bar", "colSortAttrs"),
+        ("table",),
+        ("line",),
+    ),
+    "InsightsBookmarkParams": (
+        ("name",),
+        ("versions",),
+        ("sorting",),
+        ("icon",),
+        ("id",),
+        ("isNewQBEnabled",),
+        ("displayOptions", "chartType"),
+        ("displayOptions", "rollingWindowSize"),
+        ("displayOptions", "queryTimeSampling"),
+        ("displayOptions", "statSigControl"),
+        ("displayOptions", "funnelStepsSelectedTableColumns"),
+        ("sections", "show"),
+        ("sections", "time"),
+    ),
+    "FlowsBookmarkParams": (
+        ("steps",),
+        ("date_range",),
+        ("version",),
+        ("alignment",),
+        ("hidden_events",),
+        ("collapse_repeated",),
+        ("chartType",),
+    ),
+    "Sections": (
+        ("show",),
+        ("time",),
+        ("filter",),
+        ("globalDataGroupId",),
+        ("metricLevelDataGroups",),
+    ),
+    "DisplayOptions": (
+        ("chartType",),
+        ("plotStyle",),
+        ("rollingWindowSize",),
+        ("queryTimeSampling",),
+        ("annotationOptions",),
+        ("statSigControl",),
+        ("axisAssignments",),
+        ("theme",),
+    ),
+}
+"""Leaf positions worth poking, per model."""
+
+_B3_LEAF_VALUES: tuple[Any, ...] = (
+    # R10.9 mandatory edge set.
+    18.0,
+    1.5,
+    True,
+    None,
+    [],
+    "",
+    _B2_NON_BMP,
+    # Coercion corners (probe `probe-grammar.py`).
+    0,
+    1,
+    2,
+    -1,
+    "5",
+    " 5 ",
+    "﻿5",
+    "\xa05",
+    "٥",
+    "1_0",
+    "1__0",
+    "0x5",
+    "1e3",
+    "inf",
+    "nan",
+    "true",
+    "TRUE",
+    " true ",
+    float("inf"),
+    float("nan"),
+    1e300,
+    # Model-shaped values.
+    {},
+    {"k": 1},
+    [{}],
+    "bar",
+    "column",
+    "metric",
+)
+"""Leaf substitutions: the mandatory edges plus the lax-coercion corners."""
+
+_B3_MANDATORY_EDGES: tuple[Any, ...] = (18.0, 1.5, True, None, [], "", _B2_NON_BMP)
+"""The R10.9 mandatory edge set, verbatim (integral float, fractional
+float, True, None, empty list, empty string, non-BMP)."""
+
+_B3_GRAFT_SHOW_CLAUSES: tuple[Any, ...] = (
+    {"type": "metric", "behavior": {"behaviors": [{"behaviors": [{}]}]}},
+    {"formula": "A/B", "measurement": {"multiAttribution": {"type": "custom"}}},
+    {
+        "type": "metric",
+        "goals": [{"id": "g", "label": "L", "checkpoints": [["a", 1.0]]}],
+    },
+    {"type": "metric", "statsig": {"control_key": "c", "exposures": {"a": {"b": 1}}}},
+    {"type": "metric", "behavior": {"exclusions": [{"steps": {"from": 1}}]}},
+    {"type": "metric", "display": {"precision": 9}},
+    5,
+    None,
+)
+"""Deep `show`-clause grafts: discriminator, plain-union, tuple and
+recursive-nesting routes."""
+
+
+def _b3_set_path(obj: Any, path: tuple[Any, ...], value: Any) -> None:
+    """Set ``value`` at ``path``, creating intermediate dicts.
+
+    Never writes an int key into a dict: such an input is not
+    JSON-transportable, so the two bridges would not see the same value.
+
+    Args:
+        obj: The container to mutate in place.
+        path: Key/index path.
+        value: The value to store.
+    """
+    cur = obj
+    for key in path[:-1]:
+        if isinstance(cur, dict):
+            if isinstance(key, int):
+                return
+            if key not in cur or not isinstance(cur[key], (dict, list)):
+                cur[key] = {}
+            cur = cur[key]
+        elif isinstance(cur, list):
+            if not isinstance(key, int) or key >= len(cur):
+                return
+            cur = cur[key]
+        else:
+            return
+    last = path[-1]
+    if isinstance(cur, dict) and not isinstance(last, int):
+        cur[last] = value
+
+
+@st.composite
+def _b3_schema_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one near-valid / mutated ``validate_with_pydantic`` probe.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    model = draw(st.sampled_from(_B3_MODEL_NAMES))
+    value: Any = _B3_BASES[model]()
+    for _ in range(draw(st.integers(min_value=0, max_value=3))):
+        choice = draw(st.integers(min_value=0, max_value=5))
+        if choice == 0:
+            path = draw(st.sampled_from(_B3_LEAF_PATHS[model]))
+            _b3_set_path(value, path, draw(st.sampled_from(_B3_LEAF_VALUES)))
+        elif choice == 1:
+            path = draw(st.sampled_from(_B3_LEAF_PATHS[model]))
+            cur = value
+            for key in path[:-1]:
+                cur = cur.get(key) if isinstance(cur, dict) else None
+                if cur is None:
+                    break
+            if isinstance(cur, dict):
+                cur.pop(path[-1], None)
+        elif choice == 2:
+            key = draw(st.sampled_from(("zzz", "aaa", "b", _B2_NON_BMP, "_idx")))
+            if isinstance(value, dict):
+                value[key] = draw(st.sampled_from(_B3_LEAF_VALUES))
+        elif choice == 3:
+            graft = json.loads(
+                json.dumps(draw(st.sampled_from(_B3_GRAFT_SHOW_CLAUSES)))
+            )
+            if model == "Sections" and isinstance(value, dict):
+                value["show"] = [graft]
+            elif (
+                model == "InsightsBookmarkParams"
+                and isinstance(value, dict)
+                and isinstance(value.get("sections"), dict)
+            ):
+                value["sections"]["show"] = [graft]
+            else:
+                _b3_set_path(value, draw(st.sampled_from(_B3_LEAF_PATHS[model])), graft)
+        elif choice == 4:
+            key = draw(
+                st.sampled_from(("alignment", "icon", "id", "isNewQBEnabled", "title"))
+            )
+            if isinstance(value, dict):
+                value[key] = draw(st.sampled_from(_B3_LEAF_VALUES))
+        else:
+            value = draw(st.sampled_from(_B3_LEAF_VALUES))
+    kwargs: dict[str, Any] = {"model": model, "value": value}
+    if draw(st.booleans()):
+        kwargs["path_prefix"] = draw(
+            st.sampled_from(("", "params", "params.sections", _B2_NON_BMP))
+        )
+    return (_BOOKMARK_SCHEMA_API, kwargs)
+
+
+def _b3_schema_edge(model: str, value: Any, **over: Any) -> FuzzCall:
+    """Build one ``validate_with_pydantic`` edge probe.
+
+    Args:
+        model: The model name.
+        value: The raw value to validate.
+        over: Extra kwargs (``path_prefix``).
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    kwargs: dict[str, Any] = {"model": model, "value": value}
+    kwargs.update(over)
+    return (_BOOKMARK_SCHEMA_API, kwargs)
+
+
+def _b3_ibp(**over: Any) -> dict[str, Any]:
+    """Insights params with top-level overrides.
+
+    Args:
+        over: Key overrides.
+
+    Returns:
+        A fresh params dict.
+    """
+    base = _b3_insights_base()
+    base.update(over)
+    return base
+
+
+def _b3_do(**over: Any) -> dict[str, Any]:
+    """DisplayOptions with overrides.
+
+    Args:
+        over: Key overrides.
+
+    Returns:
+        A fresh options dict.
+    """
+    base = _b3_display_base()
+    base.update(over)
+    return base
+
+
+def _b3_beh(behavior: Any) -> dict[str, Any]:
+    """Sections carrying one behavior.
+
+    Args:
+        behavior: The behavior value.
+
+    Returns:
+        A sections dict.
+    """
+    return {"show": [{"type": "metric", "behavior": behavior}], "time": []}
+
+
+_BOOKMARK_SCHEMA_FAMILY = FuzzTarget(
+    name="bookmark_schema_family",
+    calls=_b3_schema_calls(),
+    # One probe per ``_DEFAULT_CODE_MAP`` row reachable through the
+    # NON-sorting models, plus the R10.9 mandatory edge set as (i) raw
+    # values and (ii) leaves inside an otherwise-valid params dict.
+    # UNREACHABLE rows (B3-K1 probe finding 3): ``enum`` (no Enum types in
+    # the module), ``union_tag_invalid`` / ``union_tag_not_found`` (the
+    # ShowClause / sort discriminators are plain callables that always
+    # return a declared Tag) and ``value_error`` (no custom validators) —
+    # their nearest reachable neighbours are the ``model_type`` and
+    # ``literal_error`` probes below.
+    edge_calls=(
+        # _DEFAULT_CODE_MAP coverage.
+        _b3_schema_edge("InsightsBookmarkParams", {}),  # missing
+        _b3_schema_edge("DisplayOptions", _b3_do(zzz=1)),  # extra_forbidden
+        _b3_schema_edge("DisplayOptions", {"chartType": "nope"}),  # literal_error
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(name=5)),  # string_type
+        _b3_schema_edge("DisplayOptions", _b3_do(rollingWindowSize=[])),  # int_type
+        _b3_schema_edge(
+            "DisplayOptions", _b3_do(rollingWindowSize="abc")
+        ),  # int_parsing
+        _b3_schema_edge("DisplayOptions", _b3_do(queryTimeSampling=[])),  # bool_type
+        _b3_schema_edge(
+            "DisplayOptions", _b3_do(queryTimeSampling="nope")
+        ),  # bool_parsing
+        _b3_schema_edge(
+            "Sections", _b3_beh({"customBucket": {"bucketSize": []}})
+        ),  # float_type
+        _b3_schema_edge(
+            "Sections", _b3_beh({"customBucket": {"bucketSize": "abc"}})
+        ),  # float_parsing
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(versions=5)),  # list_type
+        _b3_schema_edge(
+            "FlowsBookmarkParams", {"steps": [], "date_range": 5}
+        ),  # dict_type
+        _b3_schema_edge("DisplayOptions", _b3_do(annotationOptions=5)),  # model_type
+        # Unmapped-but-reachable rows (generic VALIDATION_ERROR).
+        _b3_schema_edge(
+            "DisplayOptions", _b3_do(rollingWindowSize=1.5)
+        ),  # int_from_float
+        _b3_schema_edge(
+            "DisplayOptions", _b3_do(rollingWindowSize=float("inf"))
+        ),  # finite_number
+        _b3_schema_edge("DisplayOptions", _b3_do(rollingWindowSize=1e300)),
+        _b3_schema_edge(
+            "Sections",
+            {
+                "show": [
+                    {
+                        "type": "metric",
+                        "goals": [
+                            {"id": "g", "label": "L", "checkpoints": [["a", 1, 2]]}
+                        ],
+                    }
+                ],
+                "time": [],
+            },
+        ),  # too_long
+        _b3_schema_edge(
+            "Sections",
+            {
+                "show": [
+                    {
+                        "type": "metric",
+                        "goals": [{"id": "g", "label": "L", "checkpoints": [5]}],
+                    }
+                ],
+                "time": [],
+            },
+        ),  # tuple_type
+        # Plain-union (MultiAttribution) both-member error emission.
+        _b3_schema_edge(
+            "Sections",
+            {
+                "show": [
+                    {
+                        "type": "metric",
+                        "measurement": {"multiAttribution": {"type": "nope"}},
+                    }
+                ],
+                "time": [],
+            },
+        ),
+        # extra="allow" tolerance on the flows root.
+        _b3_schema_edge(
+            "FlowsBookmarkParams", {**_b3_flows_base(), "totally_unknown": 1}
+        ),
+        # Ignore[T]: JsonValue tolerates junk, the TYPED three do not.
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(alignment={"a": [1]})),
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(icon=12345)),
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(id="notanint")),
+        _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(isNewQBEnabled=2)),
+        # Alias vs python-name collision (populate_by_name).
+        _b3_schema_edge(
+            "DisplayOptions",
+            _b3_do(
+                funnelStepsSelectedTableColumns={
+                    "conv-first-step": True,
+                    "conv_first_step": False,
+                }
+            ),
+        ),
+        # path_prefix plumbing.
+        _b3_schema_edge("InsightsBookmarkParams", {}, path_prefix="params"),
+        _b3_schema_edge("Sections", {}, path_prefix=_B2_NON_BMP),
+        # R10.9 mandatory edge set — raw values, every model.
+        *(
+            _b3_schema_edge(model, value)
+            for model in _B3_MODEL_NAMES
+            for value in _B3_MANDATORY_EDGES
+        ),
+        # R10.9 mandatory edge set — as a leaf in an otherwise-valid dict.
+        *(
+            _b3_schema_edge("InsightsBookmarkParams", _b3_ibp(name=value))
+            for value in _B3_MANDATORY_EDGES
+        ),
+        *(
+            _b3_schema_edge("DisplayOptions", _b3_do(rollingWindowSize=value))
+            for value in _B3_MANDATORY_EDGES
+        ),
+        *(
+            _b3_schema_edge("Sections", _b3_beh({"id": value}))
+            for value in _B3_MANDATORY_EDGES
+        ),
+        *(
+            _b3_schema_edge(
+                "FlowsBookmarkParams",
+                {"steps": [{"forward": value}], "date_range": {}},
+            )
+            for value in _B3_MANDATORY_EDGES
+        ),
+    ),
+)
+
+_ROOT_MODEL_FAMILY = FuzzTarget(
+    name="get_root_model_family",
+    calls=st.fixed_dictionaries(
+        {
+            "bookmark_type": st.one_of(
+                st.sampled_from(("insights", "funnels", "retention", "flows", "user")),
+                st.text(max_size=20),
+            )
+        }
+    ).map(_b2_call(_ROOT_MODEL_API)),
+    edge_calls=(
+        (_ROOT_MODEL_API, {"bookmark_type": "insights"}),
+        (_ROOT_MODEL_API, {"bookmark_type": "funnels"}),
+        (_ROOT_MODEL_API, {"bookmark_type": "retention"}),
+        (_ROOT_MODEL_API, {"bookmark_type": "flows"}),
+        (_ROOT_MODEL_API, {"bookmark_type": "user"}),
+        (_ROOT_MODEL_API, {"bookmark_type": ""}),
+        (_ROOT_MODEL_API, {"bookmark_type": "insightz"}),
+        (_ROOT_MODEL_API, {"bookmark_type": "USER"}),
+        (_ROOT_MODEL_API, {"bookmark_type": _B2_NON_BMP}),
+        (_ROOT_MODEL_API, {"bookmark_type": "sorting"}),
+    ),
+)
+
+
+PHASE3_B3_TARGETS: tuple[FuzzTarget, ...] = (
+    _BOOKMARK_SCHEMA_FAMILY,
+    _ROOT_MODEL_FAMILY,
+)
+"""The Phase-3 B3-K1 ``bookmark_schema`` families (b3-packets.md §"R10.9
+harness spec (K1)"). Declared here by the module task; SERVED once the
+(b′) binding task lands the name-resolving ``validate_with_pydantic``
+adapter (`conformance/record/adapters.py`) and retargets the registry
+entry — the same posture the B2 validator families were declared under.
+Until then the K1 differential runs through the module task's throwaway
+harness (`throwaway/b3-k1/`, TS repo), which drives the same five models
+by name against the same CPython reference."""
+
+
 PHASE3_B2_TARGETS: tuple[FuzzTarget, ...] = (
     _TIME_ARGS_FAMILY,
     _GROUP_BY_ARGS_FAMILY,
@@ -4898,6 +5408,7 @@ ALL_TARGETS: tuple[FuzzTarget, ...] = (
     *PHASE2_TARGETS,
     *PHASE3_TARGETS,
     *PHASE3_B2_TARGETS,
+    *PHASE3_B3_TARGETS,
 )
 """Every registered fuzz target (Phases 1-3), in phase order."""
 
