@@ -763,8 +763,10 @@ def encode_output(codec: str, value: object) -> Any:
         - ``json`` — generic :func:`encode_expect_value`;
         - ``validation_errors`` — structural ``[{path, code, severity}]``
           (design D4.3);
-        - ``model_name`` — the returned model CLASS as its name string
-          (design D4.2 item 7);
+        - ``model_name`` — the returned model CLASS as its name string,
+          or ``None`` as JSON null (design D4.2 item 7;
+          ``get_root_model_for_bookmark_type`` returns ``None`` for
+          ``"user"`` and unknown types — b3-packets.md §Binding shapes);
         - ``selector_str`` — the selector string verbatim (design D4.2
           item 1; escaping is contract char-for-char).
 
@@ -778,9 +780,15 @@ def encode_output(codec: str, value: object) -> Any:
     if codec == "validation_errors":
         return _encode_validation_errors(value)
     if codec == "model_name":
+        if value is None:
+            # `get_root_model_for_bookmark_type` returns None for "user"
+            # and unknown bookmark types (`bookmark_schema.py:333-368`);
+            # the TS binding twin emits null (B3-BIND rig fix — the
+            # pre-B3 spelling rejected the documented None return).
+            return None
         if not isinstance(value, type):
             raise UnencodableValueError(
-                f"model_name codec expects a class, got {type(value).__name__}"
+                f"model_name codec expects a class or None, got {type(value).__name__}"
             )
         return value.__name__
     if codec == "selector_str":

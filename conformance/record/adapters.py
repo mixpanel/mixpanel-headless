@@ -16,6 +16,12 @@ right shape, so the registry targets these thin adapters instead:
   D3.1 item-3 rrweb seed golden freezes its output over
   ``tests/fixtures/rrweb/sample-replay-001.json``. :func:`analyze_rrweb`
   flattens construction + call into one registrable function.
+- ``bookmark_schema.validate_with_pydantic`` takes a pydantic model
+  CLASS — not JSON-transportable. :func:`validate_with_pydantic`
+  resolves a model NAME over a fixed five-entry map and forwards with
+  the DEFAULT code mapper (b3-packets.md §"validate_with_pydantic —
+  adapter retarget"; the ``_sorting_code_mapper`` path is fuzz-covered
+  through ``validation.validate_sorting_block``, bound at B2).
 
 All adapters delegate to the real library code — they add shape, never
 behavior.
@@ -24,12 +30,15 @@ behavior.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from mixpanel_headless._internal.replays.rrweb_analyzer import AnalyzerResult
 from mixpanel_headless.types import UserAction
+
+if TYPE_CHECKING:
+    from mixpanel_headless.exceptions import ValidationError
 
 
 class _ChunkStream(httpx.SyncByteStream):
@@ -139,3 +148,52 @@ def analyze_rrweb(events: list[dict[str, Any]]) -> AnalyzerResult:
     from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
 
     return RrwebAnalyzer().analyze(events)
+
+
+def validate_with_pydantic(
+    model: str, value: Any, path_prefix: str = ""
+) -> list[ValidationError]:
+    """Name-resolving ``bookmark_schema.validate_with_pydantic`` shim (B3 b′).
+
+    The real function takes a pydantic model CLASS, which is not
+    JSON-transportable; this adapter accepts the model NAME, resolves it
+    over a fixed five-entry map, and forwards with the DEFAULT code
+    mapper (b3-packets.md §"validate_with_pydantic — adapter retarget").
+    The TS mirror is ``BOOKMARK_MODEL_HANDLES`` in
+    ``packages/core/src/bookmarks/schema.ts`` — five entries, same
+    spellings.
+
+    Args:
+        model: One of ``InsightsBookmarkSortConfig`` /
+            ``InsightsBookmarkParams`` / ``FlowsBookmarkParams`` /
+            ``Sections`` / ``DisplayOptions``.
+        value: The raw value to validate.
+        path_prefix: Optional JSONPath prefix forwarded verbatim.
+
+    Returns:
+        The ``ValidationError`` list the real function produces.
+
+    Raises:
+        ValueError: If ``model`` is not one of the five mapped names (a
+            harness bug — the fuzz strategies draw mapped names only).
+
+    Example:
+        ```python
+        errors = validate_with_pydantic("DisplayOptions", {"chartType": "nope"})
+        # [ValidationError(code="B0_INVALID_LITERAL", ...)]
+        ```
+    """
+    from mixpanel_headless._internal import bookmark_schema
+
+    models: dict[str, Any] = {
+        "InsightsBookmarkSortConfig": bookmark_schema.InsightsBookmarkSortConfig,
+        "InsightsBookmarkParams": bookmark_schema.InsightsBookmarkParams,
+        "FlowsBookmarkParams": bookmark_schema.FlowsBookmarkParams,
+        "Sections": bookmark_schema.Sections,
+        "DisplayOptions": bookmark_schema.DisplayOptions,
+    }
+    if model not in models:
+        raise ValueError(f"unknown bookmark_schema model {model!r}")
+    return bookmark_schema.validate_with_pydantic(
+        models[model], value, path_prefix=path_prefix
+    )

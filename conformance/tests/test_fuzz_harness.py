@@ -441,6 +441,17 @@ class TestPhase2StrategyTable:
     ``build_filter_entry`` is absent by design — the Phase-1
     ``build_filter_entry`` target already drives it."""
 
+    _PHASE3_B3_K3_NAMES = (
+        "transform_event_family",
+        "transform_profile_family",
+    )
+    """The B3-K3 ``transforms`` families (b3-packets.md §"R10.9 harness
+    spec (K3)"), declared at the B3-BIND (b′) task per the K3-notes §7.4
+    deferral. ``build_segfilter_entry`` / ``normalize_on_expression`` are
+    absent by design — the Phase-1 targets already drive them (B3-BIND
+    added the K3 operator-row sweep to the segfilter target's edge
+    set)."""
+
     _PHASE3_B3_K4_NAMES = ("extract_cohort_filter_family",)
     """The B3-K4 ``user_builders`` family (b3-packets.md §"R10.9 harness
     spec (K4)"). Declared by the K4 module task; SERVED once the B3 (b′)
@@ -465,6 +476,7 @@ class TestPhase2StrategyTable:
             *self._PHASE3_B2_NAMES,
             *self._PHASE3_B3_NAMES,
             *self._PHASE3_B3_K2_NAMES,
+            *self._PHASE3_B3_K3_NAMES,
             *self._PHASE3_B3_K4_NAMES,
         )
 

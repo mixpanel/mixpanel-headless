@@ -490,9 +490,14 @@ def _validator_entries() -> tuple[RegistryEntry, ...]:
         for name in ("validate_user_args", "validate_user_params")
     )
     entries.append(
+        # B3 (b′) adapter retarget (b3-packets.md §"validate_with_pydantic
+        # — adapter retarget"): the library function takes a model CLASS
+        # (not JSON-transportable); the adapter accepts the model NAME
+        # over a fixed five-entry map and forwards with the default code
+        # mapper, so both oracles can drive it by name.
         RegistryEntry(
             api="bookmark_schema.validate_with_pydantic",
-            target="mixpanel_headless._internal.bookmark_schema:validate_with_pydantic",
+            target=f"{_ADAPTERS_MODULE}:validate_with_pydantic",
             kind=KIND_VALIDATOR,
             capability="validation",
             output_codec="validation_errors",

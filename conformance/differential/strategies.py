@@ -402,10 +402,180 @@ _FILTERS_TO_SELECTOR = FuzzTarget(
     ),
 )
 
+
+def _segfilter_row_sweep() -> tuple[FuzzCall, ...]:
+    """Deterministic per-row sweep of the three segfilter operator maps.
+
+    B3-K3 mandate (b3-packets.md §"R10.9 harness spec (K3)"): the drawn
+    Filter domain must reach EVERY operator row of ``STRING_OPERATOR_MAP``
+    / ``NUMBER_OPERATOR_MAP`` / ``DATETIME_OPERATOR_MAP`` — the free draw
+    alone provably leaves rows uncovered (the K3 module harness measured
+    ``datetime|was since`` missing at seed 7), so this sweep closes every
+    row structurally: one probe per operator on its matching property
+    type (setness ops with ``None``, range ops with two-element lists,
+    relative datetime ops across the ``date_unit`` grid incl. ``None``),
+    the boolean dialect's two operators, and every ``RESOURCE_TYPE_MAP``
+    row plus the ``.get(rt, rt)`` fallback-to-self branch. Wired as
+    ``@example`` edge probes so every fuzz corpus provably contains them
+    (K3-notes §7.4 deferral to the binder — landed at B3-BIND).
+
+    Returns:
+        One ``(api, {"f": Filter})`` probe per table row.
+    """
+    api = "segfilter.build_segfilter_entry"
+    calls: list[FuzzCall] = []
+    setness = ("is set", "is not set")
+    for str_op in (
+        "equals",
+        "does not equal",
+        "contains",
+        "does not contain",
+        *setness,
+    ):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        # Drawn from a plain str tuple; every spelling is a
+                        # FilterOperator member.
+                        _operator=str_op,  # type: ignore[arg-type]
+                        _value=None if str_op in setness else "v",
+                        _property_type="string",
+                    )
+                },
+            )
+        )
+    for num_op in (
+        "is greater than",
+        "is less than",
+        "is equal to",
+        "equals",
+        "does not equal",
+        "is at least",
+        "is at most",
+        *setness,
+    ):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        # "is equal to" is a NUMBER_OPERATOR_MAP row the
+                        # FilterOperator literal does not spell — the map
+                        # is deliberately wider (segfilter.py:59-70).
+                        _operator=num_op,  # type: ignore[arg-type]
+                        _value=None if num_op in setness else 5,
+                        _property_type="number",
+                    )
+                },
+            )
+        )
+    range_value: list[int | float] = [1, 10]
+    for range_op in ("is between", "between", "not between"):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        # "between" is a NUMBER_OPERATOR_MAP row outside
+                        # the FilterOperator literal (see above).
+                        _operator=range_op,  # type: ignore[arg-type]
+                        _value=range_value,
+                        _property_type="number",
+                    )
+                },
+            )
+        )
+    for bool_op in ("true", "false"):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        _operator=bool_op,
+                        _value=None,
+                        _property_type="boolean",
+                    )
+                },
+            )
+        )
+    for dt_op in ("was on", "was not on", "was before", "was since"):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        _operator=dt_op,
+                        _value="2026-01-15",
+                        _property_type="datetime",
+                    )
+                },
+            )
+        )
+    for rel_op in ("was in the", "was not in the"):
+        for date_unit in (None, "day", "hour", "week", "month"):
+            calls.append(
+                (
+                    api,
+                    {
+                        "f": Filter(
+                            _property="p",
+                            _operator=rel_op,
+                            _value=7,
+                            _property_type="datetime",
+                            _date_unit=date_unit,
+                        )
+                    },
+                )
+            )
+    for dt_range_op in ("was between", "was not between"):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        _operator=dt_range_op,
+                        _value=["2026-01-01", "2026-02-02"],
+                        _property_type="datetime",
+                    )
+                },
+            )
+        )
+    # RESOURCE_TYPE_MAP rows + the `.get(rt, rt)` fallback-to-self branch
+    # (`segfilter.py:297` — an unknown resource type passes through).
+    for resource_type in ("events", "people", "cohorts", "other", "custom_src"):
+        calls.append(
+            (
+                api,
+                {
+                    "f": Filter(
+                        _property="p",
+                        _operator="equals",
+                        _value="v",
+                        _property_type="string",
+                        _resource_type=resource_type,  # type: ignore[arg-type]
+                    )
+                },
+            )
+        )
+    return tuple(calls)
+
+
 _BUILD_SEGFILTER_ENTRY = FuzzTarget(
     name="build_segfilter_entry",
     calls=_filter_calls("segfilter.build_segfilter_entry"),
-    edge_calls=_filter_edges("segfilter.build_segfilter_entry"),
+    edge_calls=(
+        *_filter_edges("segfilter.build_segfilter_entry"),
+        # B3-BIND: the K3 operator-row sweep (see its docstring).
+        *_segfilter_row_sweep(),
+    ),
 )
 
 _BUILD_FILTER_ENTRY = FuzzTarget(
@@ -5228,8 +5398,14 @@ _B3_LEAF_VALUES: tuple[Any, ...] = (
     "true",
     "TRUE",
     " true ",
-    float("inf"),
-    float("nan"),
+    # NON-FINITE FLOATS OMITTED (B3-BIND): `float("inf")`/`float("nan")`
+    # are unshippable through `encode_input_kwargs` (`_reject_bad_float`,
+    # D6 rule 5) — the same standing omission as the B2 `finite_number`
+    # arms (§B2 domain notes). The K1 module throwaway harness
+    # (`throwaway/b3-k1/`, its own `__pyfloat__` transport) covered the
+    # `finite_number` pydantic row directly; through the oracle bridges
+    # the nearest reachable neighbours are the huge-magnitude finite
+    # floats below (`int_parsing_size`).
     1e300,
     # Model-shaped values.
     {},
@@ -5449,9 +5625,11 @@ _BOOKMARK_SCHEMA_FAMILY = FuzzTarget(
         _b3_schema_edge(
             "DisplayOptions", _b3_do(rollingWindowSize=1.5)
         ),  # int_from_float
-        _b3_schema_edge(
-            "DisplayOptions", _b3_do(rollingWindowSize=float("inf"))
-        ),  # finite_number
+        # `finite_number` probe (`rollingWindowSize=float("inf")`) OMITTED:
+        # non-finite floats are unshippable through `encode_input_kwargs`
+        # (D6 rule 5; see the `_B3_LEAF_VALUES` note). The row stays
+        # locked by the K1 throwaway harness + Layer-3; the 1e300 probe
+        # below is the nearest bridge-reachable neighbour.
         _b3_schema_edge("DisplayOptions", _b3_do(rollingWindowSize=1e300)),
         _b3_schema_edge(
             "Sections",
@@ -6161,6 +6339,231 @@ and are deliberately NOT fuzzed for."""
 
 
 # ---------------------------------------------------------------------------
+# B3-K3 — `transforms` families (b3-packets.md §"R10.9 harness spec (K3)";
+# K3-notes §7.4 deferred these to the binder so the CUMULATIVE gate
+# regression exercises them — landed at B3-BIND).
+#
+# Domain notes (K3-notes §5, carried over verbatim):
+# - `time` values cap at |t| <= 1e12 — CPython's platform `gmtime` raises
+#   `OSError` (errno 84) for very large in-int64 timestamps BEFORE the year
+#   check, a band the TS twin reports as `ValueError` (documented exclusion
+#   #2; `TODO(port)` at the site).
+# - `properties` draws as dict-or-absent-or-small-pair-iterable; the
+#   `dict(iterable-of-pairs)` grammar (incl. the `dict("ab")` ValueError
+#   branch) is emulated by `pythonDictCopy` and probed via edge calls.
+# ---------------------------------------------------------------------------
+
+_TRANSFORM_EVENT_API = "transforms.transform_event"
+_TRANSFORM_PROFILE_API = "transforms.transform_profile"
+
+_B3_K3_TIME: st.SearchStrategy[Any] = st.one_of(
+    st.integers(min_value=-(10**12), max_value=10**12),
+    st.floats(
+        allow_nan=False,
+        allow_infinity=False,
+        min_value=-1e12,
+        max_value=1e12,
+    ),
+    st.booleans(),  # bool <: int (Caution 11): fromtimestamp(True) == 1s
+)
+"""Timestamps: ints, µs-representable floats (round-half-even parity
+proven by the K3 module harness), and booleans; |t| capped at 1e12
+(domain note above)."""
+
+_B3_K3_KEYS: st.SearchStrategy[str] = st.sampled_from(
+    ("plan", "$city", "email", "日本語", "\U0001d4b3", "", "a b")
+)
+"""Property keys, incl. non-BMP and empty (R10.9 edge material)."""
+
+_B3_K3_LEAVES: st.SearchStrategy[Any] = st.sampled_from(
+    (18.0, 1.5, True, None, "", "\U0001d4b3", 0, 42, "free", [], {"a": 1})
+)
+"""Leaf values: the verbatim R10.9 mandatory edge scalars plus plain
+carriers (integral floats ride the raw-token → PyFloat path on the TS
+bridge and must pass through to `properties` unchanged)."""
+
+
+@st.composite
+def _transform_event_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one ``transforms.transform_event`` probe.
+
+    Args:
+        draw: The Hypothesis draw function.
+
+    Returns:
+        The ``(api, kwargs)`` probe: an event dict with optional
+        ``event`` name, optional ``properties`` (dict or pair-iterable),
+        and optional reserved keys (``distinct_id`` / ``time`` /
+        ``$insert_id`` — absent, explicit-null, and value arms).
+    """
+    props: dict[str, Any] = {}
+    if draw(st.booleans()):
+        props["distinct_id"] = draw(_B3_K3_LEAVES)
+    if draw(st.booleans()):
+        props["time"] = draw(_B3_K3_TIME)
+    if draw(st.booleans()):
+        # `is None` fill branch: explicit null takes it too.
+        props["$insert_id"] = draw(st.sampled_from(("abc-123", None, "")))
+    for key in draw(st.lists(_B3_K3_KEYS, max_size=3, unique=True)):
+        props[key] = draw(_B3_K3_LEAVES)
+    event: dict[str, Any] = {}
+    if draw(st.booleans()):
+        event["event"] = draw(st.sampled_from(("Login", "", "\U0001d4b3", "日本語")))
+    shape = draw(st.sampled_from(("dict", "pairs", "absent")))
+    if shape == "dict":
+        event["properties"] = props
+    elif shape == "pairs":
+        # dict(iterable-of-pairs) grammar — both sides build the same
+        # dict from [key, value] two-lists.
+        event["properties"] = [[key, value] for key, value in props.items()]
+    return (_TRANSFORM_EVENT_API, {"event": event})
+
+
+_TRANSFORM_EVENT_FAMILY = FuzzTarget(
+    name="transform_event_family",
+    calls=_transform_event_calls(),
+    edge_calls=(
+        # R10.9: empty dict (every default fires: "", time 0, uuid fill).
+        (_TRANSFORM_EVENT_API, {"event": {}}),
+        # Docstring example (transforms.py:36-55).
+        (
+            _TRANSFORM_EVENT_API,
+            {
+                "event": {
+                    "event": "Sign Up",
+                    "properties": {
+                        "distinct_id": "user123",
+                        "time": 1704067200,
+                        "$insert_id": "abc123",
+                        "plan": "premium",
+                    },
+                }
+            },
+        ),
+        # R10.9 carriers: integral float 18.0 (PyFloat on the TS bridge,
+        # NO .ffffff — probe row) and fractional 1.5 (µs rendering).
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": 18.0}}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": 1.5}}}),
+        # Negative + µs round-half-even probe rows (K3-notes §2).
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": -1.5}}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": 5e-07}}}),
+        # bool <: int.
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": True}}}),
+        # Explicit-null $insert_id takes the uuid-fill branch.
+        (
+            _TRANSFORM_EVENT_API,
+            {"event": {"properties": {"$insert_id": None, "time": 0}}},
+        ),
+        # Two uuid fills NEVER happen in one call — but the counter seam
+        # is per-call; a second event key set exercises key preservation.
+        (
+            _TRANSFORM_EVENT_API,
+            {"event": {"event": "\U0001d4b3", "properties": {"\U0001d4b3": ""}}},
+        ),
+        # Error branches (uncoded builtin raises, bare-class compare):
+        # out-of-range year (ValueError both sides), non-numeric time
+        # (TypeError), malformed properties iterables (`dict("ab")` →
+        # ValueError; `dict(5)` → TypeError; short pair → ValueError).
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": 253402300800}}}),
+        (
+            _TRANSFORM_EVENT_API,
+            {"event": {"properties": {"time": -62135596801}}},
+        ),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": {"time": "soon"}}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": "ab"}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": 5}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": [["a", "b"], ["abc"]]}}),
+        (_TRANSFORM_EVENT_API, {"event": {"properties": [["a", "b"]]}}),
+    ),
+)
+
+
+@st.composite
+def _transform_profile_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one ``transforms.transform_profile`` probe.
+
+    Args:
+        draw: The Hypothesis draw function.
+
+    Returns:
+        The ``(api, kwargs)`` probe: a profile dict over the
+        ``$distinct_id`` / ``$properties`` / ``$last_seen``
+        present-absent grid, plus ignored extra top-level keys.
+    """
+    props: dict[str, Any] = {}
+    if draw(st.booleans()):
+        props["$last_seen"] = draw(
+            st.sampled_from(("2024-01-15T10:30:00", None, "", 0))
+        )
+    for key in draw(st.lists(_B3_K3_KEYS, max_size=3, unique=True)):
+        props[key] = draw(_B3_K3_LEAVES)
+    profile: dict[str, Any] = {}
+    if draw(st.booleans()):
+        profile["$distinct_id"] = draw(_B3_K3_LEAVES)
+    shape = draw(st.sampled_from(("dict", "pairs", "absent")))
+    if shape == "dict":
+        profile["$properties"] = props
+    elif shape == "pairs":
+        profile["$properties"] = [[key, value] for key, value in props.items()]
+    if draw(st.booleans()):
+        # Extra top-level keys are DROPPED (only $distinct_id/$properties
+        # are read) — lock the drop on both sides.
+        profile["$extra"] = draw(_B3_K3_LEAVES)
+    return (_TRANSFORM_PROFILE_API, {"profile": profile})
+
+
+_TRANSFORM_PROFILE_FAMILY = FuzzTarget(
+    name="transform_profile_family",
+    calls=_transform_profile_calls(),
+    edge_calls=(
+        # The two corpus-vector shapes (R10.9: empty dict / missing id).
+        (_TRANSFORM_PROFILE_API, {"profile": {}}),
+        (_TRANSFORM_PROFILE_API, {"profile": {"$properties": {"plan": "free"}}}),
+        # Docstring example (transforms.py:100-118).
+        (
+            _TRANSFORM_PROFILE_API,
+            {
+                "profile": {
+                    "$distinct_id": "user123",
+                    "$properties": {
+                        "$last_seen": "2024-01-15T10:30:00",
+                        "plan": "premium",
+                        "email": "alice@example.com",
+                    },
+                }
+            },
+        ),
+        # Explicit-null $last_seen vs absent (both -> null output).
+        (_TRANSFORM_PROFILE_API, {"profile": {"$properties": {"$last_seen": None}}}),
+        # Non-BMP everywhere.
+        (
+            _TRANSFORM_PROFILE_API,
+            {
+                "profile": {
+                    "$distinct_id": "\U0001d4b3",
+                    "$properties": {"\U0001d4b3": "\U0001d4b3"},
+                }
+            },
+        ),
+        # dict(iterable-of-pairs) grammar + error branches.
+        (_TRANSFORM_PROFILE_API, {"profile": {"$properties": [["a", "b"]]}}),
+        (_TRANSFORM_PROFILE_API, {"profile": {"$properties": "ab"}}),
+        (_TRANSFORM_PROFILE_API, {"profile": {"$properties": 5}}),
+    ),
+)
+
+PHASE3_B3_K3_TARGETS: tuple[FuzzTarget, ...] = (
+    _TRANSFORM_EVENT_FAMILY,
+    _TRANSFORM_PROFILE_FAMILY,
+)
+"""The Phase-3 B3-K3 ``transforms`` families (b3-packets.md §"R10.9
+harness spec (K3)"), declared at the (b′) binding task per the K3-notes
+§7.4 deferral. `build_segfilter_entry` / `normalize_on_expression` need
+no new target — the Phase-1 targets already drive them (this task added
+the operator-row sweep to the segfilter target's edge set)."""
+
+
+# ---------------------------------------------------------------------------
 # B3-K4 — `user_builders.extract_cohort_filter` (b3-packets.md §"R10.9
 # harness spec (K4)": the one NEW family; the two selector entry points reuse
 # the Phase-1 targets, whose Filter domain this shard widened above).
@@ -6257,16 +6660,16 @@ PHASE3_B3_TARGETS: tuple[FuzzTarget, ...] = (
     _BOOKMARK_SCHEMA_FAMILY,
     _ROOT_MODEL_FAMILY,
     *PHASE3_B3_K2_TARGETS,
+    *PHASE3_B3_K3_TARGETS,
     *PHASE3_B3_K4_TARGETS,
 )
-"""The Phase-3 B3-K1 ``bookmark_schema`` families (b3-packets.md §"R10.9
-harness spec (K1)"). Declared here by the module task; SERVED once the
-(b′) binding task lands the name-resolving ``validate_with_pydantic``
-adapter (`conformance/record/adapters.py`) and retargets the registry
-entry — the same posture the B2 validator families were declared under.
-Until then the K1 differential runs through the module task's throwaway
-harness (`throwaway/b3-k1/`, TS repo), which drives the same five models
-by name against the same CPython reference."""
+"""ALL Phase-3 B3 families (K1 `bookmark_schema` + K2 `bookmark_builders`
++ K3 `transforms` + K4 `extract_cohort_filter`), in shard order. SERVED
+since the B3-BIND (b′) task landed the name-resolving
+``validate_with_pydantic`` adapter (`conformance/record/adapters.py`),
+retargeted the registry entry, and registered every B3 name in the
+shared TS bindings module — oracle-ts answers these apis through
+`registerBuilderBindings` (`conformance-runner/src/bindings.ts`)."""
 
 
 PHASE3_B2_TARGETS: tuple[FuzzTarget, ...] = (
