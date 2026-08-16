@@ -106,6 +106,29 @@ Both harness files deterministic apart from the seeded fc runs.
    workspaces 1..2^31−1; out-of-annotation inputs excluded by
    construction.
 
+## Pair-A arbiter follow-up (2026-08-16, `b7-reviewA-resolution.md`, TS commit `4c8946a`)
+
+- Disclosure 1 **RULED** (resolution ruling R1): the Nd/Numeric_Type
+  guard-position split is ACCEPTED as a message/details-only disclosed
+  divergence (class + code identical — the R5 contract); no pinned
+  Numeric_Type table commissioned; the `TODO(port)` at the resolver
+  guard is resolved to a ruling-citing comment.
+- Disclosure 2 already packet-sanctioned (ruling R3; no action).
+- **NEW disclosure (SEM-F3)**: `probeBaseUrl` uses `new URL(x).origin`,
+  which for NON-canonical inputs drops default ports (`:443`/`:80`) and
+  userinfo and lowercases scheme/host where Python
+  `urlsplit`→`urlunsplit` preserves them. All in-repo call sites feed
+  the three canonical `ENDPOINTS[*].app` values (verified identical to
+  `api_client.py:153-172`), so unreachable via shipped consumers, but
+  the function is exported. JSDoc disclosure added in `region-probe.ts`.
+- **PROMOTION (ASR-F3)**: the `resolver-truth.ts` full-precedence-chain
+  coverage (exhaustive axis bitmaps + the 15-dim fc fuzz vs the
+  `firstPresent` mini-model, seed 20260816) now lives PERMANENTLY at
+  `packages/core/test/auth/resolver-precedence-chain.pbt.test.ts`
+  (12 tests) — the gate's `throwaway/b7-a2/` deletion no longer costs
+  the batch its only randomized full-chain lock. The permanent file is
+  NOT part of the gate cleanup.
+
 ## Deferral notes for A1 / B8 / the gate
 
 - A1 consumes: `resolveSession(options, sources)`, `resolveProjectAxis`,

@@ -142,6 +142,36 @@ independent mini-model, zero divergences.
     reformatted in the A1 commit so `npm run check` stays green. No
     content change.
 
+## Pair-A arbiter follow-up (2026-08-16, `b7-reviewA-resolution.md`, TS commit `4c8946a`)
+
+- Disclosure 1 (Caution #13) **RULED** (resolution ruling R2): standing
+  disclosed divergence per the Discrepancy #9/#10 mechanism; naming fuzz
+  domain stays ascending-id (documented omission); the ruling extends to
+  the two sibling out-of-contract sites (the "Accessible projects:"
+  error-listing order and picker tie order). `naming.ts` JSDoc cites the
+  ruling; the gate pastes the proposed playbook discrepancy entry #13.
+- Disclosure 2 **EXTENDED + branch RESTORED** (SEM-F2): the Python
+  orphan-directory guard (`accounts.py:1704-1708`) had NO TS equivalent
+  (silent `writeTokens` overwrite). Fixed red-first via a NEW
+  `TokenStore.accountDirExists(name)` seam (B8-N2 implements as
+  `account_dir(name).exists()`; the fake reports held state). Residual
+  disclosures: the TS message renders the NAME where Python renders the
+  directory PATH (R5.4, class+code identical), and in the overlap state
+  (config record AND dir both exist) TS raises `AccountExistsError`
+  where Python raises the dir-exists ConfigError — both refuse.
+- **SEM-F1 falsiness fixes** (red-first, 5 spec-cited tests): three
+  Python falsy-`or` param sites had been ported as nullish-`??` —
+  `test("")` → `"(none)"` (`accounts.py:727`), `export_bridge(account="")`
+  → active-account fall-through (`:997`), `login_unified(token_env="")`
+  → `MP_OAUTH_TOKEN` fallback then the probe's empty-pointer ConfigError
+  (`:1812`; CPython-verified end-to-end). Arbiter `' or '` sweep found
+  no further sites (`default_project` twins are model-locked `^\d+$`,
+  `??` equivalent).
+- Disclosure 3 tokenStore shape gains `accountDirExists` (covered by the
+  `UNPORTED_AUTH_SEAMS` `"tokenStore.*"` group entry; B8-N2 owner).
+- `TestSummaryTableDynamicWidth` exclusion **RATIFIED by the arbiter**
+  (ASR-F1) — now an arbiter decision, not an implementer deviation.
+
 ## Deferral notes for B8 / the gate
 
 - B8 implements BY NAME: everything in `UNPORTED_AUTH_SEAMS`
