@@ -1,2 +1,2 @@
-{"$bundle":{"count":1,"source_commit":"b5c1369824052d97931ff8c4516cbfb24d73a7ad","source_file":"tests/unit/test_bookmark_builders_pbt.py"}}
+{"$bundle":{"count":1,"source_commit":"70c904dc598db2c74ca8429b603fa8bef19187ea","source_file":"tests/unit/test_bookmark_builders_pbt.py"}}
 {"call":{"api":"bookmark_builders.build_group_section","input":{"group_by":null}},"capability":"bookmarks","expect":{"output":[]},"id":"bookmarks/bookmark_builders.build_group_section/test_bookmark_builders_pbt-testgroupsectionequivalence-test_none_group_equivalence","kind":"builder","origin":"extracted","schema_version":"1.0","source_test":"tests/unit/test_bookmark_builders_pbt.py::TestGroupSectionEquivalence::test_none_group_equivalence"}
