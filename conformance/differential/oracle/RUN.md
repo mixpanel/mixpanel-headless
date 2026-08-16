@@ -278,3 +278,73 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   before its task closes — never wait for the next batch gate. Both
   post-`2015565` fuzz runs were `--targets`-restricted to the 11 B2
   families, which is how the attempt-1 regression sat invisible.
+
+---
+
+## 2026-08-15 — B3 gate: **GATE CLOSED (all clean, after one rig-strategy remediation)**
+
+- **Attempt 1 (BLOCKED — harness transport crash, not a divergence)**: the
+  full-suite replays at seeds **3343231** and **28631260** crashed with
+  `UnencodableValueError: value nesting exceeds the codec depth guard`
+  inside `encode_input_kwargs`, falsifying example
+  `bookmark_schema.validate_with_pydantic` with a deeply-nested `value`.
+  Root cause (rig strategy bug, fable-owned): `_B3_LEAF_VALUES` carries
+  module-level MUTABLE containers (`{}`, `{"k": 1}`, `[{}]`);
+  `_b3_schema_calls` inserted them BY REFERENCE (`st.sampled_from`
+  returns the constant itself) and later arms wrote through them
+  (`_b3_set_path` intermediate-dict creation, direct key writes when
+  `value` IS a drawn leaf), so nesting accumulated ACROSS examples until
+  the depth guard fired — seed-dependent, which is why the B3-BIND run
+  (64091337) and the arbiter re-run (84150301) stayed clean. Seeds
+  40075993 (fresh) and 52794688 passed attempt 1 (23,022 ex / 0 div).
+- **Remediation (red-first)**: new
+  `TestB3SchemaCallDomainIntegrity` lock in
+  `conformance/tests/test_fuzz_harness.py` — 300 derandomized draws must
+  (a) never alias a mutable `_B3_LEAF_VALUES` entry (identity walk),
+  (b) always ship through `encode_input_kwargs`, (c) leave the constants
+  deep-equal to a pre-run snapshot; red pre-fix on (a). Fix: `_b3_leaf()`
+  helper deep-copies at draw time (the same discipline the choice-3
+  graft arm already applied via a json round-trip); all 5
+  `sampled_from(_B3_LEAF_VALUES)` mutation-arm sites now route through
+  it. Domain sequence is unchanged (same draws, fresh objects); prior
+  clean RUN records explored a partially-dirtied value stream and stay
+  valid as recorded history.
+- **Attempt 2 (CLEAN)**: standard full-suite form (all **45** registered
+  `ALL_TARGETS` families, cumulative through B3) + the K4 doubled-budget
+  selector top-up per seed:
+
+  ```bash
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 40075993 --report json    # fresh
+  # prior-gate seed replays: --seed 3343231 / 28631260 / 52794688
+  # K4 doubled budget, per seed:
+  #   --targets filter_to_selector,filters_to_selector --examples 1000
+  ```
+
+- Totals, ALL FOUR seeds identical: full suite **23,022 examples /
+  0 skips / 0 divergences**; selector top-up **2,044 examples (1,020 +
+  1,024) / 0 / 0**. Exit 0, status `ok`, no repros written. Raw JSONs:
+  `2026-08-15-b3-gate-seed{40075993,3343231,28631260,52794688}{,-selectors1000}.json`.
+- **Skip ledger EMPTY**: `skipped_per_target` is 0 for all 45 families —
+  the five Phase-1 pending-skip families went live at B3-BIND, and the
+  B2-era 2,539-skip ledger is fully discharged (first all-live full-suite
+  run of the program). Under-500 families are the two documented
+  finite-domain exhaustions only (`build_date_range_family` 101,
+  `build_time_section_family` 485 — every possible probe ran).
+- Bridges: oracle-py @ ts-port/phase2-contract-support, oracle-ts @ main
+  (B3 gate working tree), both `source_commit 70c904dc598d…`, protocol
+  1.1, corpus pin 70c904d.
+- Oracle probes (P3-2e step 3): **17/17 B3 apis** answer call DATA on
+  BOTH bridges, canonical outcomes pairwise equal (probe = one edge call
+  per api from the api's own strategy family; same script as B3-BIND).
+- Referees at this gate (P3-7): (a) ajv — NEW runner feed
+  (`differential/test/bookmark-referee-feed.test.ts`): 98 insights-shaped
+  B3 builder outputs fed, 94 ACCEPT + **4 expected-and-disclosed
+  dataGroupId REJECTs** (int-vs-string contract mismatch, filed
+  `context/phase3/bug-reports/mixpanel-headless-datagroupid-int-clause.md`,
+  pinned exactly in the test); (b) bookmark_parser round-trip: structural
+  **314/314 ACCEPT**, deep **123 ACCEPT / 2 REJECT / 189 SKIP** — the 2
+  are the standing frequency-filter true positives (expected-and-
+  disclosed, exit 1 by design), byte-identical reports modulo
+  `runtime_seconds`.

@@ -2214,7 +2214,7 @@
       "verdict": "SKIP_NON_INSIGHTS"
     }
   ],
-  "runtime_seconds": 0.299,
+  "runtime_seconds": 0.318,
   "skipped": 189,
   "status": "rejected",
   "total": 314

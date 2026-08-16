@@ -1,0 +1,44 @@
+{
+  "examples_per_target": {
+    "filter_to_selector": 1020,
+    "filters_to_selector": 1024
+  },
+  "left_info": {
+    "language": "python",
+    "library_version": "0.2.1",
+    "protocol_version": "1.1",
+    "source_commit": "70c904dc598db2c74ca8429b603fa8bef19187ea"
+  },
+  "right_info": {
+    "language": "typescript",
+    "library_version": "0.0.0",
+    "protocol_version": "1.1",
+    "source_commit": "70c904dc598db2c74ca8429b603fa8bef19187ea"
+  },
+  "seed": 3343231,
+  "skipped_per_target": {
+    "filter_to_selector": 0,
+    "filters_to_selector": 0
+  },
+  "status": "ok",
+  "targets": [
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 1020,
+      "name": "filter_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 1024,
+      "name": "filters_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    }
+  ],
+  "total_divergences": 0,
+  "total_examples": 2044
+}
