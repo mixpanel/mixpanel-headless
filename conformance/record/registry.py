@@ -531,6 +531,9 @@ def _gate_entries() -> tuple[RegistryEntry, ...]:
             # B0-1 (P3-4): the R11.3/R11.5/R11.6 completion wrappers.
             "python_int",
             "python_float",
+            # B6 gate (B5-notes.md outbound ledger item 5): the R11.7
+            # float(x) coercion ladder twin.
+            "python_float_coerce",
             "python_strip",
             "sorted_strings",
             "cp_length",

@@ -2299,6 +2299,69 @@ _PYTHON_FLOAT = FuzzTarget(
 )
 
 
+def _python_float_coerce_call(value: object) -> FuzzCall:
+    """Wrap one drawn payload value as a ``python_float_coerce`` probe.
+
+    Args:
+        value: The drawn value (the ``Any``-typed interior domain).
+
+    Returns:
+        The ``(api, kwargs)`` probe.
+    """
+    return ("compat.python_float_coerce", {"value": value})
+
+
+_FLOAT_COERCE_VALUES: st.SearchStrategy[object] = st.one_of(
+    # The string arm reuses the python_float grammar-adjacent universe.
+    _wrapped_numeric_text(_FLOAT_CORE),
+    # Safe-range ints only: the 2^53 codec policy (R4.5) bars unsafe
+    # ints from the oracle wire, so CPython's float(10**400)
+    # OverflowError branch is NOT fuzz-observable — documented omission;
+    # the TS-side lock is python-float-coerce.test.ts (huge-int
+    # spelling + bigint arms).
+    st.integers(min_value=-(2**53) + 1, max_value=2**53 - 1),
+    # Finite floats only: non-finite INPUT floats are float-tag
+    # transport (fine) but float(inf) is the identity — the sentinel
+    # OUTPUT path is exercised via the "1e400"/"inf" string edges below
+    # (domain note; python_float_str precedent excludes non-finite too).
+    st.floats(allow_nan=False, allow_infinity=False),
+    st.booleans(),
+    st.none(),
+    st.lists(st.one_of(st.integers(0, 3), st.text(max_size=3)), max_size=3),
+    st.dictionaries(st.text(max_size=3), st.integers(0, 3), max_size=3),
+)
+"""Payload-value universe for ``python_float_coerce`` probes (B6 gate)."""
+
+
+_PYTHON_FLOAT_COERCE = FuzzTarget(
+    name="python_float_coerce",
+    calls=_FLOAT_COERCE_VALUES.map(_python_float_coerce_call),
+    # R10.9 edge set: the full mandatory list applies (the input domain
+    # is Any). Error branches: invalid string literal (coded), the
+    # None/list/dict TypeError twins (bare-class compared). The
+    # OverflowError branch is transport-barred (see the domain note).
+    edge_calls=(
+        ("compat.python_float_coerce", {"value": 18.0}),  # R10.9: integral float
+        ("compat.python_float_coerce", {"value": 1.5}),  # R10.9: fractional float
+        ("compat.python_float_coerce", {"value": True}),  # R10.9: True -> 1.0
+        ("compat.python_float_coerce", {"value": None}),  # R10.9: None + TypeError
+        ("compat.python_float_coerce", {"value": []}),  # R10.9: empty list + TypeError
+        ("compat.python_float_coerce", {"value": ""}),  # R10.9: empty string + error
+        (
+            "compat.python_float_coerce",
+            {"value": "\U0001d4b3"},
+        ),  # R10.9: non-BMP + error
+        ("compat.python_float_coerce", {"value": {}}),  # error: dict TypeError
+        ("compat.python_float_coerce", {"value": 42}),  # int arm
+        ("compat.python_float_coerce", {"value": -0.0}),  # sign-preserving zero
+        ("compat.python_float_coerce", {"value": "1e400"}),  # sentinel via overflow
+        ("compat.python_float_coerce", {"value": "-iNf"}),  # sentinel: -inf
+        ("compat.python_float_coerce", {"value": 2**53 - 1}),  # policy boundary
+        ("compat.python_float_coerce", {"value": {"a": 1}}),  # error: dict TypeError
+    ),
+)
+
+
 def _python_strip_call(value: str) -> FuzzCall:
     """Wrap one drawn string as a ``python_strip`` probe.
 
@@ -5249,15 +5312,17 @@ _USER_PARAMS_FAMILY = FuzzTarget(
 PHASE3_TARGETS: tuple[FuzzTarget, ...] = (
     _PYTHON_INT,
     _PYTHON_FLOAT,
+    _PYTHON_FLOAT_COERCE,
     _PYTHON_STRIP,
     _SORTED_STRINGS,
     _CP_LENGTH_TARGET,
     _CP_SLICE_TARGET,
     _JSONL_CHUNKS,
 )
-"""The Phase-3 B0 targets: the B0-1 pythonCompat completion families plus
-the B0-2 ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets; the
->=500-example budget applies per target)."""
+"""The Phase-3 pythonCompat targets: the B0-1 completion families, the
+B0-2 ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets), and
+the B6-gate ``python_float_coerce`` ladder (B5-notes.md outbound ledger
+item 5; the >=500-example budget applies per target)."""
 
 
 # ---------------------------------------------------------------------------

@@ -455,3 +455,77 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   / 189 SKIP** — the 2 are the standing frequency-filter true positives
   (expected-and-disclosed, exit 1 by design), reports byte-identical to
   B3 modulo `runtime_seconds`. No NEW reject on either referee.
+
+## 2026-08-16 — B6 gate: **GATE CLOSED (all clean, after one library-twin fold)**
+
+- **Scope**: playbook P3-2e item 3 + P3-7 at the B6 gate. The B6 batch
+  itself registered ZERO new oracle families (all 154 BIND names are
+  wire-kind — `b6-packets.md` §11.5; wire names have no oracle call
+  surface and are probe-exempt). The GATE task added ONE builder-kind
+  family while executing the B5-notes outbound ledger item 5
+  (`pythonFloatCoerce`, the R11.7 non-string `float(x)` ladder):
+  `compat.python_float_coerce` — TS `compat/python-float-coerce.ts` +
+  binding beside `compat.python_float`, Python reference
+  `pycompat_ref.python_float_coerce` + registry `_gate_entries()`,
+  strategy `_PYTHON_FLOAT_COERCE` in `PHASE3_TARGETS` (safe-int /
+  finite-float / bool / None / list / dict / grammar-adjacent-string
+  domain; 14 R10.9 edges; unsafe ints and non-finite input floats are
+  documented omissions — R4.5 transport bar and the identity arm; the
+  `float(10**400)` OverflowError branch is locked TS-side by
+  `python-float-coerce.test.ts`).
+- **Oracle probe** (P3-2e step 3): the new family answered call DATA on
+  BOTH bridges — dedicated family run at seed 628997442:
+  **514 examples (500 + 14 edges) / 0 skips / 0 divergences**.
+- **Cumulative surface**: 55 families (54 prior + the above).
+
+```bash
+uv run python -m conformance.differential.fuzz_harness \
+  --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+  --examples 500 --seed 628997442 --report json    # fresh
+# prior-gate seed replays: --seed 3343231 / 28631260 / 52794688 / 40075993 / 53062695 / 47824574
+```
+
+- **One REAL rig-observable bug caught and fixed (library-twin fold)**:
+  the first 55-family pass drew ONE divergence on seed **3343231**
+  (`cohort_family`, shrunken repro `types.CohortCriteria.has_property`
+  `{operator: "junk"}`): py `KeyError` vs ts `KeyError2`. Root cause:
+  TWO same-named `KeyError` classes (the module-local P2-9 mirror in
+  `types/query-params/cohort.ts` + the canonical
+  `query/python-builtins.ts` twin); the gate's compat import re-ordered
+  the esbuild oracle bundle, renaming the cohort copy to `KeyError2`
+  (the bridge compares `constructor.name`, oracle-protocol.md §4.1).
+  Previously invisible: the python-builtins twin is thrown only by B5
+  discovery parsers (wire — no oracle surface). FIXED per
+  python-builtins' own R10.4 watch note — the duplicate DELETED,
+  `cohort.ts` imports the canonical twin (import-free leaf, no cycle);
+  fix verified by a direct oracle probe of the repro input
+  (`class: "KeyError"`); repro file deleted with the fix (B3/B5-gate
+  precedent). A 54-family pre-addition pass had been clean on all
+  seven seeds (27,577/0/0) — the bundle order flip is what exposed the
+  latent collision.
+- Totals, ALL SEVEN seeds identical over the final tree:
+  **28,091 examples / 0 skips / 0 divergences** per seed
+  (`python_float_coerce` 514 each); exit 0, status `ok`, no repros
+  written. Seeds: fresh **628997442** + replays of EVERY prior gate
+  seed — **3343231** (B2 fresh), **28631260** (B0), **52794688** (B0),
+  **40075993** (B3 fresh), **53062695** (B4 fresh), **47824574** (B5
+  fresh). Raw JSONs:
+  `2026-08-16-b6-gate-seed{628997442,3343231,28631260,52794688,40075993,53062695,47824574}.json`.
+- Under-500 families: only the two documented finite-domain exhaustions
+  (`build_date_range_family` 101, `build_time_section_family` 485).
+  `skipped_per_target` all-zero (ledger empty since B3).
+- Bridges: oracle-py 0.2.1 @ ts-port/phase2-contract-support, oracle-ts
+  0.0.0 @ main (B6 gate working tree), both `source_commit
+  70c904dc598d…`, protocol 1.1, corpus pin 70c904d.
+- `repros/` back to exactly the two RESOLVED P2-9 triage records —
+  non-blocking.
+- Referees at this gate (P3-7 — REQUIRED, bookmark-touching batch):
+  (a) ajv runner feed — no new feed slot (W3 validates/passes through
+  ALREADY-BUILT params; construction stayed B3/B5): 213 fed, **208
+  ACCEPT + the 5 pinned expected-and-disclosed dataGroupId REJECTs**
+  (pin-exactness asserted by the test); (b) bookmark_parser round-trip
+  over the regenerated (byte-identical, 314-entry) handoff: selftest
+  controls passed for both oracles first; structural **314/314
+  ACCEPT**; deep **123 ACCEPT / 2 REJECT / 189 SKIP_NON_INSIGHTS** —
+  the 2 standing frequency-filter true positives only (exit 1 by
+  design). **No NEW reject on either referee — non-blocking.**

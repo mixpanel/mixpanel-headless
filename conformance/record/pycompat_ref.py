@@ -182,6 +182,51 @@ def python_float(value: str) -> float | str:
     return repr(result)
 
 
+def python_float_coerce(value: Any) -> float | str:
+    """Reference CPython ``float(x)`` coercion ladder (R11.7).
+
+    B6-gate addition (B5-notes.md outbound ledger item 5 /
+    b5-review-resolution.md ASR-F6b): CPython itself is the oracle for
+    the NON-string arms — ``float(True)`` -> ``1.0``, ``float(None)`` /
+    ``float([])`` / ``float({})`` -> ``TypeError``, huge ints ->
+    ``OverflowError`` — while the string arm is the R11.3
+    :func:`python_float` grammar. The same rig-contract translations as
+    :func:`python_float` apply (B0-notes design decisions 1-2):
+    ``ValueError`` re-raises coded; non-finite results return the
+    ``repr`` sentinel string. ``TypeError``/``OverflowError`` propagate
+    BARE for class-name comparison (oracle-protocol.md §4.1, the
+    ratified Discrepancy #8 in-annotation raise contract).
+
+    Args:
+        value: Any payload value (the ``Any``-typed interior domain the
+            library site reads from ``steps_data``).
+
+    Returns:
+        ``float(value)`` when finite; ``repr(float(value))`` otherwise.
+
+    Raises:
+        MixpanelHeadlessError: Code ``PY_FLOAT_INVALID_LITERAL`` for
+            invalid string literals.
+        TypeError: Where CPython ``float(x)`` raises (None/list/dict).
+        OverflowError: Where CPython raises (int too large for float).
+
+    Example:
+        ```python
+        python_float_coerce(True)
+        # 1.0
+        python_float_coerce("inf")
+        # "inf"
+        ```
+    """
+    try:
+        result = float(value)
+    except ValueError as exc:
+        raise MixpanelHeadlessError(str(exc), code="PY_FLOAT_INVALID_LITERAL") from exc
+    if math.isfinite(result):
+        return result
+    return repr(result)
+
+
 def python_strip(value: str) -> str:
     """Reference CPython ``str.strip()`` (R11.3 enabling dependency).
 

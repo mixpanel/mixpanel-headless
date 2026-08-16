@@ -229,6 +229,8 @@ def test_builder_registry_covers_the_design_d42_list() -> None:
         # B0-1 (P3-4): pythonCompat completion wrappers
         "compat.python_int",
         "compat.python_float",
+        # B6 gate (B5-notes.md outbound ledger item 5)
+        "compat.python_float_coerce",
         "compat.python_strip",
         "compat.sorted_strings",
         "compat.cp_length",

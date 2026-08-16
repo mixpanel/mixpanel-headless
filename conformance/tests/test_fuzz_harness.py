@@ -391,15 +391,17 @@ class TestPhase2StrategyTable:
     _PHASE3_NAMES = (
         "python_int",
         "python_float",
+        "python_float_coerce",
         "python_strip",
         "sorted_strings",
         "cp_length",
         "cp_slice",
         "jsonl_chunks",
     )
-    """The B0 targets: B0-1 pythonCompat completion + the B0-2
+    """The Phase-3 pythonCompat targets: B0-1 completion + the B0-2
     ``api_client._iter_jsonl_lines`` chunk adapter (P3-4 packets), in packet
-    order."""
+    order, plus the B6-gate ``python_float_coerce`` ladder (B5-notes.md
+    outbound ledger item 5)."""
 
     _PHASE3_B2_NAMES = (
         "time_args_family",
