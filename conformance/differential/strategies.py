@@ -30,6 +30,7 @@ target's edge tuple.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import datetime as _dt
 import gzip
@@ -5451,6 +5452,28 @@ _B3_GRAFT_SHOW_CLAUSES: tuple[Any, ...] = (
 recursive-nesting routes."""
 
 
+def _b3_leaf(draw: st.DrawFn) -> Any:
+    """Draw one ``_B3_LEAF_VALUES`` substitution as an independent copy.
+
+    ``st.sampled_from`` returns the module-level constant ITSELF; the
+    mutation arms of :func:`_b3_schema_calls` write through the drawn
+    value in place (``_b3_set_path`` creates intermediate dicts inside
+    it, and the extra-key arms assign into it when ``value`` is a drawn
+    dict), so handing out the shared object let nesting accumulate
+    ACROSS examples until ``encode_input_kwargs`` hit the codec depth
+    guard (B3-gate crash at full-suite seeds 3343231/28631260,
+    2026-08-15). Deep-copying at draw time is the same discipline the
+    choice-3 graft arm already applied via a json round-trip.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A structurally independent copy of the sampled leaf value.
+    """
+    return copy.deepcopy(draw(st.sampled_from(_B3_LEAF_VALUES)))
+
+
 def _b3_set_path(obj: Any, path: tuple[Any, ...], value: Any) -> None:
     """Set ``value`` at ``path``, creating intermediate dicts.
 
@@ -5497,7 +5520,7 @@ def _b3_schema_calls(draw: st.DrawFn) -> FuzzCall:
         choice = draw(st.integers(min_value=0, max_value=5))
         if choice == 0:
             path = draw(st.sampled_from(_B3_LEAF_PATHS[model]))
-            _b3_set_path(value, path, draw(st.sampled_from(_B3_LEAF_VALUES)))
+            _b3_set_path(value, path, _b3_leaf(draw))
         elif choice == 1:
             path = draw(st.sampled_from(_B3_LEAF_PATHS[model]))
             cur = value
@@ -5518,7 +5541,7 @@ def _b3_schema_calls(draw: st.DrawFn) -> FuzzCall:
             # documented-omission pattern per strategies.py §B2 notes).
             key = draw(st.sampled_from(("zzz", "aaa", "b", _B2_NON_BMP, "_idx")))
             if isinstance(value, dict):
-                value[key] = draw(st.sampled_from(_B3_LEAF_VALUES))
+                value[key] = _b3_leaf(draw)
         elif choice == 3:
             graft = json.loads(
                 json.dumps(draw(st.sampled_from(_B3_GRAFT_SHOW_CLAUSES)))
@@ -5538,9 +5561,9 @@ def _b3_schema_calls(draw: st.DrawFn) -> FuzzCall:
                 st.sampled_from(("alignment", "icon", "id", "isNewQBEnabled", "title"))
             )
             if isinstance(value, dict):
-                value[key] = draw(st.sampled_from(_B3_LEAF_VALUES))
+                value[key] = _b3_leaf(draw)
         else:
-            value = draw(st.sampled_from(_B3_LEAF_VALUES))
+            value = _b3_leaf(draw)
     kwargs: dict[str, Any] = {"model": model, "value": value}
     if draw(st.booleans()):
         kwargs["path_prefix"] = draw(

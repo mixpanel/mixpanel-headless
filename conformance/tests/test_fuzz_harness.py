@@ -732,3 +732,98 @@ class TestSeededRuns:
         first = self._sequence_for(tmp_path, "python_int", None, 10)
         second = self._sequence_for(tmp_path, "python_int", None, 10)
         assert first == second
+
+
+class TestB3SchemaCallDomainIntegrity:
+    """``_b3_schema_calls`` stays transport-shippable and side-effect-free.
+
+    B3-gate regression lock (2026-08-15): ``_B3_LEAF_VALUES`` carries
+    module-level MUTABLE containers (``{}``, ``{"k": 1}``, ``[{}]``).
+    Pre-fix, the mutation arms of ``_b3_schema_calls`` inserted them BY
+    REFERENCE and later writes (``_b3_set_path`` walking through an
+    inserted leaf, or direct key writes when ``value`` IS an inserted
+    leaf) mutated the shared constants, so nesting accumulated across
+    examples until ``encode_input_kwargs`` hit the codec depth guard
+    (``UnencodableValueError`` — a harness transport crash, not a bridge
+    divergence; B3-gate full-suite replays at seeds 3343231 and
+    28631260). The choice-3 graft arm already json-round-tripped its
+    payloads; this suite locks the same copy-at-draw discipline for every
+    arm.
+    """
+
+    def test_drawing_never_mutates_leaf_constants_and_always_ships(
+        self,
+    ) -> None:
+        """Derandomized draws leave the constants pristine and encodable.
+
+        Raises:
+            AssertionError: If a drawn probe is not transport-shippable
+                or any ``_B3_LEAF_VALUES`` entry mutated during drawing.
+        """
+        import copy
+
+        from hypothesis import HealthCheck, given, settings
+
+        from conformance.differential import strategies as strat
+        from conformance.record.codecs import encode_input_kwargs
+
+        snapshot = copy.deepcopy(strat._B3_LEAF_VALUES)
+        shared_ids = {
+            id(leaf) for leaf in strat._B3_LEAF_VALUES if isinstance(leaf, (dict, list))
+        }
+
+        def assert_no_shared_reference(obj: Any) -> None:
+            """Recursively assert no drawn container IS a leaf constant.
+
+            A by-reference insertion is the defect even before nesting
+            accumulates: later in-place writes through it corrupt the
+            module-level domain for every subsequent example.
+
+            Args:
+                obj: A drawn kwargs subtree.
+
+            Raises:
+                AssertionError: If ``obj`` aliases a mutable
+                    ``_B3_LEAF_VALUES`` entry.
+            """
+            if isinstance(obj, (dict, list)):
+                assert id(obj) not in shared_ids, (
+                    "_b3_schema_calls inserted a _B3_LEAF_VALUES container "
+                    "by reference — mutation arms must deep-copy at draw "
+                    "time"
+                )
+                items = obj.values() if isinstance(obj, dict) else obj
+                for item in items:
+                    assert_no_shared_reference(item)
+
+        @given(call=strat._b3_schema_calls())
+        @settings(
+            max_examples=300,
+            derandomize=True,
+            database=None,
+            deadline=None,
+            suppress_health_check=[
+                HealthCheck.too_slow,
+                HealthCheck.filter_too_much,
+            ],
+        )
+        def run(call: tuple[str, dict[str, Any]]) -> None:
+            """Encode one drawn probe (must never raise or alias).
+
+            Args:
+                call: The drawn ``(api, kwargs)`` probe.
+
+            Raises:
+                UnencodableValueError: If the probe is unshippable
+                    (the pre-fix failure mode).
+                AssertionError: If the probe aliases a shared leaf.
+            """
+            _api, kwargs = call
+            assert_no_shared_reference(kwargs.get("value"))
+            encode_input_kwargs(kwargs)
+
+        run()
+        assert snapshot == strat._B3_LEAF_VALUES, (
+            "_b3_schema_calls mutated its shared leaf constants — "
+            "mutation arms must deep-copy at draw time"
+        )
