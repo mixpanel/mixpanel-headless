@@ -1389,9 +1389,13 @@ def _filter_factory_calls(draw: st.DrawFn) -> FuzzCall:
         }
         return (api, bag)
     if kind in ("in_cohort", "not_in_cohort"):
+        # bool <: int — Python's `isinstance(cohort, int)` saved-id split
+        # accepts booleans (True passes CF1, False fires it); drawn since
+        # the B3 arbiter fix F1 (b3-review-resolution.md 2026-08-15).
         cohort = draw(
             st.one_of(
                 st.integers(min_value=-10, max_value=1_000_000),
+                st.booleans(),
                 definition_trees(),
             )
         )
@@ -1436,6 +1440,10 @@ _FILTER_FAMILY = FuzzTarget(
         ),
         ("types.Filter.on", {"property": "", "date": "2025-01-01"}),
         ("types.Filter.in_cohort", {"cohort": 123, "name": None}),
+        # bool <: int (B3 arbiter fix F1): True -> saved id entry, False
+        # -> CF1 at the shared guard, on BOTH sides.
+        ("types.Filter.in_cohort", {"cohort": True, "name": None}),
+        ("types.Filter.not_in_cohort", {"cohort": False, "name": "VIPs"}),
         ("types.Filter.list_contains", {"property": "items", "item_filters": []}),
         *_harvested_family_edges().get("filter_family", ()),
     ),
@@ -1637,8 +1645,13 @@ _COHORT_FAMILY = FuzzTarget(
         _SANITIZE_RAW_CALLS,
         _kwargs_bag(
             required={
+                # bool <: int (B3 arbiter fix F1, b3-review-resolution.md
+                # 2026-08-15): CohortBreakdown(True) constructs and takes
+                # the saved-id branch; CohortBreakdown(False) fires CB1 —
+                # both sides, via the bool-inclusive isinstance-int guard.
                 "cohort": st.one_of(
                     st.integers(min_value=-10, max_value=1_000_000),
+                    st.booleans(),
                     definition_trees(),
                 )
             },
@@ -5495,6 +5508,14 @@ def _b3_schema_calls(draw: st.DrawFn) -> FuzzCall:
             if isinstance(cur, dict):
                 cur.pop(path[-1], None)
         elif choice == 2:
+            # Integer-like unknown keys ("1", "42", …) are EXCLUDED by
+            # construction: JS objects hoist array-index-like keys, so
+            # mixed integer-like/non-integer-like extras on an
+            # extra="forbid" model emit `extra_forbidden` in a different
+            # ORDER (content identical) — playbook Discrepancy #10
+            # (arbiter ruling on K1-D1, b3-review-resolution.md
+            # 2026-08-15; same JS-engine limitation as Discrepancy #9,
+            # documented-omission pattern per strategies.py §B2 notes).
             key = draw(st.sampled_from(("zzz", "aaa", "b", _B2_NON_BMP, "_idx")))
             if isinstance(value, dict):
                 value[key] = draw(st.sampled_from(_B3_LEAF_VALUES))
@@ -5851,9 +5872,14 @@ def _bb_group_element(draw: st.DrawFn) -> Any:
             ),
         )
     if kind == "cohort":
+        # bool <: int (B3 arbiter fix F1): True is the one constructible
+        # boolean id (False fires CB1 at construction, so it cannot be
+        # drawn here); it must take the SAVED branch — id: true,
+        # groups: [] — on both sides.
         return CohortBreakdown(
             cohort=draw(
                 st.one_of(
+                    st.just(True),
                     st.integers(min_value=1, max_value=99999),
                     definition_trees(),
                 )
@@ -6061,6 +6087,12 @@ _BUILD_GROUP_SECTION_FAMILY = FuzzTarget(
         (
             _BB_GROUP_SECTION_API,
             {"group_by": CohortBreakdown(7), "data_group_id": None},
+        ),
+        # bool <: int (B3 arbiter fix F1): a boolean saved id must emit
+        # `id: true, groups: []` — the pre-fix TS crashed TypeError here.
+        (
+            _BB_GROUP_SECTION_API,
+            {"group_by": CohortBreakdown(True, "N"), "data_group_id": None},
         ),
         # Non-BMP / empty string properties.
         (_BB_GROUP_SECTION_API, {"group_by": _B2_NON_BMP, "data_group_id": None}),

@@ -871,6 +871,43 @@ injected interfaces that B8 implements).
    domain (documented omission). The `{path, code, severity}` triples are order-flipped
    only — no code/path/severity difference. Re-examine only if a real consumer workflow
    is found to depend on S4 ordering across integer-like keys.
+10. **`extra_forbidden` emission order flips for integer-like unknown keys on
+    `extra="forbid"` bookmark-schema models** (B3 arbiter ruling on escalation K1-D1,
+    `b3-review-resolution.md`, 2026-08-15; disclosed at `throwaway/b3-k1/RUN.md` §6 and
+    `B3-K1-notes.md` §6). Same JS-engine mechanism as Discrepancy #9 at a NEW site:
+    `JSON.parse`/object construction hoists array-index-like keys, so a params dict with
+    ≥2 unknown top-level keys mixing integer-like and non-integer-like spellings emits
+    `extra_forbidden` in JS object order instead of Python insertion order (py `2,b,1` →
+    ts `1,2,b`; `{path, code, severity}` CONTENT identical, order only; the validator
+    cannot recover the order — it is destroyed at decode time). Recorded as a **standing
+    disclosed divergence** rather than an extension of #9's order-insensitive comparison
+    (Caution #17 forbids extending #9; per the #9 precedent a comparison relaxation
+    would need a user ratification — offered to the user as an optional follow-up, not
+    required, since the exclusion approach changes no comparison logic). Integer-like
+    unknown keys stay excluded from the `bookmark_schema_family` fuzz domain — now a
+    documented omission at the strategy site (`strategies.py::_b3_schema_calls`, the
+    #9-comment pattern) so the gate's fresh-seed regression cannot draw them.
+    Reachability: zero corpus vectors carry a `bookmark_schema.*` api; the sole planned
+    consumer (B6-W3 `_validate_bookmark_params_schema`) surfaces warning lists whose
+    cross-key order no caller is known to depend on. Re-examine if a real consumer
+    workflow is found to depend on `extra_forbidden` ordering across integer-like keys,
+    or at the B6-W3 review.
+11. **CPython raises `OSError` (errno 84) across most of the above-`datetime.max`
+    timestamp span; the TS twin raises `ValueError`** (B3 arbiter promotion of the K3
+    code-comment disclosure, per fidelity review F2, 2026-08-15). Measured boundary
+    (macOS, CPython 3.14.6, arbiter-reproduced bisect): OSError for ALL
+    `t >= 67,768,036,191,676,800` (~6.78e16 — the `gmtime` `tm_year > INT_MAX`
+    overflow) and `t <= -67,768,040,609,740,801`, up to the ±2^63 OverflowError bound —
+    five orders of magnitude, NOT the "narrow band" the original disclosure claimed
+    (comment corrected in `transforms.ts` and `B3-K3-notes.md` §5 by the arbiter).
+    Sanctioned class-level deviation of the #6/#7 kind: every affected input RAISES on
+    both sides (class-only divergence, no wrong success); year > 2.1 billion is
+    unreachable from any real Mixpanel export; the boundary is platform-dependent
+    (`gmtime`), so matching it byte-exactly would pin platform trivia; the fuzz domain
+    caps `|time| <= 1e12` (documented omission, packet-authorized "exclude |t| beyond
+    datetime.max"). Re-examine only if Phase-4 burn-in ever sees a live timestamp in
+    the band or the port targets a platform with a different `gmtime` overflow
+    boundary.
 
 ### Escalations
 

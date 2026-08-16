@@ -311,6 +311,16 @@ The pre-existing note on `validateInsightsBookmarkSortConfig` documents the
 same limitation for the sorting path, where `validate_sorting_block`'s
 chart-type pre-filter makes it unreachable.
 
+> **RESOLVED (B3 arbiter, 2026-08-15 — `b3-review-resolution.md`):** K1-D1 is
+> recorded as playbook **Discrepancy #10** — a standing disclosed divergence,
+> NOT an extension of #9's order-insensitive comparison (Caution §17 honored;
+> a comparison relaxation is offered to the user as an optional ratification,
+> not required). The integer-like-extra-key exclusion is now a documented
+> omission at the strategy site (`strategies.py::_b3_schema_calls`, choice 2),
+> so the gate's fresh-seed regression cannot draw such inputs. Re-examine
+> trigger: a real consumer depending on `extra_forbidden` order across
+> integer-like keys, or the B6-W3 review.
+
 ---
 
 ## 7. Consumer / handoff notes

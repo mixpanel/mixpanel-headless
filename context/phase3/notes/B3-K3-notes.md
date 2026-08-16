@@ -129,17 +129,32 @@ compare. Recommendation to the binder: let them propagate (the oracle's
 ## 5. Documented domain notes / exclusions (fuzz + contract)
 
 1. **`dict(iterable-of-pairs)`** — CPython's `dict(properties)` accepts an
-   iterable of pairs and raises `ValueError` for a malformed one
-   (`dict("ab")`). The TS twin raises `TypeError` for every non-dict.
-   Excluded from the fuzz domain (`properties` is drawn as dict-or-absent);
-   no Mixpanel response can produce a non-dict `properties`. `TODO(port)`
-   marker at the site.
-2. **CPython's `OSError` (errno 84) band** — for very large in-int64
-   timestamps the platform `gmtime` fails before the year check
-   (`9.2e18 → OSError`, `1e16 → ValueError`). The TS twin reports
-   `ValueError` across the whole out-of-range span and `OverflowError` from
-   2^63 up. The packet authorises excluding "|t| beyond datetime.max"; the
-   fuzz domain caps |t| at 1e12. `TODO(port)` marker at the site.
+   iterable of pairs; `pythonDictCopy` reproduces the branch **branch for
+   branch** (see §"Harness finding" below — this item originally recorded a
+   TS-side blanket `TypeError`, which the pre-BIND fix replaced with the full
+   emulation pinned by the CPython probe matrix; paragraph rewritten by the
+   B3 arbiter per assertions-review F4, `b3-review-resolution.md`
+   2026-08-15). Remaining residue, both disclosed at the `dictKeyText`
+   `TODO(port)`: (i) non-string pair keys use the json.dumps KEY SPELLING
+   (a JS object cannot hold Python's int/float/bool/None key types) — float
+   (-carrier) keys spelled via `pythonFloatStr` since the arbiter fix F3;
+   (ii) such outputs are rig-UNTRANSPORTABLE (oracle encode refuses
+   non-string mapping keys), so the lock is the Layer-3 CPython-reference
+   test, not a bridge comparison. Fuzz draws `properties` as
+   dict-or-absent-or-small-pair-iterable with string keys; no Mixpanel
+   response can produce a non-dict `properties`.
+2. **CPython's `OSError` (errno 84) region** — the platform `gmtime` fails
+   before the year check across MOST of the above-`datetime.max` span, not
+   a narrow band (boundary corrected by the B3 arbiter per fidelity F2,
+   promoted to playbook **Discrepancy #11**): on this platform (macOS,
+   CPython 3.14.6) OSError fires for ALL `t >= 67,768,036,191,676,800`
+   (~6.78e16, the `gmtime` tm_year > INT_MAX overflow) and
+   `t <= -67,768,040,609,740,801`, up to the ±2^63 `OverflowError` bound;
+   the boundary is platform-dependent. The TS twin reports `ValueError`
+   across the whole span (class-only divergence; both sides always raise)
+   and `OverflowError` from 2^63 up. The packet authorises excluding
+   "|t| beyond datetime.max"; the fuzz domain caps |t| at 1e12.
+   `TODO(port)` marker at the site.
 3. **`Filter._value` int-vs-float-ness** — a plain JS number cannot record
    it; `operandStr` renders a PyFloat carrier from its CPython `repr`
    spelling (byte-exact `"18.0"`), and only an UNCARRIED integral float

@@ -180,3 +180,16 @@ exhausts it before 200 examples; both are intentional, neither is a narrowing.
   referee carries two standing, expected-and-disclosed REJECTs for the
   frequency-filter clause shape. `buildFrequencyFilterEntry` reproduces that
   shape on purpose; those REJECTs are not new findings.
+
+## 7. Arbiter addendum (2026-08-15, `b3-review-resolution.md` F1)
+
+The review pair's fidelity lens found the one in-annotation divergence the K2
+harness domain missed: a BOOLEAN saved-cohort id (`bool <: int`, Caution #11)
+crashed `buildCohortGroupEntry` (`isPyInt` excludes bools) where Python emits
+`id: true, groups: []`. Fixed red-first at the module + Phase-2 guard layer
+(`isPyIntOrBool`); domains extended — `gen-cases.py` cohort choice gains
+`True`, `strategies.py` `_bb_group_element`/`cohort_family`/`filter_family`
+gain boolean draws + three edge calls. Arbiter harness re-run, seed 4242
+extended domain: **7,250 compared / 0 divergences / 21 construction skips**
+(32 boolean-cohort cases drawn). See `b3-review-resolution.md` for the full
+ledger.
