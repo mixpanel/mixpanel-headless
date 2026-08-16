@@ -1,0 +1,130 @@
+{
+  "actions": [
+    {
+      "action": "navigate",
+      "description": "Navigated to https://x.test/users/12345/p?ref=a",
+      "metadata": {
+        "url": "https://x.test/users/12345/p?ref=a"
+      },
+      "target_desc": "Navigated to https://x.test/users/12345/p?ref=a",
+      "target_node_id": null,
+      "timestamp": 1700000000000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "select",
+      "description": "Selected '\ud835\udcb3'",
+      "metadata": {
+        "range_count": 1
+      },
+      "target_desc": "(selection)",
+      "target_node_id": null,
+      "timestamp": 1700000001000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "click",
+      "description": "Clicked span in button \"Go\"",
+      "metadata": {
+        "interaction": "clicked"
+      },
+      "target_desc": "span in button \"Go\"",
+      "target_node_id": 22,
+      "timestamp": 1700000002000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "click",
+      "description": "Clicked button \"Go\"",
+      "metadata": {
+        "data-testid": "go-button",
+        "interaction": "clicked"
+      },
+      "target_desc": "button \"Go\"",
+      "target_node_id": 20,
+      "timestamp": 1700000003000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "click",
+      "description": "Clicked button \"Go\"",
+      "metadata": {
+        "data-testid": "go-button",
+        "interaction": "clicked"
+      },
+      "target_desc": "button \"Go\"",
+      "target_node_id": 20,
+      "timestamp": 1700000003100,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "click",
+      "description": "Clicked button \"Go\"",
+      "metadata": {
+        "data-testid": "go-button",
+        "interaction": "clicked"
+      },
+      "target_desc": "button \"Go\"",
+      "target_node_id": 20,
+      "timestamp": 1700000003200,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "click",
+      "description": "Double-clicked a \"Docs\" to /docs/intro",
+      "metadata": {
+        "interaction": "double-clicked"
+      },
+      "target_desc": "a \"Docs\" to /docs/intro",
+      "target_node_id": 30,
+      "timestamp": 1700000004000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "input",
+      "description": "Set input #agree type=checkbox to checked",
+      "metadata": {
+        "is_checked": true,
+        "text_length": 0
+      },
+      "target_desc": "input #agree type=checkbox",
+      "target_node_id": 40,
+      "timestamp": 1700000006000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1700000007000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    },
+    {
+      "action": "console_error",
+      "description": "Console error: TypeError: \ud835\udcb3 is not a function",
+      "metadata": {
+        "message": "TypeError: \ud835\udcb3 is not a function"
+      },
+      "target_desc": "TypeError: \ud835\udcb3 is not a function",
+      "target_node_id": null,
+      "timestamp": 1700000008000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    }
+  ],
+  "console_errors": [
+    {
+      "message": "TypeError: \ud835\udcb3 is not a function",
+      "timestamp": 1700000008000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    }
+  ],
+  "markdown": "1700000000: Navigated to https://x.test/users/12345/p?ref=a\n1700000001: Selected '\ud835\udcb3'\n1700000002: Clicked span in button \"Go\"\n1700000003: Clicked button \"Go\" (\u00d73)\n1700000004: Double-clicked a \"Docs\" to /docs/intro\n1700000006: Set input #agree type=checkbox to checked\n1700000007: Scrolled\n1700000008: Console error: TypeError: \ud835\udcb3 is not a function",
+  "page_visits": [
+    {
+      "timestamp": 1700000000000,
+      "url": "https://x.test/users/12345/p?ref=a"
+    }
+  ]
+}

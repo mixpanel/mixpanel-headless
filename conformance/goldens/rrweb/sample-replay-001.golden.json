@@ -1,0 +1,136 @@
+{
+  "actions": [
+    {
+      "action": "navigate",
+      "description": "Navigated to https://app.example.com/login",
+      "metadata": {
+        "url": "https://app.example.com/login"
+      },
+      "target_desc": "Navigated to https://app.example.com/login",
+      "target_node_id": null,
+      "timestamp": 1716810000020,
+      "url": "https://app.example.com/login"
+    },
+    {
+      "action": "input",
+      "description": "Set input #email type=email to unchecked",
+      "metadata": {
+        "is_checked": false,
+        "text_length": 16
+      },
+      "target_desc": "input #email type=email",
+      "target_node_id": 11,
+      "timestamp": 1716810002000,
+      "url": "https://app.example.com/login"
+    },
+    {
+      "action": "input",
+      "description": "Set input #password type=password to unchecked",
+      "metadata": {
+        "is_checked": false,
+        "text_length": 8
+      },
+      "target_desc": "input #password type=password",
+      "target_node_id": 12,
+      "timestamp": 1716810003000,
+      "url": "https://app.example.com/login"
+    },
+    {
+      "action": "click",
+      "description": "Clicked button \"Sign in\"",
+      "metadata": {
+        "data-testid": "signin-button",
+        "interaction": "clicked"
+      },
+      "target_desc": "button \"Sign in\"",
+      "target_node_id": 13,
+      "timestamp": 1716810003540,
+      "url": "https://app.example.com/login"
+    },
+    {
+      "action": "navigate",
+      "description": "Navigated to https://app.example.com/dashboard",
+      "metadata": {
+        "url": "https://app.example.com/dashboard"
+      },
+      "target_desc": "Navigated to https://app.example.com/dashboard",
+      "target_node_id": null,
+      "timestamp": 1716810004000,
+      "url": "https://app.example.com/dashboard"
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1716810006000,
+      "url": "https://app.example.com/dashboard"
+    },
+    {
+      "action": "click",
+      "description": "Clicked a \"View user 12345\"",
+      "metadata": {
+        "interaction": "clicked"
+      },
+      "target_desc": "a \"View user 12345\"",
+      "target_node_id": 110,
+      "timestamp": 1716810008000,
+      "url": "https://app.example.com/dashboard"
+    },
+    {
+      "action": "navigate",
+      "description": "Navigated to https://app.example.com/dashboard/users/12345/profile",
+      "metadata": {
+        "url": "https://app.example.com/dashboard/users/12345/profile"
+      },
+      "target_desc": "Navigated to https://app.example.com/dashboard/users/12345/profile",
+      "target_node_id": null,
+      "timestamp": 1716810009000,
+      "url": "https://app.example.com/dashboard/users/12345/profile"
+    },
+    {
+      "action": "click",
+      "description": "Clicked button \"Edit profile\"",
+      "metadata": {
+        "data-testid": "edit-profile",
+        "interaction": "clicked"
+      },
+      "target_desc": "button \"Edit profile\"",
+      "target_node_id": 210,
+      "timestamp": 1716810012000,
+      "url": "https://app.example.com/dashboard/users/12345/profile"
+    },
+    {
+      "action": "navigate",
+      "description": "Navigated to https://app.example.com/dashboard/users/12345/edit",
+      "metadata": {
+        "url": "https://app.example.com/dashboard/users/12345/edit"
+      },
+      "target_desc": "Navigated to https://app.example.com/dashboard/users/12345/edit",
+      "target_node_id": null,
+      "timestamp": 1716810015000,
+      "url": "https://app.example.com/dashboard/users/12345/edit"
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1716810000: Navigated to https://app.example.com/login\n1716810002: Set input #email type=email to unchecked\n1716810003: Set input #password type=password to unchecked\n1716810003: Clicked button \"Sign in\"\n1716810004: Navigated to https://app.example.com/dashboard\n1716810006: Scrolled\n1716810008: Clicked a \"View user 12345\"\n1716810009: Navigated to https://app.example.com/dashboard/users/12345/profile\n1716810012: Clicked button \"Edit profile\"\n1716810015: Navigated to https://app.example.com/dashboard/users/12345/edit",
+  "page_visits": [
+    {
+      "timestamp": 1716810000020,
+      "url": "https://app.example.com/login"
+    },
+    {
+      "timestamp": 1716810004000,
+      "url": "https://app.example.com/dashboard"
+    },
+    {
+      "timestamp": 1716810009000,
+      "url": "https://app.example.com/dashboard/users/12345/profile"
+    },
+    {
+      "timestamp": 1716810015000,
+      "url": "https://app.example.com/dashboard/users/12345/edit"
+    }
+  ]
+}

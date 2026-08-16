@@ -1,0 +1,249 @@
+[
+  {
+    "type": 4,
+    "data": {
+      "href": "https://x.test/users/12345/p?ref=a"
+    },
+    "timestamp": 1700000000000
+  },
+  {
+    "type": 2,
+    "data": {
+      "node": {
+        "id": 1,
+        "type": 0,
+        "childNodes": [
+          {
+            "id": 2,
+            "type": 2,
+            "tagName": "html",
+            "attributes": {
+              "lang": "en"
+            },
+            "childNodes": [
+              {
+                "id": 3,
+                "type": 2,
+                "tagName": "body",
+                "attributes": {},
+                "childNodes": [
+                  {
+                    "id": 10,
+                    "type": 2,
+                    "tagName": "p",
+                    "attributes": {},
+                    "childNodes": [
+                      {
+                        "id": 11,
+                        "type": 3,
+                        "textContent": "hello \ud835\udcb3 world"
+                      }
+                    ]
+                  },
+                  {
+                    "id": 20,
+                    "type": 2,
+                    "tagName": "button",
+                    "attributes": {
+                      "id": "go",
+                      "data-testid": "go-button"
+                    },
+                    "childNodes": [
+                      {
+                        "id": 21,
+                        "type": 3,
+                        "textContent": "Go"
+                      },
+                      {
+                        "id": 22,
+                        "type": 2,
+                        "tagName": "span",
+                        "attributes": {},
+                        "childNodes": []
+                      }
+                    ]
+                  },
+                  {
+                    "id": 30,
+                    "type": 2,
+                    "tagName": "a",
+                    "attributes": {
+                      "href": "https://x.test/docs/intro"
+                    },
+                    "childNodes": [
+                      {
+                        "id": 31,
+                        "type": 3,
+                        "textContent": "Docs"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "initialOffset": {
+        "left": 0,
+        "top": 0
+      }
+    },
+    "timestamp": 1700000000100
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 14,
+      "ranges": [
+        {
+          "start": 11,
+          "end": 11,
+          "startOffset": 6,
+          "endOffset": 7
+        }
+      ]
+    },
+    "timestamp": 1700000001000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 22
+    },
+    "timestamp": 1700000002000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 20
+    },
+    "timestamp": 1700000003000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 20
+    },
+    "timestamp": 1700000003100
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 2,
+      "id": 20
+    },
+    "timestamp": 1700000003200
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 4,
+      "id": 30
+    },
+    "timestamp": 1700000004000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 0,
+      "attributes": [
+        {
+          "id": 30,
+          "attributes": {
+            "aria-label": "Read the docs"
+          }
+        }
+      ],
+      "texts": [
+        {
+          "id": 21,
+          "value": "Go now"
+        }
+      ],
+      "adds": [
+        {
+          "parentId": 3,
+          "node": {
+            "id": 40,
+            "type": 2,
+            "tagName": "input",
+            "attributes": {
+              "type": "checkbox",
+              "id": "agree"
+            },
+            "childNodes": []
+          }
+        }
+      ],
+      "removes": [
+        {
+          "id": 10
+        }
+      ]
+    },
+    "timestamp": 1700000005000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 5,
+      "id": 40,
+      "isChecked": true
+    },
+    "timestamp": 1700000006000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 3,
+      "id": 1,
+      "x": 0,
+      "y": 120
+    },
+    "timestamp": 1700000007000
+  },
+  {
+    "type": 6,
+    "data": {
+      "plugin": "rrweb/console@1",
+      "payload": {
+        "level": "error",
+        "payload": [
+          "\"TypeError: \ud835\udcb3 is not a function\""
+        ]
+      }
+    },
+    "timestamp": 1700000008000
+  },
+  {
+    "type": 6,
+    "data": {
+      "plugin": "rrweb/console@1",
+      "payload": {
+        "level": "warn",
+        "payload": [
+          "\"deprecated\""
+        ]
+      }
+    },
+    "timestamp": 1700000009000
+  },
+  {
+    "type": 3,
+    "data": {
+      "source": 2,
+      "type": 99,
+      "id": 20
+    },
+    "timestamp": 1700000010000
+  }
+]
