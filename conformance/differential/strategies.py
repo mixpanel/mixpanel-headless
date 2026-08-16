@@ -125,16 +125,22 @@ rejects at the codec (D6 rule 5), so it stays corpus-authored (design D4.3)
 rather than fuzzed."""
 
 
-def _filter_calls(api: str) -> st.SearchStrategy[FuzzCall]:
+def _filter_calls(
+    api: str, filters: st.SearchStrategy[Filter] | None = None
+) -> st.SearchStrategy[FuzzCall]:
     """Build a single-Filter call strategy for one translation api.
 
     Args:
         api: The dotted registry name taking a single ``f: Filter`` kwarg.
+        filters: Optional Filter source. Defaults to the imported suite
+            strategy; the B3-K4 selector targets widen it with
+            :func:`_escaping_filters` (b3-packets.md §"R10.9 harness spec
+            (K4)" — the MANDATORY adversarial escaping extension).
 
     Returns:
-        A strategy of ``(api, {"f": <Filter>})`` probes over the imported
-        suite strategy (all eleven operators).
+        A strategy of ``(api, {"f": <Filter>})`` probes.
     """
+    source = filter_strategy() if filters is None else filters
 
     def make(f: Filter) -> FuzzCall:
         """Wrap one drawn Filter as a probe call.
@@ -147,7 +153,7 @@ def _filter_calls(api: str) -> st.SearchStrategy[FuzzCall]:
         """
         return (api, {"f": f})
 
-    return filter_strategy().map(make)
+    return source.map(make)
 
 
 def _filter_edges(api: str) -> tuple[FuzzCall, ...]:
@@ -163,20 +169,181 @@ def _filter_edges(api: str) -> tuple[FuzzCall, ...]:
 
 
 # ---------------------------------------------------------------------------
+# B3-K4 escaping-biased Filter material (b3-packets.md §"R10.9 harness spec
+# (K4)": "Adversarial escaping extension (MANDATORY)")
+#
+# The imported ``filter_strategy`` draws alphanumeric property names and
+# `L`/`N`/`Zs` values on purpose — its own suite counts operator substrings.
+# The selector path is semantic-trap watchlist #2 (escaping is char-for-char
+# contract, no canonicalizer rescue), so the two ``user_builders`` selector
+# targets draw from that strategy UNION the escaping-biased one below.
+# ---------------------------------------------------------------------------
+
+_ESCAPE_FRAGMENTS: tuple[str, ...] = (
+    "",
+    "a",
+    "plan",
+    "$city",
+    "with space",
+    "\\",  # lone backslash
+    "\\\\",  # doubled backslash
+    "a\\",  # trailing backslash
+    '"',  # bare quote
+    '\\"',  # escaped-quote sequence
+    '\\\\"',  # backslash-quote compound
+    "'",  # single quote
+    "' or '",  # operator-injection shape
+    "' and '",
+    'properties["',  # selector-injection shape (accessor text)
+    'properties["x"] == "y"',
+    "\n",
+    "\t",
+    "\r",
+    "\U0001d4b3",  # non-BMP
+    "\U0001f389️",  # emoji + variation selector
+    "é",  # combining mark
+    "﻿",  # BOM
+    "​",  # zero-width space
+    "日本語",
+)
+"""Fragment alphabet for the K4 escaping bias (packet list, verbatim)."""
+
+_ESCAPING_TEXT: st.SearchStrategy[str] = st.lists(
+    st.sampled_from(_ESCAPE_FRAGMENTS), min_size=0, max_size=4
+).map("".join)
+"""Strings assembled from :data:`_ESCAPE_FRAGMENTS`."""
+
+_ESCAPING_NUMBERS: st.SearchStrategy[int | float | bool] = st.sampled_from(
+    (0, 1, -10, 18.0, 1.5, -0.0, 9.99, 1e16, 1e-5, True, False)
+)
+"""Numeric bias: integral floats, ``-0.0``, the ``pythonFloatStr`` exponent
+switch points, and booleans (Python ``bool`` IS an ``int``, so they pass every
+``isinstance(..., (int, float))`` gate in the selector module and render
+``"True"``/``"False"`` — ratified Discrepancy #8 makes this in-annotation)."""
+
+_SELECTOR_OPERATORS: tuple[str, ...] = (
+    "equals",
+    "does not equal",
+    "contains",
+    "does not contain",
+    "is greater than",
+    "is less than",
+    "is between",
+    "is set",
+    "is not set",
+    "true",
+    "false",
+    # Unsupported spellings — the ES13 fallthrough. ``list_contains`` is
+    # deliberately absent: ``Filter.__post_init__`` rejects it without
+    # ``_list_item_filters``, so the draw would fail at CONSTRUCTION and
+    # never reach the translation under test.
+    "",
+    "was frobnicated",
+    "is within",
+)
+
+
+@st.composite
+def _escaping_filters(draw: st.DrawFn) -> Filter:
+    """Draw a Filter with escaping-biased property names and values.
+
+    Filters are built through the dataclass constructor (not the typed
+    factories) so the drawn operator/value combinations can be mismatched
+    on purpose — every ES guard must be reachable.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A Filter whose property name and string values come from the
+        adversarial alphabet.
+    """
+    operator = draw(st.sampled_from(_SELECTOR_OPERATORS))
+    scalars = st.one_of(_ESCAPING_TEXT, _ESCAPING_NUMBERS)
+    if operator in ("equals", "does not equal"):
+        value: object = draw(
+            st.one_of(st.lists(scalars, max_size=3), scalars, st.none())
+        )
+    elif operator in ("contains", "does not contain"):
+        value = draw(st.one_of(_ESCAPING_TEXT, _ESCAPING_NUMBERS, st.none()))
+    elif operator in ("is greater than", "is less than"):
+        value = draw(st.one_of(_ESCAPING_NUMBERS, _ESCAPING_TEXT, st.none()))
+    elif operator == "is between":
+        value = draw(
+            st.one_of(
+                st.tuples(scalars, scalars).map(list),
+                st.lists(scalars, max_size=3),
+                st.none(),
+            )
+        )
+    else:
+        value = draw(st.one_of(st.none(), _ESCAPING_TEXT))
+    return Filter(
+        _property=draw(_ESCAPING_TEXT),
+        _operator=operator,  # type: ignore[arg-type]
+        _value=value,  # type: ignore[arg-type]
+    )
+
+
+_SELECTOR_FILTERS: st.SearchStrategy[Filter] = st.one_of(
+    filter_strategy(), _escaping_filters()
+)
+"""The widened Filter domain for the two K4 selector entry points."""
+
+_K4_ESCAPE_EDGE_FILTERS: tuple[Filter, ...] = tuple(
+    Filter(_property=text, _operator="equals", _value=[text])
+    for text in (
+        "\\",
+        "a\\",
+        "\\\\",
+        '"',
+        '\\"',
+        '\\\\"',
+        "' or '",
+        'properties["x"] == "y" or ',
+        "\n\t\r",
+        "\U0001d4b3",
+    )
+) + (
+    # Numeric edges rendered through `_format_value`'s `str()` branch.
+    Filter(_property="p", _operator="equals", _value=[18.0, True, -0.0, 1e16]),
+    Filter(_property="p", _operator="is between", _value=[18.0, 1e-5]),
+)
+"""Verbatim escaping / numeric edge probes for the selector targets
+(b3-packets.md §K4 "Mandatory edge set")."""
+
+
+def _k4_escape_edges(api: str) -> tuple[FuzzCall, ...]:
+    """Attach the K4 escaping edge Filters to one selector api.
+
+    Args:
+        api: ``user_builders.filter_to_selector`` (single-Filter shape).
+
+    Returns:
+        One edge probe per :data:`_K4_ESCAPE_EDGE_FILTERS` member.
+    """
+    return tuple((api, {"f": f}) for f in _K4_ESCAPE_EDGE_FILTERS)
+
+
+# ---------------------------------------------------------------------------
 # Targets 1-4 — the three Filter translation dialects (design D4.2 item 1)
 # ---------------------------------------------------------------------------
 
 _FILTER_TO_SELECTOR = FuzzTarget(
     name="filter_to_selector",
-    calls=_filter_calls("user_builders.filter_to_selector"),
-    edge_calls=_filter_edges("user_builders.filter_to_selector"),
+    calls=_filter_calls("user_builders.filter_to_selector", _SELECTOR_FILTERS),
+    edge_calls=(
+        *_filter_edges("user_builders.filter_to_selector"),
+        *_k4_escape_edges("user_builders.filter_to_selector"),
+    ),
 )
 
 _FILTERS_LIST: st.SearchStrategy[list[Filter]] = st.lists(
-    filter_strategy(), min_size=0, max_size=4
+    _SELECTOR_FILTERS, min_size=0, max_size=4
 )
 """Filter lists for the AND-combining selector path (empty list included —
-R10.9)."""
+R10.9; the escaping-biased draws enter through
+:data:`_SELECTOR_FILTERS`)."""
 
 
 def _filters_call(filters: list[Filter]) -> FuzzCall:
@@ -204,6 +371,34 @@ _FILTERS_TO_SELECTOR = FuzzTarget(
         ),
         # The full edge set AND-combined (first error branch dominates).
         ("user_builders.filters_to_selector", {"filters": list(_EDGE_FILTERS)}),
+        # B3-K4: every escaping edge Filter as a singleton list.
+        *(
+            ("user_builders.filters_to_selector", {"filters": [f]})
+            for f in _K4_ESCAPE_EDGE_FILTERS
+        ),
+        # B3-K4 generator-order lock: the SECOND element errors, so the
+        # first must already have been translated (`user_builders.py:275`
+        # joins a GENERATOR — a `.map()`-then-join port would surface a
+        # later element's error first).
+        (
+            "user_builders.filters_to_selector",
+            {
+                "filters": [
+                    Filter.is_set("p"),
+                    Filter("p", "was frobnicated", None),  # type: ignore[arg-type]
+                ]
+            },
+        ),
+        # ... and first-error-wins when BOTH elements are invalid.
+        (
+            "user_builders.filters_to_selector",
+            {
+                "filters": [
+                    Filter(123, "is set", None),  # type: ignore[arg-type]
+                    Filter("p", "was frobnicated", None),  # type: ignore[arg-type]
+                ]
+            },
+        ),
     ),
 )
 
@@ -5965,10 +6160,104 @@ branches are unreachable by ``TimeComparison.__post_init__`` (TC1/TC2)
 and are deliberately NOT fuzzed for."""
 
 
+# ---------------------------------------------------------------------------
+# B3-K4 — `user_builders.extract_cohort_filter` (b3-packets.md §"R10.9
+# harness spec (K4)": the one NEW family; the two selector entry points reuse
+# the Phase-1 targets, whose Filter domain this shard widened above).
+# ---------------------------------------------------------------------------
+
+_EXTRACT_COHORT_API = "user_builders.extract_cohort_filter"
+
+_COHORT_FILTERS: st.SearchStrategy[Filter] = st.one_of(
+    st.integers(min_value=1, max_value=999).map(Filter.in_cohort),
+    st.integers(min_value=1, max_value=999).map(Filter.not_in_cohort),
+    # Malformed list-of-dict shapes — `_is_cohort_filter` is a pure SHAPE
+    # heuristic (non-empty list whose FIRST element is a dict), so these
+    # still classify as cohorts and must do so identically on both sides.
+    st.sampled_from(
+        (
+            Filter("$cohorts", "contains", [{}]),  # type: ignore[arg-type]
+            Filter("$cohorts", "contains", [{"a": 1}, {"b": 2}]),
+            Filter("$cohorts", "contains", [{"a": 1}, "b"]),  # type: ignore[arg-type]
+        )
+    ),
+)
+"""Cohort-shaped Filters (saved id, negated, and malformed shapes)."""
+
+_EXTRACT_LIST: st.SearchStrategy[list[Filter]] = st.lists(
+    st.one_of(_SELECTOR_FILTERS, _COHORT_FILTERS), min_size=0, max_size=5
+)
+"""Mixed lists: property filters plus zero, one or several cohort filters at
+arbitrary positions (relative order of the non-cohorts, and of the extras
+beyond the first cohort, is contract)."""
+
+_PROP_FILTER = Filter.is_set("p")
+_COHORT_A = Filter.in_cohort(123, "A")
+_COHORT_B = Filter.not_in_cohort(456, "B")
+
+_EXTRACT_COHORT_FILTER_FAMILY = FuzzTarget(
+    name="extract_cohort_filter_family",
+    calls=_EXTRACT_LIST.map(
+        lambda filters: (_EXTRACT_COHORT_API, {"filters": filters})
+    ),
+    edge_calls=(
+        # R10.9: empty list.
+        (_EXTRACT_COHORT_API, {"filters": []}),
+        # No cohort at all.
+        (_EXTRACT_COHORT_API, {"filters": [_PROP_FILTER]}),
+        # Exactly one cohort, in each position.
+        (_EXTRACT_COHORT_API, {"filters": [_COHORT_A]}),
+        (_EXTRACT_COHORT_API, {"filters": [_COHORT_A, _PROP_FILTER]}),
+        (_EXTRACT_COHORT_API, {"filters": [_PROP_FILTER, _COHORT_A]}),
+        # Two and three cohorts — first wins, extras go to `remaining` in
+        # encounter order.
+        (_EXTRACT_COHORT_API, {"filters": [_COHORT_A, _COHORT_B]}),
+        (
+            _EXTRACT_COHORT_API,
+            {"filters": [_PROP_FILTER, _COHORT_A, _PROP_FILTER, _COHORT_B]},
+        ),
+        (_EXTRACT_COHORT_API, {"filters": [_COHORT_A, _COHORT_B, _COHORT_A]}),
+        # Shape-heuristic boundary: `_value` shapes that do and do not
+        # classify as cohorts (empty list, list-of-str, str-then-dict).
+        (
+            _EXTRACT_COHORT_API,
+            {
+                "filters": [
+                    Filter("$cohorts", "contains", []),
+                    Filter("$cohorts", "contains", ["a"]),
+                    Filter("$cohorts", "contains", ["a", {"b": 1}]),  # type: ignore[arg-type]
+                    Filter("$cohorts", "contains", [{"b": 1}, "a"]),  # type: ignore[arg-type]
+                ]
+            },
+        ),
+        # The shared R10.9 edge Filters (incl. `Filter.in_cohort(123)`)
+        # as one list — none of them raises here: `extract_cohort_filter`
+        # has no guards, so the whole edge set is a single probe.
+        (_EXTRACT_COHORT_API, {"filters": list(_EDGE_FILTERS)}),
+    ),
+)
+
+PHASE3_B3_K4_TARGETS: tuple[FuzzTarget, ...] = (_EXTRACT_COHORT_FILTER_FAMILY,)
+"""The Phase-3 B3-K4 ``user_builders`` family (b3-packets.md §"R10.9 harness
+spec (K4)"). The two selector entry points need no new target — the Phase-1
+``filter_to_selector`` / ``filters_to_selector`` targets already drive them and
+start ANSWERING once the (b′) binding task registers the TS side; this shard
+widened their drawn Filter domain with the mandatory escaping bias
+(:data:`_SELECTOR_FILTERS`, :data:`_K4_ESCAPE_EDGE_FILTERS`) and added the
+generator-order edge probes.
+
+Budget note (P3-6 K4 mandate): the two selector families run at **≥1,000**
+examples, every other family at ≥500. Until (b′) lands, the K4 differential
+runs through the module task's throwaway harness (``throwaway/b3-k4/``, TS
+repo), which drives the same three entry points plus ``_format_value``
+against the same CPython reference at that doubled budget."""
+
+
 PHASE3_B3_TARGETS: tuple[FuzzTarget, ...] = (
     _BOOKMARK_SCHEMA_FAMILY,
     _ROOT_MODEL_FAMILY,
     *PHASE3_B3_K2_TARGETS,
+    *PHASE3_B3_K4_TARGETS,
 )
 """The Phase-3 B3-K1 ``bookmark_schema`` families (b3-packets.md §"R10.9
 harness spec (K1)"). Declared here by the module task; SERVED once the

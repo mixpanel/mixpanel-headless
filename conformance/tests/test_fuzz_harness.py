@@ -441,6 +441,14 @@ class TestPhase2StrategyTable:
     ``build_filter_entry`` is absent by design — the Phase-1
     ``build_filter_entry`` target already drives it."""
 
+    _PHASE3_B3_K4_NAMES = ("extract_cohort_filter_family",)
+    """The B3-K4 ``user_builders`` family (b3-packets.md §"R10.9 harness
+    spec (K4)"). Declared by the K4 module task; SERVED once the B3 (b′)
+    binding task registers the TS side. The two selector entry points are
+    absent by design — the Phase-1 ``filter_to_selector`` /
+    ``filters_to_selector`` targets already drive them (K4 widened their
+    drawn Filter domain with the mandatory escaping bias)."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
         """``ALL_TARGETS`` is Phase 1 + P2-9 + B0 + the B2/B3 families.
 
@@ -457,6 +465,7 @@ class TestPhase2StrategyTable:
             *self._PHASE3_B2_NAMES,
             *self._PHASE3_B3_NAMES,
             *self._PHASE3_B3_K2_NAMES,
+            *self._PHASE3_B3_K4_NAMES,
         )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
