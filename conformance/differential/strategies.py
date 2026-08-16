@@ -61,16 +61,20 @@ from mixpanel_headless.types import (
     CustomPropertyRef,
     Exclusion,
     Filter,
+    FlowStep,
     Formula,
     FrequencyBreakdown,
     FrequencyFilter,
+    FunnelStep,
     GroupBy,
+    HoldingConstant,
     InlineCustomProperty,
     ListItemGroupMode,
     Metric,
     PropertyInput,
     Replay,
     ReplayEvent,
+    RetentionEvent,
     TimeComparison,
     UserAction,
 )
@@ -6746,12 +6750,1225 @@ with the carrier/bool value edges). Registered at the (b′) binding task —
 oracle-ts answers these apis through the shared bindings registration."""
 
 
+# ---------------------------------------------------------------------------
+# Phase-3 B5 families — the five workspace.build_*params facade builders
+# (b5-packets.md §6.6) + the four replay builder families (§6.3/§7.3).
+#
+# Domain notes (Discrepancy #8 — annotation-constrained by construction):
+# every draw is built from the public constructors' typed domains; the
+# domains are ports of the arbitrated B5-S2/S3 throwaway generators
+# (`throwaway/b5-s2/py-side.py`, `throwaway/b5-s3/py-side.py` — TS repo),
+# which the shard arbiters validated at 3,000+/2,000+ cases.
+#
+# F1 EXCLUSION (B5-S2-notes.md §4.2, option (b) of the outbound note):
+# INTEGRAL floats are excluded from the FILTER-VALUE domains of
+# `workspace.build_flow_params` and `workspace.build_user_params` — the
+# flow `property_filter_params_list[].filter.operand` and the engage
+# `where` expression render filter values INTO STRINGS, where the
+# JS-side loss of the int/float distinction spells `18.0` as `18` (the
+# established `$type: float` carrier situation has no carrier through
+# those two string-render sites; the measured corpus carries zero
+# `$type: float` inputs there — `python-json-dumps.ts:134`). Integral
+# floats stay IN-domain for build_params / build_funnel_params /
+# build_retention_params, whose filter values land in JSON-number
+# positions (R10.12) where the carrier discipline preserves them.
+#
+# Discrepancy #9/#10 exclusions (integer-like unknown keys) do not
+# arise: no family routes an arbitrary params dict.
+# ---------------------------------------------------------------------------
+
+_B5_EVENT_NAMES = ("Login", "Purchase", "Sign Up", "\U0001d4b3", "a b", "cart")
+"""Event-name pool (non-BMP member included — R10.9 edge)."""
+
+_B5_PROP_NAMES = ("plan", "amount", "$city", 'weird"prop', "back\\slash", "\U0001d4b3")
+"""Property-name pool (quote/backslash escaping bias, K4 precedent)."""
+
+
+@st.composite
+def _b5_filters(draw: st.DrawFn, *, allow_integral_floats: bool) -> Filter:
+    """Draw one Filter from the B5-S2 arbitrated recipe domain.
+
+    Args:
+        draw: Hypothesis draw function.
+        allow_integral_floats: When False, integral floats are excluded
+            from numeric operand positions (the F1 exclusion above).
+
+    Returns:
+        A Filter built through the public factory methods.
+    """
+    numeric = (
+        st.sampled_from((18.0, 1.5, 0, -1, 100))
+        if allow_integral_floats
+        else st.sampled_from((1.5, 0, -1, 100, -2.5))
+    )
+    op = draw(
+        st.sampled_from(
+            (
+                "equals",
+                "greater_than",
+                "less_than",
+                "contains",
+                "is_set",
+                "is_not_set",
+                "in_cohort",
+                "not_in_cohort",
+                "between",
+            )
+        )
+    )
+    prop = draw(st.sampled_from(_B5_PROP_NAMES))
+    if op == "equals":
+        # The R10.9 edge set rides the `equals` value slot (list edges
+        # included; the empty list is the B20 error branch). Booleans
+        # are OUTSIDE `equals`' `str | list[str]` annotation
+        # (Discrepancy #8) — the True edge rides `is_true` filters and
+        # option flags instead.
+        value = draw(
+            st.sampled_from(
+                cast(
+                    "tuple[str | list[str], ...]",
+                    ("US", "", "\U0001d4b3", ["US", "CA"], []),
+                )
+            )
+        )
+        return Filter.equals(prop, value)
+    if op == "contains":
+        return Filter.contains(prop, draw(st.sampled_from(("US", "", "\U0001d4b3"))))
+    if op == "greater_than":
+        return Filter.greater_than(prop, draw(numeric))
+    if op == "less_than":
+        return Filter.less_than(prop, draw(numeric))
+    if op == "between":
+        return Filter.between(prop, draw(numeric), draw(numeric))
+    if op == "is_set":
+        return Filter.is_set(prop)
+    if op == "is_not_set":
+        return Filter.is_not_set(prop)
+    cohort_id = draw(st.sampled_from((1, 42, 123)))
+    # Empty cohort names raise at CONSTRUCTION (CM/CF guards) — outside
+    # the bridgeable domain (the recorder wraps entry points, not
+    # constructor args), so the pool stops at None/"PU".
+    name = draw(st.sampled_from((None, "PU")))
+    if op == "in_cohort":
+        return Filter.in_cohort(cohort_id, name)
+    return Filter.not_in_cohort(cohort_id, name)
+
+
+@st.composite
+def _b5_group(draw: st.DrawFn) -> Any:
+    """Draw one group-by value (str / GroupBy / bucketed / cohort / freq).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A group-by union member.
+    """
+    kind = draw(st.sampled_from(("str", "groupby", "bucketed", "cohort", "frequency")))
+    if kind == "str":
+        return draw(st.sampled_from(_B5_PROP_NAMES))
+    if kind == "groupby":
+        return GroupBy(
+            draw(st.sampled_from(_B5_PROP_NAMES)),
+            property_type=draw(st.sampled_from(("string", "number", "boolean"))),
+        )
+    if kind == "bucketed":
+        # INTEGRAL floats excluded from bucket fields (F1-class, found by
+        # this family's bring-up fuzz — repro
+        # `repros/2026-08-16-workspace-build_params.json`): the typed
+        # `GroupBy` constructor UNWRAPS the `$type: float` carrier for
+        # its V18 numeric guards (`vector-codecs.ts:600-635` parks
+        # float-ness in a codec-side WeakMap the builders cannot see), so
+        # `customBucket.max` renders `18` vs Python's `18.0`. Same
+        # narrowing class as the F1 module note; a JS caller cannot
+        # express the distinction; zero corpus vectors carry float
+        # buckets. Fractional floats (1.5) stay in-domain and are
+        # byte-identical.
+        return GroupBy(
+            draw(st.sampled_from(_B5_PROP_NAMES)),
+            property_type="number",
+            bucket_size=draw(st.sampled_from((1, 50, 1.5))),
+            bucket_min=draw(st.sampled_from((0, -1))),
+            bucket_max=draw(st.sampled_from((100, 18.5))),
+        )
+    if kind == "cohort":
+        return CohortBreakdown(
+            draw(st.sampled_from((1, 42))),
+            draw(st.sampled_from(("PU", "\U0001d4b3"))),
+            include_negated=draw(st.booleans()),
+        )
+    return FrequencyBreakdown(
+        draw(st.sampled_from(_B5_EVENT_NAMES)),
+        label=draw(st.sampled_from((None, "Freq"))),
+    )
+
+
+@st.composite
+def _b5_insights_event(draw: st.DrawFn) -> Any:
+    """Draw one insights events-list member (str / Metric / CohortMetric).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        An `EventsInput` list member.
+    """
+    kind = draw(st.sampled_from(("str", "metric", "metric_filtered", "cohort")))
+    if kind == "str":
+        return draw(st.sampled_from(_B5_EVENT_NAMES))
+    if kind == "cohort":
+        # Empty names raise at construction (CM guard) — see the
+        # `_b5_filters` cohort-name note.
+        return CohortMetric(
+            draw(st.sampled_from((1, 42))), draw(st.sampled_from(("PU", None)))
+        )
+    math = draw(st.sampled_from(("total", "unique", "dau", "average", "sessions")))
+    kwargs: dict[str, Any] = {"math": math}
+    if math == "average":
+        kwargs["property"] = draw(st.sampled_from(_B5_PROP_NAMES))
+    if kind == "metric_filtered":
+        kwargs["filters"] = [draw(_b5_filters(allow_integral_floats=True))]
+        kwargs["filters_combinator"] = draw(st.sampled_from(("all", "any")))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["segment_method"] = draw(st.sampled_from(("all", "first")))
+    return Metric(draw(st.sampled_from(_B5_EVENT_NAMES)), **kwargs)
+
+
+@st.composite
+def _b5_time_kwargs(draw: st.DrawFn) -> dict[str, Any]:
+    """Draw the shared from/to/last/unit kwargs (S2 recipe port).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The time-kwarg dict.
+    """
+    mode = draw(st.sampled_from(("relative", "absolute", "from_only")))
+    out: dict[str, Any] = {
+        "unit": draw(st.sampled_from(("hour", "day", "week", "month")))
+    }
+    if mode == "relative":
+        out["from_date"] = None
+        out["to_date"] = None
+        out["last"] = draw(st.sampled_from((1, 7, 30, 365)))
+    elif mode == "absolute":
+        out["from_date"] = "2025-01-01"
+        out["to_date"] = "2025-03-31"
+        out["last"] = 30
+    else:
+        out["from_date"] = "2025-02-01"
+        out["to_date"] = None
+        out["last"] = 30
+    return out
+
+
+@st.composite
+def _b5_build_params_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `workspace.build_params` probe.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    events = draw(st.lists(_b5_insights_event(), min_size=0, max_size=3))
+    kwargs: dict[str, Any] = {"events": events}
+    kwargs.update(draw(_b5_time_kwargs()))
+    kwargs["math"] = draw(st.sampled_from(("total", "unique", "dau")))
+    kwargs["mode"] = draw(st.sampled_from(("timeseries", "total", "table")))
+    if draw(st.booleans()):
+        kwargs["group_by"] = draw(st.lists(_b5_group(), min_size=1, max_size=2))
+    if draw(st.booleans()):
+        kwargs["where"] = draw(
+            st.lists(_b5_filters(allow_integral_floats=True), min_size=1, max_size=2)
+        )
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["rolling"] = draw(st.sampled_from((1, 7)))
+    elif draw(st.booleans()) and draw(st.booleans()):
+        kwargs["cumulative"] = True
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["data_group_id"] = draw(st.sampled_from((1, 5)))
+    if len(events) >= 2 and draw(st.booleans()) and draw(st.booleans()):
+        kwargs["formula"] = "A + B"
+        kwargs["formula_label"] = draw(st.sampled_from((None, "Combined", "")))
+    return ("workspace.build_params", kwargs)
+
+
+@st.composite
+def _b5_funnel_step(draw: st.DrawFn) -> Any:
+    """Draw one funnel step (str or FunnelStep).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The step union member.
+    """
+    if draw(st.booleans()):
+        return draw(st.sampled_from(_B5_EVENT_NAMES))
+    kwargs: dict[str, Any] = {}
+    if draw(st.booleans()):
+        kwargs["filters"] = [draw(_b5_filters(allow_integral_floats=True))]
+        kwargs["filters_combinator"] = draw(st.sampled_from(("all", "any")))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["label"] = draw(st.sampled_from(("Buy", "", "\U0001d4b3")))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["order"] = draw(st.sampled_from(("loose", "any")))
+    return FunnelStep(draw(st.sampled_from(_B5_EVENT_NAMES)), **kwargs)
+
+
+@st.composite
+def _b5_build_funnel_params_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `workspace.build_funnel_params` probe.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    steps = draw(st.lists(_b5_funnel_step(), min_size=0, max_size=4))
+    kwargs: dict[str, Any] = {"steps": steps}
+    kwargs.update(draw(_b5_time_kwargs()))
+    kwargs["conversion_window"] = draw(st.sampled_from((1, 7, 14)))
+    kwargs["conversion_window_unit"] = draw(
+        st.sampled_from(("second", "minute", "hour", "day", "week", "month", "session"))
+    )
+    kwargs["order"] = draw(st.sampled_from(("loose", "any")))
+    kwargs["math"] = draw(
+        st.sampled_from(("conversion_rate_unique", "unique", "average", "median"))
+    )
+    if kwargs["math"] in ("average", "median"):
+        kwargs["math_property"] = draw(st.sampled_from(_B5_PROP_NAMES))
+    kwargs["mode"] = draw(st.sampled_from(("steps", "trends", "table")))
+    if draw(st.booleans()):
+        kwargs["exclusions"] = [
+            draw(st.sampled_from(_B5_EVENT_NAMES))
+            if draw(st.booleans())
+            else Exclusion(
+                draw(st.sampled_from(_B5_EVENT_NAMES)),
+                from_step=draw(st.sampled_from((0, 1))),
+                to_step=draw(st.sampled_from((None, 1, 2))),
+            )
+        ]
+    if draw(st.booleans()):
+        kwargs["holding_constant"] = [
+            draw(st.sampled_from(_B5_PROP_NAMES))
+            if draw(st.booleans())
+            else HoldingConstant(
+                draw(st.sampled_from(_B5_PROP_NAMES)),
+                resource_type=draw(st.sampled_from(("events", "people"))),
+            )
+        ]
+    if draw(st.booleans()):
+        kwargs["group_by"] = [draw(_b5_group())]
+    if draw(st.booleans()):
+        kwargs["where"] = [draw(_b5_filters(allow_integral_floats=True))]
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["reentry_mode"] = draw(
+            st.sampled_from(("aggressive", "default", "basic", "optimized"))
+        )
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["data_group_id"] = draw(st.sampled_from((1, 5)))
+    return ("workspace.build_funnel_params", kwargs)
+
+
+@st.composite
+def _b5_flow_step(draw: st.DrawFn) -> Any:
+    """Draw one flow anchor (str or FlowStep — F1-safe filter domain).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The anchor union member.
+    """
+    if draw(st.booleans()):
+        return draw(st.sampled_from(_B5_EVENT_NAMES))
+    kwargs: dict[str, Any] = {}
+    if draw(st.booleans()):
+        kwargs["forward"] = draw(st.sampled_from((0, 1, 3, 5)))
+    if draw(st.booleans()):
+        kwargs["reverse"] = draw(st.sampled_from((0, 1, 2)))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["filters"] = [draw(_b5_filters(allow_integral_floats=False))]
+        kwargs["filters_combinator"] = draw(st.sampled_from(("all", "any")))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["label"] = draw(st.sampled_from(("Buy", "", "\U0001d4b3")))
+    return FlowStep(draw(st.sampled_from(_B5_EVENT_NAMES)), **kwargs)
+
+
+@st.composite
+def _b5_build_flow_params_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `workspace.build_flow_params` probe (F1-safe domain).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    shape = draw(st.sampled_from(("str", "step", "list")))
+    event: Any
+    if shape == "str":
+        event = draw(st.sampled_from(_B5_EVENT_NAMES))
+    elif shape == "step":
+        event = draw(_b5_flow_step())
+    else:
+        event = draw(st.lists(_b5_flow_step(), min_size=1, max_size=3))
+    kwargs: dict[str, Any] = {"event": event}
+    time_kwargs = draw(_b5_time_kwargs())
+    kwargs["from_date"] = time_kwargs["from_date"]
+    kwargs["to_date"] = time_kwargs["to_date"]
+    kwargs["last"] = time_kwargs["last"]
+    kwargs["forward"] = draw(st.sampled_from((0, 1, 3, 5)))
+    kwargs["reverse"] = draw(st.sampled_from((0, 1, 2)))
+    kwargs["conversion_window"] = draw(st.sampled_from((1, 7, 30)))
+    kwargs["conversion_window_unit"] = draw(
+        st.sampled_from(("day", "week", "month", "session"))
+    )
+    kwargs["count_type"] = draw(st.sampled_from(("unique", "total", "session")))
+    kwargs["cardinality"] = draw(st.sampled_from((1, 3, 10)))
+    kwargs["collapse_repeated"] = draw(st.booleans())
+    kwargs["mode"] = draw(st.sampled_from(("sankey", "paths", "tree")))
+    if draw(st.booleans()):
+        kwargs["hidden_events"] = [draw(st.sampled_from(_B5_EVENT_NAMES))]
+    if draw(st.booleans()):
+        kwargs["where"] = [draw(_b5_filters(allow_integral_floats=False))]
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["segments"] = [draw(_b5_group())]
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["exclusions"] = [draw(st.sampled_from(_B5_EVENT_NAMES))]
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["data_group_id"] = draw(st.sampled_from((1, 5)))
+    return ("workspace.build_flow_params", kwargs)
+
+
+@st.composite
+def _b5_retention_event(draw: st.DrawFn) -> Any:
+    """Draw one retention event (str or RetentionEvent).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The event union member.
+    """
+    if draw(st.booleans()):
+        return draw(st.sampled_from(_B5_EVENT_NAMES))
+    kwargs: dict[str, Any] = {}
+    if draw(st.booleans()):
+        kwargs["filters"] = [draw(_b5_filters(allow_integral_floats=True))]
+        kwargs["filters_combinator"] = draw(st.sampled_from(("all", "any")))
+    return RetentionEvent(draw(st.sampled_from(_B5_EVENT_NAMES)), **kwargs)
+
+
+@st.composite
+def _b5_build_retention_params_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `workspace.build_retention_params` probe.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    kwargs: dict[str, Any] = {
+        "born_event": draw(_b5_retention_event()),
+        "return_event": draw(_b5_retention_event()),
+    }
+    kwargs.update(draw(_b5_time_kwargs()))
+    kwargs["retention_unit"] = draw(st.sampled_from(("day", "week", "month")))
+    kwargs["alignment"] = draw(st.sampled_from(("birth", "calendar")))
+    kwargs["math"] = draw(st.sampled_from(("retention_rate", "total", "average")))
+    kwargs["mode"] = draw(st.sampled_from(("curve", "trends", "table")))
+    if draw(st.booleans()):
+        kwargs["bucket_sizes"] = draw(st.sampled_from(([1, 3, 7], [])))
+    if draw(st.booleans()):
+        kwargs["group_by"] = [draw(_b5_group())]
+    if draw(st.booleans()):
+        kwargs["where"] = [draw(_b5_filters(allow_integral_floats=True))]
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["unbounded_mode"] = draw(
+            st.sampled_from(
+                ("carry_forward", "carry_back", "none", "consecutive_forward")
+            )
+        )
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["retention_cumulative"] = True
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["data_group_id"] = draw(st.sampled_from((1, 5)))
+    return ("workspace.build_retention_params", kwargs)
+
+
+@st.composite
+def _b5_build_user_params_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `workspace.build_user_params` probe (F1-safe domain).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    kwargs: dict[str, Any] = {}
+    mode = draw(st.sampled_from(("profiles", "aggregate")))
+    kwargs["mode"] = mode
+    if mode == "aggregate":
+        aggregate = draw(
+            st.sampled_from(("count", "extremes", "percentile", "numeric_summary"))
+        )
+        kwargs["aggregate"] = aggregate
+        if aggregate != "count":
+            kwargs["aggregate_property"] = draw(st.sampled_from(_B5_PROP_NAMES))
+        if aggregate == "percentile":
+            kwargs["percentile"] = draw(st.sampled_from((50, 95, 99.9, 1.5)))
+        if draw(st.booleans()):
+            kwargs["segment_by"] = [draw(st.sampled_from((1, 42, 18)))]
+    else:
+        if draw(st.booleans()):
+            kwargs["sort_by"] = draw(
+                st.sampled_from(
+                    ("ltv", "$last_seen", 'weird"prop', "back\\slash", "\U0001d4b3")
+                )
+            )
+            kwargs["sort_order"] = draw(st.sampled_from(("ascending", "descending")))
+        if draw(st.booleans()):
+            kwargs["properties"] = [draw(st.sampled_from(_B5_PROP_NAMES))]
+        if draw(st.booleans()) and draw(st.booleans()):
+            kwargs["search"] = draw(st.sampled_from(("alice", "", "\U0001d4b3")))
+        if draw(st.booleans()) and draw(st.booleans()):
+            kwargs["distinct_id"] = "user_001"
+        elif draw(st.booleans()) and draw(st.booleans()):
+            kwargs["distinct_ids"] = ["user_001", "\U0001d4b3"]
+        if draw(st.booleans()) and draw(st.booleans()):
+            kwargs["as_of"] = draw(st.sampled_from((0, -1, 1704067200, "2024-06-15")))
+    if draw(st.booleans()):
+        kwargs["where"] = draw(
+            st.lists(_b5_filters(allow_integral_floats=False), min_size=0, max_size=2)
+        )
+    elif draw(st.booleans()) and draw(st.booleans()):
+        kwargs["where"] = 'properties["plan"] == "premium"'
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["cohort"] = draw(st.sampled_from((1, 42)))
+        if draw(st.booleans()):
+            kwargs["include_all_users"] = True
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["group_id"] = "companies"
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["workers"] = draw(st.sampled_from((1, 5, 6, 0)))
+    if draw(st.booleans()) and draw(st.booleans()):
+        kwargs["limit"] = draw(st.sampled_from((1, 0, -5, 100)))
+    return ("workspace.build_user_params", kwargs)
+
+
+_WORKSPACE_BUILD_PARAMS_FAMILY = FuzzTarget(
+    name="workspace_build_params_family",
+    calls=_b5_build_params_calls(),
+    edge_calls=(
+        # R10.9 edge set (S2 throwaway anchors, arbitrated): empty-name
+        # event, non-BMP event, integral/fractional float filter values,
+        # empty-string filter value, empty events list (V0 branch),
+        # last=0 (V-range branch), cumulative=True, formula_label=None.
+        ("workspace.build_params", {"events": [""]}),
+        ("workspace.build_params", {"events": ["\U0001d4b3"]}),
+        (
+            "workspace.build_params",
+            {"events": ["Login"], "where": [Filter.greater_than("a", 18.0)]},
+        ),
+        (
+            "workspace.build_params",
+            {"events": ["Login"], "where": [Filter.greater_than("a", 1.5)]},
+        ),
+        (
+            "workspace.build_params",
+            {"events": ["Login"], "where": [Filter.equals("a", "")]},
+        ),
+        ("workspace.build_params", {"events": []}),
+        ("workspace.build_params", {"events": ["Login"], "last": 0}),
+        ("workspace.build_params", {"events": ["Login"], "cumulative": True}),
+        (
+            "workspace.build_params",
+            {
+                "events": ["Login", "Purchase"],
+                "formula": "A + B",
+                "formula_label": None,
+            },
+        ),
+    ),
+)
+"""`workspace.build_params` facade probes (b5-packets.md §6.6)."""
+
+_WORKSPACE_BUILD_FUNNEL_PARAMS_FAMILY = FuzzTarget(
+    name="workspace_build_funnel_params_family",
+    calls=_b5_build_funnel_params_calls(),
+    edge_calls=(
+        # Single step / empty steps (F1_MIN_STEPS), empty-name step,
+        # non-BMP step + conversion_window=0 (F3 range branch).
+        ("workspace.build_funnel_params", {"steps": ["A"]}),
+        ("workspace.build_funnel_params", {"steps": []}),
+        ("workspace.build_funnel_params", {"steps": ["A", ""]}),
+        (
+            "workspace.build_funnel_params",
+            {"steps": ["A", "\U0001d4b3"], "conversion_window": 0},
+        ),
+        (
+            "workspace.build_funnel_params",
+            {
+                "steps": ["A", "B"],
+                "where": [Filter.less_than("amount", 18.0)],
+            },
+        ),
+        (
+            "workspace.build_funnel_params",
+            {
+                "steps": [FunnelStep("A", filters=[Filter.less_than("p", 1.5)])],
+            },
+        ),
+    ),
+)
+"""`workspace.build_funnel_params` facade probes."""
+
+_WORKSPACE_BUILD_FLOW_PARAMS_FAMILY = FuzzTarget(
+    name="workspace_build_flow_params_family",
+    calls=_b5_build_flow_params_calls(),
+    edge_calls=(
+        # Empty/non-BMP anchor, forward=0+reverse=0, empty hidden_events.
+        # OMISSION (documented): integral-float filter values — the F1
+        # string-render narrowing (module note above; S2 option (b)).
+        ("workspace.build_flow_params", {"event": ""}),
+        ("workspace.build_flow_params", {"event": "\U0001d4b3"}),
+        (
+            "workspace.build_flow_params",
+            {"event": FlowStep("Login"), "forward": 0, "reverse": 0},
+        ),
+        ("workspace.build_flow_params", {"event": "Login", "hidden_events": []}),
+        (
+            "workspace.build_flow_params",
+            {"event": "Login", "where": [Filter.less_than("amount", 1.5)]},
+        ),
+        (
+            "workspace.build_flow_params",
+            {"event": "Login", "collapse_repeated": True},
+        ),
+    ),
+)
+"""`workspace.build_flow_params` facade probes (F1-safe domain)."""
+
+_WORKSPACE_BUILD_RETENTION_PARAMS_FAMILY = FuzzTarget(
+    name="workspace_build_retention_params_family",
+    calls=_b5_build_retention_params_calls(),
+    edge_calls=(
+        (
+            "workspace.build_retention_params",
+            {"born_event": "", "return_event": "Login"},
+        ),
+        (
+            "workspace.build_retention_params",
+            {"born_event": "\U0001d4b3", "return_event": "Login"},
+        ),
+        (
+            "workspace.build_retention_params",
+            {"born_event": "Signup", "return_event": "Login", "bucket_sizes": []},
+        ),
+        (
+            "workspace.build_retention_params",
+            {
+                "born_event": RetentionEvent(
+                    "Signup", filters=[Filter.greater_than("amount", 18.0)]
+                ),
+                "return_event": "Login",
+            },
+        ),
+        (
+            "workspace.build_retention_params",
+            {
+                "born_event": "Signup",
+                "return_event": "Login",
+                "retention_cumulative": True,
+                "where": [Filter.less_than("amount", 1.5)],
+            },
+        ),
+    ),
+)
+"""`workspace.build_retention_params` facade probes."""
+
+_WORKSPACE_BUILD_USER_PARAMS_FAMILY = FuzzTarget(
+    name="workspace_build_user_params_family",
+    calls=_b5_build_user_params_calls(),
+    edge_calls=(
+        # The S2 arbitrated anchors (wire-edges §4 mirror), minus the
+        # out-of-annotation `where=18.0` scalars (Discrepancy #8) and
+        # minus integral-float filter values (F1 — module note above).
+        ("workspace.build_user_params", {}),
+        ("workspace.build_user_params", {"sort_by": ""}),
+        ("workspace.build_user_params", {"where": []}),
+        ("workspace.build_user_params", {"as_of": 0}),
+        ("workspace.build_user_params", {"as_of": "2025-01-01"}),
+        ("workspace.build_user_params", {"properties": []}),
+        (
+            "workspace.build_user_params",
+            {"percentile": 1.5, "aggregate": "percentile"},
+        ),
+        ("workspace.build_user_params", {"segment_by": [18]}),
+        (
+            "workspace.build_user_params",
+            {"aggregate": "percentile", "aggregate_property": "x"},
+        ),
+        ("workspace.build_user_params", {"mode": "\U0001d4b3"}),
+        ("workspace.build_user_params", {"sort_by": "ltv", "sort_order": ""}),
+        (
+            "workspace.build_user_params",
+            {"sort_by": "ltv", "mode": "profiles", "sort_order": ""},
+        ),
+        (
+            "workspace.build_user_params",
+            {"where": [Filter.less_than("amount", 1.5)], "include_all_users": True},
+        ),
+    ),
+)
+"""`workspace.build_user_params` facade probes (F1-safe domain)."""
+
+
+# --- Replay builder families (S3 throwaway generator ports) ---------------
+
+_B5_URL_SCHEMES = ("", "https://", "http://", "ftp://", "://", "https:///")
+_B5_URL_HOSTS = ("app.example.com", "x.test", "", "\U0001d4b3.test", "h:8080")
+_B5_URL_SEGMENTS = (
+    "",
+    "users",
+    "12345",
+    "0",
+    "007",
+    "abc12345",
+    "DEADBEEF",
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "\U0001d4b3",
+    "profile",
+    "12345678",
+    "deadbeef",
+    "1-2-3-4-5",
+    "-------",
+    "v2",
+    "2026",
+    "a",
+)
+_B5_URL_QUERIES = ("", "?", "?ref=x", "?a=1&b=2", "?q=\U0001d4b3", "?#frag")
+_B5_URL_FRAGMENTS = ("", "#", "#id=1", "#\U0001d4b3")
+
+
+@st.composite
+def _b5_urls(draw: st.DrawFn) -> str:
+    """Draw a URL biased to the normalizer's collapse shapes (packet §5).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The URL string (may be empty, scheme-only, or host-only).
+    """
+    if draw(st.integers(min_value=0, max_value=19)) == 0:
+        return ""
+    scheme = draw(st.sampled_from(_B5_URL_SCHEMES))
+    host = draw(st.sampled_from(_B5_URL_HOSTS)) if scheme else ""
+    segments = draw(st.lists(st.sampled_from(_B5_URL_SEGMENTS), max_size=5))
+    path = "/".join(segments)
+    lead = "/" if (segments or not scheme) else ""
+    query = draw(st.sampled_from(_B5_URL_QUERIES))
+    fragment = draw(st.sampled_from(_B5_URL_FRAGMENTS))
+    return f"{scheme}{host}{lead}{path}{query}{fragment}"
+
+
+_B5_ACTION_LITERALS = (
+    "click",
+    "input",
+    "scroll",
+    "navigate",
+    "select",
+    "console_error",
+    "viewport_resize",
+    "touch_start",
+    "media_interaction",
+)
+_B5_TARGET_DESCS = (
+    "button",
+    'button "Sign in"',
+    "\U0001d4b3",
+    "a #go type=submit",
+    "element",
+    "(viewport)",
+)
+_B5_METADATA_KEYS = ("data-testid", "data-cy", "interaction", "\U0001d4b3", "url")
+
+
+@st.composite
+def _b5_user_actions(draw: st.DrawFn) -> UserAction:
+    """Draw a UserAction inside the annotation domain (UA guards satisfied).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The constructed action.
+    """
+    metadata: dict[str, Any] = {}
+    for _ in range(draw(st.integers(min_value=0, max_value=3))):
+        key = draw(st.sampled_from(_B5_METADATA_KEYS))
+        # INTEGRAL floats excluded from the metadata VALUE slot (F1
+        # class): `selector_label_fn` renders the candidate with CPython
+        # `str()` spelling (`replay-labels.ts` pythonStr — the S3 R10.9
+        # finding), where JS `18` cannot reproduce `str(18.0)`. The
+        # fractional float (1.5) is spelling-identical and stays; the
+        # rest of the R10.9 scalar edge set rides this slot.
+        metadata[key] = draw(
+            st.sampled_from((1.5, True, None, "", "\U0001d4b3", "signin-button", 0, 1))
+        )
+    return UserAction(
+        timestamp=draw(st.sampled_from((1, 1716810000000, 2**31, 999))),
+        action=draw(st.sampled_from(_B5_ACTION_LITERALS)),
+        target_node_id=draw(st.sampled_from((None, 0, 1, 42))),
+        target_desc=draw(st.sampled_from(_B5_TARGET_DESCS)),
+        url=draw(st.one_of(st.none(), st.just(""), _b5_urls())),
+        metadata=metadata,
+    )
+
+
+_REPLAY_URL_NORMALIZER_FAMILY = FuzzTarget(
+    name="replay_url_normalizer_family",
+    calls=_b5_urls().map(lambda url: ("replay_labels.url_normalizer", {"url": url})),
+    edge_calls=(
+        # str-typed input: 18.0/1.5/True/None/[] are outside the
+        # annotation domain (documented omission — Discrepancy #8).
+        ("replay_labels.url_normalizer", {"url": ""}),
+        ("replay_labels.url_normalizer", {"url": "\U0001d4b3"}),
+        ("replay_labels.url_normalizer", {"url": "/users/12345/profile?ref=x"}),
+        (
+            "replay_labels.url_normalizer",
+            {"url": "https://x.test/a1b2c3d4-e5f6-7890-abcd-ef1234567890#f"},
+        ),
+        ("replay_labels.url_normalizer", {"url": "no-slash"}),
+        ("replay_labels.url_normalizer", {"url": "https://h:8080/007/DEADBEEF"}),
+    ),
+)
+"""`replay_labels.url_normalizer` probes (packet §5 URL bias)."""
+
+_REPLAY_DEFAULT_LABEL_FAMILY = FuzzTarget(
+    name="replay_default_label_family",
+    calls=_b5_user_actions().map(
+        lambda action: ("replay_labels.default_label_fn", {"action": action})
+    ),
+    edge_calls=(
+        (
+            "replay_labels.default_label_fn",
+            {
+                "action": UserAction(
+                    timestamp=1,
+                    action="click",
+                    target_node_id=1,
+                    target_desc='button "Sign in"',
+                    url="/users/12345/profile?ref=x",
+                    metadata={},
+                )
+            },
+        ),
+        (
+            "replay_labels.default_label_fn",
+            {
+                "action": UserAction(
+                    timestamp=1,
+                    action="click",
+                    target_node_id=None,
+                    target_desc="button",
+                    url=None,
+                    metadata={},
+                )
+            },
+        ),
+        (
+            "replay_labels.default_label_fn",
+            {
+                # `action` is a Literal union — the non-BMP edge rides
+                # the free-text `target_desc` slot (Discrepancy #8).
+                "action": UserAction(
+                    timestamp=1,
+                    action="click",
+                    target_node_id=0,
+                    target_desc="\U0001d4b3",
+                    url="",
+                    metadata={"data-testid": ""},
+                )
+            },
+        ),
+    ),
+)
+"""`replay_labels.default_label_fn` probes."""
+
+_REPLAY_SELECTOR_LABEL_FAMILY = FuzzTarget(
+    name="replay_selector_label_family",
+    calls=st.tuples(
+        st.sampled_from(("data-testid", "data-cy", "id", "", "\U0001d4b3", "url")),
+        _b5_user_actions(),
+    ).map(
+        lambda pair: (
+            "replay_labels.selector_label_fn",
+            {"attr": pair[0], "action": pair[1]},
+        )
+    ),
+    edge_calls=(
+        # The falsy-metadata fall-through (`if candidate:`) — 18.0 / 1.5 /
+        # True / None / "" ride the metadata VALUE slot via
+        # `_b5_user_actions`; the flattened adapter contract is
+        # `(attr, action) -> label` (`adapters.py:65-87`).
+        (
+            "replay_labels.selector_label_fn",
+            {
+                "attr": "data-testid",
+                "action": UserAction(
+                    timestamp=1,
+                    action="click",
+                    target_node_id=1,
+                    target_desc="button",
+                    url=None,
+                    metadata={"data-testid": "signin-button"},
+                ),
+            },
+        ),
+        (
+            "replay_labels.selector_label_fn",
+            {
+                "attr": "data-testid",
+                "action": UserAction(
+                    timestamp=1,
+                    action="click",
+                    target_node_id=1,
+                    target_desc="button",
+                    url=None,
+                    metadata={},
+                ),
+            },
+        ),
+        (
+            "replay_labels.selector_label_fn",
+            {
+                "attr": "\U0001d4b3",
+                "action": UserAction(
+                    timestamp=1,
+                    action="input",
+                    target_node_id=1,
+                    target_desc="\U0001d4b3",
+                    url=None,
+                    metadata={"\U0001d4b3": ""},
+                ),
+            },
+        ),
+    ),
+)
+"""`replay_labels.selector_label_fn` probes (flattening-adapter shape)."""
+
+
+_B5_RRWEB_TEXTS = ("Sign in", "", "  ", "None", "\U0001d4b3 label", "hello world", "0")
+_B5_RRWEB_TAGS = ("button", "a", "input", "div", "span", "p", "", "IMG")
+_B5_RRWEB_ATTR_KEYS = (
+    "aria-label",
+    "title",
+    "alt",
+    "placeholder",
+    "href",
+    "id",
+    "type",
+    "data-testid",
+    "data-cy",
+    "class",
+)
+_B5_RRWEB_ATTR_VALUES = (
+    "",
+    "  ",
+    "none",
+    "None",
+    "Save changes",
+    "https://example.com/docs/intro",
+    "https://example.com/",
+    "https://example.com",
+    "go",
+    "email",
+    "\U0001d4b3",
+    "signin-button",
+)
+_B5_RRWEB_TIMESTAMPS: tuple[Any, ...] = (
+    0,
+    18.0,
+    18.9,
+    -1.9,
+    1000,
+    2000,
+    2500,
+    "3000",
+    1716810000000,
+)
+"""Float and string timestamps exercise the CPython `int()` ladder
+(packet §9 Caution #3 — truncate toward zero, CPython parse grammar)."""
+
+
+def _b5_rrweb_node(draw: st.DrawFn, node_id: int, depth: int) -> dict[str, Any]:
+    """Draw one rrweb DOM node (element or text), possibly with children.
+
+    Args:
+        draw: Hypothesis draw function.
+        node_id: The rrweb node id to stamp.
+        depth: Remaining recursion depth.
+
+    Returns:
+        The node dict.
+    """
+    if draw(st.integers(min_value=0, max_value=3)) == 0:
+        return {
+            "id": node_id,
+            "type": 3,
+            "textContent": draw(st.sampled_from(_B5_RRWEB_TEXTS)),
+        }
+    attributes = {
+        draw(st.sampled_from(_B5_RRWEB_ATTR_KEYS)): draw(
+            st.sampled_from(_B5_RRWEB_ATTR_VALUES)
+        )
+        for _ in range(draw(st.integers(min_value=0, max_value=4)))
+    }
+    children: list[dict[str, Any]] = []
+    if depth > 0:
+        for k in range(draw(st.integers(min_value=0, max_value=2))):
+            children.append(_b5_rrweb_node(draw, node_id * 10 + k + 1, depth - 1))
+    return {
+        "id": node_id,
+        "type": 2,
+        "tagName": draw(st.sampled_from(_B5_RRWEB_TAGS)),
+        "attributes": attributes,
+        "childNodes": children,
+    }
+
+
+def _b5_rrweb_event(draw: st.DrawFn, node_ids: list[int]) -> dict[str, Any]:
+    """Draw one rrweb event from the four-IntEnum grammar (S3 port).
+
+    Args:
+        draw: Hypothesis draw function.
+        node_ids: Node ids already present in the stream (targets drawn
+            from these plus deliberate misses).
+
+    Returns:
+        The event dict.
+    """
+    ts = draw(st.sampled_from(_B5_RRWEB_TIMESTAMPS))
+    kind = draw(
+        st.sampled_from(
+            (
+                "meta",
+                "full",
+                "mutation",
+                "mouse",
+                "scroll",
+                "input",
+                "selection",
+                "plugin",
+                "unknown",
+            )
+        )
+    )
+    target = draw(st.sampled_from((*node_ids, 9999, None, 0)))
+    if kind == "meta":
+        return {
+            "type": 4,
+            "data": {"href": draw(st.sampled_from(("", "/x", "https://x.test/u/1")))},
+            "timestamp": ts,
+        }
+    if kind == "full":
+        root = _b5_rrweb_node(draw, 1, 3)
+        node_ids.extend([1, 10, 11, 100, 101])
+        return {"type": 2, "data": {"node": root}, "timestamp": ts}
+    if kind == "mutation":
+        node = _b5_rrweb_node(draw, draw(st.integers(min_value=50, max_value=80)), 1)
+        node_ids.append(int(node["id"]))
+        return {
+            "type": 3,
+            "data": {
+                "source": 0,
+                "adds": [{"parentId": target, "node": node}],
+                "removes": [{"id": draw(st.sampled_from((*node_ids, 0, None)))}],
+                "texts": [
+                    {"id": target, "value": draw(st.sampled_from(_B5_RRWEB_TEXTS))}
+                ],
+                "attributes": [
+                    {
+                        "id": target,
+                        "attributes": {
+                            draw(st.sampled_from(_B5_RRWEB_ATTR_KEYS)): draw(
+                                st.sampled_from(_B5_RRWEB_ATTR_VALUES)
+                            )
+                        },
+                    }
+                ],
+            },
+            "timestamp": ts,
+        }
+    if kind == "mouse":
+        return {
+            "type": 3,
+            "data": {
+                "source": 2,
+                "type": draw(st.sampled_from((2, 3, 4, 5, 7, 99, None))),
+                "id": target,
+            },
+            "timestamp": ts,
+        }
+    if kind == "scroll":
+        return {"type": 3, "data": {"source": 3, "id": target}, "timestamp": ts}
+    if kind == "input":
+        data: dict[str, Any] = {
+            "source": 5,
+            "id": target,
+            "text": draw(st.sampled_from(("", "a", "\U0001d4b3", "abc"))),
+        }
+        if draw(st.booleans()):
+            data["isChecked"] = draw(st.booleans())
+        return {"type": 3, "data": data, "timestamp": ts}
+    if kind == "selection":
+        ranges = [
+            {
+                "start": target,
+                "end": target,
+                "startOffset": draw(st.integers(min_value=0, max_value=4)),
+                "endOffset": draw(st.integers(min_value=0, max_value=12)),
+            }
+            for _ in range(draw(st.integers(min_value=0, max_value=2)))
+        ]
+        return {"type": 3, "data": {"source": 14, "ranges": ranges}, "timestamp": ts}
+    if kind == "plugin":
+        return {
+            "type": 6,
+            "data": {
+                "plugin": draw(
+                    st.sampled_from(("rrweb/console@1", "rrweb/canvas@1", ""))
+                ),
+                "payload": {
+                    "level": draw(st.sampled_from(("error", "warn", "log"))),
+                    "payload": draw(
+                        st.sampled_from(
+                            (
+                                [],
+                                ['"boom"'],
+                                ['"a"', '"\U0001d4b3"'],
+                                ['""'],
+                                [18.0, None],
+                            )
+                        )
+                    ),
+                },
+            },
+            "timestamp": ts,
+        }
+    return {
+        "type": draw(st.sampled_from((0, 1, 5, 7))),
+        "data": {},
+        "timestamp": ts,
+    }
+
+
+@st.composite
+def _b5_rrweb_analyze_calls(draw: st.DrawFn) -> FuzzCall:
+    """Draw one `rrweb_analyzer.analyze` probe (whole event stream).
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        The `(api, kwargs)` probe.
+    """
+    if draw(st.integers(min_value=0, max_value=32)) == 0:
+        return ("rrweb_analyzer.analyze", {"events": []})
+    node_ids: list[int] = [1]
+    events = [
+        _b5_rrweb_event(draw, node_ids)
+        for _ in range(draw(st.integers(min_value=1, max_value=12)))
+    ]
+    return ("rrweb_analyzer.analyze", {"events": events})
+
+
+_RRWEB_ANALYZE_FAMILY = FuzzTarget(
+    name="rrweb_analyze_family",
+    calls=_b5_rrweb_analyze_calls(),
+    edge_calls=(
+        ("rrweb_analyzer.analyze", {"events": []}),
+        (
+            "rrweb_analyzer.analyze",
+            {
+                "events": [
+                    {"type": 4, "data": {"href": "/x"}, "timestamp": 18.9},
+                    {
+                        "type": 3,
+                        "data": {"source": 2, "type": 2, "id": 9999},
+                        "timestamp": 18.0,
+                    },
+                ]
+            },
+        ),
+        (
+            "rrweb_analyzer.analyze",
+            {
+                "events": [
+                    {
+                        "type": 6,
+                        "data": {
+                            "plugin": "rrweb/console@1",
+                            "payload": {"level": "error", "payload": ['"\U0001d4b3"']},
+                        },
+                        "timestamp": "3000",
+                    }
+                ]
+            },
+        ),
+        (
+            "rrweb_analyzer.analyze",
+            {
+                "events": [
+                    {
+                        "type": 3,
+                        "data": {"source": 5, "id": None, "text": ""},
+                        "timestamp": -1.9,
+                    }
+                ]
+            },
+        ),
+    ),
+)
+"""`rrweb_analyzer.analyze` probes (four-IntEnum grammar, S3 port)."""
+
+
+PHASE3_B5_TARGETS: tuple[FuzzTarget, ...] = (
+    _WORKSPACE_BUILD_PARAMS_FAMILY,
+    _WORKSPACE_BUILD_FUNNEL_PARAMS_FAMILY,
+    _WORKSPACE_BUILD_FLOW_PARAMS_FAMILY,
+    _WORKSPACE_BUILD_RETENTION_PARAMS_FAMILY,
+    _WORKSPACE_BUILD_USER_PARAMS_FAMILY,
+    _REPLAY_URL_NORMALIZER_FAMILY,
+    _REPLAY_DEFAULT_LABEL_FAMILY,
+    _REPLAY_SELECTOR_LABEL_FAMILY,
+    _RRWEB_ANALYZE_FAMILY,
+)
+"""ALL Phase-3 B5 families (the five `workspace.build_*params` facades +
+the four replay builders), in packet §6.6 order. SERVED once the B5-BIND
+(b′) task registers the names in the shared TS bindings module
+(`conformance-runner/src/wire-workspace.ts` / `replays-bindings.ts`) —
+oracle-py resolves them through the registry's builder targets
+(`_facade_entries` / the D4.2 item-5 replay entries)."""
+
+
 ALL_TARGETS: tuple[FuzzTarget, ...] = (
     *PHASE1_TARGETS,
     *PHASE2_TARGETS,
     *PHASE3_TARGETS,
     *PHASE3_B2_TARGETS,
     *PHASE3_B3_TARGETS,
+    *PHASE3_B5_TARGETS,
 )
 """Every registered fuzz target (Phases 1-3), in phase order."""
 

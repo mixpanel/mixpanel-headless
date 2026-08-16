@@ -460,8 +460,27 @@ class TestPhase2StrategyTable:
     ``filters_to_selector`` targets already drive them (K4 widened their
     drawn Filter domain with the mandatory escaping bias)."""
 
+    _PHASE3_B5_NAMES = (
+        "workspace_build_params_family",
+        "workspace_build_funnel_params_family",
+        "workspace_build_flow_params_family",
+        "workspace_build_retention_params_family",
+        "workspace_build_user_params_family",
+        "replay_url_normalizer_family",
+        "replay_default_label_family",
+        "replay_selector_label_family",
+        "rrweb_analyze_family",
+    )
+    """The B5 families (b5-packets.md §6.6): the five
+    ``workspace.build_*params`` facade builders + the four replay
+    builders. Declared at the B5-BIND (b′) task; SERVED through the
+    shared TS bindings registration (``wire-workspace.ts`` /
+    ``replays-bindings.ts``). The wire-kind B5 members (facade query /
+    discovery / replay members, ``replays.*``) are absent by design —
+    wire names have no oracle call surface (P3-2 c)."""
+
     def test_all_targets_extends_phase1_with_phase2(self) -> None:
-        """``ALL_TARGETS`` is Phase 1 + P2-9 + B0 + the B2/B3 families.
+        """``ALL_TARGETS`` is Phase 1 + P2-9 + B0 + the B2/B3/B5 families.
 
         Raises:
             AssertionError: On a missing or misordered target.
@@ -478,6 +497,7 @@ class TestPhase2StrategyTable:
             *self._PHASE3_B3_K2_NAMES,
             *self._PHASE3_B3_K3_NAMES,
             *self._PHASE3_B3_K4_NAMES,
+            *self._PHASE3_B5_NAMES,
         )
 
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
