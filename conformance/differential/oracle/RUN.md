@@ -219,3 +219,62 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   it did at the B0 gate (where 52794688 ran codec_roundtrip 512/512
   clean against the PRE-`2015565` codec that round-tripped carriers
   unchanged).
+
+---
+
+## 2026-08-15 — B2 gate, attempt 2: **GATE CLOSED (all clean)**
+
+- Remediation first (unblock path step 1, TS commit `ad830fb`): the
+  GroupBy contract codec gained decode-time float-ness memory — the
+  three bucket fields that ARRIVE as `$type: float` carriers are
+  recorded in a module-level `WeakMap` at `construct` and re-tagged
+  `{$type: "float", value: pythonFloatStr(v)}` at encode (same
+  integral-finite guard as Python `_encode_common`'s rich-payload
+  tagging); int buckets stay raw (Python annotation `int | float |
+  None`, `types.py:8367-8373`). Red-first locks in
+  `conformance-runner/test/codecs.test.ts` (4 tests, both directions).
+  Single-family `codec_roundtrip` re-runs, all clean at 512 examples /
+  0 skips / 0 divergences each: seeds **52794688** (the diverging one),
+  **21091621**, **28631260**. Repro
+  `repros/2026-08-16-codec-roundtrip.json` DELETED after the clean
+  re-run (resolved; unblock path step 2).
+- Commands (re-runnable; the standard full-suite form):
+
+  ```bash
+  uv run python -m conformance.differential.fuzz_harness \
+    --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+    --examples 500 --seed 3343231 --report json    # fresh
+  # B0-gate seed replays:
+  #   --seed 28631260 / --seed 52794688
+  ```
+
+- Bridges: oracle-py @ ts-port/phase2-contract-support (post-3bb49eb
+  tree), oracle-ts @ main `ad830fb` (the remediation HEAD; identical
+  library surface at the gate commit — the gate touches only
+  batch-status/ignore files), corpus pin b5c1369.
+- Targets: all **33** registered (`ALL_TARGETS`, cumulative through B2).
+- Totals, ALL THREE runs identical: **17,163 examples, 2,539 skips,
+  0 divergences** → exit 0, status `ok`:
+  - fresh seed **3343231**;
+  - B0-gate seed **28631260** replay;
+  - B0-gate seed **52794688** replay (attempt 1's diverging seed — now
+    runs the full 17,163 incl. `codec_roundtrip` 512/512).
+- Skips (all explained, protocol §4.2, identical across runs — 2,539 =
+  the five B3-pending Phase-1 families): `build_filter_entry` 508,
+  `build_segfilter_entry` 508, `filter_to_selector` 508,
+  `filters_to_selector` 510, `normalize_on_expression` 505. Every
+  both-bridge family ran >= 504 examples (>= the P2-9 500 budget).
+- Raw harness JSON: `2026-08-15-b2-gate-attempt2-seed3343231.json` +
+  `2026-08-15-b2-gate-attempt2-seed28631260-verify.json` +
+  `2026-08-15-b2-gate-attempt2-seed52794688-verify.json`.
+- GF4 oracle probes re-run at the remediation HEAD: 11/11 B2 apis
+  answer call DATA on BOTH bridges, canonical outcomes pairwise equal
+  (probe = the first `PHASE3_B2_TARGETS` edge call per api; bridge
+  identities py 0.2.1 / ts 0.0.0, both @ source_commit b5c1369,
+  protocol 1.1).
+- **STANDING POSTURE RULE (adopted from the attempt-1 process note,
+  P3-7)**: any change to rig codec code (`vector-codecs.ts`,
+  `codecs.ts`, canonicalizers) re-runs `codec_roundtrip` (at minimum)
+  before its task closes — never wait for the next batch gate. Both
+  post-`2015565` fuzz runs were `--targets`-restricted to the 11 B2
+  families, which is how the attempt-1 regression sat invisible.

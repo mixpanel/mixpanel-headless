@@ -187,3 +187,99 @@ main clean at 6c1e43f).
    re-run `codec_roundtrip` before its task closes — both
    post-`2015565` fuzz runs were `--targets`-restricted to the 11 B2
    families, so the regression sat invisible until this gate.
+
+## B2 gate (P3-2 step e) — attempt 2, 2026-08-15: **GATE CLOSED**
+
+**RESULT: PASS.** The attempt-1 unblock path was executed verbatim;
+every gate step re-verified clean at the remediation HEAD.
+
+### Remediation (unblock path steps 1–2)
+
+- TS commit `ad830fb` (fable, rig code): GroupBy moved out of the
+  generic `DATACLASS_CODECS` table into a dedicated `groupByCodec` —
+  decode reuses the generic half verbatim (unknown-field rejection,
+  required check, carrier unwrap; behavior unchanged from `2015565`)
+  but RECORDS which of the three bucket fields arrived float-spelled in
+  a module-level `WeakMap` (`GROUP_BY_FLOAT_BUCKETS` — GC'd with the
+  instance, invisible to library consumers); a custom encode re-tags
+  exactly the remembered fields as
+  `{$type: "float", value: pythonFloatStr(v)}` under the same
+  integral-finite guard as Python `_encode_common`'s rich-payload
+  tagging. Int buckets stay raw (`int | float | None`,
+  `types.py:8367-8373`); directly-constructed instances (no memory)
+  keep the generic declared-field walk — matching Python, where a
+  library-built `GroupBy(bucket_size=18)` encodes `18`.
+- Red-first locks: `conformance-runner/test/codecs.test.ts` +4 tests
+  (float carrier stays carrier, plain int stays int, mixed per-field,
+  direct-construction raw) — the two carrier tests were RED against
+  `6c1e43f`, green after the fix.
+- Single-family `codec_roundtrip` re-runs: seeds **52794688 /
+  21091621 / 28631260** — 512 examples / 0 skips / 0 divergences each.
+- Repro `repros/2026-08-16-codec-roundtrip.json` deleted (resolved).
+- Review pass for the rig-codec touch (P3-2d norms, self-executed at
+  the gate tier — fable): decode behavior diffed unchanged vs
+  `2015565`; encode diffed line-by-line against Python
+  `_encode_common` (`record/codecs.py:219-222` — carrier iff
+  `in_rich_payload and checked.is_integer()`; the re-tag spelling
+  `pythonFloatStr(v)` reproduces the PyFloat carrier's
+  canonical-validated spelling byte-for-byte); dispatch uniqueness
+  confirmed (single `"GroupBy"` key in `CONTRACT_TAG_CODECS`,
+  `instanceof` matcher); sweep re-confirmed no other decode-side
+  unwrap lacks its encode twin (`signed_at` has both halves;
+  `codec-sweep` suite green).
+
+### Gate step results (attempt 2)
+
+- [x] (1) batch-status flip — EXECUTED AND COMMITTED (TS gate commit):
+  `validation.` + `user_validators.` → `done`; header comment moved to
+  the done list (+ Discrepancy-#2 note for the B3-owned
+  user_builders/expressions/transforms prefixes). Batch-status suite
+  **13/13** green (incl. the new B2 flip-state test asserting both
+  flips AND that the B3 prefixes stay pending). Standing
+  no-prefix-collision assertion re-run mechanically over all corpus
+  api names: exactly **10** distinct names match the two prefixes
+  (8 `validation.*` + 2 `user_validators.*`), all B2-registered (the
+  11th registered name, `validation.validate_sorting_block`, is
+  vectorless); per-prefix re-measure: `validation.` **512** +
+  `user_validators.` **178** = **690**, corpus total exactly **3,251**.
+- [x] (2) conformance checkpoint — COUNTS MATCH: `npm run conformance`
+  with the flip @ corpus b5c1369: **3,251 vectors — 1,229 PASS /
+  0 FAIL / 2,022 UNPORTED** (= 539 + 690, the dagger-adjusted P3-1
+  expectation). Dagger re-verified: all 690 B2 vectors carry
+  `call.setup[]` length 0, and zero foreign vectors carry a
+  `validation.*`/`user_validators.*` setup api — gate delta = raw 690.
+  Report archived: `context/phase3/reports/2026-08-15-b2-gate.json`.
+- [x] (3) oracle probes (GF4) — PASS at the remediation HEAD: 11/11
+  apis answer call DATA on BOTH bridges, canonical outcomes pairwise
+  equal (first `PHASE3_B2_TARGETS` edge call per api; oracle-py 0.2.1 /
+  oracle-ts 0.0.0, both @ b5c1369, protocol 1.1).
+- [x] (4) differential full-suite regression — **ALL CLEAN**. Three
+  seeded runs over all 33 `ALL_TARGETS` families, P2-9 budget:
+  - fresh seed **3343231**: 17,163 examples / 2,539 explained skips /
+    **0 divergences**;
+  - B0-gate seed **28631260**: 17,163 / 2,539 / **0**;
+  - B0-gate seed **52794688** (attempt 1's diverging seed): 17,163 /
+    2,539 / **0** — `codec_roundtrip` runs its full 512.
+  - Skip ledger unchanged: 2,539 = the five B3-pending Phase-1
+    families; every both-bridge family ≥ 504 examples. Raw JSONs:
+    `2026-08-15-b2-gate-attempt2-seed{3343231,28631260,52794688}*.json`.
+- [x] (5) referees — NOT REQUIRED at B2 per P3-7 (referees (a)+(b) run
+  at the B3 and B6 gates, the bookmark-touching batches; B2 validates
+  bookmark payloads but constructs none). Stated for the record.
+- [x] (6) cleanup — `throwaway/b2-m1` / `b2-m2` / `b2-m3` removed after
+  arbiter sign-off (cc12030), plus the B2-era throwaway entries in
+  `eslint.config.js` (ignore glob + mjs-globals block), `.gitignore`,
+  and `.prettierignore` (B0-gate 8f79b67 precedent).
+- [x] (7) checks at final HEADs — `npm run check` green on TS main at
+  the gate HEAD `794fea1` (3,624 passed / 2,022 corpus-skipped;
+  remediation `ad830fb` beneath it); `just check` green on the Python
+  support branch at the gate docs/report commit.
+
+### Standing-posture rule adopted (P3-7 addendum, from the attempt-1
+process note)
+
+Any change to rig codec code (`vector-codecs.ts`, runner `codecs.ts`,
+canonicalizers) re-runs `codec_roundtrip` (at minimum) before its task
+closes — never waits for the next batch gate. Recorded in
+`conformance/differential/oracle/RUN.md` alongside the attempt-2 run
+record.
