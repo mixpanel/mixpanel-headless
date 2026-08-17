@@ -1,0 +1,574 @@
+{
+  "examples_per_target": {
+    "bookmark_family": 560,
+    "bookmark_schema_family": 589,
+    "build_date_range_family": 101,
+    "build_filter_entry": 508,
+    "build_filter_section_family": 513,
+    "build_flow_cohort_filter_family": 515,
+    "build_flow_property_filter_family": 512,
+    "build_frequency_filter_entry_family": 510,
+    "build_group_section_family": 521,
+    "build_segfilter_entry": 549,
+    "build_time_section_family": 485,
+    "codec_roundtrip": 512,
+    "cohort_family": 533,
+    "cp_length": 504,
+    "cp_slice": 508,
+    "extract_cohort_filter_family": 510,
+    "filter_family": 531,
+    "filter_to_selector": 520,
+    "filters_to_selector": 524,
+    "flow_args_family": 523,
+    "flow_bookmark_family": 516,
+    "frequency_family": 515,
+    "funnel_args_family": 526,
+    "funnel_family": 508,
+    "get_root_model_family": 510,
+    "group_by_args_family": 516,
+    "jsonl_chunks": 511,
+    "metric_group_family": 523,
+    "normalize_on_expression": 505,
+    "python_float": 514,
+    "python_float_coerce": 514,
+    "python_int": 513,
+    "python_strip": 507,
+    "pythoncompat": 517,
+    "query_args_family": 530,
+    "replay_default_label_family": 503,
+    "replay_family": 524,
+    "replay_selector_label_family": 503,
+    "replay_url_normalizer_family": 506,
+    "retention_args_family": 525,
+    "retention_flow_family": 507,
+    "rrweb_analyze_family": 504,
+    "sorted_strings": 507,
+    "sorting_family": 564,
+    "time_args_family": 513,
+    "transform_event_family": 516,
+    "transform_profile_family": 508,
+    "user_args_family": 575,
+    "user_params_family": 534,
+    "validators_by_code": 510,
+    "workspace_build_flow_params_family": 506,
+    "workspace_build_funnel_params_family": 506,
+    "workspace_build_params_family": 509,
+    "workspace_build_retention_params_family": 505,
+    "workspace_build_user_params_family": 513
+  },
+  "left_info": {
+    "language": "python",
+    "library_version": "0.2.1",
+    "protocol_version": "1.1",
+    "source_commit": "70c904dc598db2c74ca8429b603fa8bef19187ea"
+  },
+  "right_info": {
+    "language": "typescript",
+    "library_version": "0.0.0",
+    "protocol_version": "1.1",
+    "source_commit": "70c904dc598db2c74ca8429b603fa8bef19187ea"
+  },
+  "seed": 53062695,
+  "skipped_per_target": {
+    "bookmark_family": 0,
+    "bookmark_schema_family": 0,
+    "build_date_range_family": 0,
+    "build_filter_entry": 0,
+    "build_filter_section_family": 0,
+    "build_flow_cohort_filter_family": 0,
+    "build_flow_property_filter_family": 0,
+    "build_frequency_filter_entry_family": 0,
+    "build_group_section_family": 0,
+    "build_segfilter_entry": 0,
+    "build_time_section_family": 0,
+    "codec_roundtrip": 0,
+    "cohort_family": 0,
+    "cp_length": 0,
+    "cp_slice": 0,
+    "extract_cohort_filter_family": 0,
+    "filter_family": 0,
+    "filter_to_selector": 0,
+    "filters_to_selector": 0,
+    "flow_args_family": 0,
+    "flow_bookmark_family": 0,
+    "frequency_family": 0,
+    "funnel_args_family": 0,
+    "funnel_family": 0,
+    "get_root_model_family": 0,
+    "group_by_args_family": 0,
+    "jsonl_chunks": 0,
+    "metric_group_family": 0,
+    "normalize_on_expression": 0,
+    "python_float": 0,
+    "python_float_coerce": 0,
+    "python_int": 0,
+    "python_strip": 0,
+    "pythoncompat": 0,
+    "query_args_family": 0,
+    "replay_default_label_family": 0,
+    "replay_family": 0,
+    "replay_selector_label_family": 0,
+    "replay_url_normalizer_family": 0,
+    "retention_args_family": 0,
+    "retention_flow_family": 0,
+    "rrweb_analyze_family": 0,
+    "sorted_strings": 0,
+    "sorting_family": 0,
+    "time_args_family": 0,
+    "transform_event_family": 0,
+    "transform_profile_family": 0,
+    "user_args_family": 0,
+    "user_params_family": 0,
+    "validators_by_code": 0,
+    "workspace_build_flow_params_family": 0,
+    "workspace_build_funnel_params_family": 0,
+    "workspace_build_params_family": 0,
+    "workspace_build_retention_params_family": 0,
+    "workspace_build_user_params_family": 0
+  },
+  "status": "ok",
+  "targets": [
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 520,
+      "name": "filter_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 524,
+      "name": "filters_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 549,
+      "name": "build_segfilter_entry",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 508,
+      "name": "build_filter_entry",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 510,
+      "name": "validators_by_code",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 505,
+      "name": "normalize_on_expression",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 517,
+      "name": "pythoncompat",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 531,
+      "name": "filter_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 523,
+      "name": "metric_group_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 533,
+      "name": "cohort_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 508,
+      "name": "funnel_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 507,
+      "name": "retention_flow_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 515,
+      "name": "frequency_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 524,
+      "name": "replay_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 512,
+      "name": "codec_roundtrip",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 513,
+      "name": "python_int",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 514,
+      "name": "python_float",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 514,
+      "name": "python_float_coerce",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 507,
+      "name": "python_strip",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 507,
+      "name": "sorted_strings",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 504,
+      "name": "cp_length",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 508,
+      "name": "cp_slice",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 511,
+      "name": "jsonl_chunks",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 513,
+      "name": "time_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 516,
+      "name": "group_by_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 530,
+      "name": "query_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 526,
+      "name": "funnel_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 525,
+      "name": "retention_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 523,
+      "name": "flow_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 560,
+      "name": "bookmark_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 516,
+      "name": "flow_bookmark_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 564,
+      "name": "sorting_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 575,
+      "name": "user_args_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 534,
+      "name": "user_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 589,
+      "name": "bookmark_schema_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 510,
+      "name": "get_root_model_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 513,
+      "name": "build_filter_section_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 521,
+      "name": "build_group_section_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 512,
+      "name": "build_flow_property_filter_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 515,
+      "name": "build_flow_cohort_filter_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 510,
+      "name": "build_frequency_filter_entry_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 485,
+      "name": "build_time_section_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 101,
+      "name": "build_date_range_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 516,
+      "name": "transform_event_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 508,
+      "name": "transform_profile_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 510,
+      "name": "extract_cohort_filter_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 509,
+      "name": "workspace_build_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 506,
+      "name": "workspace_build_funnel_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 506,
+      "name": "workspace_build_flow_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 505,
+      "name": "workspace_build_retention_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 513,
+      "name": "workspace_build_user_params_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 506,
+      "name": "replay_url_normalizer_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 503,
+      "name": "replay_default_label_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 503,
+      "name": "replay_selector_label_family",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 504,
+      "name": "rrweb_analyze_family",
+      "repro_path": null,
+      "skipped": 0
+    }
+  ],
+  "total_divergences": 0,
+  "total_examples": 28091
+}

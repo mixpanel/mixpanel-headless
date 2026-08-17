@@ -1,6 +1,9 @@
 # Phase 3 Playbook — dependency-ordered batch pipeline (EXECUTABLE)
 
-**Status**: v1.1 · 2026-08-15 · Phase-3 designer output, revised per the adversarial review
+**Status**: v1.1 · 2026-08-15 · **PHASE 3 COMPLETE** (B9 gate closed 2026-08-16,
+3,251/0/0 held; terminal gate report `context/phase3/reports/2026-08-16-b9-gate.json`;
+Phase-3 summary block `context/phase3/notes/B9-notes.md`; Phase-4 handoff
+`context/phase4/inbound-ledger.md`) · Phase-3 designer output, revised per the adversarial review
 pair (`review-fidelity.md`, `review-gates.md`) and arbiter resolution
 (`review-resolution.md` — all 14 findings confirmed and applied). Precedent: `phase1-design.md` (D18)
 and `phase2-design.md` (C10) — an agent with zero prior context builds from this document alone.

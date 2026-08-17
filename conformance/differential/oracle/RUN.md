@@ -630,3 +630,64 @@ uv run python -m conformance.differential.fuzz_harness \
   green in TypeScript** (delta +7 = the 7 `oauth_flow.refresh_tokens`
   vectors, bound at B8-N2 and passing while pending; zero pending
   batch-status entries remain).
+
+## 2026-08-16 — B9 gate: **PHASE-3 TERMINAL GATE — GATE CLOSED (all clean, first attempt)**
+
+- **Scope**: playbook P3-2e item 3 + P3-7 at the B9 gate (the FINAL batch —
+  browser package, spike-scoped, ZERO corpus vectors, zero new api names).
+  B9 registered **ZERO new oracle families**, so the P3-2e item-3
+  mechanical newly-registered-api probe is **VACUOUS this batch — stated
+  explicitly per b9-packets.md §5.2.2, not skipped silently**. The batch's
+  cross-language surfaces were locked instead by the two direct-CPython
+  differentials (PKCE 601 @ 20260816 + browser-entry re-run 601 @
+  20260817; redirect-parse 709 @ 20260817 — RUN records in
+  `context/phase3/notes/B9-{R1,R2}-notes.md`, both re-verified from their
+  recorded seeds at this gate: 0 divergences) and the DOUBLED BLIND review
+  (playbook Risk 7 posture). `strategies.py` untouched by any B9 commit;
+  cumulative surface stays **55 families**.
+- **Differential full-suite regression** over the entire registered
+  surface, fresh seed + replay of EVERY prior gate seed:
+
+```bash
+uv run python -m conformance.differential.fuzz_harness \
+  --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+  --examples 500 --seed 1059451707 --report json    # fresh
+# prior-gate seed replays: --seed 3343231 / 28631260 / 52794688 / 40075993 \
+#   / 53062695 / 47824574 / 628997442 / 715310894 / 419393897
+```
+
+- Totals, ALL TEN seeds identical: **28,091 examples / 0 skips /
+  0 divergences** per seed; exit 0, status `ok`, no repros written.
+  Seeds: fresh **1059451707** + replays of EVERY prior gate seed —
+  **3343231** (B2 fresh), **28631260** (B0), **52794688** (B0),
+  **40075993** (B3 fresh), **53062695** (B4 fresh), **47824574** (B5
+  fresh), **628997442** (B6 fresh), **715310894** (B7 fresh),
+  **419393897** (B8 fresh). Raw JSONs:
+  `2026-08-16-b9-gate-seed{1059451707,3343231,28631260,52794688,40075993,53062695,47824574,628997442,715310894,419393897}.json`.
+- Under-500 families: only the two documented finite-domain exhaustions
+  (`build_date_range_family` 101, `build_time_section_family` 485).
+  `skipped_per_target` all-zero (ledger empty since B3).
+- Bridges: oracle-py 0.2.1 @ ts-port/phase2-contract-support, oracle-ts
+  0.0.0 @ main (B9 tree, post-ARB-B commit `de08f1f`), both
+  `source_commit 70c904dc598d…`, protocol 1.1, corpus pin 70c904d.
+- `repros/` unchanged: exactly the two RESOLVED P2-9 triage records —
+  non-blocking.
+- Referees at this gate (P3-7 — B9 touches no bookmark source, but the
+  gate ran BOTH as the Phase-3 CLOSE-OUT SWEEP per the gate directive):
+  (a) ajv runner feed (`npm run referee:bookmark`) — 9/9 tests green,
+  the pinned expected-and-disclosed dataGroupId REJECT set asserted
+  exact by the test; (b) bookmark_parser round-trip — handoff
+  regenerated **BYTE-IDENTICAL** (314 entries), selftest controls
+  passed for both oracles first, structural **314/314 ACCEPT**, deep
+  **123 ACCEPT / 2 REJECT / 189 SKIP_NON_INSIGHTS** — the 2 standing
+  frequency-filter true positives only (exit 1 by design; fresh reports
+  identical to the committed `last-run-{structural,deep}.json` modulo
+  `runtime_seconds` — not re-committed). **No NEW reject on either
+  referee — nothing to triage.**
+- Conformance checkpoint at the same gate tree: **3,251 PASS / 0 FAIL /
+  0 UNPORTED** @ corpus 70c904dc — **the terminal HOLD stands; B9
+  flipped nothing** (`batch-status.ts` untouched since the B8 flip
+  `b59567c`, verified by `git log`). Report archived:
+  `context/phase3/reports/2026-08-16-b9-gate.json`.
+- **This is the LAST Phase-3 gate record. Phase 3 is COMPLETE.**
+  Phase-4 planning reads `context/phase4/inbound-ledger.md`.
