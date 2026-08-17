@@ -380,6 +380,28 @@ these. (Root cause of parity findings P1, P2, P6 and half the watchlist.)
   pass (`b8-reviewA-resolution.md` SEM-F2/F3/F6 + ripples: storage `_read_file`, config
   `_read_raw` probe+read, `load_bridge` probe+read, `_read_browser_tokens` probe+read,
   `MeCache.get` decode, `export_bridge` unwrap; threshold 3).
+- R11.9 Pydantic-lax datetime twins for credential-file datetimes: every TS read path
+  whose Python twin parses an on-disk datetime through a pydantic model (LAX mode)
+  routes the ONE shared `coerceLaxExpiresAt`
+  (`packages/node/src/auth/pydantic-datetime.ts`) — numeric epochs (seconds, or
+  MILLISECONDS when `|v| > 20_000_000_000`, the speedate watershed), numeric-STRING
+  epochs under the `[+-]?(\d+(\.\d*)?|\.\d+)` grammar, fraction→microseconds, valid
+  range year 1–9999; probe table locked in
+  `packages/node/test/pydantic-datetime.test.ts`. Read paths whose Python twin is
+  STRICT (`_read_browser_tokens` requires `isinstance(str)`) stay strict — mirror
+  per-path, never blanket-lax. Every TS WRITER of a credential-file datetime
+  re-renders the stored ISO text through the writer's Python twin formatter instead
+  of echoing it: `datetime.isoformat()` sites (`tokens.json` payload, legacy
+  `tokens_{region}.json`) via `pythonIsoformatDatetimeText` (`+00:00`),
+  pydantic-JSON-mode sites (bridge `_serialize_bridge`, `client_{region}.json`
+  `model_dump(mode="json")`) via `pydanticJsonDatetimeText` (`Z`); byte-parity
+  goldens probed in `b8-reviewB-resolution.md`. Filed per R10.4 at the B8 pair-B
+  arbiter — the pattern recurred 8× in one pass (pair-B e2e F1/F2 + ripples:
+  resolver read, bridge tokens parse, `TokenStore.readTokens`, `loadTokens`,
+  `loadClientInfo.created_at`, `serializeBridge`, `tokenPayloadBytes`,
+  `saveTokens`/`saveClientInfo`; threshold 3). Binds B9's browser
+  `CredentialStore` datetime handling too (a browser-home twin of the helper —
+  core stays FS-free).
 
 ---
 

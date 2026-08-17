@@ -965,20 +965,45 @@ injected interfaces that B8 implements).
 
 14. **`\d`-gate ASCII narrowing: pydantic/CPython `\d` matches Unicode Nd digits,
     JS `/^\d+$/` matches ASCII only** (B8 pair-A arbiter class disclosure SEM-F5,
-    `b8-reviewA-resolution.md`, 2026-08-16). Every ported `^\d+$` / `str.isdigit()`
-    GATE site (B7 `resolver.py:207` twin; B8 `bridge.py` `project` field at
-    `bridge.ts` `parseBridgeFile` + `validatedProject`) accepts Nd digits in Python
-    (arbiter probe: pydantic `BridgeFile(project="٤٢")` ACCEPTED; CPython
-    `re.fullmatch(r'^\d+$', "٤٢")` matches) but rejects them in TS. Sanctioned as a
-    disclosed CLASS: the B8 packet caution #1 (two-parser rule) MANDATES the literal
-    `/^\d+$/` spelling at gate sites — behavioral alignment would contradict the
-    packet, and an Nd-digit project id is not producible by any real Mixpanel
-    surface (ids are ASCII-numeric on the wire). Every affected input is REJECTED
-    (coded error) on the TS side, never wrongly accepted. Fuzz domains for
-    gate-site inputs stay ASCII-digit (documented omission — pair-B's Nd probes
+    `b8-reviewA-resolution.md`, 2026-08-16; **example list corrected by the pair-B
+    arbiter**, `b8-reviewB-resolution.md` F4, 2026-08-16). The affected gate sites
+    are the **B8 `bridge.py` `project`-field twins ONLY** (`bridge.ts`
+    `parseBridgeFile` + `validatedProject`, the packet-mandated literal `/^\d+$/`):
+    Python accepts Nd digits there (arbiter probe: pydantic
+    `BridgeFile(project="٤٢")` ACCEPTED; CPython `re.fullmatch(r'^\d+$', "٤٢")`
+    matches) while TS rejects them. **The originally-listed "B7 `resolver.py:207`
+    twin" does NOT belong in this class**: the shipped TS resolver env-project gate
+    is `/^\p{Nd}+$/u` (`resolver.ts:364`, per B7 packet Caution #4 — `str.isdigit()`
+    ports as Nd) and BOTH implementations accept `MP_PROJECT_ID="٤٢"` end-to-end
+    (pair-B e2e R2I, live-verified). Do NOT "align" the resolver gate to ASCII —
+    that would CREATE a real divergence; its only residue is the message-only
+    Numeric_Type=Digit corner already ruled at B7-ARB-A R1. Sanctioned as a
+    disclosed CLASS at the bridge sites: the B8 packet caution #1 (two-parser rule)
+    MANDATES the literal `/^\d+$/` spelling there — behavioral alignment would
+    contradict the packet, and an Nd-digit project id is not producible by any real
+    Mixpanel surface (ids are ASCII-numeric on the wire). Every affected input is
+    REJECTED (coded error) on the TS side, never wrongly accepted. Fuzz domains for
+    bridge-gate inputs stay ASCII-digit (documented omission — pair-B's Nd probes
     land as expected-rejection rows). Re-examine only if a live bridge/config
     artifact with Nd-digit ids is ever observed (Phase-4 burn-in) or if a future
     corpus vector locks Nd acceptance.
+
+15. **Default config path captured at module import in Python, at
+    `ConfigManager` construction in TS** (B8 pair-B arbiter blessing of e2e
+    finding F3, `b8-reviewB-resolution.md`, 2026-08-16). Python evaluates
+    `_DEFAULT_CONFIG_PATH = Path.home() / ".mp" / "config.toml"` ONCE at import
+    (`config.py:59`); the TS twin resolves `homedir()` per construction
+    (`config.ts` `defaultConfigPath`). Divergent only when `HOME` changes
+    mid-process with `MP_CONFIG_PATH` unset: Python keeps the import-time home
+    (observed live — the pair-B round-1 Python driver kept writing the first
+    scenario's config across fresh `HOME`s), TS follows the new one. Sanctioned
+    call-time deviation per R10.7's disclose option: Python's own bridge search
+    paths and storage roots are already call-time (the config default is the
+    lone import-frozen path), matching an import-time freeze in ESM would pin
+    module-evaluation-order trivia, and no real workflow depends on the frozen
+    quirk. Disclosure comment at the `config.ts` `defaultConfigPath` JSDoc.
+    Re-examine only if a Phase-4 scenario is found that depends on the frozen
+    import-time path.
 
 ### Escalations
 
