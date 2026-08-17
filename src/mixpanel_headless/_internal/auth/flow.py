@@ -619,11 +619,18 @@ class OAuthFlow:
         except (KeyError, TypeError, ValueError) as exc:
             # Redact token-bearing values before embedding: `data` is a live
             # (if malformed) token payload — see the Security section of this
-            # docstring.
-            redacted = {
-                k: ("<redacted>" if k in _TOKEN_BEARING_KEYS else v)
-                for k, v in data.items()
-            }
+            # docstring. `response.json()` can yield any JSON value despite
+            # the dict annotation, so guard the `.items()` walk (mirrors the
+            # TS twin's `isPlainRecord` branch in oauth-http.ts); a non-dict
+            # body has no token-bearing keys, so it renders as-is (ARB-A F1).
+            redacted = (
+                {
+                    k: ("<redacted>" if k in _TOKEN_BEARING_KEYS else v)
+                    for k, v in data.items()
+                }
+                if isinstance(data, dict)
+                else data
+            )
             raise OAuthError(
                 f"{operation} response missing required fields: {exc}",
                 code=error_code,

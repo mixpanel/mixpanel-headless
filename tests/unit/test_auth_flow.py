@@ -14,6 +14,7 @@ Verifies:
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -589,6 +590,88 @@ class TestTokenPayloadRedaction:
         assert "projects analysis" in response_data
         assert "Bearer" in response_data
         assert "weird-idp-extra" in response_data
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param([1, 2], id="list"),
+            pytest.param("hello", id="str"),
+            pytest.param(42, id="int"),
+            pytest.param(None, id="null"),
+        ],
+    )
+    def test_exchange_non_dict_200_body_raises_oauth_error(
+        self, tmp_path: Path, body: object
+    ) -> None:
+        """Non-dict 200 JSON token bodies raise OAuthError, never AttributeError.
+
+        ARB-A F1 (pair-A fidelity review, major): the bug-(d) redaction fix
+        iterated ``data.items()`` without guarding for non-dict JSON bodies,
+        so a misbehaving IdP returning ``[1, 2]`` / ``"hello"`` / ``42`` /
+        ``null`` with HTTP 200 crashed with an uncoded AttributeError instead
+        of the pre-fix OAuthError. The guard must mirror the TS twin's
+        ``isPlainRecord`` branch (oauth-http.ts): OAuthError with the stable
+        code and ``details["response_data"] == str(body)`` (a non-dict body
+        has no token-bearing keys, so it renders unredacted).
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+            body: The non-dict JSON value the mock token endpoint returns.
+        """
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=json.dumps(body).encode("utf-8"),
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        assert exc.details["response_data"] == str(body)
+
+    def test_refresh_non_dict_200_body_raises_oauth_error(self, tmp_path: Path) -> None:
+        """Refresh path (shared helper): non-dict 200 body stays OAuthError.
+
+        Same ARB-A F1 guard exercised through ``refresh_tokens`` so the
+        shared ``_post_token_request`` edge is locked on the refresh
+        error code too (and is corpus-recordable at the next re-pin event,
+        matching the recorded dict-body redaction vector).
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+        """
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=b"[1, 2]",
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        tokens = OAuthTokens(
+            access_token=SecretStr("old-access"),
+            refresh_token=SecretStr("old-refresh"),
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scope="projects",
+            token_type="Bearer",
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.refresh_tokens(tokens=tokens, client_id="cid")
+        exc = exc_info.value
+        assert exc.code == "OAUTH_REFRESH_ERROR"
+        assert exc.details["response_data"] == "[1, 2]"
 
     def test_success_path_unchanged(self, tmp_path: Path) -> None:
         """A well-formed token response still parses into OAuthTokens."""
