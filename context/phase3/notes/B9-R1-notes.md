@@ -140,3 +140,19 @@ fable ≤ high handled the full shard in one pass; the only mid-flight correctio
 `maybeScopedPath` twin — test fixed to match Python, not the impl), (b) esbuild multi-entry
 needing `outdir` with `write:false`, (c) fast-check v4 renaming `fullUnicodeString`
 (harness-only). No STOP conditions fired; no core edits beyond the two enumerated touches.
+
+## B9-ARB-A addendum (pair-A arbiter, 2026-08-16 — `b9-reviewA-resolution.md`)
+
+SEM-F1 APPLIED (red-first): the `staticTokenFromAccount` refusal arms in
+`packages/browser/src/client.ts` now carry the Python twin's code + details —
+`OAUTH_TOKEN_ERROR` with `{account_name, env_var}` for the `token_env` arm
+(`token_resolver.py:273-282`) and `{account_name}` for the model-invariant
+neither-field arm (`:267-272`), replacing the shipped
+`OAUTH_CONFIG_ERROR {field: "token_env"}`. Message text stays
+browser-explanatory (R9.4 narrowing; out of contract per R5.4). Two new
+Layer-3 rows in `oauth-token-mode.test.ts` lock both arms (details asserted;
+zero network captures). Ripple into this notes file's RUN record: the leg-1
+edge-set line "token_env-in-browser `OAUTH_CONFIG_ERROR`" is superseded —
+`throwaway/b9-r1/edges.ts` expectation updated to `OAUTH_TOKEN_ERROR` with an
+inline arbiter cite; harness re-run post-change: **32 checks, 0 failures**
+(`npx vite-node throwaway/b9-r1/edges.ts`, same command as the RUN record).

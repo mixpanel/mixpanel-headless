@@ -1042,3 +1042,13 @@ on the D2-ACCEPTED branch — burn-in e2e remains the precondition. Free
 signal recorded: the DCR endpoint answered a third-party `Origin` with
 `access-control-allow-origin: *` (adjacent-favorable, NOT evidence about
 `token/`). Regional posture (eu/in) assumed uniform — us only was probed.
+
+**§9 erratum (B9-ARB-A, 2026-08-16 — `b9-reviewA-resolution.md` ASR-F1)**: in
+the docs-facing wording above, "end-to-end browser consent/exchange verified
+in Phase-4 live burn-in" is corrected to "…consent/exchange **to be verified**
+in Phase-4 live burn-in" at both landed sites (`packages/browser/README.md`,
+`redirect-flow.ts` module JSDoc). The original phrasing grammatically parsed
+as a completed-verification claim, contradicting the §4.5 letter ("The docs
+never claim e2e verification under any outcome of this spike"); intent
+(future verification) is unchanged. The gate consumes the corrected wording;
+do not restore the §4.3-row spelling verbatim.
