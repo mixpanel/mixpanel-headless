@@ -91,6 +91,18 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
         The extracted message, or ``default`` when the body is missing,
         blank, or has no ``error`` key. Non-string ``error`` values (lists,
         nested objects) are stringified rather than returned as-is.
+
+    Example:
+        ```python
+        _error_message({"error": "Invalid project"}, "Request failed")
+        # "Invalid project"
+        _error_message({"error": ["bad steps", "bad dates"]}, "Request failed")
+        # "['bad steps', 'bad dates']"
+        _error_message("   ", "Request failed")
+        # "Request failed"  (blank text falls back to the default)
+        _error_message(None, "Request failed")
+        # "Request failed"
+        ```
     """
     if isinstance(response_body, dict):
         raw = response_body.get("error")
