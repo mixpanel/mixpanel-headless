@@ -226,3 +226,75 @@ short-circuits the recipe's corpus step — the corpus was therefore run manuall
 separately after the conformance short-circuit: GREEN (sdist + wheel built).
 FIX-2 adds ZERO new gate failures; everything red is the known FIX-1 re-pin debt
 owned by the RE-PIN task.
+
+---
+
+# RE-PIN notes (the single corpus re-pin event for the four-bug batch)
+
+Task: REPIN (inbound-ledger row 2 choreography / playbook P3-7 trigger 3), same branch.
+Status: IN PROGRESS — sections filled as steps complete.
+
+## Step 1 — re-record
+
+Command (record README D3 form, via `just conformance-record`):
+`env -u FORCE_COLOR -u COLORTERM just conformance-record --mp-record-date=2026-08-16 --mp-record-commit=700db996cc952e02aa5a23db1f3c68a3e7251b5b`
+New pin = `700db99` (`700db996cc952e02aa5a23db1f3c68a3e7251b5b`) — the branch HEAD carrying
+FIX-1 (bddc576) + FIX-2 (57c5e16) + their notes commits; stamps injected, never wall-clock.
+Record run: `[mp-record] wrote 3042 vectors in 157 bundles` (7,157 passed, 1 skipped,
+556 deselected). Recorded total 3,031 → 3,042.
+
+## Step 2 — D8/D9 drift accounting (CLEAN, every changed file accounted)
+
+Mechanical per-vector accounting (script diffed each changed bundle against `HEAD`,
+bucketing stamp-only vs modified/added/removed vector ids against the FIX-1/FIX-2
+20-vector inventory): 158 changed files =
+- **150 bundles stamp-only** (`$bundle.source_commit` line only);
+- **manifest.json** (stamps + the deltas below);
+- **7 bundles with vector content changes**, containing EXACTLY the disclosed
+  **20 MODIFIED** vectors (13 bug-(a) + 7 bug-(b), the FIX-1 inventory verbatim — all
+  20 matched, none missing) plus **11 ADDED** vectors, each traced to a new test from
+  the batch:
+  - bug (a) +1: `filters/bookmark_builders.build_frequency_filter_entry/...-test_no_custom_property_nesting` (FIX-1 new test);
+  - bug (b) +0 (its new tests recorded into existing modified vectors);
+  - bug (c) +9: `replays/api_client.sign_replays/...-testsensitivedata403bodyshapes-*` (falsy 0/false/null, truthy 42/1.5/true, list-exact, list-substring, string-body);
+  - bug (d) +1: `auth/oauth_flow.refresh_tokens/...-testtokenpayloadredaction-test_refresh_missing_fields_error_redacts_token_material`.
+- **0 REMOVED, 0 UNEXPLAINED.**
+
+Manifest deltas beyond stamps (all traced): by_capability auth 39→40, filters 190→191,
+replays 94→103; by_kind builder 1768→1769, wire 1198→1208; total 3,031→3,042;
+`raw_transport_no_entrypoint` 34→37 — the three new exclusions are
+`TestTokenPayloadRedaction::{test_exchange_missing_fields_error_redacts_token_material,
+test_non_secret_fields_stay_visible, test_success_path_unchanged}` (exchange path has no
+recordable entrypoint, matching the standing `TestOAuthFlowTokenExchange` exclusions).
+
+## Step 3 — P3-0 vector-count re-measurement
+
+Full-corpus per-prefix measurement (P3-0 command form over `conformance/vectors`):
+total **3,262** = 3,251 + Δ11. Per-bug Δ: (a) +1, (b) +0, (c) +9, (d) +1.
+Prefix deltas EXACTLY: `bookmark_builders` 134→135, `api_client` 810→819,
+`oauth_flow` 7→8 (old values re-measured from HEAD-committed vectors, not assumed);
+every other prefix unchanged. Playbook P3-0 updated with the re-pin bullet
+(`70c904d` → `700db99`).
+
+## Step 4 — Python conformance runner @ new pin
+
+`env -u FORCE_COLOR -u COLORTERM uv run python -m conformance.runner --vectors conformance/vectors --report json`
+→ exit 0, **total 3,262 / passed 3,262 / failed 0** (N/0/0).
+
+## Step 5 — referee (b) FULLY CLEAN (the 2 deep REJECTs retire)
+
+- Handoff regenerated: 314 entries (live re-execution under replay clock, zero drift
+  aborts — the re-recorded vectors match live rebuild).
+- Selftests first, both oracles: `status: ok` (structural 3/3, deep 4/4 controls).
+- Structural batch: **314/314 ACCEPT, 0 REJECT**, exit 0 (dialects unchanged:
+  251 modern-nested / 47 legacy-flat / 16 neutral).
+- Deep batch: **125 ACCEPT / 0 REJECT / 189 SKIP_NON_INSIGHTS**, exit 0 — the 2
+  standing frequency-filter deep REJECTs
+  (`testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section` /
+  `…-test_frequency_filter_mixed_with_filter`) are RETIRED.
+- Standing-disclosure pin removed: referee README "Batch results" section rewritten
+  (no expected-REJECT set remains on the Python side; any future REJECT = new finding).
+  No code-level allowlist existed on the Python side (verified by grep).
+- `/Users/jaredmcfarland/Developer/analytics` used READ-ONLY (PYTHONPATH recipes only).
+- NOT in scope here: the ajv referee (a) pinned dataGroupId REJECT set lives in the TS
+  repo and retires with the TS follow-up task (R10.7 flip discipline).

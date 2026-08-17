@@ -145,46 +145,31 @@ sorted; verified deterministic by back-to-back batch runs (reports
 byte-identical modulo `runtime_seconds`). Verdict semantics are
 unchanged (D15b comparison stays verdict-level, never message equality).
 
-## Batch results — 2026-08-15 (AD-8 refresh; corpus @ source commit d562756, AD-6 re-extraction)
+## Batch results — 2026-08-16 (R10.7 four-bug batch RE-PIN; corpus @ source commit 700db99)
 
 **Structural (gate criterion): 314/314 ACCEPT, 0 REJECT — PASS.**
-Breakdown: 251 modern-nested, 47 legacy-flat (flows), 16 neutral; all via
+Breakdown unchanged from prior runs (251 modern-nested, 47 legacy-flat
+(flows), 16 neutral): all corpus payloads route via
 `common/schema/bookmark.json` (no legacy-dialect funnel payloads exist in
 the corpus, so the funnels schema never fired on corpus payloads — it is
 exercised by the selftest control only). Selftest controls re-passed for
 both oracles before the batches (3/3 structural, 4/4 deep).
 
-**Deep: 123 ACCEPT, 2 REJECT, 189 SKIP_NON_INSIGHTS** (125 insights
-entries validated). **The 2 REJECTs are a REAL, OPEN finding (escalated,
-not papered over):**
-
-- `bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section`
-- `bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_mixed_with_filter`
-
-Both (R11-normalized): `required key not provided @
-data['sections']['filter'][N]['filterOperator']; required key not
-provided @ data['sections']['filter'][N]['filterType']`.
-Triage: `build_frequency_filter_entry`
-(`src/mixpanel_headless/_internal/bookmark_builders.py:784`) emits
-`{"behaviorType": "$frequency", "customProperty": {"behavior": {...}},
-"resourceType": "people"}` in `sections.filter[]`. The deep validator
-requires `filterType` + `filterOperator` on every filter clause
-(`bookmark_parser/insights/validate.py:251`, `required=True`), and
-analytics' own insights-API fixtures
-(`api/version_2_0/insights/test.py:4111`) shape the native frequency
-filter clause differently: top-level `filterType`/`filterOperator`/
-`filterValue` with the `$frequency` marker nested under
-`behavior.behaviorType` — not the library's `customProperty`-nested form.
-**Settled by the GATE-VERDICT R7 live probe (2026-08-15,
-`context/phase1/addendum/frequency-filter-probe.md`): the live query
-engine REJECTS the library's shape (HTTP 500 on an otherwise-identical
-query that succeeds without the clause).** The deep validator is not
-stale — these 2 REJECTs are true positives. Filed per R10.7 as
+**Deep: 125 ACCEPT, 0 REJECT, 189 SKIP_NON_INSIGHTS — FULLY CLEAN
+(exit 0).** The 2 standing frequency-filter deep REJECTs
+(`bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section`
+and `…-test_frequency_filter_mixed_with_filter`) — true positives
+disclosed since Phase 1, settled by the GATE-VERDICT R7 live probe
+(`context/phase1/addendum/frequency-filter-probe.md`) and filed per R10.7
+as
 `context/phase1/bug-reports/mixpanel-headless-frequency-filter-clause-shape.md`
-(fix in Python first, regenerate vectors, then port); until that cycle
-lands, the TS port keeps replicating the library's shape byte-for-byte
-(bug-compatibility rule R2.x) and these 2 REJECTs remain
-expected-and-disclosed (exit 1 by design).
+— are RETIRED: the Python fix (`ts-port/python-bugfix-batch` FIX-1,
+`build_frequency_filter_entry` now emits the platform-native top-level
+`filterType`/`filterOperator`/`filterValue` clause with `$frequency`
+under `behavior.behaviorType`) landed, the corpus was re-extracted at
+pin `700db99`, and both payloads now ACCEPT. There is no standing
+expected-REJECT set on either oracle; any REJECT on a future run is a
+NEW finding — escalate, never paper over.
 
 ## Caveat — structural ACCEPT is near-vacuous for modern-dialect payloads (gate-verdict R6)
 

@@ -2525,7 +2525,7 @@
       "verdict": "ACCEPT"
     }
   ],
-  "runtime_seconds": 0.935,
+  "runtime_seconds": 0.879,
   "skipped": 0,
   "status": "ok",
   "total": 314
