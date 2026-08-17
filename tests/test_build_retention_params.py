@@ -445,11 +445,13 @@ class TestDataGroupIdRetention:
     """Tests for data_group_id parameter on retention query engine (T032)."""
 
     def test_build_retention_params_with_data_group_id(self, ws: Workspace) -> None:
-        """build_retention_params with data_group_id=5 includes dataGroupId: 5 in sections."""
+        """build_retention_params with data_group_id=5 includes globalDataGroupId: "5"."""
         result = ws.build_retention_params("Signup", "Login", data_group_id=5)
-        assert result["sections"]["dataGroupId"] == 5
+        assert result["sections"]["globalDataGroupId"] == "5"
+        assert "dataGroupId" not in result["sections"]
 
     def test_build_retention_params_without_data_group_id(self, ws: Workspace) -> None:
-        """build_retention_params without data_group_id omits dataGroupId key (backward compat)."""
+        """build_retention_params without data_group_id omits the key (backward compat)."""
         result = ws.build_retention_params("Signup", "Login")
+        assert "globalDataGroupId" not in result["sections"]
         assert "dataGroupId" not in result["sections"]

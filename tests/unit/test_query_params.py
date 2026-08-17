@@ -1610,7 +1610,7 @@ class TestFrequencyFilterInBuildParams:
         filt = params["sections"]["filter"]
         assert len(filt) == 1
         assert filt[0]["resourceType"] == "people"
-        assert filt[0]["behaviorType"] == "$frequency"
+        assert filt[0]["behavior"]["behaviorType"] == "$frequency"
 
     def test_frequency_filter_mixed_with_filter(self, ws: Workspace) -> None:
         """build_params with mixed Filter and FrequencyFilter in list."""
@@ -1626,7 +1626,7 @@ class TestFrequencyFilterInBuildParams:
         filt = params["sections"]["filter"]
         assert len(filt) == 2
         assert filt[0]["value"] == "country"
-        assert filt[1]["behaviorType"] == "$frequency"
+        assert filt[1]["behavior"]["behaviorType"] == "$frequency"
 
     def test_existing_filter_still_works(self, ws: Workspace) -> None:
         """Backward compat: existing Filter usage still works."""
@@ -1648,13 +1648,16 @@ class TestDataGroupIdInsights:
     """Tests for data_group_id parameter on insights query engine (T032)."""
 
     def test_build_params_with_data_group_id(self, ws: Workspace) -> None:
-        """build_params with data_group_id=5 includes dataGroupId: 5 in output."""
+        """build_params with data_group_id=5 includes globalDataGroupId: "5" in sections."""
         params = ws.build_params("Login", data_group_id=5)
-        assert params["sections"]["dataGroupId"] == 5
+        assert params["sections"]["globalDataGroupId"] == "5"
+        # The old off-contract sections-level spelling must not appear (bug (b)).
+        assert "dataGroupId" not in params["sections"]
 
     def test_build_params_without_data_group_id(self, ws: Workspace) -> None:
-        """build_params without data_group_id omits dataGroupId key (backward compat)."""
+        """build_params without data_group_id omits the key (backward compat)."""
         params = ws.build_params("Login")
+        assert "globalDataGroupId" not in params["sections"]
         assert "dataGroupId" not in params["sections"]
 
     def test_build_query_params_with_data_group_id(self, ws: Workspace) -> None:
@@ -1676,7 +1679,8 @@ class TestDataGroupIdInsights:
             mode="timeseries",
             data_group_id=3,
         )
-        assert params["sections"]["dataGroupId"] == 3
+        assert params["sections"]["globalDataGroupId"] == "3"
+        assert "dataGroupId" not in params["sections"]
 
     def test_build_query_params_default_data_group_id_none(self, ws: Workspace) -> None:
         """_build_query_params without data_group_id defaults to None."""
@@ -1696,4 +1700,5 @@ class TestDataGroupIdInsights:
             cumulative=False,
             mode="timeseries",
         )
+        assert "globalDataGroupId" not in params["sections"]
         assert "dataGroupId" not in params["sections"]
