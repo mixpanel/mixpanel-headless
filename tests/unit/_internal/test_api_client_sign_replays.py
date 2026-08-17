@@ -199,6 +199,120 @@ class TestSensitiveDataMapping:
 
 
 # =============================================================================
+# 403 body-shape robustness (bug (c): TypeError on truthy non-dict/non-str JSON)
+# =============================================================================
+
+
+class TestSensitiveData403BodyShapes:
+    """403 sniff handles every JSON body shape without crashing.
+
+    Fix-of-record: context/phase3/bug-reports/python-handle-response-403-typeerror.md.
+    The sniff must apply uniform substring semantics across dict, list, string,
+    and scalar bodies — never raising an uncoded ``TypeError``.
+    """
+
+    @pytest.mark.parametrize("body", [42, 1.5, True])
+    def test_403_truthy_scalar_body_raises_query_error(
+        self, us_credentials: Session, body: object
+    ) -> None:
+        """A truthy non-dict/non-str JSON body (42/1.5/true) → QueryError, not TypeError."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Mock HTTP handler returning a canned httpx.Response for this test."""
+            return httpx.Response(403, json=body)
+
+        with (
+            _client(us_credentials, handler) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.sign_replays(["r-1"], env="prod")
+
+        assert not isinstance(exc_info.value, SessionReplayAccessError)
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.parametrize("content", [b"0", b"false", b"null"])
+    def test_403_falsy_scalar_body_raises_query_error(
+        self, us_credentials: Session, content: bytes
+    ) -> None:
+        """Falsy scalar bodies (0/false/null) keep the plain QueryError path."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Mock HTTP handler returning a canned httpx.Response for this test."""
+            return httpx.Response(
+                403,
+                content=content,
+                headers={"content-type": "application/json"},
+            )
+
+        with (
+            _client(us_credentials, handler) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.sign_replays(["r-1"], env="prod")
+
+        assert not isinstance(exc_info.value, SessionReplayAccessError)
+        assert exc_info.value.status_code == 403
+
+    def test_403_list_exact_element_flag_raises_replay_access_error(
+        self, us_credentials: Session
+    ) -> None:
+        """List body with the flag as an exact element → SessionReplayAccessError."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Mock HTTP handler returning a canned httpx.Response for this test."""
+            return httpx.Response(403, json=["SESSION_RECORDING_SENSITIVE_DATA"])
+
+        with (
+            _client(us_credentials, handler) as client,
+            pytest.raises(SessionReplayAccessError) as exc_info,
+        ):
+            client.sign_replays(["r-1"], env="prod")
+
+        assert exc_info.value.details["flag"] == "SESSION_RECORDING_SENSITIVE_DATA"
+
+    def test_403_list_substring_flag_raises_replay_access_error(
+        self, us_credentials: Session
+    ) -> None:
+        """List body with the flag as a SUBSTRING of an element also matches.
+
+        Uniform substring semantics: serialized-list sniffing must behave the
+        same as dict and string bodies (the pre-fix code used Python list
+        element-membership here and missed substring occurrences).
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Mock HTTP handler returning a canned httpx.Response for this test."""
+            return httpx.Response(
+                403, json=["error: SESSION_RECORDING_SENSITIVE_DATA is set"]
+            )
+
+        with (
+            _client(us_credentials, handler) as client,
+            pytest.raises(SessionReplayAccessError) as exc_info,
+        ):
+            client.sign_replays(["r-1"], env="prod")
+
+        assert exc_info.value.details["flag"] == "SESSION_RECORDING_SENSITIVE_DATA"
+
+    def test_403_string_body_with_flag_raises_replay_access_error(
+        self, us_credentials: Session
+    ) -> None:
+        """JSON string body containing the flag → SessionReplayAccessError."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Mock HTTP handler returning a canned httpx.Response for this test."""
+            return httpx.Response(403, json="SESSION_RECORDING_SENSITIVE_DATA denied")
+
+        with (
+            _client(us_credentials, handler) as client,
+            pytest.raises(SessionReplayAccessError) as exc_info,
+        ):
+            client.sign_replays(["r-1"], env="prod")
+
+        assert exc_info.value.status_code == 403
+
+
+# =============================================================================
 # Pass-through for other HTTP errors
 # =============================================================================
 

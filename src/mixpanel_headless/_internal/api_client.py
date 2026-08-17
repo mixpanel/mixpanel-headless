@@ -574,10 +574,15 @@ class MixpanelAPIClient:
             # means the project's sensitive-data flag is set and the caller lacks
             # the `sensitive_data_replay` permission. Map to SessionReplayAccessError
             # so callers can branch on it instead of pattern-matching the message.
+            # `response.json()` can yield ANY JSON value (dict, list, str,
+            # number, bool, null) — serialize every non-str body so the
+            # substring sniff below is uniform across shapes and can never
+            # raise TypeError on a scalar body (see
+            # context/phase3/bug-reports/python-handle-response-403-typeerror.md).
             body_text = (
-                json.dumps(response_body)
-                if isinstance(response_body, dict)
-                else (response_body or "")
+                response_body
+                if isinstance(response_body, str)
+                else ("" if response_body is None else json.dumps(response_body))
             )
             if "SESSION_RECORDING_SENSITIVE_DATA" in body_text:
                 project_id_int = int(self._session.project.id)

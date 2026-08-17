@@ -47,6 +47,13 @@ from mixpanel_headless._internal.auth.storage import OAuthStorage
 from mixpanel_headless._internal.auth.token import OAuthTokens
 from mixpanel_headless.exceptions import OAuthError
 
+# Token-endpoint response keys whose values are live credential material.
+# Redacted from OAuthError details when a malformed 200 payload fails
+# OAuthTokens.from_token_response — see _post_token_request's Security note.
+_TOKEN_BEARING_KEYS: frozenset[str] = frozenset(
+    {"access_token", "refresh_token", "id_token"}
+)
+
 
 def _parse_pasted_redirect(line: str, *, expected_state: str) -> CallbackResult:
     """Parse a pasted OAuth redirect URL or query string into a CallbackResult.
@@ -527,6 +534,19 @@ class OAuthFlow:
                 response with ``error=invalid_grant`` is mapped to
                 ``OAUTH_REFRESH_REVOKED`` so callers can give the user
                 the precise "re-run login" recovery hint.
+
+        Security:
+            When a 200 response parses as JSON but fails
+            ``OAuthTokens.from_token_response`` (malformed IdP payload),
+            the raised error's ``details["response_data"]`` REDACTS the
+            values of token-bearing keys (``access_token``,
+            ``refresh_token``, ``id_token``) and keeps only field names
+            and non-secret values. The payload may contain live bearer /
+            refresh material that never passes through ``Secret``, so
+            embedding it verbatim would exfiltrate credentials into any
+            consumer that serializes error details (logging, telemetry,
+            browser error reporters). See
+            context/phase3/bug-reports/python-oauth-error-details-token-payload.md.
         """
         token_url = f"{self._base_url}token/"
 
@@ -597,10 +617,17 @@ class OAuthFlow:
         try:
             return OAuthTokens.from_token_response(data)
         except (KeyError, TypeError, ValueError) as exc:
+            # Redact token-bearing values before embedding: `data` is a live
+            # (if malformed) token payload — see the Security section of this
+            # docstring.
+            redacted = {
+                k: ("<redacted>" if k in _TOKEN_BEARING_KEYS else v)
+                for k, v in data.items()
+            }
             raise OAuthError(
                 f"{operation} response missing required fields: {exc}",
                 code=error_code,
-                details={"response_data": str(data)},
+                details={"response_data": str(redacted)},
             ) from exc
 
     def _build_authorize_url(

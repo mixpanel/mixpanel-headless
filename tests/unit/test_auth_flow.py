@@ -487,6 +487,121 @@ class TestOAuthFlowTokenExchange:
         assert exc_info.value.code == "OAUTH_TOKEN_ERROR"
 
 
+class TestTokenPayloadRedaction:
+    """Malformed-200 token responses must not leak token material into error details.
+
+    Fix-of-record: context/phase3/bug-reports/python-oauth-error-details-token-payload.md.
+    When a 200 response parses as JSON but fails ``OAuthTokens.from_token_response``,
+    the raised OAuthError's ``details["response_data"]`` must redact
+    ``access_token`` / ``refresh_token`` / ``id_token`` values while keeping the
+    field names (and non-secret values) for diagnosis. Error codes stay stable.
+    """
+
+    def _flow(self, tmp_path: Path, payload: dict[str, object]) -> OAuthFlow:
+        """Build an OAuthFlow whose token endpoint returns ``payload`` with 200.
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+            payload: JSON body the mock token endpoint returns.
+
+        Returns:
+            OAuthFlow wired to a MockTransport returning the canned payload.
+        """
+        transport = httpx.MockTransport(lambda _req: httpx.Response(200, json=payload))
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        return OAuthFlow(region="us", storage=storage, http_client=http_client)
+
+    def test_exchange_missing_fields_error_redacts_token_material(
+        self, tmp_path: Path
+    ) -> None:
+        """Exchange path: secrets never appear anywhere in the OAuthError."""
+        flow = self._flow(
+            tmp_path,
+            {"access_token": "SECRET_AT", "refresh_token": "SECRET_RT"},
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_AT" not in serialized
+        assert "SECRET_RT" not in serialized
+        # Field names stay visible for diagnosis.
+        assert "access_token" in str(exc.details["response_data"])
+        assert "refresh_token" in str(exc.details["response_data"])
+        assert "<redacted>" in str(exc.details["response_data"])
+
+    def test_refresh_missing_fields_error_redacts_token_material(
+        self, tmp_path: Path
+    ) -> None:
+        """Refresh path (shared helper): same redaction, code stays OAUTH_REFRESH_ERROR."""
+        flow = self._flow(
+            tmp_path,
+            {
+                "access_token": "SECRET_AT",
+                "refresh_token": "SECRET_RT",
+                "id_token": "SECRET_ID",
+            },
+        )
+        tokens = OAuthTokens(
+            access_token=SecretStr("old-access"),
+            refresh_token=SecretStr("old-refresh"),
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scope="projects",
+            token_type="Bearer",
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.refresh_tokens(tokens=tokens, client_id="cid")
+        exc = exc_info.value
+        assert exc.code == "OAUTH_REFRESH_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_AT" not in serialized
+        assert "SECRET_RT" not in serialized
+        assert "SECRET_ID" not in serialized
+        assert "<redacted>" in str(exc.details["response_data"])
+
+    def test_non_secret_fields_stay_visible(self, tmp_path: Path) -> None:
+        """Non-token fields (scope, token_type, unknown keys) remain readable."""
+        flow = self._flow(
+            tmp_path,
+            {
+                "access_token": "SECRET_AT",
+                "scope": "projects analysis",
+                "token_type": "Bearer",
+                "hint": "weird-idp-extra",
+            },
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        response_data = str(exc_info.value.details["response_data"])
+        assert "SECRET_AT" not in response_data
+        assert "projects analysis" in response_data
+        assert "Bearer" in response_data
+        assert "weird-idp-extra" in response_data
+
+    def test_success_path_unchanged(self, tmp_path: Path) -> None:
+        """A well-formed token response still parses into OAuthTokens."""
+        flow = self._flow(tmp_path, _make_token_response())
+        tokens = flow.exchange_code(
+            code="c",
+            verifier="v",
+            client_id="cid",
+            redirect_uri="http://localhost:19284/callback",
+        )
+        assert tokens.access_token.get_secret_value() == "access-tok-123"
+
+
 class TestOAuthFlowRefresh:
     """Tests for OAuthFlow.refresh_tokens()."""
 
