@@ -1,0 +1,2221 @@
+{
+  "accepted": 125,
+  "caveats": [
+    "deep ACCEPT is necessary-not-sufficient: the voluptuous schema is enum-loose on math via an Any()/ALLOW_EXTRA branch (recon referee-assets.md \u00a72B)",
+    "draft-04 schemas hardcode only 2 levels of filter-group nesting; deeper trees pass unvalidated (D15b)"
+  ],
+  "mode": "batch",
+  "oracle": "deep",
+  "python": "3.14.6",
+  "rejected": 0,
+  "resolved_versions": {
+    "pandas": "3.0.5",
+    "protobuf": "7.35.1",
+    "pytz": "2026.3.post1",
+    "voluptuous": "0.16.0"
+  },
+  "results": [
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/authored-absolute-between",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/authored-from-only-falls-back-to-relative",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/authored-relative-in-the-last",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/test_bookmark_builders-testbuilddaterange-test_absolute_range",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/test_bookmark_builders-testbuilddaterange-test_relative_custom_last",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_date_range/test_bookmark_builders-testbuilddaterange-test_relative_last_n",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/authored-absolute-range",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/authored-from-only-today-fill-record-epoch",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/authored-relative-window",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/authored-relative-window-ignores-to-date",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_absolute_range_from_and_to",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_relative_range_custom_last",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_relative_range_last_n",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_returns_single_element_list-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_returns_single_element_list-2",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "neutral",
+      "error": null,
+      "id": "bookmarks/bookmark_builders.build_time_section/test_bookmark_builders-testbuildtimesection-test_returns_single_element_list-3",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_inline_cohort_filter_entry_has_raw_cohort",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_not_in_cohort_filter_entry_operator",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_not_in_cohort_filter_value_negated",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_saved_cohort_filter_entry_filter_type",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_saved_cohort_filter_entry_filter_value_structure",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_saved_cohort_filter_entry_operator_contains",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_saved_cohort_filter_entry_resource_type",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfilterentrycohort-test_saved_cohort_filter_entry_value_is_cohorts",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfiltersectionmixed-test_mixed_filters_cohort_entry_first",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildfiltersectionmixed-test_mixed_filters_produce_two_entries",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_entry_has_cohorts_key",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_include_negated_false_has_one_entry",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_include_negated_true_has_two_cohort_entries",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_inline_has_raw_cohort",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_produces_group_entry",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_resource_type_events",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectioncohort-test_cohort_breakdown_value_has_names",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectionmixed-test_mixed_breakdown_and_groupby_produces_two_entries",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildgroupsectionmixed-test_mixed_breakdown_and_string_produces_two_entries",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortbreakdown-test_cohort_breakdown_entry_has_cohorts",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortbreakdown-test_cohort_breakdown_populates_group_section",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortfilter-test_cohort_filter_entry_value_is_cohorts",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortfilter-test_cohort_filter_populates_filter_section",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_behavior_dataset",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_behavior_id",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_behavior_name",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_behavior_resource_type",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_behavior_type_is_cohort",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_measurement_math_unique",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_measurement_property_none",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_produces_show_entry",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetric-test_cohort_metric_show_type_is_metric",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_histogram_math_without_per_user_ignored_for_cohort_only",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_math_property_does_not_apply",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_math_total_does_not_override_cohort_math",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_per_user_does_not_apply",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_per_user_incompatible_math_ignored_for_cohort_only",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_percentile_math_without_value_ignored_for_cohort_only",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmathignored-test_property_math_without_property_ignored_for_cohort_only",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmixed-test_mixed_cohort_metric_and_formula",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmixed-test_mixed_cohort_metric_and_metric",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_build_cohort_params-testbuildparamscohortmetricmixed-test_mixed_cohort_metric_and_string",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_builders-testmeasurementpropertybuilder-test_custom_property_ref_in_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_builders-testmeasurementpropertybuilder-test_inline_custom_property_in_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_builders-testmeasurementpropertybuilder-test_plain_string_measurement_unchanged",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_builders-testmeasurementpropertybuilder-test_top_level_math_property_string_unchanged",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testcombinedpositions-test_all_three_positions",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testcombinedpositions-test_ref_in_group_by_and_inline_in_filter",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testfiltercustompropertye2e-test_build_params_with_custom_property_ref_filter",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testfiltercustompropertye2e-test_build_params_with_inline_filter",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testgroupbycustompropertye2e-test_build_params_with_custom_property_ref_group_by",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testgroupbycustompropertye2e-test_build_params_with_inline_group_by",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testmeasurementcustompropertye2e-test_build_params_with_custom_property_ref_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_query-testmeasurementcustompropertye2e-test_build_params_with_inline_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_types-testcustompropertyvalidationcp5-test_formula_at_boundary_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_types-testcustompropertyvalidationvalid-test_valid_inline_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_custom_property_types-testcustompropertyvalidationvalid-test_valid_ref_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_integration-testbuildparamsnoapicall-test_does_not_call_api",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_integration-testbuildparamsnoapicall-test_works_without_credentials",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testbuildparams-test_build_params_accepts_all_query_kwargs",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testbuildparams-test_build_params_output_matches_query_params",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testbuildparams-test_build_params_returns_dict",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testdatagroupidinsights-test_build_params_with_data_group_id",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testdatagroupidinsights-test_build_params_without_data_group_id",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testdatefilterparams-test_date_filter_in_where_clause",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencybreakdowninbuildparams-test_existing_groupby_still_works",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencybreakdowninbuildparams-test_frequency_breakdown_in_group_section",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencybreakdowninbuildparams-test_frequency_breakdown_mixed_with_string",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencybreakdowninbuildparams-test_frequency_breakdown_with_label",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_existing_filter_still_works",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_mixed_with_filter",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testhistogramparams-test_histogram_math_in_bookmark",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testhistogramparams-test_histogram_metric_in_bookmark",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testmultiformulaparams-test_metrics_hidden_with_multiple_formulas",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testmultiformulaparams-test_three_formulas_with_three_events",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testmultiformulaparams-test_two_formulas_produce_two_entries",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_cumulative_unique_in_build_params",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_property_requiring_math_in_build_params-first_value",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_property_requiring_math_in_build_params-most_frequent",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_property_requiring_math_in_build_params-multi_attribution",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_property_requiring_math_in_build_params-numeric_summary",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_property_requiring_math_in_build_params-unique_values",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testnewmathtypesinbuildparams-test_sessions_in_build_params",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_maps_to_custom_percentile",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_metric_percentile_maps_correctly",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_percentile_float_value",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testsegmentmethodinbuildparams-test_segment_method_all_in_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testsegmentmethodinbuildparams-test_segment_method_first_in_measurement",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testsegmentmethodinbuildparams-test_segment_method_none_omits_key",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_params-testsegmentmethodinbuildparams-test_segment_method_string_event_omits_key",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_validation-testhistogramvalidation-test_histogram_with_property_and_per_user_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_query_validation-testpercentilevalidation-test_valid_percentile_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector1metricfiltercpfixed-test_l2_also_catches_invalid_cp_id-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector1metricfiltercpfixed-test_valid_cp_id_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector3inlinecohortdesignchoice-test_inline_cohort_breakdown_passes_validation",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector3inlinecohortdesignchoice-test_raw_cohort_structure_present-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector4warningonlyenumdesignchoice-test_invalid_behavior_type_is_warning_only-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector4warningonlyenumdesignchoice-test_invalid_property_type_is_warning_only-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector4warningonlyenumdesignchoice-test_invalid_resource_type_is_warning_only-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector6emptyformulafixed-test_valid_inline_cp_in_metric_filter_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector7formulashowclausefixed-test_corrupted_behavior_detected_despite_formula_key-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass-testvector7formulashowclausefixed-test_hybrid_formula_behavior_clause_still_validates-1",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass_r2-testr2v3nanfilterfixed-test_finite_value_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_validation_bypass_r2-testr2v4inffilterfixed-test_large_finite_value_passes",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_alone_returns_dict",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_has_show_section",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_in_sequence_with_formula",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_in_sequence_with_metric",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_in_sequence_with_string",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_no_api_call",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_show_behavior_type_cohort",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_with_cohort_breakdown",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_with_group_by_accepted",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "insights",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "bookmarks/workspace.build_params/test_workspace_cohort-testresolveandbuildparamscohortmetric-test_cohort_metric_with_where_accepted",
+      "verdict": "ACCEPT"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testbuildflowcohortfilter-test_flow_cohort_filter_has_filter_by_cohort_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testbuildflowcohortfilter-test_flow_cohort_filter_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testbuildflowcohortfilter-test_flow_cohort_filter_name",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testbuildflowcohortfilter-test_flow_cohort_filter_negated_false",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testbuildflowcohortfilter-test_flow_property_filter_produces_filter_by_event",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testqueryflowcohortfilter-test_flow_params_with_cohort_filter_has_filter_by_cohort",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testqueryflowcohortfilter-test_flow_params_without_where_has_no_filter_by_cohort",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_build_cohort_params-testqueryflowcohortfilter-test_flow_property_filter_produces_filter_by_event",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_validation_bypass_r2-testr2v1flowstepfilterscpfixed-test_valid_cp_in_flow_step_passes",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_cohort_filter_accepted_in_build_flow_params",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_cohort_filter_id_in_flow_params",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_cohort_filter_name_in_flow_params",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_mixed_cohort_and_property_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_no_api_call_for_build_flow_params",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_no_where_produces_no_filter_by_cohort",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_not_in_cohort_filter_negated_true",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_cohort-testqueryflowwhere-test_property_filter_produces_filter_by_event",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testdatagroupidflow-test_build_flow_params_with_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testdatagroupidflow-test_build_flow_params_without_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowexclusions-test_exclusions_multiple_events",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowexclusions-test_exclusions_none_produces_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowexclusions-test_exclusions_single_event",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowpropertyfilters-test_cohort_filter_still_produces_filter_by_cohort",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowpropertyfilters-test_multiple_property_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowpropertyfilters-test_no_where_no_filter_keys",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowpropertyfilters-test_property_filter_produces_filter_by_event",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsegments-test_segments_list_of_groupby",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsegments-test_segments_none_not_in_output",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsegments-test_segments_single_groupby",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsegments-test_segments_string_shorthand",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsessionevent-test_no_session_event_omitted_from_step",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsessionevent-test_session_event_end_in_step_output",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowsessionevent-test_session_event_in_step_output",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowstepdatetimefilters-test_flow_step_datetime_before_filter",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testflowstepdatetimefilters-test_flow_step_relative_date_filter",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepanchorposition-test_anchor_position_default",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_flow_step_explicit_overrides_defaults",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_flow_step_none_inherits_defaults",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_list_of_flow_steps",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_list_of_strings",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_mixed_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_single_flow_step_wrapped",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_single_string_wrapped",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testmultistepnormalization-test_string_steps_get_top_level_defaults",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testperstepdirectionvalidation-test_mixed_step_directions_pass",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testperstepdirectionvalidation-test_per_step_direction_overrides_bypass_fl5",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "legacy-flat",
+      "error": null,
+      "id": "flows/workspace.build_flow_params/test_workspace_flow-testworkspaceflowpublicmethods-test_build_flow_params_returns_dict",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_cohort_params-testbuildfunnelparamscohortbreakdown-test_cohort_breakdown_entry_has_cohorts",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_cohort_params-testbuildfunnelparamscohortbreakdown-test_cohort_breakdown_populates_group_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_cohort_params-testbuildfunnelparamscohortfilter-test_cohort_filter_entry_value_is_cohorts",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_cohort_params-testbuildfunnelparamscohortfilter-test_cohort_filter_populates_filter_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_conversion_window_override",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_conversion_window_unit_hour",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_from_date_to_date_time_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_last_days_time_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_math_property_none_by_default",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_math_property_populates_measurement",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_math_property_with_median",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_math_unique",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_mode_steps_chart_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_mode_table_chart_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_mode_trends_chart_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_multiple_options_combined",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_order_any",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsconfiguration-test_per_step_order_override",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_behavior_names_match_steps",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_behavior_resource_type_is_events",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_behavior_type_is_funnel",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_behaviors_has_two_elements",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_default_chart_type_for_steps_mode",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_default_conversion_window_duration",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_default_conversion_window_unit",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_default_funnel_order",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_default_measurement_math",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_filter_section_is_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_formula_is_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_funnel_step_objects_accepted",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_group_section_is_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_three_step_funnel",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsdefaults-test_time_section_is_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_default_exclusion_no_range_covers_all",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_exclusion_parent_behavior_has_events_resource_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_exclusion_with_step_range",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_no_exclusions_produces_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_string_exclusion_covers_all_steps",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_string_exclusion_has_correct_name",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsexclusions-test_string_exclusion_produces_exclusions",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsglobalfiltergroupby-test_filter_section_entry_has_correct_value",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsglobalfiltergroupby-test_group_by_produces_group_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsglobalfiltergroupby-test_group_section_entry_has_correct_value",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsglobalfiltergroupby-test_where_and_group_by_together",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsglobalfiltergroupby-test_where_produces_filter_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_holding_constant_with_people_resource_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_list_of_holding_constants",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_no_holding_constant_produces_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_string_holding_constant_has_correct_value",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_string_holding_constant_has_events_resource_type",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsholdingconstant-test_string_holding_constant_produces_aggregate_by",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsmixedsteps-test_funnel_step_empty_filters_same_as_none-1",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsmixedsteps-test_funnel_step_empty_filters_same_as_none-2",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsmixedsteps-test_funnel_step_has_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsmixedsteps-test_mixed_list_has_two_behaviors",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsmixedsteps-test_string_step_has_no_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsnewmathtypes-test_math_histogram_accepted",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_default_filters_determiner_is_all",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_empty_filters_list_same_as_none-1",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_empty_filters_list_same_as_none-2",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_filter_entry_has_correct_operator",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_filter_entry_has_correct_value",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_filters_combinator_any",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_funnel_step_label_is_set",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_step_with_filter_has_nonempty_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_step_without_filters_has_empty_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsperstepfilters-test_step_without_label_has_no_renamed_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_has_display_options_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_has_sections_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_no_api_call_made",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_returns_dict",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_sections_contains_expected_keys",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_show_entry_has_behavior_and_measurement",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamspublicmethod-test_show_has_one_entry",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsreentrymode-test_no_reentry_mode_omits_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsreentrymode-test_reentry_mode_aggressive",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsreentrymode-test_reentry_mode_basic",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsreentrymode-test_reentry_mode_default",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testbuildfunnelparamsreentrymode-test_reentry_mode_optimized",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testdatagroupidfunnel-test_build_funnel_params_with_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_build_funnel_params-testdatagroupidfunnel-test_build_funnel_params_without_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_custom_property_query-testgroupbycustompropertye2e-test_build_funnel_params_with_custom_property_group_by",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_custom_property_query-testmeasurementcustompropertye2e-test_build_funnel_params_with_custom_property_measurement",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_validation_bypass-testvector2funnelstepfiltercpfixed-test_valid_cp_id_passes",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_workspace_funnel-testbuildfunnelparamsvsqueryfunnel-test_no_api_call_made",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_workspace_funnel-testbuildfunnelparamsvsqueryfunnel-test_params_has_sections_and_display_options",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_workspace_funnel-testbuildfunnelparamsvsqueryfunnel-test_params_structure_matches_query_funnel",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "funnels",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "funnels/workspace.build_funnel_params/test_workspace_funnel-testbuildfunnelparamsvsqueryfunnel-test_returns_dict_not_result",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_cohort_params-testbuildretentionparamscohortbreakdown-test_cohort_breakdown_alone_accepted",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_cohort_params-testbuildretentionparamscohortfilter-test_cohort_filter_entry_value_is_cohorts",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_cohort_params-testbuildretentionparamscohortfilter-test_cohort_filter_populates_filter_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsbucketsizes-test_bucket_sizes_populates_custom_field",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsbucketsizes-test_none_bucket_sizes_produces_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamscumulative-test_no_new_params_backward_compat",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamscumulative-test_retention_cumulative_explicit_false_omits_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamscumulative-test_retention_cumulative_false_omits_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamscumulative-test_retention_cumulative_true",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_alignment_defaults_to_birth",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_behavior_names_match_events",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_behavior_type_is_retention",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_behaviors_has_two_entries",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_chart_type_defaults_to_retention_curve",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_column_widths_present",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_custom_bucket_sizes_defaults_to_empty_list",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_has_display_options_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_has_sections_with_expected_keys",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_measurement_math_defaults_to_retention_rate",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_retention_unit_defaults_to_week",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsdefaults-test_sorting_object_present",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsglobalfilters-test_group_by_string_populates_group_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsglobalfilters-test_where_filter_populates_filter_section",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsmode-test_mode_curve_produces_retention_curve_chart",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsmode-test_mode_table_produces_table_chart",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsmode-test_mode_trends_produces_line_chart",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsnewmathtypes-test_math_average_accepted",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsnewmathtypes-test_math_total_accepted",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamspereventfilters-test_filters_combinator_maps_to_determiner",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamspereventfilters-test_no_filters_produces_empty_array",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamspereventfilters-test_retention_event_with_filters",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamstimesections-test_default_time_section_is_in_the_last",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamstimesections-test_explicit_dates_produce_between_range",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamstimesections-test_filter_section_is_empty_list_when_no_where",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamstimesections-test_group_section_is_empty_list_when_no_group_by",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsunboundedmode-test_no_unbounded_mode_omits_key",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsunboundedmode-test_unbounded_mode_carry_back",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsunboundedmode-test_unbounded_mode_carry_forward",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsunboundedmode-test_unbounded_mode_consecutive_forward",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testbuildretentionparamsunboundedmode-test_unbounded_mode_none_value",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testdatagroupidretention-test_build_retention_params_with_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_build_retention_params-testdatagroupidretention-test_build_retention_params_without_data_group_id",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_custom_property_query-testgroupbycustompropertye2e-test_build_retention_params_with_custom_property_group_by",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_validation_bypass_r2-testr2v2retentioneventfilterscpfixed-test_valid_cp_in_retention_passes",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_workspace_retention-testbuildretentionparams-test_consistency_with_query_retention",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_workspace_retention-testbuildretentionparams-test_has_sections_and_display_options",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_workspace_retention-testbuildretentionparams-test_no_api_call_made",
+      "verdict": "SKIP_NON_INSIGHTS"
+    },
+    {
+      "bookmark_type": "common",
+      "dialect": "modern-nested",
+      "error": null,
+      "id": "retention/workspace.build_retention_params/test_workspace_retention-testbuildretentionparams-test_returns_dict_not_result",
+      "verdict": "SKIP_NON_INSIGHTS"
+    }
+  ],
+  "runtime_seconds": 0.33,
+  "skipped": 189,
+  "status": "ok",
+  "total": 314
+}

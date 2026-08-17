@@ -1,0 +1,13 @@
+
+> mixpanel-headless-ts@0.0.0 conformance
+> node scripts/run-conformance.mjs
+
+{
+  "total": 3262,
+  "passed": 3262,
+  "failed": 0,
+  "skipped_unported": 0,
+  "failures": []
+}
+conformance: 3262 vectors — 3262 passed, 0 failed, 0 unported (corpus @ 700db996cc95)
+EXIT=0

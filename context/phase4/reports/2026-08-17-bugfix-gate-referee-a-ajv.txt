@@ -1,0 +1,16 @@
+
+> mixpanel-headless-ts@0.0.0 referee:bookmark
+> vitest run differential/test/bookmark-schema-referee.test.ts differential/test/bookmark-referee-feed.test.ts
+
+
+ RUN  v3.2.7 /Users/jaredmcfarland/Developer/mixpanel-headless-ts
+
+ ✓ differential/test/bookmark-schema-referee.test.ts (7 tests) 54ms
+ ✓ differential/test/bookmark-referee-feed.test.ts (2 tests) 83ms
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  01:07:25
+   Duration  1.04s (transform 530ms, setup 0ms, collect 850ms, tests 137ms, environment 0ms, prepare 65ms)
+
+EXIT=0
