@@ -962,6 +962,22 @@ injected interfaces that B8 implements).
     optional user HUMAN-CALL on an order-insensitive-comparison
     ratification stays open and non-blocking,
     `b7-reviewA-resolution.md` / `b7-reviewB-resolution.md`.)
+    **CLOSED — FIXED at B8 (gate follow-through per `b8-packets.md`
+    §5.6, 2026-08-16)**: the user RATIFICATION of 2026-08-16
+    (`user-ratifications.md`) superseded this exclusion ruling and
+    ordered a code fix — executed as task B8-MAPFIX (TS `597ef7d`;
+    shard notes `context/phase3/notes/B8-MAPFIX-notes.md`): the three
+    `MeResponse` container fields parse into insertion-order-preserving
+    `ReadonlyMap`s sourced from the lossless JSON layer's
+    `LOSSLESS_KEY_ORDER` sidecar, so `defaultAccountName`'s first-org
+    pick, the "Accessible projects:" listing order, picker tie order,
+    and the `resolveWorkspace` tie-breaks all match Python dict
+    insertion order exactly (red run 8-failed pre-fix; fast-check
+    out-of-order fuzz 1,000 + direct CPython differential 1,000, zero
+    divergences, seed 20260816). The naming fuzz-domain ascending-id
+    exclusion is REMOVED, and the optional order-insensitive-comparison
+    HUMAN-CALL is MOOT for the first-org site (the remaining #9/#10
+    mechanism sites are unaffected by this closure).
 
 14. **`\d`-gate ASCII narrowing: pydantic/CPython `\d` matches Unicode Nd digits,
     JS `/^\d+$/` matches ASCII only** (B8 pair-A arbiter class disclosure SEM-F5,

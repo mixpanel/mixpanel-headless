@@ -574,3 +574,59 @@ uv run python -m conformance.differential.fuzz_harness \
   0 FAIL / 7 UNPORTED** @ corpus 70c904dc (delta +14 = the 14
   `region_probe.probe_region` vectors; the 7 remaining are
   `oauth_flow.refresh_tokens`, B8).
+
+## 2026-08-16 — B8 gate: **GATE CLOSED (all clean, first attempt) — THE CORPUS CLOSES**
+
+- **Scope**: playbook P3-2e item 3 + P3-7 at the B8 gate (the LAST
+  vector-bearing batch). B8 registered **ZERO new oracle families**: the
+  batch's only corpus api (`oauth_flow.refresh_tokens`) is wire-kind
+  (probe-exempt — no `oracle.call` surface, b8-packets.md §5.4), and the
+  auth surface as a whole has no cross-language fuzz bridge (playbook
+  Risk 7 — compensating controls are full Layer-3 translation, the
+  DOUBLED blind review pairs, and the four R10.9 harnesses recorded in
+  `context/phase3/notes/B8-{MAPFIX,N1,N2,N3}-notes.md`, two of them
+  direct-CPython differentials). `strategies.py` untouched by any B8
+  commit; cumulative surface stays **55 families**.
+- **Differential full-suite regression** over the existing registered
+  surface, fresh seed + replay of EVERY prior gate seed:
+
+```bash
+uv run python -m conformance.differential.fuzz_harness \
+  --right "node /Users/jaredmcfarland/Developer/mixpanel-headless-ts/scripts/run-oracle.mjs" \
+  --examples 500 --seed 419393897 --report json    # fresh
+# prior-gate seed replays: --seed 3343231 / 28631260 / 52794688 / 40075993 / 53062695 / 47824574 / 628997442 / 715310894
+```
+
+- Totals, ALL NINE seeds identical: **28,091 examples / 0 skips /
+  0 divergences** per seed; exit 0, status `ok`, no repros written.
+  Seeds: fresh **419393897** + replays of EVERY prior gate seed —
+  **3343231** (B2 fresh), **28631260** (B0), **52794688** (B0),
+  **40075993** (B3 fresh), **53062695** (B4 fresh), **47824574** (B5
+  fresh), **628997442** (B6 fresh), **715310894** (B7 fresh). Raw JSONs:
+  `2026-08-16-b8-gate-seed{419393897,3343231,28631260,52794688,40075993,53062695,47824574,628997442,715310894}.json`.
+- Under-500 families: only the two documented finite-domain exhaustions
+  (`build_date_range_family` 101, `build_time_section_family` 485).
+  `skipped_per_target` all-zero (ledger empty since B3).
+- Bridges: oracle-py 0.2.1 @ ts-port/phase2-contract-support, oracle-ts
+  0.0.0 @ main (B8 gate tree, post-flip commit `b59567c`), both
+  `source_commit 70c904dc598d…`, protocol 1.1, corpus pin 70c904d.
+- `repros/` unchanged: exactly the two RESOLVED P2-9 triage records —
+  non-blocking.
+- Referees at this gate (P3-7 conditional — B8 touches no bookmark
+  source, but the gate ran BOTH as a full-corpus CLOSE-OUT SWEEP per
+  the gate task directive): (a) ajv runner feed
+  (`npm run referee:bookmark`) — 9/9 tests green, the pinned
+  expected-and-disclosed dataGroupId REJECT set asserted exact by the
+  test; (b) bookmark_parser round-trip — handoff regenerated
+  BYTE-IDENTICAL (314 entries), selftest controls passed for both
+  oracles first, structural **314/314 ACCEPT**, deep **123 ACCEPT /
+  2 REJECT / 189 SKIP_NON_INSIGHTS** — the 2 standing frequency-filter
+  true positives only (exit 1 by design; reports identical to the
+  committed B6-gate `last-run-{structural,deep}.json` modulo
+  `runtime_seconds` — not re-committed). **No NEW reject on either
+  referee — non-blocking.**
+- Conformance checkpoint at the same gate commit: **3,251 PASS /
+  0 FAIL / 0 UNPORTED** @ corpus 70c904dc — **the COMPLETE corpus is
+  green in TypeScript** (delta +7 = the 7 `oauth_flow.refresh_tokens`
+  vectors, bound at B8-N2 and passing while pending; zero pending
+  batch-status entries remain).
