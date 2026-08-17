@@ -963,6 +963,23 @@ injected interfaces that B8 implements).
     ratification stays open and non-blocking,
     `b7-reviewA-resolution.md` / `b7-reviewB-resolution.md`.)
 
+14. **`\d`-gate ASCII narrowing: pydantic/CPython `\d` matches Unicode Nd digits,
+    JS `/^\d+$/` matches ASCII only** (B8 pair-A arbiter class disclosure SEM-F5,
+    `b8-reviewA-resolution.md`, 2026-08-16). Every ported `^\d+$` / `str.isdigit()`
+    GATE site (B7 `resolver.py:207` twin; B8 `bridge.py` `project` field at
+    `bridge.ts` `parseBridgeFile` + `validatedProject`) accepts Nd digits in Python
+    (arbiter probe: pydantic `BridgeFile(project="٤٢")` ACCEPTED; CPython
+    `re.fullmatch(r'^\d+$', "٤٢")` matches) but rejects them in TS. Sanctioned as a
+    disclosed CLASS: the B8 packet caution #1 (two-parser rule) MANDATES the literal
+    `/^\d+$/` spelling at gate sites — behavioral alignment would contradict the
+    packet, and an Nd-digit project id is not producible by any real Mixpanel
+    surface (ids are ASCII-numeric on the wire). Every affected input is REJECTED
+    (coded error) on the TS side, never wrongly accepted. Fuzz domains for
+    gate-site inputs stay ASCII-digit (documented omission — pair-B's Nd probes
+    land as expected-rejection rows). Re-examine only if a live bridge/config
+    artifact with Nd-digit ids is ever observed (Phase-4 burn-in) or if a future
+    corpus vector locks Nd acceptance.
+
 ### Escalations
 
 None. All open questions encountered during design were resolvable inside existing

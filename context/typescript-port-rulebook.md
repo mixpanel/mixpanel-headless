@@ -364,6 +364,22 @@ these. (Root cause of parity findings P1, P2, P6 and half the watchlist.)
   handling is exempt only where no Python twin exists; code whose reference semantics are a
   THIRD parser (e.g. pydantic-core lax coercion in `coerce.ts`) must cite that reference at
   the call site instead.
+- R11.8 Except-clause class mapping: a ported `try/except` boundary translates its clause
+  list CLAUSE-FOR-CLAUSE, never as a blanket `catch` that degrades or wraps more than
+  Python's list names. The standing twins: `OSError` ↔ libuv errno errors via the ONE
+  shared `isErrnoError` (`packages/node/src/io-utils.ts` — string `code` AND numeric
+  `errno`; node stamps string codes on NON-system errors too, e.g. the TextDecoder
+  fatal-mode `TypeError` carries `ERR_ENCODING_INVALID_ENCODED_DATA`, so a code-only test
+  mis-classifies decode errors as OSError); `json.JSONDecodeError` /
+  `tomllib.TOMLDecodeError` ↔ `SyntaxError` / the parser's error class;
+  `UnicodeDecodeError` ↔ the TextDecoder fatal-mode `TypeError` (a ValueError subclass in
+  Python: CAUGHT by `except ValueError`-family clauses, PROPAGATES past
+  `except (OSError, JSONDecodeError)` clauses); pydantic `ValidationError` ↔
+  `ParamValidationError`. Whatever Python's clause list does not name must propagate RAW
+  in TS too. Filed per R10.4 at the B8 pair-A arbiter — the fix pattern recurred 8× in one
+  pass (`b8-reviewA-resolution.md` SEM-F2/F3/F6 + ripples: storage `_read_file`, config
+  `_read_raw` probe+read, `load_bridge` probe+read, `_read_browser_tokens` probe+read,
+  `MeCache.get` decode, `export_bridge` unwrap; threshold 3).
 
 ---
 
