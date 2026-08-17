@@ -298,3 +298,110 @@ every other prefix unchanged. Playbook P3-0 updated with the re-pin bullet
 - `/Users/jaredmcfarland/Developer/analytics` used READ-ONLY (PYTHONPATH recipes only).
 - NOT in scope here: the ajv referee (a) pinned dataGroupId REJECT set lives in the TS
   repo and retires with the TS follow-up task (R10.7 flip discipline).
+
+---
+
+# TS-FOLLOW notes (the TS side of the R10.7 flip, TS main)
+
+Task: TS-FOLLOW. TS commit: `2b72ce1` on `mixpanel-headless-ts` main
+(single commit — corpus sync + all four twin retirements + test flips +
+docs + referee-pin removals together, R10.7 same-change discipline).
+
+## Step 1 — corpus sync @ new pin
+
+`corpus.config.json` sourceCommit `70c904dc…` → `700db996cc952e02aa5a23db1f3c68a3e7251b5b`;
+`npm run sync:corpus` (clean working tree @ Python branch
+`ts-port/python-bugfix-batch` a1d43a5) → 171 bundles + 5 contract
+artifacts snapshotted.
+
+## Step 2 — red run (old twins vs new corpus)
+
+`npm run conformance` BEFORE any TS code change:
+**3,262 total — 3,236 passed / 26 failed / 0 unported.** The 26 = the 20
+flipped vectors (13 bug-(a) + 7 bug-(b)) + 6 of the 11 ADDED vectors
+(bug (c): truthy 42/1.5/true as `TypeError: … not iterable` +
+list-substring as QueryError-instead-of-SessionReplayAccessError;
+bug (d): the refresh redaction vector; bug (a): the new
+`test_no_custom_property_nesting`). The other 5 added replay vectors
+(falsy scalars, list-exact, string-body) passed pre-fix, matching the
+Python red-run split. NO collateral failures.
+
+## Step 3 — twins retired (same commit)
+
+- (a) `packages/core/src/bookmarks/builders.ts` `buildFrequencyFilterEntry`
+  → platform-native clause, Python FIX-1 key order mirrored exactly
+  (dict-insertion lock re-pointed in the Layer-3 suite).
+- (b) String() coercion at buildGroupSection (custom-property-ref +
+  inline), buildCohortGroupEntry (interior `data_group_id` + clause
+  `dataGroupId`), buildFrequencyGroupEntry; raw value still threads to
+  the sub-builders which coerce themselves (mirrors Python).
+  `workspace-query-params.ts` ×3 sections sites →
+  `sections["globalDataGroupId"] = String(data_group_id)`.
+- (c) `packages/core/src/client/internals.ts` 403 branch → the Python
+  post-FIX-2 expression twin (`str` passthrough / null → "" /
+  jsonDumpsLike otherwise); `pyTruthy` deleted (only consumer);
+  `@throws TypeError` JSDoc removed; bare-Infinity edge flips to
+  QueryError (json.dumps(inf)="Infinity" twin via JsonNumber.raw).
+- (d) `packages/core/src/auth/oauth-http.ts` → `TOKEN_BEARING_KEYS`
+  redaction before `pythonStr`, Security JSDoc section; record-guard
+  documented for the TS-only non-object-200 branch (Python `.items()`
+  presumes a dict there — non-record bodies keep the old `str(data)`
+  rendering; no keyed token material exists on that path).
+
+Layer-3 flips/additions (R10.2 — diffed against Python bddc576+57c5e16):
+builders.test.ts (frequency suite rewrite + dataGroupId "5"/"3"/"7"),
+query-params/build-funnel-params/build-retention-params
+(globalDataGroupId "5"/"3" + old-key absence), internals.test.ts (new
+`TestSensitiveData403BodyShapes` twin describe + list/truthy/Infinity
+flips), oauth-flow-login.test.ts (TestTokenPayloadRedaction exchange
+members), oauth-flow-refresh.test.ts (refresh member, byte-locked to the
+vector's `details_contain.response_data`). Docs: browser README leak
+caveat → redacted behavior; client-sign-replays.test.ts header exclusion
+names the new class; TS repo README counts 3,251 → 3,262.
+
+## Step 4 — full conformance @ new pin
+
+`npm run conformance` post-fix: **3,262 / 3,262 PASS / 0 FAIL / 0
+UNPORTED @ 700db996cc95** — same N as Python (RE-PIN step 4).
+
+## Step 5 — referee (a) ajv FULLY CLEAN, pins retired
+
+The 5 pinned dataGroupId disclosures (4 B3 clause-level + 1 B5
+`sections.dataGroupId`) DELETED from
+`differential/test/bookmark-referee-feed.test.ts` — no allowlist kept;
+any REJECT is now a new finding. `npm run referee:bookmark`: 9 tests
+green — 214 fed vectors (99 fragments incl. the new
+no-custom-property-nesting vector + 115 build_params full payloads),
+**0 REJECT**.
+
+## Step 6 — R10.9 spot-harness (bug (d)), throwaway/bugfix-d
+
+Recreated the minimal driver (`driver.ts`, vite-node) re-running the
+b9-r2 §3.5.1 token-exchange error-branch edges through the SHIPPED
+browser entry point + the redaction parity legs. RUN record (2026-08-17):
+**17 checks / 0 failures** —
+- node `OAuthFlow.refreshTokens` on malformed-200
+  `{access_token, refresh_token, id_token}` → `OAUTH_REFRESH_ERROR`,
+  `details.response_data` BYTE-EQUAL to the corpus vector pin
+  `{'access_token': '<redacted>', 'refresh_token': '<redacted>', 'id_token': '<redacted>'}`;
+- browser `beginLogin`→`completeLogin` same payload → `OAUTH_TOKEN_ERROR`
+  with the IDENTICAL response_data string (node ≡ browser ≡ Python
+  vector — direct vector comparison in lieu of live CPython);
+- no `SECRET_*` anywhere in str/details/toDict serializations, both paths;
+- edge set re-run: network reject, 400 invalid_grant (stays generic),
+  401 invalid_grant, 429, 500, non-JSON 200, missing access_token — all
+  `OAUTH_TOKEN_ERROR`; the missing-access_token edge additionally
+  redacts (`{'refresh_token': '<redacted>'}`).
+Driver REMOVED after this record (no throwaway/ in the commit).
+
+## Step 7 — gate
+
+`npm run check` GREEN end-to-end: typecheck (5 workspaces), eslint,
+prettier, vitest **9,975 passed / 243 files**, two-entry browser smoke
+(core+browser bundle OK). Conformance and referee runs above.
+Note: a stray untracked `CLAUDE.md` in the TS repo broke `fmt:check`;
+prettier-formatted in the working tree, left UNCOMMITTED (not part of
+the repo).
+
+R10.7 CLOSED for all four bugs: no live bug-compat twin remains in
+either language; both corpora hold 3,262/0/0 @ 700db99.
