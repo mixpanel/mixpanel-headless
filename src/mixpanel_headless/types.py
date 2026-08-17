@@ -9483,8 +9483,8 @@ class FrequencyBreakdown:
 
     Raises:
         ParamValidationError: If validation rules FB1-FB4 are violated
-        (codes ``FB1_EMPTY_EVENT``, ``FB2_BUCKET_SIZE_NOT_POSITIVE``,
-        ``FB3_BUCKET_ORDER``, ``FB4_BUCKET_MIN_NEGATIVE``).
+            (codes ``FB1_EMPTY_EVENT``, ``FB2_BUCKET_SIZE_NOT_POSITIVE``,
+            ``FB3_BUCKET_ORDER``, ``FB4_BUCKET_MIN_NEGATIVE``).
 
     Example:
         ```python
@@ -9579,9 +9579,9 @@ class FrequencyFilter:
 
     Raises:
         ParamValidationError: If validation rules FF1-FF5 are violated
-        (codes ``FF1_EMPTY_EVENT``, ``FF2_INVALID_OPERATOR``,
-        ``FF3_VALUE_NEGATIVE``, ``FF4_DATE_RANGE_PAIR``,
-        ``FF5_DATE_RANGE_VALUE_NOT_POSITIVE``).
+            (codes ``FF1_EMPTY_EVENT``, ``FF2_INVALID_OPERATOR``,
+            ``FF3_VALUE_NEGATIVE``, ``FF4_DATE_RANGE_PAIR``,
+            ``FF5_DATE_RANGE_VALUE_NOT_POSITIVE``).
 
     Example:
         ```python
