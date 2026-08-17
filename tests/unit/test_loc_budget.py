@@ -66,10 +66,10 @@ class TestLocBudget:
     FILE_COUNT_CAP = 20
     """Maximum number of auth-subsystem files. A 21st file fails this test."""
 
-    LOC_CAP = 8900
+    LOC_CAP = 8975
     """Maximum total LoC across the auth subsystem (~7% headroom over current).
 
-    Bumped 6500 → 6700 → 8800 → 8900 by SEC-331 follow-up:
+    Bumped 6500 → 6700 → 8800 → 8900 → 8975:
     - 6500 → 6700 covered the two new files
       (``_internal/auth/region_probe.py``, ``_internal/auth/naming.py``)
       plus the relaxations in ``cli/commands/account.py`` /
@@ -82,6 +82,15 @@ class TestLocBudget:
       size cap checks in ``_enforce_credential_file_invariants``,
       ``_fchmod_no_follow`` in ``storage.py``, and the
       ``reject_if_symlink`` wires at the five call sites.
+    - 8900 → 8975 covers the ARB-B (pair-B review, 2026-08-17) token-
+      payload redaction hardening in ``flow.py``: the
+      ``_redact_token_payload`` allowlist helper + its mandatory full
+      docstring, the ``_SAFE_TOKEN_DETAIL_KEYS`` /
+      ``_NON_OBJECT_BODY_PLACEHOLDER`` constants, and the expanded
+      ``_post_token_request`` Security note (fix-of-record
+      ``context/phase3/bug-reports/python-oauth-error-details-token-payload.md``,
+      findings F-B1/F-B2/F-B3 in
+      ``context/phase4/notes/bugfix-reviewB-resolution.md``).
     See ``specs/043-frictionless-auth/plan.md`` §"Scale/Scope".
     """
 

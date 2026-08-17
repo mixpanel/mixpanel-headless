@@ -47,12 +47,64 @@ from mixpanel_headless._internal.auth.storage import OAuthStorage
 from mixpanel_headless._internal.auth.token import OAuthTokens
 from mixpanel_headless.exceptions import OAuthError
 
-# Token-endpoint response keys whose values are live credential material.
-# Redacted from OAuthError details when a malformed 200 payload fails
-# OAuthTokens.from_token_response — see _post_token_request's Security note.
-_TOKEN_BEARING_KEYS: frozenset[str] = frozenset(
-    {"access_token", "refresh_token", "id_token"}
+# Token-endpoint response keys whose values are structurally non-secret
+# RFC 6749 §5.1 metadata. ONLY these survive redaction (and only when the
+# value is a primitive) — every OTHER value in a malformed 200 token payload
+# is replaced with "<redacted>", whatever its key: pair-B review (ARB-B
+# F-B2/E-1) probe-confirmed that a deny-list over canonical token keys leaks
+# nested envelopes ({"result": {"access_token": ...}}), list values,
+# non-canonical credential keys (client_secret) and case-variant keys
+# (Access_Token). See _post_token_request's Security note.
+_SAFE_TOKEN_DETAIL_KEYS: frozenset[str] = frozenset(
+    {"token_type", "expires_in", "scope", "error", "error_description"}
 )
+
+# Rendering for non-object 200 JSON token bodies in error details: the VALUE
+# itself can be the credential (an IdP returning the bare token as a JSON
+# string), so it never renders verbatim (ARB-B F-B3; byte-identical constant
+# in the TS twin, oauth-http.ts).
+_NON_OBJECT_BODY_PLACEHOLDER = "<redacted non-object body>"
+
+
+def _redact_token_payload(data: object) -> str:
+    """Render a malformed 200 token payload safely for OAuthError details.
+
+    Allowlist redaction (ARB-B hardening of the FIX-2 deny-list): every
+    field NAME stays visible for diagnosis, but only the values of
+    ``_SAFE_TOKEN_DETAIL_KEYS`` survive — and only when they are primitives
+    (``str`` / ``int`` / ``float`` / ``bool`` / ``None``). Every other
+    value renders as ``"<redacted>"`` regardless of nesting, and a
+    non-object body renders as ``_NON_OBJECT_BODY_PLACEHOLDER``, so no
+    value channel can carry bearer material into serialized error details.
+
+    Args:
+        data: The parsed 200 token-endpoint JSON body (any JSON value —
+            ``response.json()`` is not limited to objects).
+
+    Returns:
+        The ``str()`` rendering of the redacted mapping (byte-matching the
+        TS twin's ``pythonStr``), or the fixed placeholder for non-object
+        bodies.
+
+    Example:
+        ```python
+        _redact_token_payload({"access_token": "SECRET", "scope": "projects"})
+        # "{'access_token': '<redacted>', 'scope': 'projects'}"
+        ```
+    """
+    if not isinstance(data, dict):
+        return _NON_OBJECT_BODY_PLACEHOLDER
+    return str(
+        {
+            k: (
+                v
+                if k in _SAFE_TOKEN_DETAIL_KEYS
+                and (v is None or isinstance(v, (str, int, float)))
+                else "<redacted>"
+            )
+            for k, v in data.items()
+        }
+    )
 
 
 def _parse_pasted_redirect(line: str, *, expected_state: str) -> CallbackResult:
@@ -536,16 +588,26 @@ class OAuthFlow:
                 the precise "re-run login" recovery hint.
 
         Security:
-            When a 200 response parses as JSON but fails
-            ``OAuthTokens.from_token_response`` (malformed IdP payload),
-            the raised error's ``details["response_data"]`` REDACTS the
-            values of token-bearing keys (``access_token``,
-            ``refresh_token``, ``id_token``) and keeps only field names
-            and non-secret values. The payload may contain live bearer /
-            refresh material that never passes through ``Secret``, so
-            embedding it verbatim would exfiltrate credentials into any
-            consumer that serializes error details (logging, telemetry,
-            browser error reporters). See
+            A 200 token-endpoint body may BE the live token payload even
+            when it is malformed, so no 200-branch error path embeds it:
+
+            - JSON-object body failing ``OAuthTokens.from_token_response``:
+              ``details["response_data"]`` keeps every field name but only
+              the primitive values of the safe RFC 6749 metadata keys
+              (``token_type``, ``expires_in``, ``scope``, ``error``,
+              ``error_description``); every other value — any key, any
+              nesting — renders as ``"<redacted>"`` (ARB-B F-B2/E-1).
+            - Non-object JSON body: fixed ``"<redacted non-object body>"``
+              placeholder — the value itself can be the credential
+              (ARB-B F-B3).
+            - Body that fails JSON parsing (truncated / proxy-mangled
+              token JSON): never embedded; only ``content_type`` and
+              ``body_length`` (code points) survive (ARB-B F-B1).
+
+            Non-200 branches still embed the raw ERROR body in
+            ``details["response_body"]`` — those are IdP error documents
+            (e.g. ``{"error": "invalid_grant"}``), not token grants, and
+            their shapes are vector-locked. Fix-of-record:
             context/phase3/bug-reports/python-oauth-error-details-token-payload.md.
         """
         token_url = f"{self._base_url}token/"
@@ -607,34 +669,34 @@ class OAuthFlow:
         try:
             data: dict[str, object] = response.json()
         except (json.JSONDecodeError, ValueError) as exc:
+            # Never embed the body: a 200 that fails JSON parsing can still
+            # BE the token payload (truncated JSON, trailing proxy garbage)
+            # — ARB-B F-B1. body_length counts code points (the TS twin
+            # uses Array.from(text).length for byte-identical vectors).
             raise OAuthError(
                 f"{operation} returned non-JSON response: "
                 f"{response.headers.get('content-type', 'unknown')}",
                 code=error_code,
-                details={"response_body": response.text},
+                details={
+                    "content_type": response.headers.get("content-type", "unknown"),
+                    "body_length": len(response.text),
+                },
             ) from exc
 
         try:
             return OAuthTokens.from_token_response(data)
         except (KeyError, TypeError, ValueError) as exc:
-            # Redact token-bearing values before embedding: `data` is a live
-            # (if malformed) token payload — see the Security section of this
-            # docstring. `response.json()` can yield any JSON value despite
-            # the dict annotation, so guard the `.items()` walk (mirrors the
-            # TS twin's `isPlainRecord` branch in oauth-http.ts); a non-dict
-            # body has no token-bearing keys, so it renders as-is (ARB-A F1).
-            redacted = (
-                {
-                    k: ("<redacted>" if k in _TOKEN_BEARING_KEYS else v)
-                    for k, v in data.items()
-                }
-                if isinstance(data, dict)
-                else data
-            )
+            # Redact before embedding: `data` is a live (if malformed) token
+            # payload — see the Security section of this docstring.
+            # `response.json()` can yield any JSON value despite the dict
+            # annotation; `_redact_token_payload` handles the non-dict edge
+            # (ARB-A F1 guard, hardened to a placeholder by ARB-B F-B3) and
+            # allowlist-redacts object bodies (ARB-B F-B2/E-1), mirroring
+            # the TS twin's `redactTokenPayload` in oauth-http.ts.
             raise OAuthError(
                 f"{operation} response missing required fields: {exc}",
                 code=error_code,
-                details={"response_data": str(redacted)},
+                details={"response_data": _redact_token_payload(data)},
             ) from exc
 
     def _build_authorize_url(
