@@ -115,3 +115,34 @@ query pairs are arrays, so the class cannot arise.
 - Gate: differential regression should note the hoist moved
   `oauth_flow.refresh_tokens`' implementation path into core (suspect list
   §5.1 — spot-verified green here via the full conformance run).
+
+## B9-ARB-B addendum (pair-B arbiter, `b9-reviewB-resolution.md`, 2026-08-16)
+
+Pair-B blind review amended the redirect-flow contract (b9-packets.md §10
+errata; all fixes red-first, TS commit `de08f1f`):
+
+- **FB-4**: `beginLogin` validates `redirectUri` (absolute; https or
+  http-on-loopback per RFC 8252 §7.3) → `OAUTH_CONFIG_ERROR`; constant-only
+  rule documented (JSDoc + README).
+- **FB-5**: pending record gains a TTL — `maxPendingAgeMs` (default 30 min,
+  exported `DEFAULT_MAX_PENDING_AGE_MS`); expired records refused AND
+  consumed (`BROWSER_NO_PENDING_LOGIN`); `created_at` now read + validated.
+- **FB-6**: same-realm concurrent `completeLogin` dedup (StrictMode shape:
+  identical returnUrl shares ONE exchange; different returnUrl serializes).
+- **FB-8**: `completeLogin` strips the URL fragment before
+  `parsePastedRedirect` (documented `location.href` input); the CORE parser
+  is byte-untouched.
+- **FB-7** (docs): redirect flow requires a navigation-surviving store;
+  `new LocalStorageCredentialStore(sessionStorage)` named.
+- **FB-3** (docs/ledger): `postTokenRequest` `response_data` token-payload
+  exposure is Python-parity (`flow.py:596-605`) — no code change; Phase-4
+  ledger row 1 re-scoped to `oauth-http.ts:245`; R10.7 Python-first queue
+  item filed (`context/phase3/bug-reports/python-oauth-error-details-token-payload.md`).
+
+**RUN-record addendum (edges leg)**: the harness's planted pending records
+carried a frozen `created_at: 2026-01-15T10:30:00+00:00`, which the FB-5
+TTL now expires against the ambient clock — `throwaway/b9-r2/edges.ts`
+stamps `created_at` at run time instead (inline arbiter cite). Re-run:
+**35 checks / 0 failures** (same command). `pkce-vectors` 601 @ 20260817
+and `redirect-parse-fuzz` 709 @ 20260817 both reproduce with **0
+divergences** — the FB-8 strip left the hoisted parser CPython-faithful.

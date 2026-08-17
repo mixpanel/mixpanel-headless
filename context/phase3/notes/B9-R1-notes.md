@@ -156,3 +156,27 @@ edge-set line "token_env-in-browser `OAUTH_CONFIG_ERROR`" is superseded —
 `throwaway/b9-r1/edges.ts` expectation updated to `OAUTH_TOKEN_ERROR` with an
 inline arbiter cite; harness re-run post-change: **32 checks, 0 failures**
 (`npx vite-node throwaway/b9-r1/edges.ts`, same command as the RUN record).
+
+## B9-ARB-B addendum (pair-B arbiter, `b9-reviewB-resolution.md`, 2026-08-16)
+
+Pair-B blind review found two SA-refusal bypasses in this shard's surface —
+both fixed red-first (TS commit `de08f1f`):
+
+- **§2.3 path 6 (FB-1, both pair-B lenses)**: `guardClientUse` now traps
+  `withProject` and re-wraps derived clients RECURSIVELY; 3 new
+  `sa-refusal.test.ts` rows (suite 8 → 11).
+- **§2.3 path 7 (FB-2)**: `index.ts` re-exports `Workspace` as **type
+  only** (a value export allowed `new Workspace({session: SA})` past both
+  gates); 2 new rows.
+- FB-9: core `CREDENTIAL_KEYS` gained `all(region)`; both localStorage
+  warning sites now name all three payload families; adapter backend
+  failures re-throw as coded `OAUTH_CONFIG_ERROR` (FB-11).
+- FB-10: core `PkceChallenge.challengeFor`/`generate` throw coded
+  `OAUTH_CONFIG_ERROR` when `crypto.subtle` is absent (insecure context);
+  new row in `packages/node/test/pkce.test.ts` (suite 10 → 11 rows; the 10
+  migrated assertions untouched).
+
+RUN-record status: `edges.ts` **32/0 reproduces unchanged** post-fix (same
+command); `store-fuzz` 500 @ 20260816 **0 divergences**; `pkce-differential`
+601 @ 20260816 **0 divergences**. See b9-packets.md §10 errata for the
+amended §2.3 path table.

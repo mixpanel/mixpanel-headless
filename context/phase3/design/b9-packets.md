@@ -1052,3 +1052,61 @@ as a completed-verification claim, contradicting the §4.5 letter ("The docs
 never claim e2e verification under any outcome of this spike"); intent
 (future verification) is unchanged. The gate consumes the corrected wording;
 do not restore the §4.3-row spelling verbatim.
+
+## §10 Errata — B9-ARB-B (2026-08-16, `b9-reviewB-resolution.md`; pair-B blind review)
+
+The pair-B reviews falsified or extended several packet contracts. The gate
+consumes the AMENDED forms below; the fixes are red-first-locked in the shard
+suites (commit noted in the resolution doc).
+
+1. **§2.3 path table gains two rows** (the §2.3 "sixth path" hunt SUCCEEDED —
+   both reproduced, both blocking, both fixed):
+   - **Path 6 — derived clients**: `ws.client.withProject(...)` returned a
+     fresh, unguarded core client. Gate: `guardClientUse` now traps
+     `withProject` and re-wraps the derived client RECURSIVELY (browser-local,
+     no core edit — the same §2.3 row-4 mechanism).
+   - **Path 7 — raw `Workspace` construction**: §2.5's instruction to
+     re-export `Workspace` produced a VALUE export, so
+     `new Workspace({session: SA})` bypassed both browser gates. §2.5 is
+     amended: `Workspace` is re-exported **`export type` only**; the gated
+     factories are the only construction paths in the entry.
+2. **§3.2 contract additions** (redirect flow):
+   - `beginLogin` validates `redirectUri` (absolute; https, or http on
+     loopback per RFC 8252 §7.3) → `OAUTH_CONFIG_ERROR`; JSDoc/README mandate
+     the compile-time-constant rule (DCR accepts third-party https origins —
+     §9).
+   - `completeLogin` step 1 gains an age gate: `maxPendingAgeMs` (default
+     30 min, exported `DEFAULT_MAX_PENDING_AGE_MS`); expired records are
+     refused AND consumed (`BROWSER_NO_PENDING_LOGIN`). `created_at` is now
+     read and validated (it was write-only).
+   - `completeLogin` deduplicates same-realm concurrent calls (same
+     store+region+returnUrl share ONE exchange — React StrictMode shape;
+     different returnUrl serializes behind the in-flight attempt).
+     Cross-tab races are a documented non-goal (no atomic ops on the
+     3-method store interface).
+   - `completeLogin` strips the URL FRAGMENT before `parsePastedRedirect`
+     (documented input is `location.href`; hash-router fragments broke the
+     state check in one ordering and leaked fragment text into the `code`
+     form field in the other). The CORE parser is untouched (CPython
+     `parse_qs` parity for node).
+   - Docs requirement: the redirect flow needs a store that SURVIVES
+     navigation (in-memory default cannot complete a real redirect);
+     `new LocalStorageCredentialStore(sessionStorage)` is the named option.
+3. **§2.1 warning breadth**: the localStorage security warning must name all
+   THREE persisted payload families (tokens; pending-login = PKCE verifier +
+   CSRF state; DCR registration) and reference the new
+   `CREDENTIAL_KEYS.all(region)` logout enumeration (core addition). The
+   adapter re-throws backend failures as coded `OAUTH_CONFIG_ERROR`.
+4. **Core PKCE**: `challengeFor`/`generate` fail with coded
+   `OAUTH_CONFIG_ERROR` when `crypto.subtle` is absent (insecure browser
+   context) instead of a bare TypeError; README states the secure-context
+   requirement.
+5. **§5.5 Phase-4 outbound ledger row 1 RE-SCOPED**: the O1 citation
+   `flow.ts:898` is stale post-§3.1-hoist. The row now reads: "core
+   `oauth-http.ts` `postTokenRequest` missing-required-fields branch
+   (`oauth-http.ts:245` region) — `response_data` carries the full 200 token
+   payload into error details (verbatim `flow.py:596-605` parity); shared by
+   node refresh AND browser exchange; ESCALATED from re-examine to the R10.7
+   Python-first fix queue —
+   `context/phase3/bug-reports/python-oauth-error-details-token-payload.md`"
+   (i.e. it also joins ledger row 2's queue as item (d)).
