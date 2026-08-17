@@ -344,11 +344,22 @@ class TestGroupSectionEquivalence:
 
 # Subproperty names: any non-empty identifier-like string. Hypothesis-generated
 # kwargs require valid Python identifiers, so restrict alphabet accordingly.
+# The ``**equals`` kwargs shorthand on ``Filter.list_contains`` cannot
+# express an item filter whose property is literally named like one of
+# the method's own parameters (``property`` / ``quantifier`` /
+# ``resource_type``) — Python raises ``TypeError: got multiple values
+# for argument`` before the library ever runs. That's a documented
+# calling-convention limitation with an escape hatch (pass explicit
+# ``Filter``s via ``*item_filters``), not a wire behavior, so the
+# strategy must not generate those names (Hypothesis found the
+# collision on 2026-08-17: ``pairs={'property': '0'}``).
+_LIST_CONTAINS_RESERVED = frozenset({"property", "quantifier", "resource_type"})
+
 _subprop_names = st.text(
     min_size=1,
     max_size=10,
     alphabet=st.characters(categories=["L"]),  # letters only
-)
+).filter(lambda name: name not in _LIST_CONTAINS_RESERVED)
 
 
 class TestListContainsRoundTrip:
