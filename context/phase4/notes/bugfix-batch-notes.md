@@ -141,3 +141,88 @@ task after re-extraction.
 Consequence for `just check` on this branch: every gate is green EXCEPT the `conformance`
 recipe's corpus step, which reds on exactly these 20 vectors by design until the RE-PIN
 task re-extracts and re-pins (playbook P3-7 trigger 3 choreography).
+
+---
+
+# FIX-2 notes (bugs (c) _handle_response 403 TypeError, (d) OAuth error-details token-payload leak)
+
+Task: FIX-2 of the R10.7 four-bug batch, same branch `ts-port/python-bugfix-batch`.
+Fix-of-record docs read in full:
+- (c) `context/phase3/bug-reports/python-handle-response-403-typeerror.md`
+- (d) `context/phase3/bug-reports/python-oauth-error-details-token-payload.md`
+
+## Bug (c) — 403 sniff crash on truthy non-dict/non-str JSON bodies
+
+Fix (report's suggested shape, verbatim semantics): `api_client.py` `_handle_response`
+403 branch now computes
+`body_text = response_body if isinstance(response_body, str) else ("" if response_body is None else json.dumps(response_body))`
+— uniform SUBSTRING semantics across dict/list/scalar bodies, no TypeError possible.
+Behavior deltas (all per the report's defect list):
+- truthy scalars (`42`/`1.5`/`true`): uncoded TypeError → `QueryError` (Permission denied path);
+- list bodies: element-membership → serialized substring sniff, so
+  `["...SESSION_RECORDING_SENSITIVE_DATA..."]` now maps to `SessionReplayAccessError`
+  (exact-element case unchanged);
+- falsy scalars (`0`/`false`/`null`) and dict/str bodies: unchanged.
+R5.4: no error CODE changed; `SessionReplayAccessError` details/message untouched;
+all other status branches untouched.
+
+### Red run (2026-08-16)
+
+`env -u FORCE_COLOR -u COLORTERM uv run pytest "tests/unit/_internal/test_api_client_sign_replays.py::TestSensitiveData403BodyShapes" -o addopts="" -q`
+→ **4 failed, 5 passed** BEFORE the fix (fails: truthy-scalar 42/1.5/True + list-substring;
+passes: falsy scalars, list-exact, string-body — the already-correct branches).
+GREEN after the one-expression fix: 9 passed (41 passed across the whole file + the
+exceptions test file).
+
+## Bug (d) — OAuthError details carried the full 200 token payload
+
+Fix (report's first-listed recommendation: dict-shape REDACTION, not removal —
+keeps field names + non-secret values for diagnosis): `flow.py`
+`_post_token_request` missing-required-fields branch now emits
+`details={"response_data": str({k: "<redacted>" if k in _TOKEN_BEARING_KEYS else v, ...})}`
+with module constant `_TOKEN_BEARING_KEYS = frozenset({"access_token", "refresh_token", "id_token"})`.
+Security rationale added as a `Security:` section in the `_post_token_request`
+docstring (live bearer material never passes through `Secret`; serializing error
+details would exfiltrate it into logging/telemetry/browser error reporters).
+SUCCESS path untouched; error codes untouched (`OAUTH_TOKEN_ERROR` /
+`OAUTH_REFRESH_ERROR` flow through the existing `error_code` parameter).
+TS twin (`packages/core/src/auth/oauth-http.ts:245`) NOT touched here — retires with
+the coordinated TS task per R10.7 (README/JSDoc caveats to be updated then).
+
+### Red run (2026-08-16)
+
+`env -u FORCE_COLOR -u COLORTERM uv run pytest "tests/unit/test_auth_flow.py::TestTokenPayloadRedaction" -o addopts="" -q`
+→ **3 failed, 1 passed** BEFORE the fix (fails: exchange-path leak, refresh-path leak
+incl. `id_token`, non-secret-visibility; passes: `test_success_path_unchanged` — the
+success-path guard, expected green pre-fix).
+GREEN after the fix: whole `tests/unit/test_auth_flow.py` → 43 passed.
+
+## Conformance failing-vector inventory for (c)/(d) — APPEND per task
+
+`env -u FORCE_COLOR -u COLORTERM uv run python -m conformance.runner --vectors conformance/vectors --report json`
+(post-FIX-2, vectors UNTOUCHED): **total 3,251 / passed 3,231 / failed 20** — the
+failing set is IDENTICAL to the FIX-1 inventory above (13 bug-(a) + 7 bug-(b) vectors).
+
+**Bug (c): ZERO failing vectors.** Stated explicitly: no corpus vector exercises the
+403 truthy-scalar / list-body crash path (matches the fix-of-record: B0-2 coverage is
+Layer-3 + TS edge harness, not vectors — the fix window was open and no recorded
+vector locked the buggy branch).
+
+**Bug (d): ZERO failing vectors.** The 7 `oauth_flow.` vectors all still PASS —
+none asserts `details["response_data"]` content (the report predicted this;
+confirmed empirically here). No re-pin strictly required for (d), but the RE-PIN
+task re-extracts wholesale anyway.
+
+## Gate (FIX-2 run record, 2026-08-16)
+
+`env -u FORCE_COLOR -u COLORTERM just check`: lint / fmt-check / typecheck /
+docstring-cov / test-cov ALL GREEN (7,130 passed, 1 skipped; coverage 92.33% >= 90%).
+The `conformance` recipe reds EXACTLY as documented in the FIX-1 gate note: its first
+step (`pytest conformance/tests`) fails only on
+`test_referee_routing.py::TestProduceHandoff::test_handoff_covers_all_bookmark_builder_vectors`
+(the by-design drift-abort against the stale pre-RE-PIN vectors; 517/518 pass), which
+short-circuits the recipe's corpus step — the corpus was therefore run manually
+(inventory above: same 20 FIX-1 vectors, ZERO from (c)/(d)). `just build` was run
+separately after the conformance short-circuit: GREEN (sdist + wheel built).
+FIX-2 adds ZERO new gate failures; everything red is the known FIX-1 re-pin debt
+owned by the RE-PIN task.
