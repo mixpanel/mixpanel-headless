@@ -225,6 +225,8 @@ Commit hashes: recorded in §8 after the commits land.
   `ts-port/phase2-contract-support`): hash recorded in the finalization
   amendment commit that follows it (a commit cannot contain its own
   hash); both hashes are also in the orchestrator's task record.
+  → landed as `3005bc9` (this line added by the finalization amendment
+  commit, §4.6 duty 3).
 
 Checks: `npm run check` green (above). `just check` green on the Python
 side — note: a first run under the agent harness shell failed 14 CLI
