@@ -1,0 +1,143 @@
+# Python bugfix batch — FIX-1 notes (bugs (a) frequency-filter clause shape, (b) dataGroupId threading)
+
+Branch: `ts-port/python-bugfix-batch` (created from `ts-port/phase2-contract-support` @ c2a25c5).
+Task: FIX-1 of the R10.7 four-bug batch (inbound-ledger row 2, playbook P3-7 trigger 3).
+
+## Correct-shape derivation (analytics oracles, READ-ONLY)
+
+### Bug (a) — frequency filter clause (fix-of-record: `context/phase1/addendum/frequency-filter-probe.md` + `context/phase1/bug-reports/mixpanel-headless-frequency-filter-clause-shape.md`)
+
+The fix-of-record names the platform-native shape (top-level `filterType`/`filterOperator`/
+`filterValue`, `$frequency` under `behavior.behaviorType`) but leaves field-level details
+(event object, label, dateRange, event-filter placement) to the oracles. Derivation:
+
+- Primary fixture: `analytics/api/version_2_0/insights/test.py:4111` region
+  (`test_multi_metric_bar_and_table_chart_csv_exports`) — the native clause is:
+  `{"behavior": {"aggregationOperator": "total", "behaviorType": "$frequency", "dateRange": null,
+  "event": {"label": ..., "value": ...}, "filters": [], "filtersOperator": "and"},
+  "dataGroupId": null, "dataset": "$mixpanel", "defaultType": "number",
+  "filterOperator": ..., "filterType": "number", "filterValue": N, "profileType": null,
+  "propertyObjectKey": null, "resourceType": "people", "search": "", "value": "<label>"}`.
+  Corroborated by `test_behaviors.py:2225-2247` (identical clause via `behavior_filter`)
+  and the production migration `bookmark_parser/common/transforms/util.py:355-390`
+  (`_create_frequency_behavior_group` — same behavior-dict spelling).
+- Deep validator (`analytics/bookmark_parser/insights/validate.py`):
+  `insights_filter_section_validator` (module-level `required=True`, `extra=ALLOW_EXTRA`)
+  requires top-level `filterType` + `filterOperator`; `behavior` validated by
+  `behavior_validator` (`:188`).
+- Display label: native shape carries it in top-level `value` (fixtures use
+  `"<Event> Frequency"`); no separate `label` key — mirrors the library's own
+  `build_frequency_group_entry` (label → `value`).
+- Event filters: native placement is `behavior.filters` (list of standard filter entries,
+  `filtersOperator: "and"`) — NOT the old `behavior.eventFilters`.
+- dateRange for `date_range_value`/`date_range_unit` ("in the last N units"):
+  `{"type": "in the last", "unit": u, "window": {"unit": u, "value": N}}` — derived from
+  `date_range_validator` (= `TIME_VALIDATION_SCHEMA.extend({"type": str, "unit": ..., Optional("value")})`,
+  `window: TIME_OFFSET_SCHEMA` = `{"unit", "value"}`) + fixtures `test_behaviors.py:4014`
+  (`{"type": "in the last", "unit": u}`) and `:15478` (`window: {"unit": "day", "value": 3}` spelling).
+- ajv referee (a) does NOT constrain filter clauses (`Sections.filter` is `JsonValue[]` in
+  `vendor/mixpanel-contracts/bookmark.json`) — the deep referee (b) is the binding oracle here.
+- EMPIRICAL ACCEPT (pre-implementation probe, referee-(b) recipe env,
+  `PYTHONPATH=/Users/jaredmcfarland/Developer`, voluptuous==0.16.0):
+  `validate_insights_bookmark_params_schema(..., require_all_keys=False)` ACCEPTs all three
+  candidate variants (basic, in-the-last window dateRange, event filters in `behavior.filters`).
+
+### Bug (b) — dataGroupId threading (fix-of-record: `context/phase3/bug-reports/mixpanel-headless-datagroupid-int-clause.md`)
+
+- Clause level (`GroupClause.dataGroupId`): `string | null` in BOTH oracles
+  (ajv `DataGroupId = anyOf[string, null]`; deep `Optional("dataGroupId"): Any(None, str)`).
+  Fix choice (doc offers either): keep `int | None` parameter annotations, emit
+  `str(data_group_id)` at emission (None stays None).
+- INTERIOR cohort-entry `data_group_id` (inside `GroupClause.cohorts[]`): deep validator is
+  `Any(int, str, None)` BUT ajv `GroupByCohort.data_group_id` is `DataGroupId | null` =
+  string|null — so the interior emission MUST also coerce to str for referee (a) to run
+  fully clean. (The bug report's pinned error substring only names the clause path, but the
+  pin is substring-matched; the interior int would keep ajv red post-fix.)
+- Sections level: the ajv `Sections` model (`additionalProperties: false`) has NO `dataGroupId`;
+  the correct spelling is `globalDataGroupId: string | null`. Analytics' own fixture
+  `test_behaviors.py:15109` emits `"globalDataGroupId": str(self.data_group_id)` in `sections` —
+  confirming BOTH the key spelling and the str coercion. Deep validator: sections is a nested
+  raw dict under the top-level `extra=REMOVE_EXTRA` schema → unknown `globalDataGroupId` is
+  stripped, ACCEPT (empirically confirmed in the same probe run).
+- Out of scope: `workspace.py:3612` `params["data_group_id"]` is a snake_case legacy funnels
+  QUERY param (not bookmark sections) — not named by the fix-of-record; untouched.
+- Emission sites fixed: `bookmark_builders.py` build_group_section (CustomPropertyRef entry,
+  InlineCustomProperty entry), `_build_cohort_group_entry` (interior `data_group_id` +
+  clause `dataGroupId`), `build_frequency_group_entry` (`dataGroupId`); `workspace.py`
+  `sections["dataGroupId"]` → `sections["globalDataGroupId"] = str(...)` at the three
+  bookmark-sections sites (insights `_build_query_params` region :2278, funnel :2923,
+  retention :3457).
+
+## TDD red runs
+
+Both bugs strictly red-first: tests were rewritten to the derived correct shapes and run
+BEFORE any implementation change.
+
+### Bug (a) red run (2026-08-16)
+
+`env -u FORCE_COLOR -u COLORTERM uv run pytest tests/unit/test_bookmark_builders.py::TestBuildFrequencyFilterEntry tests/unit/test_bookmark_builders.py::TestBuildFilterSectionFrequency tests/unit/test_query_params.py::TestFrequencyFilterInBuildParams -o addopts="" -q`
+→ **14 failed, 1 passed** (the 1 pass = `test_existing_filter_still_works`, a plain-Filter
+backward-compat case untouched by the bug). Failures: all 10 `TestBuildFrequencyFilterEntry`
+tests, both `TestBuildFilterSectionFrequency` frequency tests, both
+`TestFrequencyFilterInBuildParams` frequency tests.
+GREEN after fixing `build_frequency_filter_entry`: 15 passed.
+
+### Bug (b) red run (2026-08-16)
+
+`env -u FORCE_COLOR -u COLORTERM uv run pytest tests/unit/test_bookmark_builders.py -k data_group tests/unit/test_query_params.py::TestDataGroupIdInsights tests/test_build_retention_params.py::TestDataGroupIdRetention tests/test_build_funnel_params.py::TestDataGroupIdFunnel -o addopts="" -q`
+→ **9 failed, 7 passed** (fails = every with-data_group_id case across
+frequency-group / custom-property-ref / inline / cohort clause+interior /
+insights `globalDataGroupId` / `_build_query_params` / funnel / retention;
+passes = without-/default-None cases + string-group + none-group).
+GREEN after the emission coercions + `globalDataGroupId` rename: 16 passed.
+
+Follow-on sweep: `tests/live/test_040_query_completeness_live.py` OFFLINE param-shape
+assertions (M41/M42/M43/M45, X06) pinned the old `sections.dataGroupId` int spelling —
+updated to `globalDataGroupId`/str (M44 asserts the snake_case flows `data_group_id`
+QUERY param, out of scope, untouched).
+
+## Conformance failing-vector inventory (RE-PIN task input)
+
+`env -u FORCE_COLOR -u COLORTERM uv run python -m conformance.runner --vectors conformance/vectors --report json`
+(post-fix, vectors UNTOUCHED per task scoping — the RE-PIN task owns re-extraction):
+
+**status `vector_failed` — total 3,251 / passed 3,231 / failed 20** (exit 1). The 20
+failures are EXACTLY the vectors that recorded the two buggy shapes — no collateral:
+
+Bug (a) — frequency-filter clause shape (13):
+- `filters/bookmark_builders.build_frequency_filter_entry/test_bookmark_builders-testbuildfrequencyfilterentry-test_basic_structure`
+- `…-test_custom_operator`
+- `…-test_label_included`
+- `…-test_label_omitted_when_none`
+- `…-test_multiple_event_filters`
+- `…-test_with_date_range`
+- `…-test_with_event_filters`
+- `…-test_without_date_range`
+- `…-test_without_event_filters`
+- `filters/bookmark_builders.build_filter_section/test_bookmark_builders-testbuildfiltersectionfrequency-test_frequency_filter_in_filter_section`
+- `…-test_mixed_filter_and_frequency`
+- `bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section`
+- `…-test_frequency_filter_mixed_with_filter`
+
+Bug (b) — dataGroupId threading (7):
+- `bookmarks/bookmark_builders.build_group_section/test_bookmark_builders-testbuildgroupsectiondatagroupid-test_cohort_breakdown_group_with_data_group_id`
+- `…-test_custom_property_ref_group_with_data_group_id`
+- `…-test_inline_custom_property_group_with_data_group_id`
+- `bookmarks/bookmark_builders.build_group_section/test_bookmark_builders-testbuildgroupsectionfrequency-test_data_group_id_threaded_to_frequency`
+- `bookmarks/workspace.build_params/test_query_params-testdatagroupidinsights-test_build_params_with_data_group_id`
+- `funnels/workspace.build_funnel_params/test_build_funnel_params-testdatagroupidfunnel-test_build_funnel_params_with_data_group_id`
+- `retention/workspace.build_retention_params/test_build_retention_params-testdatagroupidretention-test_build_retention_params_with_data_group_id`
+
+Full JSON report copy saved during the run at `/tmp/conformance-postfix.json` (ephemeral);
+the failure list above is the durable record. Runner and vectors NOT modified.
+Post-fix confirmation: the ACTUAL new builder outputs (not just hand-built candidates) —
+frequency filter basic / windowed / event-filters+label, and group sections for
+custom-property-ref / cohort-breakdown / frequency-breakdown with `data_group_id` — all
+ACCEPT under `validate_insights_bookmark_params_schema` (referee-(b) recipe env). The
+referee handoff producer (`conformance/tests/test_referee_routing.py::TestProduceHandoff::
+test_handoff_covers_all_bookmark_builder_vectors`) drift-aborts by design against the
+stale vectors — regenerating `handoff.jsonl` + full referee re-runs belong to the RE-PIN
+task after re-extraction.
+Consequence for `just check` on this branch: every gate is green EXCEPT the `conformance`
+recipe's corpus step, which reds on exactly these 20 vectors by design until the RE-PIN
+task re-extracts and re-pins (playbook P3-7 trigger 3 choreography).
