@@ -1002,3 +1002,43 @@ token-exchange error branches (§2.7, §3.5), and done-criteria (§2.9, §3.7);
 gate spec with corpus-HOLD 3,251/0/0, two-entry browser smoke, fresh-seed +
 all-prior-seeds differential regression, and the three Phase-3 closing
 duties incl. the collected Phase-4 outbound ledger (§5).
+
+## §9 Addendum — B9-D2-SPIKE outcome (ratified result, written by the spike task)
+
+**Executed 2026-08-16 (local) / 2026-08-17 UTC. CLASSIFICATION: ACCEPTED**
+(§4.3 row 1: attempt 1 → HTTP 201 with `client_id`
+`ClI8BeFoFjq1Vn1SbdpiufvxvRvCwAbFtaMaXRvo` for
+`redirect_uris: ["https://spike-b9.example.com/oauth/callback"]`; the
+localhost control did not run — conditional on non-2xx). Budget: creds
+check 1/1 PASSED, DCR 1/2, Query-API 0/2, plus the §4.3(b) sanctioned
+optional authorize GET (302 → login with the full authorize URL as `next`
+— URL well-formedness only). Evidence of record:
+`context/phase3/notes/B9-spike.md` (dispatch-named; supersedes the §4
+filename `B9-D2-SPIKE-notes.md`, which is a pointer).
+
+**Tier-C shipping posture (plan §4.3): PKCE-in-browser VIABLE — ships
+ENABLED.** The fallback ("`oauth_token` first-class; PKCE stays Node-only
+until resolved") is NOT triggered; `oauth_token` remains first-class and
+README-leading regardless.
+
+**Docs-facing wording (as landed, TS repo — `packages/browser/README.md`
+"PKCE-in-browser status" + `redirect-flow.ts` module JSDoc)**:
+
+> **PKCE-in-browser ships ENABLED.** DCR accepts third-party https
+> redirect URIs (verified 2026-08-16); end-to-end browser
+> consent/exchange verified in Phase-4 live burn-in.
+>
+> Not yet verified without a real browser session (tracked as the
+> Phase-4 "browser PKCE e2e" live-auth scenario; these docs claim no
+> end-to-end verification): (1) authorize-time `redirect_uri_allowed`
+> enforcement for the registered third-party URI; (2) the consent screen
+> issuing a code to that redirect; (3) a browser-origin `token/` POST
+> succeeding cross-origin.
+
+Gate consumption (§5.3/§5.5): spike classification = ACCEPTED; ledger row
+7 residue = one client id (above, no management URI returned — cleanup
+only if a management API exists); ledger row 8 (browser refresh) now sits
+on the D2-ACCEPTED branch — burn-in e2e remains the precondition. Free
+signal recorded: the DCR endpoint answered a third-party `Origin` with
+`access-control-allow-origin: *` (adjacent-favorable, NOT evidence about
+`token/`). Regional posture (eu/in) assumed uniform — us only was probed.
