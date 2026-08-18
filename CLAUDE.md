@@ -339,9 +339,10 @@ python help.py Filter                  # type fields + construction patterns + r
 - N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
 - Python 3.10+ (mypy --strict) + Standard library only for this slice (`os`, `pathlib`, `re`, `stat`, `errno`). Reuses in-repo `_internal/io_utils.py`. No new third-party dependencies. (045-memory-storage-foundation)
 - Plain files on the local filesystem under a resolved storage root (`$MP_OAUTH_STORAGE_DIR` → `~/.mp`). (045-memory-storage-foundation)
+- Python 3.10+ (mypy --strict) + Standard library only (`dataclasses`, `typing`); no new third-party dependency (no PyYAML). Pure text format layer, no I/O. (046-markdown-format-confidence-labels)
 
 <!-- SPECKIT START -->
-Current plan: [specs/045-memory-storage-foundation/plan.md](specs/045-memory-storage-foundation/plan.md)
+Current plan: [specs/046-markdown-format-confidence-labels/plan.md](specs/046-markdown-format-confidence-labels/plan.md)
 
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan.
@@ -349,4 +350,5 @@ shell commands, and other important information, read the current plan.
 
 
 ## Recent Changes
+- 046-markdown-format-confidence-labels: Added the memory entry format — four-value `ConfidenceLabel`, frozen `MemoryEntry` with `to_dict()`, and a pure stdlib serialize/parse module (front-matter label + free-form body).
 - 045-memory-storage-foundation: Added Python 3.10+ (mypy --strict) + Standard library only for this slice (`os`, `pathlib`, `re`, `stat`, `errno`). Reuses in-repo `_internal/io_utils.py`. No new third-party dependencies.

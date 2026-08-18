@@ -16,6 +16,16 @@ from mixpanel_headless._internal.memory.backend import (
     LocalFilesystemBackend,
     MemoryBackend,
 )
+from mixpanel_headless._internal.memory.entry import (
+    CONFIDENCE_LABELS,
+    ConfidenceLabel,
+    MemoryEntry,
+)
+from mixpanel_headless._internal.memory.format import (
+    MemoryFormatError,
+    parse,
+    serialize,
+)
 from mixpanel_headless._internal.memory.paths import (
     project_memory_dir,
     resolve_key,
@@ -25,10 +35,16 @@ from mixpanel_headless._internal.memory.paths import (
 )
 
 __all__ = [
+    "CONFIDENCE_LABELS",
+    "ConfidenceLabel",
     "LocalFilesystemBackend",
     "MemoryBackend",
+    "MemoryEntry",
+    "MemoryFormatError",
+    "parse",
     "project_memory_dir",
     "resolve_key",
+    "serialize",
     "user_memory_dir",
     "validate_account_name",
     "validate_project_id",
