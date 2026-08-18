@@ -43,6 +43,7 @@ from mixpanel_headless._internal.io_utils import (
     read_credential_text,
     reject_if_symlink,
 )
+from mixpanel_headless._internal.storage_root import storage_root
 
 logger = logging.getLogger(__name__)
 
@@ -53,25 +54,18 @@ _ACCOUNT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 def _storage_root() -> Path:
     """Return the root directory under which mixpanel_headless writes account state.
 
-    Resolved at every call so test isolation via ``$HOME`` /
-    ``MP_OAUTH_STORAGE_DIR`` monkeypatching takes effect — a module-level
-    constant captured at import time would silently leak the developer's
-    real ``~/.mp/`` into hermetic tests.
-
-    Despite the name, ``MP_OAUTH_STORAGE_DIR`` controls EVERY on-disk
-    artifact written by mixpanel_headless (per-account dirs, OAuth tokens,
-    ``/me`` cache, client registration), not just the OAuth subtree. The
-    name is preserved as a backwards-compat env var only — the root is
-    used by both :func:`account_dir` and
-    :meth:`OAuthStorage._default_storage_dir`.
+    Thin backward-compatible alias for
+    :func:`mixpanel_headless._internal.storage_root.storage_root`. The
+    resolver was lifted to a shared leaf module so the memory layer can
+    honor ``MP_OAUTH_STORAGE_DIR`` at call time without importing auth
+    internals; this name is preserved for existing callers
+    (:func:`account_dir`, :meth:`OAuthStorage._default_storage_dir`) and
+    tests.
 
     Returns:
         ``$MP_OAUTH_STORAGE_DIR`` if set, else ``$HOME/.mp``.
     """
-    env_dir = os.environ.get("MP_OAUTH_STORAGE_DIR")
-    if env_dir:
-        return Path(env_dir)
-    return Path.home() / ".mp"
+    return storage_root()
 
 
 def accounts_root() -> Path:

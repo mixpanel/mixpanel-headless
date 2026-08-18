@@ -337,11 +337,16 @@ python help.py Filter                  # type fields + construction patterns + r
 - TOML config (`~/.mp/config.toml`) + per-account state at `~/.mp/accounts/{name}/{tokens,client,me}.json` — schema unchanged from 042 (043-frictionless-auth)
 - Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib) for session replay (044-session-replay)
 - N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
+- Python 3.10+ (mypy --strict) + Standard library only for this slice (`os`, `pathlib`, `re`, `stat`, `errno`). Reuses in-repo `_internal/io_utils.py`. No new third-party dependencies. (045-memory-storage-foundation)
+- Plain files on the local filesystem under a resolved storage root (`$MP_OAUTH_STORAGE_DIR` → `~/.mp`). (045-memory-storage-foundation)
 
 <!-- SPECKIT START -->
-Current plan: [specs/044-session-replay/plan.md](specs/044-session-replay/plan.md)
+Current plan: [specs/045-memory-storage-foundation/plan.md](specs/045-memory-storage-foundation/plan.md)
 
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan.
 <!-- SPECKIT END -->
 
+
+## Recent Changes
+- 045-memory-storage-foundation: Added Python 3.10+ (mypy --strict) + Standard library only for this slice (`os`, `pathlib`, `re`, `stat`, `errno`). Reuses in-repo `_internal/io_utils.py`. No new third-party dependencies.
