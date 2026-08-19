@@ -6,7 +6,7 @@ inputs:
 
 - Any label + arbitrary body -> ``parse(serialize(e)) == e`` (body byte-identical).
 - A successful ``parse`` always yields a label in ``CONFIDENCE_LABELS``.
-- ``serialize`` is deterministic for fixed inputs.
+- ``serialize`` emits the exact front-matter-plus-body text for any input.
 - Any ``confidence`` value outside the labels -> always raises.
 """
 
@@ -28,12 +28,13 @@ from mixpanel_headless._internal.memory.format import (
 )
 
 labels = st.sampled_from(CONFIDENCE_LABELS)
-# Bodies that deliberately include fence-like lines, newlines, and unicode.
+# Bodies that deliberately include fence-like lines, newlines, and unicode
+# across the full range (including astral-plane codepoints and emoji).
 bodies = st.text(
-    alphabet=st.characters(min_codepoint=1, max_codepoint=0x2FFF),
+    alphabet=st.characters(min_codepoint=1, max_codepoint=0x10FFFF),
     max_size=200,
 ) | st.lists(
-    st.sampled_from(["---", "text", "", "a: b", "  ", "→✓", "# h"]),
+    st.sampled_from(["---", "text", "", "a: b", "  ", "→✓", "🧠", "# h"]),
     max_size=8,
 ).map("\n".join)
 
@@ -56,17 +57,23 @@ class TestRoundTripProperties:
         assert parsed.confidence in CONFIDENCE_LABELS
 
     @given(label=labels, body=bodies)
-    def test_serialize_deterministic(self, label: ConfidenceLabel, body: str) -> None:
-        """``serialize`` returns the same text for the same entry."""
+    def test_serialize_exact_shape(self, label: ConfidenceLabel, body: str) -> None:
+        """``serialize`` emits the exact front-matter-plus-body text."""
         entry = MemoryEntry(confidence=label, body=body)
-        assert serialize(entry) == serialize(entry)
+        assert serialize(entry) == f"---\nconfidence: {label}\n---\n{body}"
 
 
 class TestRejectionProperties:
     """Unknown labels are always rejected, never defaulted."""
 
     @given(
-        bad=st.text(max_size=20).filter(lambda s: s.strip() not in CONFIDENCE_LABELS),
+        # No newline or colon, so the value lands on the label-validation branch
+        # rather than spilling into extra front-matter lines.
+        bad=st.text(max_size=20).filter(
+            lambda s: (
+                "\n" not in s and ":" not in s and s.strip() not in CONFIDENCE_LABELS
+            )
+        ),
         body=st.text(max_size=50).filter(lambda s: "\n" not in s and "---" not in s),
     )
     def test_unknown_label_always_raises(self, bad: str, body: str) -> None:

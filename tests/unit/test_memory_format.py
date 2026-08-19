@@ -108,8 +108,18 @@ class TestParseRejection:
 
     def test_duplicate_confidence_key(self) -> None:
         """A repeated ``confidence`` key is rejected rather than silently merged."""
-        with pytest.raises(MemoryFormatError, match="duplicate"):
+        with pytest.raises(MemoryFormatError, match="Duplicate"):
             parse("---\nconfidence: Confirmed\nconfidence: Observed\n---\nbody")
+
+    def test_colonless_front_matter_line(self) -> None:
+        """A front-matter line without a ``:`` separator is reported as such."""
+        with pytest.raises(MemoryFormatError, match="key: value"):
+            parse("---\nconfidence\n---\nbody")
+
+    def test_crlf_is_rejected(self) -> None:
+        """CRLF-fenced input is rejected (the fence grammar is LF-only)."""
+        with pytest.raises(MemoryFormatError, match="front-matter"):
+            parse("---\r\nconfidence: Confirmed\r\n---\r\nbody")
 
     def test_closing_fence_at_eof_empty_body(self) -> None:
         """A closing fence with no trailing newline yields an empty body."""
@@ -125,4 +135,10 @@ class TestParseRejection:
         """Surrounding whitespace on the value is trimmed before matching."""
         assert (
             parse("---\nconfidence:  Confirmed \n---\nbody").confidence == "Confirmed"
+        )
+
+    def test_whitespace_around_key_tolerated(self) -> None:
+        """Surrounding whitespace on the key is trimmed before matching."""
+        assert (
+            parse("---\n  confidence  : Confirmed\n---\nbody").confidence == "Confirmed"
         )

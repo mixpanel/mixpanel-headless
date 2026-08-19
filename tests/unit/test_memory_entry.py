@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from typing import get_args
 
 import pytest
 
@@ -29,6 +30,10 @@ class TestConfidenceLabels:
             "Observed",
             "Predicted",
         )
+
+    def test_tuple_matches_literal(self) -> None:
+        """The runtime tuple and the ``ConfidenceLabel`` Literal cannot drift."""
+        assert set(CONFIDENCE_LABELS) == set(get_args(ConfidenceLabel))
 
 
 class TestMemoryEntryConstruction:

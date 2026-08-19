@@ -4,8 +4,10 @@ Serializes a :class:`~mixpanel_headless._internal.memory.entry.MemoryEntry` to a
 leading ``---``-fenced front-matter block carrying only the confidence label,
 followed by the verbatim markdown body, and parses that text back. The module is
 deliberately I/O-free (no filesystem, no network) so it is the property- and
-mutation-testing target for the slice. The reader is stdlib-only — no YAML
+mutation-testing target for this module. The reader is stdlib-only — no YAML
 dependency — and rejects malformed or unlabeled input rather than defaulting.
+Insignificant whitespace around the ``confidence`` key and its value is
+tolerated (trimmed) for hand-authored friendliness; the body is never touched.
 
 Serialized shape::
 
@@ -30,6 +32,7 @@ __all__ = ["MemoryFormatError", "parse", "serialize"]
 
 _OPEN_FENCE = "---\n"
 _FENCE = "---"
+_CONFIDENCE_KEY = "confidence"
 
 
 class MemoryFormatError(ValueError):
@@ -57,7 +60,7 @@ def serialize(entry: MemoryEntry) -> str:
         # "---\nconfidence: Confirmed\n---\nhi"
         ```
     """
-    return f"{_OPEN_FENCE}confidence: {entry.confidence}\n{_FENCE}\n{entry.body}"
+    return f"{_OPEN_FENCE}{_CONFIDENCE_KEY}: {entry.confidence}\n{_FENCE}\n{entry.body}"
 
 
 def parse(text: str) -> MemoryEntry:
@@ -76,9 +79,10 @@ def parse(text: str) -> MemoryEntry:
 
     Raises:
         MemoryFormatError: ``text`` lacks the opening ``---`` fence, the
-            front-matter is unterminated, omits ``confidence``, carries an
-            unexpected extra key, or names a confidence value outside
-            :data:`CONFIDENCE_LABELS`.
+            front-matter is unterminated, contains a line that is not in
+            ``key: value`` form, omits ``confidence``, provides ``confidence``
+            more than once, carries an unexpected extra key, or names a
+            confidence value outside :data:`CONFIDENCE_LABELS`.
 
     Example:
         ```python
@@ -87,7 +91,7 @@ def parse(text: str) -> MemoryEntry:
     """
     if not text.startswith(_OPEN_FENCE):
         raise MemoryFormatError(
-            "missing opening front-matter fence (text must start with '---')"
+            "Missing opening front-matter fence: text must start with '---'."
         )
 
     front_matter_lines: list[str] = []
@@ -113,7 +117,7 @@ def parse(text: str) -> MemoryEntry:
 
     if body_start is None:
         raise MemoryFormatError(
-            "unterminated front-matter (missing closing '---' fence)"
+            "Unterminated front-matter: missing closing '---' fence."
         )
 
     confidence = _parse_confidence(front_matter_lines)
@@ -130,28 +134,34 @@ def _parse_confidence(front_matter_lines: list[str]) -> ConfidenceLabel:
         The validated confidence label.
 
     Raises:
-        MemoryFormatError: a line names a key other than ``confidence``, the
-            ``confidence`` key is duplicated or absent, or its value is not one
-            of :data:`CONFIDENCE_LABELS`.
+        MemoryFormatError: a line is not in ``key: value`` form, names a key
+            other than ``confidence``, the ``confidence`` key is duplicated or
+            absent, or its value is not one of :data:`CONFIDENCE_LABELS`.
     """
     value: str | None = None
     for line in front_matter_lines:
-        key, _sep, raw_value = line.partition(":")
-        if key.strip() != "confidence":
+        key, separator, raw_value = line.partition(":")
+        if separator == "":
             raise MemoryFormatError(
-                f"unexpected front-matter key {key.strip()!r}; "
-                "only 'confidence' is allowed"
+                f"Front-matter line {line!r} is not in 'key: value' form."
+            )
+        if key.strip() != _CONFIDENCE_KEY:
+            raise MemoryFormatError(
+                f"Unexpected front-matter key {key.strip()!r}. "
+                f"Only {_CONFIDENCE_KEY!r} is allowed."
             )
         if value is not None:
-            raise MemoryFormatError("duplicate 'confidence' key in front-matter")
+            raise MemoryFormatError(
+                f"Duplicate {_CONFIDENCE_KEY!r} key in front-matter."
+            )
         value = raw_value.strip()
 
     if value is None:
-        raise MemoryFormatError("front-matter is missing the 'confidence' key")
+        raise MemoryFormatError(f"Front-matter is missing the {_CONFIDENCE_KEY!r} key.")
 
     for label in CONFIDENCE_LABELS:
         if label == value:
             return label
     raise MemoryFormatError(
-        f"invalid confidence label {value!r}; expected one of {CONFIDENCE_LABELS}"
+        f"Invalid confidence label {value!r}. Expected one of {CONFIDENCE_LABELS}."
     )

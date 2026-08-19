@@ -77,8 +77,8 @@ class MemoryEntry:
         """
         if self.confidence not in CONFIDENCE_LABELS:
             raise ValueError(
-                f"invalid confidence label {self.confidence!r}; "
-                f"expected one of {CONFIDENCE_LABELS}"
+                f"Invalid confidence label {self.confidence!r}. "
+                f"Expected one of {CONFIDENCE_LABELS}."
             )
 
     def to_dict(self) -> dict[str, str]:
