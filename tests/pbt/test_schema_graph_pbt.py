@@ -25,19 +25,29 @@ _props = st.lists(_base.map(lambda s: f"prop_{s}"), min_size=1, max_size=6, uniq
 
 
 def _build(events: list[str], props: list[str], edges: dict[str, list[str]]) -> Any:
-    """Run get_schema_graph against a mocked api client built from edges."""
+    """Run get_schema_graph against a mocked api client built from edges.
+
+    ``edges`` maps each property to its events. The mock serves the flat
+    property list without events; the edges are delivered through the
+    per-event gather (event -> properties), which the service inverts.
+    """
     api = MagicMock()
     api.list_event_definitions.return_value = [{"name": e} for e in events]
 
     def list_props(*, resource_type: str = "Event", **_: Any) -> list[dict[str, Any]]:
         if resource_type == "User":
             return []
-        return [
-            {"name": p, "events": [{"name": e} for e in edges.get(p, [])]}
-            for p in props
-        ]
+        return [{"name": p} for p in props]
 
     api.list_property_definitions.side_effect = list_props
+    event_to_props: dict[str, list[str]] = {e: [] for e in events}
+    for prop, evs in edges.items():
+        for ev in evs:
+            event_to_props[ev].append(prop)
+    api.list_per_event_properties.return_value = [
+        {"name": e, "properties": [{"name": p} for p in ps]}
+        for e, ps in event_to_props.items()
+    ]
     return DiscoveryService(api).get_schema_graph(include_user_properties=False)
 
 

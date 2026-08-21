@@ -13,7 +13,10 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import (
+    DEFAULT_APP_TIMEOUT_S,
+    MixpanelAPIClient,
+)
 from mixpanel_headless._internal.auth.session import Session
 from mixpanel_headless._internal.pagination import (
     _BACKOFF_MAX,
@@ -308,6 +311,35 @@ class TestPaginateAll:
             )
 
         assert captured_params[0]["query_origin"] == "mixpanel-headless"
+
+    def test_default_timeout_outlasts_app_deadline(
+        self, oauth_credentials: Session
+    ) -> None:
+        """Pagination requests carry the route-aware App API timeout.
+
+        With no explicit client timeout, the request timeout must be the
+        app-route default (sized to outlast the server's ~120s deadline),
+        never ``None`` (which httpx reads as "no timeout at all").
+        """
+        captured_timeouts: list[dict[str, float | None] | None] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured_timeouts.append(request.extensions.get("timeout"))
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": [{"id": 1}],
+                    "pagination": {"page_size": 100, "next_cursor": None},
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            list(paginate_all(client, "/projects/12345/dashboards"))
+
+        assert captured_timeouts[0] is not None
+        assert captured_timeouts[0]["read"] == DEFAULT_APP_TIMEOUT_S
 
     def test_handles_response_without_results_key(
         self, oauth_credentials: Session

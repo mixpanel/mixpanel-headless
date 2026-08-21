@@ -17,7 +17,11 @@ from httpx._types import SyncByteStream
 from pydantic import SecretStr
 
 from mixpanel_headless._internal.api_client import (
+    APP_API_SERVER_DEADLINE_S,
+    DEFAULT_APP_TIMEOUT_S,
+    DEFAULT_QUERY_TIMEOUT_S,
     ENDPOINTS,
+    QUERY_API_SERVER_DEADLINE_S,
     MixpanelAPIClient,
     _iter_jsonl_lines,
 )
@@ -113,6 +117,94 @@ class TestEndpoints:
         assert ENDPOINTS["us"]["engage"] == "https://mixpanel.com/api/query/engage"
         assert ENDPOINTS["eu"]["engage"] == "https://eu.mixpanel.com/api/query/engage"
         assert ENDPOINTS["in"]["engage"] == "https://in.mixpanel.com/api/query/engage"
+
+
+class TestServerDeadlineAccommodation:
+    """Route-aware default timeouts sized to outlast the server's deadline.
+
+    Mixpanel's edge enforces read deadlines per route family (nginx
+    ``proxy_read_timeout``): ~120s for App API routes and 488s for query
+    routes. The client-side defaults must exceed those deadlines so a slow
+    request is always resolved by the server's own answer (success or 5xx),
+    never pre-empted by a client read timeout. An explicit ``timeout``
+    (constructor or per-call) still wins.
+    """
+
+    @staticmethod
+    def _capture_client(
+        test_credentials: Session,
+        seen: dict[str, Any],
+        **kwargs: Any,
+    ) -> MixpanelAPIClient:
+        """Build a client whose transport records the per-request timeout.
+
+        Args:
+            test_credentials: Session fixture for the client.
+            seen: Dict the handler writes the request timeout into.
+            **kwargs: Extra MixpanelAPIClient constructor arguments.
+
+        Returns:
+            A client wired to the capturing MockTransport.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["timeout"] = request.extensions.get("timeout")
+            return httpx.Response(200, json={"results": []})
+
+        return MixpanelAPIClient(
+            session=test_credentials,
+            _transport=httpx.MockTransport(handler),
+            **kwargs,
+        )
+
+    def test_default_constants_outlast_server_deadlines(self) -> None:
+        """Each route default strictly exceeds the matching server deadline."""
+        assert DEFAULT_APP_TIMEOUT_S > APP_API_SERVER_DEADLINE_S
+        assert DEFAULT_QUERY_TIMEOUT_S > QUERY_API_SERVER_DEADLINE_S
+
+    def test_default_export_timeout_outlasts_query_deadline(
+        self, test_credentials: Session
+    ) -> None:
+        """The export tier (used by long gathers) also outlasts 488s."""
+        client = MixpanelAPIClient(session=test_credentials)
+        assert client._export_timeout > QUERY_API_SERVER_DEADLINE_S
+        client.close()
+
+    def test_app_request_outlasts_app_deadline(self, test_credentials: Session) -> None:
+        """App API requests default to the app-route read timeout."""
+        seen: dict[str, Any] = {}
+        client = self._capture_client(test_credentials, seen)
+        client.app_request("GET", "/projects/12345/dashboards")
+        assert seen["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
+
+    def test_query_request_outlasts_query_deadline(
+        self, test_credentials: Session
+    ) -> None:
+        """Query-host requests default to the query-route read timeout."""
+        seen: dict[str, Any] = {}
+        client = self._capture_client(test_credentials, seen)
+        client.request("GET", f"{ENDPOINTS['us']['query']}/segmentation")
+        assert seen["timeout"]["read"] == DEFAULT_QUERY_TIMEOUT_S
+
+    def test_explicit_constructor_timeout_wins_everywhere(
+        self, test_credentials: Session
+    ) -> None:
+        """A constructor timeout overrides the route-aware defaults."""
+        seen: dict[str, Any] = {}
+        client = self._capture_client(test_credentials, seen, timeout=42.0)
+        client.app_request("GET", "/projects/12345/dashboards")
+        assert seen["timeout"]["read"] == 42.0
+        client.request("GET", f"{ENDPOINTS['us']['query']}/segmentation")
+        assert seen["timeout"]["read"] == 42.0
+
+    def test_per_call_timeout_wins_over_defaults(
+        self, test_credentials: Session
+    ) -> None:
+        """A per-call timeout overrides both defaults and the constructor."""
+        seen: dict[str, Any] = {}
+        client = self._capture_client(test_credentials, seen, timeout=42.0)
+        client.request("GET", f"{ENDPOINTS['us']['query']}/segmentation", timeout=7.0)
+        assert seen["timeout"]["read"] == 7.0
 
 
 class TestClientInit:

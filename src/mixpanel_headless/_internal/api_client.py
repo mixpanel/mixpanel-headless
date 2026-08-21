@@ -183,6 +183,18 @@ ENDPOINTS: dict[str, dict[str, str]] = {
     },
 }
 
+# Server-side read deadlines Mixpanel's edge enforces per route family
+# (nginx ``proxy_read_timeout``): App API routes get ~120s; ``/api/query``
+# routes get 488s. The route-aware client defaults below add a margin so a
+# slow request is always resolved by the server's own answer (success or
+# 5xx with diagnostics) and never pre-empted by a client read timeout. An
+# explicit ``timeout`` (constructor or per-call) overrides them.
+APP_API_SERVER_DEADLINE_S: float = 120.0
+QUERY_API_SERVER_DEADLINE_S: float = 488.0
+_SERVER_DEADLINE_MARGIN_S: float = 15.0
+DEFAULT_APP_TIMEOUT_S: float = APP_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
+DEFAULT_QUERY_TIMEOUT_S: float = QUERY_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
+
 
 def _parse_feed_date(value: str, field: str) -> datetime:
     """Parse a ``YYYY-MM-DD`` activity-feed date, raising QueryError on bad input.
@@ -319,7 +331,7 @@ class MixpanelAPIClient:
         self,
         *,
         session: Session,
-        timeout: float = 120.0,
+        timeout: float | None = None,
         export_timeout: float = 600.0,
         max_retries: int = 3,
         token_resolver: TokenResolver | None = None,
@@ -329,7 +341,13 @@ class MixpanelAPIClient:
 
         Args:
             session: Resolved Session (account + project + optional workspace).
-            timeout: Request timeout in seconds for regular requests.
+            timeout: Request timeout in seconds for regular requests. When
+                ``None`` (the default), each request gets a route-aware
+                timeout sized to outlast the server's own deadline
+                (:data:`DEFAULT_APP_TIMEOUT_S` for App API routes,
+                :data:`DEFAULT_QUERY_TIMEOUT_S` otherwise), so the server —
+                not this client — resolves a slow request. An explicit value
+                applies to every request.
             export_timeout: Request timeout for export operations.
             max_retries: Maximum retry attempts for rate-limited requests.
             token_resolver: For OAuth accounts; defaults to
@@ -346,7 +364,7 @@ class MixpanelAPIClient:
             if isinstance(session.account, ServiceAccount)
             else None
         )
-        self._timeout = timeout
+        self._timeout: float | None = timeout
         self._export_timeout = export_timeout
         self._max_retries = max_retries
         self._client: httpx.Client | None = None
@@ -456,10 +474,37 @@ class MixpanelAPIClient:
         """
         if self._client is None:
             self._client = httpx.Client(
-                timeout=self._timeout,
+                # Pool-level fallback only — every request path passes a
+                # per-request timeout. Sized to the largest route default so
+                # it can never pre-empt a server-side deadline.
+                timeout=(
+                    self._timeout
+                    if self._timeout is not None
+                    else DEFAULT_QUERY_TIMEOUT_S
+                ),
                 transport=self._transport,
             )
         return self._client
+
+    def _default_timeout(self, url: str) -> float:
+        """Resolve the read timeout for a request to ``url``.
+
+        An explicit constructor ``timeout`` wins. Otherwise the default is
+        route-aware and sized to outlast the server's own read deadline
+        (~120s on App API routes, 488s on query routes), so the server —
+        never this client — is the side that resolves a slow request.
+
+        Args:
+            url: The full request URL.
+
+        Returns:
+            The timeout in seconds for the request.
+        """
+        if self._timeout is not None:
+            return self._timeout
+        if url.startswith(ENDPOINTS[self._session.account.region]["app"]):
+            return DEFAULT_APP_TIMEOUT_S
+        return DEFAULT_QUERY_TIMEOUT_S
 
     def _request_headers(self, extra: dict[str, str]) -> dict[str, str]:
         """Compose the per-request header set: defaults → env → session → caller.
@@ -772,7 +817,7 @@ class MixpanelAPIClient:
                     json=json_data,
                     data=form_data,
                     headers=request_headers,
-                    timeout=timeout or self._timeout,
+                    timeout=timeout or self._default_timeout(url),
                 )
 
                 if response.status_code == 429:
@@ -872,7 +917,8 @@ class MixpanelAPIClient:
             params: Query parameters.
             data: Request body as JSON (for POST).
             form_data: Request body as form-encoded (for POST).
-            timeout: Override default timeout (uses self._timeout if not specified).
+            timeout: Override the route-aware default timeout (see
+                ``_default_timeout``) for this request.
             inject_project_id: If True (default), automatically adds project_id
                 to query params. Set to False for APIs where project_id is
                 already in the URL path (e.g., Lexicon Schemas API).
@@ -1301,7 +1347,7 @@ class MixpanelAPIClient:
                         params=request_params,
                         data=form_body,
                         headers=headers,
-                        timeout=self._timeout,
+                        timeout=self._default_timeout(url),
                     )
                 else:
                     response = client.request(
@@ -1310,7 +1356,7 @@ class MixpanelAPIClient:
                         params=request_params,
                         json=json_body,
                         headers=headers,
-                        timeout=self._timeout,
+                        timeout=self._default_timeout(url),
                     )
 
                 # Handle 204 No Content
@@ -6835,6 +6881,52 @@ class MixpanelAPIClient:
             include_zero_counts=include_zero_counts,
         )
 
+    def list_per_event_properties(self) -> list[dict[str, Any]]:
+        """List every event with the properties observed on it (query API).
+
+        Calls ``GET {query}/data_definitions/events`` with
+        ``fetch_per_event_properties=true`` — the internal query-API surface the
+        Mixpanel Lexicon UI itself uses — and unwraps the ``results`` envelope.
+        This is the relationship source for the schema graph: the App API's
+        ``includeEvents=true`` bulk call computes the same event<->property join
+        behind a ~120s gateway deadline it cannot meet on large projects, while
+        the query-API route permits longer runs, so this request is sent with
+        the export timeout. A pinned workspace is injected as ``workspace_id``
+        and the server applies its event-name filters.
+
+        Returns:
+            List of event dicts; each carries a ``properties`` list of property
+            definition dicts (at minimum ``{"name": ...}``-shaped).
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: API error (400/404).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors, or a non-list
+                ``results`` payload.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session) as client:
+                rows = client.list_per_event_properties()
+                rows[0]["properties"][0]["name"]  # "amount"
+            ```
+        """
+        url = self._build_url("query", "/data_definitions/events")
+        result = self._request(
+            "GET",
+            url,
+            params={"fetch_per_event_properties": "true"},
+            timeout=self._export_timeout,
+        )
+        rows = result.get("results") if isinstance(result, dict) else result
+        if not isinstance(rows, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from per-event properties: "
+                f"expected list, got {type(rows).__name__}",
+            )
+        return rows
+
     def update_property_definition(
         self, name: str, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -7668,10 +7760,10 @@ class MixpanelAPIClient:
         if self._transport is not None:
             # Test mode: use the mock transport
             upload_client = httpx.Client(
-                transport=self._transport, timeout=self._timeout
+                transport=self._transport, timeout=self._default_timeout(url)
             )
         else:
-            upload_client = httpx.Client(timeout=self._timeout)
+            upload_client = httpx.Client(timeout=self._default_timeout(url))
         try:
             response = upload_client.put(
                 url,
@@ -7735,7 +7827,7 @@ class MixpanelAPIClient:
             url,
             data=form_data,
             headers=self._request_headers({"Authorization": auth_header}),
-            timeout=self._timeout,
+            timeout=self._default_timeout(url),
         )
         if response.status_code >= 400:
             self._handle_response(
@@ -7938,7 +8030,7 @@ class MixpanelAPIClient:
             url,
             params=params,
             headers=self._request_headers({"Authorization": auth_header}),
-            timeout=self._timeout,
+            timeout=self._default_timeout(url),
         )
         if response.status_code >= 400:
             # Delegate error handling

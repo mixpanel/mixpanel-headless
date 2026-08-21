@@ -3,7 +3,9 @@
 Five layers:
 
 - ``SchemaGraphResult`` DataFrame views, networkx export, convenience accessors;
-- the ``MixpanelAPIClient`` bulk lexicon calls (URL/params, shape handling);
+- the ``MixpanelAPIClient`` bulk lexicon calls (URL/params, shape handling),
+  including the query-API per-event properties gather that supplies the
+  relationship edges;
 - ``DiscoveryService.get_schema_graph`` adjacency building + caching;
 - the ``Workspace.schema_graph`` facade;
 - the ``mp inspect schema-graph`` CLI command.
@@ -375,6 +377,57 @@ class TestApiClientBulkLexicon:
         assert seen["params"]["name[]"] == "Purchase"
 
 
+class TestApiClientPerEventProperties:
+    """The query-API per-event properties gather (the relationship source).
+
+    The App API's ``includeEvents=true`` bulk call computes this same join
+    behind a ~120s gateway deadline it cannot meet on large projects, so the
+    schema graph fetches the edges from the query API instead.
+    """
+
+    def test_url_params_and_unwrap(self) -> None:
+        """The call hits the query host and unwraps the results envelope."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url.copy_with(query=None))
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"name": "Purchase", "properties": [{"name": "amount"}]}
+                    ]
+                },
+            )
+
+        rows = _client(handler).list_per_event_properties()
+        assert seen["url"] == "https://mixpanel.com/api/query/data_definitions/events"
+        assert seen["params"]["fetch_per_event_properties"] == "true"
+        assert seen["params"]["project_id"] == "12345"
+        assert rows == [{"name": "Purchase", "properties": [{"name": "amount"}]}]
+
+    def test_uses_export_timeout(self) -> None:
+        """The gather runs under the long export timeout, not the default 120s."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["timeout"] = request.extensions.get("timeout")
+            return httpx.Response(200, json={"results": []})
+
+        _client(handler).list_per_event_properties()
+        assert seen["timeout"]["read"] == 600.0
+
+    def test_raises_on_unexpected_shape(self) -> None:
+        """A non-list results payload is rejected."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"results": {"unexpected": "shape"}})
+
+        with pytest.raises(MixpanelHeadlessError, match="expected list"):
+            _client(handler).list_per_event_properties()
+
+
 class TestCanonicalResourceType:
     """The resource-type value normalizer."""
 
@@ -399,7 +452,12 @@ class TestDiscoveryGetSchemaGraph:
     """DiscoveryService.get_schema_graph composition + caching."""
 
     def _mock_api(self) -> MagicMock:
-        """Mock api client returning small lexicon lists."""
+        """Mock api client returning small lexicon lists.
+
+        The flat property rows carry no ``events`` lists; the relationship
+        edges come from the query-API per-event gather and are inverted
+        client-side.
+        """
         api = MagicMock()
         api.list_event_definitions.return_value = [
             {"name": "Purchase", "displayName": "Purchase"},
@@ -411,23 +469,60 @@ class TestDiscoveryGetSchemaGraph:
         ) -> list[dict[str, Any]]:
             if resource_type == "User":
                 return [{"name": "plan", "resourceType": "User"}]
-            return [
-                {"name": "amount", "events": [{"name": "Purchase"}]},
-                {"name": "ts", "events": [{"name": "Purchase"}, {"name": "Login"}]},
-            ]
+            return [{"name": "amount"}, {"name": "ts"}]
 
         api.list_property_definitions.side_effect = list_props
+        api.list_per_event_properties.return_value = [
+            {"name": "Purchase", "properties": [{"name": "amount"}, {"name": "ts"}]},
+            {"name": "Login", "properties": [{"name": "ts"}]},
+        ]
         return api
 
     def test_builds_adjacency_maps(self) -> None:
-        """Adjacency maps are built from the property event lists."""
+        """Adjacency maps are built from the inverted per-event gather."""
         svc = DiscoveryService(self._mock_api())
         result = svc.get_schema_graph()
         assert result.event_to_properties["Purchase"] == ["amount", "ts"]
         assert result.event_to_properties["Login"] == ["ts"]
         assert result.property_to_events["amount"] == ["Purchase"]
+        assert result.property_to_events["ts"] == ["Purchase", "Login"]
         assert result.user_properties == [{"name": "plan", "resourceType": "User"}]
         assert result.meta["event_count"] == 2
+
+    def test_flat_properties_call_omits_include_events(self) -> None:
+        """No list_property_definitions call requests the App API join.
+
+        The App API's ``includeEvents=true`` join times out server-side on
+        large projects; the edges must come from list_per_event_properties.
+        """
+        api = self._mock_api()
+        DiscoveryService(api).get_schema_graph()
+        assert api.list_per_event_properties.call_count == 1
+        for call in api.list_property_definitions.call_args_list:
+            assert not call.kwargs.get("include_events")
+
+    def test_per_event_rows_malformed_entries_skipped(self) -> None:
+        """Nameless events and malformed property entries contribute no edges."""
+        api = self._mock_api()
+        api.list_per_event_properties.return_value = [
+            {"properties": [{"name": "amount"}]},  # nameless event -> dropped
+            {"name": "Purchase", "properties": ["bad", {"no": "name"}]},
+            {"name": "Login", "properties": [{"name": "ts"}]},
+            {"name": "NoProps"},  # no properties key -> no edges
+        ]
+        result = DiscoveryService(api).get_schema_graph()
+        assert result.property_to_events["amount"] == []
+        assert result.property_to_events["ts"] == ["Login"]
+
+    def test_unknown_property_in_per_event_map_ignored(self) -> None:
+        """A per-event property absent from the flat list creates no node."""
+        api = self._mock_api()
+        api.list_per_event_properties.return_value = [
+            {"name": "Purchase", "properties": [{"name": "ghost"}]},
+        ]
+        result = DiscoveryService(api).get_schema_graph()
+        assert "ghost" not in result.property_to_events
+        assert result.event_to_properties["Purchase"] == []
 
     def test_caches_and_force_refresh(self) -> None:
         """Results are cached; force_refresh re-fetches."""
@@ -466,7 +561,10 @@ class TestDiscoveryGetSchemaGraph:
         api = MagicMock()
         api.list_event_definitions.return_value = [{"name": "Purchase"}]
         api.list_property_definitions.return_value = [
-            {"name": "amount", "densityLocal": 0.75, "events": [{"name": "Purchase"}]}
+            {"name": "amount", "densityLocal": 0.75}
+        ]
+        api.list_per_event_properties.return_value = [
+            {"name": "Purchase", "properties": [{"name": "amount"}]}
         ]
         result = DiscoveryService(api).get_schema_graph(
             include_density=True, include_user_properties=False
@@ -476,12 +574,15 @@ class TestDiscoveryGetSchemaGraph:
         assert result.to_graph().edges["Purchase", "amount"]["density_local"] == 0.75
 
     def test_debug_log_on_dropped_rows(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Dropped (nameless / malformed) rows emit a debug summary."""
+        """Dropped (nameless) rows emit a debug summary."""
         api = MagicMock()
         api.list_event_definitions.return_value = [{"name": "Purchase"}, {"count": 1}]
         api.list_property_definitions.return_value = [
-            {"name": "amount", "events": ["bad", {"name": "Purchase"}]},
-            {"events": []},
+            {"name": "amount"},
+            {"description": "nameless"},
+        ]
+        api.list_per_event_properties.return_value = [
+            {"name": "Purchase", "properties": [{"name": "amount"}]}
         ]
         logger_name = "mixpanel_headless._internal.services.discovery"
         with caplog.at_level(logging.DEBUG, logger=logger_name):
@@ -492,8 +593,9 @@ class TestDiscoveryGetSchemaGraph:
         """A clean gather emits no drop summary."""
         api = MagicMock()
         api.list_event_definitions.return_value = [{"name": "Purchase"}]
-        api.list_property_definitions.return_value = [
-            {"name": "amount", "events": [{"name": "Purchase"}]}
+        api.list_property_definitions.return_value = [{"name": "amount"}]
+        api.list_per_event_properties.return_value = [
+            {"name": "Purchase", "properties": [{"name": "amount"}]}
         ]
         logger_name = "mixpanel_headless._internal.services.discovery"
         with caplog.at_level(logging.DEBUG, logger=logger_name):
@@ -509,6 +611,7 @@ class TestFacadeAndCli:
         api = MagicMock()
         api.list_event_definitions.return_value = [{"name": "Purchase"}]
         api.list_property_definitions.return_value = []
+        api.list_per_event_properties.return_value = []
         ws = Workspace(session=_SESSION, _api_client=api)
         result = ws.schema_graph(include_user_properties=False)
         assert isinstance(result, SchemaGraphResult)

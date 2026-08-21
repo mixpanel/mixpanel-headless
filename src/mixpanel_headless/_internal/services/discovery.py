@@ -356,6 +356,35 @@ def _infer_subproperties(raw_values: list[str]) -> list[SubPropertyInfo]:
     return out
 
 
+def _invert_per_event_properties(
+    per_event_rows: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Invert per-event property lists into a property->events map.
+
+    Each input row is an event dict carrying a ``properties`` list (the
+    query-API ``fetch_per_event_properties`` shape). Rows without an event
+    name, and property entries that are not name-carrying dicts, contribute
+    no edges. Event order is preserved per property.
+
+    Args:
+        per_event_rows: Event dicts, each with an optional ``properties`` list.
+
+    Returns:
+        Map of property name to the ordered list of event names it appears on.
+    """
+    property_to_events: dict[str, list[str]] = {}
+    for event_row in per_event_rows:
+        event_name = event_row.get("name")
+        if not event_name:
+            continue
+        for prop in event_row.get("properties") or []:
+            if isinstance(prop, dict) and prop.get("name"):
+                property_to_events.setdefault(str(prop["name"]), []).append(
+                    str(event_name)
+                )
+    return property_to_events
+
+
 class DiscoveryService:
     """Schema discovery service for Mixpanel projects.
 
@@ -839,16 +868,21 @@ class DiscoveryService:
     ) -> SchemaGraphResult:
         """Gather the full Lexicon schema and the event<->property graph.
 
-        Issues two or three bulk Lexicon calls — event definitions and event
-        properties (with their attached events) always, plus user properties when
-        ``include_user_properties`` is set (the default) — and folds them into a
-        :class:`SchemaGraphResult`, which derives the event<->property adjacency
-        maps from the ``events`` lists the API returns on each event property.
+        Issues three or four bulk calls: event definitions, event properties,
+        and the query-API per-event properties gather always, plus user
+        properties when ``include_user_properties`` is set (the default). The
+        per-event gather (``data_definitions/events?fetch_per_event_properties``)
+        is inverted client-side into per-property ``events`` lists, which
+        :class:`SchemaGraphResult` folds into the adjacency maps. The App API's
+        ``includeEvents=true`` bulk call is deliberately not used: it computes
+        the same join behind a ~120s gateway deadline it cannot meet on large
+        projects.
 
         Args:
             include_density: Request the property-level density (``densityLocal``)
-                the bulk call returns, repeated onto each of a property's
-                relationship edges. Only populated when the API has computed it.
+                the bulk properties call returns, repeated onto each of a
+                property's relationship edges. Only populated when the API has
+                computed it.
             include_user_properties: Also gather user properties (they carry no
                 event relationships).
             force_refresh: Bypass the per-instance cache and re-fetch.
@@ -874,9 +908,28 @@ class DiscoveryService:
         events = self._api_client.list_event_definitions()
         properties = self._api_client.list_property_definitions(
             resource_type="Event",
-            include_events=True,
             include_density=include_density,
         )
+        per_event_rows = self._api_client.list_per_event_properties()
+        property_to_events = _invert_per_event_properties(per_event_rows)
+        # Attach the inverted edges as per-property ``events`` lists (copies,
+        # not mutations) so ``properties`` keeps its single-source-of-truth
+        # contract with SchemaGraphResult. Edges for properties absent from
+        # the flat list are dropped — the flat list defines the node set.
+        properties = [
+            {
+                **row,
+                "events": [
+                    {"name": event_name}
+                    for event_name in (
+                        property_to_events.get(str(row["name"]), [])
+                        if row.get("name")
+                        else []
+                    )
+                ],
+            }
+            for row in properties
+        ]
         user_properties: list[dict[str, Any]] = []
         if include_user_properties:
             user_properties = self._api_client.list_property_definitions(
