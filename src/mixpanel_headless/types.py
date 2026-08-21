@@ -11509,9 +11509,11 @@ class SchemaGraphResult(ResultWithDataFrame):
 
     Adapts the power-tools ``getSchema`` view to headless: it gathers event
     definitions, event properties, and user properties from the Lexicon, and
-    records which properties appear on which events (and the inverse) from a
-    single bulk ``data-definitions/properties?includeEvents=true`` call, so for
-    any event you can list the properties that travel with it.
+    records which properties appear on which events (and the inverse) from the
+    query API's per-event properties gather
+    (``data_definitions/events?fetch_per_event_properties=true``, inverted
+    client-side onto each property), so for any event you can list the
+    properties that travel with it.
 
     Group properties are out of scope for now (headless has no data-groups
     listing to enumerate them); only event and user properties are gathered.

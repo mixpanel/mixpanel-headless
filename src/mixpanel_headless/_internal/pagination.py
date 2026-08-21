@@ -172,7 +172,7 @@ def paginate_all(
                     url,
                     params=request_params,
                     headers=headers,
-                    timeout=client._timeout,
+                    timeout=client._default_timeout(url),
                 )
             except httpx.HTTPError as exc:
                 raise MixpanelHeadlessError(

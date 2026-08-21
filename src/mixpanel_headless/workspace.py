@@ -1355,9 +1355,12 @@ class Workspace:
         Adapts the power-tools ``getSchema`` view: one call returns the project's
         event definitions, event properties, and user properties, plus the
         adjacency between events and the properties that appear on them. The
-        result is a typed :class:`SchemaGraphResult` with DataFrame views
-        (``events_df``, ``properties_df``, ``relationships_df``) and a
-        ``to_graph()`` networkx export.
+        adjacency comes from the query API's per-event properties gather, which
+        tolerates large projects (the App API join it replaces timed out at the
+        ~120s gateway deadline); on very large projects the gather can still
+        take minutes. The result is a typed :class:`SchemaGraphResult` with
+        DataFrame views (``events_df``, ``properties_df``,
+        ``relationships_df``) and a ``to_graph()`` networkx export.
 
         Group properties are not gathered yet (headless has no data-groups
         listing to enumerate them).
