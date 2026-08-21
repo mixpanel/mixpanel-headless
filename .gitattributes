@@ -1,0 +1,6 @@
+# Recorded conformance artifacts. GitHub collapses these files in PR diffs
+# and omits them from diff stats. Hand-written tooling stays reviewable.
+conformance/vectors/** linguist-generated=true
+conformance/goldens/** linguist-generated=true
+conformance/differential/*.json linguist-generated=true
+conformance/differential/oracle/*.json linguist-generated=true
