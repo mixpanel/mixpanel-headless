@@ -62,7 +62,7 @@ Service accounts are the right default for unattended automation. OAuth browser 
 | `MP_REGION` | Data residency region (`us`, `eu`, `in`) |
 | `MP_AUTH_FILE` | Override path to the Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
-| `MP_OAUTH_STORAGE_DIR` | Override storage root (`~/.mp`) |
+| `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 
 These map onto the [credential resolution chain](#credential-resolution-chain) below.
 

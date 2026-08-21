@@ -41,7 +41,7 @@ def _account_tokens_path(name: str) -> Path:
     """Return ``<account-dir>/tokens.json`` for the given account name.
 
     Routes through :func:`account_dir` so the
-    ``MP_OAUTH_STORAGE_DIR`` env-var override is honored — hard-coding
+    ``MP_STORAGE_DIR`` env-var override is honored — hard-coding
     ``~/.mp/accounts/`` here would silently bypass test isolation and
     custom-deployment overrides.
 

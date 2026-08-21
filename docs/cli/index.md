@@ -521,7 +521,7 @@ These resolve via `env > param > target > bridge > [active] > default_project` â
 | `MP_REGION` | Data residency region (`us`, `eu`, `in`) |
 | `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
-| `MP_OAUTH_STORAGE_DIR` | Override storage root (`~/.mp`) |
+| `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 
 ## Examples
 
