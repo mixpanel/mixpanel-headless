@@ -869,11 +869,13 @@ class TestDataGroupIdFunnel:
     """Tests for data_group_id parameter on funnel query engine (T032)."""
 
     def test_build_funnel_params_with_data_group_id(self, ws: Workspace) -> None:
-        """build_funnel_params with data_group_id=5 includes dataGroupId: 5 in sections."""
+        """build_funnel_params with data_group_id=5 includes globalDataGroupId: "5"."""
         result = ws.build_funnel_params(["Signup", "Purchase"], data_group_id=5)
-        assert result["sections"]["dataGroupId"] == 5
+        assert result["sections"]["globalDataGroupId"] == "5"
+        assert "dataGroupId" not in result["sections"]
 
     def test_build_funnel_params_without_data_group_id(self, ws: Workspace) -> None:
-        """build_funnel_params without data_group_id omits dataGroupId key (backward compat)."""
+        """build_funnel_params without data_group_id omits the key (backward compat)."""
         result = ws.build_funnel_params(["Signup", "Purchase"])
+        assert "globalDataGroupId" not in result["sections"]
         assert "dataGroupId" not in result["sections"]

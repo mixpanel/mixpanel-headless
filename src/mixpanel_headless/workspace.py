@@ -2275,7 +2275,9 @@ class Workspace:
             "group": group_section,
         }
         if data_group_id is not None:
-            sections["dataGroupId"] = data_group_id
+            # Contract: the Sections model has no `dataGroupId` key — the
+            # sections-level spelling is `globalDataGroupId: string | null`.
+            sections["globalDataGroupId"] = str(data_group_id)
 
         return {
             "sections": sections,
@@ -2920,7 +2922,9 @@ class Workspace:
             "formula": [],
         }
         if data_group_id is not None:
-            sections["dataGroupId"] = data_group_id
+            # Contract: the Sections model has no `dataGroupId` key — the
+            # sections-level spelling is `globalDataGroupId: string | null`.
+            sections["globalDataGroupId"] = str(data_group_id)
 
         return {
             "sections": sections,
@@ -3454,7 +3458,9 @@ class Workspace:
             "formula": [],
         }
         if data_group_id is not None:
-            sections["dataGroupId"] = data_group_id
+            # Contract: the Sections model has no `dataGroupId` key — the
+            # sections-level spelling is `globalDataGroupId: string | null`.
+            sections["globalDataGroupId"] = str(data_group_id)
 
         return {
             "sections": sections,

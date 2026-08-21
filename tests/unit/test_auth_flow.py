@@ -14,6 +14,7 @@ Verifies:
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -485,6 +486,397 @@ class TestOAuthFlowTokenExchange:
                 redirect_uri="http://localhost:19284/callback",
             )
         assert exc_info.value.code == "OAUTH_TOKEN_ERROR"
+
+
+class TestTokenPayloadRedaction:
+    """Malformed-200 token responses must not leak token material into error details.
+
+    Fix-of-record: context/phase3/bug-reports/python-oauth-error-details-token-payload.md,
+    hardened by ARB-B (pair-B review F-B1/F-B2/F-B3/E-1). When a 200 response
+    parses as a JSON object but fails ``OAuthTokens.from_token_response``, the
+    raised OAuthError's ``details["response_data"]`` keeps every FIELD NAME but
+    only the VALUES of the safe RFC 6749 metadata keys (``token_type``,
+    ``expires_in``, ``scope``, ``error``, ``error_description``) when they are
+    primitives — every other value is ``"<redacted>"`` regardless of key or
+    nesting. Non-object 200 JSON bodies render as a fixed placeholder (the
+    value itself can be the credential), and 200 bodies that fail JSON parsing
+    are never embedded at all (only content-type + length survive). Error
+    codes stay stable per R5.4.
+    """
+
+    def _flow(self, tmp_path: Path, payload: dict[str, object]) -> OAuthFlow:
+        """Build an OAuthFlow whose token endpoint returns ``payload`` with 200.
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+            payload: JSON body the mock token endpoint returns.
+
+        Returns:
+            OAuthFlow wired to a MockTransport returning the canned payload.
+        """
+        transport = httpx.MockTransport(lambda _req: httpx.Response(200, json=payload))
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        return OAuthFlow(region="us", storage=storage, http_client=http_client)
+
+    def test_exchange_missing_fields_error_redacts_token_material(
+        self, tmp_path: Path
+    ) -> None:
+        """Exchange path: secrets never appear anywhere in the OAuthError."""
+        flow = self._flow(
+            tmp_path,
+            {"access_token": "SECRET_AT", "refresh_token": "SECRET_RT"},
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_AT" not in serialized
+        assert "SECRET_RT" not in serialized
+        # Field names stay visible for diagnosis.
+        assert "access_token" in str(exc.details["response_data"])
+        assert "refresh_token" in str(exc.details["response_data"])
+        assert "<redacted>" in str(exc.details["response_data"])
+
+    def test_refresh_missing_fields_error_redacts_token_material(
+        self, tmp_path: Path
+    ) -> None:
+        """Refresh path (shared helper): same redaction, code stays OAUTH_REFRESH_ERROR."""
+        flow = self._flow(
+            tmp_path,
+            {
+                "access_token": "SECRET_AT",
+                "refresh_token": "SECRET_RT",
+                "id_token": "SECRET_ID",
+            },
+        )
+        tokens = OAuthTokens(
+            access_token=SecretStr("old-access"),
+            refresh_token=SecretStr("old-refresh"),
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scope="projects",
+            token_type="Bearer",
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.refresh_tokens(tokens=tokens, client_id="cid")
+        exc = exc_info.value
+        assert exc.code == "OAUTH_REFRESH_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_AT" not in serialized
+        assert "SECRET_RT" not in serialized
+        assert "SECRET_ID" not in serialized
+        assert "<redacted>" in str(exc.details["response_data"])
+
+    def test_safe_fields_stay_visible(self, tmp_path: Path) -> None:
+        """Safe metadata values (scope, token_type) stay; unknown-key values don't.
+
+        ARB-B F-B2/E-1 flip: the pre-hardening deny-list kept UNKNOWN keys'
+        values verbatim (``hint`` here), but a misbehaving IdP need not put
+        the credential under a canonical key — so unknown-key values are now
+        redacted while their key names stay visible for diagnosis.
+        """
+        flow = self._flow(
+            tmp_path,
+            {
+                "access_token": "SECRET_AT",
+                "scope": "projects analysis",
+                "token_type": "Bearer",
+                "hint": "weird-idp-extra",
+            },
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        response_data = str(exc_info.value.details["response_data"])
+        assert "SECRET_AT" not in response_data
+        assert "projects analysis" in response_data
+        assert "Bearer" in response_data
+        assert "weird-idp-extra" not in response_data
+        assert "'hint': '<redacted>'" in response_data
+
+    @pytest.mark.parametrize(
+        ("payload", "secret", "visible_key"),
+        [
+            pytest.param(
+                {"result": {"access_token": "SECRET_NEST"}},
+                "SECRET_NEST",
+                "result",
+                id="nested-envelope",
+            ),
+            pytest.param(
+                {"tokens": ["SECRET_L1"]},
+                "SECRET_L1",
+                "tokens",
+                id="list-value",
+            ),
+            pytest.param(
+                {"client_secret": "SECRET_CS"},
+                "SECRET_CS",
+                "client_secret",
+                id="non-canonical-key",
+            ),
+            pytest.param(
+                {"Access_Token": "SECRET_UPPER"},
+                "SECRET_UPPER",
+                "Access_Token",
+                id="case-variant-key",
+            ),
+        ],
+    )
+    def test_nested_and_non_canonical_token_material_redacted(
+        self,
+        tmp_path: Path,
+        payload: dict[str, object],
+        secret: str,
+        visible_key: str,
+    ) -> None:
+        """Envelope / non-canonical shapes leak nothing (ARB-B F-B2/E-1).
+
+        Pair-B probes showed the top-level exact-lowercase deny-list leaked
+        nested (``{"result": {"access_token": ...}}``), list-valued, and
+        non-canonical-key (``client_secret``, ``Access_Token``) payloads
+        verbatim through ``details["response_data"]``. The allowlist
+        redaction closes every value channel: only safe metadata keys keep
+        primitive values; everything else is ``"<redacted>"``.
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+            payload: The malformed 200 token payload the mock IdP returns.
+            secret: The credential material that must never serialize.
+            visible_key: A field name that must stay visible for diagnosis.
+        """
+        flow = self._flow(tmp_path, payload)
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert secret not in serialized
+        response_data = str(exc.details["response_data"])
+        assert visible_key in response_data
+        assert "<redacted>" in response_data
+
+    def test_safe_primitive_values_byte_exact(self, tmp_path: Path) -> None:
+        """Safe-key primitive values render byte-exactly (TS parity lock).
+
+        Locks the exact ``str()`` rendering of kept int/str values so the
+        TS twin's ``pythonStr`` output can be asserted byte-identical.
+        """
+        flow = self._flow(
+            tmp_path,
+            {"expires_in": 3600, "token_type": "Bearer", "scope": "projects"},
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        assert exc_info.value.details["response_data"] == (
+            "{'expires_in': 3600, 'token_type': 'Bearer', 'scope': 'projects'}"
+        )
+
+    def test_safe_key_with_container_value_redacted(self, tmp_path: Path) -> None:
+        """A container value under a safe key is still redacted (ARB-B F-B2).
+
+        Only PRIMITIVE values survive under safe keys — a dict smuggled
+        under ``scope`` must not carry token material through.
+        """
+        flow = self._flow(
+            tmp_path,
+            {"scope": {"access_token": "SECRET_SC"}},
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_SC" not in serialized
+        assert "'scope': '<redacted>'" in str(exc.details["response_data"])
+
+    def test_exchange_non_json_200_body_not_embedded(self, tmp_path: Path) -> None:
+        """A 200 body that fails JSON parse is never embedded (ARB-B F-B1).
+
+        A truncated token payload (proxy-mangled JSON) still contains live
+        bearer material; the old branch embedded ``response.text`` verbatim
+        in ``details["response_body"]``. Only content-type and body length
+        (code points — TS twin uses ``Array.from(text).length``) survive.
+        """
+        body = '{"access_token": "SECRET_TRUNC", "refr'
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=body.encode("utf-8"),
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_TRUNC" not in serialized
+        assert "response_body" not in exc.details
+        assert exc.details["content_type"] == "application/json"
+        assert exc.details["body_length"] == len(body)
+
+    def test_refresh_non_json_200_body_not_embedded(self, tmp_path: Path) -> None:
+        """Refresh path (shared helper): garbage-suffixed 200 body never embeds.
+
+        Same ARB-B F-B1 channel through ``refresh_tokens`` — valid token
+        JSON with trailing proxy garbage fails the parse but IS the live
+        payload; only content-type + code-point length survive, on the
+        refresh error code.
+        """
+        body = '{"access_token":"SECRET_GARB"}garbage'
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=body.encode("utf-8"),
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        tokens = OAuthTokens(
+            access_token=SecretStr("old-access"),
+            refresh_token=SecretStr("old-refresh"),
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scope="projects",
+            token_type="Bearer",
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.refresh_tokens(tokens=tokens, client_id="cid")
+        exc = exc_info.value
+        assert exc.code == "OAUTH_REFRESH_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_GARB" not in serialized
+        assert "response_body" not in exc.details
+        assert exc.details["content_type"] == "application/json"
+        assert exc.details["body_length"] == len(body)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param([1, 2], id="list"),
+            pytest.param("SECRET_BARE_STRING", id="str"),
+            pytest.param(42, id="int"),
+            pytest.param(None, id="null"),
+        ],
+    )
+    def test_exchange_non_dict_200_body_raises_oauth_error(
+        self, tmp_path: Path, body: object
+    ) -> None:
+        """Non-dict 200 JSON token bodies raise OAuthError with a placeholder.
+
+        ARB-A F1 established the coded-OAuthError guard (never
+        AttributeError); ARB-B F-B3 retires the ``str(body)`` verbatim
+        rendering it locked — a bare JSON string body IS the credential when
+        an IdP returns the token as a naked string, so ``response_data`` is
+        now the fixed ``"<redacted non-object body>"`` placeholder in both
+        languages.
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+            body: The non-dict JSON value the mock token endpoint returns.
+        """
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=json.dumps(body).encode("utf-8"),
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        with pytest.raises(OAuthError) as exc_info:
+            flow.exchange_code(
+                code="c",
+                verifier="v",
+                client_id="cid",
+                redirect_uri="http://localhost:19284/callback",
+            )
+        exc = exc_info.value
+        assert exc.code == "OAUTH_TOKEN_ERROR"
+        serialized = str(exc) + str(exc.details) + str(exc.to_dict())
+        assert "SECRET_BARE_STRING" not in serialized
+        assert exc.details["response_data"] == "<redacted non-object body>"
+
+    def test_refresh_non_dict_200_body_raises_oauth_error(self, tmp_path: Path) -> None:
+        """Refresh path (shared helper): non-dict 200 body stays OAuthError.
+
+        Same ARB-A F1 guard exercised through ``refresh_tokens`` so the
+        shared ``_post_token_request`` edge is locked on the refresh
+        error code too (and is corpus-recordable at the next re-pin event,
+        matching the recorded dict-body redaction vector). ARB-B F-B3:
+        ``response_data`` is the fixed placeholder, not ``str(body)``.
+
+        Args:
+            tmp_path: Temp dir for OAuthStorage.
+        """
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                content=b"[1, 2]",
+                headers={"content-type": "application/json"},
+            )
+        )
+        http_client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+        flow = OAuthFlow(region="us", storage=storage, http_client=http_client)
+        tokens = OAuthTokens(
+            access_token=SecretStr("old-access"),
+            refresh_token=SecretStr("old-refresh"),
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scope="projects",
+            token_type="Bearer",
+        )
+        with pytest.raises(OAuthError) as exc_info:
+            flow.refresh_tokens(tokens=tokens, client_id="cid")
+        exc = exc_info.value
+        assert exc.code == "OAUTH_REFRESH_ERROR"
+        assert exc.details["response_data"] == "<redacted non-object body>"
+
+    def test_success_path_unchanged(self, tmp_path: Path) -> None:
+        """A well-formed token response still parses into OAuthTokens."""
+        flow = self._flow(tmp_path, _make_token_response())
+        tokens = flow.exchange_code(
+            code="c",
+            verifier="v",
+            client_id="cid",
+            redirect_uri="http://localhost:19284/callback",
+        )
+        assert tokens.access_token.get_secret_value() == "access-tok-123"
 
 
 class TestOAuthFlowRefresh:

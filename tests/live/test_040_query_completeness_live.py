@@ -1063,8 +1063,8 @@ class TestOfflineUS7:
         params = ws.build_params(real_event, data_group_id=5, last=7)
         assert isinstance(params, dict)
         # Check dataGroupId appears in the structure
-        dg = _dig(params, "sections", "dataGroupId")
-        assert dg == 5
+        dg = _dig(params, "sections", "globalDataGroupId")
+        assert dg == "5"
 
     def test_m42_data_group_id_funnel(
         self,
@@ -1079,8 +1079,8 @@ class TestOfflineUS7:
         """
         params = ws.build_funnel_params(list(real_events_pair), data_group_id=5, last=7)
         assert isinstance(params, dict)
-        dg = _dig(params, "sections", "dataGroupId")
-        assert dg == 5
+        dg = _dig(params, "sections", "globalDataGroupId")
+        assert dg == "5"
 
     def test_m43_data_group_id_retention(
         self,
@@ -1100,8 +1100,8 @@ class TestOfflineUS7:
             last=7,
         )
         assert isinstance(params, dict)
-        dg = _dig(params, "sections", "dataGroupId")
-        assert dg == 5
+        dg = _dig(params, "sections", "globalDataGroupId")
+        assert dg == "5"
 
     def test_m44_data_group_id_flow(self, ws: Workspace, real_event: str) -> None:
         """M44 -- data_group_id threads into flow params.
@@ -1125,8 +1125,8 @@ class TestOfflineUS7:
             real_event: Known event name.
         """
         params = ws.build_params(real_event, last=7)
-        dg = _dig(params, "sections", "dataGroupId")
-        assert dg is None
+        assert _dig(params, "sections", "globalDataGroupId") is None
+        assert _dig(params, "sections", "dataGroupId") is None
 
 
 # =============================================================================
@@ -1899,7 +1899,7 @@ class TestCrossParameterInteractions:
         fb = FrequencyBreakdown(real_event)
         params = ws.build_params(real_event, group_by=fb, data_group_id=5, last=7)
         assert isinstance(params, dict)
-        assert _dig(params, "sections", "dataGroupId") == 5
+        assert _dig(params, "sections", "globalDataGroupId") == "5"
         assert _dig(params, "sections", "group") is not None
 
     def test_x07_flow_exclusions_plus_segments_plus_filter(

@@ -1,5 +1,5 @@
 {
-  "accepted": 123,
+  "accepted": 125,
   "caveats": [
     "deep ACCEPT is necessary-not-sufficient: the voluptuous schema is enum-loose on math via an Any()/ALLOW_EXTRA branch (recon referee-assets.md \u00a72B)",
     "draft-04 schemas hardcode only 2 levels of filter-group nesting; deeper trees pass unvalidated (D15b)"
@@ -7,7 +7,7 @@
   "mode": "batch",
   "oracle": "deep",
   "python": "3.14.6",
-  "rejected": 2,
+  "rejected": 0,
   "resolved_versions": {
     "pandas": "3.0.5",
     "protobuf": "7.35.1",
@@ -620,16 +620,16 @@
     {
       "bookmark_type": "insights",
       "dialect": "modern-nested",
-      "error": "required key not provided @ data['sections']['filter'][0]['filterOperator']; required key not provided @ data['sections']['filter'][0]['filterType']",
+      "error": null,
       "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section",
-      "verdict": "REJECT"
+      "verdict": "ACCEPT"
     },
     {
       "bookmark_type": "insights",
       "dialect": "modern-nested",
-      "error": "required key not provided @ data['sections']['filter'][1]['filterOperator']; required key not provided @ data['sections']['filter'][1]['filterType']",
+      "error": null,
       "id": "bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_mixed_with_filter",
-      "verdict": "REJECT"
+      "verdict": "ACCEPT"
     },
     {
       "bookmark_type": "insights",
@@ -2214,8 +2214,8 @@
       "verdict": "SKIP_NON_INSIGHTS"
     }
   ],
-  "runtime_seconds": 0.363,
+  "runtime_seconds": 0.304,
   "skipped": 189,
-  "status": "rejected",
+  "status": "ok",
   "total": 314
 }
