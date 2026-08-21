@@ -26,6 +26,11 @@ from mixpanel_headless._internal.memory.format import (
     parse,
     serialize,
 )
+from mixpanel_headless._internal.memory.limits import (
+    MAX_MEMORY_WRITE_BYTES,
+    MemorySizeLimitError,
+    check_write_size,
+)
 from mixpanel_headless._internal.memory.paths import (
     project_memory_dir,
     resolve_key,
@@ -38,9 +43,12 @@ __all__ = [
     "CONFIDENCE_LABELS",
     "ConfidenceLabel",
     "LocalFilesystemBackend",
+    "MAX_MEMORY_WRITE_BYTES",
     "MemoryBackend",
     "MemoryEntry",
     "MemoryFormatError",
+    "MemorySizeLimitError",
+    "check_write_size",
     "parse",
     "project_memory_dir",
     "resolve_key",

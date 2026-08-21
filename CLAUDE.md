@@ -342,7 +342,7 @@ python help.py Filter                  # type fields + construction patterns + r
 - Python 3.10+ (mypy --strict) + Standard library only (`dataclasses`, `typing`); no new third-party dependency (no PyYAML). Pure text format layer, no I/O. (046-markdown-format-confidence-labels)
 
 <!-- SPECKIT START -->
-Current plan: [specs/046-markdown-format-confidence-labels/plan.md](specs/046-markdown-format-confidence-labels/plan.md)
+Current plan: [specs/047-write-time-size-limits/plan.md](specs/047-write-time-size-limits/plan.md)
 
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan.

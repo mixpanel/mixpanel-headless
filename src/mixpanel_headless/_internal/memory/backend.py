@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Protocol
 
 from mixpanel_headless._internal.io_utils import atomic_write_bytes, reject_if_symlink
+from mixpanel_headless._internal.memory.limits import check_write_size
 from mixpanel_headless._internal.memory.paths import resolve_key
 
 __all__ = ["LocalFilesystemBackend", "MemoryBackend"]
@@ -169,14 +170,22 @@ class LocalFilesystemBackend:
     def write(self, key: str, data: bytes) -> None:
         """Atomically store ``data`` at ``key``, creating dirs on demand.
 
+        The size guard runs first, before any filesystem access, so a
+        rejected write is a strict no-op with respect to disk state: no
+        directory is created, no file is created or modified, and no tmp
+        file is left behind.
+
         Args:
             key: Relative key naming a note within the scope.
             data: Raw bytes to store.
 
         Raises:
+            MemorySizeLimitError: ``len(data)`` exceeds
+                :data:`~mixpanel_headless._internal.memory.limits.MAX_MEMORY_WRITE_BYTES`.
             ValueError: ``key`` is empty, absolute, or escapes the scope.
             OSError: I/O failure.
         """
+        check_write_size(data)
         path = self._resolve(key)
         self._ensure_dir(path.parent)
         atomic_write_bytes(path, data, mode=0o600)

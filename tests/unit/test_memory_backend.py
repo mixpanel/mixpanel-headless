@@ -18,6 +18,10 @@ from mixpanel_headless._internal.memory.backend import (
     LocalFilesystemBackend,
     MemoryBackend,
 )
+from mixpanel_headless._internal.memory.limits import (
+    MAX_MEMORY_WRITE_BYTES,
+    MemorySizeLimitError,
+)
 
 
 @pytest.fixture
@@ -101,6 +105,80 @@ class TestByteStorage:
         backend.write("a.md", b"1")
         mode = stat.S_IMODE((scope_dir / "a.md").stat().st_mode)
         assert mode == 0o600
+
+
+class TestWriteSizeLimit:
+    """AIE-605 — writes are bounded by ``MAX_MEMORY_WRITE_BYTES`` (US1/US2/US3)."""
+
+    def test_write_one_under_ceiling_roundtrips(self, scope_dir: Path) -> None:
+        """A payload one byte under the ceiling writes and reads back exactly."""
+        backend = LocalFilesystemBackend(scope_dir)
+        data = b"x" * (MAX_MEMORY_WRITE_BYTES - 1)
+        backend.write("under.md", data)
+        assert backend.read("under.md") == data
+
+    def test_write_exactly_at_ceiling_roundtrips(self, scope_dir: Path) -> None:
+        """A payload exactly at the ceiling writes and reads back exactly."""
+        backend = LocalFilesystemBackend(scope_dir)
+        data = b"x" * MAX_MEMORY_WRITE_BYTES
+        backend.write("at.md", data)
+        assert backend.read("at.md") == data
+
+    def test_write_zero_byte_roundtrips(self, scope_dir: Path) -> None:
+        """A zero-byte payload writes and reads back exactly."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("zero.md", b"")
+        assert backend.read("zero.md") == b""
+
+    def test_oversized_write_to_fresh_key_raises_and_creates_nothing(
+        self, scope_dir: Path
+    ) -> None:
+        """An oversized write against a nonexistent key raises and touches no disk.
+
+        No scope directory is created (``_ensure_dir`` is never reached), and
+        no file exists at the key afterward.
+        """
+        backend = LocalFilesystemBackend(scope_dir)
+        data = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
+        with pytest.raises(MemorySizeLimitError) as exc_info:
+            backend.write("fresh.md", data)
+        err = exc_info.value
+        assert err.size == len(data)
+        assert err.limit == MAX_MEMORY_WRITE_BYTES
+        assert not scope_dir.exists()
+        assert backend.read("fresh.md") is None
+
+    def test_oversized_overwrite_leaves_existing_file_unchanged(
+        self, scope_dir: Path
+    ) -> None:
+        """An oversized write against an existing key raises and leaves it untouched.
+
+        The original bytes remain byte-for-byte unchanged, and no
+        ``.tmp.*`` temp file is left behind in the scope directory.
+        """
+        backend = LocalFilesystemBackend(scope_dir)
+        original = b"original content"
+        backend.write("existing.md", original)
+
+        oversized = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
+        with pytest.raises(MemorySizeLimitError):
+            backend.write("existing.md", oversized)
+
+        assert backend.read("existing.md") == original
+        tmp_leftovers = list(scope_dir.glob("*.tmp.*"))
+        assert tmp_leftovers == []
+
+    def test_backend_limit_matches_imported_constant(self, scope_dir: Path) -> None:
+        """The backend's raised ``.limit`` is the same constant ``limits.py`` defines.
+
+        Guards against a second, independently-defined ceiling drifting from
+        the single source of truth (FR-008/SC-004).
+        """
+        backend = LocalFilesystemBackend(scope_dir)
+        data = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
+        with pytest.raises(MemorySizeLimitError) as exc_info:
+            backend.write("k.md", data)
+        assert exc_info.value.limit == MAX_MEMORY_WRITE_BYTES
 
 
 class TestAddressingSafety:
