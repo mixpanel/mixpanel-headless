@@ -1,8 +1,9 @@
 """Unit tests for the pure write-time size-limit module.
 
 Covers the boundary behavior of ``check_write_size`` (zero-byte, one under,
-exactly at, one over, far over the ceiling) and the shape of
-``MemorySizeLimitError`` (US1/US2 in spec.md).
+exactly at, one over, far over the ceiling), the shape of
+``MemorySizeLimitError``, and the byte-vs-character distinction for
+multi-byte UTF-8 payloads.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ class TestCheckWriteSizeAccepts:
     """Content at or under the ceiling is accepted (returns ``None``)."""
 
     def test_zero_byte_returns_none(self) -> None:
-        """Zero-byte content is not oversized (FR-010)."""
+        """Zero-byte content is not oversized."""
         check_write_size(b"")  # must not raise
 
     def test_one_under_ceiling_returns_none(self) -> None:
@@ -37,7 +38,7 @@ class TestCheckWriteSizeAccepts:
         check_write_size(data)  # must not raise
 
     def test_exactly_at_ceiling_returns_none(self) -> None:
-        """A payload exactly at the ceiling is accepted (inclusive, FR-002)."""
+        """A payload exactly at the ceiling is accepted (inclusive)."""
         data = b"x" * MAX_MEMORY_WRITE_BYTES
         check_write_size(data)  # must not raise
 
@@ -86,3 +87,37 @@ class TestMemorySizeLimitErrorShape:
         err = MemorySizeLimitError(size=100, limit=50)
         assert err.size == 100
         assert err.limit == 50
+
+
+class TestMultiByteUtf8Boundary:
+    """The ceiling counts encoded bytes, not characters.
+
+    A multi-byte UTF-8 string can have far fewer characters than bytes, so
+    the check must operate on ``len(data)`` after encoding, never on a
+    character count.
+    """
+
+    def test_multibyte_payload_over_ceiling_by_bytes_raises(self) -> None:
+        """A payload with few characters but many UTF-8 bytes is still rejected.
+
+        ``"你好"`` encodes to 6 bytes per two characters, so a repetition
+        count chosen to land just over the byte ceiling has a character
+        count far under it — proving the check is byte-based.
+        """
+        unit = "你好".encode()
+        assert len(unit) == 6
+        repeats = (MAX_MEMORY_WRITE_BYTES // len(unit)) + 1
+        text = "你好" * repeats
+        encoded = text.encode("utf-8")
+        assert len(text) < MAX_MEMORY_WRITE_BYTES
+        assert len(encoded) > MAX_MEMORY_WRITE_BYTES
+        with pytest.raises(MemorySizeLimitError) as exc_info:
+            check_write_size(encoded)
+        assert exc_info.value.size == len(encoded)
+
+    def test_multibyte_payload_at_or_under_ceiling_by_bytes_accepted(self) -> None:
+        """A multi-byte payload whose encoded length is within the ceiling is accepted."""
+        text = "你好" * 100
+        encoded = text.encode("utf-8")
+        assert len(encoded) <= MAX_MEMORY_WRITE_BYTES
+        check_write_size(encoded)  # must not raise

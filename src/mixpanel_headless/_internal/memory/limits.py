@@ -4,14 +4,16 @@ Holds the single per-file byte ceiling every memory write primitive enforces,
 and the pure, I/O-free check that raises a typed error when content exceeds
 it. Kept separate from ``backend.py`` so the size comparison is an isolated
 unit-, property-, and mutation-testable target, matching ``format.py``'s
-discipline (046).
+discipline.
 """
 
 from __future__ import annotations
 
+from typing import Final
+
 __all__ = ["MAX_MEMORY_WRITE_BYTES", "MemorySizeLimitError", "check_write_size"]
 
-MAX_MEMORY_WRITE_BYTES: int = 8_192
+MAX_MEMORY_WRITE_BYTES: Final[int] = 8_192
 """The per-file byte ceiling every memory write primitive enforces.
 
 8 KiB (8 x 1024 bytes). Locked — a memory note is a single concise fact, not

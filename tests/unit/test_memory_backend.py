@@ -1,7 +1,8 @@
 """Unit tests for ``LocalFilesystemBackend`` and the ``MemoryBackend`` seam.
 
-Covers US1 (byte storage), US2 (addressing safety + symlink refusal +
-lighter-than-credential read), and US4 (protocol conformance).
+Covers byte storage, addressing safety (symlink refusal, lighter-than-
+credential read), write-time size limiting, and protocol conformance
+(a caller typed against ``MemoryBackend`` works for any implementation).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ def scope_dir(tmp_path: Path) -> Path:
 
 
 class TestByteStorage:
-    """US1 — write/read/list/delete round-trips over a scope directory."""
+    """Write/read/list/delete round-trips over a scope directory."""
 
     def test_write_then_read_roundtrip(self, scope_dir: Path) -> None:
         """Bytes written to a key are read back exactly."""
@@ -108,7 +109,7 @@ class TestByteStorage:
 
 
 class TestWriteSizeLimit:
-    """AIE-605 — writes are bounded by ``MAX_MEMORY_WRITE_BYTES`` (US1/US2/US3)."""
+    """Writes are rejected once content exceeds ``MAX_MEMORY_WRITE_BYTES``."""
 
     def test_write_one_under_ceiling_roundtrips(self, scope_dir: Path) -> None:
         """A payload one byte under the ceiling writes and reads back exactly."""
@@ -165,24 +166,54 @@ class TestWriteSizeLimit:
             backend.write("existing.md", oversized)
 
         assert backend.read("existing.md") == original
-        tmp_leftovers = list(scope_dir.glob("*.tmp.*"))
+        tmp_leftovers = list(scope_dir.rglob("*.tmp.*"))
         assert tmp_leftovers == []
 
-    def test_backend_limit_matches_imported_constant(self, scope_dir: Path) -> None:
-        """The backend's raised ``.limit`` is the same constant ``limits.py`` defines.
+    def test_oversized_write_to_nested_fresh_key_creates_no_directories(
+        self, scope_dir: Path
+    ) -> None:
+        """An oversized write against a nested, never-written key creates no directories.
 
-        Guards against a second, independently-defined ceiling drifting from
-        the single source of truth (FR-008/SC-004).
+        The size guard runs before any filesystem access, so a nested key
+        like ``"a/b/c/note.md"`` must not cause any of its intermediate
+        directories — nor the scope directory itself — to spring into
+        existence.
         """
+        assert not scope_dir.exists()
         backend = LocalFilesystemBackend(scope_dir)
         data = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
-        with pytest.raises(MemorySizeLimitError) as exc_info:
-            backend.write("k.md", data)
-        assert exc_info.value.limit == MAX_MEMORY_WRITE_BYTES
+        with pytest.raises(MemorySizeLimitError):
+            backend.write("a/b/c/note.md", data)
+        assert not scope_dir.exists()
+        assert not (scope_dir / "a").exists()
+
+    def test_oversized_write_into_populated_scope_leaves_siblings_untouched(
+        self, scope_dir: Path
+    ) -> None:
+        """An oversized write to a new key in a populated scope disturbs nothing else.
+
+        Seeded sibling notes must remain byte-identical, no file must exist
+        at the rejected key, and no ``.tmp.*`` file must be left anywhere
+        under the scope directory (checked recursively, since the rejected
+        key could nest under a subdirectory).
+        """
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("sibling_one.md", b"first note")
+        backend.write("sub/sibling_two.md", b"second note")
+
+        oversized = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
+        with pytest.raises(MemorySizeLimitError):
+            backend.write("new/key.md", oversized)
+
+        assert backend.read("sibling_one.md") == b"first note"
+        assert backend.read("sub/sibling_two.md") == b"second note"
+        assert backend.read("new/key.md") is None
+        assert not (scope_dir / "new").exists()
+        assert list(scope_dir.rglob("*.tmp.*")) == []
 
 
 class TestAddressingSafety:
-    """US2 — hostile keys are rejected before any disk write."""
+    """Hostile keys are rejected before any disk write."""
 
     @pytest.mark.parametrize("key", ["", "   "])
     def test_empty_key_rejected(self, scope_dir: Path, key: str) -> None:
@@ -218,7 +249,7 @@ class TestAddressingSafety:
 
 
 class TestSymlinkAndPermissions:
-    """US2 — symlink refusal, but no credential-grade mode/size enforcement."""
+    """Symlink refusal, but no credential-grade mode/size enforcement."""
 
     @pytest.mark.skipif(
         platform.system() == "Windows",
@@ -293,7 +324,7 @@ def _exercise(backend: MemoryBackend) -> list[str]:
 
 
 class TestProtocolConformance:
-    """US4 — a caller typed against ``MemoryBackend`` works for any impl."""
+    """A caller typed against ``MemoryBackend`` works for any implementation."""
 
     def test_local_backend_conforms(self, scope_dir: Path) -> None:
         """The filesystem backend satisfies the protocol-typed caller."""

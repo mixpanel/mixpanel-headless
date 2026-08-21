@@ -2,10 +2,11 @@
 
 ``MemoryBackend`` is a thin, content-agnostic protocol — read / write / list /
 delete over relative keys returning and accepting raw bytes. It deliberately
-knows nothing about the note format, size limits, concurrency, or PII (each
-owned by a sibling issue); those layers build on top. Keeping the seam dumb is
-what lets a future team-shared backend swap in behind the same interface
-without rewriting callers.
+knows nothing about the note format, concurrency, or PII (each owned by a
+sibling layer built on top); the concrete backend below enforces a size limit
+at the write boundary, but the protocol itself stays silent on that policy.
+Keeping the seam dumb is what lets a future team-shared backend swap in
+behind the same interface without rewriting callers.
 
 ``LocalFilesystemBackend`` is the only implementation in this slice. It binds
 to a single resolved scope directory (a user- or project-scoped ``memory``
@@ -57,6 +58,8 @@ class MemoryBackend(Protocol):
             data: Raw bytes to store.
 
         Raises:
+            MemorySizeLimitError: ``len(data)`` exceeds
+                :data:`~mixpanel_headless._internal.memory.limits.MAX_MEMORY_WRITE_BYTES`.
             ValueError: ``key`` is empty, absolute, or escapes the scope.
         """
         ...
