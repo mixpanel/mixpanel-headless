@@ -138,6 +138,7 @@ _MP_ENV_VARS = (
     "MP_AUTH_FILE",
     "MP_WORKSPACE_ID",
     "MP_STORAGE_DIR",
+    "MP_OAUTH_STORAGE_DIR",
 )
 
 
