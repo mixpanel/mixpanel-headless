@@ -904,7 +904,7 @@ def _client_info_path(region: Region) -> Path:
 
     Returns:
         Absolute path to the client info JSON (may not exist yet).
-        Honors ``MP_OAUTH_STORAGE_DIR`` so a hermetic test environment
+        Honors ``MP_STORAGE_DIR`` so a hermetic test environment
         or Cowork-style sandbox sees the override-path; the prior
         hard-coded ``~/.mp/oauth/`` lied to callers under override.
     """
@@ -1339,7 +1339,7 @@ def _persist_me_cache(account_name: str, me_resp: MeResponse) -> None:
     """Write ``me.json`` for the named account, honoring the storage root.
 
     Wraps :class:`MeCache` so the orchestrator does not have to reason
-    about ``MP_OAUTH_STORAGE_DIR`` overrides — passes ``storage_dir=
+    about ``MP_STORAGE_DIR`` overrides — passes ``storage_dir=
     account_dir(name)`` so the cache lands alongside ``tokens.json`` /
     ``client.json`` in the same per-account directory.
 
@@ -1622,7 +1622,7 @@ def _login_unified_new_browser(
     auth_region: Region = region if region is not None else "us"
 
     # Placeholder dir: hidden so `mp account list` doesn't enumerate it.
-    # Routed through accounts_root() so MP_OAUTH_STORAGE_DIR overrides reach
+    # Routed through accounts_root() so MP_STORAGE_DIR overrides reach
     # the placeholder tree — otherwise tokens land under $HOME but the
     # resolver looks under the override and the new account never works.
     # Wrap in os.umask(0o077) so any intermediate parent (typically

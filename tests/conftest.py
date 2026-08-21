@@ -137,6 +137,8 @@ _MP_ENV_VARS = (
     "MP_OAUTH_TOKEN",
     "MP_AUTH_FILE",
     "MP_WORKSPACE_ID",
+    "MP_STORAGE_DIR",
+    "MP_OAUTH_STORAGE_DIR",
 )
 
 
@@ -230,7 +232,7 @@ def _no_test_writes_to_real_home_mp(
         pytest.fail(
             "Test(s) leaked writes to the developer's real ~/.mp/.\n"
             "Each test MUST monkeypatch HOME / MP_CONFIG_PATH / "
-            "MP_OAUTH_STORAGE_DIR to a tmp_path. Offenders:\n"
+            "MP_STORAGE_DIR to a tmp_path. Offenders:\n"
             f"  changed: {changed}\n"
             f"  new:     {new}\n"
             f"  removed: {removed}"

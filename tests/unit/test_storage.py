@@ -74,12 +74,33 @@ class TestAccountDirNameValidation:
 
 
 class TestStorageRoot:
-    """``_storage_root`` honors ``MP_OAUTH_STORAGE_DIR`` and resolves lazily."""
+    """``_storage_root`` honors the env overrides and resolves lazily.
+
+    ``MP_STORAGE_DIR`` is the canonical override; ``MP_OAUTH_STORAGE_DIR``
+    is the deprecated pre-rename alias and must keep working.
+    """
+
+    def test_canonical_env_var_overrides_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``MP_STORAGE_DIR`` takes precedence over ``$HOME/.mp``."""
+        monkeypatch.delenv("MP_OAUTH_STORAGE_DIR", raising=False)
+        monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path))
+        assert _storage_root() == tmp_path
+
+    def test_canonical_wins_over_deprecated_alias(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With both vars set, ``MP_STORAGE_DIR`` wins over the alias."""
+        monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path / "canonical"))
+        monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", str(tmp_path / "alias"))
+        assert _storage_root() == tmp_path / "canonical"
 
     def test_env_var_overrides_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``MP_OAUTH_STORAGE_DIR`` takes precedence over ``$HOME/.mp``."""
+        """The deprecated ``MP_OAUTH_STORAGE_DIR`` alias still works alone."""
+        monkeypatch.delenv("MP_STORAGE_DIR", raising=False)
         monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", str(tmp_path))
         assert _storage_root() == tmp_path
 
@@ -87,6 +108,7 @@ class TestStorageRoot:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """With no env override, the root is ``$HOME/.mp``."""
+        monkeypatch.delenv("MP_STORAGE_DIR", raising=False)
         monkeypatch.delenv("MP_OAUTH_STORAGE_DIR", raising=False)
         monkeypatch.setenv("HOME", str(tmp_path))
         assert _storage_root() == tmp_path / ".mp"
@@ -95,10 +117,11 @@ class TestStorageRoot:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Setting the env var after import takes effect on the next call."""
+        monkeypatch.delenv("MP_STORAGE_DIR", raising=False)
         monkeypatch.delenv("MP_OAUTH_STORAGE_DIR", raising=False)
         monkeypatch.setenv("HOME", str(tmp_path))
         first = _storage_root()
-        monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", str(tmp_path / "alt"))
+        monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path / "alt"))
         second = _storage_root()
         assert first != second
         assert second == tmp_path / "alt"

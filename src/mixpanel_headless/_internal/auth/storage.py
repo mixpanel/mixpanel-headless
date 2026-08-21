@@ -5,8 +5,10 @@ permission-restricted directory (``~/.mp/oauth/`` by default).
 Directory permissions are set to ``0o700`` and file permissions to ``0o600``
 to protect sensitive credential material.
 
-The storage directory can be overridden via the ``MP_OAUTH_STORAGE_DIR``
-environment variable for testing or custom deployments.
+The storage directory can be overridden via the ``MP_STORAGE_DIR``
+environment variable for testing or custom deployments. The pre-rename
+name ``MP_OAUTH_STORAGE_DIR`` is honored as a deprecated alias — it was
+never OAuth-specific, and its value is a directory path, not a secret.
 
 Per-account paths (introduced by 042-auth-architecture-redesign):
 - ``account_dir(name)`` and ``ensure_account_dir(name)`` return / create
@@ -49,35 +51,44 @@ logger = logging.getLogger(__name__)
 
 _ACCOUNT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
+#: Env vars that override the storage root, in precedence order.
+#: ``MP_STORAGE_DIR`` is the canonical name. ``MP_OAUTH_STORAGE_DIR`` is
+#: the pre-rename alias, kept for backwards compatibility — the root was
+#: never OAuth-specific (see the module docstring).
+_STORAGE_ROOT_ENV_VARS = ("MP_STORAGE_DIR", "MP_OAUTH_STORAGE_DIR")
+
 
 def _storage_root() -> Path:
     """Return the root directory under which mixpanel_headless writes account state.
 
     Resolved at every call so test isolation via ``$HOME`` /
-    ``MP_OAUTH_STORAGE_DIR`` monkeypatching takes effect — a module-level
+    ``MP_STORAGE_DIR`` monkeypatching takes effect — a module-level
     constant captured at import time would silently leak the developer's
     real ``~/.mp/`` into hermetic tests.
 
-    Despite the name, ``MP_OAUTH_STORAGE_DIR`` controls EVERY on-disk
-    artifact written by mixpanel_headless (per-account dirs, OAuth tokens,
-    ``/me`` cache, client registration), not just the OAuth subtree. The
-    name is preserved as a backwards-compat env var only — the root is
-    used by both :func:`account_dir` and
-    :meth:`OAuthStorage._default_storage_dir`.
+    The root controls EVERY on-disk artifact written by mixpanel_headless
+    (per-account dirs, OAuth tokens, ``/me`` cache, client registration).
+    It is used by both :func:`account_dir` and
+    :meth:`OAuthStorage._default_storage_dir`. The env vars are consulted
+    in :data:`_STORAGE_ROOT_ENV_VARS` order, so the canonical
+    ``MP_STORAGE_DIR`` wins over the deprecated ``MP_OAUTH_STORAGE_DIR``
+    alias when both are set.
 
     Returns:
-        ``$MP_OAUTH_STORAGE_DIR`` if set, else ``$HOME/.mp``.
+        The first set env var from :data:`_STORAGE_ROOT_ENV_VARS`, else
+        ``$HOME/.mp``.
     """
-    env_dir = os.environ.get("MP_OAUTH_STORAGE_DIR")
-    if env_dir:
-        return Path(env_dir)
+    for env_var in _STORAGE_ROOT_ENV_VARS:
+        env_dir = os.environ.get(env_var)
+        if env_dir:
+            return Path(env_dir)
     return Path.home() / ".mp"
 
 
 def accounts_root() -> Path:
     """Return the directory holding every per-account state directory.
 
-    Resolves to ``$MP_OAUTH_STORAGE_DIR/accounts/`` when the env var is
+    Resolves to ``$MP_STORAGE_DIR/accounts/`` when the env var is
     set, else ``~/.mp/accounts/``. Used by callers that need to operate
     on the parent of :func:`account_dir` (placeholder dirs, enumeration)
     while still honoring the storage-root override.
@@ -91,7 +102,7 @@ def accounts_root() -> Path:
 def account_dir(name: str) -> Path:
     """Return the per-account directory for ``name``.
 
-    Resolves to ``$MP_OAUTH_STORAGE_DIR/accounts/{name}/`` when the env
+    Resolves to ``$MP_STORAGE_DIR/accounts/{name}/`` when the env
     var is set, else ``~/.mp/accounts/{name}/``. Does not create the
     directory — use :func:`ensure_account_dir` for that.
 
@@ -198,7 +209,7 @@ class OAuthStorage:
     of files (``tokens_{region}.json`` and ``client_{region}.json``).
 
     The storage directory defaults to ``~/.mp/oauth/`` but can be
-    overridden via the ``MP_OAUTH_STORAGE_DIR`` environment variable
+    overridden via the ``MP_STORAGE_DIR`` environment variable
     or the ``storage_dir`` constructor parameter.
 
     Security:
@@ -213,7 +224,7 @@ class OAuthStorage:
     def _default_storage_dir(cls) -> Path:
         """Return the default OAuth storage path, resolved lazily.
 
-        Routes through :func:`_storage_root` so the ``MP_OAUTH_STORAGE_DIR``
+        Routes through :func:`_storage_root` so the ``MP_STORAGE_DIR``
         env var (and ``$HOME`` for tests) takes effect at call time, not
         import time.
 
@@ -228,7 +239,7 @@ class OAuthStorage:
         Args:
             storage_dir: Override the storage directory. When not provided,
                 falls back to :meth:`_default_storage_dir` which honors
-                ``MP_OAUTH_STORAGE_DIR``.
+                ``MP_STORAGE_DIR``.
 
         Example:
             ```python

@@ -238,7 +238,7 @@ def _open_credential_fd(path: Path) -> int:
 
     Threat model: a same-UID attacker can plant symlinks anywhere they
     have write access — practically, anywhere under :func:`Path.home`
-    (or the configured ``MP_OAUTH_STORAGE_DIR`` / ``MP_CONFIG_PATH`` /
+    (or the configured ``MP_STORAGE_DIR`` / ``MP_CONFIG_PATH`` /
     ``MP_AUTH_FILE`` trees, if those env vars point inside their reach).
     Outside those trees, paths typically traverse system-owned dirs
     (``/var``, ``/private``, ``/Users``) that the user trusts the OS to
@@ -351,7 +351,7 @@ def _open_leaf_only(path: Path) -> int:
 
     Used when the path is outside :func:`Path.home` — typically an
     explicit env-var override (``MP_CONFIG_PATH``, ``MP_AUTH_FILE``,
-    ``MP_OAUTH_STORAGE_DIR``) where the user has opted into a non-home
+    ``MP_STORAGE_DIR``) where the user has opted into a non-home
     location. Same protection level as the original PR.
 
     Args:
