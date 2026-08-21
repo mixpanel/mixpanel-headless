@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/validation.py b/src/mixpanel_headless/_internal/validation.py
+index 444acc0..ffca4ee 100644
+--- a/src/mixpanel_headless/_internal/validation.py
++++ b/src/mixpanel_headless/_internal/validation.py
+@@ -113,7 +113,7 @@ def _validate_custom_property(
+ 
+     if isinstance(prop, CustomPropertyRef):
+         # CP1: id must be a positive integer
+-        if prop.id <= 0:
++        if prop.id < 0:
+             errors.append(
+                 ValidationError(
+                     path=path,

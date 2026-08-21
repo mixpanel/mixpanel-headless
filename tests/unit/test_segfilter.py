@@ -6,13 +6,19 @@ objects into the legacy segfilter dict format used by flows step filters.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mixpanel_headless._internal.segfilter import (
     RESOURCE_TYPE_MAP,
+    _build_datetime_filter,
+    _build_number_filter,
+    _build_string_filter,
     _convert_date_format,
     build_segfilter_entry,
 )
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Filter
 
 # =============================================================================
@@ -538,3 +544,91 @@ class TestSegfilterEdgeCases:
         )
         with pytest.raises(ValueError, match="Unsupported property type"):
             build_segfilter_entry(f)
+
+
+# =============================================================================
+# Coded guard errors (E2 coding pass, design §1.5)
+# =============================================================================
+
+
+def _filter_with(operator: str, value: Any, property_type: str) -> Filter:
+    """Build a directly-constructed Filter for coded-guard seam tests.
+
+    Args:
+        operator: Raw ``_operator`` value (may be deliberately invalid).
+        value: Raw ``_value`` payload.
+        property_type: Raw ``_property_type`` value (may be invalid).
+
+    Returns:
+        A ``Filter`` bypassing the classmethod constructors, matching the
+        edge-case construction pattern used elsewhere in this file.
+    """
+    return Filter(
+        _property="x",
+        _operator=operator,  # type: ignore[arg-type]
+        _value=value,
+        _property_type=property_type,  # type: ignore[arg-type]
+        _resource_type="events",
+    )
+
+
+class TestCodedSegfilterCodes:
+    """Coded-guard tests for the segfilter SG* family (design §1.5)."""
+
+    @pytest.mark.parametrize("operator", ["magical_unicorn", "was on"])
+    def test_sg1_direct_helper_raises_coded_error(self, operator: str) -> None:
+        """_build_string_filter with an unknown operator raises SG1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_string_filter(operator, "y")
+        assert excinfo.value.code == "SG1_UNKNOWN_STRING_OPERATOR"
+
+    def test_sg1_seam_raises_coded_error(self) -> None:
+        """build_segfilter_entry surfaces SG1 for unknown string operators."""
+        f = _filter_with("magical_unicorn", "y", "string")
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_segfilter_entry(f)
+        assert excinfo.value.code == "SG1_UNKNOWN_STRING_OPERATOR"
+
+    @pytest.mark.parametrize("operator", ["magical_unicorn", "contains"])
+    def test_sg2_direct_helper_raises_coded_error(self, operator: str) -> None:
+        """_build_number_filter with an unknown operator raises SG2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_number_filter(operator, 1)
+        assert excinfo.value.code == "SG2_UNKNOWN_NUMBER_OPERATOR"
+
+    def test_sg2_seam_raises_coded_error(self) -> None:
+        """build_segfilter_entry surfaces SG2 for unknown number operators."""
+        f = _filter_with("magical_unicorn", 1, "number")
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_segfilter_entry(f)
+        assert excinfo.value.code == "SG2_UNKNOWN_NUMBER_OPERATOR"
+
+    @pytest.mark.parametrize("operator", ["magical_unicorn", "is at least"])
+    def test_sg3_direct_helper_raises_coded_error(self, operator: str) -> None:
+        """_build_datetime_filter with an unknown operator raises SG3."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build_datetime_filter(operator, "2026-01-01", None)
+        assert excinfo.value.code == "SG3_UNKNOWN_DATETIME_OPERATOR"
+
+    def test_sg3_seam_raises_coded_error(self) -> None:
+        """build_segfilter_entry surfaces SG3 for unknown datetime operators."""
+        f = _filter_with("magical_unicorn", "2026-01-01", "datetime")
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_segfilter_entry(f)
+        assert excinfo.value.code == "SG3_UNKNOWN_DATETIME_OPERATOR"
+
+    @pytest.mark.parametrize("property_type", ["list", "object"])
+    def test_sg4_seam_raises_coded_error(self, property_type: str) -> None:
+        """build_segfilter_entry raises SG4 for unsupported property types."""
+        f = _filter_with("equals", "y", property_type)
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_segfilter_entry(f)
+        assert excinfo.value.code == "SG4_UNSUPPORTED_PROPERTY_TYPE"
+
+    def test_sg_guards_stay_catchable_as_value_error(self) -> None:
+        """Converted SG* guards remain catchable via bare ValueError."""
+        f = _filter_with("equals", "y", "object")
+        with pytest.raises(ValueError) as excinfo:
+            build_segfilter_entry(f)
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "SG4_UNSUPPORTED_PROPERTY_TYPE"

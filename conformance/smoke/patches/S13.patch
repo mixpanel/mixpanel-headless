@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/pagination.py b/src/mixpanel_headless/_internal/pagination.py
+index eb32295..4abe165 100644
+--- a/src/mixpanel_headless/_internal/pagination.py
++++ b/src/mixpanel_headless/_internal/pagination.py
+@@ -165,7 +165,7 @@ def paginate_all(
+         http_client = client._ensure_client()
+         response: httpx.Response | None = None
+ 
+-        for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
++        for attempt in range(1):
+             try:
+                 response = http_client.request(
+                     "GET",

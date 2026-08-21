@@ -8,6 +8,7 @@ import json
 import pandas as pd
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     Exclusion,
     Filter,
@@ -713,3 +714,52 @@ class TestFunnelQueryResult:
         assert all(isinstance(row, dict) for row in table)
         assert table[0]["event"] == "Signup"
         assert table[1]["event"] == "Purchase"
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedExclusionCodes:
+    """Coded-guard tests for Exclusion guards (EX1/EX2, design §1.3)."""
+
+    def test_negative_from_step_raises_ex1(self) -> None:
+        """Exclusion with a negative from_step raises EX1_FROM_STEP_NEGATIVE."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Exclusion("Bounce", from_step=-1)
+        assert excinfo.value.code == "EX1_FROM_STEP_NEGATIVE"
+
+    def test_very_negative_from_step_raises_ex1(self) -> None:
+        """Exclusion with a large negative from_step raises EX1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Exclusion("Bounce", from_step=-10)
+        assert excinfo.value.code == "EX1_FROM_STEP_NEGATIVE"
+
+    def test_to_step_before_from_step_raises_ex2(self) -> None:
+        """Exclusion with to_step < from_step raises EX2_STEP_ORDER."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Exclusion("Bounce", from_step=2, to_step=1)
+        assert excinfo.value.code == "EX2_STEP_ORDER"
+
+    def test_to_step_zero_from_step_three_raises_ex2(self) -> None:
+        """Exclusion with to_step=0, from_step=3 raises EX2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Exclusion("Bounce", from_step=3, to_step=0)
+        assert excinfo.value.code == "EX2_STEP_ORDER"
+
+
+class TestCodedHoldingConstantCodes:
+    """Coded-guard tests for HoldingConstant (HC1, design §1.3)."""
+
+    def test_empty_property_raises_hc1(self) -> None:
+        """HoldingConstant with an empty property raises HC1_EMPTY_PROPERTY."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            HoldingConstant("")
+        assert excinfo.value.code == "HC1_EMPTY_PROPERTY"
+
+    def test_whitespace_property_raises_hc1(self) -> None:
+        """HoldingConstant with a whitespace property raises HC1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            HoldingConstant("   ")
+        assert excinfo.value.code == "HC1_EMPTY_PROPERTY"

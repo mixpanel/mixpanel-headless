@@ -26,6 +26,7 @@ from mixpanel_headless._internal.auth.session import Session
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
+    ParamValidationError,
     QueryError,
     RateLimitError,
 )
@@ -4113,3 +4114,146 @@ class TestErrorContextSymmetry:
             )
 
         assert exc_info.value.details["request_params"] == {"workspace_id": "77"}
+
+
+# =============================================================================
+# Coded guard errors — AC2–AC6 export_profiles guards (E2 pass, design §1.6)
+# =============================================================================
+
+
+class TestCodedExportProfilesCodes:
+    """Coded-guard tests for the export_profiles AC* sites (design §1.6).
+
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    @staticmethod
+    def _client(credentials: Session) -> MixpanelAPIClient:
+        """Build a client whose transport returns an empty profile page.
+
+        Args:
+            credentials: Session to bind the client to.
+
+        Returns:
+            MixpanelAPIClient with a mock transport (never reached by
+            the guard tests — all guards fire pre-transport).
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return an empty engage results page."""
+            return httpx.Response(200, json={"results": []})
+
+        return create_mock_client(credentials, handler)
+
+    def test_ac2_single_ids_raise_coded_error(self, test_credentials: Session) -> None:
+        """distinct_id together with distinct_ids raises AC2."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(distinct_id="u1", distinct_ids=["u2"]))
+            assert excinfo.value.code == "AC2_DISTINCT_ID_CONFLICT"
+
+    def test_ac2_many_ids_raise_coded_error(self, test_credentials: Session) -> None:
+        """AC2 fires regardless of how many distinct_ids are supplied."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    client.export_profiles(
+                        distinct_id="u1", distinct_ids=["u2", "u3", "u4"]
+                    )
+                )
+            assert excinfo.value.code == "AC2_DISTINCT_ID_CONFLICT"
+
+    def test_ac3_behaviors_with_cohort_raise_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """behaviors together with cohort_id raises AC3."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    client.export_profiles(
+                        behaviors=[{"event": "Purchase"}], cohort_id="c1"
+                    )
+                )
+            assert excinfo.value.code == "AC3_BEHAVIORS_COHORT_CONFLICT"
+
+    def test_ac3_empty_behaviors_with_cohort_raise_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """An empty behaviors list still conflicts with cohort_id (AC3)."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(behaviors=[], cohort_id="c1"))
+            assert excinfo.value.code == "AC3_BEHAVIORS_COHORT_CONFLICT"
+
+    def test_ac4_include_all_users_alone_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """include_all_users without cohort_id raises AC4."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(include_all_users=True))
+            assert excinfo.value.code == "AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT"
+
+    def test_ac4_include_all_users_with_where_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """AC4 fires even when other engage params are present."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    client.export_profiles(
+                        include_all_users=True,
+                        where='properties["plan"] == "premium"',
+                    )
+                )
+            assert excinfo.value.code == "AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT"
+
+    def test_ac5_behaviors_string_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A string behaviors value raises AC5."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(behaviors="not-a-list"))  # type: ignore[arg-type]
+            assert excinfo.value.code == "AC5_BEHAVIORS_NOT_LIST"
+
+    def test_ac5_behaviors_dict_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A bare dict behaviors value raises AC5."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(behaviors={"event": "P"}))  # type: ignore[arg-type]
+            assert excinfo.value.code == "AC5_BEHAVIORS_NOT_LIST"
+
+    def test_ac6_near_future_timestamp_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """An as_of_timestamp slightly in the future raises AC6."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(client.export_profiles(as_of_timestamp=int(time.time()) + 10_000))
+            assert excinfo.value.code == "AC6_AS_OF_TIMESTAMP_FUTURE"
+
+    def test_ac6_far_future_timestamp_raises_coded_error(
+        self, test_credentials: Session
+    ) -> None:
+        """An as_of_timestamp far in the future raises AC6."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ParamValidationError) as excinfo:
+                list(
+                    client.export_profiles(
+                        as_of_timestamp=int(time.time()) + 10_000_000
+                    )
+                )
+            assert excinfo.value.code == "AC6_AS_OF_TIMESTAMP_FUTURE"
+
+    def test_ac_guards_stay_catchable_as_value_error(
+        self, test_credentials: Session
+    ) -> None:
+        """Converted AC* guards remain catchable via bare ValueError."""
+        with self._client(test_credentials) as client:
+            with pytest.raises(ValueError) as excinfo:
+                list(client.export_profiles(include_all_users=True))
+            assert isinstance(excinfo.value, ParamValidationError)
+            assert excinfo.value.code == "AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT"

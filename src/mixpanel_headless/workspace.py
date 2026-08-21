@@ -93,6 +93,10 @@ from mixpanel_headless._internal.query.user_validators import (
     validate_user_args,
     validate_user_params,
 )
+from mixpanel_headless._internal.response_validation import (
+    validate_response_model,
+    validate_response_models,
+)
 from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.services.discovery import DiscoveryService
 from mixpanel_headless._internal.services.live_query import LiveQueryService
@@ -131,6 +135,7 @@ from mixpanel_headless.exceptions import (
     BusinessContextValidationError,
     ConfigError,
     MixpanelHeadlessError,
+    ParamValidationError,
     QueryError,
     RateLimitError,
     ServerError,
@@ -296,7 +301,7 @@ _MAX_LIMIT = 100_000
 
 
 def _check_event_properties_count(event_properties: list[str] | None) -> None:
-    """Raise ``ValueError`` when ``event_properties`` exceeds the Insights cap.
+    """Raise a coded error when ``event_properties`` exceeds the Insights cap.
 
     Mixpanel's Insights API caps group-by at 5 properties; the
     session-replay ``events_for_replay(s)`` and ``fetch_replay(include=)``
@@ -306,13 +311,15 @@ def _check_event_properties_count(event_properties: list[str] | None) -> None:
         event_properties: Caller-supplied list (or None).
 
     Raises:
-        ValueError: Per error-messages.md §4 wording.
+        ParamValidationError: Per error-messages.md §4 wording
+            (``WR1_TOO_MANY_EVENT_PROPERTIES``).
     """
     if event_properties is not None and len(event_properties) > 5:
-        raise ValueError(
+        raise ParamValidationError(
             f"events_for_replay accepts at most 5 event_properties "
             f"(Insights group-by limit). Got {len(event_properties)}: "
-            f"{event_properties}"
+            f"{event_properties}",
+            code="WR1_TOO_MANY_EVENT_PROPERTIES",
         )
 
 
@@ -326,14 +333,21 @@ def _validate_limit(limit: int | None) -> None:
         limit: Maximum number of events to return, or None for no limit.
 
     Raises:
-        ValueError: If limit is outside the valid range (1 to 100000).
+        ParamValidationError: If limit is outside the valid range
+            (1 to 100000): ``WR2_LIMIT_TOO_SMALL`` / ``WR3_LIMIT_TOO_LARGE``.
     """
     if limit is None:
         return
     if limit < _MIN_LIMIT:
-        raise ValueError(f"limit must be at least {_MIN_LIMIT}, got {limit}")
+        raise ParamValidationError(
+            f"limit must be at least {_MIN_LIMIT}, got {limit}",
+            code="WR2_LIMIT_TOO_SMALL",
+        )
     if limit > _MAX_LIMIT:
-        raise ValueError(f"limit must be at most {_MAX_LIMIT}, got {limit}")
+        raise ParamValidationError(
+            f"limit must be at most {_MAX_LIMIT}, got {limit}",
+            code="WR3_LIMIT_TOO_LARGE",
+        )
 
 
 def _check_step_direction(
@@ -434,16 +448,18 @@ class Workspace:
             _api_client: Injected :class:`MixpanelAPIClient` for testing.
 
         Raises:
-            ValueError: ``target=`` combined with any axis kwarg.
+            ParamValidationError: ``target=`` combined with any axis kwarg
+                (``WS1_TARGET_MUTUALLY_EXCLUSIVE``).
             ConfigError: Account or project axis cannot be resolved.
             OAuthError: Auth header construction fails.
         """
         if target is not None and (
             account is not None or project is not None or workspace is not None
         ):
-            raise ValueError(
+            raise ParamValidationError(
                 "`target=` is mutually exclusive with "
-                "`account=`/`project=`/`workspace=`."
+                "`account=`/`project=`/`workspace=`.",
+                code="WS1_TARGET_MUTUALLY_EXCLUSIVE",
             )
 
         self._discovery: DiscoveryService | None = None
@@ -580,15 +596,18 @@ class Workspace:
             ``self`` for fluent chaining.
 
         Raises:
-            ValueError: Mutually exclusive args, or referenced name missing.
+            ParamValidationError: Mutually exclusive args
+                (``WS1_TARGET_MUTUALLY_EXCLUSIVE``).
+            ValueError: Referenced name missing.
             OAuthError: New auth header construction fails (atomic on success).
             ConfigError: ``account=`` swap cannot resolve a project axis.
         """
         if target is not None and (
             account is not None or project is not None or workspace is not None
         ):
-            raise ValueError(
-                "`target=` is mutually exclusive with `account=`/`project=`/`workspace=`."
+            raise ParamValidationError(
+                "`target=` is mutually exclusive with `account=`/`project=`/`workspace=`.",
+                code="WS1_TARGET_MUTUALLY_EXCLUSIVE",
             )
 
         cm = ConfigManager()
@@ -4497,6 +4516,8 @@ class Workspace:
             List of ``Dashboard`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
@@ -4512,7 +4533,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_dashboards(ids=ids)
-        return [Dashboard.model_validate(d) for d in raw]
+        return validate_response_models(Dashboard, raw, endpoint="list_dashboards")
 
     def create_dashboard(self, params: CreateDashboardParams) -> Dashboard:
         """Create a new dashboard.
@@ -4524,6 +4545,8 @@ class Workspace:
             The newly created ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400, 422).
@@ -4543,7 +4566,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_dashboard",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="create_dashboard")
 
     def get_dashboard(self, dashboard_id: int) -> Dashboard:
         """Get a single dashboard by ID.
@@ -4555,6 +4578,8 @@ class Workspace:
             The ``Dashboard`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Dashboard not found (404).
@@ -4572,7 +4597,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_dashboard",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="get_dashboard")
 
     def update_dashboard(
         self, dashboard_id: int, params: UpdateDashboardParams
@@ -4587,6 +4612,8 @@ class Workspace:
             The updated ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Dashboard not found or invalid params (400, 404).
@@ -4608,7 +4635,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for update_dashboard",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="update_dashboard")
 
     def delete_dashboard(self, dashboard_id: int) -> None:
         """Delete a dashboard.
@@ -4753,6 +4780,8 @@ class Workspace:
             The updated ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Dashboard or bookmark not found (404).
@@ -4766,7 +4795,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.remove_report_from_dashboard(dashboard_id, bookmark_id)
-        return Dashboard.model_validate(raw)
+        return validate_response_model(
+            Dashboard, raw, endpoint="remove_report_from_dashboard"
+        )
 
     def add_report_to_dashboard(self, dashboard_id: int, bookmark_id: int) -> Dashboard:
         """Add a report to a dashboard.
@@ -4782,6 +4813,8 @@ class Workspace:
             The updated ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Dashboard or bookmark not found (404).
@@ -4801,7 +4834,9 @@ class Workspace:
                 "Unexpected response from add_report_to_dashboard: "
                 f"expected dashboard dict with 'id', got {raw!r}",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(
+            Dashboard, raw, endpoint="add_report_to_dashboard"
+        )
 
     def list_blueprint_templates(
         self, *, include_reports: bool = False
@@ -4815,6 +4850,8 @@ class Workspace:
             List of ``BlueprintTemplate`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -4827,7 +4864,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_blueprint_templates(include_reports=include_reports)
-        return [BlueprintTemplate.model_validate(t) for t in raw]
+        return validate_response_models(
+            BlueprintTemplate, raw, endpoint="list_blueprint_templates"
+        )
 
     def create_blueprint(self, template_type: str) -> Dashboard:
         """Create a dashboard from a blueprint template.
@@ -4839,6 +4878,8 @@ class Workspace:
             The newly created ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid template type (400).
@@ -4856,7 +4897,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_blueprint",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="create_blueprint")
 
     def get_blueprint_config(self, dashboard_id: int) -> BlueprintConfig:
         """Get the blueprint configuration for a dashboard.
@@ -4868,6 +4909,8 @@ class Workspace:
             ``BlueprintConfig`` with template variables.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Dashboard not found (404).
@@ -4885,7 +4928,9 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_blueprint_config",
             )
-        return BlueprintConfig.model_validate(raw)
+        return validate_response_model(
+            BlueprintConfig, raw, endpoint="get_blueprint_config"
+        )
 
     def update_blueprint_cohorts(self, cohorts: list[dict[str, Any]]) -> None:
         """Update cohorts for blueprint configuration.
@@ -4918,6 +4963,8 @@ class Workspace:
             The finalized ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400).
@@ -4941,7 +4988,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for finalize_blueprint",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="finalize_blueprint")
 
     def create_rca_dashboard(self, params: CreateRcaDashboardParams) -> Dashboard:
         """Create an RCA (Root Cause Analysis) dashboard.
@@ -4953,6 +5000,8 @@ class Workspace:
             The newly created ``Dashboard``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400).
@@ -4976,7 +5025,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_rca_dashboard",
             )
-        return Dashboard.model_validate(raw)
+        return validate_response_model(Dashboard, raw, endpoint="create_rca_dashboard")
 
     def get_bookmark_dashboard_ids(self, bookmark_id: int) -> list[int]:
         """Get dashboard IDs containing a bookmark/report.
@@ -5114,6 +5163,8 @@ class Workspace:
             List of ``Bookmark`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
@@ -5129,7 +5180,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_bookmarks_v2(bookmark_type=bookmark_type, ids=ids)
-        return [Bookmark.model_validate(b) for b in raw]
+        return validate_response_models(Bookmark, raw, endpoint="list_bookmarks_v2")
 
     @staticmethod
     def _validate_bookmark_params_schema(
@@ -5204,6 +5255,8 @@ class Workspace:
             The newly created ``Bookmark``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             MixpanelHeadlessError: If ``params.dashboard_id`` is ``None``
                 (required by the Mixpanel v2 API).
             BookmarkValidationError: If ``params.params`` fails
@@ -5260,7 +5313,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_bookmark",
             )
-        bookmark = Bookmark.model_validate(raw)
+        bookmark = validate_response_model(Bookmark, raw, endpoint="create_bookmark")
 
         # The v2 create endpoint associates the bookmark with the
         # dashboard in the database, but does NOT add it to the
@@ -5280,6 +5333,8 @@ class Workspace:
             The ``Bookmark`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Bookmark not found (404).
@@ -5297,7 +5352,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_bookmark",
             )
-        return Bookmark.model_validate(raw)
+        return validate_response_model(Bookmark, raw, endpoint="get_bookmark")
 
     def update_bookmark(
         self, bookmark_id: int, params: UpdateBookmarkParams
@@ -5312,6 +5367,8 @@ class Workspace:
             The updated ``Bookmark``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             BookmarkValidationError: If ``params.params`` (when supplied)
                 fails partial-mode client-side schema validation
                 (mirrors Mixpanel's canonical schema for the keys that
@@ -5354,7 +5411,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for update_bookmark",
             )
-        return Bookmark.model_validate(raw)
+        return validate_response_model(Bookmark, raw, endpoint="update_bookmark")
 
     def delete_bookmark(self, bookmark_id: int) -> None:
         """Delete a bookmark.
@@ -5463,6 +5520,8 @@ class Workspace:
             ``BookmarkHistoryResponse`` with results and pagination.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Bookmark not found (404).
@@ -5478,7 +5537,9 @@ class Workspace:
         raw = client.get_bookmark_history(
             bookmark_id, cursor=cursor, page_size=page_size
         )
-        return BookmarkHistoryResponse.model_validate(raw)
+        return validate_response_model(
+            BookmarkHistoryResponse, raw, endpoint="get_bookmark_history"
+        )
 
     # =========================================================================
     # COHORT CRUD (Phase 024)
@@ -5503,6 +5564,8 @@ class Workspace:
             List of ``Cohort`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
@@ -5518,7 +5581,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_cohorts_app(data_group_id=data_group_id, ids=ids)
-        return [Cohort.model_validate(c) for c in raw]
+        return validate_response_models(Cohort, raw, endpoint="list_cohorts_full")
 
     def get_cohort(self, cohort_id: int) -> Cohort:
         """Get a single cohort by ID via the App API.
@@ -5530,6 +5593,8 @@ class Workspace:
             The ``Cohort`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Cohort not found (404).
@@ -5547,7 +5612,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_cohort",
             )
-        return Cohort.model_validate(raw)
+        return validate_response_model(Cohort, raw, endpoint="get_cohort")
 
     def create_cohort(self, params: CreateCohortParams) -> Cohort:
         """Create a new cohort.
@@ -5559,6 +5624,8 @@ class Workspace:
             The newly created ``Cohort``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400).
@@ -5578,7 +5645,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_cohort",
             )
-        return Cohort.model_validate(raw)
+        return validate_response_model(Cohort, raw, endpoint="create_cohort")
 
     def update_cohort(self, cohort_id: int, params: UpdateCohortParams) -> Cohort:
         """Update an existing cohort.
@@ -5591,6 +5658,8 @@ class Workspace:
             The updated ``Cohort``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Cohort not found or invalid params (400, 404).
@@ -5610,7 +5679,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for update_cohort",
             )
-        return Cohort.model_validate(raw)
+        return validate_response_model(Cohort, raw, endpoint="update_cohort")
 
     def delete_cohort(self, cohort_id: int) -> None:
         """Delete a cohort.
@@ -5693,6 +5762,8 @@ class Workspace:
             List of ``FeatureFlag`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
@@ -5708,7 +5779,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_feature_flags(include_archived=include_archived)
-        return [FeatureFlag.model_validate(f) for f in raw]
+        return validate_response_models(FeatureFlag, raw, endpoint="list_feature_flags")
 
     def create_feature_flag(self, params: CreateFeatureFlagParams) -> FeatureFlag:
         """Create a new feature flag.
@@ -5720,6 +5791,8 @@ class Workspace:
             The newly created ``FeatureFlag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Duplicate key or invalid parameters (400).
@@ -5739,7 +5812,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_feature_flag",
             )
-        return FeatureFlag.model_validate(raw)
+        return validate_response_model(FeatureFlag, raw, endpoint="create_feature_flag")
 
     def get_feature_flag(self, flag_id: str) -> FeatureFlag:
         """Get a single feature flag by ID.
@@ -5751,6 +5824,8 @@ class Workspace:
             The ``FeatureFlag`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Flag not found (404).
@@ -5768,7 +5843,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_feature_flag",
             )
-        return FeatureFlag.model_validate(raw)
+        return validate_response_model(FeatureFlag, raw, endpoint="get_feature_flag")
 
     def update_feature_flag(
         self, flag_id: str, params: UpdateFeatureFlagParams
@@ -5783,6 +5858,8 @@ class Workspace:
             The updated ``FeatureFlag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Flag not found or invalid params (400, 404).
@@ -5806,7 +5883,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for update_feature_flag",
             )
-        return FeatureFlag.model_validate(raw)
+        return validate_response_model(FeatureFlag, raw, endpoint="update_feature_flag")
 
     def delete_feature_flag(self, flag_id: str) -> None:
         """Delete a feature flag.
@@ -5864,6 +5941,8 @@ class Workspace:
             The restored ``FeatureFlag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Flag not found (404).
@@ -5877,7 +5956,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.restore_feature_flag(flag_id)
-        return FeatureFlag.model_validate(raw)
+        return validate_response_model(
+            FeatureFlag, raw, endpoint="restore_feature_flag"
+        )
 
     def duplicate_feature_flag(self, flag_id: str) -> FeatureFlag:
         """Duplicate a feature flag.
@@ -5889,6 +5970,8 @@ class Workspace:
             The newly created duplicate ``FeatureFlag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Flag not found (404).
@@ -5902,7 +5985,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.duplicate_feature_flag(flag_id)
-        return FeatureFlag.model_validate(raw)
+        return validate_response_model(
+            FeatureFlag, raw, endpoint="duplicate_feature_flag"
+        )
 
     # =========================================================================
     # FEATURE FLAG OPERATIONS (Phase 025)
@@ -5951,6 +6036,8 @@ class Workspace:
             ``FlagHistoryResponse`` with events and count.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Flag not found (404).
@@ -5971,7 +6058,9 @@ class Workspace:
         raw = client.get_flag_history(
             flag_id, params=query_params if query_params else None
         )
-        return FlagHistoryResponse.model_validate(raw)
+        return validate_response_model(
+            FlagHistoryResponse, raw, endpoint="get_flag_history"
+        )
 
     def get_flag_limits(self) -> FlagLimitsResponse:
         """Get account-level feature flag limits and usage.
@@ -5980,6 +6069,8 @@ class Workspace:
             ``FlagLimitsResponse`` with limit, usage, trial, and contract status.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -5994,7 +6085,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_flag_limits()
-        return FlagLimitsResponse.model_validate(raw)
+        return validate_response_model(
+            FlagLimitsResponse, raw, endpoint="get_flag_limits"
+        )
 
     # =========================================================================
     # EXPERIMENT CRUD (Phase 025)
@@ -6010,6 +6103,8 @@ class Workspace:
             List of ``Experiment`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400, 404).
@@ -6025,7 +6120,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.list_experiments(include_archived=include_archived)
-        return [Experiment.model_validate(e) for e in raw]
+        return validate_response_models(Experiment, raw, endpoint="list_experiments")
 
     def create_experiment(self, params: CreateExperimentParams) -> Experiment:
         """Create a new experiment in Draft status.
@@ -6037,6 +6132,8 @@ class Workspace:
             The newly created ``Experiment``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400).
@@ -6056,7 +6153,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for create_experiment",
             )
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="create_experiment")
 
     def get_experiment(self, experiment_id: str) -> Experiment:
         """Get a single experiment by ID.
@@ -6068,6 +6165,8 @@ class Workspace:
             The ``Experiment`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Experiment not found (404).
@@ -6085,7 +6184,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for get_experiment",
             )
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="get_experiment")
 
     def update_experiment(
         self, experiment_id: str, params: UpdateExperimentParams
@@ -6100,6 +6199,8 @@ class Workspace:
             The updated ``Experiment``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Experiment not found or invalid params (400, 404).
@@ -6121,7 +6222,7 @@ class Workspace:
             raise MixpanelHeadlessError(
                 "API returned empty response for update_experiment",
             )
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="update_experiment")
 
     def delete_experiment(self, experiment_id: str) -> None:
         """Delete an experiment.
@@ -6158,6 +6259,8 @@ class Workspace:
             The launched ``Experiment`` with updated status.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid state transition (400) or not found (404).
@@ -6171,7 +6274,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.launch_experiment(experiment_id)
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="launch_experiment")
 
     def conclude_experiment(
         self,
@@ -6191,6 +6294,8 @@ class Workspace:
             The concluded ``Experiment``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid state transition (400) or not found (404).
@@ -6205,7 +6310,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True) if params else {}
         raw = client.conclude_experiment(experiment_id, body)
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="conclude_experiment")
 
     def decide_experiment(
         self, experiment_id: str, params: ExperimentDecideParams
@@ -6220,6 +6325,8 @@ class Workspace:
             The decided ``Experiment`` with terminal status.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid state transition (400) or not found (404).
@@ -6238,7 +6345,7 @@ class Workspace:
         raw = client.decide_experiment(
             experiment_id, params.model_dump(exclude_none=True)
         )
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="decide_experiment")
 
     # =========================================================================
     # EXPERIMENT MANAGEMENT (Phase 025)
@@ -6275,6 +6382,8 @@ class Workspace:
             The restored ``Experiment``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Experiment not found (404).
@@ -6288,7 +6397,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.restore_experiment(experiment_id)
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="restore_experiment")
 
     def duplicate_experiment(
         self,
@@ -6308,6 +6417,8 @@ class Workspace:
             The newly created duplicate ``Experiment``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Experiment not found (404).
@@ -6325,7 +6436,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.duplicate_experiment(experiment_id, body)
-        return Experiment.model_validate(raw)
+        return validate_response_model(Experiment, raw, endpoint="duplicate_experiment")
 
     def list_erf_experiments(self) -> list[dict[str, Any]]:
         """List experiments in ERF (Experiment Results Framework) format.
@@ -6370,6 +6481,8 @@ class Workspace:
             List of ``Annotation`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6387,7 +6500,9 @@ class Workspace:
         raw_list = client.list_annotations(
             from_date=from_date, to_date=to_date, tags=tags
         )
-        return [Annotation.model_validate(item) for item in raw_list]
+        return validate_response_models(
+            Annotation, raw_list, endpoint="list_annotations"
+        )
 
     def create_annotation(self, params: CreateAnnotationParams) -> Annotation:
         """Create a new timeline annotation.
@@ -6399,6 +6514,8 @@ class Workspace:
             The created ``Annotation``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -6417,7 +6534,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.create_annotation(body)
-        return Annotation.model_validate(raw)
+        return validate_response_model(Annotation, raw, endpoint="create_annotation")
 
     def get_annotation(self, annotation_id: int) -> Annotation:
         """Get a single annotation by ID.
@@ -6429,6 +6546,8 @@ class Workspace:
             The ``Annotation`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Annotation not found (404).
@@ -6443,7 +6562,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_annotation(annotation_id)
-        return Annotation.model_validate(raw)
+        return validate_response_model(Annotation, raw, endpoint="get_annotation")
 
     def update_annotation(
         self, annotation_id: int, params: UpdateAnnotationParams
@@ -6458,6 +6577,8 @@ class Workspace:
             The updated ``Annotation``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Annotation not found (404) or validation error (400).
@@ -6474,7 +6595,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.update_annotation(annotation_id, body)
-        return Annotation.model_validate(raw)
+        return validate_response_model(Annotation, raw, endpoint="update_annotation")
 
     def delete_annotation(self, annotation_id: int) -> None:
         """Delete an annotation.
@@ -6504,6 +6625,8 @@ class Workspace:
             List of ``AnnotationTag`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6519,7 +6642,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_annotation_tags()
-        return [AnnotationTag.model_validate(item) for item in raw_list]
+        return validate_response_models(
+            AnnotationTag, raw_list, endpoint="list_annotation_tags"
+        )
 
     def create_annotation_tag(self, params: CreateAnnotationTagParams) -> AnnotationTag:
         """Create a new annotation tag.
@@ -6531,6 +6656,8 @@ class Workspace:
             The created ``AnnotationTag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -6547,7 +6674,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.create_annotation_tag(body)
-        return AnnotationTag.model_validate(raw)
+        return validate_response_model(
+            AnnotationTag, raw, endpoint="create_annotation_tag"
+        )
 
     # =========================================================================
     # Webhook CRUD (Phase 026)
@@ -6560,6 +6689,8 @@ class Workspace:
             List of ``ProjectWebhook`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6575,7 +6706,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_webhooks()
-        return [ProjectWebhook.model_validate(item) for item in raw_list]
+        return validate_response_models(
+            ProjectWebhook, raw_list, endpoint="list_webhooks"
+        )
 
     def create_webhook(self, params: CreateWebhookParams) -> WebhookMutationResult:
         """Create a new webhook.
@@ -6587,6 +6720,8 @@ class Workspace:
             ``WebhookMutationResult`` with the new webhook's id and name.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6604,7 +6739,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.create_webhook(body)
-        return WebhookMutationResult.model_validate(raw)
+        return validate_response_model(
+            WebhookMutationResult, raw, endpoint="create_webhook"
+        )
 
     def update_webhook(
         self, webhook_id: str, params: UpdateWebhookParams
@@ -6619,6 +6756,8 @@ class Workspace:
             ``WebhookMutationResult`` with the updated webhook's id and name.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Webhook not found (404).
@@ -6636,7 +6775,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.update_webhook(webhook_id, body)
-        return WebhookMutationResult.model_validate(raw)
+        return validate_response_model(
+            WebhookMutationResult, raw, endpoint="update_webhook"
+        )
 
     def delete_webhook(self, webhook_id: str) -> None:
         """Delete a webhook.
@@ -6669,6 +6810,8 @@ class Workspace:
             ``WebhookTestResult`` with success, status_code, and message.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6687,7 +6830,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.test_webhook(body)
-        return WebhookTestResult.model_validate(raw)
+        return validate_response_model(WebhookTestResult, raw, endpoint="test_webhook")
 
     # =========================================================================
     # Alert CRUD (Phase 026)
@@ -6709,6 +6852,8 @@ class Workspace:
             List of ``CustomAlert`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6726,7 +6871,7 @@ class Workspace:
         raw_list = client.list_alerts(
             bookmark_id=bookmark_id, skip_user_filter=skip_user_filter
         )
-        return [CustomAlert.model_validate(item) for item in raw_list]
+        return validate_response_models(CustomAlert, raw_list, endpoint="list_alerts")
 
     def create_alert(self, params: CreateAlertParams) -> CustomAlert:
         """Create a new custom alert.
@@ -6739,6 +6884,8 @@ class Workspace:
             The created ``CustomAlert``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -6762,7 +6909,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.create_alert(body)
-        return CustomAlert.model_validate(raw)
+        return validate_response_model(CustomAlert, raw, endpoint="create_alert")
 
     def get_alert(self, alert_id: int) -> CustomAlert:
         """Get a single custom alert by ID.
@@ -6774,6 +6921,8 @@ class Workspace:
             The ``CustomAlert`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Alert not found (404).
@@ -6788,7 +6937,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_alert(alert_id)
-        return CustomAlert.model_validate(raw)
+        return validate_response_model(CustomAlert, raw, endpoint="get_alert")
 
     def update_alert(self, alert_id: int, params: UpdateAlertParams) -> CustomAlert:
         """Update a custom alert (PATCH semantics).
@@ -6801,6 +6950,8 @@ class Workspace:
             The updated ``CustomAlert``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Alert not found (404) or validation error (400).
@@ -6817,7 +6968,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.update_alert(alert_id, body)
-        return CustomAlert.model_validate(raw)
+        return validate_response_model(CustomAlert, raw, endpoint="update_alert")
 
     def delete_alert(self, alert_id: int) -> None:
         """Delete a custom alert.
@@ -6871,6 +7022,8 @@ class Workspace:
             ``AlertCount`` with count, limit, and is_below_limit.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400).
@@ -6886,7 +7039,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_alert_count(alert_type=alert_type)
-        return AlertCount.model_validate(raw)
+        return validate_response_model(AlertCount, raw, endpoint="get_alert_count")
 
     def get_alert_history(
         self,
@@ -6908,6 +7061,8 @@ class Workspace:
             ``AlertHistoryResponse`` with results and pagination metadata.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Alert not found (404).
@@ -6928,7 +7083,9 @@ class Workspace:
             next_cursor=next_cursor,
             previous_cursor=previous_cursor,
         )
-        return AlertHistoryResponse.model_validate(raw)
+        return validate_response_model(
+            AlertHistoryResponse, raw, endpoint="get_alert_history"
+        )
 
     def test_alert(self, params: CreateAlertParams) -> dict[str, Any]:
         """Send a test alert notification.
@@ -6971,6 +7128,8 @@ class Workspace:
             ``AlertScreenshotResponse`` with the signed URL.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Screenshot not found (404).
@@ -6985,7 +7144,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_alert_screenshot_url(gcs_key)
-        return AlertScreenshotResponse.model_validate(raw)
+        return validate_response_model(
+            AlertScreenshotResponse, raw, endpoint="get_alert_screenshot_url"
+        )
 
     def validate_alerts_for_bookmark(
         self, params: ValidateAlertsForBookmarkParams
@@ -7001,6 +7162,8 @@ class Workspace:
             and invalid count.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7025,7 +7188,11 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.validate_alerts_for_bookmark(body)
-        return ValidateAlertsForBookmarkResponse.model_validate(raw)
+        return validate_response_model(
+            ValidateAlertsForBookmarkResponse,
+            raw,
+            endpoint="validate_alerts_for_bookmark",
+        )
 
     # =============================================================================
     # Data Governance — Data Definitions / Lexicon (Phase 027)
@@ -7044,6 +7211,8 @@ class Workspace:
             List of ``EventDefinition`` objects for the requested events.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7059,7 +7228,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.get_event_definitions(names)
-        return [EventDefinition.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            EventDefinition, raw_list, endpoint="get_event_definitions"
+        )
 
     def update_event_definition(
         self, event_name: str, params: UpdateEventDefinitionParams
@@ -7075,6 +7246,8 @@ class Workspace:
             The updated ``EventDefinition``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Event not found (404) or validation error (400).
@@ -7092,7 +7265,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_event_definition(event_name, body)
-        return EventDefinition.model_validate(raw)
+        return validate_response_model(
+            EventDefinition, raw, endpoint="update_event_definition"
+        )
 
     def delete_event_definition(self, event_name: str) -> None:
         """Delete an event definition from Lexicon.
@@ -7128,6 +7303,8 @@ class Workspace:
             List of updated ``EventDefinition`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7147,7 +7324,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw_list = client.bulk_update_event_definitions(body)
-        return [EventDefinition.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            EventDefinition, raw_list, endpoint="bulk_update_event_definitions"
+        )
 
     def get_property_definitions(
         self,
@@ -7169,6 +7348,8 @@ class Workspace:
             List of ``PropertyDefinition`` objects for the requested properties.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7187,7 +7368,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.get_property_definitions(names, resource_type=resource_type)
-        return [PropertyDefinition.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            PropertyDefinition, raw_list, endpoint="get_property_definitions"
+        )
 
     def update_property_definition(
         self, property_name: str, params: UpdatePropertyDefinitionParams
@@ -7203,6 +7386,8 @@ class Workspace:
             The updated ``PropertyDefinition``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Property not found (404) or validation error (400).
@@ -7220,7 +7405,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_property_definition(property_name, body)
-        return PropertyDefinition.model_validate(raw)
+        return validate_response_model(
+            PropertyDefinition, raw, endpoint="update_property_definition"
+        )
 
     def bulk_update_property_definitions(
         self, params: BulkUpdatePropertiesParams
@@ -7235,6 +7422,8 @@ class Workspace:
             List of updated ``PropertyDefinition`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7262,7 +7451,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw_list = client.bulk_update_property_definitions(body)
-        return [PropertyDefinition.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            PropertyDefinition, raw_list, endpoint="bulk_update_property_definitions"
+        )
 
     # ---- Tags ----
 
@@ -7273,6 +7464,8 @@ class Workspace:
             List of ``LexiconTag`` objects with ``id`` and ``name`` fields.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -7301,7 +7494,9 @@ class Workspace:
                 # id=0 is a sentinel — see docstring Note.
                 result.append(LexiconTag(id=0, name=x))
             else:
-                result.append(LexiconTag.model_validate(x))
+                result.append(
+                    validate_response_model(LexiconTag, x, endpoint="list_lexicon_tags")
+                )
         return result
 
     def create_lexicon_tag(self, params: CreateTagParams) -> LexiconTag:
@@ -7314,6 +7509,8 @@ class Workspace:
             The created ``LexiconTag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400) or tag already exists.
@@ -7328,7 +7525,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.create_lexicon_tag(body)
-        return LexiconTag.model_validate(raw)
+        return validate_response_model(LexiconTag, raw, endpoint="create_lexicon_tag")
 
     def update_lexicon_tag(self, tag_id: int, params: UpdateTagParams) -> LexiconTag:
         """Update a Lexicon tag.
@@ -7341,6 +7538,8 @@ class Workspace:
             The updated ``LexiconTag``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Tag not found (404) or validation error (400).
@@ -7357,7 +7556,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.update_lexicon_tag(tag_id, body)
-        return LexiconTag.model_validate(raw)
+        return validate_response_model(LexiconTag, raw, endpoint="update_lexicon_tag")
 
     def delete_lexicon_tag(self, tag_name: str) -> None:
         """Delete a Lexicon tag by name.
@@ -7391,6 +7590,8 @@ class Workspace:
             List of ``DropFilter`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -7405,7 +7606,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_drop_filters()
-        return [DropFilter.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            DropFilter, raw_list, endpoint="list_drop_filters"
+        )
 
     def create_drop_filter(self, params: CreateDropFilterParams) -> list[DropFilter]:
         """Create a new drop filter.
@@ -7417,6 +7620,8 @@ class Workspace:
             Full list of ``DropFilter`` objects after creation.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7436,7 +7641,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw_list = client.create_drop_filter(body)
-        return [DropFilter.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            DropFilter, raw_list, endpoint="create_drop_filter"
+        )
 
     def update_drop_filter(self, params: UpdateDropFilterParams) -> list[DropFilter]:
         """Update a drop filter.
@@ -7448,6 +7655,8 @@ class Workspace:
             Full list of ``DropFilter`` objects after update.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Filter not found (404) or validation error (400).
@@ -7466,7 +7675,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw_list = client.update_drop_filter(body)
-        return [DropFilter.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            DropFilter, raw_list, endpoint="update_drop_filter"
+        )
 
     def delete_drop_filter(self, drop_filter_id: int) -> list[DropFilter]:
         """Delete a drop filter.
@@ -7478,6 +7689,8 @@ class Workspace:
             Full list of remaining ``DropFilter`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Filter not found (404).
@@ -7491,7 +7704,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.delete_drop_filter(drop_filter_id)
-        return [DropFilter.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            DropFilter, raw_list, endpoint="delete_drop_filter"
+        )
 
     def get_drop_filter_limits(self) -> DropFilterLimitsResponse:
         """Get drop filter usage limits.
@@ -7501,6 +7716,8 @@ class Workspace:
             drop filters for the project.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -7514,7 +7731,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_drop_filter_limits()
-        return DropFilterLimitsResponse.model_validate(raw)
+        return validate_response_model(
+            DropFilterLimitsResponse, raw, endpoint="get_drop_filter_limits"
+        )
 
     # =============================================================================
     # Data Governance — Custom Properties (Phase 027)
@@ -7527,6 +7746,8 @@ class Workspace:
             List of ``CustomProperty`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Server-side data corruption (e.g. invalid
@@ -7563,7 +7784,9 @@ class Workspace:
                     request_params=exc.request_params,
                 ) from exc
             raise
-        return [CustomProperty.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            CustomProperty, raw_list, endpoint="list_custom_properties"
+        )
 
     def create_custom_property(
         self, params: CreateCustomPropertyParams
@@ -7578,6 +7801,8 @@ class Workspace:
             The created ``CustomProperty``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7599,7 +7824,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True, mode="json")
         raw = client.create_custom_property(body)
-        return CustomProperty.model_validate(raw)
+        return validate_response_model(
+            CustomProperty, raw, endpoint="create_custom_property"
+        )
 
     def get_custom_property(self, property_id: str) -> CustomProperty:
         """Get a custom property by ID.
@@ -7611,6 +7838,8 @@ class Workspace:
             The ``CustomProperty`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Property not found (404).
@@ -7625,7 +7854,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_custom_property(property_id)
-        return CustomProperty.model_validate(raw)
+        return validate_response_model(
+            CustomProperty, raw, endpoint="get_custom_property"
+        )
 
     def update_custom_property(
         self, property_id: str, params: UpdateCustomPropertyParams
@@ -7640,6 +7871,8 @@ class Workspace:
             The updated ``CustomProperty``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Property not found (404) or validation error (400).
@@ -7657,7 +7890,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_custom_property(property_id, body)
-        return CustomProperty.model_validate(raw)
+        return validate_response_model(
+            CustomProperty, raw, endpoint="update_custom_property"
+        )
 
     def delete_custom_property(self, property_id: str) -> None:
         """Delete a custom property.
@@ -7731,6 +7966,8 @@ class Workspace:
             List of ``LookupTable`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -7745,7 +7982,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_lookup_tables(data_group_id=data_group_id)
-        return [LookupTable.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            LookupTable, raw_list, endpoint="list_lookup_tables"
+        )
 
     def upload_lookup_table(
         self,
@@ -7774,6 +8013,8 @@ class Workspace:
             The created ``LookupTable`` object.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400) or file not found.
@@ -7831,7 +8072,7 @@ class Workspace:
         # inject the name from params so LookupTable validation succeeds.
         if isinstance(raw, dict) and "name" not in raw:
             raw = {**raw, "name": params.name}
-        return LookupTable.model_validate(raw)
+        return validate_response_model(LookupTable, raw, endpoint="upload_lookup_table")
 
     def _poll_lookup_upload(
         self,
@@ -7915,6 +8156,8 @@ class Workspace:
             The updated ``LookupTable``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -7940,7 +8183,9 @@ class Workspace:
             form_data["data-group-id"] = str(params.data_group_id)
 
         raw = client.mark_lookup_table_ready(form_data)
-        return LookupTable.model_validate(raw)
+        return validate_response_model(
+            LookupTable, raw, endpoint="mark_lookup_table_ready"
+        )
 
     def get_lookup_upload_url(
         self, content_type: str = "text/csv"
@@ -7955,6 +8200,8 @@ class Workspace:
             ``LookupTableUploadUrl`` with the signed URL, path, and key.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -7968,7 +8215,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_lookup_upload_url(content_type)
-        return LookupTableUploadUrl.model_validate(raw)
+        return validate_response_model(
+            LookupTableUploadUrl, raw, endpoint="get_lookup_upload_url"
+        )
 
     def get_lookup_upload_status(self, upload_id: str) -> dict[str, Any]:
         """Get the processing status of a lookup table upload.
@@ -8008,6 +8257,8 @@ class Workspace:
             The updated ``LookupTable``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Table not found (404) or validation error (400).
@@ -8025,7 +8276,7 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True)
         raw = client.update_lookup_table(data_group_id, body)
-        return LookupTable.model_validate(raw)
+        return validate_response_model(LookupTable, raw, endpoint="update_lookup_table")
 
     def delete_lookup_tables(self, data_group_ids: list[int]) -> None:
         """Delete one or more lookup tables.
@@ -8131,6 +8382,8 @@ class Workspace:
             ``id``, ``name``, and ``alternatives``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400) — for example, duplicate
@@ -8151,7 +8404,7 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.create_custom_event(params.to_form_body())
-        return CustomEvent.model_validate(raw)
+        return validate_response_model(CustomEvent, raw, endpoint="create_custom_event")
 
     def list_custom_events(self) -> list[EventDefinition]:
         """List all custom events.
@@ -8160,6 +8413,8 @@ class Workspace:
             List of ``EventDefinition`` objects for custom events.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             ServerError: Server-side errors (5xx).
@@ -8174,7 +8429,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_custom_events()
-        return [EventDefinition.model_validate(x) for x in raw_list]
+        return validate_response_models(
+            EventDefinition, raw_list, endpoint="list_custom_events"
+        )
 
     def update_custom_event(
         self, custom_event_id: int, params: UpdateEventDefinitionParams
@@ -8202,6 +8459,8 @@ class Workspace:
             event, with ``custom_event_id`` populated).
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Event not found (404) or validation error (400).
@@ -8228,7 +8487,9 @@ class Workspace:
         client = self._require_api_client()
         body = params.model_dump(exclude_none=True, by_alias=True)
         raw = client.update_custom_event(custom_event_id, body)
-        return EventDefinition.model_validate(raw)
+        return validate_response_model(
+            EventDefinition, raw, endpoint="update_custom_event"
+        )
 
     def delete_custom_event(self, custom_event_id: int) -> None:
         """Delete a custom event.
@@ -8405,6 +8666,8 @@ class Workspace:
             List of ``SchemaEntry`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             RateLimitError: Rate limit exceeded (429).
@@ -8419,7 +8682,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_schema_registry(entity_type=entity_type)
-        return [SchemaEntry.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            SchemaEntry, raw_list, endpoint="list_schema_registry"
+        )
 
     def create_schema(
         self,
@@ -8468,6 +8733,8 @@ class Workspace:
             Response with ``added`` and ``deleted`` counts.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -8486,7 +8753,9 @@ class Workspace:
         raw = client.create_schemas_bulk(
             params.model_dump(exclude_none=True, by_alias=True)
         )
-        return BulkCreateSchemasResponse.model_validate(raw)
+        return validate_response_model(
+            BulkCreateSchemasResponse, raw, endpoint="create_schemas_bulk"
+        )
 
     def update_schema(
         self,
@@ -8534,6 +8803,8 @@ class Workspace:
             List of per-entry results with status ("ok" or "error").
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             RateLimitError: Rate limit exceeded (429).
@@ -8552,7 +8823,9 @@ class Workspace:
         raw_list = client.update_schemas_bulk(
             params.model_dump(exclude_none=True, by_alias=True)
         )
-        return [BulkPatchResult.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            BulkPatchResult, raw_list, endpoint="update_schemas_bulk"
+        )
 
     def delete_schemas(
         self,
@@ -8573,6 +8846,8 @@ class Workspace:
             Response with ``delete_count``.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Invalid parameters (400).
@@ -8593,7 +8868,9 @@ class Workspace:
             )
         client = self._require_api_client()
         raw = client.delete_schemas(entity_type=entity_type, entity_name=entity_name)
-        return DeleteSchemasResponse.model_validate(raw)
+        return validate_response_model(
+            DeleteSchemasResponse, raw, endpoint="delete_schemas"
+        )
 
     # =========================================================================
     # Schema Enforcement (Phase 028)
@@ -8614,6 +8891,8 @@ class Workspace:
             Schema enforcement configuration.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: No enforcement configured (404).
@@ -8627,7 +8906,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw = client.get_schema_enforcement(fields=fields)
-        return SchemaEnforcementConfig.model_validate(raw)
+        return validate_response_model(
+            SchemaEnforcementConfig, raw, endpoint="get_schema_enforcement"
+        )
 
     def init_schema_enforcement(
         self,
@@ -8752,6 +9033,8 @@ class Workspace:
             Audit response with violations and ``computed_at`` timestamp.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: No schemas defined (400).
@@ -8774,7 +9057,9 @@ class Workspace:
                 f"Unexpected audit response: expected list of violations, "
                 f"got {type(raw[0]).__name__}",
             )
-        violations = [AuditViolation.model_validate(v) for v in raw[0]]
+        violations = validate_response_models(
+            AuditViolation, raw[0], endpoint="run_audit"
+        )
         metadata = raw[1] if len(raw) > 1 and isinstance(raw[1], dict) else {}
         return AuditResponse(
             violations=violations,
@@ -8788,6 +9073,8 @@ class Workspace:
             Audit response with event violations only.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: No schemas defined (400).
@@ -8807,7 +9094,9 @@ class Workspace:
                 f"Unexpected audit response: expected list of violations, "
                 f"got {type(raw[0]).__name__}",
             )
-        violations = [AuditViolation.model_validate(v) for v in raw[0]]
+        violations = validate_response_models(
+            AuditViolation, raw[0], endpoint="run_audit_events_only"
+        )
         metadata = raw[1] if len(raw) > 1 and isinstance(raw[1], dict) else {}
         return AuditResponse(
             violations=violations,
@@ -8832,6 +9121,8 @@ class Workspace:
             List of ``DataVolumeAnomaly`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
 
@@ -8845,7 +9136,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_data_volume_anomalies(query_params=query_params)
-        return [DataVolumeAnomaly.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            DataVolumeAnomaly, raw_list, endpoint="list_data_volume_anomalies"
+        )
 
     def update_anomaly(
         self,
@@ -8915,6 +9208,8 @@ class Workspace:
             List of ``EventDeletionRequest`` objects.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
 
@@ -8927,7 +9222,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.list_deletion_requests()
-        return [EventDeletionRequest.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            EventDeletionRequest, raw_list, endpoint="list_deletion_requests"
+        )
 
     def create_deletion_request(
         self,
@@ -8943,6 +9240,8 @@ class Workspace:
             Updated full list of deletion requests.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Validation error (400).
@@ -8962,7 +9261,9 @@ class Workspace:
         raw_list = client.create_deletion_request(
             params.model_dump(exclude_none=True, by_alias=True)
         )
-        return [EventDeletionRequest.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            EventDeletionRequest, raw_list, endpoint="create_deletion_request"
+        )
 
     def cancel_deletion_request(self, request_id: int) -> list[EventDeletionRequest]:
         """Cancel a pending deletion request.
@@ -8974,6 +9275,8 @@ class Workspace:
             Updated full list of deletion requests.
 
         Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: Request not found or not cancellable (400).
@@ -8986,7 +9289,9 @@ class Workspace:
         """
         client = self._require_api_client()
         raw_list = client.cancel_deletion_request(request_id)
-        return [EventDeletionRequest.model_validate(r) for r in raw_list]
+        return validate_response_models(
+            EventDeletionRequest, raw_list, endpoint="cancel_deletion_request"
+        )
 
     def preview_deletion_filters(
         self,
@@ -9971,12 +10276,13 @@ class Workspace:
                 method.
 
         Raises:
-            ValueError: ``level`` is not ``"organization"`` or
-                ``"project"``.
+            ParamValidationError: ``level`` is not ``"organization"`` or
+                ``"project"`` (``WS2_INVALID_LEVEL``).
         """
         if level not in ("organization", "project"):
-            raise ValueError(
-                f"level must be 'organization' or 'project', got {level!r}"
+            raise ParamValidationError(
+                f"level must be 'organization' or 'project', got {level!r}",
+                code="WS2_INVALID_LEVEL",
             )
 
     def _resolve_organization_id(self, explicit: int | None = None) -> int:
@@ -10406,8 +10712,10 @@ class Workspace:
             List of :class:`ReplaySummary`, possibly empty.
 
         Raises:
-            ValueError: Neither or both of ``distinct_id`` and ``replay_ids``
-                were provided; or ``distinct_id`` was set without a date window.
+            ParamValidationError: Neither or both of ``distinct_id`` and
+                ``replay_ids`` were provided
+                (``WR4_REPLAY_SELECTOR_REQUIRED``); or ``distinct_id`` was
+                set without a date window (``WR5_DATE_RANGE_REQUIRED``).
             QueryError: Underlying Insights API failure.
 
         Example:
@@ -10422,17 +10730,20 @@ class Workspace:
             ```
         """
         if distinct_id is None and not replay_ids:
-            raise ValueError(
-                "list_replays requires exactly one of distinct_id or replay_ids."
+            raise ParamValidationError(
+                "list_replays requires exactly one of distinct_id or replay_ids.",
+                code="WR4_REPLAY_SELECTOR_REQUIRED",
             )
         if distinct_id is not None and replay_ids:
-            raise ValueError(
+            raise ParamValidationError(
                 "list_replays requires exactly one of distinct_id or "
-                "replay_ids; both were given."
+                "replay_ids; both were given.",
+                code="WR4_REPLAY_SELECTOR_REQUIRED",
             )
         if distinct_id is not None and (from_date is None or to_date is None):
-            raise ValueError(
-                "list_replays(distinct_id=...) requires from_date and to_date."
+            raise ParamValidationError(
+                "list_replays(distinct_id=...) requires from_date and to_date.",
+                code="WR5_DATE_RANGE_REQUIRED",
             )
 
         return self._replays_service.discover(

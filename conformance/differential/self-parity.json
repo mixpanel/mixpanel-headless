@@ -1,0 +1,93 @@
+{
+  "examples_per_target": {
+    "build_filter_entry": 208,
+    "build_segfilter_entry": 208,
+    "filter_to_selector": 208,
+    "filters_to_selector": 210,
+    "normalize_on_expression": 205,
+    "pythoncompat": 217,
+    "validators_by_code": 210
+  },
+  "left_info": {
+    "language": "python",
+    "library_version": "0.2.1",
+    "protocol_version": "1.0",
+    "source_commit": "52696743b913a0c4c152deb48af987ae412b5aee"
+  },
+  "right_info": {
+    "language": "python",
+    "library_version": "0.2.1",
+    "protocol_version": "1.0",
+    "source_commit": "52696743b913a0c4c152deb48af987ae412b5aee"
+  },
+  "skipped_per_target": {
+    "build_filter_entry": 0,
+    "build_segfilter_entry": 0,
+    "filter_to_selector": 0,
+    "filters_to_selector": 0,
+    "normalize_on_expression": 0,
+    "pythoncompat": 0,
+    "validators_by_code": 0
+  },
+  "status": "ok",
+  "targets": [
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 208,
+      "name": "filter_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 210,
+      "name": "filters_to_selector",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 208,
+      "name": "build_segfilter_entry",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 208,
+      "name": "build_filter_entry",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 210,
+      "name": "validators_by_code",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 205,
+      "name": "normalize_on_expression",
+      "repro_path": null,
+      "skipped": 0
+    },
+    {
+      "divergences": 0,
+      "error": null,
+      "examples": 217,
+      "name": "pythoncompat",
+      "repro_path": null,
+      "skipped": 0
+    }
+  ],
+  "total_divergences": 0,
+  "total_examples": 1466
+}

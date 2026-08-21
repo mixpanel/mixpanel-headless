@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import SignedReplay
 
 QS = "URLPrefix=ABCDEF&Expires=1716810300&KeyName=K&Signature=zzzzzzzzzz"
@@ -165,3 +166,36 @@ class TestSignedReplayValidation:
         """signed_at must be non-negative."""
         with pytest.raises(ValueError, match="signed_at"):
             _build(signed_at=-1.0)
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedSignedReplayCodes:
+    """Coded-guard tests for SignedReplay (SR1-SR4, design §1.4)."""
+
+    @pytest.mark.parametrize(
+        ("overrides", "code"),
+        [
+            (
+                {"url": "https://cdn.mxpnl.com/srr-us/abc123-3713224"},
+                "SR1_URL_NO_TRAILING_SLASH",
+            ),
+            ({"url": "https://cdn.mxpnl.com/srr-eu/x"}, "SR1_URL_NO_TRAILING_SLASH"),
+            ({"query_string": ""}, "SR2_EMPTY_QUERY_STRING"),
+            ({"query_string": None}, "SR2_EMPTY_QUERY_STRING"),
+            ({"env": "staging"}, "SR3_INVALID_ENV"),
+            ({"env": "production"}, "SR3_INVALID_ENV"),
+            ({"signed_at": -1.0}, "SR4_SIGNED_AT_NEGATIVE"),
+            ({"signed_at": -0.5}, "SR4_SIGNED_AT_NEGATIVE"),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, overrides: dict[str, object], code: str
+    ) -> None:
+        """Each SignedReplay guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build(**overrides)
+        assert excinfo.value.code == code

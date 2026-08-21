@@ -21,6 +21,7 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_time_section,
     patch_custom_property_filters_for_transform,
 )
+from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -1302,3 +1303,94 @@ class TestGroupByListItem:
         assert len(section) == 2
         assert section[0]["value"] == "platform"
         assert "listItemGroup" in section[1]
+
+
+# =============================================================================
+# Coded guard errors (E2 coding pass, design §1.5)
+# =============================================================================
+
+
+class TestCodedGroupSectionCodes:
+    """Coded-guard tests for build_group_section (BB1, design §1.5)."""
+
+    def test_bb1_scalar_element_raises_coded_error(self) -> None:
+        """A non-list scalar group_by raises ParamTypeError with BB1."""
+        with pytest.raises(ParamTypeError) as excinfo:
+            build_group_section(123)  # type: ignore[arg-type]
+        assert excinfo.value.code == "BB1_GROUP_BY_ELEMENT_TYPE"
+
+    def test_bb1_invalid_element_in_list_raises_coded_error(self) -> None:
+        """An invalid element inside a group_by list raises BB1."""
+        with pytest.raises(ParamTypeError) as excinfo:
+            build_group_section(["country", 42])  # type: ignore[list-item]
+        assert excinfo.value.code == "BB1_GROUP_BY_ELEMENT_TYPE"
+
+    def test_bb1_stays_catchable_as_type_error(self) -> None:
+        """The converted BB1 guard remains catchable via bare TypeError."""
+        with pytest.raises(TypeError) as excinfo:
+            build_group_section([None])  # type: ignore[list-item]
+        assert isinstance(excinfo.value, ParamTypeError)
+        assert excinfo.value.code == "BB1_GROUP_BY_ELEMENT_TYPE"
+
+
+class TestCodedFlowPropertyFilterCodes:
+    """Coded-guard tests for build_flow_property_filter (BB2/BB3, design §1.5)."""
+
+    def test_bb2_empty_list_raises_coded_error(self) -> None:
+        """An empty filter list raises ParamValidationError with BB2."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_property_filter,
+        )
+
+        with pytest.raises(ParamValidationError) as excinfo:
+            build_flow_property_filter([])
+        assert excinfo.value.code == "BB2_FLOW_PROPERTY_FILTER_EMPTY"
+
+    def test_bb2_stays_catchable_as_value_error(self) -> None:
+        """The converted BB2 guard remains catchable via bare ValueError."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_property_filter,
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            build_flow_property_filter([])
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "BB2_FLOW_PROPERTY_FILTER_EMPTY"
+
+    def test_bb3_custom_property_ref_raises_coded_error(self) -> None:
+        """A CustomPropertyRef property raises ParamTypeError with BB3."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_property_filter,
+        )
+
+        f = Filter(
+            _property=CustomPropertyRef(id=123),
+            _operator="equals",
+            _value=["high"],
+            _property_type="string",
+            _resource_type="events",
+        )
+        with pytest.raises(ParamTypeError) as excinfo:
+            build_flow_property_filter([f])
+        assert excinfo.value.code == "BB3_FLOW_PROPERTY_FILTER_TYPE"
+
+    def test_bb3_inline_custom_property_raises_coded_error(self) -> None:
+        """An InlineCustomProperty property raises ParamTypeError with BB3."""
+        from mixpanel_headless._internal.bookmark_builders import (
+            build_flow_property_filter,
+        )
+
+        f = Filter(
+            _property=InlineCustomProperty(
+                formula="A",
+                inputs={"A": PropertyInput(name="plan", type="string")},
+                property_type="string",
+            ),
+            _operator="equals",
+            _value=["a"],
+            _property_type="string",
+            _resource_type="events",
+        )
+        with pytest.raises(ParamTypeError) as excinfo:
+            build_flow_property_filter([f])
+        assert excinfo.value.code == "BB3_FLOW_PROPERTY_FILTER_TYPE"

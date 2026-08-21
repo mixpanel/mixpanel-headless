@@ -1,0 +1,15 @@
+diff --git a/src/mixpanel_headless/_internal/services/live_query.py b/src/mixpanel_headless/_internal/services/live_query.py
+index d599851..18d1112 100644
+--- a/src/mixpanel_headless/_internal/services/live_query.py
++++ b/src/mixpanel_headless/_internal/services/live_query.py
+@@ -134,7 +134,9 @@ def _transform_funnel(
+     prev_count = 0
+     for idx in sorted(aggregated_counts.keys()):
+         event, count = aggregated_counts[idx]
+-        conv_rate = 1.0 if idx == 0 else (count / prev_count if prev_count > 0 else 0.0)
++        conv_rate = 1.0 if idx == 0 else (
++            count / steps[0].count if steps[0].count > 0 else 0.0
++        )
+         steps.append(
+             FunnelResultStep(event=event, count=count, conversion_rate=conv_rate)
+         )

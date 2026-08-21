@@ -1,0 +1,371 @@
+{
+  "constants": {
+    "MATH_NO_PER_USER": [
+      "dau",
+      "mau",
+      "unique",
+      "wau"
+    ],
+    "MATH_PROPERTY_OPTIONAL": [
+      "total"
+    ],
+    "MATH_REQUIRING_PROPERTY": [
+      "average",
+      "custom_percentile",
+      "first_value",
+      "histogram",
+      "max",
+      "median",
+      "min",
+      "most_frequent",
+      "multi_attribution",
+      "numeric_summary",
+      "p25",
+      "p75",
+      "p90",
+      "p99",
+      "percentile",
+      "unique_values"
+    ],
+    "MAX_CONVERSION_WINDOW": {
+      "day": 367,
+      "hour": 8808,
+      "minute": 528480,
+      "month": 12,
+      "second": 31708800,
+      "session": 12,
+      "week": 52
+    },
+    "VALID_ANALYSIS_TYPES": [
+      "cumulative",
+      "linear",
+      "logarithmic",
+      "rolling"
+    ],
+    "VALID_CHART_TYPES": [
+      "bar",
+      "bar-stacked",
+      "column",
+      "flows",
+      "frequency",
+      "frequency-curve",
+      "funnel-frequency-bar",
+      "funnel-frequency-line",
+      "funnel-median-ttc",
+      "funnel-steps",
+      "funnel-steps-metric",
+      "funnel-top-paths",
+      "funnel-trend",
+      "funnel-ttc-bar",
+      "funnel-ttc-line",
+      "impact-adoption",
+      "impact-propensity",
+      "impact-trends",
+      "insights-metric",
+      "line",
+      "line-retention",
+      "metric",
+      "paths",
+      "pie",
+      "retention-curve",
+      "retention-table",
+      "retention-trend",
+      "retention-trend-metric",
+      "sankey",
+      "stacked-column",
+      "stacked-line",
+      "table"
+    ],
+    "VALID_COHORT_AGGREGATION_OPERATORS": [
+      "average",
+      "max",
+      "median",
+      "min",
+      "total",
+      "unique"
+    ],
+    "VALID_CONVERSION_WINDOW_UNITS": [
+      "day",
+      "hour",
+      "minute",
+      "month",
+      "second",
+      "session",
+      "week"
+    ],
+    "VALID_DATE_RANGE_TYPES": [
+      "between",
+      "in the last",
+      "on",
+      "relative_after",
+      "since"
+    ],
+    "VALID_FILTERS_DETERMINER": [
+      "all",
+      "any"
+    ],
+    "VALID_FILTER_OPERATORS": [
+      "before",
+      "before the last",
+      "between",
+      "contains",
+      "does not contain",
+      "does not equal",
+      "ends with",
+      "equals",
+      "false",
+      "in the last",
+      "in the next",
+      "is at least",
+      "is at most",
+      "is between",
+      "is equal to",
+      "is greater than",
+      "is greater than or equal to",
+      "is less than",
+      "is less than or equal to",
+      "is not set",
+      "is set",
+      "not between",
+      "not in the last",
+      "not on",
+      "on",
+      "since",
+      "starts with",
+      "true",
+      "was before",
+      "was between",
+      "was in the",
+      "was in the next",
+      "was less than",
+      "was not between",
+      "was not in the",
+      "was not on",
+      "was on",
+      "was since"
+    ],
+    "VALID_FLOWS_CHART_TYPES": [
+      "sankey",
+      "top-paths",
+      "tree"
+    ],
+    "VALID_FLOWS_CONVERSION_WINDOW_UNITS": [
+      "day",
+      "month",
+      "session",
+      "week"
+    ],
+    "VALID_FLOWS_COUNT_TYPES": [
+      "session",
+      "total",
+      "unique"
+    ],
+    "VALID_FLOWS_MODES": [
+      "paths",
+      "sankey",
+      "tree"
+    ],
+    "VALID_FREQUENCY_FILTER_OPERATORS": [
+      "is at least",
+      "is at most",
+      "is equal to",
+      "is greater than",
+      "is less than"
+    ],
+    "VALID_FUNNEL_ORDER": [
+      "any",
+      "loose"
+    ],
+    "VALID_FUNNEL_REENTRY_MODES": [
+      "aggressive",
+      "basic",
+      "default",
+      "optimized"
+    ],
+    "VALID_MATH_FUNNELS": [
+      "average",
+      "conversion_rate",
+      "conversion_rate_session",
+      "conversion_rate_total",
+      "conversion_rate_unique",
+      "general",
+      "histogram",
+      "max",
+      "median",
+      "min",
+      "p25",
+      "p75",
+      "p90",
+      "p99",
+      "session",
+      "total",
+      "unique"
+    ],
+    "VALID_MATH_INSIGHTS": [
+      "average",
+      "cumulative_unique",
+      "custom_percentile",
+      "dau",
+      "first_value",
+      "histogram",
+      "mau",
+      "max",
+      "median",
+      "min",
+      "most_frequent",
+      "multi_attribution",
+      "numeric_summary",
+      "p25",
+      "p75",
+      "p90",
+      "p99",
+      "sessions",
+      "total",
+      "unique",
+      "unique_values",
+      "wau"
+    ],
+    "VALID_MATH_RETENTION": [
+      "average",
+      "retention_rate",
+      "total",
+      "unique"
+    ],
+    "VALID_MATH_TYPES": [
+      "average",
+      "conversion_rate",
+      "conversion_rate_session",
+      "conversion_rate_total",
+      "conversion_rate_unique",
+      "cumulative_unique",
+      "custom_percentile",
+      "dau",
+      "first_value",
+      "general",
+      "histogram",
+      "mau",
+      "max",
+      "median",
+      "min",
+      "most_frequent",
+      "multi_attribution",
+      "numeric_summary",
+      "p25",
+      "p75",
+      "p90",
+      "p99",
+      "retention_rate",
+      "session",
+      "session_replay_id_value",
+      "sessions",
+      "total",
+      "unique",
+      "unique_values",
+      "wau"
+    ],
+    "VALID_METRIC_TYPES": [
+      "addiction",
+      "cohort",
+      "custom-event",
+      "event",
+      "formula",
+      "funnel",
+      "metric",
+      "people",
+      "retention",
+      "retention-frequency",
+      "saved-metric",
+      "simple",
+      "verified"
+    ],
+    "VALID_PER_USER_AGGREGATIONS": [
+      "average",
+      "max",
+      "min",
+      "session_replay_id_value",
+      "total",
+      "unique_values"
+    ],
+    "VALID_PROPERTY_TYPES": [
+      "boolean",
+      "datetime",
+      "dimension",
+      "list",
+      "number",
+      "object",
+      "other",
+      "string",
+      "undefined",
+      "unknown"
+    ],
+    "VALID_QUERY_TIME_UNITS": [
+      "day",
+      "day_of_week",
+      "hour",
+      "hour_of_day",
+      "minute",
+      "month",
+      "quarter",
+      "second",
+      "session",
+      "week",
+      "year"
+    ],
+    "VALID_RESOURCE_TYPES": [
+      "all",
+      "cohort",
+      "cohorts",
+      "event",
+      "events",
+      "formulas",
+      "other",
+      "people",
+      "user"
+    ],
+    "VALID_RETENTION_ALIGNMENT": [
+      "birth",
+      "interval_start"
+    ],
+    "VALID_RETENTION_UNBOUNDED_MODES": [
+      "carry_back",
+      "carry_forward",
+      "consecutive_forward",
+      "none"
+    ],
+    "VALID_RETENTION_UNITS": [
+      "day",
+      "month",
+      "week"
+    ],
+    "VALID_SEGMENT_METHODS": [
+      "all",
+      "first"
+    ],
+    "VALID_TIME_COMPARISON_TYPES": [
+      "absolute-end",
+      "absolute-start",
+      "relative"
+    ],
+    "VALID_TIME_COMPARISON_UNITS": [
+      "day",
+      "month",
+      "quarter",
+      "week",
+      "year"
+    ],
+    "VALID_TIME_UNITS": [
+      "day",
+      "day_of_week",
+      "hour",
+      "hour_of_day",
+      "minute",
+      "month",
+      "quarter",
+      "second",
+      "session",
+      "week",
+      "year"
+    ]
+  },
+  "source_module": "mixpanel_headless._internal.bookmark_enums"
+}

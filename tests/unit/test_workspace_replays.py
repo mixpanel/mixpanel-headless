@@ -21,12 +21,14 @@ from unittest.mock import MagicMock
 import pytest
 
 import mixpanel_headless as mp
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     Replay,
     ReplayEvent,
     ReplaySummary,
     SignedReplay,
 )
+from mixpanel_headless.workspace import _check_event_properties_count
 from tests.conftest import make_session
 
 # =============================================================================
@@ -652,3 +654,93 @@ class TestReplaysForUserThreadsRetention:
 
 # Touch Any to keep the import meaningful for type-stubs scenarios.
 _ = Any
+
+
+# =============================================================================
+# Coded guard errors — WR1/WR4/WR5 (E2 coding pass, design §1.6)
+# =============================================================================
+
+
+class TestCodedReplayGuardCodes:
+    """Coded-guard tests for the replay-surface WR* sites (design §1.6).
+
+    Assertions are class + ``.code`` only — never message text (R5.4).
+    """
+
+    def test_wr1_direct_raises_coded_error(self) -> None:
+        """_check_event_properties_count rejects six properties with WR1."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _check_event_properties_count(["a", "b", "c", "d", "e", "f"])
+        assert excinfo.value.code == "WR1_TOO_MANY_EVENT_PROPERTIES"
+
+    def test_wr1_seam_raises_coded_error(self) -> None:
+        """events_for_replay surfaces WR1 for an oversized property list."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.events_for_replay(
+                "r-1", event_properties=["p1", "p2", "p3", "p4", "p5", "p6", "p7"]
+            )
+        assert excinfo.value.code == "WR1_TOO_MANY_EVENT_PROPERTIES"
+
+    def test_wr4_neither_arg_raises_coded_error(self) -> None:
+        """list_replays with no selector raises WR4."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays()
+        assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"
+
+    def test_wr4_neither_arg_empty_replay_ids_raises_coded_error(self) -> None:
+        """list_replays with an empty replay_ids list raises WR4."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays(replay_ids=[])
+        assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"
+
+    def test_wr4_both_args_raise_coded_error(self) -> None:
+        """list_replays with both selectors raises WR4."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays(distinct_id="u-1", replay_ids=["r-1"])
+        assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"
+
+    def test_wr4_both_args_with_dates_raise_coded_error(self) -> None:
+        """Both selectors raise WR4 even when a date window is supplied."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays(
+                distinct_id="u-1",
+                replay_ids=["r-1"],
+                from_date="2026-05-20",
+                to_date="2026-05-27",
+            )
+        assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"
+
+    def test_wr5_missing_both_dates_raises_coded_error(self) -> None:
+        """distinct_id without any date window raises WR5."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays(distinct_id="u-1")
+        assert excinfo.value.code == "WR5_DATE_RANGE_REQUIRED"
+
+    def test_wr5_missing_to_date_raises_coded_error(self) -> None:
+        """distinct_id with only from_date raises WR5."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ParamValidationError) as excinfo:
+            ws.list_replays(distinct_id="u-1", from_date="2026-05-20")
+        assert excinfo.value.code == "WR5_DATE_RANGE_REQUIRED"
+
+    def test_wr_guards_stay_catchable_as_value_error(self) -> None:
+        """Converted WR* guards remain catchable via bare ValueError."""
+        ws = _make_workspace()
+        _install_mock_replays_service(ws)
+        with pytest.raises(ValueError) as excinfo:
+            ws.list_replays()
+        assert isinstance(excinfo.value, ParamValidationError)
+        assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"

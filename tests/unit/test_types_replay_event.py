@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import ReplayEvent
 
 
@@ -92,3 +93,31 @@ class TestReplayEventRoundTrip:
     def test_to_dict_json_serializable(self) -> None:
         """JSON round-trip works."""
         json.dumps(_build().to_dict())
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedReplayEventCodes:
+    """Coded-guard tests for ReplayEvent (RE1-RE3, design §1.4)."""
+
+    @pytest.mark.parametrize(
+        ("overrides", "code"),
+        [
+            ({"replay_id": ""}, "RE1_EMPTY_REPLAY_ID"),
+            ({"replay_id": None}, "RE1_EMPTY_REPLAY_ID"),
+            ({"event_name": ""}, "RE2_EMPTY_EVENT_NAME"),
+            ({"event_name": None}, "RE2_EMPTY_EVENT_NAME"),
+            ({"event_time": 0}, "RE3_EVENT_TIME_NOT_POSITIVE"),
+            ({"event_time": -1}, "RE3_EVENT_TIME_NOT_POSITIVE"),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, overrides: dict[str, object], code: str
+    ) -> None:
+        """Each ReplayEvent guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _build(**overrides)
+        assert excinfo.value.code == code

@@ -73,6 +73,7 @@ from mixpanel_headless.auth_types import (
     TargetName,
     WorkspaceId,
 )
+from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -6789,8 +6790,12 @@ class TimeComparison:
             must be ``None`` otherwise.
 
     Raises:
-        ValueError: If validation rules TC1-TC3 are violated during
-            construction.
+        ParamValidationError: If validation rules TC0-TC3b are violated
+            during construction (codes ``TC0_INVALID_TYPE``,
+            ``TC1_REQUIRES_UNIT``, ``TC1B_INVALID_UNIT``,
+            ``TC1_REJECTS_DATE``, ``TC2_REQUIRES_DATE``,
+            ``TC2_REJECTS_UNIT``, ``TC3_DATE_FORMAT``,
+            ``TC3B_DATE_INVALID``).
 
     Example:
         ```python
@@ -6820,55 +6825,67 @@ class TimeComparison:
         """Validate construction arguments (rules TC1-TC3).
 
         Raises:
-            ValueError: If type="relative" and unit is None (TC1),
-                or type="relative" and date is set (TC1),
-                or type is absolute and date is None (TC2),
-                or type is absolute and unit is set (TC2),
-                or date does not match YYYY-MM-DD format (TC3).
+            ParamValidationError: If type is invalid
+                (``TC0_INVALID_TYPE``),
+                type="relative" and unit is None (``TC1_REQUIRES_UNIT``),
+                unit is invalid (``TC1B_INVALID_UNIT``),
+                type="relative" and date is set (``TC1_REJECTS_DATE``),
+                type is absolute and date is None (``TC2_REQUIRES_DATE``),
+                type is absolute and unit is set (``TC2_REJECTS_UNIT``),
+                date is not YYYY-MM-DD (``TC3_DATE_FORMAT``),
+                or date is not a valid calendar date
+                (``TC3B_DATE_INVALID``).
         """
         # TC0: type must be a valid TimeComparisonType
         valid_types = {"relative", "absolute-start", "absolute-end"}
         if self.type not in valid_types:
-            raise ValueError(
+            raise ParamValidationError(
                 f"TimeComparison type must be one of {sorted(valid_types)}, "
-                f"got {self.type!r}"
+                f"got {self.type!r}",
+                code="TC0_INVALID_TYPE",
             )
         if self.type == "relative":
             # TC1: relative requires unit, rejects date
             if self.unit is None:
-                raise ValueError(
+                raise ParamValidationError(
                     "TimeComparison type='relative' requires unit to be set "
-                    "(e.g., TimeComparison.relative('month'))"
+                    "(e.g., TimeComparison.relative('month'))",
+                    code="TC1_REQUIRES_UNIT",
                 )
             # TC1b: unit must be a valid TimeComparisonUnit
             valid_units = {"day", "week", "month", "quarter", "year"}
             if self.unit not in valid_units:
-                raise ValueError(
+                raise ParamValidationError(
                     f"TimeComparison unit must be one of {sorted(valid_units)}, "
-                    f"got {self.unit!r}"
+                    f"got {self.unit!r}",
+                    code="TC1B_INVALID_UNIT",
                 )
             if self.date is not None:
-                raise ValueError(
+                raise ParamValidationError(
                     "TimeComparison type='relative' does not accept date; "
-                    "use absolute-start or absolute-end for date-based comparison"
+                    "use absolute-start or absolute-end for date-based comparison",
+                    code="TC1_REJECTS_DATE",
                 )
         else:
             # TC2: absolute-start / absolute-end requires date, rejects unit
             if self.date is None:
-                raise ValueError(
+                raise ParamValidationError(
                     f"TimeComparison type={self.type!r} requires date to be set "
-                    f"(e.g., TimeComparison.absolute_start('2026-01-01'))"
+                    f"(e.g., TimeComparison.absolute_start('2026-01-01'))",
+                    code="TC2_REQUIRES_DATE",
                 )
             if self.unit is not None:
-                raise ValueError(
+                raise ParamValidationError(
                     f"TimeComparison type={self.type!r} does not accept unit; "
-                    f"unit is only valid for type='relative'"
+                    f"unit is only valid for type='relative'",
+                    code="TC2_REJECTS_UNIT",
                 )
             # TC3: date must be a valid YYYY-MM-DD calendar date
             if not _DATE_RE.match(self.date):
-                raise ValueError(
+                raise ParamValidationError(
                     f"TimeComparison date must be in YYYY-MM-DD format, "
-                    f"got {self.date!r}"
+                    f"got {self.date!r}",
+                    code="TC3_DATE_FORMAT",
                 )
             # TC3b: verify it's a real calendar date (e.g. reject 2026-02-30)
             try:
@@ -6876,8 +6893,9 @@ class TimeComparison:
 
                 datetime.date.fromisoformat(self.date)
             except ValueError:
-                raise ValueError(
-                    f"TimeComparison date is not a valid calendar date: {self.date!r}"
+                raise ParamValidationError(
+                    f"TimeComparison date is not a valid calendar date: {self.date!r}",
+                    code="TC3B_DATE_INVALID",
                 ) from None
 
     @classmethod
@@ -7026,29 +7044,36 @@ class Metric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (M1), math requires a property but none is set (M2),
-                or math="percentile" but percentile_value is missing (M3).
+            ParamValidationError: If event is empty or contains control
+                characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
+                math requires a property but none is set
+                (``V13_METRIC_MATH_PROPERTY``), math="percentile" but
+                percentile_value is missing
+                (``V26_PERCENTILE_REQUIRES_VALUE``), or segment_method is
+                invalid (``MT2_INVALID_SEGMENT_METHOD``).
         """
         _validate_event_name(self.event, "Metric")
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
-            raise ValueError(
+            raise ParamValidationError(
                 f"Metric math={self.math!r} requires a property "
                 f"to be set (e.g., Metric({self.event!r}, math={self.math!r}, "
-                f'property="your_property"))'
+                f'property="your_property"))',
+                code="V13_METRIC_MATH_PROPERTY",
             )
         if self.math == "percentile" and self.percentile_value is None:
-            raise ValueError(
+            raise ParamValidationError(
                 'Metric math="percentile" requires percentile_value '
-                "(e.g., Metric(event, math='percentile', percentile_value=95))"
+                "(e.g., Metric(event, math='percentile', percentile_value=95))",
+                code="V26_PERCENTILE_REQUIRES_VALUE",
             )
         # M4: segment_method must be valid if set
         if self.segment_method is not None:
             valid_segments = {"all", "first"}
             if self.segment_method not in valid_segments:
-                raise ValueError(
+                raise ParamValidationError(
                     f"Metric segment_method must be one of {sorted(valid_segments)}, "
-                    f"got {self.segment_method!r}"
+                    f"got {self.segment_method!r}",
+                    code="MT2_INVALID_SEGMENT_METHOD",
                 )
 
 
@@ -7098,10 +7123,14 @@ class Formula:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If expression is empty (FM1).
+            ParamValidationError: If expression is empty
+                (``FM1_EMPTY_EXPRESSION``).
         """
         if not self.expression or not self.expression.strip():
-            raise ValueError("Formula.expression must be a non-empty string")
+            raise ParamValidationError(
+                "Formula.expression must be a non-empty string",
+                code="FM1_EMPTY_EXPRESSION",
+            )
 
 
 @dataclass(frozen=True)
@@ -7169,21 +7198,24 @@ class Filter:
         feature.
 
         Raises:
-            ValueError: If ``_operator == "list_contains"`` but
-                ``_list_item_filters`` or ``_list_item_quantifier`` is
+            ParamValidationError: If ``_operator == "list_contains"`` but
+                ``_list_item_filters`` (``LC1_MISSING_ITEM_FILTERS``) or
+                ``_list_item_quantifier`` (``LC2_MISSING_QUANTIFIER``) is
                 ``None``. List-contains filters must be constructed
                 via ``Filter.list_contains(...)``.
         """
         if self._operator == "list_contains":
             if self._list_item_filters is None:
-                raise ValueError(
+                raise ParamValidationError(
                     "list_contains Filter requires _list_item_filters; "
-                    "construct via Filter.list_contains(...)"
+                    "construct via Filter.list_contains(...)",
+                    code="LC1_MISSING_ITEM_FILTERS",
                 )
             if self._list_item_quantifier is None:
-                raise ValueError(
+                raise ParamValidationError(
                     "list_contains Filter requires _list_item_quantifier; "
-                    "construct via Filter.list_contains(...)"
+                    "construct via Filter.list_contains(...)",
+                    code="LC2_MISSING_QUANTIFIER",
                 )
 
     @classmethod
@@ -7650,8 +7682,9 @@ class Filter:
             Filter for cohort membership (contains).
 
         Raises:
-            ValueError: If cohort ID is not positive (CF1) or name
-                is empty when provided (CF2).
+            ParamValidationError: If cohort ID is not positive
+                (``CF1_COHORT_ID_NOT_POSITIVE``) or name is empty when
+                provided (``CF2_COHORT_NAME_EMPTY``).
 
         Example:
             ```python
@@ -7688,8 +7721,9 @@ class Filter:
             Filter for cohort exclusion (does not contain).
 
         Raises:
-            ValueError: If cohort ID is not positive (CF1) or name
-                is empty when provided (CF2).
+            ParamValidationError: If cohort ID is not positive
+                (``CF1_COHORT_ID_NOT_POSITIVE``) or name is empty when
+                provided (``CF2_COHORT_NAME_EMPTY``).
 
         Example:
             ```python
@@ -7719,9 +7753,10 @@ class Filter:
             Constructed Filter with cohort-specific internal fields.
 
         Raises:
-            ValueError: On CF1 or CF2 violations.
+            ParamValidationError: On CF1 or CF2 violations
+                (``CF1_COHORT_ID_NOT_POSITIVE`` / ``CF2_COHORT_NAME_EMPTY``).
         """
-        _validate_cohort_args(cohort, name)
+        _validate_cohort_args(cohort, name, family="CF")
 
         operator: FilterOperator = "does not contain" if negated else "contains"
 
@@ -7755,14 +7790,22 @@ class Filter:
             Parsed ``datetime.date`` object.
 
         Raises:
-            ValueError: If format is wrong or date is invalid.
+            ParamValidationError: If format is wrong
+                (``V8_DATE_FORMAT``) or date is invalid
+                (``V8_DATE_INVALID``).
         """
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-            raise ValueError(f"Date must be YYYY-MM-DD format (got '{date_str}')")
+            raise ParamValidationError(
+                f"Date must be YYYY-MM-DD format (got '{date_str}')",
+                code="V8_DATE_FORMAT",
+            )
         try:
             return dt_date.fromisoformat(date_str)
         except ValueError:
-            raise ValueError(f"'{date_str}' is not a valid calendar date") from None
+            raise ParamValidationError(
+                f"'{date_str}' is not a valid calendar date",
+                code="V8_DATE_INVALID",
+            ) from None
 
     @classmethod
     def on(
@@ -7906,10 +7949,14 @@ class Filter:
             Filter for events within the last N units.
 
         Raises:
-            ValueError: If quantity is not positive.
+            ParamValidationError: If quantity is not positive
+                (``FD1_QUANTITY_NOT_POSITIVE``).
         """
         if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
+            raise ParamValidationError(
+                f"quantity must be a positive integer (got {quantity})",
+                code="FD1_QUANTITY_NOT_POSITIVE",
+            )
         return cls(
             _property=property,
             _operator="was in the",
@@ -7941,10 +7988,14 @@ class Filter:
             Filter for events NOT within the last N units.
 
         Raises:
-            ValueError: If quantity is not positive.
+            ParamValidationError: If quantity is not positive
+                (``FD1_QUANTITY_NOT_POSITIVE``).
         """
         if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
+            raise ParamValidationError(
+                f"quantity must be a positive integer (got {quantity})",
+                code="FD1_QUANTITY_NOT_POSITIVE",
+            )
         return cls(
             _property=property,
             _operator="was not in the",
@@ -7975,14 +8026,16 @@ class Filter:
             Filter for dates within the range.
 
         Raises:
-            ValueError: If dates are not valid YYYY-MM-DD or
-                from_date is after to_date.
+            ParamValidationError: If dates are not valid YYYY-MM-DD
+                (``V8_DATE_FORMAT`` / ``V8_DATE_INVALID``) or from_date is
+                after to_date (``FD2_DATE_ORDER``).
         """
         from_parsed = cls._validate_date(from_date)
         to_parsed = cls._validate_date(to_date)
         if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
+            raise ParamValidationError(
+                f"from_date must be before to_date (got '{from_date}' > '{to_date}')",
+                code="FD2_DATE_ORDER",
             )
         return cls(
             _property=property,
@@ -8013,8 +8066,9 @@ class Filter:
             Filter for dates outside the range.
 
         Raises:
-            ValueError: If dates are not valid YYYY-MM-DD or
-                from_date is after to_date.
+            ParamValidationError: If dates are not valid YYYY-MM-DD
+                (``V8_DATE_FORMAT`` / ``V8_DATE_INVALID``) or from_date is
+                after to_date (``FD2_DATE_ORDER``).
 
         Example:
             ```python
@@ -8024,8 +8078,9 @@ class Filter:
         from_parsed = cls._validate_date(from_date)
         to_parsed = cls._validate_date(to_date)
         if from_parsed > to_parsed:
-            raise ValueError(
-                f"from_date must be before to_date (got '{from_date}' > '{to_date}')"
+            raise ParamValidationError(
+                f"from_date must be before to_date (got '{from_date}' > '{to_date}')",
+                code="FD2_DATE_ORDER",
             )
         return cls(
             _property=property,
@@ -8057,7 +8112,8 @@ class Filter:
             Filter for events within the next N units.
 
         Raises:
-            ValueError: If quantity is not positive.
+            ParamValidationError: If quantity is not positive
+                (``FD1_QUANTITY_NOT_POSITIVE``).
 
         Example:
             ```python
@@ -8065,7 +8121,10 @@ class Filter:
             ```
         """
         if quantity <= 0:
-            raise ValueError(f"quantity must be a positive integer (got {quantity})")
+            raise ParamValidationError(
+                f"quantity must be a positive integer (got {quantity})",
+                code="FD1_QUANTITY_NOT_POSITIVE",
+            )
         return cls(
             _property=property,
             _operator="was in the next",
@@ -8127,16 +8186,19 @@ class Filter:
             on serialization.
 
         Raises:
-            ValueError: If both ``*item_filters`` and ``**equals`` are
-                provided, if ``quantifier`` is not ``"any"`` or
-                ``"all"``, if a kwarg key is empty, if no inner
-                conditions are given, or if any inner filter is itself
-                a ``list_contains`` (nesting is not supported).
-            TypeError: If a ``**equals`` value is not ``str`` or
-                ``list[str]`` (the wire format only supports string
-                equality; numeric/boolean comparisons require explicit
-                ``Filter.equals(...)`` / ``Filter.greater_than(...)``
-                positional inner filters).
+            ParamValidationError: If both ``*item_filters`` and
+                ``**equals`` are provided (``LC3_MIXED_ARGS``), if
+                ``quantifier`` is not ``"any"`` or ``"all"``
+                (``LC4_INVALID_QUANTIFIER``), if a kwarg key is empty
+                (``LC5_EMPTY_KWARG_KEY``), if no inner conditions are
+                given (``LC7_NO_CONDITIONS``), or if any inner filter is
+                itself a ``list_contains`` (``LC8_NESTED_LIST_CONTAINS``;
+                nesting is not supported).
+            ParamTypeError: If a ``**equals`` value is not ``str`` or
+                ``list[str]`` (``LC6_KWARG_VALUE_TYPE``; the wire format
+                only supports string equality; numeric/boolean comparisons
+                require explicit ``Filter.equals(...)`` /
+                ``Filter.greater_than(...)`` positional inner filters).
 
         Example:
             ```python
@@ -8154,24 +8216,28 @@ class Filter:
             ```
         """
         if item_filters and equals:
-            raise ValueError(
+            raise ParamValidationError(
                 "Filter.list_contains: pass either positional Filter instances "
-                "OR keyword equals shorthand, not both"
+                "OR keyword equals shorthand, not both",
+                code="LC3_MIXED_ARGS",
             )
         if quantifier not in ("any", "all"):
-            raise ValueError(
+            raise ParamValidationError(
                 f"Filter.list_contains quantifier must be 'any' or 'all', "
-                f"got {quantifier!r}"
+                f"got {quantifier!r}",
+                code="LC4_INVALID_QUANTIFIER",
             )
         for k, v in equals.items():
             if not k.strip():
-                raise ValueError(
-                    "Filter.list_contains: kwarg keys must be non-empty strings"
+                raise ParamValidationError(
+                    "Filter.list_contains: kwarg keys must be non-empty strings",
+                    code="LC5_EMPTY_KWARG_KEY",
                 )
             if not isinstance(v, (str, list)):
-                raise TypeError(
+                raise ParamTypeError(
                     f"Filter.list_contains kwarg {k!r}: value must be str or "
-                    f"list[str], got {type(v).__name__}"
+                    f"list[str], got {type(v).__name__}",
+                    code="LC6_KWARG_VALUE_TYPE",
                 )
         sub_filters: tuple[Filter, ...] = (
             tuple(item_filters)
@@ -8181,13 +8247,15 @@ class Filter:
             )
         )
         if not sub_filters:
-            raise ValueError(
-                "Filter.list_contains requires at least one inner condition"
+            raise ParamValidationError(
+                "Filter.list_contains requires at least one inner condition",
+                code="LC7_NO_CONDITIONS",
             )
         for sub in sub_filters:
             if sub._operator == "list_contains":
-                raise ValueError(
-                    "Filter.list_contains does not support nested list_contains filters"
+                raise ParamValidationError(
+                    "Filter.list_contains does not support nested list_contains filters",
+                    code="LC8_NESTED_LIST_CONTAINS",
                 )
         return cls(
             _property=property,
@@ -8234,17 +8302,21 @@ class ListItemGroupMode:
         """Validate sub is non-empty and sub_type is a known scalar type.
 
         Raises:
-            ValueError: If ``sub`` is empty after stripping or
-                ``sub_type`` is not one of the four
-                ``CustomPropertyType`` values.
+            ParamValidationError: If ``sub`` is empty after stripping
+                (``LG1_EMPTY_SUB``) or ``sub_type`` is not one of the four
+                ``CustomPropertyType`` values (``LG2_INVALID_SUB_TYPE``).
         """
         if not self.sub.strip():
-            raise ValueError("ListItemGroupMode.sub must be a non-empty string")
+            raise ParamValidationError(
+                "ListItemGroupMode.sub must be a non-empty string",
+                code="LG1_EMPTY_SUB",
+            )
         if self.sub_type not in ("string", "number", "boolean", "datetime"):
-            raise ValueError(
+            raise ParamValidationError(
                 "ListItemGroupMode.sub_type must be one of "
                 "'string'/'number'/'boolean'/'datetime', "
-                f"got {self.sub_type!r}"
+                f"got {self.sub_type!r}",
+                code="LG2_INVALID_SUB_TYPE",
             )
 
 
@@ -8308,38 +8380,49 @@ class GroupBy:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is an empty string (GB1),
-                bucket_size is not positive (GB2),
-                bucket_min >= bucket_max (GB3),
-                ``_list_item_mode`` is combined with bucketing (GB4),
+            ParamValidationError: If property is an empty string
+                (``GB1_EMPTY_PROPERTY``),
+                bucket_size is not positive (``V12_BUCKET_SIZE_POSITIVE``),
+                bucket_min >= bucket_max (``V18_BUCKET_ORDER``),
+                ``_list_item_mode`` is combined with bucketing
+                (``GB4_LIST_ITEM_BUCKETING``),
                 or ``_list_item_mode`` is set but ``property`` is not a
-                plain ``str`` (GB5).
+                plain ``str`` (``GB5_LIST_ITEM_PROPERTY_TYPE``).
         """
         if isinstance(self.property, str) and not self.property.strip():
-            raise ValueError("GroupBy.property must be a non-empty string")
+            raise ParamValidationError(
+                "GroupBy.property must be a non-empty string",
+                code="GB1_EMPTY_PROPERTY",
+            )
         if self.bucket_size is not None and self.bucket_size <= 0:
-            raise ValueError(
-                f"GroupBy.bucket_size must be positive, got {self.bucket_size}"
+            raise ParamValidationError(
+                f"GroupBy.bucket_size must be positive, got {self.bucket_size}",
+                code="V12_BUCKET_SIZE_POSITIVE",
             )
         if (
             self.bucket_min is not None
             and self.bucket_max is not None
             and self.bucket_min >= self.bucket_max
         ):
-            raise ValueError(
+            raise ParamValidationError(
                 f"GroupBy.bucket_min ({self.bucket_min}) must be less than "
-                f"bucket_max ({self.bucket_max})"
+                f"bucket_max ({self.bucket_max})",
+                code="V18_BUCKET_ORDER",
             )
         if self._list_item_mode is not None:
             if any(
                 b is not None
                 for b in (self.bucket_size, self.bucket_min, self.bucket_max)
             ):
-                raise ValueError("GroupBy.list_item is incompatible with bucketing")
+                raise ParamValidationError(
+                    "GroupBy.list_item is incompatible with bucketing",
+                    code="GB4_LIST_ITEM_BUCKETING",
+                )
             if not isinstance(self.property, str):
-                raise ValueError(
+                raise ParamValidationError(
                     "GroupBy.list_item requires property to be a plain str, "
-                    f"got {type(self.property).__name__}"
+                    f"got {type(self.property).__name__}",
+                    code="GB5_LIST_ITEM_PROPERTY_TYPE",
                 )
 
     @classmethod
@@ -8438,15 +8521,20 @@ def _validate_cohort_date(date_str: str) -> None:
         date_str: Date string to validate.
 
     Raises:
-        ValueError: If format is not YYYY-MM-DD or date is invalid.
+        ParamValidationError: If format is not YYYY-MM-DD
+            (``CD6_DATE_FORMAT``) or date is invalid (``CD6_DATE_INVALID``).
     """
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-        raise ValueError("dates must be YYYY-MM-DD format")
+        raise ParamValidationError(
+            "dates must be YYYY-MM-DD format",
+            code="CD6_DATE_FORMAT",
+        )
     try:
         dt_date.fromisoformat(date_str)
     except ValueError:
-        raise ValueError(
-            f"date '{date_str}' has correct format but is not a valid calendar date"
+        raise ParamValidationError(
+            f"date '{date_str}' has correct format but is not a valid calendar date",
+            code="CD6_DATE_INVALID",
         ) from None
 
 
@@ -8470,7 +8558,8 @@ def _build_event_selector(
         Each child is an Insights bookmark filter node.
 
     Raises:
-        ValueError: If a filter uses an unsupported operator.
+        ParamValidationError: If a filter uses an unsupported operator
+            (``CD10_UNSUPPORTED_FILTER_OPERATOR``).
     """
     filter_list = [filters] if isinstance(filters, Filter) else filters
     children: list[dict[str, Any]] = []
@@ -8481,7 +8570,10 @@ def _build_event_selector(
                 f"unsupported filter operator for cohort selector: {f._operator!r}. "
                 f"Supported operators: {supported}"
             )
-            raise ValueError(msg)
+            raise ParamValidationError(
+                msg,
+                code="CD10_UNSUPPORTED_FILTER_OPERATOR",
+            )
         prop = f._property
         node: dict[str, Any] = {
             "resourceType": f._resource_type,
@@ -8597,24 +8689,39 @@ class CohortCriteria:
             CohortCriteria with behavioral selector node and behavior entry.
 
         Raises:
-            ValueError: If no frequency param or multiple are set, frequency is
-                negative, event name is empty/whitespace, time constraints are
-                missing or conflicting, dates are malformed/misordered, or
-                aggregation and aggregation_property are not both set or both
-                None (CA1/CA2).
+            ParamValidationError: If no frequency param or multiple are
+                set (``CD1_FREQUENCY_PARAM_REQUIRED``), frequency is negative
+                (``CD2_FREQUENCY_NEGATIVE``), event name is empty/whitespace
+                (``CD4_EMPTY_EVENT``), time constraints are missing or
+                conflicting (``CD3_TIME_CONSTRAINT_REQUIRED`` /
+                ``CD3_WINDOW_NOT_POSITIVE``), dates are malformed/misordered
+                (``CD5_FROM_REQUIRES_TO`` / ``CD5_TO_REQUIRES_FROM`` /
+                ``CD6_DATE_FORMAT`` / ``CD6_DATE_INVALID`` /
+                ``CD6_DATE_ORDER``), aggregation and aggregation_property are
+                not both set or both None (``CA1_AGGREGATION_PAIR`` /
+                ``CA2_EMPTY_AGGREGATION_PROPERTY``), or a ``where`` filter
+                uses an unsupported operator
+                (``CD10_UNSUPPORTED_FILTER_OPERATOR``).
         """
         # CD4: Event name must be non-empty
         if not event or not event.strip():
-            raise ValueError("event name must be non-empty")
+            raise ParamValidationError(
+                "event name must be non-empty",
+                code="CD4_EMPTY_EVENT",
+            )
 
         # CA1/CA2: aggregation and aggregation_property must both be set or both None
         if (aggregation is None) != (aggregation_property is None):
-            raise ValueError(
-                "aggregation and aggregation_property must both be set or both be None"
+            raise ParamValidationError(
+                "aggregation and aggregation_property must both be set or both be None",
+                code="CA1_AGGREGATION_PAIR",
             )
 
         if aggregation_property is not None and not aggregation_property.strip():
-            raise ValueError("aggregation_property must be a non-empty string")
+            raise ParamValidationError(
+                "aggregation_property must be a non-empty string",
+                code="CA2_EMPTY_AGGREGATION_PROPERTY",
+            )
 
         # CD1: Exactly one frequency param required
         freq_params = {
@@ -8624,13 +8731,19 @@ class CohortCriteria:
         }
         set_freqs = {k: v for k, v in freq_params.items() if v is not None}
         if len(set_freqs) != 1:
-            raise ValueError("exactly one of at_least, at_most, exactly must be set")
+            raise ParamValidationError(
+                "exactly one of at_least, at_most, exactly must be set",
+                code="CD1_FREQUENCY_PARAM_REQUIRED",
+            )
 
         freq_name, freq_value = next(iter(set_freqs.items()))
 
         # CD2: Frequency param must be non-negative
         if freq_value < 0:
-            raise ValueError("frequency value must be >= 0")
+            raise ParamValidationError(
+                "frequency value must be >= 0",
+                code="CD2_FREQUENCY_NEGATIVE",
+            )
 
         # Map frequency param to selector operator
         freq_operator_map = {
@@ -8650,19 +8763,22 @@ class CohortCriteria:
         has_date_range = from_date is not None or to_date is not None
 
         if not set_rolling and not has_date_range:
-            raise ValueError(
+            raise ParamValidationError(
                 "exactly one time constraint required "
-                "(within_days/weeks/months or from_date+to_date)"
+                "(within_days/weeks/months or from_date+to_date)",
+                code="CD3_TIME_CONSTRAINT_REQUIRED",
             )
         if set_rolling and has_date_range:
-            raise ValueError(
+            raise ParamValidationError(
                 "exactly one time constraint required "
-                "(within_days/weeks/months or from_date+to_date)"
+                "(within_days/weeks/months or from_date+to_date)",
+                code="CD3_TIME_CONSTRAINT_REQUIRED",
             )
         if len(set_rolling) > 1:
-            raise ValueError(
+            raise ParamValidationError(
                 "exactly one time constraint required "
-                "(within_days/weeks/months or from_date+to_date)"
+                "(within_days/weeks/months or from_date+to_date)",
+                code="CD3_TIME_CONSTRAINT_REQUIRED",
             )
 
         # Build behavior entry
@@ -8694,7 +8810,10 @@ class CohortCriteria:
         if set_rolling:
             rolling_name, rolling_value = next(iter(set_rolling.items()))
             if rolling_value <= 0:
-                raise ValueError("time window value must be positive")
+                raise ParamValidationError(
+                    "time window value must be positive",
+                    code="CD3_WINDOW_NOT_POSITIVE",
+                )
             unit_map = {
                 "within_days": "day",
                 "within_weeks": "week",
@@ -8708,22 +8827,32 @@ class CohortCriteria:
             # Absolute date range
             # CD5: from_date requires to_date (and vice versa)
             if from_date is not None and to_date is None:
-                raise ValueError("from_date requires to_date")
+                raise ParamValidationError(
+                    "from_date requires to_date",
+                    code="CD5_FROM_REQUIRES_TO",
+                )
             if to_date is not None and from_date is None:
-                raise ValueError("to_date requires from_date")
+                raise ParamValidationError(
+                    "to_date requires from_date",
+                    code="CD5_TO_REQUIRES_FROM",
+                )
 
             # CD6: Dates must be YYYY-MM-DD
             # from_date and to_date are guaranteed non-None here:
             # has_date_range is True and CD5 guards above reject mismatched pairs.
             if from_date is None or to_date is None:  # pragma: no cover
-                raise ValueError(
+                raise ParamValidationError(
                     "exactly one time constraint required "
-                    "(within_days/weeks/months or from_date+to_date)"
+                    "(within_days/weeks/months or from_date+to_date)",
+                    code="CD3_TIME_CONSTRAINT_REQUIRED",
                 )
             _validate_cohort_date(from_date)
             _validate_cohort_date(to_date)
             if dt_date.fromisoformat(from_date) > dt_date.fromisoformat(to_date):
-                raise ValueError("from_date must be before or equal to to_date")
+                raise ParamValidationError(
+                    "from_date must be before or equal to to_date",
+                    code="CD6_DATE_ORDER",
+                )
 
             behavior["from_date"] = from_date
             behavior["to_date"] = to_date
@@ -8768,7 +8897,8 @@ class CohortCriteria:
             CohortCriteria equivalent to ``did_event(event, exactly=0, ...)``.
 
         Raises:
-            ValueError: On constraint violations.
+            ParamValidationError: On constraint violations (same codes
+                as ``did_event``).
         """
         return cls.did_event(
             event,
@@ -8816,11 +8946,15 @@ class CohortCriteria:
             CohortCriteria with property selector node.
 
         Raises:
-            ValueError: If property name is empty (CD7).
+            ParamValidationError: If property name is empty
+                (``CD7_EMPTY_PROPERTY``).
         """
         # CD7: Property name must be non-empty
         if not property or not property.strip():
-            raise ValueError("property name must be non-empty")
+            raise ParamValidationError(
+                "property name must be non-empty",
+                code="CD7_EMPTY_PROPERTY",
+            )
 
         selector_operator = _PROPERTY_OPERATOR_MAP[operator]
 
@@ -8851,7 +8985,8 @@ class CohortCriteria:
             CohortCriteria checking property existence.
 
         Raises:
-            ValueError: If property name is empty (CD7).
+            ParamValidationError: If property name is empty
+                (``CD7_EMPTY_PROPERTY``).
         """
         return cls.has_property(property, "", operator="is_set")
 
@@ -8868,7 +9003,8 @@ class CohortCriteria:
             CohortCriteria checking property non-existence.
 
         Raises:
-            ValueError: If property name is empty (CD7).
+            ParamValidationError: If property name is empty
+                (``CD7_EMPTY_PROPERTY``).
         """
         return cls.has_property(property, "", operator="is_not_set")
 
@@ -8883,10 +9019,14 @@ class CohortCriteria:
             CohortCriteria with cohort reference selector node.
 
         Raises:
-            ValueError: If cohort_id is not a positive integer (CD8).
+            ParamValidationError: If cohort_id is not a positive integer
+                (``CD8_COHORT_ID_NOT_POSITIVE``).
         """
         if cohort_id <= 0:
-            raise ValueError("cohort_id must be a positive integer")
+            raise ParamValidationError(
+                "cohort_id must be a positive integer",
+                code="CD8_COHORT_ID_NOT_POSITIVE",
+            )
 
         selector_node: dict[str, Any] = {
             "property": "cohort",
@@ -8911,10 +9051,14 @@ class CohortCriteria:
             CohortCriteria with cohort exclusion selector node.
 
         Raises:
-            ValueError: If cohort_id is not a positive integer (CD8).
+            ParamValidationError: If cohort_id is not a positive integer
+                (``CD8_COHORT_ID_NOT_POSITIVE``).
         """
         if cohort_id <= 0:
-            raise ValueError("cohort_id must be a positive integer")
+            raise ParamValidationError(
+                "cohort_id must be a positive integer",
+                code="CD8_COHORT_ID_NOT_POSITIVE",
+            )
 
         selector_node: dict[str, Any] = {
             "property": "cohort",
@@ -8966,32 +9110,51 @@ def _validate_event_name(event: str, class_name: str) -> None:
         class_name: Name of the containing class (for error messages).
 
     Raises:
-        ValueError: If event is empty or contains control characters.
+        ParamValidationError: If event is empty (``EV1_EMPTY_EVENT``)
+            or contains control characters (``EV2_CONTROL_CHAR_EVENT``).
     """
     if not event or not event.strip():
-        raise ValueError(f"{class_name}.event must be a non-empty string")
+        raise ParamValidationError(
+            f"{class_name}.event must be a non-empty string",
+            code="EV1_EMPTY_EVENT",
+        )
     if _CONTROL_CHAR_RE.search(event):
-        raise ValueError(f"{class_name}.event contains control characters: {event!r}")
+        raise ParamValidationError(
+            f"{class_name}.event contains control characters: {event!r}",
+            code="EV2_CONTROL_CHAR_EVENT",
+        )
 
 
 def _validate_cohort_args(
     cohort: int | CohortDefinition,
     name: str | None,
+    family: Literal["CF", "CB", "CM"],
 ) -> None:
     """Validate cohort ID and name shared by CohortBreakdown, CohortMetric, and Filter.
 
     Args:
         cohort: Saved cohort ID or inline definition.
         name: Display name for the cohort.
+        family: Error-code family of the caller — ``"CF"`` for
+            ``Filter.in_cohort``/``not_in_cohort``, ``"CB"`` for
+            ``CohortBreakdown``, ``"CM"`` for ``CohortMetric``. The two
+            guards format their registry codes from this prefix.
 
     Raises:
-        ValueError: If cohort ID is not positive or name is empty
-            when provided.
+        ParamValidationError: If cohort ID is not positive
+            (``{family}1_COHORT_ID_NOT_POSITIVE``) or name is empty
+            when provided (``{family}2_COHORT_NAME_EMPTY``).
     """
     if isinstance(cohort, int) and cohort <= 0:
-        raise ValueError("cohort must be a positive integer")
+        raise ParamValidationError(
+            "cohort must be a positive integer",
+            code=f"{family}1_COHORT_ID_NOT_POSITIVE",
+        )
     if name is not None and not name.strip():
-        raise ValueError("cohort name must be non-empty when provided")
+        raise ParamValidationError(
+            "cohort name must be non-empty when provided",
+            code=f"{family}2_COHORT_NAME_EMPTY",
+        )
 
 
 def _sanitize_raw_cohort(raw: dict[str, Any]) -> dict[str, Any]:
@@ -9057,10 +9220,14 @@ class CohortDefinition:
             *criteria: One or more criteria or nested definitions.
 
         Raises:
-            ValueError: If no criteria are provided (CD9).
+            ParamValidationError: If no criteria are provided
+                (``CD9_EMPTY_CRITERIA``).
         """
         if not criteria:
-            raise ValueError("CohortDefinition requires at least one criterion")
+            raise ParamValidationError(
+                "CohortDefinition requires at least one criterion",
+                code="CD9_EMPTY_CRITERIA",
+            )
         object.__setattr__(self, "_criteria", criteria)
         object.__setattr__(self, "_operator", "and")
 
@@ -9078,10 +9245,14 @@ class CohortDefinition:
             CohortDefinition with AND combinator.
 
         Raises:
-            ValueError: If no criteria are provided (CD9).
+            ParamValidationError: If no criteria are provided
+                (``CD9_EMPTY_CRITERIA``).
         """
         if not criteria:
-            raise ValueError("CohortDefinition requires at least one criterion")
+            raise ParamValidationError(
+                "CohortDefinition requires at least one criterion",
+                code="CD9_EMPTY_CRITERIA",
+            )
         instance = cls.__new__(cls)
         object.__setattr__(instance, "_criteria", criteria)
         object.__setattr__(instance, "_operator", "and")
@@ -9101,10 +9272,14 @@ class CohortDefinition:
             CohortDefinition with OR combinator.
 
         Raises:
-            ValueError: If no criteria are provided (CD9).
+            ParamValidationError: If no criteria are provided
+                (``CD9_EMPTY_CRITERIA``).
         """
         if not criteria:
-            raise ValueError("CohortDefinition requires at least one criterion")
+            raise ParamValidationError(
+                "CohortDefinition requires at least one criterion",
+                code="CD9_EMPTY_CRITERIA",
+            )
         instance = cls.__new__(cls)
         object.__setattr__(instance, "_criteria", criteria)
         object.__setattr__(instance, "_operator", "or")
@@ -9222,10 +9397,11 @@ class CohortBreakdown:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CB1) or name
-                is empty when provided (CB2).
+            ParamValidationError: If cohort ID is not positive
+                (``CB1_COHORT_ID_NOT_POSITIVE``) or name is empty when
+                provided (``CB2_COHORT_NAME_EMPTY``).
         """
-        _validate_cohort_args(self.cohort, self.name)
+        _validate_cohort_args(self.cohort, self.name, family="CB")
 
 
 @dataclass(frozen=True)
@@ -9274,16 +9450,19 @@ class CohortMetric:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If cohort ID is not positive (CM1), name
-                is empty when provided (CM2), or cohort is an inline
-                ``CohortDefinition`` (CM5 — server returns 500).
+            ParamValidationError: If cohort ID is not positive
+                (``CM1_COHORT_ID_NOT_POSITIVE``), name is empty when provided
+                (``CM2_COHORT_NAME_EMPTY``), or cohort is an inline
+                ``CohortDefinition`` (``CM5_INLINE_COHORT_METRIC`` — server
+                returns 500).
         """
-        _validate_cohort_args(self.cohort, self.name)
+        _validate_cohort_args(self.cohort, self.name, family="CM")
         # CM5: Inline CohortDefinition causes server-side 500.
         if isinstance(self.cohort, CohortDefinition):
-            raise ValueError(
+            raise ParamValidationError(
                 "CohortMetric does not support inline CohortDefinition "
-                "(server returns 500). Use a saved cohort ID instead."
+                "(server returns 500). Use a saved cohort ID instead.",
+                code="CM5_INLINE_COHORT_METRIC",
             )
 
 
@@ -9303,7 +9482,9 @@ class FrequencyBreakdown:
             ``"<event> Frequency"`` (e.g., ``"Purchase Frequency"``).
 
     Raises:
-        ValueError: If validation rules FB1-FB4 are violated.
+        ParamValidationError: If validation rules FB1-FB4 are violated
+            (codes ``FB1_EMPTY_EVENT``, ``FB2_BUCKET_SIZE_NOT_POSITIVE``,
+            ``FB3_BUCKET_ORDER``, ``FB4_BUCKET_MIN_NEGATIVE``).
 
     Example:
         ```python
@@ -9341,30 +9522,38 @@ class FrequencyBreakdown:
         """Validate construction arguments (rules FB1-FB4).
 
         Raises:
-            ValueError: If event is empty (FB1), bucket_size is not
-                positive (FB2), bucket_min >= bucket_max (FB3), or
-                bucket_min is negative (FB4).
+            ParamValidationError: If event is empty
+                (``FB1_EMPTY_EVENT``), bucket_size is not positive
+                (``FB2_BUCKET_SIZE_NOT_POSITIVE``), bucket_min >= bucket_max
+                (``FB3_BUCKET_ORDER``), or bucket_min is negative
+                (``FB4_BUCKET_MIN_NEGATIVE``).
         """
         # FB1: event must be non-empty
         if not self.event.strip():
-            raise ValueError("FrequencyBreakdown.event must be a non-empty string")
+            raise ParamValidationError(
+                "FrequencyBreakdown.event must be a non-empty string",
+                code="FB1_EMPTY_EVENT",
+            )
         # FB2: bucket_size must be positive
         if self.bucket_size <= 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"FrequencyBreakdown.bucket_size must be positive, "
-                f"got {self.bucket_size}"
+                f"got {self.bucket_size}",
+                code="FB2_BUCKET_SIZE_NOT_POSITIVE",
             )
         # FB4: bucket_min must be non-negative (check before FB3 for clarity)
         if self.bucket_min < 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"FrequencyBreakdown.bucket_min must be non-negative, "
-                f"got {self.bucket_min}"
+                f"got {self.bucket_min}",
+                code="FB4_BUCKET_MIN_NEGATIVE",
             )
         # FB3: bucket_min must be < bucket_max
         if self.bucket_min >= self.bucket_max:
-            raise ValueError(
+            raise ParamValidationError(
                 f"FrequencyBreakdown.bucket_min ({self.bucket_min}) must be "
-                f"less than bucket_max ({self.bucket_max})"
+                f"less than bucket_max ({self.bucket_max})",
+                code="FB3_BUCKET_ORDER",
             )
 
 
@@ -9389,7 +9578,10 @@ class FrequencyFilter:
         label: Display label for the filter.
 
     Raises:
-        ValueError: If validation rules FF1-FF5 are violated.
+        ParamValidationError: If validation rules FF1-FF5 are violated
+            (codes ``FF1_EMPTY_EVENT``, ``FF2_INVALID_OPERATOR``,
+            ``FF3_VALUE_NEGATIVE``, ``FF4_DATE_RANGE_PAIR``,
+            ``FF5_DATE_RANGE_VALUE_NOT_POSITIVE``).
 
     Example:
         ```python
@@ -9436,10 +9628,13 @@ class FrequencyFilter:
         """Validate construction arguments (rules FF1-FF5).
 
         Raises:
-            ValueError: If event is empty (FF1), operator is invalid
-                (FF2), value is negative (FF3), date_range_value and
-                date_range_unit are not both set or both None (FF4),
-                or date_range_value is not positive when set (FF5).
+            ParamValidationError: If event is empty
+                (``FF1_EMPTY_EVENT``), operator is invalid
+                (``FF2_INVALID_OPERATOR``), value is negative
+                (``FF3_VALUE_NEGATIVE``), date_range_value and
+                date_range_unit are not both set or both None
+                (``FF4_DATE_RANGE_PAIR``), or date_range_value is not
+                positive when set (``FF5_DATE_RANGE_VALUE_NOT_POSITIVE``).
         """
         from mixpanel_headless._internal.bookmark_enums import (
             VALID_FREQUENCY_FILTER_OPERATORS,
@@ -9447,34 +9642,41 @@ class FrequencyFilter:
 
         # FF1: event must be non-empty
         if not self.event.strip():
-            raise ValueError("FrequencyFilter.event must be a non-empty string")
+            raise ParamValidationError(
+                "FrequencyFilter.event must be a non-empty string",
+                code="FF1_EMPTY_EVENT",
+            )
         # FF2: operator must be valid
         if self.operator not in VALID_FREQUENCY_FILTER_OPERATORS:
             valid = ", ".join(sorted(VALID_FREQUENCY_FILTER_OPERATORS))
-            raise ValueError(
+            raise ParamValidationError(
                 f"FrequencyFilter.operator must be one of: {valid}; "
-                f"got {self.operator!r}"
+                f"got {self.operator!r}",
+                code="FF2_INVALID_OPERATOR",
             )
         # FF3: value must be non-negative
         if self.value < 0:
-            raise ValueError(
-                f"FrequencyFilter.value must be non-negative, got {self.value}"
+            raise ParamValidationError(
+                f"FrequencyFilter.value must be non-negative, got {self.value}",
+                code="FF3_VALUE_NEGATIVE",
             )
         # FF4: date_range_value and date_range_unit must both be set or both None
         has_value = self.date_range_value is not None
         has_unit = self.date_range_unit is not None
         if has_value != has_unit:
-            raise ValueError(
+            raise ParamValidationError(
                 "FrequencyFilter.date_range_value and date_range_unit must "
                 "both be set or both be None; got date_range_value="
                 f"{self.date_range_value!r}, date_range_unit="
-                f"{self.date_range_unit!r}"
+                f"{self.date_range_unit!r}",
+                code="FF4_DATE_RANGE_PAIR",
             )
         # FF5: date_range_value must be positive if set
         if self.date_range_value is not None and self.date_range_value <= 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"FrequencyFilter.date_range_value must be positive when set, "
-                f"got {self.date_range_value}"
+                f"got {self.date_range_value}",
+                code="FF5_DATE_RANGE_VALUE_NOT_POSITIVE",
             )
 
 
@@ -9894,16 +10096,22 @@ class Exclusion:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty (EX1), from_step is negative
-                (EX2), or to_step < from_step (EX3).
+            ParamValidationError: If event is empty (``EV1_EMPTY_EVENT``
+                / ``EV2_CONTROL_CHAR_EVENT``), from_step is negative
+                (``EX1_FROM_STEP_NEGATIVE``), or to_step < from_step
+                (``EX2_STEP_ORDER``).
         """
         _validate_event_name(self.event, "Exclusion")
         if self.from_step < 0:
-            raise ValueError(f"Exclusion.from_step must be >= 0, got {self.from_step}")
+            raise ParamValidationError(
+                f"Exclusion.from_step must be >= 0, got {self.from_step}",
+                code="EX1_FROM_STEP_NEGATIVE",
+            )
         if self.to_step is not None and self.to_step < self.from_step:
-            raise ValueError(
+            raise ParamValidationError(
                 f"Exclusion.to_step ({self.to_step}) must be >= "
-                f"from_step ({self.from_step})"
+                f"from_step ({self.from_step})",
+                code="EX2_STEP_ORDER",
             )
 
 
@@ -9948,10 +10156,14 @@ class HoldingConstant:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If property is empty (HC1).
+            ParamValidationError: If property is empty
+                (``HC1_EMPTY_PROPERTY``).
         """
         if not self.property or not self.property.strip():
-            raise ValueError("HoldingConstant.property must be a non-empty string")
+            raise ParamValidationError(
+                "HoldingConstant.property must be a non-empty string",
+                code="HC1_EMPTY_PROPERTY",
+            )
 
 
 @dataclass(frozen=True)
@@ -10434,18 +10646,22 @@ class FlowStep:
         """Validate construction arguments.
 
         Raises:
-            ValueError: If event is empty or contains control characters
-                (FL1), forward/reverse is outside 0-5 range (FL2), or
-                session_event conflicts with event name (FS1).
+            ParamValidationError: If event is empty or contains control
+                characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
+                forward/reverse is outside 0-5 range (``FL3_FORWARD_RANGE`` /
+                ``FL4_REVERSE_RANGE``), or session_event conflicts with event
+                name (``FS1_SESSION_EVENT_MISMATCH``).
         """
         _validate_event_name(self.event, "FlowStep")
         if self.forward is not None and not 0 <= self.forward <= 5:
-            raise ValueError(
-                f"FlowStep.forward must be in range 0-5, got {self.forward}"
+            raise ParamValidationError(
+                f"FlowStep.forward must be in range 0-5, got {self.forward}",
+                code="FL3_FORWARD_RANGE",
             )
         if self.reverse is not None and not 0 <= self.reverse <= 5:
-            raise ValueError(
-                f"FlowStep.reverse must be in range 0-5, got {self.reverse}"
+            raise ParamValidationError(
+                f"FlowStep.reverse must be in range 0-5, got {self.reverse}",
+                code="FL4_REVERSE_RANGE",
             )
         # FS1: Validate session_event / event consistency
         if self.session_event is not None:
@@ -10453,9 +10669,10 @@ class FlowStep:
                 "$session_start" if self.session_event == "start" else "$session_end"
             )
             if self.event != expected_event:
-                raise ValueError(
+                raise ParamValidationError(
                     f"FlowStep.session_event={self.session_event!r} requires "
-                    f"event={expected_event!r}, got {self.event!r}"
+                    f"event={expected_event!r}, got {self.event!r}",
+                    code="FS1_SESSION_EVENT_MISMATCH",
                 )
 
 
@@ -12344,22 +12561,33 @@ class ReplaySummary(ResultWithDataFrame):
         """Validate per data-model §2.1.
 
         Raises:
-            ValueError: ``replay_id`` is empty, ``project_id`` is non-positive,
-                ``start_time`` is non-positive, or ``retention_days`` is
-                outside ``{1, 7, 30, 90}``.
+            ParamValidationError: ``replay_id`` is empty
+                (``RS1_EMPTY_REPLAY_ID``), ``project_id`` is non-positive
+                (``RS2_PROJECT_ID_NOT_POSITIVE``), ``start_time`` is
+                non-positive (``RS3_START_TIME_NOT_POSITIVE``), or
+                ``retention_days`` is outside ``{1, 7, 30, 90}``
+                (``RS4_INVALID_RETENTION_DAYS``).
         """
         if not self.replay_id:
-            raise ValueError("replay_id must be non-empty")
+            raise ParamValidationError(
+                "replay_id must be non-empty",
+                code="RS1_EMPTY_REPLAY_ID",
+            )
         if self.project_id <= 0:
-            raise ValueError(f"project_id must be positive; got {self.project_id}")
+            raise ParamValidationError(
+                f"project_id must be positive; got {self.project_id}",
+                code="RS2_PROJECT_ID_NOT_POSITIVE",
+            )
         if self.start_time <= 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"start_time must be a positive unix ms timestamp; got "
-                f"{self.start_time}"
+                f"{self.start_time}",
+                code="RS3_START_TIME_NOT_POSITIVE",
             )
         if self.retention_days not in _ALLOWED_RETENTION_DAYS:
-            raise ValueError(
-                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            raise ParamValidationError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}",
+                code="RS4_INVALID_RETENTION_DAYS",
             )
 
     @property
@@ -12439,20 +12667,32 @@ class SignedReplay:
         """Validate per data-model §2.2.
 
         Raises:
-            ValueError: ``url`` lacks a trailing slash, ``query_string``
-                is empty, ``env`` is not ``"prod"`` or ``"dev"``, or
-                ``signed_at`` is negative.
+            ParamValidationError: ``url`` lacks a trailing slash
+                (``SR1_URL_NO_TRAILING_SLASH``), ``query_string`` is empty
+                (``SR2_EMPTY_QUERY_STRING``), ``env`` is not ``"prod"`` or
+                ``"dev"`` (``SR3_INVALID_ENV``), or ``signed_at`` is negative
+                (``SR4_SIGNED_AT_NEGATIVE``).
         """
         if not self.url.endswith("/"):
-            raise ValueError(
-                f"url must end with '/' for CDN-path concatenation; got {self.url!r}"
+            raise ParamValidationError(
+                f"url must end with '/' for CDN-path concatenation; got {self.url!r}",
+                code="SR1_URL_NO_TRAILING_SLASH",
             )
         if not self.query_string:
-            raise ValueError("query_string must be non-empty")
+            raise ParamValidationError(
+                "query_string must be non-empty",
+                code="SR2_EMPTY_QUERY_STRING",
+            )
         if self.env not in ("prod", "dev"):
-            raise ValueError(f"env must be 'prod' or 'dev'; got {self.env!r}")
+            raise ParamValidationError(
+                f"env must be 'prod' or 'dev'; got {self.env!r}",
+                code="SR3_INVALID_ENV",
+            )
         if self.signed_at < 0:
-            raise ValueError(f"signed_at must be non-negative; got {self.signed_at}")
+            raise ParamValidationError(
+                f"signed_at must be non-negative; got {self.signed_at}",
+                code="SR4_SIGNED_AT_NEGATIVE",
+            )
 
     @property
     def expires_at(self) -> float:
@@ -12545,15 +12785,20 @@ class UserAction:
         """Validate per data-model §2.3.
 
         Raises:
-            ValueError: ``timestamp`` is non-positive or ``target_desc``
-                is empty.
+            ParamValidationError: ``timestamp`` is non-positive
+                (``UA1_TIMESTAMP_NOT_POSITIVE``) or ``target_desc`` is empty
+                (``UA2_EMPTY_TARGET_DESC``).
         """
         if self.timestamp <= 0:
-            raise ValueError(
-                f"timestamp must be a positive unix ms timestamp; got {self.timestamp}"
+            raise ParamValidationError(
+                f"timestamp must be a positive unix ms timestamp; got {self.timestamp}",
+                code="UA1_TIMESTAMP_NOT_POSITIVE",
             )
         if not self.target_desc:
-            raise ValueError("target_desc must be non-empty")
+            raise ParamValidationError(
+                "target_desc must be non-empty",
+                code="UA2_EMPTY_TARGET_DESC",
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-serializable representation.
@@ -12598,17 +12843,26 @@ class ReplayEvent(ResultWithDataFrame):
         """Validate per data-model §2.4.
 
         Raises:
-            ValueError: ``replay_id`` or ``event_name`` is empty, or
-                ``event_time`` is non-positive.
+            ParamValidationError: ``replay_id`` is empty
+                (``RE1_EMPTY_REPLAY_ID``), ``event_name`` is empty
+                (``RE2_EMPTY_EVENT_NAME``), or ``event_time`` is non-positive
+                (``RE3_EVENT_TIME_NOT_POSITIVE``).
         """
         if not self.replay_id:
-            raise ValueError("replay_id must be non-empty")
+            raise ParamValidationError(
+                "replay_id must be non-empty",
+                code="RE1_EMPTY_REPLAY_ID",
+            )
         if not self.event_name:
-            raise ValueError("event_name must be non-empty")
+            raise ParamValidationError(
+                "event_name must be non-empty",
+                code="RE2_EMPTY_EVENT_NAME",
+            )
         if self.event_time <= 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"event_time must be a positive unix seconds timestamp; got "
-                f"{self.event_time}"
+                f"{self.event_time}",
+                code="RE3_EVENT_TIME_NOT_POSITIVE",
             )
 
     @property
@@ -12749,28 +13003,40 @@ class Replay(ResultWithDataFrame):
         """Validate per data-model §2.5.
 
         Raises:
-            ValueError: ``replay_id`` is empty, ``project_id`` is
-                non-positive, ``start_time`` is non-positive,
-                ``end_time < start_time``, or ``retention_days`` is
-                outside ``{1, 7, 30, 90}``.
+            ParamValidationError: ``replay_id`` is empty
+                (``RP1_EMPTY_REPLAY_ID``), ``project_id`` is non-positive
+                (``RP2_PROJECT_ID_NOT_POSITIVE``), ``start_time`` is
+                non-positive (``RP3_START_TIME_NOT_POSITIVE``),
+                ``end_time < start_time`` (``RP4_TIME_ORDER``), or
+                ``retention_days`` is outside ``{1, 7, 30, 90}``
+                (``RP5_INVALID_RETENTION_DAYS``).
         """
         if not self.replay_id:
-            raise ValueError("replay_id must be non-empty")
+            raise ParamValidationError(
+                "replay_id must be non-empty",
+                code="RP1_EMPTY_REPLAY_ID",
+            )
         if self.project_id <= 0:
-            raise ValueError(f"project_id must be positive; got {self.project_id}")
+            raise ParamValidationError(
+                f"project_id must be positive; got {self.project_id}",
+                code="RP2_PROJECT_ID_NOT_POSITIVE",
+            )
         if self.start_time <= 0:
-            raise ValueError(
+            raise ParamValidationError(
                 f"start_time must be a positive unix ms timestamp; got "
-                f"{self.start_time}"
+                f"{self.start_time}",
+                code="RP3_START_TIME_NOT_POSITIVE",
             )
         if self.end_time < self.start_time:
-            raise ValueError(
+            raise ParamValidationError(
                 f"end_time must be >= start_time; got start={self.start_time}, "
-                f"end={self.end_time}"
+                f"end={self.end_time}",
+                code="RP4_TIME_ORDER",
             )
         if self.retention_days not in _ALLOWED_RETENTION_DAYS:
-            raise ValueError(
-                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}"
+            raise ParamValidationError(
+                f"retention_days must be in {{1, 7, 30, 90}}; got {self.retention_days}",
+                code="RP5_INVALID_RETENTION_DAYS",
             )
 
     def __repr__(self) -> str:
@@ -13055,8 +13321,8 @@ class ReplayBundle(ResultWithDataFrame):
         """Validate that every replay in the bundle shares ``project_id``.
 
         Raises:
-            ValueError: A replay's ``project_id`` differs from the
-                bundle's ``project_id``.
+            ParamValidationError: A replay's ``project_id`` differs from
+                the bundle's ``project_id`` (``RB1_PROJECT_ID_MISMATCH``).
         """
         if self.project_id and any(
             r.project_id != self.project_id for r in self.replays
@@ -13064,9 +13330,10 @@ class ReplayBundle(ResultWithDataFrame):
             mismatches = [
                 r.replay_id for r in self.replays if r.project_id != self.project_id
             ]
-            raise ValueError(
+            raise ParamValidationError(
                 f"ReplayBundle.project_id={self.project_id} but the following "
-                f"replays carry a different project_id: {mismatches}"
+                f"replays carry a different project_id: {mismatches}",
+                code="RB1_PROJECT_ID_MISMATCH",
             )
 
     def __repr__(self) -> str:

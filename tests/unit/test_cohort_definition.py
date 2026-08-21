@@ -9,10 +9,12 @@ serialization (to_dict), validation, and CRUD integration.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     _FILTER_TO_SELECTOR_SUPPORTED,
     _PROPERTY_OPERATOR_MAP,
@@ -851,3 +853,278 @@ class TestDateRangeOrdering:
         )
         assert c._behavior is not None
         assert c._behavior["from_date"] == "2024-06-15"
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+class TestCodedCohortCriteriaCodes:
+    """Coded-guard tests for CohortCriteria guards (CD*/CA*, design §1.2)."""
+
+    @pytest.mark.parametrize(
+        ("factory", "code"),
+        [
+            # CD4 (empty event)
+            (
+                lambda: CohortCriteria.did_event("", at_least=1, within_days=30),
+                "CD4_EMPTY_EVENT",
+            ),
+            (
+                lambda: CohortCriteria.did_event("   ", at_least=1, within_days=30),
+                "CD4_EMPTY_EVENT",
+            ),
+            # CA1 (aggregation pair)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, within_days=30, aggregation="total"
+                ),
+                "CA1_AGGREGATION_PAIR",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, within_days=30, aggregation_property="amount"
+                ),
+                "CA1_AGGREGATION_PAIR",
+            ),
+            # CA2 (empty aggregation_property)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_days=30,
+                    aggregation="total",
+                    aggregation_property="",
+                ),
+                "CA2_EMPTY_AGGREGATION_PROPERTY",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_days=30,
+                    aggregation="total",
+                    aggregation_property="   ",
+                ),
+                "CA2_EMPTY_AGGREGATION_PROPERTY",
+            ),
+            # CD1 (exactly one frequency param)
+            (
+                lambda: CohortCriteria.did_event("e", within_days=30),
+                "CD1_FREQUENCY_PARAM_REQUIRED",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, at_most=2, within_days=30
+                ),
+                "CD1_FREQUENCY_PARAM_REQUIRED",
+            ),
+            # CD2 (frequency >= 0)
+            (
+                lambda: CohortCriteria.did_event("e", at_least=-1, within_days=30),
+                "CD2_FREQUENCY_NEGATIVE",
+            ),
+            (
+                lambda: CohortCriteria.did_event("e", exactly=-5, within_days=30),
+                "CD2_FREQUENCY_NEGATIVE",
+            ),
+            # CD3 site 1 (no time constraint)
+            (
+                lambda: CohortCriteria.did_event("e", at_least=1),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            (
+                lambda: CohortCriteria.did_event("e", exactly=0),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            # CD3 site 2 (rolling AND date range)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_days=30,
+                    from_date="2025-01-01",
+                    to_date="2025-01-31",
+                ),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_weeks=4,
+                    from_date="2025-01-01",
+                    to_date="2025-01-31",
+                ),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            # CD3 site 3 (multiple rolling windows)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, within_days=30, within_weeks=4
+                ),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, within_days=30, within_months=2
+                ),
+                "CD3_TIME_CONSTRAINT_REQUIRED",
+            ),
+            # CD3 window value positive
+            (
+                lambda: CohortCriteria.did_event("e", at_least=1, within_days=0),
+                "CD3_WINDOW_NOT_POSITIVE",
+            ),
+            (
+                lambda: CohortCriteria.did_event("e", at_least=1, within_weeks=-2),
+                "CD3_WINDOW_NOT_POSITIVE",
+            ),
+            # CD5 from requires to
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-01-01"
+                ),
+                "CD5_FROM_REQUIRES_TO",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-06-15"
+                ),
+                "CD5_FROM_REQUIRES_TO",
+            ),
+            # CD5 to requires from
+            (
+                lambda: CohortCriteria.did_event("e", at_least=1, to_date="2025-01-31"),
+                "CD5_TO_REQUIRES_FROM",
+            ),
+            (
+                lambda: CohortCriteria.did_event("e", at_least=1, to_date="2025-06-30"),
+                "CD5_TO_REQUIRES_FROM",
+            ),
+            # CD6 date format (via _validate_cohort_date)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025/01/01", to_date="2025-01-31"
+                ),
+                "CD6_DATE_FORMAT",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-01-01", to_date="bad-date"
+                ),
+                "CD6_DATE_FORMAT",
+            ),
+            # CD6 calendar validity (via _validate_cohort_date)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-02-30", to_date="2025-03-31"
+                ),
+                "CD6_DATE_INVALID",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-01-01", to_date="2025-13-01"
+                ),
+                "CD6_DATE_INVALID",
+            ),
+            # CD6 date order
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-02-01", to_date="2025-01-01"
+                ),
+                "CD6_DATE_ORDER",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e", at_least=1, from_date="2025-06-02", to_date="2025-06-01"
+                ),
+                "CD6_DATE_ORDER",
+            ),
+            # CD7 (property name non-empty)
+            (
+                lambda: CohortCriteria.has_property("", "v"),
+                "CD7_EMPTY_PROPERTY",
+            ),
+            (
+                lambda: CohortCriteria.has_property("   ", "v"),
+                "CD7_EMPTY_PROPERTY",
+            ),
+            # CD8 site 1 (in_cohort)
+            (lambda: CohortCriteria.in_cohort(0), "CD8_COHORT_ID_NOT_POSITIVE"),
+            (lambda: CohortCriteria.in_cohort(-1), "CD8_COHORT_ID_NOT_POSITIVE"),
+            # CD8 site 2 (not_in_cohort)
+            (lambda: CohortCriteria.not_in_cohort(0), "CD8_COHORT_ID_NOT_POSITIVE"),
+            (lambda: CohortCriteria.not_in_cohort(-5), "CD8_COHORT_ID_NOT_POSITIVE"),
+            # CD10 (unsupported filter operator for cohort selector)
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_days=30,
+                    where=Filter.on("created", "2024-01-01"),
+                ),
+                "CD10_UNSUPPORTED_FILTER_OPERATOR",
+            ),
+            (
+                lambda: CohortCriteria.did_event(
+                    "e",
+                    at_least=1,
+                    within_days=30,
+                    where=Filter.in_the_last("created", 7, "day"),
+                ),
+                "CD10_UNSUPPORTED_FILTER_OPERATOR",
+            ),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, factory: Callable[[], CohortCriteria], code: str
+    ) -> None:
+        """Each CohortCriteria guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            factory()
+        assert excinfo.value.code == code
+
+
+class TestCodedCohortDefinitionCodes:
+    """Coded-guard tests for CohortDefinition CD9 sites (design §1.1)."""
+
+    def test_init_no_criteria_raises_cd9(self) -> None:
+        """CohortDefinition() with no criteria raises CD9_EMPTY_CRITERIA."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition()
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"
+
+    def test_init_empty_unpack_raises_cd9(self) -> None:
+        """CohortDefinition(*[]) with an empty unpack raises CD9."""
+        empty: list[CohortCriteria] = []
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition(*empty)
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"
+
+    def test_all_of_no_criteria_raises_cd9(self) -> None:
+        """CohortDefinition.all_of() with no criteria raises CD9."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition.all_of()
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"
+
+    def test_all_of_empty_unpack_raises_cd9(self) -> None:
+        """CohortDefinition.all_of(*[]) raises CD9."""
+        empty: list[CohortCriteria] = []
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition.all_of(*empty)
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"
+
+    def test_any_of_no_criteria_raises_cd9(self) -> None:
+        """CohortDefinition.any_of() with no criteria raises CD9."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition.any_of()
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"
+
+    def test_any_of_empty_unpack_raises_cd9(self) -> None:
+        """CohortDefinition.any_of(*[]) raises CD9."""
+        empty: list[CohortCriteria] = []
+        with pytest.raises(ParamValidationError) as excinfo:
+            CohortDefinition.any_of(*empty)
+        assert excinfo.value.code == "CD9_EMPTY_CRITERIA"

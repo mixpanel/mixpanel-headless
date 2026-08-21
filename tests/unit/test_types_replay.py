@@ -8,6 +8,9 @@ unit-test fixture), the analyzer-dependent accessors (``summary_markdown``,
 
 from __future__ import annotations
 
+import pytest
+
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Replay, ReplayEvent, UserAction
 
 
@@ -204,3 +207,52 @@ class TestReplayMixpanelDataFrame:
         assert len(df) == 0
         for col in ("t", "event_name", "properties"):
             assert col in df.columns
+
+
+# =============================================================================
+# E2 coding pass — coded guard tests (class + .code assertions only, R5.4)
+# =============================================================================
+
+
+def _build_kwargs(**overrides: object) -> dict[str, object]:
+    """Valid Replay constructor kwargs; override per-test to violate a guard."""
+    defaults: dict[str, object] = {
+        "replay_id": "r-19221",
+        "distinct_id": "user-42",
+        "project_id": 3713224,
+        "start_time": 1716810000000,
+        "end_time": 1716810015000,
+        "retention_days": 30,
+        "rrweb_events": [],
+        "actions": [],
+        "mixpanel_events": [],
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+class TestCodedReplayCodes:
+    """Coded-guard tests for Replay (RP1-RP5, design §1.4)."""
+
+    @pytest.mark.parametrize(
+        ("overrides", "code"),
+        [
+            ({"replay_id": ""}, "RP1_EMPTY_REPLAY_ID"),
+            ({"replay_id": None}, "RP1_EMPTY_REPLAY_ID"),
+            ({"project_id": 0}, "RP2_PROJECT_ID_NOT_POSITIVE"),
+            ({"project_id": -1}, "RP2_PROJECT_ID_NOT_POSITIVE"),
+            ({"start_time": 0}, "RP3_START_TIME_NOT_POSITIVE"),
+            ({"start_time": -9}, "RP3_START_TIME_NOT_POSITIVE"),
+            ({"end_time": 1716809999999}, "RP4_TIME_ORDER"),
+            ({"end_time": 1}, "RP4_TIME_ORDER"),
+            ({"retention_days": 2}, "RP5_INVALID_RETENTION_DAYS"),
+            ({"retention_days": 365}, "RP5_INVALID_RETENTION_DAYS"),
+        ],
+    )
+    def test_guard_raises_coded_error(
+        self, overrides: dict[str, object], code: str
+    ) -> None:
+        """Each Replay guard raises ParamValidationError with its code."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Replay(**_build_kwargs(**overrides))  # type: ignore[arg-type]
+        assert excinfo.value.code == code

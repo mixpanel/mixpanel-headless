@@ -14,6 +14,7 @@ from datetime import date
 from typing import Any, Literal, cast
 
 from mixpanel_headless._literal_types import QueryTimeUnit
+from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 from mixpanel_headless.types import (
     CohortBreakdown,
     CustomPropertyRef,
@@ -272,8 +273,9 @@ def build_group_section(
         List of group entry dicts (may be empty).
 
     Raises:
-        TypeError: If any element is not ``str``, ``GroupBy``,
-            ``CohortBreakdown``, or ``FrequencyBreakdown``.
+        ParamTypeError: If any element is not ``str``, ``GroupBy``,
+            ``CohortBreakdown``, or ``FrequencyBreakdown``
+            (``BB1_GROUP_BY_ELEMENT_TYPE``).
 
     Example:
         ```python
@@ -392,9 +394,10 @@ def build_group_section(
                 _build_cohort_group_entry(g, data_group_id=data_group_id)
             )
         else:
-            raise TypeError(
+            raise ParamTypeError(
                 f"group_by elements must be str, GroupBy, CohortBreakdown, "
-                f"or FrequencyBreakdown, got {type(g).__name__}: {g!r}"
+                f"or FrequencyBreakdown, got {type(g).__name__}: {g!r}",
+                code="BB1_GROUP_BY_ELEMENT_TYPE",
             )
 
     return group_section
@@ -595,6 +598,12 @@ def build_flow_property_filter(
         Dict with ``operator`` and ``children`` keys suitable for
         the ``filter_by_event`` bookmark key.
 
+    Raises:
+        ParamValidationError: If ``filters`` is empty
+            (``BB2_FLOW_PROPERTY_FILTER_EMPTY``).
+        ParamTypeError: If a filter's property is not a plain string
+            (``BB3_FLOW_PROPERTY_FILTER_TYPE``).
+
     Example:
         ```python
         fbe = build_flow_property_filter([Filter.equals("country", "US")])
@@ -606,9 +615,10 @@ def build_flow_property_filter(
         ```
     """
     if not filters:
-        raise ValueError(
+        raise ParamValidationError(
             "build_flow_property_filter requires at least one filter; "
-            "caller should check before calling"
+            "caller should check before calling",
+            code="BB2_FLOW_PROPERTY_FILTER_EMPTY",
         )
     children: list[dict[str, Any]] = []
     for f in filters:
@@ -618,10 +628,11 @@ def build_flow_property_filter(
         if isinstance(prop, str):
             entry["propertyName"] = prop
         else:
-            raise TypeError(
+            raise ParamTypeError(
                 f"build_flow_property_filter only supports string property "
                 f"filters; got {type(prop).__name__} — custom property refs "
-                f"are not supported in flow filters"
+                f"are not supported in flow filters",
+                code="BB3_FLOW_PROPERTY_FILTER_TYPE",
             )
         # Remove the "value" key since flow filters use propertyName instead
         entry.pop("value", None)
@@ -655,8 +666,13 @@ def build_flow_cohort_filter(
         key, or ``None`` if ``where`` is empty.
 
     Raises:
-        ValueError: If any filter is not a cohort filter
-            (``_property != "$cohorts"``).
+        ParamValidationError: If any filter is not a cohort filter
+            (``_property != "$cohorts"``; ``BB4_FLOW_COHORT_FILTER_TYPE``),
+            if more than one cohort filter is provided
+            (``BB5_FLOW_MULTIPLE_COHORT_FILTERS``), or if the cohort
+            filter's internal ``_value`` structure is malformed
+            (``BB6_COHORT_VALUE_NOT_LIST`` / ``BB7_COHORT_VALUE_NOT_DICT``
+            / ``BB8_COHORT_KEY_MISSING``).
 
     Example:
         ```python
@@ -670,40 +686,45 @@ def build_flow_cohort_filter(
 
     for f in filters:
         if f._property != "$cohorts":
-            raise ValueError(
+            raise ParamValidationError(
                 "build_flow_cohort_filter only accepts cohort filters "
                 "(Filter.in_cohort/not_in_cohort); property filters should "
-                "use build_flow_property_filter instead"
+                "use build_flow_property_filter instead",
+                code="BB4_FLOW_COHORT_FILTER_TYPE",
             )
 
     if len(filters) > 1:
-        raise ValueError(
+        raise ParamValidationError(
             f"query_flow supports a single cohort filter, but {len(filters)} "
-            "were provided. Pass only one Filter.in_cohort/not_in_cohort."
+            "were provided. Pass only one Filter.in_cohort/not_in_cohort.",
+            code="BB5_FLOW_MULTIPLE_COHORT_FILTERS",
         )
 
     f = filters[0]
     # Extract from the _value structure: [{"cohort": {...}}]
     cohort_value = f._value
     if not isinstance(cohort_value, list) or len(cohort_value) == 0:
-        raise ValueError(
+        raise ParamValidationError(
             "Internal error: cohort filter _value must be a non-empty list; "
             f"got {type(cohort_value).__name__}. This indicates a bug in "
-            "Filter._build_cohort_filter."
+            "Filter._build_cohort_filter.",
+            code="BB6_COHORT_VALUE_NOT_LIST",
         )
     first_item = cohort_value[0]
     if not isinstance(first_item, dict):
-        raise ValueError(
+        raise ParamValidationError(
             "Internal error: cohort filter _value[0] is not a dict; "
             f"got {type(first_item).__name__}. This indicates a bug in "
-            "Filter._build_cohort_filter."
+            "Filter._build_cohort_filter.",
+            code="BB7_COHORT_VALUE_NOT_DICT",
         )
     cohort_data = first_item.get("cohort")
     if not isinstance(cohort_data, dict):
-        raise ValueError(
+        raise ParamValidationError(
             "Internal error: cohort filter _value[0] is missing 'cohort' key; "
             f"got keys {list(first_item.keys())}. This indicates a bug in "
-            "Filter._build_cohort_filter."
+            "Filter._build_cohort_filter.",
+            code="BB8_COHORT_KEY_MISSING",
         )
     result: dict[str, Any] = {
         "name": cohort_data.get("name", ""),

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlencode
 
 if TYPE_CHECKING:
@@ -87,6 +87,105 @@ class MixpanelHeadlessError(Exception):
         return (
             f"{self.__class__.__name__}(message={self._message!r}, code={self._code!r})"
         )
+
+
+# Coded guard errors (E2 coding pass) - dual-inheritance domain errors that
+# replace raw ``raise ValueError`` / ``raise TypeError`` argument guards while
+# staying catchable as the original builtin (R5.5 registry-coded guards).
+
+
+class ParamValidationError(MixpanelHeadlessError, ValueError):
+    """A builder/facade argument guard rejected a value (registry-coded).
+
+    Dual-inherits from :class:`MixpanelHeadlessError` and :class:`ValueError`
+    so converted guard sites keep byte-identical messages and remain
+    catchable by existing ``except ValueError`` handlers, while carrying a
+    machine-readable registry ``.code`` for the conformance contract (R5.3).
+
+    Example:
+        ```python
+        try:
+            Filter.on("plan").in_the_last(0, "days")
+        except ParamValidationError as exc:
+            exc.code  # "FD1_QUANTITY_NOT_POSITIVE"
+        ```
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "VALIDATION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the coded guard error.
+
+        Args:
+            message: Human-readable error message (byte-identical to the
+                pre-conversion builtin message at each converted site).
+            code: Machine-readable registry code for the violated rule.
+                Defaults to the generic ``VALIDATION_ERROR`` (R5.5
+                construction-path fallback).
+            details: Optional structured, deterministic, codec-encodable
+                data about the error.
+        """
+        super().__init__(message, code=code, details=details)
+
+
+class ParamTypeError(MixpanelHeadlessError, TypeError):
+    """A builder/facade argument guard rejected a value's type (registry-coded).
+
+    Dual-inherits from :class:`MixpanelHeadlessError` and :class:`TypeError`
+    so converted guard sites keep byte-identical messages and remain
+    catchable by existing ``except TypeError`` handlers, while carrying a
+    machine-readable registry ``.code`` for the conformance contract (R5.3).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "VALIDATION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the coded guard error.
+
+        Args:
+            message: Human-readable error message (byte-identical to the
+                pre-conversion builtin message at each converted site).
+            code: Machine-readable registry code for the violated rule.
+                Defaults to the generic ``VALIDATION_ERROR`` (R5.5
+                construction-path fallback).
+            details: Optional structured, deterministic, codec-encodable
+                data about the error.
+        """
+        super().__init__(message, code=code, details=details)
+
+
+class ResponseValidationError(MixpanelHeadlessError):
+    """An API response failed Pydantic model validation.
+
+    Raised at response-parsing seams when a Mixpanel API payload does not
+    match the expected response model. Deliberately does NOT subclass
+    ``ValueError`` (unlike ``pydantic.ValidationError``) — the wrap is a
+    real, sanctioned behavior change recorded by ruling E2. The original
+    pydantic error is chained via ``raise ... from exc``.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "RESPONSE_VALIDATION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the response validation error.
+
+        Args:
+            message: Human-readable error message.
+            code: Machine-readable error code. Defaults to the generic
+                ``RESPONSE_VALIDATION_ERROR`` (R5.5).
+            details: Optional structured data — typically the response
+                model name and ``pydantic`` error list.
+        """
+        super().__init__(message, code=code, details=details)
 
 
 # API Exceptions - Base class for HTTP errors
@@ -1480,3 +1579,176 @@ class UnsupportedReplayFormatError(SessionReplayError):
 
     _DEFAULT_CODE = "UNSUPPORTED_REPLAY_FORMAT"
     _DEFAULT_STATUS = 501
+
+
+# =============================================================================
+# Coded-guard registry (E2 coding pass)
+# =============================================================================
+
+CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
+    {
+        # -- B1: types.py cohort/metric families (design §1.1) --------------
+        "CF1_COHORT_ID_NOT_POSITIVE",
+        "CB1_COHORT_ID_NOT_POSITIVE",
+        "CM1_COHORT_ID_NOT_POSITIVE",
+        "CF2_COHORT_NAME_EMPTY",
+        "CB2_COHORT_NAME_EMPTY",
+        "CM2_COHORT_NAME_EMPTY",
+        "CD9_EMPTY_CRITERIA",
+        # -- B1: types.py CohortCriteria / cohort helpers (design §1.2) -----
+        "CD4_EMPTY_EVENT",
+        "CA1_AGGREGATION_PAIR",
+        "CA2_EMPTY_AGGREGATION_PROPERTY",
+        "CD1_FREQUENCY_PARAM_REQUIRED",
+        "CD2_FREQUENCY_NEGATIVE",
+        "CD3_TIME_CONSTRAINT_REQUIRED",
+        "CD3_WINDOW_NOT_POSITIVE",
+        "CD5_FROM_REQUIRES_TO",
+        "CD5_TO_REQUIRES_FROM",
+        "CD6_DATE_FORMAT",
+        "CD6_DATE_ORDER",
+        "CD6_DATE_INVALID",
+        "CD7_EMPTY_PROPERTY",
+        "CD8_COHORT_ID_NOT_POSITIVE",
+        "CD10_UNSUPPORTED_FILTER_OPERATOR",
+        # -- B1: types.py query-builder dataclass guards (design §1.3) ------
+        "TC0_INVALID_TYPE",
+        "TC1_REQUIRES_UNIT",
+        "TC1B_INVALID_UNIT",
+        "TC1_REJECTS_DATE",
+        "TC2_REQUIRES_DATE",
+        "TC2_REJECTS_UNIT",
+        "TC3_DATE_FORMAT",
+        "TC3B_DATE_INVALID",
+        "MT2_INVALID_SEGMENT_METHOD",
+        "FM1_EMPTY_EXPRESSION",
+        "LC1_MISSING_ITEM_FILTERS",
+        "LC2_MISSING_QUANTIFIER",
+        "FD1_QUANTITY_NOT_POSITIVE",
+        "FD2_DATE_ORDER",
+        "LC3_MIXED_ARGS",
+        "LC4_INVALID_QUANTIFIER",
+        "LC5_EMPTY_KWARG_KEY",
+        "LC6_KWARG_VALUE_TYPE",
+        "LC7_NO_CONDITIONS",
+        "LC8_NESTED_LIST_CONTAINS",
+        "LG1_EMPTY_SUB",
+        "LG2_INVALID_SUB_TYPE",
+        "GB1_EMPTY_PROPERTY",
+        "GB4_LIST_ITEM_BUCKETING",
+        "GB5_LIST_ITEM_PROPERTY_TYPE",
+        "EV1_EMPTY_EVENT",
+        "EV2_CONTROL_CHAR_EVENT",
+        "FB1_EMPTY_EVENT",
+        "FB2_BUCKET_SIZE_NOT_POSITIVE",
+        "FB3_BUCKET_ORDER",
+        "FB4_BUCKET_MIN_NEGATIVE",
+        "FF1_EMPTY_EVENT",
+        "FF2_INVALID_OPERATOR",
+        "FF3_VALUE_NEGATIVE",
+        "FF4_DATE_RANGE_PAIR",
+        "FF5_DATE_RANGE_VALUE_NOT_POSITIVE",
+        "EX1_FROM_STEP_NEGATIVE",
+        "EX2_STEP_ORDER",
+        "HC1_EMPTY_PROPERTY",
+        "FS1_SESSION_EVENT_MISMATCH",
+        # -- B1: types.py result/replay-model invariants (design §1.4) ------
+        # NOTE: the design's AT1/AT2/AT3 codes (AccountTestResult) are NOT
+        # minted: `AccountTestResult._ok_iff_no_error` is a pydantic
+        # `@model_validator`, so those three raise sites fall under the
+        # design's own P3 policy (a ValueError subclass raised inside a
+        # pydantic validator is wrapped into pydantic.ValidationError and
+        # the code is lost — verified empirically). They keep the builtin
+        # raise; their contract is the generic VALIDATION_ERROR boundary.
+        "RS1_EMPTY_REPLAY_ID",
+        "RS2_PROJECT_ID_NOT_POSITIVE",
+        "RS3_START_TIME_NOT_POSITIVE",
+        "RS4_INVALID_RETENTION_DAYS",
+        "SR1_URL_NO_TRAILING_SLASH",
+        "SR2_EMPTY_QUERY_STRING",
+        "SR3_INVALID_ENV",
+        "SR4_SIGNED_AT_NEGATIVE",
+        "UA1_TIMESTAMP_NOT_POSITIVE",
+        "UA2_EMPTY_TARGET_DESC",
+        "RE1_EMPTY_REPLAY_ID",
+        "RE2_EMPTY_EVENT_NAME",
+        "RE3_EVENT_TIME_NOT_POSITIVE",
+        "RP1_EMPTY_REPLAY_ID",
+        "RP2_PROJECT_ID_NOT_POSITIVE",
+        "RP3_START_TIME_NOT_POSITIVE",
+        "RP4_TIME_ORDER",
+        "RP5_INVALID_RETENTION_DAYS",
+        "RB1_PROJECT_ID_MISMATCH",
+        # -- B2: bookmark_builders.py + segfilter.py (design §1.5) ----------
+        "BB1_GROUP_BY_ELEMENT_TYPE",
+        "BB2_FLOW_PROPERTY_FILTER_EMPTY",
+        "BB3_FLOW_PROPERTY_FILTER_TYPE",
+        "BB4_FLOW_COHORT_FILTER_TYPE",
+        "BB5_FLOW_MULTIPLE_COHORT_FILTERS",
+        "BB6_COHORT_VALUE_NOT_LIST",
+        "BB7_COHORT_VALUE_NOT_DICT",
+        "BB8_COHORT_KEY_MISSING",
+        "SG1_UNKNOWN_STRING_OPERATOR",
+        "SG2_UNKNOWN_NUMBER_OPERATOR",
+        "SG3_UNKNOWN_DATETIME_OPERATOR",
+        "SG4_UNSUPPORTED_PROPERTY_TYPE",
+        # -- B3: user_builders.py + workspace.py + api_client.py (§1.6/§1.7) -
+        "ES1_PROPERTY_NOT_STRING",
+        "ES2_EQUALS_EXPECTS_LIST",
+        "ES3_EQUALS_NO_TERMS",
+        "ES4_NOT_EQUALS_EXPECTS_LIST",
+        "ES5_NOT_EQUALS_NO_TERMS",
+        "ES6_CONTAINS_EXPECTS_STR",
+        "ES7_NOT_CONTAINS_EXPECTS_STR",
+        "ES8_GT_EXPECTS_NUMBER",
+        "ES9_LT_EXPECTS_NUMBER",
+        "ES10_BETWEEN_EXPECTS_PAIR",
+        "ES11_BETWEEN_LOWER_NOT_NUMBER",
+        "ES12_BETWEEN_UPPER_NOT_NUMBER",
+        "ES13_UNSUPPORTED_OPERATOR",
+        "WR1_TOO_MANY_EVENT_PROPERTIES",
+        "WR2_LIMIT_TOO_SMALL",
+        "WR3_LIMIT_TOO_LARGE",
+        "WR4_REPLAY_SELECTOR_REQUIRED",
+        "WR5_DATE_RANGE_REQUIRED",
+        "WS1_TARGET_MUTUALLY_EXCLUSIVE",
+        "WS2_INVALID_LEVEL",
+        "AC1_BODY_MUTUALLY_EXCLUSIVE",
+        "AC2_DISTINCT_ID_CONFLICT",
+        "AC3_BEHAVIORS_COHORT_CONFLICT",
+        "AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT",
+        "AC5_BEHAVIORS_NOT_LIST",
+        "AC6_AS_OF_TIMESTAMP_FUTURE",
+        "RESPONSE_VALIDATION_ERROR",
+    }
+)
+"""Every full error code minted by the E2 uncoded-raise coding pass.
+
+Single source of truth for the codes newly introduced by the coding pass
+(design ``context/phase1/addendum/coding-pass-design.md`` §1), importable by
+tests (code-uniqueness guard) and the conformance recorder. Reused twin
+codes are listed separately in :data:`CODED_GUARD_TWIN_CODES` — they
+pre-exist in the registry and are deliberately NOT minted here.
+"""
+
+CODED_GUARD_TWIN_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "CM5_INLINE_COHORT_METRIC",
+        "V13_METRIC_MATH_PROPERTY",
+        "V26_PERCENTILE_REQUIRES_VALUE",
+        "V8_DATE_FORMAT",
+        "V8_DATE_INVALID",
+        "V12_BUCKET_SIZE_POSITIVE",
+        "V18_BUCKET_ORDER",
+        "FL3_FORWARD_RANGE",
+        "FL4_REVERSE_RANGE",
+    }
+)
+"""Pre-existing registry codes reused by dual-enforcement guard twins.
+
+Each converted fail-fast guard that duplicates an already-coded validator
+rule (the documented CM5 dual-enforcement pattern) carries the same full
+code as its validator twin; rule-identity was verified per site (design §1
+"Twin reuse"). These codes already exist in the code universe and are NOT
+part of :data:`CODED_GUARD_REGISTRY`.
+"""

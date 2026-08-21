@@ -1,0 +1,13 @@
+diff --git a/src/mixpanel_headless/_internal/query/user_builders.py b/src/mixpanel_headless/_internal/query/user_builders.py
+index 43cea6e..32c3b67 100644
+--- a/src/mixpanel_headless/_internal/query/user_builders.py
++++ b/src/mixpanel_headless/_internal/query/user_builders.py
+@@ -174,7 +174,7 @@ def filter_to_selector(f: Filter) -> str:
+         return " and ".join(parts)
+ 
+     if op == "contains":
+-        if not isinstance(value, str):
++        if isinstance(value, str):
+             raise ParamValidationError(
+                 f"Expected str for 'contains' operator, got {type(value).__name__}",
+                 code="ES6_CONTAINS_EXPECTS_STR",
