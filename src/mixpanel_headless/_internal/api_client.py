@@ -69,6 +69,52 @@ logger = logging.getLogger(__name__)
 # instead of aborting; 5xx / 401 / 429 / network errors still propagate.
 _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 
+# Exponential-backoff bounds shared by _calculate_backoff() and the
+# Retry-After clamp. A server-supplied Retry-After is honored up to
+# _BACKOFF_MAX_SECONDS; anything larger would park the process for hours.
+_BACKOFF_BASE_SECONDS = 1.0
+_BACKOFF_MAX_SECONDS = 60.0
+
+
+def _error_message(response_body: str | dict[str, Any] | None, default: str) -> str:
+    """Extract a human-readable error message from a parsed error body.
+
+    Mixpanel error bodies are either a JSON object with an ``error`` key, a
+    plain-text blob, or nothing at all. Any of those can be empty or blank,
+    which must not produce a blank exception message.
+
+    Args:
+        response_body: Parsed JSON object, raw text, or None.
+        default: Message to use when the body carries no usable error text.
+
+    Returns:
+        The extracted message, or ``default`` when the body is missing,
+        blank, or has no ``error`` key. Non-string ``error`` values (lists,
+        nested objects) are stringified rather than returned as-is.
+
+    Example:
+        ```python
+        _error_message({"error": "Invalid project"}, "Request failed")
+        # "Invalid project"
+        _error_message({"error": ["bad steps", "bad dates"]}, "Request failed")
+        # "['bad steps', 'bad dates']"
+        _error_message("   ", "Request failed")
+        # "Request failed"  (blank text falls back to the default)
+        _error_message(None, "Request failed")
+        # "Request failed"
+        ```
+    """
+    if isinstance(response_body, dict):
+        raw = response_body.get("error")
+        if raw is None:
+            return default
+        text = raw if isinstance(raw, str) else str(raw)
+    elif isinstance(response_body, str):
+        text = response_body[:200]
+    else:
+        return default
+    return text if text.strip() else default
+
 
 def _iter_jsonl_lines(response: httpx.Response) -> Iterator[str]:
     """Iterate over JSONL lines from a streaming response with proper buffering.
@@ -519,6 +565,7 @@ class MixpanelAPIClient:
                 request_method=request_method,
                 request_url=request_url,
                 request_params=request_params,
+                request_body=request_body,
             )
         if response.status_code == 403:
             # 044-session-replay: a 403 mentioning SESSION_RECORDING_SENSITIVE_DATA
@@ -551,11 +598,7 @@ class MixpanelAPIClient:
                     request_params=request_params,
                     request_body=request_body,
                 )
-            error_msg = "Permission denied"
-            if isinstance(response_body, dict):
-                error_msg = response_body.get("error", "Permission denied")
-            elif isinstance(response_body, str):
-                error_msg = response_body[:200] or "Permission denied"
+            error_msg = _error_message(response_body, "Permission denied")
             raise QueryError(
                 error_msg,
                 status_code=response.status_code,
@@ -566,11 +609,7 @@ class MixpanelAPIClient:
                 request_body=request_body,
             )
         if response.status_code == 400:
-            error_msg = "Unknown error"
-            if isinstance(response_body, dict):
-                error_msg = response_body.get("error", "Unknown error")
-            elif isinstance(response_body, str):
-                error_msg = response_body[:200]
+            error_msg = _error_message(response_body, "Unknown error")
             raise QueryError(
                 error_msg,
                 status_code=response.status_code,
@@ -581,11 +620,7 @@ class MixpanelAPIClient:
                 request_body=request_body,
             )
         if response.status_code == 404:
-            error_msg = "Resource not found"
-            if isinstance(response_body, dict):
-                error_msg = response_body.get("error", "Resource not found")
-            elif isinstance(response_body, str):
-                error_msg = response_body[:200] or "Resource not found"
+            error_msg = _error_message(response_body, "Resource not found")
             raise QueryError(
                 error_msg,
                 status_code=response.status_code,
@@ -599,11 +634,7 @@ class MixpanelAPIClient:
             # Any other 4xx (e.g., 412 Precondition Failed) — preserve the
             # response body and status as a QueryError instead of letting it
             # fall through to a generic HTTP error in _execute_with_retry().
-            error_msg = "Request failed"
-            if isinstance(response_body, dict):
-                error_msg = response_body.get("error", "Request failed")
-            elif isinstance(response_body, str):
-                error_msg = response_body[:200] or "Request failed"
+            error_msg = _error_message(response_body, "Request failed")
             raise QueryError(
                 error_msg,
                 status_code=response.status_code,
@@ -615,11 +646,9 @@ class MixpanelAPIClient:
             )
         if response.status_code >= 500:
             # Extract error message from response body if available
-            error_msg = f"Server error: {response.status_code}"
-            if isinstance(response_body, dict) and "error" in response_body:
-                error_msg = f"Server error: {response_body['error']}"
-            elif isinstance(response_body, str) and response_body:
-                error_msg = f"Server error: {response_body[:200]}"
+            error_msg = "Server error: " + _error_message(
+                response_body, str(response.status_code)
+            )
 
             raise ServerError(
                 error_msg,
@@ -657,11 +686,32 @@ class MixpanelAPIClient:
         Returns:
             Delay in seconds including jitter.
         """
-        base = 1.0
-        max_delay = 60.0
-        delay: float = min(base * (2**attempt), max_delay)
+        delay: float = min(_BACKOFF_BASE_SECONDS * (2**attempt), _BACKOFF_MAX_SECONDS)
         jitter: float = random.uniform(0, delay * 0.1)  # noqa: S311
         return delay + jitter
+
+    def _retry_wait_seconds(self, retry_after: int | None, attempt: int) -> float:
+        """Resolve how long to wait before retrying a rate-limited request.
+
+        ``Retry-After`` is server-controlled and therefore untrusted input.
+        ``_parse_retry_after`` already rejects unparseable and negative
+        values; this method additionally caps an implausibly large header
+        (``Retry-After: 86400``) at the same ceiling the exponential backoff
+        uses, so a single header can never park the process for hours.
+
+        Args:
+            retry_after: Validated Retry-After value in seconds, or None when
+                the header was absent or unusable.
+            attempt: Zero-based attempt number, used for the backoff fallback.
+
+        Returns:
+            A non-negative delay in seconds, at most ``_BACKOFF_MAX_SECONDS``
+            when it came from the header (the backoff fallback adds its own
+            jitter on top of that ceiling).
+        """
+        if retry_after is None:
+            return self._calculate_backoff(attempt)
+        return min(float(retry_after), _BACKOFF_MAX_SECONDS)
 
     def _execute_with_retry(
         self,
@@ -738,11 +788,9 @@ class MixpanelAPIClient:
                             request_params=params,
                             project_id=self.project_id,
                         )
-                    retry_after = self._parse_retry_after(response)
-                    if retry_after is not None:
-                        wait_time = float(retry_after)
-                    else:
-                        wait_time = self._calculate_backoff(attempt)
+                    wait_time = self._retry_wait_seconds(
+                        self._parse_retry_after(response), attempt
+                    )
                     logger.warning(
                         "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
                         wait_time,
@@ -1119,20 +1167,31 @@ class MixpanelAPIClient:
         return ref
 
     def _parse_retry_after(self, response: httpx.Response) -> int | None:
-        """Parse Retry-After header if present.
+        """Parse the Retry-After header if present and usable.
+
+        The header is attacker-controllable, so anything that is not a
+        non-negative integer count of seconds is treated as absent. In
+        particular a negative value is rejected: it would reach
+        ``time.sleep()`` (raising ValueError) and would be echoed as
+        ``RateLimitError.retry_after``, whose documented usage is
+        ``time.sleep(exc.retry_after or 60)``. HTTP-date form is not
+        supported and also reads as absent.
 
         Args:
             response: HTTP response.
 
         Returns:
-            Seconds to wait, or None if header not present.
+            Seconds to wait as a non-negative int, or None when the header is
+            missing, unparseable, or negative.
         """
         retry_after = response.headers.get("Retry-After")
         if retry_after is not None:
             try:
-                return int(retry_after)
+                parsed = int(retry_after)
             except ValueError:
-                pass
+                return None
+            if parsed >= 0:
+                return parsed
         return None
 
     # =========================================================================
@@ -1267,13 +1326,12 @@ class MixpanelAPIClient:
                             response_body=response_body,
                             request_method=method,
                             request_url=url,
+                            request_params=request_params,
                             project_id=self.project_id,
                         )
-                    retry_after = self._parse_retry_after(response)
-                    if retry_after is not None:
-                        wait_time = float(retry_after)
-                    else:
-                        wait_time = self._calculate_backoff(attempt)
+                    wait_time = self._retry_wait_seconds(
+                        self._parse_retry_after(response), attempt
+                    )
                     logger.warning(
                         "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
                         wait_time,
@@ -1290,15 +1348,14 @@ class MixpanelAPIClient:
                         err_body = response.json()
                     except json.JSONDecodeError:
                         err_body = response.text[:500] if response.text else None
-                    error_msg = "Unprocessable entity"
-                    if isinstance(err_body, dict):
-                        error_msg = str(err_body.get("error", error_msg))
+                    error_msg = _error_message(err_body, "Unprocessable entity")
                     raise QueryError(
                         error_msg,
                         status_code=422,
                         response_body=err_body,
                         request_method=method,
                         request_url=url,
+                        request_params=request_params,
                         request_body=request_body,
                     )
 
@@ -1324,6 +1381,7 @@ class MixpanelAPIClient:
                         "error": str(e),
                         "request_method": method,
                         "request_url": url,
+                        "request_params": request_params,
                     },
                 ) from e
 
@@ -1332,6 +1390,7 @@ class MixpanelAPIClient:
             "Rate limit exceeded after max retries",
             request_method=method,
             request_url=url,
+            request_params=request_params,
             project_id=self.project_id,
         )
 
@@ -1833,11 +1892,9 @@ class MixpanelAPIClient:
                                 request_params=params,
                                 project_id=self.project_id,
                             )
-                        retry_after = self._parse_retry_after(response)
-                        if retry_after is not None:
-                            wait_time = float(retry_after)
-                        else:
-                            wait_time = self._calculate_backoff(attempt)
+                        wait_time = self._retry_wait_seconds(
+                            self._parse_retry_after(response), attempt
+                        )
                         time.sleep(wait_time)
                         continue
 
@@ -1853,16 +1910,12 @@ class MixpanelAPIClient:
                         # Need to read body for error
                         body = response.read()
                         response_body: str | dict[str, Any] | None = None
-                        error_msg = "Unknown error"
                         try:
                             response_body = json.loads(body)
-                            if isinstance(response_body, dict):
-                                error_msg = response_body.get("error", "Unknown error")
                         except json.JSONDecodeError:
                             response_body = body.decode()[:500] if body else None
-                            error_msg = body.decode()[:200] if body else "Unknown error"
                         raise QueryError(
-                            error_msg,
+                            _error_message(response_body, "Unknown error"),
                             status_code=response.status_code,
                             response_body=response_body,
                             request_method="GET",

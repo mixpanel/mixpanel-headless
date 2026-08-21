@@ -15,7 +15,11 @@ import pytest
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.session import Session
-from mixpanel_headless._internal.pagination import paginate_all
+from mixpanel_headless._internal.pagination import (
+    _BACKOFF_MAX,
+    MAX_RATE_LIMIT_RETRIES,
+    paginate_all,
+)
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
@@ -403,7 +407,9 @@ class TestPaginateAllRobustness:
         """Verify that a 429 on the second page raises RateLimitError.
 
         Rate limits can occur mid-pagination; the error should propagate
-        as a proper RateLimitError.
+        as a proper RateLimitError. ``time.sleep`` is patched out so the retry
+        budget (3 x the advertised 30s) does not cost the suite 90 seconds of
+        real wall time.
         """
         call_count = 0
 
@@ -434,8 +440,14 @@ class TestPaginateAllRobustness:
             )
 
         client = create_mock_client(oauth_credentials, handler)
-        with client, pytest.raises(RateLimitError):
+        with (
+            patch("time.sleep") as mock_sleep,
+            client,
+            pytest.raises(RateLimitError),
+        ):
             list(paginate_all(client, "/projects/12345/items"))
+
+        assert [call.args[0] for call in mock_sleep.call_args_list] == [30.0] * 3
 
     def test_http_500_mid_pagination(self, oauth_credentials: Session) -> None:
         """Verify that a 500 on the second page raises ServerError.
@@ -502,3 +514,311 @@ class TestPaginateAllRobustness:
         client = create_mock_client(oauth_credentials, handler)
         with client, pytest.raises(AuthenticationError):
             list(paginate_all(client, "/projects/12345/items"))
+
+
+class TestPaginateAllMalformedResults:
+    """Test paginate_all() handling of a malformed ``results`` field."""
+
+    def test_null_results_treated_as_empty_page(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A JSON ``null`` ``results`` field must behave like an absent one.
+
+        A server that serializes an empty page as ``"results": null`` rather
+        than omitting the key must not crash the paginator with an unhandled
+        ``TypeError`` from ``yield from None``.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a page whose results field is JSON null.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                Response with ``results`` set to null and no next cursor.
+            """
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": None,
+                    "pagination": {"page_size": 100, "next_cursor": None},
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            items = list(paginate_all(client, "/projects/12345/items"))
+
+        assert items == []
+
+    def test_null_results_still_follows_next_cursor(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A null ``results`` page must not abort an otherwise healthy walk.
+
+        The cursor, not the results field, decides when iteration stops, so a
+        null page in the middle of a chain must be skipped and the next page
+        fetched.
+        """
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a null-results first page, then a normal second page.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                Null-results page or the final page of items.
+            """
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "results": None,
+                        "pagination": {"page_size": 100, "next_cursor": "c2"},
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": [{"id": 1}],
+                    "pagination": {"page_size": 100, "next_cursor": None},
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            items = list(paginate_all(client, "/projects/12345/items"))
+
+        assert items == [{"id": 1}]
+        assert call_count == 2
+
+    @pytest.mark.parametrize(
+        "results_value",
+        ["abc", 42, {"id": 1}, True],
+        ids=["string", "int", "dict", "bool"],
+    )
+    def test_non_list_results_raises_invalid_response(
+        self, oauth_credentials: Session, results_value: object
+    ) -> None:
+        """A non-list, non-null ``results`` field must raise a typed error.
+
+        Iterating a string would silently yield individual characters and
+        iterating a dict would yield keys; both are corrupt output dressed up
+        as success. The paginator must reject the response instead.
+
+        Args:
+            oauth_credentials: Session fixture.
+            results_value: Malformed value to place in the ``results`` field.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a page whose results field is not a list.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                Response with a malformed ``results`` field.
+            """
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": results_value,
+                    "pagination": {"page_size": 100, "next_cursor": None},
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(MixpanelHeadlessError, match="must be a list") as ei:
+            list(paginate_all(client, "/projects/12345/items"))
+
+        assert ei.value.code == "INVALID_RESPONSE"
+
+
+def run_rate_limited_pagination(
+    credentials: Session,
+    retry_after: str | None,
+    *,
+    always_429: bool = False,
+) -> tuple[list[float], list[BaseException]]:
+    """Drive a rate-limited pagination run and capture the sleep durations.
+
+    Args:
+        credentials: Session used to build the mock-transport client.
+        retry_after: Value for the ``Retry-After`` header, or ``None`` to omit
+            the header entirely.
+        always_429: When True every response is a 429 so the retry budget is
+            exhausted; when False only the first response is a 429.
+
+    Returns:
+        Tuple of (sleep durations passed to ``time.sleep``, exceptions raised
+        by the pagination run).
+    """
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Return a 429 (with optional Retry-After) then a terminal page.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            Rate-limit response or the final page of results.
+        """
+        nonlocal call_count
+        call_count += 1
+        if always_429 or call_count == 1:
+            headers = {} if retry_after is None else {"Retry-After": retry_after}
+            return httpx.Response(429, json={"error": "rate_limited"}, headers=headers)
+        return httpx.Response(
+            200,
+            json={
+                "status": "ok",
+                "results": [{"id": 1}],
+                "pagination": {"page_size": 100, "next_cursor": None},
+            },
+        )
+
+    raised: list[BaseException] = []
+    client = create_mock_client(credentials, handler)
+    with patch("time.sleep") as mock_sleep, client:
+        try:
+            list(paginate_all(client, "/projects/12345/items"))
+        except BaseException as exc:  # noqa: BLE001 - recorded for assertions
+            raised.append(exc)
+    durations = [float(call.args[0]) for call in mock_sleep.call_args_list]
+    return durations, raised
+
+
+class TestPaginateAllRetryAfter:
+    """Test defensive parsing of the ``Retry-After`` header before sleeping."""
+
+    def test_valid_retry_after_is_honored(self, oauth_credentials: Session) -> None:
+        """A sane numeric Retry-After must be used verbatim as the wait."""
+        durations, raised = run_rate_limited_pagination(oauth_credentials, "30")
+
+        assert durations == [30.0]
+        assert raised == []
+
+    @pytest.mark.parametrize(
+        "retry_after",
+        ["-1", "-0.5", "nan", "NaN", "inf", "-inf", "abc", "", "1,000"],
+        ids=[
+            "negative-int",
+            "negative-float",
+            "nan",
+            "nan-mixed-case",
+            "infinity",
+            "negative-infinity",
+            "garbage",
+            "empty",
+            "thousands-separator",
+        ],
+    )
+    def test_hostile_retry_after_falls_back_to_backoff(
+        self, oauth_credentials: Session, retry_after: str
+    ) -> None:
+        """Invalid Retry-After values must never reach ``time.sleep``.
+
+        ``time.sleep`` raises ValueError on negatives and NaN and OverflowError
+        on infinity, so an unvalidated header value turns a retryable 429 into
+        an unhandled crash out of a public iterator. Each of these must instead
+        fall back to the exponential-backoff schedule.
+
+        Args:
+            oauth_credentials: Session fixture.
+            retry_after: Hostile header value under test.
+        """
+        durations, raised = run_rate_limited_pagination(oauth_credentials, retry_after)
+
+        assert durations == [1.0]
+        assert raised == []
+
+    @pytest.mark.parametrize(
+        "retry_after",
+        ["999999", "1e9", "86400"],
+        ids=["huge-int", "exponent", "one-day"],
+    )
+    def test_oversized_retry_after_is_clamped(
+        self, oauth_credentials: Session, retry_after: str
+    ) -> None:
+        """A Retry-After beyond the backoff cap must be clamped, not obeyed.
+
+        Sleeping for a server-chosen day inside a paginator is a hang, so the
+        wait is bounded by the same cap the computed backoff uses.
+
+        Args:
+            oauth_credentials: Session fixture.
+            retry_after: Oversized header value under test.
+        """
+        durations, raised = run_rate_limited_pagination(oauth_credentials, retry_after)
+
+        assert durations == [_BACKOFF_MAX]
+        assert raised == []
+
+    def test_missing_retry_after_uses_exponential_backoff(
+        self, oauth_credentials: Session
+    ) -> None:
+        """With no Retry-After header the backoff schedule is unchanged."""
+        durations, raised = run_rate_limited_pagination(oauth_credentials, None)
+
+        assert durations == [1.0]
+        assert raised == []
+
+    def test_exhausted_retries_backoff_schedule_is_bounded(
+        self, oauth_credentials: Session
+    ) -> None:
+        """Every sleep in an exhausted retry run stays within the cap."""
+        durations, raised = run_rate_limited_pagination(
+            oauth_credentials, "inf", always_429=True
+        )
+
+        assert durations == [1.0, 2.0, 4.0]
+        assert len(durations) == MAX_RATE_LIMIT_RETRIES
+        assert all(0.0 <= d <= _BACKOFF_MAX for d in durations)
+        assert isinstance(raised[0], RateLimitError)
+
+    @pytest.mark.parametrize(
+        "retry_after",
+        ["-5", "nan", "inf", "abc"],
+        ids=["negative", "nan", "infinity", "garbage"],
+    )
+    def test_hostile_retry_after_not_reported_on_error(
+        self, oauth_credentials: Session, retry_after: str
+    ) -> None:
+        """A hostile header must not be echoed back as ``RateLimitError.retry_after``.
+
+        The documented caller pattern is ``time.sleep(e.retry_after or 60)``,
+        so surfacing a negative or non-finite value would just relocate the
+        crash into user code.
+
+        Args:
+            oauth_credentials: Session fixture.
+            retry_after: Hostile header value under test.
+        """
+        _, raised = run_rate_limited_pagination(
+            oauth_credentials, retry_after, always_429=True
+        )
+
+        assert isinstance(raised[0], RateLimitError)
+        assert raised[0].retry_after is None
+
+    def test_valid_retry_after_reported_on_error(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A sane header value is still reported on the raised RateLimitError."""
+        _, raised = run_rate_limited_pagination(
+            oauth_credentials, "45", always_429=True
+        )
+
+        assert isinstance(raised[0], RateLimitError)
+        assert raised[0].retry_after == 45

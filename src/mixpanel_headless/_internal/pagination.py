@@ -10,8 +10,8 @@ class methods instead of accessing this module directly.
 
 from __future__ import annotations
 
-import contextlib
 import logging
+import math
 import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -42,6 +42,44 @@ _BACKOFF_BASE: float = 1.0
 
 #: Maximum backoff delay in seconds.
 _BACKOFF_MAX: float = 60.0
+
+
+def _parse_retry_after(raw: str | None) -> float | None:
+    """Parse a ``Retry-After`` header value into a safe number of seconds.
+
+    The header is attacker- or bug-controlled input that would otherwise flow
+    straight into ``time.sleep()``, which raises ``ValueError`` on negative and
+    NaN values and ``OverflowError`` on infinity. Anything that is not a
+    finite, non-negative number is rejected so callers can fall back to the
+    exponential-backoff schedule.
+
+    HTTP-date form (RFC 9110) is not supported and is treated as unparseable,
+    matching the delta-seconds-only behaviour this module has always had.
+
+    Args:
+        raw: Raw header value, or ``None`` when the header is absent.
+
+    Returns:
+        The advertised delay in seconds, or ``None`` when the header is
+        absent, empty, unparseable, negative, NaN, or infinite. The value is
+        not capped — apply ``_BACKOFF_MAX`` at the point of sleeping.
+
+    Example:
+        ```python
+        _parse_retry_after("30")    # 30.0
+        _parse_retry_after("-1")    # None
+        _parse_retry_after("inf")   # None
+        ```
+    """
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        return None
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
 
 
 def paginate_all(
@@ -85,7 +123,8 @@ def paginate_all(
         RateLimitError: Rate limit exceeded after max retries (429).
         ServerError: Server-side errors (5xx).
         MixpanelHeadlessError: Client errors (400, 404, 422), network/connection
-            errors, or pagination limit exceeded.
+            errors, pagination limit exceeded, or a malformed body (non-JSON,
+            or a ``results`` field that is neither a list nor null).
 
     Example:
         ```python
@@ -144,12 +183,9 @@ def paginate_all(
 
             # Handle 429 with retry/backoff
             if response.status_code == 429:
+                advertised = _parse_retry_after(response.headers.get("Retry-After"))
                 if attempt >= MAX_RATE_LIMIT_RETRIES:
-                    retry_after_raw = response.headers.get("Retry-After")
-                    retry_after: int | None = None
-                    if retry_after_raw:
-                        with contextlib.suppress(ValueError):
-                            retry_after = int(retry_after_raw)
+                    retry_after = None if advertised is None else int(advertised)
                     raise RateLimitError(
                         "Rate limit exceeded after max retries during pagination",
                         retry_after=retry_after,
@@ -158,15 +194,12 @@ def paginate_all(
                         request_method="GET",
                         request_url=url,
                     )
-                retry_after_raw = response.headers.get("Retry-After")
-                wait_time: float
-                if retry_after_raw:
-                    try:
-                        wait_time = float(retry_after_raw)
-                    except ValueError:
-                        wait_time = min(_BACKOFF_BASE * (2**attempt), _BACKOFF_MAX)
-                else:
+                # Honor a sane Retry-After, but never sleep longer than the
+                # backoff cap — a server-advertised hour would hang the walk.
+                if advertised is None:
                     wait_time = min(_BACKOFF_BASE * (2**attempt), _BACKOFF_MAX)
+                else:
+                    wait_time = min(advertised, _BACKOFF_MAX)
                 logger.warning(
                     "Rate limited during pagination, retrying in %.1f seconds "
                     "(attempt %d/%d)",
@@ -223,7 +256,22 @@ def paginate_all(
         # Extract results
         results: list[Any] = []
         if isinstance(data, dict):
-            results = data.get("results", [])
+            raw_results = data.get("results")
+            if raw_results is None:
+                # Absent key and explicit JSON null both mean "no items here";
+                # the cursor, not this field, decides when iteration stops.
+                results = []
+            elif isinstance(raw_results, list):
+                results = raw_results
+            else:
+                # Iterating a str would yield characters and a dict would yield
+                # keys — corrupt output dressed up as success.
+                raise MixpanelHeadlessError(
+                    "Malformed paginated response: 'results' must be a list, got "
+                    f"{type(raw_results).__name__}",
+                    code="INVALID_RESPONSE",
+                    details={"path": path, "results_type": type(raw_results).__name__},
+                )
         elif isinstance(data, list):
             results = data
 

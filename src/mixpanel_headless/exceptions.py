@@ -507,6 +507,7 @@ class AuthenticationError(APIError):
         request_method: str | None = None,
         request_url: str | None = None,
         request_params: dict[str, Any] | None = None,
+        request_body: dict[str, Any] | None = None,
     ) -> None:
         """Initialize AuthenticationError.
 
@@ -517,6 +518,8 @@ class AuthenticationError(APIError):
             request_method: HTTP method used.
             request_url: Full request URL.
             request_params: Query parameters sent.
+            request_body: Request body sent (for POST/PATCH requests), so a
+                401 carries the same context as the other error branches.
         """
         super().__init__(
             message,
@@ -525,6 +528,7 @@ class AuthenticationError(APIError):
             request_method=request_method,
             request_url=request_url,
             request_params=request_params,
+            request_body=request_body,
             code="AUTH_FAILED",
         )
 

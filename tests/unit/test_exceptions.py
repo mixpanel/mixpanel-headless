@@ -503,6 +503,22 @@ class TestAPIErrorHierarchy:
         assert exc.status_code == 401
         assert exc.request_url == "https://api.example.com"
 
+    def test_authentication_error_carries_request_body(self) -> None:
+        """AuthenticationError accepts request_body like its sibling errors.
+
+        A 401 on a POST should expose the payload that was rejected, matching
+        the QueryError / ServerError branches.
+        """
+        exc = AuthenticationError(
+            "Invalid credentials",
+            request_method="POST",
+            request_url="https://api.example.com",
+            request_body={"name": "dash"},
+        )
+
+        assert exc.request_body == {"name": "dash"}
+        assert exc.to_dict()["details"]["request_body"] == {"name": "dash"}
+
     def test_rate_limit_error_inherits_from_api_error(self) -> None:
         """RateLimitError should inherit from APIError."""
         exc = RateLimitError(
