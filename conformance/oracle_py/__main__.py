@@ -44,7 +44,10 @@ def main() -> int:
         for raw_line in sys.stdin:
             response = server.handle_line(raw_line.rstrip("\r\n"))
             if response is not None:
-                print(response, flush=True)
+                # stdout is the JSON-RPC wire (design D14), not a log —
+                # write the protocol line to the stream explicitly.
+                sys.stdout.write(response + "\n")
+                sys.stdout.flush()
             if server.shutdown_requested:
                 break
     finally:
