@@ -28,6 +28,11 @@ from typing import Protocol
 
 from mixpanel_headless._internal.io_utils import atomic_write_bytes, reject_if_symlink
 from mixpanel_headless._internal.memory.limits import check_write_size
+from mixpanel_headless._internal.memory.locking import (
+    Fingerprint,
+    MemoryConflictError,
+    fingerprint_of,
+)
 from mixpanel_headless._internal.memory.paths import resolve_key
 
 __all__ = ["LocalFilesystemBackend", "MemoryBackend"]
@@ -83,6 +88,40 @@ class MemoryBackend(Protocol):
 
         Raises:
             ValueError: ``key`` is empty, absolute, or escapes the scope.
+        """
+        ...
+
+    def read_with_fingerprint(self, key: str) -> tuple[bytes | None, Fingerprint]:
+        """Return ``(current bytes or None, its fingerprint)``.
+
+        Args:
+            key: Relative key naming a note within the scope.
+
+        Returns:
+            A tuple of the stored bytes (or ``None`` if absent) and the
+            corresponding :class:`~mixpanel_headless._internal.memory.locking.Fingerprint`.
+
+        Raises:
+            ValueError: ``key`` is empty, absolute, or escapes the scope.
+        """
+        ...
+
+    def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> None:
+        """Atomically store ``data`` at ``key`` iff its current fingerprint matches.
+
+        Args:
+            key: Relative key naming a note within the scope.
+            data: Raw bytes to store if the fingerprint check passes.
+            expected: The fingerprint the caller believes is currently at
+                ``key`` (from a prior ``read_with_fingerprint`` call).
+
+        Raises:
+            MemoryConflictError: The current fingerprint at ``key`` no
+                longer equals ``expected``.
+            MemorySizeLimitError: ``len(data)`` exceeds
+                :data:`~mixpanel_headless._internal.memory.limits.MAX_MEMORY_WRITE_BYTES`.
+            ValueError: ``key`` is empty, absolute, or escapes the scope.
+            OSError: I/O failure.
         """
         ...
 
@@ -226,3 +265,58 @@ class LocalFilesystemBackend:
         """
         path = self._resolve(key)
         path.unlink(missing_ok=True)
+
+    def read_with_fingerprint(self, key: str) -> tuple[bytes | None, Fingerprint]:
+        """Return ``(current bytes or None, its fingerprint)``.
+
+        A convenience pairing of :meth:`read` with
+        :func:`~mixpanel_headless._internal.memory.locking.fingerprint_of`
+        so a caller never computes a fingerprint from a value it did not
+        just read (avoiding a caller-side TOCTOU between its own read and
+        its own hashing).
+
+        Args:
+            key: Relative key naming a note within the scope.
+
+        Returns:
+            ``(None, None)`` when no file exists at ``key``, otherwise
+            ``(data, fingerprint_of(data))``.
+
+        Raises:
+            ValueError: ``key`` is empty, absolute, or escapes the scope.
+            CredentialPathError: The note path is a symlink.
+            OSError: Other I/O failure.
+        """
+        data = self.read(key)
+        return data, fingerprint_of(data)
+
+    def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> None:
+        """Atomically store ``data`` at ``key`` iff its current fingerprint matches.
+
+        Makes exactly one attempt; never retries and never sleeps. The
+        fingerprint re-check runs first, strictly before the AIE-605 size
+        guard and strictly before any code path that could write to disk,
+        so a raised error at either checkpoint is a strict no-op with
+        respect to disk state.
+
+        Args:
+            key: Relative key naming a note within the scope.
+            data: Raw bytes to store if the fingerprint check passes.
+            expected: The fingerprint the caller believes is currently at
+                ``key`` (from a prior :meth:`read_with_fingerprint` call,
+                or ``None`` for a caller that believes the key does not
+                yet exist).
+
+        Raises:
+            MemoryConflictError: The current fingerprint at ``key`` no
+                longer equals ``expected``.
+            MemorySizeLimitError: ``len(data)`` exceeds
+                :data:`~mixpanel_headless._internal.memory.limits.MAX_MEMORY_WRITE_BYTES`.
+            ValueError: ``key`` is empty, absolute, or escapes the scope.
+            OSError: I/O failure.
+        """
+        current = self.read(key)
+        actual = fingerprint_of(current)
+        if actual != expected:
+            raise MemoryConflictError(key, expected, actual)
+        self.write(key, data)

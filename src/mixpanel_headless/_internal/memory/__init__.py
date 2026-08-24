@@ -31,6 +31,17 @@ from mixpanel_headless._internal.memory.limits import (
     MemorySizeLimitError,
     check_write_size,
 )
+from mixpanel_headless._internal.memory.locking import (
+    MAX_MEMORY_WRITE_ATTEMPTS,
+    RETRY_BACKOFF_BASE_SECONDS,
+    Fingerprint,
+    MemoryConflictError,
+    MemoryConflictRetriesExhaustedError,
+    MemoryLockingError,
+    fingerprint_of,
+    next_backoff_delay,
+    write_with_retry,
+)
 from mixpanel_headless._internal.memory.paths import (
     project_memory_dir,
     resolve_key,
@@ -42,13 +53,21 @@ from mixpanel_headless._internal.memory.paths import (
 __all__ = [
     "CONFIDENCE_LABELS",
     "ConfidenceLabel",
+    "Fingerprint",
     "LocalFilesystemBackend",
+    "MAX_MEMORY_WRITE_ATTEMPTS",
     "MAX_MEMORY_WRITE_BYTES",
     "MemoryBackend",
+    "MemoryConflictError",
+    "MemoryConflictRetriesExhaustedError",
     "MemoryEntry",
     "MemoryFormatError",
+    "MemoryLockingError",
     "MemorySizeLimitError",
+    "RETRY_BACKOFF_BASE_SECONDS",
     "check_write_size",
+    "fingerprint_of",
+    "next_backoff_delay",
     "parse",
     "project_memory_dir",
     "resolve_key",
@@ -56,4 +75,5 @@ __all__ = [
     "user_memory_dir",
     "validate_account_name",
     "validate_project_id",
+    "write_with_retry",
 ]

@@ -23,6 +23,11 @@ from mixpanel_headless._internal.memory.limits import (
     MAX_MEMORY_WRITE_BYTES,
     MemorySizeLimitError,
 )
+from mixpanel_headless._internal.memory.locking import (
+    Fingerprint,
+    MemoryConflictError,
+    fingerprint_of,
+)
 
 
 @pytest.fixture
@@ -305,6 +310,18 @@ class _InMemoryBackend:
         """Remove ``key`` if present."""
         self._store.pop(key, None)
 
+    def read_with_fingerprint(self, key: str) -> tuple[bytes | None, Fingerprint]:
+        """Return the stored bytes for ``key`` and their fingerprint."""
+        data = self.read(key)
+        return data, fingerprint_of(data)
+
+    def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> None:
+        """Store ``data`` at ``key`` iff its current fingerprint matches ``expected``."""
+        actual = fingerprint_of(self.read(key))
+        if actual != expected:
+            raise MemoryConflictError(key, expected, actual)
+        self.write(key, data)
+
 
 def _exercise(backend: MemoryBackend) -> list[str]:
     """Run a write/read/list/delete sequence through the abstract seam.
@@ -321,6 +338,107 @@ def _exercise(backend: MemoryBackend) -> list[str]:
     backend.delete("a.md")
     assert backend.read("a.md") is None
     return listing
+
+
+class TestReadWithFingerprint:
+    """``read_with_fingerprint`` pairs current bytes with their fingerprint."""
+
+    def test_absent_key_returns_none_none(self, scope_dir: Path) -> None:
+        """An absent key returns ``(None, None)``."""
+        backend = LocalFilesystemBackend(scope_dir)
+        assert backend.read_with_fingerprint("missing.md") == (None, None)
+
+    def test_existing_key_returns_data_and_its_fingerprint(
+        self, scope_dir: Path
+    ) -> None:
+        """An existing key returns its bytes and ``fingerprint_of(data)``."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("notes.md", b"content")
+        data, fp = backend.read_with_fingerprint("notes.md")
+        assert data == b"content"
+        assert fp == fingerprint_of(b"content")
+
+
+class TestWriteIfMatchUncontested:
+    """An uncontested ``write_if_match`` behaves like ``write`` plus one check."""
+
+    def test_fresh_key_with_none_expected_succeeds(self, scope_dir: Path) -> None:
+        """A fresh key with ``expected=None`` commits and reads back exactly."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write_if_match("fresh.md", b"new content", expected=None)
+        assert backend.read("fresh.md") == b"new content"
+
+    def test_existing_key_overwrite_succeeds(self, scope_dir: Path) -> None:
+        """An existing key whose fingerprint matches ``expected`` is overwritten."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("existing.md", b"old")
+        _, fp = backend.read_with_fingerprint("existing.md")
+        backend.write_if_match("existing.md", b"new", expected=fp)
+        assert backend.read("existing.md") == b"new"
+
+    def test_oversized_data_raises_size_error_not_conflict(
+        self, scope_dir: Path
+    ) -> None:
+        """A matching fingerprint with oversized data raises ``MemorySizeLimitError``."""
+        backend = LocalFilesystemBackend(scope_dir)
+        oversized = b"x" * (MAX_MEMORY_WRITE_BYTES + 1)
+        with pytest.raises(MemorySizeLimitError):
+            backend.write_if_match("fresh.md", oversized, expected=None)
+        assert backend.read("fresh.md") is None
+
+
+class TestWriteIfMatchConflictDetection:
+    """A stale fingerprint at commit time raises ``MemoryConflictError``."""
+
+    def test_create_vs_create_race_detected(self, scope_dir: Path) -> None:
+        """Believing a key absent when another writer already created it conflicts."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("shared.md", b"winner's content")
+
+        with pytest.raises(MemoryConflictError) as exc_info:
+            backend.write_if_match("shared.md", b"loser's content", expected=None)
+
+        err = exc_info.value
+        assert err.actual == fingerprint_of(b"winner's content")
+        assert err.expected is None
+        assert backend.read("shared.md") == b"winner's content"
+
+    def test_modify_vs_modify_race_detected(self, scope_dir: Path) -> None:
+        """A stale fingerprint against an intervening overwrite conflicts."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("shared.md", b"original")
+        _, stale_fp = backend.read_with_fingerprint("shared.md")
+        backend.write("shared.md", b"intervening writer's update")
+
+        with pytest.raises(MemoryConflictError):
+            backend.write_if_match(
+                "shared.md", b"stale writer's update", expected=stale_fp
+            )
+
+        assert backend.read("shared.md") == b"intervening writer's update"
+
+    def test_modify_vs_delete_race_detected(self, scope_dir: Path) -> None:
+        """A stale fingerprint against an intervening delete conflicts with actual=None."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("shared.md", b"original")
+        _, stale_fp = backend.read_with_fingerprint("shared.md")
+        backend.delete("shared.md")
+
+        with pytest.raises(MemoryConflictError) as exc_info:
+            backend.write_if_match(
+                "shared.md", b"stale writer's update", expected=stale_fp
+            )
+
+        assert exc_info.value.actual is None
+        assert backend.read("shared.md") is None
+
+    def test_conflict_leaves_no_tmp_file(self, scope_dir: Path) -> None:
+        """A detected conflict never invokes the atomic-write path at all."""
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("shared.md", b"winner's content")
+        with pytest.raises(MemoryConflictError):
+            backend.write_if_match("shared.md", b"loser's content", expected=None)
+        assert list(scope_dir.rglob("*.tmp.*")) == []
 
 
 class TestProtocolConformance:
