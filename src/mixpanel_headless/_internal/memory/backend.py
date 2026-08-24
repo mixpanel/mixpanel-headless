@@ -18,11 +18,21 @@ and reads refuse a symlinked note path
 intentionally do NOT enforce the credential owner-only-mode rule or the 1 MiB
 credential size cap — memory notes are not secrets in that sense, and the
 future team backend may carry files with looser permission bits.
+
+Concurrency posture: ``write_if_match`` guards its compare-and-commit
+sequence with an exclusive ``flock`` on the scope directory
+(``LocalFilesystemBackend._locked_scope``) so two processes racing on the
+same key can never both pass the fingerprint check and both commit — one
+of them always observes the other's write and raises
+``MemoryConflictError``. POSIX-only (guarded ``fcntl`` import); degrades
+to no cross-process guarantee on Windows.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Protocol
 
@@ -34,6 +44,14 @@ from mixpanel_headless._internal.memory.locking import (
     fingerprint_of,
 )
 from mixpanel_headless._internal.memory.paths import resolve_key
+
+try:
+    # POSIX only. Guarded so the module still imports on Windows; the
+    # cross-process mutual exclusion in ``write_if_match`` degrades to a
+    # no-op there (see ``LocalFilesystemBackend._locked_scope``).
+    import fcntl
+except ImportError:  # pragma: no cover — exercised only on Windows CI
+    fcntl = None  # type: ignore[assignment]
 
 __all__ = ["LocalFilesystemBackend", "MemoryBackend"]
 
@@ -109,6 +127,15 @@ class MemoryBackend(Protocol):
     def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> None:
         """Atomically store ``data`` at ``key`` iff its current fingerprint matches.
 
+        The re-read of the current fingerprint, the comparison against
+        ``expected``, and the commit are one mutually-exclusive critical
+        section with respect to every other process calling
+        ``write_if_match`` against the same scope directory, so two
+        processes racing on the same key can never both observe a
+        matching fingerprint and both commit (see
+        ``LocalFilesystemBackend.write_if_match`` for the locking
+        mechanism).
+
         Args:
             key: Relative key naming a note within the scope.
             data: Raw bytes to store if the fingerprint check passes.
@@ -169,6 +196,53 @@ class LocalFilesystemBackend:
             ValueError: ``key`` is empty, absolute, or escapes the scope.
         """
         return resolve_key(self._scope_dir, key)
+
+    @contextlib.contextmanager
+    def _locked_scope(self) -> Iterator[None]:
+        """Hold an exclusive, cross-process lock scoped to this backend's directory.
+
+        Backs the mutual exclusion :meth:`write_if_match` needs: the
+        directory is opened and ``flock``-ed for the duration of the
+        ``with`` block, so any other process (or thread) doing the same
+        for the same scope directory blocks until this one exits the
+        block. The lock is held on the directory itself (not a
+        dedicated lock file), so no extra entry ever appears in
+        :meth:`list`'s output and no lock-file cleanup is needed.
+
+        The scope directory is created first (idempotently) if absent,
+        since a directory must exist to be opened and locked — this is
+        why a fresh, never-written-to scope can now have its directory
+        created as a side effect of a call that ultimately conflicts or
+        fails the size guard (see the updated ``write_if_match``
+        contract).
+
+        On platforms without ``fcntl`` (Windows), this degrades to a
+        plain no-op context manager — cross-process mutual exclusion is
+        POSIX-only here and is not silently faked.
+
+        Yields:
+            Nothing; the block runs with the lock held (or, on Windows,
+            with no lock at all).
+
+        Raises:
+            OSError: The directory cannot be created or opened.
+        """
+        self._ensure_dir(self._scope_dir)
+        if fcntl is None:  # pragma: no cover — exercised only on Windows CI
+            yield
+            return
+        dir_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            dir_flags |= os.O_DIRECTORY
+        fd = os.open(str(self._scope_dir), dir_flags)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
     @staticmethod
     def _ensure_dir(directory: Path) -> None:
@@ -294,10 +368,26 @@ class LocalFilesystemBackend:
         """Atomically store ``data`` at ``key`` iff its current fingerprint matches.
 
         Makes exactly one attempt; never retries and never sleeps. The
-        fingerprint re-check runs first, strictly before the AIE-605 size
+        re-read of the current fingerprint, its comparison against
+        ``expected``, and the eventual commit all happen while holding an
+        exclusive ``flock`` on the scope directory (:meth:`_locked_scope`),
+        so two processes racing on the same key can never both observe a
+        matching fingerprint and both commit — one always loses the lock
+        acquisition, re-observes the other's already-committed fingerprint,
+        and raises ``MemoryConflictError`` instead of silently clobbering
+        it. This is what makes "atomically" in this docstring literally
+        true across processes, not just within one.
+
+        The fingerprint re-check runs first, strictly before the size
         guard and strictly before any code path that could write to disk,
         so a raised error at either checkpoint is a strict no-op with
-        respect to disk state.
+        respect to note/tmp file state (the scope directory itself may
+        now be created as a side effect of acquiring the lock — see
+        :meth:`_locked_scope`).
+
+        On platforms without ``fcntl`` (Windows), the lock degrades to a
+        no-op and this method's cross-process guarantee does not hold —
+        only the single-process, single-attempt fingerprint check remains.
 
         Args:
             key: Relative key naming a note within the scope.
@@ -315,8 +405,9 @@ class LocalFilesystemBackend:
             ValueError: ``key`` is empty, absolute, or escapes the scope.
             OSError: I/O failure.
         """
-        current = self.read(key)
-        actual = fingerprint_of(current)
-        if actual != expected:
-            raise MemoryConflictError(key, expected, actual)
-        self.write(key, data)
+        self._resolve(key)  # validate before locking/creating the scope dir
+        with self._locked_scope():
+            _, actual = self.read_with_fingerprint(key)
+            if actual != expected:
+                raise MemoryConflictError(key, expected, actual)
+            self.write(key, data)

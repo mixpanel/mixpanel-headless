@@ -6,8 +6,8 @@ writer, plus the one orchestration function (:func:`write_with_retry`)
 that composes them with the I/O-bearing ``backend.py`` methods into an
 automatic, bounded retry loop. Everything in this module is free of
 filesystem and network I/O except the single ``time.sleep`` call inside
-:func:`write_with_retry`'s loop body, matching the pure/IO split
-``limits.py`` established for AIE-605.
+:func:`write_with_retry`'s loop body, matching the pure/IO split also
+used by the write-time size-limit module (``limits.py``).
 """
 
 from __future__ import annotations
@@ -39,16 +39,15 @@ Fingerprint = bytes | None
 ``bytes`` (a 32-byte ``sha256`` digest) when content exists at a key, or
 the ``None`` singleton when no file exists at that key. ``None`` can
 never be confused with a digest at the type level, so a create-vs-create
-race is detected the same way as a modify-vs-modify race (FR-009).
+race is detected the same way as a modify-vs-modify race.
 """
 
 MAX_MEMORY_WRITE_ATTEMPTS: Final[int] = 5
 """Total attempts :func:`write_with_retry` makes, including the first.
 
 Locked at 5 (the first attempt plus up to 4 retries) — not configurable
-per call in this slice (FR-005). Every caller of the retrying helper
-shares this single constant so retry behavior cannot drift between call
-sites.
+per call. Every caller of the retrying helper shares this single constant
+so retry behavior cannot drift between call sites.
 """
 
 RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.015
@@ -121,8 +120,8 @@ class MemoryLockingError(Exception):
     :class:`MemoryConflictRetriesExhaustedError` remain siblings: catching
     one never incidentally catches the other. Subclasses plain
     ``Exception`` (not ``ValueError``) so this hierarchy stays independent
-    of AIE-605's ``MemorySizeLimitError``, which has no memory-specific
-    base of its own to align with.
+    of ``MemorySizeLimitError``, which has no memory-specific base of its
+    own to align with.
     """
 
 
@@ -170,7 +169,7 @@ class MemoryConflictRetriesExhaustedError(MemoryLockingError):
     Distinct from, and not a subclass of, :class:`MemoryConflictError` —
     exhausting a bounded retry budget is a different failure mode from a
     single collision, so a caller can catch either specifically without
-    the other leaking through a shared parent (FR-012).
+    the other leaking through a shared parent.
 
     Attributes:
         key: The memory key that could not be committed.
@@ -227,7 +226,7 @@ def write_with_retry(
 
     ``MemorySizeLimitError`` from any attempt is never caught, retried, or
     wrapped — it propagates immediately, since an oversized payload is an
-    unrelated failure mode from a stale-fingerprint conflict (FR-010).
+    unrelated failure mode from a stale-fingerprint conflict.
 
     Args:
         backend: The ``MemoryBackend`` to read from and write to.
@@ -239,7 +238,7 @@ def write_with_retry(
         MemoryConflictRetriesExhaustedError: Every attempt within
             ``MAX_MEMORY_WRITE_ATTEMPTS`` raised ``MemoryConflictError``.
         MemorySizeLimitError: Any attempt's mutated content exceeds the
-            AIE-605 per-file byte ceiling. Never retried.
+            per-file byte ceiling. Never retried.
         ValueError: ``key`` is empty, absolute, or escapes the scope.
         OSError: I/O failure.
 
@@ -251,20 +250,17 @@ def write_with_retry(
         write_with_retry(backend, "notes.md", append_line)
         ```
     """
-    for attempt in range(1, MAX_MEMORY_WRITE_ATTEMPTS + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         current, fingerprint = backend.read_with_fingerprint(key)
         new_data = mutate(current)
         try:
             backend.write_if_match(key, new_data, expected=fingerprint)
             return
         except MemoryConflictError as exc:
-            if attempt < MAX_MEMORY_WRITE_ATTEMPTS:
-                time.sleep(next_backoff_delay())
-                continue
-            raise MemoryConflictRetriesExhaustedError(
-                key, MAX_MEMORY_WRITE_ATTEMPTS, exc
-            ) from exc
-    # Unreachable: the loop always returns or raises on its final attempt.
-    raise AssertionError(  # pragma: no cover
-        "write_with_retry loop exited without returning or raising"
-    )
+            if attempt >= MAX_MEMORY_WRITE_ATTEMPTS:
+                raise MemoryConflictRetriesExhaustedError(
+                    key, MAX_MEMORY_WRITE_ATTEMPTS, exc
+                ) from exc
+            time.sleep(next_backoff_delay())

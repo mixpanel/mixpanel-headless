@@ -440,6 +440,33 @@ class TestWriteIfMatchConflictDetection:
             backend.write_if_match("shared.md", b"loser's content", expected=None)
         assert list(scope_dir.rglob("*.tmp.*")) == []
 
+    def test_conflict_on_fresh_scope_creates_only_the_scope_dir(
+        self, scope_dir: Path
+    ) -> None:
+        """A conflict against a never-before-touched scope creates just the scope dir.
+
+        The mutual-exclusion lock (an ``flock`` on the scope directory's
+        fd) requires the directory to exist to be opened, so
+        ``write_if_match`` now unconditionally ensures the scope
+        directory exists as its first step -- even when the call goes
+        on to conflict. This is the one documented exception to "no
+        directory is created" (see the contract doc). No file at the
+        key, and no *other* directory, is created.
+        """
+        assert not scope_dir.exists()
+        backend = LocalFilesystemBackend(scope_dir)
+        bogus_expected = fingerprint_of(b"content that was never written")
+
+        with pytest.raises(MemoryConflictError) as exc_info:
+            backend.write_if_match(
+                "fresh.md", b"loser's content", expected=bogus_expected
+            )
+
+        assert exc_info.value.actual is None
+        assert scope_dir.is_dir()
+        assert backend.read("fresh.md") is None
+        assert list(scope_dir.iterdir()) == []
+
 
 class TestProtocolConformance:
     """A caller typed against ``MemoryBackend`` works for any implementation."""

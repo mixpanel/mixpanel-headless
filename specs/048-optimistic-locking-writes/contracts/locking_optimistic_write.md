@@ -126,12 +126,55 @@ def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> Non
   - **Then**:
     1. `MemoryConflictError(key, expected, actual)` is raised, where
        `actual` is the fingerprint observed at the start of this call.
-    2. No directory is created that did not already exist.
+    2. **The scope directory itself may now be created if it did not
+       already exist** — this is the one documented exception to "no
+       directory is created." Closing the cross-process TOCTOU race (two
+       processes both passing the fingerprint check and both committing,
+       silently losing one update — see the locking design note below)
+       requires holding an OS-level lock across the re-read, the
+       comparison, and the commit. The lock is an `flock` on the scope
+       directory's own file descriptor (no separate lock file), and a
+       directory must exist to be opened, so `write_if_match` now
+       unconditionally ensures the scope directory exists as the very
+       first step, before the fingerprint re-check runs — even on a call
+       that goes on to conflict or fail the size guard. No directory
+       *other than* the scope directory itself (e.g. no intermediate
+       directory for a nested key) is created on a conflict or
+       size-guard failure.
     3. No file is created at `key` if none existed before the call.
     4. If a file already existed at `key`, its on-disk bytes are
        byte-for-byte unchanged after the call.
     5. No tmp file is left behind — the underlying `atomic_write_bytes`
        (via `write()`) is never invoked when the fingerprint check fails.
+
+### Locking design — closing the cross-process TOCTOU race
+
+The original version of this contract described `write_if_match` as
+"atomic" while actually performing three unsynchronized syscalls (read
+fingerprint → compare → write). Two separate *processes* (e.g. a live
+session and a background curator) could both read a matching fingerprint,
+both pass the comparison, and both call `write()` — the second `os.replace`
+silently discards the first, and neither process observes
+`MemoryConflictError`. `write_with_retry`'s in-process retry loop cannot
+detect this: the losing write lands from an entirely different process,
+outside anything the retry loop reads.
+
+The fix: `write_if_match` holds an exclusive `fcntl.flock` on the scope
+directory's file descriptor for the full duration of the re-read +
+compare + commit. This serializes every `write_if_match` call against
+every other one that targets the same scope directory (coarser than
+per-key — all keys within one scope share the lock — chosen for
+simplicity and because it avoids creating any per-key lock file that
+would otherwise show up in `list()`'s output). The lock is released
+(and the directory fd closed) in a `finally`, on every exit path:
+success, conflict, size-guard failure, or an unrelated `OSError`.
+
+`fcntl` is POSIX-only. The import is guarded (`try`/`except ImportError`)
+so the module still imports on Windows; there, `write_if_match` degrades
+explicitly to no cross-process locking (single-process, single-attempt
+fingerprint check only) rather than silently pretending to lock. This is
+a documented gap, not a regression — no OS-level lock existed on any
+platform before this fix.
 
 ### New postcondition — fingerprint match (no conflict)
 

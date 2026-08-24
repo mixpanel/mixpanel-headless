@@ -23,6 +23,7 @@ from mixpanel_headless._internal.memory.limits import (
 from mixpanel_headless._internal.memory.locking import (
     MAX_MEMORY_WRITE_ATTEMPTS,
     RETRY_BACKOFF_BASE_SECONDS,
+    Fingerprint,
     MemoryConflictError,
     MemoryConflictRetriesExhaustedError,
     MemoryLockingError,
@@ -246,6 +247,195 @@ class TestWriteWithRetryExhaustion:
             backend.read("contended.md")
             == f"racer-{MAX_MEMORY_WRITE_ATTEMPTS}".encode()
         )
+
+
+class _RaisingWriteBackend:
+    """Fake backend whose ``write_if_match`` always raises a given exception.
+
+    Used to verify that :func:`write_with_retry` does not treat a
+    non-``MemoryConflictError`` failure as retryable.
+    """
+
+    def __init__(self, exc: Exception) -> None:
+        """Store the exception to raise from ``write_if_match``.
+
+        Args:
+            exc: The exception instance to raise on every ``write_if_match``
+                call.
+        """
+        self._exc = exc
+        self.write_if_match_calls = 0
+
+    def read(self, key: str) -> bytes | None:
+        """Unused by :func:`write_with_retry`; not exercised by this fake.
+
+        Args:
+            key: Ignored.
+
+        Raises:
+            NotImplementedError: Always -- this fake only supports the
+                ``read_with_fingerprint`` / ``write_if_match`` pairing.
+        """
+        raise NotImplementedError
+
+    def write(self, key: str, data: bytes) -> None:
+        """Unused by :func:`write_with_retry`; not exercised by this fake.
+
+        Args:
+            key: Ignored.
+            data: Ignored.
+
+        Raises:
+            NotImplementedError: Always -- this fake only supports the
+                ``read_with_fingerprint`` / ``write_if_match`` pairing.
+        """
+        raise NotImplementedError
+
+    def list(self, prefix: str = "") -> list[str]:
+        """Unused by :func:`write_with_retry`; not exercised by this fake.
+
+        Args:
+            prefix: Ignored.
+
+        Raises:
+            NotImplementedError: Always -- this fake only supports the
+                ``read_with_fingerprint`` / ``write_if_match`` pairing.
+        """
+        raise NotImplementedError
+
+    def delete(self, key: str) -> None:
+        """Unused by :func:`write_with_retry`; not exercised by this fake.
+
+        Args:
+            key: Ignored.
+
+        Raises:
+            NotImplementedError: Always -- this fake only supports the
+                ``read_with_fingerprint`` / ``write_if_match`` pairing.
+        """
+        raise NotImplementedError
+
+    def read_with_fingerprint(self, key: str) -> tuple[bytes | None, Fingerprint]:
+        """Return a fixed ``(None, None)`` pair regardless of ``key``.
+
+        Args:
+            key: Ignored.
+
+        Returns:
+            ``(None, None)`` — this fake has no persisted content.
+        """
+        return None, None
+
+    def write_if_match(self, key: str, data: bytes, *, expected: Fingerprint) -> None:
+        """Record the call and raise the stored exception.
+
+        Args:
+            key: Ignored.
+            data: Ignored.
+            expected: Ignored.
+
+        Raises:
+            Exception: Always raises the exception passed to ``__init__``.
+        """
+        self.write_if_match_calls += 1
+        raise self._exc
+
+
+class TestWriteWithRetryNonConflictError:
+    """A non-conflict error from ``write_if_match`` is never retried."""
+
+    def test_os_error_propagates_immediately_no_retry(self) -> None:
+        """``OSError`` from ``write_if_match`` propagates on the first attempt."""
+        backend = _RaisingWriteBackend(OSError("disk full"))
+
+        with pytest.raises(OSError, match="disk full"):
+            write_with_retry(backend, "notes.md", lambda _current: b"x")
+
+        assert backend.write_if_match_calls == 1
+
+
+class TestWriteWithRetryBackoffSleep:
+    """The backoff delay is slept exactly once per genuine conflict."""
+
+    def test_sleeps_once_with_backoff_value_on_single_conflict(
+        self, scope_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One conflict then success sleeps exactly once with the jittered value."""
+        backend = LocalFilesystemBackend(scope_dir)
+        sleep_calls: list[float] = []
+        fixed_delay = 0.007
+
+        monkeypatch.setattr(
+            "mixpanel_headless._internal.memory.locking.time.sleep",
+            lambda seconds: sleep_calls.append(seconds),
+        )
+        monkeypatch.setattr(
+            "mixpanel_headless._internal.memory.locking.next_backoff_delay",
+            lambda: fixed_delay,
+        )
+
+        calls: list[bytes | None] = []
+
+        def mutate(current: bytes | None) -> bytes:
+            calls.append(current)
+            if len(calls) == 1:
+                backend.write("shared.md", b"someone else's update")
+            return (current or b"") + b"\nmy update"
+
+        write_with_retry(backend, "shared.md", mutate)
+
+        assert sleep_calls == [fixed_delay]
+
+
+class TestWriteWithRetryBoundaryAttempts:
+    """The attempt count boundary at ``MAX_MEMORY_WRITE_ATTEMPTS`` is exact."""
+
+    def test_succeeds_on_final_attempt_after_max_minus_one_conflicts(
+        self, scope_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Exactly ``MAX_MEMORY_WRITE_ATTEMPTS - 1`` conflicts then success returns normally.
+
+        Guards against an off-by-one in the ``attempt >= MAX_MEMORY_WRITE_ATTEMPTS``
+        check: the caller's own final attempt must be allowed to succeed
+        without ever being mistaken for an exhausted retry budget.
+        """
+        backend = LocalFilesystemBackend(scope_dir)
+        backend.write("contended.md", b"seed")
+        monkeypatch.setattr(
+            "mixpanel_headless._internal.memory.locking.time.sleep",
+            lambda _seconds: None,
+        )
+        call_count = {"n": 0}
+        conflicts_to_inject = MAX_MEMORY_WRITE_ATTEMPTS - 1
+
+        def mutate(current: bytes | None) -> bytes:
+            call_count["n"] += 1
+            if call_count["n"] <= conflicts_to_inject:
+                backend.write("contended.md", f"racer-{call_count['n']}".encode())
+            return b"final content"
+
+        write_with_retry(backend, "contended.md", mutate)
+
+        assert call_count["n"] == MAX_MEMORY_WRITE_ATTEMPTS
+        assert backend.read("contended.md") == b"final content"
+
+
+class TestWriteWithRetryMutateRaises:
+    """A mutate callback's own exception is never swallowed or retried."""
+
+    def test_mutate_exception_propagates_immediately(self, scope_dir: Path) -> None:
+        """An exception raised by ``mutate`` propagates with no retry."""
+        backend = LocalFilesystemBackend(scope_dir)
+        call_count = {"n": 0}
+
+        def mutate(current: bytes | None) -> bytes:
+            call_count["n"] += 1
+            raise ValueError("mutate blew up")
+
+        with pytest.raises(ValueError, match="mutate blew up"):
+            write_with_retry(backend, "notes.md", mutate)
+
+        assert call_count["n"] == 1
 
 
 class TestWriteWithRetrySizeLimit:
