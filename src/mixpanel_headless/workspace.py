@@ -1357,8 +1357,9 @@ class Workspace:
         adjacency between events and the properties that appear on them. The
         adjacency comes from the query API's per-event properties gather, which
         tolerates large projects (the App API join it replaces timed out at the
-        ~120s gateway deadline); on very large projects the gather can still
-        take minutes. The result is a typed :class:`SchemaGraphResult` with
+        ~120s gateway deadline). The gather runs in 200-event ``name[]`` chunks
+        so no single request outlives the ~210s edge-gateway deadline (DF-802);
+        on very large projects the full gather can still take minutes. The result is a typed :class:`SchemaGraphResult` with
         DataFrame views (``events_df``, ``properties_df``,
         ``relationships_df``) and a ``to_graph()`` networkx export.
 

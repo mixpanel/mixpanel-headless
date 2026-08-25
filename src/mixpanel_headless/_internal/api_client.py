@@ -195,6 +195,17 @@ _SERVER_DEADLINE_MARGIN_S: float = 15.0
 DEFAULT_APP_TIMEOUT_S: float = APP_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
 DEFAULT_QUERY_TIMEOUT_S: float = QUERY_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
 
+# The per-event properties gather (DF-802). One unchunked
+# ``fetch_per_event_properties`` request serializes the whole project's arb
+# property batches server-side and can outlive the ~210s edge-gateway (GCLB)
+# deadline — the gateway kills it well before nginx's 488s allowance and the
+# client sees a 502/504. The gather therefore chunks by ``name[]`` exactly
+# like the webapp Lexicon export (analytics PR #98761): same 200-name chunk
+# size, same 0.5s pause between consecutive chunk requests as headroom
+# against project-level rate limits.
+PER_EVENT_PROPERTIES_CHUNK_SIZE: int = 200
+PER_EVENT_PROPERTIES_CHUNK_PAUSE_S: float = 0.5
+
 
 def _parse_feed_date(value: str, field: str) -> datetime:
     """Parse a ``YYYY-MM-DD`` activity-feed date, raising QueryError on bad input.
@@ -6884,26 +6895,40 @@ class MixpanelAPIClient:
     def list_per_event_properties(self) -> list[dict[str, Any]]:
         """List every event with the properties observed on it (query API).
 
-        Calls ``GET {query}/data_definitions/events`` with
-        ``fetch_per_event_properties=true`` — the internal query-API surface the
-        Mixpanel Lexicon UI itself uses — and unwraps the ``results`` envelope.
+        Two-phase chunked gather against ``GET {query}/data_definitions/events``
+        — the internal query-API surface the Mixpanel Lexicon UI itself uses.
+        Phase one fetches the event list with no fetch flags (fast: no property
+        payload) and collects the unique event names. Phase two re-requests the
+        endpoint with ``fetch_per_event_properties=true`` in ``name[]`` chunks
+        of :data:`PER_EVENT_PROPERTIES_CHUNK_SIZE` names (JSON-encoded, the
+        format the server's ``parse_event_list`` accepts) and concatenates the
+        unwrapped ``results`` rows in order.
+
+        Chunking is the DF-802 fix: one unchunked request makes the server
+        serialize every arb property batch in a single request that can outlive
+        the ~210s edge-gateway deadline (a 502/504 to the client), while each
+        chunk finishes well inside it. The webapp Lexicon export chunks the
+        same way (analytics PR #98761). Consecutive chunk requests pause
+        :data:`PER_EVENT_PROPERTIES_CHUNK_PAUSE_S` seconds as rate-limit
+        headroom. Nameless listing rows are skipped — they cannot be requested
+        by name and carry no invertible edges. Every request runs under the
+        export timeout, and a pinned workspace is injected as ``workspace_id``.
+
         This is the relationship source for the schema graph: the App API's
-        ``includeEvents=true`` bulk call computes the same event<->property join
-        behind a ~120s gateway deadline it cannot meet on large projects, while
-        the query-API route permits longer runs, so this request is sent with
-        the export timeout. A pinned workspace is injected as ``workspace_id``
-        and the server applies its event-name filters.
+        ``includeEvents=true`` bulk call computes the same event<->property
+        join behind a ~120s gateway deadline it cannot meet on large projects.
 
         Returns:
             List of event dicts; each carries a ``properties`` list of property
-            definition dicts (at minimum ``{"name": ...}``-shaped).
+            definition dicts (at minimum ``{"name": ...}``-shaped). Empty when
+            the project has no named events.
 
         Raises:
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400/404).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors, or a non-list
-                ``results`` payload.
+                ``results`` payload from either phase.
 
         Example:
             ```python
@@ -6913,18 +6938,50 @@ class MixpanelAPIClient:
             ```
         """
         url = self._build_url("query", "/data_definitions/events")
-        result = self._request(
-            "GET",
-            url,
-            params={"fetch_per_event_properties": "true"},
-            timeout=self._export_timeout,
-        )
-        rows = result.get("results") if isinstance(result, dict) else result
-        if not isinstance(rows, list):
+        listing = self._request("GET", url, timeout=self._export_timeout)
+        listing_rows = listing.get("results") if isinstance(listing, dict) else listing
+        if not isinstance(listing_rows, list):
             raise MixpanelHeadlessError(
-                f"Unexpected response from per-event properties: "
-                f"expected list, got {type(rows).__name__}",
+                f"Unexpected response from event listing: "
+                f"expected list, got {type(listing_rows).__name__}",
             )
+
+        names: list[str] = []
+        seen: set[str] = set()
+        for row in listing_rows:
+            name = row.get("name") if isinstance(row, dict) else None
+            if isinstance(name, str) and name and name not in seen:
+                seen.add(name)
+                names.append(name)
+        if len(names) < len(listing_rows):
+            logger.debug(
+                "per-event gather: %d of %d listing rows had no usable "
+                "unique name and were skipped",
+                len(listing_rows) - len(names),
+                len(listing_rows),
+            )
+
+        rows: list[dict[str, Any]] = []
+        for start in range(0, len(names), PER_EVENT_PROPERTIES_CHUNK_SIZE):
+            if start:
+                time.sleep(PER_EVENT_PROPERTIES_CHUNK_PAUSE_S)
+            chunk = names[start : start + PER_EVENT_PROPERTIES_CHUNK_SIZE]
+            result = self._request(
+                "GET",
+                url,
+                params={
+                    "fetch_per_event_properties": "true",
+                    "name[]": json.dumps(chunk),
+                },
+                timeout=self._export_timeout,
+            )
+            chunk_rows = result.get("results") if isinstance(result, dict) else result
+            if not isinstance(chunk_rows, list):
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from per-event properties: "
+                    f"expected list, got {type(chunk_rows).__name__}",
+                )
+            rows.extend(chunk_rows)
         return rows
 
     def update_property_definition(

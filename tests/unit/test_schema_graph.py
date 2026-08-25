@@ -382,46 +382,163 @@ class TestApiClientPerEventProperties:
 
     The App API's ``includeEvents=true`` bulk call computes this same join
     behind a ~120s gateway deadline it cannot meet on large projects, so the
-    schema graph fetches the edges from the query API instead.
+    schema graph fetches the edges from the query API instead. The gather is
+    two-phase (DF-802): a fast no-flags event-list fetch defines the name
+    universe, then the per-event property fetches run in ``name[]`` chunks so
+    no single request outlives the ~210s edge-gateway deadline.
     """
 
-    def test_url_params_and_unwrap(self) -> None:
-        """The call hits the query host and unwraps the results envelope."""
-        seen: dict[str, Any] = {}
+    @staticmethod
+    def _two_phase_handler(
+        listing_rows: list[Any],
+        requests_seen: list[dict[str, Any]],
+        chunk_rows_fn: Any = None,
+    ) -> Any:
+        """Build a MockTransport handler for the two-phase gather.
+
+        Args:
+            listing_rows: Rows the no-flags event-list request returns.
+            requests_seen: Mutable list; each request's URL/params/timeout
+                is appended for assertion.
+            chunk_rows_fn: Optional callable mapping a decoded ``name[]``
+                list to the chunk response rows. Defaults to one row per
+                name with a single ``amount`` property.
+
+        Returns:
+            A handler suitable for ``httpx.MockTransport``.
+        """
 
         def handler(request: httpx.Request) -> httpx.Response:
-            seen["url"] = str(request.url.copy_with(query=None))
-            seen["params"] = dict(request.url.params)
+            params = dict(request.url.params)
+            requests_seen.append(
+                {
+                    "url": str(request.url.copy_with(query=None)),
+                    "params": params,
+                    "timeout": request.extensions.get("timeout"),
+                }
+            )
+            if "fetch_per_event_properties" not in params:
+                return httpx.Response(200, json={"results": listing_rows})
+            names = json.loads(params["name[]"])
+            if chunk_rows_fn is not None:
+                return httpx.Response(200, json={"results": chunk_rows_fn(names)})
             return httpx.Response(
                 200,
                 json={
                     "results": [
-                        {"name": "Purchase", "properties": [{"name": "amount"}]}
+                        {"name": name, "properties": [{"name": "amount"}]}
+                        for name in names
                     ]
                 },
             )
 
+        return handler
+
+    def test_two_phase_url_params_and_unwrap(self) -> None:
+        """A listing fetch precedes one name[]-scoped per-event chunk fetch."""
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler([{"name": "Purchase"}], seen)
+
         rows = _client(handler).list_per_event_properties()
-        assert seen["url"] == "https://mixpanel.com/api/query/data_definitions/events"
-        assert seen["params"]["fetch_per_event_properties"] == "true"
-        assert seen["params"]["project_id"] == "12345"
+
+        assert len(seen) == 2
+        listing, chunk = seen
+        for req in (listing, chunk):
+            assert (
+                req["url"] == "https://mixpanel.com/api/query/data_definitions/events"
+            )
+            assert req["params"]["project_id"] == "12345"
+        assert "fetch_per_event_properties" not in listing["params"]
+        assert "name[]" not in listing["params"]
+        assert chunk["params"]["fetch_per_event_properties"] == "true"
+        assert chunk["params"]["name[]"] == json.dumps(["Purchase"])
         assert rows == [{"name": "Purchase", "properties": [{"name": "amount"}]}]
 
-    def test_uses_export_timeout(self) -> None:
-        """The gather runs under the long export timeout, not the default 120s."""
-        seen: dict[str, Any] = {}
+    def test_chunks_names_in_batches_of_200(self) -> None:
+        """201 unique names split into a 200-name chunk plus a 1-name chunk."""
+        names = [f"ev{i}" for i in range(201)]
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler([{"name": n} for n in names], seen)
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            seen["timeout"] = request.extensions.get("timeout")
-            return httpx.Response(200, json={"results": []})
+        rows = _client(handler).list_per_event_properties()
+
+        chunk_requests = [r for r in seen if "name[]" in r["params"]]
+        assert len(chunk_requests) == 2
+        assert json.loads(chunk_requests[0]["params"]["name[]"]) == names[:200]
+        assert json.loads(chunk_requests[1]["params"]["name[]"]) == names[200:]
+        assert [row["name"] for row in rows] == names
+
+    def test_dedupes_names_and_skips_nameless(self) -> None:
+        """Duplicate, empty, and non-dict listing rows never reach name[]."""
+        listing = [
+            {"name": "A"},
+            {"name": "A"},
+            {"id": 7},
+            {"name": None},
+            {"name": ""},
+            "junk",
+            {"name": "B"},
+        ]
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler(listing, seen)
+
+        rows = _client(handler).list_per_event_properties()
+
+        chunk_requests = [r for r in seen if "name[]" in r["params"]]
+        assert len(chunk_requests) == 1
+        assert json.loads(chunk_requests[0]["params"]["name[]"]) == ["A", "B"]
+        assert [row["name"] for row in rows] == ["A", "B"]
+
+    def test_no_chunk_call_when_no_names(self) -> None:
+        """An empty name universe returns [] without a per-event request."""
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler([], seen)
+
+        rows = _client(handler).list_per_event_properties()
+
+        assert rows == []
+        assert len(seen) == 1
+
+    def test_uses_export_timeout(self) -> None:
+        """Both phases run under the long export timeout, not the default."""
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler([{"name": "Purchase"}], seen)
 
         _client(handler).list_per_event_properties()
-        assert seen["timeout"]["read"] == 600.0
 
-    def test_raises_on_unexpected_shape(self) -> None:
-        """A non-list results payload is rejected."""
+        assert [req["timeout"]["read"] for req in seen] == [600.0, 600.0]
+
+    def test_paces_between_chunks(self) -> None:
+        """Consecutive chunk fetches pause; a single chunk does not."""
+        names = [f"ev{i}" for i in range(201)]
+        seen: list[dict[str, Any]] = []
+        handler = self._two_phase_handler([{"name": n} for n in names], seen)
+
+        with patch("mixpanel_headless._internal.api_client.time.sleep") as mock_sleep:
+            _client(handler).list_per_event_properties()
+        assert mock_sleep.call_args_list == [((0.5,),)]
+
+        seen.clear()
+        single = self._two_phase_handler([{"name": "Purchase"}], seen)
+        with patch("mixpanel_headless._internal.api_client.time.sleep") as mock_sleep:
+            _client(single).list_per_event_properties()
+        mock_sleep.assert_not_called()
+
+    def test_raises_on_unexpected_listing_shape(self) -> None:
+        """A non-list event-list payload is rejected before any chunk fetch."""
 
         def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"results": {"unexpected": "shape"}})
+
+        with pytest.raises(MixpanelHeadlessError, match="expected list"):
+            _client(handler).list_per_event_properties()
+
+    def test_raises_on_unexpected_chunk_shape(self) -> None:
+        """A non-list per-event chunk payload is rejected."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "fetch_per_event_properties" not in dict(request.url.params):
+                return httpx.Response(200, json={"results": [{"name": "Purchase"}]})
             return httpx.Response(200, json={"results": {"unexpected": "shape"}})
 
         with pytest.raises(MixpanelHeadlessError, match="expected list"):

@@ -868,15 +868,17 @@ class DiscoveryService:
     ) -> SchemaGraphResult:
         """Gather the full Lexicon schema and the event<->property graph.
 
-        Issues three or four bulk calls: event definitions, event properties,
-        and the query-API per-event properties gather always, plus user
-        properties when ``include_user_properties`` is set (the default). The
-        per-event gather (``data_definitions/events?fetch_per_event_properties``)
-        is inverted client-side into per-property ``events`` lists, which
-        :class:`SchemaGraphResult` folds into the adjacency maps. The App API's
-        ``includeEvents=true`` bulk call is deliberately not used: it computes
-        the same join behind a ~120s gateway deadline it cannot meet on large
-        projects.
+        Issues the bulk lexicon calls (event definitions, event properties,
+        plus user properties when ``include_user_properties`` is set — the
+        default) and then the query-API per-event properties gather. The
+        gather is two-phase and chunked (DF-802): a fast event-list fetch,
+        then one ``fetch_per_event_properties`` request per 200-name
+        ``name[]`` chunk, so no single request outlives the ~210s
+        edge-gateway deadline. The chunk rows are inverted client-side into
+        per-property ``events`` lists, which :class:`SchemaGraphResult` folds
+        into the adjacency maps. The App API's ``includeEvents=true`` bulk
+        call is deliberately not used: it computes the same join behind a
+        ~120s gateway deadline it cannot meet on large projects.
 
         Args:
             include_density: Request the property-level density (``densityLocal``)
