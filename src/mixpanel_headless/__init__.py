@@ -294,7 +294,7 @@ from mixpanel_headless.types import (
 )
 from mixpanel_headless.workspace import Workspace
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = [
     # Core
