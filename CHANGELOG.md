@@ -5,6 +5,40 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## 0.2.2 — 2026-09-01
+
+Patch release: `schema_graph()` on large projects, query-engine bookmark
+correctness, retry/error-path hardening, and a storage env-var rename.
+
+### Changed
+
+- The storage-root environment variable is now `MP_STORAGE_DIR`. The old
+  name `MP_OAUTH_STORAGE_DIR` still works as a deprecated alias and loses
+  when both are set. (#216)
+
+### Fixed
+
+- `schema_graph()` no longer times out on very large projects.
+  Relationship edges now come from the query API's per-event property
+  gather (the same surface the Lexicon UI uses), and client timeouts are
+  route-aware so they outlast the server-side deadlines instead of
+  pre-empting them. (#215)
+- Query-engine bookmark fixes: frequency-filter clauses now emit the
+  platform-native shape (the previous shape drew a server 500);
+  `data_group_id` is string-coerced in group clauses and emitted as the
+  contract's `globalDataGroupId` at the sections level; a `TypeError` in
+  the sensitive-data 403 sniff is fixed; OAuth bearer tokens are redacted
+  from error-detail payloads. (#208)
+- Retry and error paths hardened: negative, non-finite, or garbage
+  `Retry-After` values fall back to exponential backoff and are capped at
+  the 60s ceiling; a JSON-null `results` page is treated as empty and a
+  non-list `results` raises a typed error instead of mis-iterating; blank
+  error bodies no longer produce empty exception messages; 401 and App
+  API errors now carry request context for parity with the query paths.
+  (#206)
+- Plugin: the setup skill name no longer contains a colon, which made the
+  skill fail to load. (#218)
+
 ## 0.2.1 — 2026-08-13
 
 Patch release: workspace-scoped Query API correctness and fresh-install
