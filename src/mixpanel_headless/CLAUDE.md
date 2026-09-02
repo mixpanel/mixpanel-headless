@@ -139,6 +139,8 @@ with mp.Workspace() as ws:
 
 **Business Context**: `get_business_context()`, `set_business_context()`, `clear_business_context()`, `get_business_context_chain()` — read/write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
 
+**Report Links** (045): `create_report_link()` (params or typed result → unsaved-report URL, one App API call), `resolve_report_link()` (URL / bare slug / shortlink → `ResolvedReport` with raw params; scope checks before any HTTP call), `query_report_link()` (run a link or `ResolvedReport` through the matching engine), `saved_report_link()` (saved-report URL, no network)
+
 **Escape Hatches**: `api` (MixpanelAPIClient)
 
 ## Exception Hierarchy
@@ -155,7 +157,10 @@ MixpanelHeadlessError
 │   └── ServerError
 ├── OAuthError
 │   └── RegionProbeError    # 043 / AIE-114 — raised when no region accepts the credential
-└── WorkspaceScopeError
+├── WorkspaceScopeError
+└── ReportLinkError         # 045 — ReportLinkParseError / UnsupportedReportLinkError /
+                            #       ReportLinkNotFoundError / ReportLinkScopeMismatchError /
+                            #       ShortLinkResolutionError
 ```
 
 All exceptions provide `.to_dict()` for JSON serialization and structured `.details`.
@@ -166,7 +171,7 @@ All frozen dataclasses with:
 - `.df` property: Lazy DataFrame conversion (cached)
 - `.to_dict()`: JSON-serializable output
 
-Key types: `SegmentationResult`, `FunnelResult`, `RetentionResult`, `SavedReportResult`, `FlowsResult`, `UserQueryResult`, `SchemaGraphResult`, `BookmarkInfo`, `Dashboard`, `CreateDashboardParams`, `UpdateDashboardParams`, `Bookmark`, `CreateBookmarkParams`, `UpdateBookmarkParams`, `Cohort`, `CreateCohortParams`, `UpdateCohortParams`, `BlueprintTemplate`, `BlueprintConfig`, `BookmarkHistoryResponse`
+Key types: `SegmentationResult`, `FunnelResult`, `RetentionResult`, `SavedReportResult`, `FlowsResult`, `UserQueryResult`, `SchemaGraphResult`, `BookmarkInfo`, `Dashboard`, `CreateDashboardParams`, `UpdateDashboardParams`, `Bookmark`, `CreateBookmarkParams`, `UpdateBookmarkParams`, `Cohort`, `CreateCohortParams`, `UpdateCohortParams`, `BlueprintTemplate`, `BlueprintConfig`, `BookmarkHistoryResponse`, `ReportLink`, `ResolvedReport`, `BookmarkUrl`
 
 ## Type Aliases
 

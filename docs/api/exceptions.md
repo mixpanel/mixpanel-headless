@@ -26,7 +26,14 @@ MixpanelHeadlessError
 │   └── RegionProbeError
 │       └── RegionProbeNetworkError
 ├── WorkspaceScopeError
-└── BusinessContextValidationError
+├── BusinessContextValidationError
+├── SessionReplayError (APIError)
+└── ReportLinkError
+    ├── ReportLinkParseError
+    ├── UnsupportedReportLinkError
+    ├── ReportLinkNotFoundError
+    ├── ReportLinkScopeMismatchError
+    └── ShortLinkResolutionError
 ```
 
 ## Catching Errors
@@ -240,3 +247,46 @@ Raised by the session-replay surface (`fetch_replay()`, `sign_replay()`, `stream
       show_root_heading: true
       show_root_toc_entry: true
 
+## Report Link Exceptions
+
+Raised by the report-link surface (`create_report_link()`, `resolve_report_link()`, `query_report_link()`, `saved_report_link()`). `ReportLinkError` is the base — catch it to handle any link failure. Every instance carries the parsed link parts (`kind`, `region`, `project_id`, `workspace_id`, `slug`, `bookmark_id`, `short_code`, as available) plus a `hint` in `details`. See the [Report Links guide](../guide/report-links.md).
+
+| Exception | Codes | Raised When |
+|-----------|-------|-------------|
+| `ReportLinkParseError` | `REPORT_LINK_UNPARSEABLE`, `REPORT_LINK_NOT_MIXPANEL_HOST`, `REPORT_LINK_UNRECOGNIZED_PATH`, `REPORT_LINK_UNRECOGNIZED_HASH`, `REPORT_LINK_EMPTY_HASH` | The string is not a recognizable Mixpanel report link. The parser is total: this is the only error it raises. |
+| `UnsupportedReportLinkError` | `UNSUPPORTED_LEGACY_HASH`, `UNSUPPORTED_DASHBOARD_LINK`, `UNSUPPORTED_REPORT_TYPE` | A legacy `~(...)` hash, a board link, or a `launch-analysis` report passed to `query_report_link`. |
+| `ReportLinkNotFoundError` | `REPORT_LINK_SLUG_NOT_FOUND`, `REPORT_LINK_BOOKMARK_NOT_FOUND`, `SHORT_LINK_NOT_FOUND` | The slug, saved report, or shortlink does not exist in the active project and region. CLI exit 4. |
+| `ReportLinkScopeMismatchError` | `REPORT_LINK_PROJECT_MISMATCH`, `REPORT_LINK_REGION_MISMATCH` | The link names another project or region. Raised before any HTTP call; the message names both values and the `ws.use(...)` / `mp --project` fix. |
+| `ShortLinkResolutionError` | `SHORT_LINK_NO_LOCATION`, `SHORT_LINK_UNEXPECTED_RESPONSE`, `SHORT_LINK_CHAIN` | The shortlink server answered in a shape headless cannot extract a target from, or the target is another shortlink. CLI exit 1. |
+
+Builder guards raise `ParamValidationError` with `RL1_UNKNOWN_REPORT_TYPE`, `RL2_INVALID_SLUG`, `RL3_UNKNOWN_REGION`, or `RL4_REPORT_TYPE_CONFLICT`. A shortlink that redirects to the login page raises the existing `AuthenticationError`.
+
+::: mixpanel_headless.ReportLinkError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReportLinkParseError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UnsupportedReportLinkError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReportLinkNotFoundError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ReportLinkScopeMismatchError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.ShortLinkResolutionError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true

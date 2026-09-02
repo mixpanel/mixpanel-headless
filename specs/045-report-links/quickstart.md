@@ -56,7 +56,7 @@ MP_LIVE_TESTS=1 just test tests/integration/test_report_links_live.py
 Expected: each of these passes against the active account.
 
 1. Create a link from `ws.build_params("<event>", last=7)`.
-2. Resolve the link URL. The parameters and type equal the input.
+2. Resolve the link URL. The type equals the input. The parameters are the server's canonical form: the time section and metric count survive, but the server rewrites `behavior.type` (`event` → `simple`), may swap an auto-captured event name for its display name, drops `filtersDeterminer`, and adds defaults (`primaryYAxisOptions`, `behaviors`, `executedMigrations`). Verified live on 2026-09-02.
 3. Resolve the bare slug. Same result.
 4. Resolve a known saved bookmark URL. The type comes from the bookmark.
 5. Run the resolved report. The result is a `QueryResult`.
@@ -73,7 +73,7 @@ params = ws.build_params('Login', last=7)
 link = ws.create_report_link(params, name='headless smoke')
 print(link.url)
 r = ws.resolve_report_link(link.url)
-assert r.params == params and r.report_type == 'insights'
+assert r.report_type == 'insights' and r.params['sections']['time'] == params['sections']['time']
 print(ws.query_report_link(r).df.head())
 "
 ```

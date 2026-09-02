@@ -270,6 +270,12 @@ print(bundle.sessions_df)                   # one row per session: duration, cli
 print(bundle.replays[0].summary_markdown)   # LLM-friendly action timeline
 print(bundle.top_clicks(10))                # most-clicked elements across the bundle
 
+# Report links — share a query as a URL, or resolve a URL back into a query
+link = ws.create_report_link(ws.build_params("Login", last=7))
+print(link.url)                             # opens the same query in the Mixpanel editor
+resolved = ws.resolve_report_link("https://mixpanel.com/s/AbC123")
+print(ws.query_report_link(resolved).df)    # run the query behind a shared link
+
 # Stream events for processing
 for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
     process(event)
@@ -303,7 +309,7 @@ for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
 
 **`mp dashboards`** — Dashboard management: `list`, `create`, `get`, `update`, `delete`, `bulk-delete`, `favorite`, `unfavorite`, `pin`, `unpin`, `add-report`, `remove-report`, `update-report-link`, `update-text-card`, `blueprints`, `blueprint-create`, `rca`, `erf`
 
-**`mp reports`** — Report management: `list`, `create`, `get`, `update`, `delete`, `bulk-delete`, `bulk-update`, `linked-dashboards`, `dashboard-ids`, `history`
+**`mp reports`** — Report management: `list`, `create`, `get`, `update`, `delete`, `bulk-delete`, `bulk-update`, `linked-dashboards`, `dashboard-ids`, `history`, `link` (share params as an unsaved-report URL), `resolve` (URL / slug / shortlink → params, `--run` to execute)
 
 **`mp cohorts`** — Cohort management: `list`, `create`, `get`, `update`, `delete`, `bulk-delete`, `bulk-update`
 
@@ -380,6 +386,7 @@ Key design features:
 - **Consistent interfaces**: Same operations available as Python methods and CLI commands
 - **Structured output**: All CLI commands support `--format json` for machine-readable responses, plus `--jq` for inline filtering
 - **Streaming data extraction**: Memory-efficient iterators for events and profiles
+- **Report links**: Share any query as a Mixpanel URL (`create_report_link`, `mp reports link`) and resolve a report URL, bare slug, or shortlink back into runnable params (`resolve_report_link`, `query_report_link`, `mp reports resolve --run`); `--link` on `mp query segmentation` / `funnel` / `saved-report` / `flows` adds a `report_url` to the output
 - **Session replay**: Discover a user's rrweb recordings, fetch the raw event stream, and project them into session-level DataFrames plus an LLM-friendly action timeline (`replays_for_user`, `Replay`, `ReplayBundle`); signed CDN URLs are masked by default and never logged
 - **Three first-class account types**: `service_account` (Basic Auth) for unattended automation, `oauth_browser` (PKCE flow with auto-refreshed tokens) for interactive use, `oauth_token` (static bearer) for CI / agents
 - **Typed exceptions**: Error codes and context for programmatic handling

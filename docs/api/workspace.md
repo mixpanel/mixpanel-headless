@@ -166,6 +166,31 @@ player_json = replay.to_rrweb_player_json()
 
 Signed CDN URLs are bearer credentials: `SignedReplay` masks them in `repr` / `str` and the library never logs them. A `SESSION_RECORDING_SENSITIVE_DATA` 403 raises `SessionReplayAccessError`. See the [Session Replay guide](../guide/session-replay.md) for the full surface, the `mp replays` CLI, and the DataFrame schemas.
 
+### Report Links
+
+Share a headless query as a Mixpanel URL, or turn a URL back into runnable params. The methods: `create_report_link`, `resolve_report_link`, `query_report_link`, and `saved_report_link`.
+
+```python
+import mixpanel_headless as mp
+
+ws = mp.Workspace()
+
+# Query → shareable URL (one App API call; the slug record is stored server-side)
+result = ws.query(mp.Metric.total("Login"), last=7)
+link = ws.create_report_link(result, name="Logins, last 7 days")
+print(link.url)      # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw
+
+# URL / slug / shortlink → raw params → typed result
+r = ws.resolve_report_link("https://mixpanel.com/s/AbC123")
+r.report_type, r.params
+df = ws.query_report_link(r).df
+
+# Saved report → URL, no network call
+ws.saved_report_link(123, report_type="funnels")
+```
+
+Project and region mismatches raise `ReportLinkScopeMismatchError` before any HTTP call. Legacy `~(...)` hashes and board links raise `UnsupportedReportLinkError` with a hint. See the [Report Links guide](../guide/report-links.md) for the `mp reports link` / `mp reports resolve` CLI and the `--link` flags.
+
 ## In-Session Switching
 
 `Workspace.use()` swaps the active account, project, workspace, or target without rebuilding the underlying `httpx.Client` or per-account `/me` cache. It returns `self` for fluent chaining, so cross-project iteration is O(1) per swap.

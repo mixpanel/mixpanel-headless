@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
@@ -47,6 +47,7 @@ from mixpanel_headless._internal.me import (
     WorkspaceView,
     select_workspace_id,
 )
+from mixpanel_headless._internal.report_links import web_host
 from mixpanel_headless._internal.response_validation import validate_response_models
 from mixpanel_headless.exceptions import (
     AuthenticationError,
@@ -54,8 +55,10 @@ from mixpanel_headless.exceptions import (
     ParamValidationError,
     QueryError,
     RateLimitError,
+    ReportLinkNotFoundError,
     ServerError,
     SessionReplayAccessError,
+    ShortLinkResolutionError,
     WorkspaceScopeError,
 )
 from mixpanel_headless.types import ProfilePageResult, PublicWorkspace
@@ -76,6 +79,13 @@ _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 # _BACKOFF_MAX_SECONDS; anything larger would park the process for hours.
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 60.0
+
+# 045-report-links: the shortlink view returns 200 HTML instead of a 3xx when
+# the target URL is longer than ~2048 chars. The body then carries the target
+# as a JSON-quoted string assigned to window.location.href.
+_SHORT_LINK_HREF_RE = re.compile(r'window\.location\.href\s*=\s*("(?:[^"\\]|\\.)*")')
+_SHORT_LINK_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_SHORT_LINK_HINT = "Open the shortlink in a browser and copy the full URL."
 
 
 def _error_message(response_body: str | dict[str, Any] | None, default: str) -> str:
@@ -4604,6 +4614,244 @@ class MixpanelAPIClient:
                 f"expected dict, got {type(result).__name__}",
             )
         return result
+
+    # -------------------------------------------------------------------------
+    # Report links (045-report-links): unsaved-report slug records
+    # -------------------------------------------------------------------------
+
+    def create_bookmark_url(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Store an unsaved report under a client-minted slug (045-report-links).
+
+        ``POST /api/app/projects/{pid}/bookmark-urls/``. The endpoint is always
+        project-scoped — it never goes under ``/workspaces/{wid}/`` even when a
+        workspace is pinned — and the server strips ``workspace_id`` from the
+        body, so this method drops that key before sending.
+
+        Args:
+            body: ``{"slug", "type", "params"}`` plus optional ``name``,
+                ``description``, and ``bookmark_id``. ``type`` is one of
+                ``insights``, ``funnels``, ``retention``, ``flows``.
+
+        Returns:
+            The stored record dict (``results`` unwrapped): ``slug``, ``type``,
+            ``params``, ``project_id``, ``created_at`` and friends.
+
+        Raises:
+            AuthenticationError: Invalid or expired credentials (401).
+            QueryError: Invalid payload or duplicate slug (400/404/422).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The response was not a dict.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                record = client.create_bookmark_url({
+                    "slug": "EBrV5bW2u9Mw",
+                    "type": "insights",
+                    "params": params,
+                })
+            ```
+        """
+        payload = {k: v for k, v in body.items() if k != "workspace_id"}
+        result = self.app_request(
+            "POST", f"/projects/{self.project_id}/bookmark-urls/", json_body=payload
+        )
+        if not isinstance(result, dict):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from create_bookmark_url: "
+                f"expected dict, got {type(result).__name__}",
+            )
+        return result
+
+    def get_bookmark_url(self, slug: str) -> dict[str, Any]:
+        """Fetch the unsaved-report record stored under a slug (045-report-links).
+
+        ``GET /api/app/projects/{pid}/bookmark-urls/{slug}/``. Always
+        project-scoped, even when a workspace is pinned. A slug is readable
+        only in the project and region that created it, so a 404 is mapped to
+        :class:`ReportLinkNotFoundError` with that explanation.
+
+        Args:
+            slug: The 12-character slug.
+
+        Returns:
+            The record dict (``results`` unwrapped): ``slug``, ``type``,
+            ``params``, optional ``name``, ``description``, ``overrides``,
+            ``bookmark`` / ``bookmark_id``, ``project_id``, ``created_at``.
+
+        Raises:
+            ReportLinkNotFoundError: ``REPORT_LINK_SLUG_NOT_FOUND`` on a 404.
+            AuthenticationError: Invalid or expired credentials (401).
+            QueryError: Other 4xx responses (400/403/422).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The response was not a dict.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                record = client.get_bookmark_url("EBrV5bW2u9Mw")
+                record["type"], record["params"]
+            ```
+        """
+        try:
+            result = self.app_request(
+                "GET", f"/projects/{self.project_id}/bookmark-urls/{slug}/"
+            )
+        except QueryError as exc:
+            if exc.status_code == 404:
+                project_id = int(self.project_id)
+                raise ReportLinkNotFoundError(
+                    f"No unsaved report found for slug {slug} in project "
+                    f"{project_id} ({self.region}). A slug is only readable in "
+                    f"the project and region that created it.",
+                    code="REPORT_LINK_SLUG_NOT_FOUND",
+                    details={
+                        "kind": "slug",
+                        "slug": slug,
+                        "project_id": project_id,
+                        "region": self.region,
+                    },
+                ) from exc
+            raise
+        if not isinstance(result, dict):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from get_bookmark_url: "
+                f"expected dict, got {type(result).__name__}",
+            )
+        return result
+
+    def resolve_short_link(self, code: str) -> str:
+        """Expand a ``https://{host}/s/{code}`` shortlink to its target URL.
+
+        Sends one authenticated GET with ``follow_redirects=False`` and reads
+        the target from the ``Location`` header, or from the
+        ``window.location.href`` script the server returns for very long
+        targets. It bypasses :meth:`_execute_with_retry` and
+        :meth:`_handle_response` because both treat a 3xx as an error. The
+        Authorization header is never logged.
+
+        Args:
+            code: The shortlink code after ``/s/``.
+
+        Returns:
+            The absolute target URL. It is not parsed or validated here.
+
+        Raises:
+            AuthenticationError: 401, or a redirect to the login page.
+            ReportLinkNotFoundError: ``SHORT_LINK_NOT_FOUND`` on a 404.
+            RateLimitError: 429.
+            ServerError: 5xx.
+            ShortLinkResolutionError: ``SHORT_LINK_NO_LOCATION`` for a 3xx
+                without ``Location``; ``SHORT_LINK_UNEXPECTED_RESPONSE`` for a
+                200 without the redirect script or any other status.
+            MixpanelHeadlessError: ``HTTP_ERROR`` on a transport failure.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                target = client.resolve_short_link("AbC123")
+            # "https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw"
+            ```
+        """
+        host = web_host(self.region)
+        url = f"https://{host}/s/{code}"
+        headers = self._request_headers({"Authorization": self._get_auth_header()})
+        logger.debug("resolving shortlink /s/%s on %s", code, host)
+        try:
+            response = self._ensure_client().get(
+                url,
+                headers=headers,
+                follow_redirects=False,
+                timeout=DEFAULT_APP_TIMEOUT_S,
+            )
+        except httpx.HTTPError as e:
+            raise MixpanelHeadlessError(
+                f"HTTP error: {e}",
+                code="HTTP_ERROR",
+                details={"error": str(e), "request_method": "GET", "request_url": url},
+            ) from e
+
+        status = response.status_code
+        base_details: dict[str, Any] = {
+            "kind": "short_link",
+            "short_code": code,
+            "host": host,
+            "region": self.region,
+        }
+
+        if status in _SHORT_LINK_REDIRECT_STATUSES:
+            location: str = response.headers.get("Location", "")
+            if not location:
+                raise ShortLinkResolutionError(
+                    f"Shortlink /s/{code} returned HTTP {status} without a "
+                    f"Location header.",
+                    code="SHORT_LINK_NO_LOCATION",
+                    details={
+                        **base_details,
+                        "status": status,
+                        "hint": _SHORT_LINK_HINT,
+                    },
+                )
+            target: str = urljoin(url, location)
+            if urlsplit(target).path.startswith("/login"):
+                raise AuthenticationError(
+                    f"Shortlink /s/{code} requires authentication; the server "
+                    f"redirected to the login page.",
+                    status_code=status,
+                    request_method="GET",
+                    request_url=url,
+                )
+            return target
+
+        if status == 200:
+            match = _SHORT_LINK_HREF_RE.search(response.text)
+            if match is not None:
+                decoded = json.loads(match.group(1))
+                if isinstance(decoded, str) and decoded:
+                    return decoded
+            raise ShortLinkResolutionError(
+                f"Shortlink /s/{code} returned HTTP {status} with a body "
+                f"mixpanel-headless does not recognize.",
+                code="SHORT_LINK_UNEXPECTED_RESPONSE",
+                details={**base_details, "status": status, "hint": _SHORT_LINK_HINT},
+            )
+
+        if status == 401:
+            raise AuthenticationError(
+                "Invalid credentials. Check username, secret, and project_id.",
+                status_code=status,
+                request_method="GET",
+                request_url=url,
+            )
+        if status == 404:
+            raise ReportLinkNotFoundError(
+                f"Shortlink /s/{code} does not exist on {host}.",
+                code="SHORT_LINK_NOT_FOUND",
+                details=base_details,
+            )
+        if status == 429:
+            raise RateLimitError(
+                retry_after=self._parse_retry_after(response),
+                status_code=status,
+                request_method="GET",
+                request_url=url,
+                project_id=self.project_id,
+            )
+        if status >= 500:
+            raise ServerError(
+                f"Server error {status} while resolving shortlink /s/{code}",
+                status_code=status,
+                request_method="GET",
+                request_url=url,
+            )
+        raise ShortLinkResolutionError(
+            f"Shortlink /s/{code} returned HTTP {status} with a body "
+            f"mixpanel-headless does not recognize.",
+            code="SHORT_LINK_UNEXPECTED_RESPONSE",
+            details={**base_details, "status": status, "hint": _SHORT_LINK_HINT},
+        )
 
     def update_bookmark(self, bookmark_id: int, body: dict[str, Any]) -> dict[str, Any]:
         """Update an existing bookmark (partial update via PATCH).

@@ -155,7 +155,7 @@ A user knows a saved report ID and its type. The user wants the web URL for it.
 - **FR-006**: The system MUST store the unsaved report in the active project, with the slug, the report type, the parameters, and the optional name, description, and saved-report reference.
 - **FR-007**: The system MUST return the URL, the slug, the report type, the project ID, the workspace ID when known, and the name and description.
 - **FR-008**: The system MUST choose the workspace for the URL in this order: an explicit workspace argument, then the pinned session workspace, then a resolved workspace. When no workspace can be resolved, the URL MUST omit the workspace segment.
-- **FR-009**: The created URL MUST use the host for the session region and MUST point to the app that opens that report type. Insights, Funnels, and Retention links MUST open under the Insights app. Flows links MUST open under the Flows app.
+- **FR-009**: The created URL MUST use the host for the session region and MUST point to an app path under which the Mixpanel report editor opens that report type. The app path per type MUST be held in one table so a change is one line.
 - **FR-010**: The system MUST build the URL for a saved report from its ID and type, with no network call.
 
 **Link parsing**
@@ -194,9 +194,9 @@ A user knows a saved report ID and its type. The user wants the web URL for it.
 - **FR-033**: The CLI link command MUST print only the URL in plain output format.
 - **FR-034**: The CLI MUST provide a command that resolves a link and prints the resolved report as structured output. A run flag MUST run the report and print the query result instead. A mode option MUST apply to Flows.
 - **FR-035**: The CLI segmentation, funnel, saved-report, and flows query commands MUST accept an opt-in link flag that adds a URL to the output. The flag MUST default to off.
-- **FR-036**: The segmentation link MUST reproduce the event, the dates, the unit, and a bare breakdown property. When a filter or a complex breakdown is present, the command MUST warn on the error stream and omit the link.
+- **FR-036**: The segmentation link MUST reproduce the event, the dates, the unit, and a bare breakdown property. When a filter or a complex breakdown is present, the command MUST warn on the error stream and omit the link. A bare breakdown property is a value with no filter-expression token; the CLI contract lists the tokens.
 - **FR-037**: A link failure inside a query command MUST never fail the query. The command MUST warn on the error stream and exit with success.
-- **FR-038**: CLI exit codes MUST follow the project convention: not-found errors exit 4, parse, unsupported, and scope-mismatch errors exit 3, authentication errors exit 2, shortlink extraction errors exit 1. Error output MUST include the hint when one exists.
+- **FR-038**: CLI exit codes MUST follow the project convention: not-found errors exit 4; parse, unsupported, scope-mismatch, and parameter-validation errors exit 3; authentication errors exit 2; shortlink extraction errors exit 1. Error output MUST include the hint when one exists.
 - **FR-039**: Local CLI input errors, such as invalid JSON or two conflicting parameter sources, MUST exit 3.
 
 **Errors and security**
@@ -233,7 +233,7 @@ A user knows a saved report ID and its type. The user wants the web URL for it.
 
 - **Slug storage is server-side.** Mixpanel stores unsaved reports per project and per region under a slug. A slug is readable only in the project and region that created it. This was verified against the Mixpanel web app source on 2026-09-02.
 - **Headless credentials can read and write unsaved reports and can read shortlinks.** Service-account and both OAuth account types are expected to work. The live test confirms this for each account type.
-- **App segment for Funnels and Retention.** The created URL follows the Mixpanel MCP server convention and opens Funnels and Retention slugs under the Insights app. If live checks show the editor does not switch type, the app segment table changes to one app per type. The round-trip tests cover this change.
+- **App segment per type.** The initial table follows the Mixpanel MCP server convention: Insights, Funnels, and Retention slugs open under the Insights app path, Flows under the Flows app path. Live QA (quickstart Part 3) confirms this. If the editor does not switch type, the table changes to one app per type. Either outcome satisfies FR-009.
 - **Raw parameters are the resolve output.** A typed decompile of parameters into headless metric, filter, and breakdown objects is a separate follow-up feature. The reason is coverage risk, because the comparable SQL decompiler round-trips only about one third of real reports.
 - **Overrides are data only.** Stored overrides on an unsaved report surface on the resolved result. The system does not merge them into the parameters in this version.
 - **Segmentation link is an approximation.** The legacy segmentation engine and the Insights engine can differ at the edges. The link reproduces the same event, dates, unit, and breakdown. The user documentation states this.

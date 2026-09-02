@@ -17,9 +17,10 @@ This module provides commands for querying data:
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Final
 
 import typer
+from rich.markup import escape as rich_escape
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
@@ -37,6 +38,142 @@ from mixpanel_headless.cli.validators import (
     validate_json_object,
     validate_time_unit,
 )
+from mixpanel_headless.exceptions import MixpanelHeadlessError
+
+if TYPE_CHECKING:
+    from mixpanel_headless.cli.utils import ResultWithTableAndDict
+    from mixpanel_headless.workspace import Workspace
+
+# 045-report-links: an ``--on`` value that contains any of these tokens is a
+# filter expression, not a bare property name, so ``--link`` cannot reproduce
+# it in Insights params. Spaces, ``$``, and Unicode inside a plain name are fine.
+NON_BARE_ON_TOKENS: Final[tuple[str, ...]] = (
+    "properties[",
+    "(",
+    ")",
+    "==",
+    "!=",
+    "<",
+    ">",
+    "defined",
+    "boolean(",
+    "number(",
+    "string(",
+    " and ",
+    " or ",
+)
+
+LinkOption = Annotated[
+    bool,
+    typer.Option(
+        "--link",
+        help="Add report_url: a Mixpanel URL that opens this report in the browser.",
+    ),
+]
+
+
+def _is_bare_property(value: str) -> bool:
+    """Return whether an ``--on`` value is a bare property name.
+
+    Args:
+        value: The raw ``--on`` string.
+
+    Returns:
+        ``True`` when the value contains none of :data:`NON_BARE_ON_TOKENS`.
+    """
+    return not any(token in value for token in NON_BARE_ON_TOKENS)
+
+
+def _segmentation_report_url(
+    workspace: Workspace,
+    *,
+    event: str,
+    from_date: str,
+    to_date: str,
+    unit: str,
+    on: str | None,
+    where: str | None,
+) -> str | None:
+    """Create the ``--link`` URL for a segmentation query, or warn and return None.
+
+    The link is an approximation: it reproduces the event, dates, unit, and a
+    bare ``--on`` breakdown through the Insights engine. A ``--where`` filter
+    or an expression in ``--on`` has no clean Insights mapping, so the link is
+    omitted with a stderr warning. Any library error is also downgraded to a
+    warning so the query itself never fails because of the flag.
+
+    Args:
+        workspace: The active Workspace.
+        event: Event name.
+        from_date: Start date.
+        to_date: End date.
+        unit: Validated time unit.
+        on: Optional ``--on`` value.
+        where: Optional ``--where`` value.
+
+    Returns:
+        The report URL, or ``None`` when the link was omitted.
+    """
+    if where is not None:
+        err_console.print(
+            "[yellow]warning:[/yellow] --link is not supported with --where; "
+            "link omitted"
+        )
+        return None
+    if on and not _is_bare_property(on):
+        err_console.print(
+            "[yellow]warning:[/yellow] --link supports a bare property name for "
+            "--on only; link omitted"
+        )
+        return None
+    try:
+        params = workspace.build_params(
+            event,
+            from_date=from_date,
+            to_date=to_date,
+            unit=unit,  # type: ignore[arg-type]
+            group_by=on or None,
+        )
+        return workspace.create_report_link(params).url
+    except MixpanelHeadlessError as exc:
+        err_console.print(
+            f"[yellow]warning:[/yellow] could not create report link: "
+            f"{rich_escape(exc.message)}"
+        )
+        return None
+
+
+def _present_with_link(
+    ctx: typer.Context,
+    result: ResultWithTableAndDict,
+    format: str,
+    jq_filter: str | None,
+    report_url: str | None,
+) -> None:
+    """Print a result, adding ``report_url`` when a link was produced.
+
+    For dict formats the URL becomes a ``report_url`` key. For the table
+    format, which is a list of rows, the URL is printed on its own line after
+    the table.
+
+    Args:
+        ctx: Typer context.
+        result: A result with ``to_dict()`` and ``to_table_dict()``.
+        format: Output format.
+        jq_filter: Optional jq filter expression.
+        report_url: The URL to add, or ``None`` to print the result unchanged.
+    """
+    if report_url is None:
+        present_result(ctx, result, format, jq_filter=jq_filter)
+        return
+    if format == "table":
+        present_result(ctx, result, format, jq_filter=jq_filter)
+        typer.echo(f"report_url: {report_url}")
+        return
+    data = result.to_dict()
+    data["report_url"] = report_url
+    output_result(ctx, data, format=format, jq_filter=jq_filter)
+
 
 query_app = typer.Typer(
     name="query",
@@ -82,6 +219,7 @@ def query_segmentation(
         str | None,
         typer.Option("--where", "-w", help="Filter expression."),
     ] = None,
+    link: LinkOption = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -120,6 +258,14 @@ def query_segmentation(
         --jq '.total'                    # Total event count
         --jq '.series | keys'            # List segment names
         --jq '.series["US"] | add'       # Sum counts for one segment
+
+    **--link:** adds `report_url`, a Mixpanel URL that opens an Insights report
+    with the same event, dates, unit, and a bare `--on` property. It is an
+    approximation of the legacy segmentation query. With `--where`, or with an
+    expression in `--on`, the link is omitted with a warning. A link failure
+    never fails the query.
+
+        mp query segmentation -e Login --from 2025-01-01 --to 2025-01-31 --link --jq .report_url
     """
     validated_unit = validate_time_unit(unit)
     workspace = get_workspace(ctx)
@@ -134,7 +280,20 @@ def query_segmentation(
             where=where,
         )
 
-    present_result(ctx, result, format, jq_filter=jq_filter)
+    report_url = (
+        _segmentation_report_url(
+            workspace,
+            event=event,
+            from_date=from_date,
+            to_date=to_date,
+            unit=validated_unit,
+            on=on,
+            where=where,
+        )
+        if link
+        else None
+    )
+    _present_with_link(ctx, result, format, jq_filter, report_url)
 
 
 @query_app.command("funnel")
@@ -161,6 +320,7 @@ def query_funnel(
         str | None,
         typer.Option("--on", "-o", help="Property to segment by."),
     ] = None,
+    link: LinkOption = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -197,6 +357,11 @@ def query_funnel(
         --jq '.steps | length'               # Number of funnel steps
         --jq '.steps[-1].count'              # Users completing the funnel
         --jq '.steps[] | {event, rate: .conversion_rate}'
+
+    **--link:** adds `report_url`, the saved funnel's URL in the Mixpanel web
+    app (no network call).
+
+        mp query funnel 12345 --from 2025-01-01 --to 2025-01-31 --link --jq .report_url
     """
     workspace = get_workspace(ctx)
 
@@ -209,7 +374,10 @@ def query_funnel(
             on=on,
         )
 
-    present_result(ctx, result, format, jq_filter=jq_filter)
+    report_url = (
+        workspace.saved_report_link(funnel_id, report_type="funnels") if link else None
+    )
+    _present_with_link(ctx, result, format, jq_filter, report_url)
 
 
 @query_app.command("retention")
@@ -640,6 +808,7 @@ def query_saved_report(
         int,
         typer.Argument(help="Saved report bookmark ID."),
     ],
+    link: LinkOption = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -682,13 +851,23 @@ def query_saved_report(
         --jq '.series | keys'                # List series names
         --jq '.headers'                      # Report column headers
         --jq '.series | to_entries | map({name: .key, total: (.value | add)})'
+
+    **--link:** adds `report_url`, the saved report's URL in the Mixpanel web
+    app, using the detected report type (no network call).
+
+        mp query saved-report 12345 --link --jq .report_url
     """
     workspace = get_workspace(ctx)
 
     with status_spinner(ctx, "Querying saved report..."):
         result = workspace.query_saved_report(bookmark_id=bookmark_id)
 
-    output_result(ctx, result.to_dict(), format=format, jq_filter=jq_filter)
+    data = result.to_dict()
+    if link:
+        data["report_url"] = workspace.saved_report_link(
+            bookmark_id, report_type=result.report_type
+        )
+    output_result(ctx, data, format=format, jq_filter=jq_filter)
 
 
 @query_app.command("flows")
@@ -699,6 +878,7 @@ def query_flows(
         int,
         typer.Argument(help="Saved flows report bookmark ID."),
     ],
+    link: LinkOption = False,
     format: FormatOption = "json",
     jq_filter: JqOption = None,
 ) -> None:
@@ -740,13 +920,21 @@ def query_flows(
         --jq '.steps | length'               # Number of flow steps
         --jq '.steps[] | {event, count}'     # Event and count per step
         --jq '.breakdowns | sort_by(.count) | reverse | .[0]'
+
+    **--link:** adds `report_url`, the saved flows report's URL in the Mixpanel
+    web app (no network call).
+
+        mp query flows 12345 --link --jq .report_url
     """
     workspace = get_workspace(ctx)
 
     with status_spinner(ctx, "Querying flows report..."):
         result = workspace.query_saved_flows(bookmark_id=bookmark_id)
 
-    present_result(ctx, result, format, jq_filter=jq_filter)
+    report_url = (
+        workspace.saved_report_link(bookmark_id, report_type="flows") if link else None
+    )
+    _present_with_link(ctx, result, format, jq_filter, report_url)
 
 
 @query_app.command("frequency")

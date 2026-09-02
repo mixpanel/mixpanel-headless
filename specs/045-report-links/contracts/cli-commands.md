@@ -80,6 +80,8 @@ The flag defaults to off. When off, output is byte-for-byte unchanged.
 | `mp query saved-report ID --link` | Adds `report_url = ws.saved_report_link(id, report_type=result.report_type)`. `"funnel"` normalizes to `"funnels"`. No network. |
 | `mp query flows ID --link` | Adds `report_url = ws.saved_report_link(id, report_type="flows")`. No network. |
 
+**Bare property rule for `--on`**: the value is a bare property name unless it contains any of these tokens: `properties[`, `(`, `)`, `==`, `!=`, `<`, `>`, `defined`, `boolean(`, `number(`, `string(`, or the words ` and ` or ` or ` with spaces on both sides. Spaces, `$`, and Unicode inside a plain name are allowed, so `Plan Type` and `$city` are bare. An empty `--on` means no breakdown.
+
 **Failure isolation**: any `MixpanelHeadlessError` raised by `create_report_link` inside a query command prints `warning: could not create report link: {message}` to stderr. The query result still prints. Exit 0.
 
 **Not supported**: `mp query retention --link`, and `--link` on `event-counts`, `property-counts`, `frequency`, `activity-feed`, and the `segmentation-*` variants. The flag does not exist on those commands.
@@ -98,7 +100,7 @@ Branches are added to `handle_errors` in `cli/utils.py` before the generic `exce
 | `ReportLinkScopeMismatchError` | 3 `INVALID_ARGS` | same |
 | `ShortLinkResolutionError` | 1 `GENERAL_ERROR` | `error: {message}` |
 | `AuthenticationError` (login redirect) | 2 `AUTH_ERROR` | existing branch |
-| `BookmarkValidationError` | existing behavior | existing branch |
+| `BookmarkValidationError` | 3 `INVALID_ARGS` | `error: params failed schema validation` then one line per error: `  {path}: {message}`. New branch; today this class falls through to the generic branch and exits 1. |
 | Local input errors (bad JSON, two param sources) | 3 `INVALID_ARGS` | printed by the command |
 
 The `cli/CLAUDE.md` exit-code table gains one row per new exception.

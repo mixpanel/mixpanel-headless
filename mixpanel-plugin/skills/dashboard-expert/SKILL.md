@@ -398,6 +398,8 @@ Combine analysis with targeted text card insertion.
 
 ## See Also
 
+- Report links — `ws.resolve_report_link(url_or_slug_or_shortlink)` turns a report URL a user pasted into its params and type (`ws.query_report_link(...)` runs it); `ws.saved_report_link(bookmark_id, report_type=...)` gives the URL for any report you add to a dashboard
+
 - `references/dashboard-reference.md` — Complete API reference, layout system, content actions, text card formatting, update operations, analysis patterns
 - `references/dashboard-templates.md` — 9 purpose-built dashboard templates with section layouts and report specs
 - `references/bookmark-pipeline.md` — End-to-end pipeline from typed query to dashboard report for all 4 engines

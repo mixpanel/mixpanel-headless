@@ -93,6 +93,14 @@ from mixpanel_headless._internal.query.user_validators import (
     validate_user_args,
     validate_user_params,
 )
+from mixpanel_headless._internal.report_links import (
+    BOOKMARK_HASH_FOR_TYPE,
+    ParsedReportLink,
+    build_bookmark_url,
+    build_slug_url,
+    generate_slug,
+    parse_report_link,
+)
 from mixpanel_headless._internal.response_validation import (
     validate_response_model,
     validate_response_models,
@@ -138,7 +146,11 @@ from mixpanel_headless.exceptions import (
     ParamValidationError,
     QueryError,
     RateLimitError,
+    ReportLinkNotFoundError,
+    ReportLinkScopeMismatchError,
     ServerError,
+    ShortLinkResolutionError,
+    UnsupportedReportLinkError,
     ValidationError,
     WorkspaceScopeError,
 )
@@ -159,6 +171,7 @@ from mixpanel_headless.types import (
     BookmarkHistoryResponse,
     BookmarkInfo,
     BookmarkType,
+    BookmarkUrl,
     BulkCreateSchemasParams,
     BulkCreateSchemasResponse,
     BulkPatchResult,
@@ -248,6 +261,10 @@ from mixpanel_headless.types import (
     ReplayBundle,
     ReplayEvent,
     ReplaySummary,
+    ReportLink,
+    ReportLinkQueryResult,
+    ReportLinkType,
+    ResolvedReport,
     RetentionAlignment,
     RetentionEvent,
     RetentionMathType,
@@ -11299,3 +11316,608 @@ class Workspace:
         if summaries:
             return summaries[0].retention_days
         return 30
+
+    # =========================================================================
+    # REPORT LINKS (045-report-links, AIE-561/562)
+    # =========================================================================
+
+    def _report_link_workspace_id(self, explicit: int | None) -> int | None:
+        """Pick the workspace id for a created report-link URL.
+
+        Precedence is the explicit argument, then the pinned session workspace,
+        then :meth:`resolve_workspace_id`. A :class:`WorkspaceScopeError` from
+        resolution is not an error here: the ``/view/{wid}`` segment is
+        frontend routing only, so the URL falls back to project-only.
+
+        Args:
+            explicit: Caller-supplied workspace id, or ``None``.
+
+        Returns:
+            The workspace id to embed, or ``None`` for a project-only URL.
+        """
+        if explicit is not None:
+            return explicit
+        pinned = self._session.workspace
+        if pinned is not None:
+            return int(pinned.id)
+        try:
+            return self.resolve_workspace_id()
+        except WorkspaceScopeError:
+            logger.debug(
+                "report link: no workspace resolved for project %s; "
+                "emitting project-only URL",
+                self._session.project.id,
+            )
+            return None
+
+    @staticmethod
+    def _report_link_inputs(
+        params: dict[str, Any]
+        | QueryResult
+        | FunnelQueryResult
+        | RetentionQueryResult
+        | FlowQueryResult,
+        report_type: ReportLinkType | None,
+    ) -> tuple[dict[str, Any], ReportLinkType]:
+        """Split a ``create_report_link`` input into raw params and a type.
+
+        Args:
+            params: A raw params dict or a typed query result.
+            report_type: Caller-supplied type, or ``None`` to infer.
+
+        Returns:
+            ``(raw_params, report_type)``. A dict with no type is ``insights``.
+
+        Raises:
+            ParamValidationError: ``RL4_REPORT_TYPE_CONFLICT`` when an explicit
+                type contradicts the type inferred from a typed result.
+        """
+        if isinstance(params, dict):
+            return params, report_type if report_type is not None else "insights"
+
+        inferred: ReportLinkType
+        if isinstance(params, QueryResult):
+            inferred = "insights"
+        elif isinstance(params, FunnelQueryResult):
+            inferred = "funnels"
+        elif isinstance(params, RetentionQueryResult):
+            inferred = "retention"
+        else:
+            inferred = "flows"
+
+        if report_type is not None and report_type != inferred:
+            raise ParamValidationError(
+                f"report_type={report_type!r} contradicts the "
+                f"{type(params).__name__} result, which is {inferred!r}. "
+                f"Omit report_type or pass a plain params dict.",
+                code="RL4_REPORT_TYPE_CONFLICT",
+                details={
+                    "given": report_type,
+                    "inferred": inferred,
+                    "result_class": type(params).__name__,
+                },
+            )
+        return dict(params.params), inferred
+
+    def create_report_link(
+        self,
+        params: dict[str, Any]
+        | QueryResult
+        | FunnelQueryResult
+        | RetentionQueryResult
+        | FlowQueryResult,
+        *,
+        report_type: ReportLinkType | None = None,
+        name: str = "",
+        description: str = "",
+        workspace_id: int | None = None,
+        bookmark_id: int | None = None,
+        validate: bool = True,
+    ) -> ReportLink:
+        """Turn query params (or a typed result) into a shareable report link.
+
+        Stores an **unsaved report** on the Mixpanel server under a
+        client-minted 12-character slug and returns the web URL that opens it
+        in the report editor. One App API call. The record is created, never
+        overwritten.
+
+        Args:
+            params: Raw bookmark params, or a typed result from :meth:`query`,
+                :meth:`query_funnel`, :meth:`query_retention`, or
+                :meth:`query_flow`. A typed result supplies both the params
+                and the report type.
+            report_type: ``insights``, ``funnels``, ``retention``, or
+                ``flows``. Defaults to ``insights`` for a dict; inferred from
+                a typed result. An explicit value that contradicts the
+                inferred one is rejected.
+            name: Optional name stored with the record.
+            description: Optional description stored with the record.
+            workspace_id: Workspace for the ``/view/{wid}`` URL segment.
+                Defaults to the pinned session workspace, then
+                :meth:`resolve_workspace_id`; if nothing resolves the URL is
+                project-only.
+            bookmark_id: Optional saved-report reference to store.
+            validate: Run the client-side bookmark schema check before the
+                POST (default). ``False`` sends the params as given.
+
+        Returns:
+            A :class:`ReportLink` whose ``url`` opens the query in the browser.
+
+        Raises:
+            ParamValidationError: ``RL4_REPORT_TYPE_CONFLICT`` on a
+                contradicting ``report_type``; ``RL1``/``RL3`` from the URL
+                builder.
+            BookmarkValidationError: Params failed schema validation
+                (raised before any network call).
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The server rejected the record (400/422).
+            RateLimitError: Rate limit exceeded (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            result = ws.query(mp.Metric.total("Login"), last=7)
+            link = ws.create_report_link(result, name="Logins, last 7 days")
+            print(link.url)
+            # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw
+
+            # From raw params, without running the query first
+            link = ws.create_report_link(ws.build_params("Login", last=7))
+            ```
+        """
+        raw_params, resolved_type = self._report_link_inputs(params, report_type)
+
+        if validate:
+            schema_errors = self._validate_bookmark_params_schema(
+                raw_params, resolved_type
+            )
+            if any(e.severity == "error" for e in schema_errors):
+                raise BookmarkValidationError(schema_errors)
+            for w in (e for e in schema_errors if e.severity == "warning"):
+                logger.warning(
+                    "create_report_link validation warning: %s [%s]",
+                    w.message,
+                    w.code,
+                )
+
+        slug = generate_slug()
+        wid = self._report_link_workspace_id(workspace_id)
+        project_id = int(self._session.project.id)
+
+        body: dict[str, Any] = {
+            "slug": slug,
+            "type": resolved_type,
+            "params": raw_params,
+        }
+        if name:
+            body["name"] = name
+        if description:
+            body["description"] = description
+        if bookmark_id is not None:
+            body["bookmark_id"] = bookmark_id
+
+        client = self._require_api_client()
+        response = client.create_bookmark_url(body)
+        created = response.get("created_at")
+
+        return ReportLink(
+            url=build_slug_url(
+                region=self._session.region,
+                project_id=project_id,
+                slug=slug,
+                report_type=resolved_type,
+                workspace_id=wid,
+            ),
+            slug=slug,
+            report_type=resolved_type,
+            project_id=project_id,
+            workspace_id=wid,
+            name=name,
+            description=description,
+            bookmark_id=bookmark_id,
+            created_at=str(created) if created is not None else None,
+        )
+
+    @staticmethod
+    def _report_link_details(parsed: ParsedReportLink) -> dict[str, Any]:
+        """Collect the parsed link fields that are set, for error ``details``.
+
+        Args:
+            parsed: The parsed link.
+
+        Returns:
+            Dict with ``kind`` plus every non-``None`` id field.
+        """
+        details: dict[str, Any] = {"kind": parsed.kind}
+        for name in (
+            "region",
+            "project_id",
+            "workspace_id",
+            "slug",
+            "bookmark_id",
+            "dashboard_id",
+            "short_code",
+        ):
+            value = getattr(parsed, name)
+            if value is not None:
+                details[name] = value
+        return details
+
+    def _check_report_link_scope(self, parsed: ParsedReportLink) -> None:
+        """Reject a link whose region or project differs from the session.
+
+        Runs before any HTTP call. A bare slug carries neither value and so
+        skips both checks.
+
+        Args:
+            parsed: The parsed link.
+
+        Raises:
+            ReportLinkScopeMismatchError: ``REPORT_LINK_REGION_MISMATCH`` or
+                ``REPORT_LINK_PROJECT_MISMATCH``.
+        """
+        session_region = self._session.region
+        if parsed.region is not None and parsed.region != session_region:
+            raise ReportLinkScopeMismatchError(
+                f"Report link is on the {parsed.region} region but the active "
+                f"account is on {session_region}. Use an account for the "
+                f"{parsed.region} region (CLI: mp --account <name> ...) and retry.",
+                code="REPORT_LINK_REGION_MISMATCH",
+                details={
+                    **self._report_link_details(parsed),
+                    "link_region": parsed.region,
+                    "session_region": session_region,
+                },
+            )
+        session_project = int(self._session.project.id)
+        if parsed.project_id is not None and parsed.project_id != session_project:
+            raise ReportLinkScopeMismatchError(
+                f"Report link belongs to project {parsed.project_id} but the "
+                f"active session is project {session_project}. Switch with "
+                f'ws.use(project="{parsed.project_id}") '
+                f"(CLI: mp --project {parsed.project_id} ...) and retry.",
+                code="REPORT_LINK_PROJECT_MISMATCH",
+                details={
+                    **self._report_link_details(parsed),
+                    "link_project_id": parsed.project_id,
+                    "session_project_id": session_project,
+                },
+            )
+
+    def _reject_unsupported_report_link(self, parsed: ParsedReportLink) -> None:
+        """Raise for link kinds that headless recognizes but cannot resolve.
+
+        Args:
+            parsed: The parsed link.
+
+        Raises:
+            UnsupportedReportLinkError: ``UNSUPPORTED_DASHBOARD_LINK`` or
+                ``UNSUPPORTED_LEGACY_HASH``.
+        """
+        if parsed.kind == "dashboard":
+            did = parsed.dashboard_id
+            raise UnsupportedReportLinkError(
+                f"This link points at dashboard {did}, not at a single report.",
+                code="UNSUPPORTED_DASHBOARD_LINK",
+                details={
+                    **self._report_link_details(parsed),
+                    "hint": (
+                        f"Use ws.get_dashboard({did}) (CLI: mp dashboards get {did}) "
+                        f"to list its reports, then resolve one report link."
+                    ),
+                },
+            )
+        if parsed.kind == "legacy_jsurl":
+            raise UnsupportedReportLinkError(
+                "This link uses the legacy JSURL hash format, which "
+                "mixpanel-headless cannot decode.",
+                code="UNSUPPORTED_LEGACY_HASH",
+                details={
+                    **self._report_link_details(parsed),
+                    "hint": (
+                        "Open it in a browser (the app re-mints a shareable link "
+                        "on load) and copy the new URL."
+                    ),
+                },
+            )
+
+    def _expand_short_link(
+        self, parsed: ParsedReportLink
+    ) -> tuple[ParsedReportLink, str]:
+        """Follow a shortlink once and parse its target.
+
+        Args:
+            parsed: A parsed link with ``kind == "short_link"``.
+
+        Returns:
+            ``(parsed_target, expanded_url)``.
+
+        Raises:
+            ShortLinkResolutionError: ``SHORT_LINK_CHAIN`` when the target is
+                another shortlink, plus the transport codes from
+                :meth:`MixpanelAPIClient.resolve_short_link`.
+        """
+        assert parsed.short_code is not None
+        # The shortlink host names a region; a mismatch is knowable before the
+        # redirect GET, so check it first (FR-020: no HTTP call on mismatch).
+        self._check_report_link_scope(parsed)
+        client = self._require_api_client()
+        target = client.resolve_short_link(parsed.short_code)
+        parsed_target = parse_report_link(target)
+        if parsed_target.kind == "short_link":
+            raise ShortLinkResolutionError(
+                f"Shortlink /s/{parsed.short_code} redirects to another shortlink "
+                f"({target}). mixpanel-headless follows one redirect only.",
+                code="SHORT_LINK_CHAIN",
+                details={
+                    **self._report_link_details(parsed),
+                    "target": target,
+                    "hint": "Resolve the target shortlink directly.",
+                },
+            )
+        return parsed_target, target
+
+    def resolve_report_link(self, link: str) -> ResolvedReport:
+        """Turn a report link, a bare slug, or a shortlink into its query params.
+
+        Accepts a full Mixpanel URL to an unsaved report (slug) or a saved
+        report (bookmark), a bare 12-character slug, or a
+        ``https://mixpanel.com/s/{code}`` shortlink. Region and project are
+        checked against the active session **before** any HTTP call. At most
+        two HTTP calls are made: one optional shortlink expansion and one
+        record fetch.
+
+        The result holds the raw params. Run them with
+        :meth:`query_report_link`.
+
+        Args:
+            link: The link string. Surrounding whitespace, a trailing slash, a
+                query string, a missing scheme, an upper-case host, and a
+                percent-encoded ``#`` are all tolerated.
+
+        Returns:
+            A :class:`ResolvedReport` with ``report_type``, ``params``, the
+            canonical ``url``, and the saved ``bookmark`` when one exists.
+
+        Raises:
+            ReportLinkParseError: The string is not a recognizable link.
+            UnsupportedReportLinkError: A dashboard link or a legacy
+                ``~(...)`` hash.
+            ReportLinkScopeMismatchError: The link's region or project
+                differs from the session (no HTTP call was made).
+            ReportLinkNotFoundError: The slug, saved report, or shortlink
+                does not exist in scope.
+            ShortLinkResolutionError: The shortlink target could not be
+                extracted, or it is another shortlink.
+            AuthenticationError: Invalid credentials, or the shortlink
+                redirected to the login page.
+            RateLimitError: Rate limit exceeded (429).
+            ServerError: Server-side errors (5xx).
+            QueryError: Other App API rejections (400/403/422).
+
+        Example:
+            ```python
+            ws = Workspace()
+            r = ws.resolve_report_link(
+                "https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw"
+            )
+            r.report_type   # "insights"
+            r.params        # the raw params dict
+            ws.query_report_link(r).df
+            ```
+        """
+        parsed = parse_report_link(link)
+        expanded_url: str | None = None
+        if parsed.kind == "short_link":
+            parsed, expanded_url = self._expand_short_link(parsed)
+
+        self._reject_unsupported_report_link(parsed)
+        self._check_report_link_scope(parsed)
+
+        region = self._session.region
+        project_id = int(self._session.project.id)
+        pinned = self._session.workspace
+        workspace_id = (
+            parsed.workspace_id
+            if parsed.workspace_id is not None
+            else (int(pinned.id) if pinned is not None else None)
+        )
+
+        if parsed.kind == "slug":
+            assert parsed.slug is not None
+            client = self._require_api_client()
+            raw = client.get_bookmark_url(parsed.slug)
+            record = validate_response_model(
+                BookmarkUrl, raw, endpoint="get_bookmark_url"
+            )
+            embedded = record.bookmark
+            return ResolvedReport(
+                source="slug",
+                report_type=record.bookmark_type,
+                params=dict(record.params),
+                project_id=project_id,
+                workspace_id=workspace_id,
+                region=region,
+                url=build_slug_url(
+                    region=region,
+                    project_id=project_id,
+                    slug=record.slug,
+                    report_type=record.bookmark_type,
+                    workspace_id=workspace_id,
+                ),
+                input=link,
+                expanded_url=expanded_url,
+                slug=record.slug,
+                bookmark_id=(
+                    embedded.id if embedded is not None else record.bookmark_id
+                ),
+                bookmark=embedded,
+                name=record.name,
+                description=record.description,
+                overrides=record.overrides,
+            )
+
+        assert parsed.kind == "bookmark"
+        assert parsed.bookmark_id is not None
+        try:
+            bookmark = self.get_bookmark(parsed.bookmark_id)
+        except QueryError as exc:
+            if exc.status_code == 404:
+                raise ReportLinkNotFoundError(
+                    f"No saved report found with id {parsed.bookmark_id} in "
+                    f"project {project_id} ({region}).",
+                    code="REPORT_LINK_BOOKMARK_NOT_FOUND",
+                    details=self._report_link_details(parsed),
+                ) from exc
+            raise
+        if parsed.overrides_jsurl is not None:
+            logger.warning(
+                "ignoring URL overrides %r; running the saved report's base params",
+                parsed.overrides_jsurl,
+            )
+        report_type = bookmark.bookmark_type
+        url_type = (
+            report_type
+            if report_type in BOOKMARK_HASH_FOR_TYPE
+            else (parsed.report_type_hint or "insights")
+        )
+        return ResolvedReport(
+            source="bookmark",
+            report_type=report_type,
+            params=dict(bookmark.params or {}),
+            project_id=project_id,
+            workspace_id=workspace_id,
+            region=region,
+            url=build_bookmark_url(
+                region=region,
+                project_id=project_id,
+                bookmark_id=bookmark.id,
+                report_type=url_type,
+                workspace_id=workspace_id,
+            ),
+            input=link,
+            expanded_url=expanded_url,
+            slug=None,
+            bookmark_id=bookmark.id,
+            bookmark=bookmark,
+            name=bookmark.name,
+            description=bookmark.description,
+            overrides=None,
+        )
+
+    def query_report_link(
+        self,
+        link: str | ResolvedReport,
+        *,
+        mode: Literal["sankey", "paths", "tree"] | None = None,
+    ) -> ReportLinkQueryResult:
+        """Run the query behind a report link through the matching engine.
+
+        Args:
+            link: A link string (resolved first with
+                :meth:`resolve_report_link`) or an already resolved
+                :class:`ResolvedReport` (no second fetch).
+            mode: Flows chart mode. When ``None`` it is derived from
+                ``params["chartType"]`` if that is ``sankey``, ``paths``, or
+                ``tree``, else ``sankey``. Ignored for other report types.
+
+        Returns:
+            :class:`QueryResult` for insights, :class:`FunnelQueryResult` for
+            funnels, :class:`RetentionQueryResult` for retention, or
+            :class:`FlowQueryResult` for flows.
+
+        Raises:
+            UnsupportedReportLinkError: ``UNSUPPORTED_REPORT_TYPE`` for a type
+                that cannot be run (for example ``launch-analysis``).
+            ReportLinkError: Any resolution failure when ``link`` is a string
+                (see :meth:`resolve_report_link`).
+            QueryError: The query engine rejected the params.
+            AuthenticationError: Invalid credentials.
+            RateLimitError: Rate limit exceeded.
+            ServerError: Server-side errors.
+
+        Example:
+            ```python
+            ws = Workspace()
+            df = ws.query_report_link("EBrV5bW2u9Mw").df
+
+            resolved = ws.resolve_report_link(url)
+            if resolved.report_type == "flows":
+                result = ws.query_report_link(resolved, mode="paths")
+            ```
+        """
+        resolved = self.resolve_report_link(link) if isinstance(link, str) else link
+        project_id = int(self._session.project.id)
+        service = self._live_query_service
+        report_type = resolved.report_type
+        if report_type == "insights":
+            return service.query(resolved.params, project_id)
+        if report_type == "funnels":
+            return service.query_funnel(resolved.params, project_id)
+        if report_type == "retention":
+            return service.query_retention(resolved.params, project_id)
+        if report_type == "flows":
+            derived: str = mode if mode is not None else "sankey"
+            if mode is None:
+                chart_type = resolved.params.get("chartType")
+                if chart_type in ("sankey", "paths", "tree"):
+                    derived = str(chart_type)
+            return service.query_flow(resolved.params, project_id, mode=derived)
+        raise UnsupportedReportLinkError(
+            f"Report type {report_type!r} cannot be run through mixpanel-headless.",
+            code="UNSUPPORTED_REPORT_TYPE",
+            details={
+                "report_type": report_type,
+                "hint": "Supported types are insights, funnels, retention, and flows.",
+            },
+        )
+
+    def saved_report_link(
+        self,
+        bookmark_id: int,
+        *,
+        report_type: BookmarkType | Literal["funnel"] = "insights",
+        workspace_id: int | None = None,
+    ) -> str:
+        """Build the web URL for a saved report (bookmark). Pure; no network.
+
+        Args:
+            bookmark_id: Numeric saved-report id.
+            report_type: ``insights`` (default), ``funnels``, ``retention``,
+                ``flows``, or ``launch-analysis``. The singular ``funnel`` that
+                :attr:`SavedReportResult.report_type` reports is accepted and
+                normalized to ``funnels``.
+            workspace_id: Workspace for the ``/view/{wid}`` segment. Defaults
+                to the pinned session workspace; when none is pinned the
+                segment is omitted. :meth:`resolve_workspace_id` is never
+                called here.
+
+        Returns:
+            ``https://{host}/project/{pid}[/view/{wid}]/app/{app}#{hash}`` for
+            the session region.
+
+        Raises:
+            ParamValidationError: ``RL1_UNKNOWN_REPORT_TYPE`` or
+                ``RL3_UNKNOWN_REGION``.
+
+        Example:
+            ```python
+            ws.saved_report_link(123, report_type="funnels")
+            # "https://mixpanel.com/project/3/app/funnels#view/123"
+            ```
+        """
+        normalized = "funnels" if report_type == "funnel" else report_type
+        pinned = self._session.workspace
+        wid = (
+            workspace_id
+            if workspace_id is not None
+            else (int(pinned.id) if pinned is not None else None)
+        )
+        return build_bookmark_url(
+            region=self._session.region,
+            project_id=int(self._session.project.id),
+            bookmark_id=bookmark_id,
+            report_type=normalized,
+            workspace_id=wid,
+        )

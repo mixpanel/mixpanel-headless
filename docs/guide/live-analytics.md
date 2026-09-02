@@ -557,7 +557,12 @@ Authentication is handled automatically — the client adds the proper `Authoriz
 
 The client also exposes `project_id` and `region` properties, which are useful when constructing URLs for APIs that require these values in the path.
 
+## Share a Result as a Link
+
+`mp query segmentation`, `funnel`, `saved-report`, and `flows` accept an opt-in `--link` flag that adds a `report_url` key to the output — a Mixpanel URL that opens the same report in the browser. The segmentation link reproduces the event, dates, unit, and a bare `--on` property; with `--where` it is omitted with a warning. In Python, `ws.create_report_link(...)` and `ws.saved_report_link(...)` do the same. See the [Report Links guide](report-links.md).
+
 ## Next Steps
 
+- [Report Links](report-links.md) — Share a query as a URL, or resolve a URL back into a query
 - [Data Discovery](discovery.md) — Explore your event schema
 - [API Reference](../api/workspace.md) — Complete API documentation

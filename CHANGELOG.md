@@ -5,6 +5,37 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Added
+
+- **Report links** (045, AIE-561 / AIE-562). Share a headless query as a
+  Mixpanel report URL and resolve a report URL back into runnable params.
+  - `Workspace.create_report_link(params_or_result, *, report_type=, name=,
+    description=, workspace_id=, bookmark_id=, validate=)` stores an unsaved
+    report under a 12-character slug and returns a `ReportLink`.
+  - `Workspace.resolve_report_link(link)` accepts a full URL, a bare slug, or a
+    `https://mixpanel.com/s/{code}` shortlink and returns a `ResolvedReport`
+    with the raw params. Project and region mismatches fail before any HTTP
+    call.
+  - `Workspace.query_report_link(link_or_resolved, *, mode=)` runs the params
+    through `query` / `query_funnel` / `query_retention` / `query_flow`.
+  - `Workspace.saved_report_link(bookmark_id, *, report_type=, workspace_id=)`
+    builds a saved-report URL with no network call.
+  - CLI: `mp reports link` and `mp reports resolve [--run] [--mode]`, plus an
+    opt-in `--link` flag on `mp query segmentation`, `funnel`, `saved-report`,
+    and `flows` that adds `report_url` to the output.
+  - Types: `ReportLinkType`, `BookmarkUrl`, `ReportLink`, `ResolvedReport`,
+    `ReportLinkQueryResult`.
+  - Exceptions: `ReportLinkError` and its subclasses `ReportLinkParseError`,
+    `UnsupportedReportLinkError`, `ReportLinkNotFoundError`,
+    `ReportLinkScopeMismatchError`, `ShortLinkResolutionError`; builder guard
+    codes `RL1_UNKNOWN_REPORT_TYPE`, `RL2_INVALID_SLUG`, `RL3_UNKNOWN_REGION`,
+    `RL4_REPORT_TYPE_CONFLICT`.
+  - CLI exit codes: `ReportLinkNotFoundError` → 4; `ReportLinkParseError`,
+    `UnsupportedReportLinkError`, `ReportLinkScopeMismatchError`, and
+    `BookmarkValidationError` → 3; `ShortLinkResolutionError` → 1.
+
 ## 0.2.2 — 2026-09-01
 
 Patch release: `schema_graph()` on large projects, query-engine bookmark

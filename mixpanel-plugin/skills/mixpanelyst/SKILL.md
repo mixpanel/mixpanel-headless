@@ -546,6 +546,22 @@ def build_flow_params(self, event, **kwargs) -> dict[str, Any]: ...
 def build_user_params(self, **kwargs) -> dict[str, Any]: ...
 ```
 
+### Share a Query as a Link
+
+Turn any query into a Mixpanel URL the user can open in the browser. One App API call; the report type is inferred from the result.
+
+```python
+result = ws.query(mp.Metric.total("Login"), last=7)
+link = ws.create_report_link(result, name="Logins, last 7 days")
+print(link.url)      # https://mixpanel.com/project/<pid>/view/<wid>/app/insights#<slug>
+
+# The other direction: a URL / slug / shortlink someone shared → runnable params
+r = ws.resolve_report_link("https://mixpanel.com/s/AbC123")
+df = ws.query_report_link(r).df
+```
+
+Always give the user `link.url` when they ask to "share", "send", or "open in Mixpanel". Project and region mismatches raise `ReportLinkScopeMismatchError` before any network call — the message names the `ws.use(project=...)` fix.
+
 ### Multi-Step Analysis Patterns
 
 Every query engine has parameters that look like simple settings but are actually analytical choices with outsized influence on results. Before running any query, apply these principles:

@@ -16,10 +16,10 @@ state-change verb.
 | `workspace` | Workspace axis (`list` from `/me`, `use ID`, `show`) |
 | `target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
 | `session` | Resolved active session viewer (`mp session [--bridge]`) |
-| `query` | Live Mixpanel API queries (segmentation, funnels, retention) |
+| `query` | Live Mixpanel API queries (segmentation, funnels, retention); `--link` on segmentation / funnel / saved-report / flows adds `report_url` |
 | `inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints) |
-| `reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk ops, history) |
+| `reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk ops, history) + report links (`link`, `resolve [--run]`) |
 | `cohorts` | Cohort CRUD (list, create, get, update, delete, bulk ops) |
 | `flags` / `experiments` / `alerts` / `annotations` / `webhooks` / `lexicon` / `drop-filters` / `custom-properties` / `custom-events` / `lookup-tables` / `schemas` | Entity CRUD + data governance for the matching App API surface |
 | `business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
@@ -85,6 +85,10 @@ Errors go to stderr via `err_console`.
 | `AccountNotFoundError` | 4 |
 | `RateLimitError` | 5 |
 | `QueryError` | 3 |
+| `ReportLinkNotFoundError` | 4 |
+| `ReportLinkParseError` / `UnsupportedReportLinkError` / `ReportLinkScopeMismatchError` | 3 (prints `hint:` when present) |
+| `BookmarkValidationError` | 3 (one line per validation error) |
+| `ShortLinkResolutionError` | 1 |
 | `ConfigError` | 1 |
 | `MixpanelHeadlessError` | 1 |
 

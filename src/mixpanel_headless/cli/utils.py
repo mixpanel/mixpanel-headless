@@ -29,6 +29,7 @@ from mixpanel_headless.exceptions import (
     AccountExistsError,
     AccountNotFoundError,
     AuthenticationError,
+    BookmarkValidationError,
     BusinessContextValidationError,
     ConfigError,
     DateRangeTooLargeError,
@@ -42,10 +43,15 @@ from mixpanel_headless.exceptions import (
     RegionProbeError,
     RegionProbeNetworkError,
     ReplayNotFoundError,
+    ReportLinkNotFoundError,
+    ReportLinkParseError,
+    ReportLinkScopeMismatchError,
     ServerError,
     SessionReplayAccessError,
+    ShortLinkResolutionError,
     SignedURLExpiredError,
     UnsupportedReplayFormatError,
+    UnsupportedReportLinkError,
     WorkspaceScopeError,
 )
 
@@ -402,6 +408,43 @@ def handle_errors(func: F) -> F:
                 f" by mixpanel-headless."
             )
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None
+        except ReportLinkNotFoundError as e:
+            # 045 — unknown slug / saved report / shortlink maps to NOT_FOUND (4)
+            # per contracts/cli-commands.md §4. Caught BEFORE the generic
+            # MixpanelHeadlessError so the exit code lands on 4 instead of 1.
+            err_console.print(f"[red]error:[/red] {rich_escape(e.message)}")
+            raise typer.Exit(ExitCode.NOT_FOUND) from None
+        except (
+            ReportLinkParseError,
+            UnsupportedReportLinkError,
+            ReportLinkScopeMismatchError,
+        ) as e:
+            # 045 — the caller's link was unparseable, unsupported, or out of
+            # scope: INVALID_ARGS (3). Print the actionable hint when present.
+            err_console.print(f"[red]error:[/red] {rich_escape(e.message)}")
+            hint = e.details.get("hint")
+            if hint:
+                err_console.print(f"[dim]hint:[/dim] {rich_escape(str(hint))}")
+            raise typer.Exit(ExitCode.INVALID_ARGS) from None
+        except ShortLinkResolutionError as e:
+            # 045 — the shortlink server answered in a shape headless cannot
+            # extract a target from: GENERAL_ERROR (1).
+            err_console.print(f"[red]error:[/red] {rich_escape(e.message)}")
+            hint = e.details.get("hint")
+            if hint:
+                err_console.print(f"[dim]hint:[/dim] {rich_escape(str(hint))}")
+            raise typer.Exit(ExitCode.GENERAL_ERROR) from None
+        except BookmarkValidationError as e:
+            # 045 — client-side params schema rejection is the caller's input:
+            # INVALID_ARGS (3), one line per severity="error" item. Before
+            # this branch the class fell through to the generic handler (1).
+            err_console.print("[red]error:[/red] params failed schema validation")
+            for item in e.errors:
+                if item.severity == "error":
+                    err_console.print(
+                        f"  {rich_escape(item.path)}: {rich_escape(item.message)}"
+                    )
+            raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except MixpanelHeadlessError as e:
             err_console.print(f"[red]Error:[/red] {rich_escape(e.message)}")
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None

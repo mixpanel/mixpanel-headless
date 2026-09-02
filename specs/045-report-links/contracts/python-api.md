@@ -49,7 +49,7 @@ Behavior:
 3. If `kind == "dashboard"`, raise `UnsupportedReportLinkError("UNSUPPORTED_DASHBOARD_LINK")`. If `kind == "legacy_jsurl"`, raise `UnsupportedReportLinkError("UNSUPPORTED_LEGACY_HASH")`.
 4. If `parsed.region` is set and differs from `self.session.region`, raise `ReportLinkScopeMismatchError("REPORT_LINK_REGION_MISMATCH")`. If `parsed.project_id` is set and differs from `int(self.project.id)`, raise `ReportLinkScopeMismatchError("REPORT_LINK_PROJECT_MISMATCH")`. A bare slug skips both.
 5. If `kind == "slug"`, fetch with `client.get_bookmark_url(slug)` and build `BookmarkUrl`. `report_type` is the record `type`. `bookmark` is the embedded bookmark when present.
-6. If `kind == "bookmark"`, fetch with `self.get_bookmark(bookmark_id)`. `report_type` is `bookmark.bookmark_type`. If `parsed.overrides_jsurl` is set, log a warning that overrides are ignored.
+6. If `kind == "bookmark"`, fetch with `self.get_bookmark(bookmark_id)`. That reader raises `QueryError` with `status_code == 404` when the bookmark does not exist; catch it and raise `ReportLinkNotFoundError("REPORT_LINK_BOOKMARK_NOT_FOUND")` with the parsed fields in `details`. Other `QueryError` values pass through. `report_type` is `bookmark.bookmark_type`. If `parsed.overrides_jsurl` is set, log a warning that overrides are ignored.
 7. `workspace_id` is `parsed.workspace_id`, else the pinned session workspace, else `None`. Never call `resolve_workspace_id()` here.
 8. Rebuild `url` with `build_slug_url` or `build_bookmark_url`.
 
