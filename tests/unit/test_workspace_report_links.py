@@ -1254,3 +1254,119 @@ class TestSavedReportLink:
         ws.saved_report_link(2, report_type="flows", workspace_id=3)
 
         assert mock_api_client.method_calls == []
+
+
+# =============================================================================
+# review follow-ups (PR #223)
+# =============================================================================
+
+
+class TestQueryReportLinkScopeOnResolvedInput:
+    """A retained ResolvedReport must not run against a different session scope."""
+
+    def test_project_mismatch_raises_before_query(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """A ResolvedReport from project 3 on a project-12345 session is rejected."""
+        resolved = dataclasses.replace(
+            _resolved("insights", _INSIGHTS_PARAMS), project_id=3
+        )
+
+        with pytest.raises(ReportLinkScopeMismatchError) as exc_info:
+            ws.query_report_link(resolved)
+
+        exc = exc_info.value
+        assert exc.code == "REPORT_LINK_PROJECT_MISMATCH"
+        assert exc.details["link_project_id"] == 3
+        assert exc.details["session_project_id"] == 12345
+        assert 'ws.use(project="3")' in str(exc)
+        mock_live_query.query.assert_not_called()
+
+    def test_region_mismatch_raises_before_query(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """A ResolvedReport from the EU region on a US session is rejected."""
+        resolved = dataclasses.replace(
+            _resolved("insights", _INSIGHTS_PARAMS), region="eu"
+        )
+
+        with pytest.raises(ReportLinkScopeMismatchError) as exc_info:
+            ws.query_report_link(resolved)
+
+        assert exc_info.value.code == "REPORT_LINK_REGION_MISMATCH"
+        mock_live_query.query.assert_not_called()
+
+    def test_matching_scope_runs(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """A ResolvedReport that matches the session runs as before."""
+        sentinel = QueryResult(computed_at="t", from_date="d", to_date="d")
+        mock_live_query.query.return_value = sentinel
+
+        assert ws.query_report_link(_resolved("insights", _INSIGHTS_PARAMS)) is sentinel
+
+    def test_scope_checked_after_use_switch(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """Resolving on one session and running after ``use(project=...)`` is rejected."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws = workspace_factory()
+        svc = MagicMock(spec=LiveQueryService)
+        ws._live_query = svc
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        resolved = ws.resolve_report_link(_SLUG)
+
+        other = workspace_factory(
+            session=_TEST_SESSION.replace(project=Project(id="777"))
+        )
+        other._live_query = svc
+
+        with pytest.raises(ReportLinkScopeMismatchError):
+            other.query_report_link(resolved)
+
+        svc.query.assert_not_called()
+
+
+class TestResolveSlugWithUnknownServerType:
+    """An unknown record ``type`` resolves; the canonical URL falls back, never RL1."""
+
+    def test_unknown_type_falls_back_to_parsed_app(
+        self, ws: Workspace, mock_api_client: MagicMock
+    ) -> None:
+        """A ``user`` record under /app/insights keeps the insights app in the URL."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record(type="user")
+
+        resolved = ws.resolve_report_link(
+            f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
+        )
+
+        assert resolved.report_type == "user"
+        assert (
+            resolved.url == f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
+        )
+
+    def test_unknown_type_on_bare_slug_defaults_to_insights_app(
+        self, ws: Workspace, mock_api_client: MagicMock
+    ) -> None:
+        """A bare slug carries no app hint, so the URL defaults to the insights app."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record(type="user")
+
+        resolved = ws.resolve_report_link(_SLUG)
+
+        assert (
+            resolved.url == f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
+        )
+
+    def test_unknown_type_cannot_run(
+        self, ws: Workspace, mock_api_client: MagicMock, mock_live_query: MagicMock
+    ) -> None:
+        """Running the unknown type raises UNSUPPORTED_REPORT_TYPE, not RL1."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record(type="user")
+
+        with pytest.raises(UnsupportedReportLinkError) as exc_info:
+            ws.query_report_link(_SLUG)
+
+        assert exc_info.value.code == "UNSUPPORTED_REPORT_TYPE"

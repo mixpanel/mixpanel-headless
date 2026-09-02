@@ -95,6 +95,8 @@ if resolved.report_type == "flows":
 
 A `launch-analysis` report resolves but cannot be run; `query_report_link` raises `UnsupportedReportLinkError` (`UNSUPPORTED_REPORT_TYPE`).
 
+A `ResolvedReport` remembers the region and project it was resolved in. If you keep one across `ws.use(project=...)`, or hand it to a Workspace on another project, `query_report_link` raises `ReportLinkScopeMismatchError` before it runs anything, the same check `resolve_report_link` applies to a URL.
+
 ```bash
 mp reports resolve 'https://mixpanel.com/s/AbC123' --run -f csv
 mp reports resolve 'https://mixpanel.com/project/3/app/flows#report/8' --run --mode paths

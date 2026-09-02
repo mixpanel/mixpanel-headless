@@ -67,7 +67,7 @@ def query_report_link(
 ```
 
 Behavior:
-1. If `link` is a `str`, call `resolve_report_link`. If it is a `ResolvedReport`, use it as is. No second fetch.
+1. If `link` is a `str`, call `resolve_report_link`. If it is a `ResolvedReport`, use it as is (no second fetch) after checking its recorded `region` and `project_id` against the session; a mismatch raises `ReportLinkScopeMismatchError` before any query (PR #223 review).
 2. Dispatch on `report_type` with `pid = int(self.project.id)`:
    - `insights` calls `LiveQueryService.query(params, pid)`.
    - `funnels` calls `query_funnel(params, pid)`.

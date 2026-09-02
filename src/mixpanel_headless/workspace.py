@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -95,6 +95,8 @@ from mixpanel_headless._internal.query.user_validators import (
 )
 from mixpanel_headless._internal.report_links import (
     BOOKMARK_HASH_FOR_TYPE,
+    SLUG_APP_FOR_TYPE,
+    LinkRegion,
     ParsedReportLink,
     build_bookmark_url,
     build_slug_url,
@@ -11732,6 +11734,18 @@ class Workspace:
                 BookmarkUrl, raw, endpoint="get_bookmark_url"
             )
             embedded = record.bookmark
+            # The server accepts four slug types today. If it ever returns
+            # another, keep the record resolvable and fall back to the app
+            # the URL was opened under (or insights for a bare slug) rather
+            # than raising RL1 from the builder.
+            slug_url_type = record.bookmark_type
+            if slug_url_type not in SLUG_APP_FOR_TYPE:
+                hint_type = parsed.report_type_hint
+                slug_url_type = (
+                    hint_type
+                    if hint_type is not None and hint_type in SLUG_APP_FOR_TYPE
+                    else "insights"
+                )
             return ResolvedReport(
                 source="slug",
                 report_type=record.bookmark_type,
@@ -11743,7 +11757,7 @@ class Workspace:
                     region=region,
                     project_id=project_id,
                     slug=record.slug,
-                    report_type=record.bookmark_type,
+                    report_type=slug_url_type,
                     workspace_id=workspace_id,
                 ),
                 input=link,
@@ -11830,6 +11844,10 @@ class Workspace:
         Raises:
             UnsupportedReportLinkError: ``UNSUPPORTED_REPORT_TYPE`` for a type
                 that cannot be run (for example ``launch-analysis``).
+            ReportLinkScopeMismatchError: A :class:`ResolvedReport` whose
+                recorded ``region`` or ``project_id`` differs from the active
+                session (for example after ``use(project=...)``). Raised
+                before any query.
             ReportLinkError: Any resolution failure when ``link`` is a string
                 (see :meth:`resolve_report_link`).
             QueryError: The query engine rejected the params.
@@ -11847,7 +11865,25 @@ class Workspace:
                 result = ws.query_report_link(resolved, mode="paths")
             ```
         """
-        resolved = self.resolve_report_link(link) if isinstance(link, str) else link
+        if isinstance(link, str):
+            resolved = self.resolve_report_link(link)
+        else:
+            resolved = link
+            # A ResolvedReport records the scope it was resolved in. If the
+            # caller kept it across ``use(project=...)`` or handed it to
+            # another Workspace, refuse rather than run its params against
+            # an unrelated project (same rule as resolve_report_link).
+            self._check_report_link_scope(
+                ParsedReportLink(
+                    kind=resolved.source,
+                    raw=resolved.input,
+                    region=cast("LinkRegion", resolved.region),
+                    project_id=resolved.project_id,
+                    workspace_id=resolved.workspace_id,
+                    slug=resolved.slug,
+                    bookmark_id=resolved.bookmark_id,
+                )
+            )
         project_id = int(self._session.project.id)
         service = self._live_query_service
         report_type = resolved.report_type
