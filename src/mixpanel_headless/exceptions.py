@@ -1678,8 +1678,10 @@ class ReportLinkScopeMismatchError(ReportLinkError):
     """The link names a project or region other than the active session.
 
     Codes: ``REPORT_LINK_SCOPE_MISMATCH`` (default),
-    ``REPORT_LINK_PROJECT_MISMATCH``, ``REPORT_LINK_REGION_MISMATCH``. Both
-    checks run before any HTTP call. The message names both values and the
+    ``REPORT_LINK_PROJECT_MISMATCH``, ``REPORT_LINK_REGION_MISMATCH``,
+    ``REPORT_LINK_WORKSPACE_MISMATCH`` (only when the session pins a
+    workspace and the link names a different one). All checks run before any
+    HTTP call. The message names both values and the
     ``ws.use(...)`` / ``mp --project`` switch that fixes it.
     """
 

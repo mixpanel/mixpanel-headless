@@ -21,7 +21,8 @@ may include API changes.
   - `Workspace.query_report_link(link_or_resolved, *, mode=)` runs the params
     through `query` / `query_funnel` / `query_retention` / `query_flow`. A
     `ResolvedReport` whose recorded region or project differs from the
-    active session is rejected before any query.
+    active session, or whose recorded workspace differs from the pinned
+    session workspace, is rejected before any query.
   - `Workspace.saved_report_link(bookmark_id, *, report_type=, workspace_id=)`
     builds a saved-report URL with no network call.
   - CLI: `mp reports link` and `mp reports resolve [--run] [--mode]`, plus an

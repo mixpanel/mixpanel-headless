@@ -95,7 +95,7 @@ if resolved.report_type == "flows":
 
 A `launch-analysis` report resolves but cannot be run; `query_report_link` raises `UnsupportedReportLinkError` (`UNSUPPORTED_REPORT_TYPE`).
 
-A `ResolvedReport` remembers the region and project it was resolved in. If you keep one across `ws.use(project=...)`, or hand it to a Workspace on another project, `query_report_link` raises `ReportLinkScopeMismatchError` before it runs anything, the same check `resolve_report_link` applies to a URL.
+A `ResolvedReport` remembers the region, project, and workspace it was resolved in. If you keep one across `ws.use(project=...)` or `ws.use(workspace=...)`, or hand it to a Workspace on another project, `query_report_link` raises `ReportLinkScopeMismatchError` before it runs anything, the same check `resolve_report_link` applies to a URL. The workspace part applies only when the session has a pinned workspace and the report records one.
 
 ```bash
 mp reports resolve 'https://mixpanel.com/s/AbC123' --run -f csv
@@ -137,6 +137,7 @@ The singular `"funnel"` that `SavedReportResult.report_type` reports is accepted
 |-----------|------------------|------------|
 | The link names another project | `ReportLinkScopeMismatchError` / `REPORT_LINK_PROJECT_MISMATCH` | Switch: `ws.use(project="3")` or `mp --project 3 ...`. No network call was made. |
 | The link host is another region | `ReportLinkScopeMismatchError` / `REPORT_LINK_REGION_MISMATCH` | Use an account for that region: `mp --account NAME ...`. No network call was made. |
+| The link names a workspace and your session is pinned to a different one | `ReportLinkScopeMismatchError` / `REPORT_LINK_WORKSPACE_MISMATCH` | Switch: `ws.use(workspace=75)` or `mp --workspace 75 ...`. Query requests carry the pinned workspace, so a different data view would change the results. Unpinned sessions accept any link. |
 | The hash starts with `~(` | `UnsupportedReportLinkError` / `UNSUPPORTED_LEGACY_HASH` | Open the link in a browser. The app re-issues a slug on load; copy the new URL. |
 | The link is a board | `UnsupportedReportLinkError` / `UNSUPPORTED_DASHBOARD_LINK` | `ws.get_dashboard(ID)` lists its reports; resolve one report link. A board URL that carries `edited-bookmark=<slug>` resolves that slug. |
 | The slug is unknown here | `ReportLinkNotFoundError` / `REPORT_LINK_SLUG_NOT_FOUND` | A slug is readable only in the project and region that created it. |

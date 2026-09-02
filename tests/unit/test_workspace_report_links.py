@@ -1370,3 +1370,108 @@ class TestResolveSlugWithUnknownServerType:
             ws.query_report_link(_SLUG)
 
         assert exc_info.value.code == "UNSUPPORTED_REPORT_TYPE"
+
+
+class TestWorkspaceScope:
+    """A pinned session workspace must match the link's or report's workspace."""
+
+    def test_url_workspace_differs_from_pinned_raises_before_fetch(
+        self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
+    ) -> None:
+        """Pinned to 75, a ``/view/9/`` URL is rejected with no client call."""
+        ws = workspace_factory(session=_PINNED_SESSION)
+
+        with pytest.raises(ReportLinkScopeMismatchError) as exc_info:
+            ws.resolve_report_link(
+                f"https://mixpanel.com/project/12345/view/9/app/insights#{_SLUG}"
+            )
+
+        exc = exc_info.value
+        assert exc.code == "REPORT_LINK_WORKSPACE_MISMATCH"
+        assert exc.details["link_workspace_id"] == 9
+        assert exc.details["session_workspace_id"] == 75
+        assert "ws.use(workspace=9)" in str(exc)
+        assert "mp --workspace 9" in str(exc)
+        mock_api_client.get_bookmark_url.assert_not_called()
+
+    def test_url_workspace_equal_to_pinned_is_fine(
+        self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
+    ) -> None:
+        """Pinned to 75, a ``/view/75/`` URL resolves."""
+        ws = workspace_factory(session=_PINNED_SESSION)
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+
+        resolved = ws.resolve_report_link(
+            f"https://mixpanel.com/project/12345/view/75/app/insights#{_SLUG}"
+        )
+
+        assert resolved.workspace_id == 75
+
+    def test_unpinned_session_accepts_any_url_workspace(
+        self, ws: Workspace, mock_api_client: MagicMock
+    ) -> None:
+        """Without a pin there is nothing to contradict; the URL wid is kept."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+
+        resolved = ws.resolve_report_link(
+            f"https://mixpanel.com/project/12345/view/9/app/insights#{_SLUG}"
+        )
+
+        assert resolved.workspace_id == 9
+
+    def test_resolved_report_workspace_differs_from_pinned_raises(
+        self, workspace_factory: Callable[..., Workspace]
+    ) -> None:
+        """A report resolved under workspace 9 does not run on a session pinned to 75."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws = workspace_factory(session=_PINNED_SESSION)
+        svc = MagicMock(spec=LiveQueryService)
+        ws._live_query = svc
+        resolved = dataclasses.replace(
+            _resolved("insights", _INSIGHTS_PARAMS), workspace_id=9
+        )
+
+        with pytest.raises(ReportLinkScopeMismatchError) as exc_info:
+            ws.query_report_link(resolved)
+
+        assert exc_info.value.code == "REPORT_LINK_WORKSPACE_MISMATCH"
+        svc.query.assert_not_called()
+
+    def test_resolved_report_without_workspace_runs_on_pinned_session(
+        self, workspace_factory: Callable[..., Workspace]
+    ) -> None:
+        """A report with no recorded workspace runs on a pinned session."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws = workspace_factory(session=_PINNED_SESSION)
+        svc = MagicMock(spec=LiveQueryService)
+        ws._live_query = svc
+        sentinel = QueryResult(computed_at="t", from_date="d", to_date="d")
+        svc.query.return_value = sentinel
+
+        assert ws.query_report_link(_resolved("insights", _INSIGHTS_PARAMS)) is sentinel
+
+    def test_scope_checked_after_use_workspace_switch(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """Resolve pinned to 75, then run pinned to 9: rejected before any query."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws_a = workspace_factory(session=_PINNED_SESSION)
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        resolved = ws_a.resolve_report_link(_SLUG)
+        assert resolved.workspace_id == 75
+
+        ws_b = workspace_factory(
+            session=_TEST_SESSION.replace(workspace=WorkspaceRef(id=9))
+        )
+        svc = MagicMock(spec=LiveQueryService)
+        ws_b._live_query = svc
+
+        with pytest.raises(ReportLinkScopeMismatchError):
+            ws_b.query_report_link(resolved)
+
+        svc.query.assert_not_called()

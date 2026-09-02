@@ -11547,17 +11547,23 @@ class Workspace:
         return details
 
     def _check_report_link_scope(self, parsed: ParsedReportLink) -> None:
-        """Reject a link whose region or project differs from the session.
+        """Reject a link whose region, project, or workspace differs from the session.
 
-        Runs before any HTTP call. A bare slug carries neither value and so
-        skips both checks.
+        Runs before any HTTP call. A bare slug carries none of the three values
+        and so skips every check. The workspace check applies only when the
+        session has a pinned workspace **and** the link names one: Query-host
+        requests carry the pinned ``workspace_id``, so running a report under
+        a different data view would silently change its results. When either
+        side is unset there is nothing to contradict.
 
         Args:
-            parsed: The parsed link.
+            parsed: The parsed link (or a :class:`ResolvedReport` projected
+                onto one by :meth:`query_report_link`).
 
         Raises:
-            ReportLinkScopeMismatchError: ``REPORT_LINK_REGION_MISMATCH`` or
-                ``REPORT_LINK_PROJECT_MISMATCH``.
+            ReportLinkScopeMismatchError: ``REPORT_LINK_REGION_MISMATCH``,
+                ``REPORT_LINK_PROJECT_MISMATCH``, or
+                ``REPORT_LINK_WORKSPACE_MISMATCH``.
         """
         session_region = self._session.region
         if parsed.region is not None and parsed.region != session_region:
@@ -11584,6 +11590,24 @@ class Workspace:
                     **self._report_link_details(parsed),
                     "link_project_id": parsed.project_id,
                     "session_project_id": session_project,
+                },
+            )
+        pinned = self._session.workspace
+        if (
+            pinned is not None
+            and parsed.workspace_id is not None
+            and parsed.workspace_id != int(pinned.id)
+        ):
+            raise ReportLinkScopeMismatchError(
+                f"Report link belongs to workspace {parsed.workspace_id} but the "
+                f"active session is pinned to workspace {int(pinned.id)}. Switch "
+                f"with ws.use(workspace={parsed.workspace_id}) "
+                f"(CLI: mp --workspace {parsed.workspace_id} ...) and retry.",
+                code="REPORT_LINK_WORKSPACE_MISMATCH",
+                details={
+                    **self._report_link_details(parsed),
+                    "link_workspace_id": parsed.workspace_id,
+                    "session_workspace_id": int(pinned.id),
                 },
             )
 
@@ -11687,7 +11711,8 @@ class Workspace:
             UnsupportedReportLinkError: A dashboard link or a legacy
                 ``~(...)`` hash.
             ReportLinkScopeMismatchError: The link's region or project
-                differs from the session (no HTTP call was made).
+                differs from the session, or its workspace differs from the
+                pinned session workspace (no HTTP call was made).
             ReportLinkNotFoundError: The slug, saved report, or shortlink
                 does not exist in scope.
             ShortLinkResolutionError: The shortlink target could not be
@@ -11846,7 +11871,9 @@ class Workspace:
                 that cannot be run (for example ``launch-analysis``).
             ReportLinkScopeMismatchError: A :class:`ResolvedReport` whose
                 recorded ``region`` or ``project_id`` differs from the active
-                session (for example after ``use(project=...)``). Raised
+                session, or whose recorded ``workspace_id`` differs from the
+                pinned session workspace (for example after
+                ``use(project=...)`` or ``use(workspace=...)``). Raised
                 before any query.
             ReportLinkError: Any resolution failure when ``link`` is a string
                 (see :meth:`resolve_report_link`).

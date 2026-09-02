@@ -40,8 +40,9 @@ Messages below are stable. Tests assert on them. Placeholders in braces are fill
 |------|---------|
 | `REPORT_LINK_PROJECT_MISMATCH` | `Report link belongs to project {link_project_id} but the active session is project {session_project_id}. Switch with ws.use(project="{link_project_id}") (CLI: mp --project {link_project_id} ...) and retry.` |
 | `REPORT_LINK_REGION_MISMATCH` | `Report link is on the {link_region} region but the active account is on {session_region}. Use an account for the {link_region} region (CLI: mp --account <name> ...) and retry.` |
+| `REPORT_LINK_WORKSPACE_MISMATCH` | `Report link belongs to workspace {link_workspace_id} but the active session is pinned to workspace {session_workspace_id}. Switch with ws.use(workspace={link_workspace_id}) (CLI: mp --workspace {link_workspace_id} ...) and retry.` Applies only when the session has a pinned workspace and the link (or `ResolvedReport`) names one. Added from PR #223 review. |
 
-Both fire before any HTTP call.
+All three fire before any HTTP call.
 
 ## 5. Shortlink resolution (`ShortLinkResolutionError`, exit 1)
 
