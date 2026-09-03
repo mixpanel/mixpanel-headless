@@ -14097,7 +14097,7 @@ class ResolvedReport:
         params: The raw parameters. Never merged with ``overrides``.
         project_id: Project the record lives in.
         workspace_id: URL ``wid``, else the session pin, else ``None``.
-        region: Session region.
+        region: Session region (``us``, ``eu``, or ``in``).
         url: Canonical rebuilt URL.
         input: What the caller passed.
         expanded_url: The shortlink target when the input was a shortlink.
@@ -14122,7 +14122,7 @@ class ResolvedReport:
     params: dict[str, Any]
     project_id: int
     workspace_id: int | None
-    region: str
+    region: Region
     url: str
     input: str
     expanded_url: str | None = None
@@ -14132,6 +14132,26 @@ class ResolvedReport:
     name: str | None = None
     description: str | None = None
     overrides: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Tie ``source`` to the id field that must accompany it.
+
+        Raises:
+            ParamValidationError: ``RL5_RESOLVED_REPORT_INCONSISTENT`` when
+                ``source="slug"`` has no ``slug`` or ``source="bookmark"`` has
+                no ``bookmark_id``.
+        """
+        missing = None
+        if self.source == "slug" and self.slug is None:
+            missing = "slug"
+        elif self.source == "bookmark" and self.bookmark_id is None:
+            missing = "bookmark_id"
+        if missing is not None:
+            raise ParamValidationError(
+                f"ResolvedReport with source={self.source!r} requires {missing}.",
+                code="RL5_RESOLVED_REPORT_INCONSISTENT",
+                details={"source": self.source, "missing": missing},
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-friendly dict.

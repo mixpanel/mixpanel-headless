@@ -150,7 +150,7 @@ class TestErrorCodesArtifact:
         twins = error_codes["coded_guard_twin_codes"]
         assert registry == sorted(exceptions_module.CODED_GUARD_REGISTRY)
         assert twins == sorted(exceptions_module.CODED_GUARD_TWIN_CODES)
-        assert len(registry) == 124
+        assert len(registry) == 125
         assert len(twins) == 9
 
     def test_registry_keeps_all_code_families(

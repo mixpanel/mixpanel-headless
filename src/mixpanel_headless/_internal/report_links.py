@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import re
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final, Literal
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
+from mixpanel_headless._internal.auth.account import Region
 from mixpanel_headless.exceptions import ParamValidationError, ReportLinkParseError
 
 # =============================================================================
@@ -40,20 +42,27 @@ SLUG_LENGTH: Final[int] = 12
 SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-zA-Z_-]{12}$")
 """The server-side slug regex. Wider than the mint alphabet on purpose."""
 
-WEB_HOSTS: Final[dict[str, str]] = {
-    "us": "mixpanel.com",
-    "eu": "eu.mixpanel.com",
-    "in": "in.mixpanel.com",
-}
-"""Web host per region. Builders always emit these hosts."""
+WEB_HOSTS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "us": "mixpanel.com",
+        "eu": "eu.mixpanel.com",
+        "in": "in.mixpanel.com",
+    }
+)
+"""Web host per region. Builders always emit these hosts. Read-only."""
 
-SLUG_APP_FOR_TYPE: Final[dict[str, str]] = {
-    "insights": "insights",
-    "funnels": "insights",
-    "retention": "insights",
-    "flows": "flows",
-}
+SLUG_APP_FOR_TYPE: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "insights": "insights",
+        "funnels": "insights",
+        "retention": "insights",
+        "flows": "flows",
+    }
+)
 """App path segment used when a created slug URL is built, per report type.
+
+The keys are exactly the :data:`~mixpanel_headless.types.ReportLinkType`
+members; ``tests/unit/test_report_links.py`` locks that agreement.
 
 Follows the Mixpanel MCP server: the Insights app hosts insights, funnels,
 and retention slugs and reads ``type`` from the slug record; the Flows app
@@ -61,36 +70,42 @@ hosts flows slugs. If live QA shows the Insights app does not switch type,
 change the ``funnels`` and ``retention`` rows here — one line each.
 """
 
-BOOKMARK_HASH_FOR_TYPE: Final[dict[str, str]] = {
-    "insights": "insights#report/{id}",
-    "funnels": "funnels#view/{id}",
-    "retention": "retention#report/{id}",
-    "flows": "flows#report/{id}",
-    "launch-analysis": "impact#report/{id}",
-}
-"""``{app}#{hash}`` template per saved-report (bookmark) type."""
+BOOKMARK_HASH_FOR_TYPE: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "insights": "insights#report/{id}",
+        "funnels": "funnels#view/{id}",
+        "retention": "retention#report/{id}",
+        "flows": "flows#report/{id}",
+        "launch-analysis": "impact#report/{id}",
+    }
+)
+"""``{app}#{hash}`` template per saved-report (bookmark) type.
 
-APP_TO_REPORT_TYPE: Final[dict[str, str]] = {
-    "insights": "insights",
-    "funnels": "funnels",
-    "retention": "retention",
-    "flows": "flows",
-    "impact": "launch-analysis",
-}
+The keys are exactly the :data:`~mixpanel_headless.types.BookmarkType` members.
+"""
+
+APP_TO_REPORT_TYPE: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "insights": "insights",
+        "funnels": "funnels",
+        "retention": "retention",
+        "flows": "flows",
+        "impact": "launch-analysis",
+    }
+)
 """Report type hinted by an app path segment. ``boards`` has no hint."""
-
-LinkRegion = Literal["us", "eu", "in"]
-"""Region a Mixpanel web host belongs to."""
 
 ReportLinkKind = Literal["slug", "bookmark", "short_link", "dashboard", "legacy_jsurl"]
 """What a parsed link points at."""
 
-_HOST_TO_REGION: Final[dict[str, LinkRegion]] = {
-    "mixpanel.com": "us",
-    "eu.mixpanel.com": "eu",
-    "in.mixpanel.com": "in",
-    "mixpanel.org": "us",
-}
+_HOST_TO_REGION: Final[Mapping[str, Region]] = MappingProxyType(
+    {
+        "mixpanel.com": "us",
+        "eu.mixpanel.com": "eu",
+        "in.mixpanel.com": "in",
+        "mixpanel.org": "us",
+    }
+)
 """Recognized web hosts. ``mixpanel.org`` parses as US; builders never emit it."""
 
 _KNOWN_APPS: Final[frozenset[str]] = frozenset(
@@ -101,8 +116,11 @@ _KNOWN_APPS: Final[frozenset[str]] = frozenset(
 _ASCII_DIGITS_RE: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
 """ASCII-only digit run. ``str.isdigit`` accepts Unicode digits; we do not."""
 
-_SCHEME_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://")
-"""Leading URL scheme, per RFC 3986 §3.1."""
+_SCHEME_RE: Final[re.Pattern[str]] = re.compile(r"https?://", re.IGNORECASE)
+"""Leading URL scheme. Only ``http`` and ``https`` are accepted, any case."""
+
+_PERCENT_HASH_RE: Final[re.Pattern[str]] = re.compile("%23", re.IGNORECASE)
+"""A percent-encoded ``#``. The only escape the parser decodes."""
 
 _SHORT_CODE_RE: Final[re.Pattern[str]] = re.compile(r"[0-9A-Za-z_\-]+")
 """Shortlink code after ``/s/``."""
@@ -163,7 +181,7 @@ class ParsedReportLink:
     kind: ReportLinkKind
     raw: str
     host: str | None = None
-    region: LinkRegion | None = None
+    region: Region | None = None
     project_id: int | None = None
     workspace_id: int | None = None
     app: str | None = None
@@ -250,7 +268,7 @@ def _project_path(project_id: int, workspace_id: int | None) -> str:
     return f"/project/{project_id}/view/{workspace_id}"
 
 
-def _lookup_type(table: dict[str, str], report_type: str) -> str:
+def _lookup_type(table: Mapping[str, str], report_type: str) -> str:
     """Look up a report type in a builder table.
 
     Args:
@@ -464,13 +482,35 @@ def _fragment_fields(fragment: str) -> dict[str, str]:
     return fields
 
 
+def _trim_fragment(fragment: str) -> str:
+    """Drop a query tail and trailing slashes from a hash that has no JSURL.
+
+    A browser or a link builder can append ``?utm=x`` or a ``/`` after the
+    slug or the ``report/{id}`` hash. A hash that contains ``~`` carries a
+    JSURL override or legacy body, which may hold ``?`` and ``/`` itself, so
+    it is returned unchanged.
+
+    Args:
+        fragment: The raw URL fragment.
+
+    Returns:
+        The fragment to match against the hash grammar.
+    """
+    if "~" in fragment:
+        return fragment
+    head, _, _ = fragment.partition("?")
+    return head.rstrip("/")
+
+
 def parse_report_link(value: str) -> ParsedReportLink:
     """Parse a Mixpanel report link, shortlink, or bare slug.
 
-    Normalization (url-grammar.md §1): strip, unquote a ``%23`` when there is
-    no ``#``, prepend ``https://`` for a scheme-less known host, lower-case
-    the host, drop the port, ignore the query string, and drop empty path
-    segments.
+    Normalization (url-grammar.md §1): strip, decode ``%23`` to ``#`` when
+    there is no ``#`` (no other escape is decoded), prepend ``https://`` for
+    a scheme-less known host, lower-case the host, drop the port, ignore the
+    query string, drop empty path segments, and drop a ``?`` tail or trailing
+    ``/`` from a hash that carries no ``~`` JSURL body. A scheme other than
+    ``http`` or ``https`` is not a report link.
 
     The parser is total. It returns a :class:`ParsedReportLink` for every
     recognizable Mixpanel URL, including dashboards and legacy JSURL hashes,
@@ -505,8 +545,8 @@ def parse_report_link(value: str) -> ParsedReportLink:
         return ParsedReportLink(kind="slug", raw=raw, slug=raw)
 
     normalized = raw
-    if "#" not in normalized and "%23" in normalized:
-        normalized = unquote(normalized)
+    if "#" not in normalized:
+        normalized = _PERCENT_HASH_RE.sub("#", normalized)
     if not _SCHEME_RE.match(normalized):
         if not _starts_with_known_host(normalized):
             raise _unparseable(raw)
@@ -561,7 +601,7 @@ def parse_report_link(value: str) -> ParsedReportLink:
         "app": app,
     }
     hint = APP_TO_REPORT_TYPE.get(app)
-    fragment = parts.fragment
+    fragment = _trim_fragment(parts.fragment)
     if not fragment:
         raise ReportLinkParseError(
             f"Report link has no fragment after '#'. It points at the {app} app "

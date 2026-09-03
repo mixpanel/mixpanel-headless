@@ -1593,13 +1593,20 @@ class ReportLinkError(MixpanelHeadlessError):
     Most failures in this family are local — a link that does not parse, a
     link that points at another project or region, or a link kind that
     headless cannot resolve — so the base is :class:`MixpanelHeadlessError`
-    rather than :class:`APIError`. The one HTTP-shaped failure,
-    :class:`ReportLinkNotFoundError`, carries the parsed link fields in
-    ``details`` instead of HTTP context.
+    rather than :class:`APIError`. The HTTP-shaped failures,
+    :class:`ReportLinkNotFoundError` and :class:`ShortLinkResolutionError`,
+    carry the parsed link fields in ``details`` instead of HTTP context.
 
     Subclasses: :class:`ReportLinkParseError`,
     :class:`UnsupportedReportLinkError`, :class:`ReportLinkNotFoundError`,
     :class:`ReportLinkScopeMismatchError`, :class:`ShortLinkResolutionError`.
+
+    Not in this family: the pure URL builders and ``create_report_link``
+    input guards raise :class:`ParamValidationError` with the codes
+    ``RL1_UNKNOWN_REPORT_TYPE``, ``RL2_INVALID_SLUG``, ``RL3_UNKNOWN_REGION``,
+    ``RL4_REPORT_TYPE_CONFLICT``, and ``RL5_RESOLVED_REPORT_INCONSISTENT``. A
+    ``try/except ReportLinkError`` does not catch them. Every failure in this
+    family carries a ``hint`` in ``details``.
 
     Example:
         ```python
@@ -1680,9 +1687,12 @@ class ReportLinkScopeMismatchError(ReportLinkError):
     Codes: ``REPORT_LINK_SCOPE_MISMATCH`` (default),
     ``REPORT_LINK_PROJECT_MISMATCH``, ``REPORT_LINK_REGION_MISMATCH``,
     ``REPORT_LINK_WORKSPACE_MISMATCH`` (only when the session pins a
-    workspace and the link names a different one). All checks run before any
-    HTTP call. The message names both values and the
-    ``ws.use(...)`` / ``mp --project`` switch that fixes it.
+    workspace and the link names a different one). The region check runs
+    before any HTTP call. The project and workspace checks run before the
+    record fetch; for a shortlink that is after the one redirect GET, because
+    the target is not known before it. The message names both values, and
+    ``details["hint"]`` names the ``ws.use(...)`` call and the ``mp --account``,
+    ``mp --project``, or ``mp --workspace`` flag that fixes it.
     """
 
     _DEFAULT_CODE = "REPORT_LINK_SCOPE_MISMATCH"
@@ -1844,6 +1854,7 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "RL2_INVALID_SLUG",
         "RL3_UNKNOWN_REGION",
         "RL4_REPORT_TYPE_CONFLICT",
+        "RL5_RESOLVED_REPORT_INCONSISTENT",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

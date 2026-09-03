@@ -12,6 +12,7 @@ from typing import get_args
 
 import pytest
 
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     Bookmark,
     BookmarkUrl,
@@ -264,3 +265,29 @@ class TestResolvedReport:
         resolved = self._build(None)
         with pytest.raises(dataclasses.FrozenInstanceError):
             resolved.params = {}  # type: ignore[misc]
+
+    def test_slug_source_requires_slug(self) -> None:
+        """``source="slug"`` with no slug is rejected at construction."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            dataclasses.replace(self._build(None), slug=None)
+        assert exc_info.value.code == "RL5_RESOLVED_REPORT_INCONSISTENT"
+        assert "source='slug'" in str(exc_info.value)
+        assert exc_info.value.details == {"source": "slug", "missing": "slug"}
+
+    def test_bookmark_source_requires_bookmark_id(self) -> None:
+        """``source="bookmark"`` with no bookmark_id is rejected at construction."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            dataclasses.replace(self._build(None), source="bookmark", slug=None)
+        assert exc_info.value.code == "RL5_RESOLVED_REPORT_INCONSISTENT"
+        assert exc_info.value.details == {
+            "source": "bookmark",
+            "missing": "bookmark_id",
+        }
+
+    def test_bookmark_source_with_id_is_fine(self) -> None:
+        """A bookmark report needs ``bookmark_id`` only; ``bookmark`` may be None."""
+        resolved = dataclasses.replace(
+            self._build(None), source="bookmark", slug=None, bookmark_id=123
+        )
+        assert resolved.bookmark_id == 123
+        assert resolved.bookmark is None

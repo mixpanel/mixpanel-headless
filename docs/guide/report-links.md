@@ -3,7 +3,7 @@
 Turn a headless query into a shareable Mixpanel URL, or turn a Mixpanel report URL back into the query behind it and run it — from Python or the `mp` CLI.
 
 !!! tip "Two directions, one round trip each"
-    `create_report_link` makes one App API call and returns a URL. `resolve_report_link` makes at most two (one for a shortlink, one for the record) and returns the raw params. `saved_report_link` makes none.
+    `create_report_link` makes one App API POST and returns a URL; when no workspace is pinned or passed, workspace auto-resolution may add a lookup call first. `resolve_report_link` makes at most two (one for a shortlink, one for the record) and returns the raw params. `saved_report_link` makes none.
 
 ## What a slug is
 
@@ -73,7 +73,7 @@ The Mixpanel server canonicalizes params when it stores them. The record you rea
 
 For a saved-report link the type comes from the bookmark itself, so a `/app/insights#report/123` link whose bookmark is a funnel resolves as `funnels`. A trailing `~(...)` override segment on a saved-report link is ignored with a warning; the base params are returned.
 
-From the CLI — quote the URL, because `#` starts a shell comment:
+From the CLI — quote the URL so the shell does not interpret `#`:
 
 ```bash
 mp reports resolve 'https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw'
@@ -108,7 +108,7 @@ Four `mp query` commands take an opt-in `--link` flag that adds a `report_url` k
 
 | Command | What `--link` does |
 |---------|--------------------|
-| `mp query segmentation -e EVENT --from D --to D [-u UNIT] [--on PROP] --link` | Builds Insights params for the same event, dates, unit, and breakdown, creates an unsaved report, and adds its URL. One network call. |
+| `mp query segmentation -e EVENT --from D --to D [-u UNIT] [--on PROP] --link` | Builds Insights params for the same event, dates, unit, and breakdown, creates an unsaved report, and adds its URL. One network call, plus workspace auto-resolution when none is pinned. |
 | `mp query funnel FUNNEL_ID ... --link` | Adds the saved funnel's URL. No network call. |
 | `mp query saved-report ID --link` | Adds the saved report's URL, using the detected report type. No network call. |
 | `mp query flows ID --link` | Adds the saved flows report's URL. No network call. |
@@ -119,7 +119,7 @@ mp query segmentation -e Login --from 2026-08-01 --to 2026-08-31 --link --jq .re
 ```
 
 !!! note "The segmentation link is an approximation"
-    The legacy segmentation endpoint and the Insights engine can differ at the edges. The link reproduces the event, the dates, the unit, and a **bare** breakdown property such as `--on country` or `--on 'Plan Type'`. With `--where`, or with an expression in `--on`, the command prints a warning on stderr and omits `report_url`. A link failure never fails the query: the result still prints and the exit code stays 0.
+    The legacy segmentation endpoint and the Insights engine can differ at the edges. The link reproduces the event, the dates, the unit, and a **bare** breakdown property such as `--on country`, `--on 'Plan Type'`, or `--on 'Terms and Conditions'`. A value that contains a bracket, a quote, a comparison operator, or a cast call such as `number(...)` is an expression, and so is any `--where`; the command then prints a warning on stderr and omits the link. A link failure never fails the query: the result still prints, the exit code stays 0, `report_url` is `null`, and `report_url_error` holds the reason. This holds for all four commands, including an auth or server error during the link step.
 
 ## Saved-report links without a network call
 
@@ -135,18 +135,19 @@ The singular `"funnel"` that `SavedReportResult.report_type` reports is accepted
 
 | Situation | Exception / code | What to do |
 |-----------|------------------|------------|
-| The link names another project | `ReportLinkScopeMismatchError` / `REPORT_LINK_PROJECT_MISMATCH` | Switch: `ws.use(project="3")` or `mp --project 3 ...`. No network call was made. |
-| The link host is another region | `ReportLinkScopeMismatchError` / `REPORT_LINK_REGION_MISMATCH` | Use an account for that region: `mp --account NAME ...`. No network call was made. |
-| The link names a workspace and your session is pinned to a different one | `ReportLinkScopeMismatchError` / `REPORT_LINK_WORKSPACE_MISMATCH` | Switch: `ws.use(workspace=75)` or `mp --workspace 75 ...`. Query requests carry the pinned workspace, so a different data view would change the results. Unpinned sessions accept any link. |
+| The link names another project | `ReportLinkScopeMismatchError` / `REPORT_LINK_PROJECT_MISMATCH` | Switch: `ws.use(project="3")` or `mp --project 3 ...`. The record was not fetched. For a full URL or a bare slug no network call was made; for a shortlink the one redirect GET had to run first. |
+| The link host is another region | `ReportLinkScopeMismatchError` / `REPORT_LINK_REGION_MISMATCH` | Use an account for that region: `ws.use(account="NAME")` or `mp --account NAME ...`. No network call was made, for shortlinks too. |
+| The link names a workspace and your session is pinned to a different one | `ReportLinkScopeMismatchError` / `REPORT_LINK_WORKSPACE_MISMATCH` | Switch: `ws.use(workspace=75)` or `mp --workspace 75 ...`. Query requests carry the pinned workspace, so a different data view would change the results. Unpinned sessions accept any link. Checked at the same point as the project. |
+| A saved-report link 404s while a workspace is pinned | `ReportLinkNotFoundError` / `REPORT_LINK_BOOKMARK_NOT_FOUND` | The lookup was workspace-scoped, so the report may live in a sibling workspace of the same project. The message names the pinned workspace; switch or unpin and retry. |
 | The hash starts with `~(` | `UnsupportedReportLinkError` / `UNSUPPORTED_LEGACY_HASH` | Open the link in a browser. The app re-issues a slug on load; copy the new URL. |
 | The link is a board | `UnsupportedReportLinkError` / `UNSUPPORTED_DASHBOARD_LINK` | `ws.get_dashboard(ID)` lists its reports; resolve one report link. A board URL that carries `edited-bookmark=<slug>` resolves that slug. |
 | The slug is unknown here | `ReportLinkNotFoundError` / `REPORT_LINK_SLUG_NOT_FOUND` | A slug is readable only in the project and region that created it. |
 | The shortlink redirects to another shortlink | `ShortLinkResolutionError` / `SHORT_LINK_CHAIN` | Resolve the target shortlink directly. Headless follows one redirect only. |
 | The shortlink redirects to the login page | `AuthenticationError` | The credentials cannot see the shortlink. |
 
-Every error in the family subclasses `ReportLinkError` and carries the parsed link parts plus a `hint` in `details`. CLI exit codes: not found 4; parse, unsupported, and scope errors 3; auth 2; shortlink extraction 1.
+Every error in the family subclasses `ReportLinkError` and carries the parsed link parts plus a `hint` in `details`. The CLI prints the hint on its own `hint:` line. CLI exit codes: not found 4; parse, unsupported, and scope errors 3; auth 2; shortlink extraction 1. The pure URL builders and the `create_report_link` input guards raise `ParamValidationError` (`RL1`..`RL5`), not a `ReportLinkError`.
 
-The parser tolerates surrounding whitespace, a trailing slash before `#`, a query string, an upper-case host, a missing scheme, a percent-encoded `#`, the legacy `/report/{pid}/` path form, and `mixpanel.org`.
+The parser tolerates surrounding whitespace, a trailing slash before or after `#`, a query string before `#` or a `?` tail after the slug or `report/{id}` hash, an upper-case host, a missing scheme, `http` as well as `https` (no other scheme), a percent-encoded `#` (no other escape is decoded), the legacy `/report/{pid}/` path form, and `mixpanel.org`.
 
 ## Out of scope
 

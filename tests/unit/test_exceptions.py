@@ -953,7 +953,7 @@ class TestCodedGuardRegistry:
         pydantic-internal, so those sites stay builtin under the design's
         P3 policy). 045-report-links added the four ``RL*`` builder guards.
         """
-        assert len(CODED_GUARD_REGISTRY) == 124
+        assert len(CODED_GUARD_REGISTRY) == 125
 
     def test_twin_codes_all_pre_exist(self) -> None:
         """Every reused twin code already exists in the code universe."""

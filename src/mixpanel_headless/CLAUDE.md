@@ -139,7 +139,7 @@ with mp.Workspace() as ws:
 
 **Business Context**: `get_business_context()`, `set_business_context()`, `clear_business_context()`, `get_business_context_chain()` — read/write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
 
-**Report Links** (045): `create_report_link()` (params or typed result → unsaved-report URL, one App API call), `resolve_report_link()` (URL / bare slug / shortlink → `ResolvedReport` with raw params; scope checks before any HTTP call), `query_report_link()` (run a link or `ResolvedReport` through the matching engine), `saved_report_link()` (saved-report URL, no network)
+**Report Links** (045): `create_report_link()` (params or typed result → unsaved-report URL, one App API POST plus workspace auto-resolution when none is pinned), `resolve_report_link()` (URL / bare slug / shortlink → `ResolvedReport` with raw params; region check before any HTTP call, project and workspace checks before the record fetch), `query_report_link()` (run a link or `ResolvedReport` through the matching engine), `saved_report_link()` (saved-report URL, no network)
 
 **Escape Hatches**: `api` (MixpanelAPIClient)
 

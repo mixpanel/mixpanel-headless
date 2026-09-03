@@ -16,6 +16,7 @@ import typer
 from click.testing import Result
 from typer.testing import CliRunner
 
+from mixpanel_headless._internal.report_links import parse_report_link
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.cli.utils import handle_errors
 from mixpanel_headless.exceptions import (
@@ -91,6 +92,19 @@ class TestHandleErrorsExitCodes:
         assert result.exit_code == 4
         assert "error:" in _combined(result)
         assert "EBrV5bW2u9Mw" in _combined(result)
+
+    def test_not_found_prints_hint_when_present(self, cli_runner: CliRunner) -> None:
+        """A ``hint`` in a not-found error is printed on its own line."""
+        exc = ReportLinkNotFoundError(
+            "No saved report found with id 123 in project 3 (us).",
+            code="REPORT_LINK_BOOKMARK_NOT_FOUND",
+            details={"bookmark_id": 123, "hint": "Check the saved report id."},
+        )
+        result = cli_runner.invoke(_app_raising(exc), [])
+        assert result.exit_code == 4
+        out = _combined(result)
+        assert "hint:" in out
+        assert "Check the saved report id." in out
 
     def test_parse_error_exits_3_with_hint(self, cli_runner: CliRunner) -> None:
         """ReportLinkParseError maps to INVALID_ARGS (3) and prints the hint."""
@@ -283,6 +297,38 @@ class TestReportsLink:
 
         assert result.exit_code == 0, result.output
         assert mock_workspace.create_report_link.call_args.args[0] == _PARAMS
+
+    def test_params_dash_reads_stdin(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """``--params -`` reads the JSON object from stdin."""
+        mock_workspace.create_report_link.return_value = _LINK
+
+        result = _invoke_reports(
+            cli_runner,
+            mock_workspace,
+            ["link", "--params", "-"],
+            input_text=json.dumps(_PARAMS),
+        )
+
+        assert result.exit_code == 0, result.output
+        assert mock_workspace.create_report_link.call_args.args[0] == _PARAMS
+
+    @pytest.mark.parametrize(
+        "args", [[], ["-"], ["--params", "-"], ["--params-file", "-"]]
+    )
+    def test_stdin_on_a_terminal_exits_3(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock, args: list[str]
+    ) -> None:
+        """Every stdin form refuses to block on a terminal."""
+        with patch(
+            "mixpanel_headless.cli.commands.reports._stdin_is_tty", return_value=True
+        ):
+            result = _invoke_reports(cli_runner, mock_workspace, ["link", *args])
+
+        assert result.exit_code == 3
+        assert "stdin is a terminal" in _combined(result)
+        mock_workspace.create_report_link.assert_not_called()
 
     def test_plain_prints_only_the_url(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
@@ -555,10 +601,12 @@ class TestReportsResolve:
     ) -> None:
         """A project mismatch from the workspace exits 3 and names both ids."""
         mock_workspace.resolve_report_link.side_effect = ReportLinkScopeMismatchError(
-            "Report link belongs to project 3 but the active session is project "
-            '12345. Switch with ws.use(project="3") (CLI: mp --project 3 ...) '
-            "and retry.",
+            "Report link belongs to project 3 but the active session is project 12345.",
             code="REPORT_LINK_PROJECT_MISMATCH",
+            details={
+                "hint": 'Switch with ws.use(project="3") (CLI: mp --project 3 ...) '
+                "and retry."
+            },
         )
 
         result = _invoke_reports(
@@ -571,6 +619,59 @@ class TestReportsResolve:
         out = _combined(result)
         assert "project 3" in out
         assert "12345" in out
+        assert "hint:" in out
+        assert "mp --project 3" in out
+
+    @pytest.mark.parametrize(
+        ("link", "code"),
+        [
+            ("nope", "REPORT_LINK_UNPARSEABLE"),
+            (
+                "https://example.com/project/3/app/insights#x",
+                "REPORT_LINK_NOT_MIXPANEL_HOST",
+            ),
+            ("https://mixpanel.com/project/3/app/insights", "REPORT_LINK_EMPTY_HASH"),
+        ],
+    )
+    def test_real_parse_error_exits_3_with_hint(
+        self,
+        cli_runner: CliRunner,
+        mock_workspace: MagicMock,
+        link: str,
+        code: str,
+    ) -> None:
+        """A real parser error travels through the command to exit 3 and a hint."""
+        mock_workspace.resolve_report_link.side_effect = parse_report_link
+
+        result = _invoke_reports(cli_runner, mock_workspace, ["resolve", link])
+
+        assert result.exit_code == 3, result.output
+        out = _combined(result)
+        assert "error:" in out
+        assert "hint:" in out
+        assert code not in out  # the message is prose, not the code
+
+    def test_overrides_tail_behind_short_link_prints_warning(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A shortlink that expands to a saved-report link with ``~(...)`` warns."""
+        short = "https://mixpanel.com/s/AbC"
+        expanded = "https://mixpanel.com/project/12345/app/funnels#view/123/~(a~1)"
+        mock_workspace.resolve_report_link.return_value = ResolvedReport(
+            **{
+                **_RESOLVED.__dict__,
+                "input": short,
+                "expanded_url": expanded,
+                "source": "bookmark",
+                "slug": None,
+                "bookmark_id": 123,
+            }
+        )
+
+        result = _invoke_reports(cli_runner, mock_workspace, ["resolve", short])
+
+        assert result.exit_code == 0, result.output
+        assert "ignoring URL overrides '~(a~1)'" in _combined(result)
 
     def test_not_found_exits_4(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
@@ -802,7 +903,9 @@ class TestSegmentationLink:
 
         assert result.exit_code == 0, result.output
         assert "--link is not supported with --where; link omitted" in _combined(result)
-        assert "report_url" not in json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        assert data["report_url"] is None
+        assert data["report_url_error"] == "--link is not supported with --where"
         mock_workspace.create_report_link.assert_not_called()
         mock_workspace.segmentation.assert_called_once()
 
@@ -812,29 +915,47 @@ class TestSegmentationLink:
             'defined(properties["x"])',
             'properties["x"] > 1',
             "number(x)",
-            "a and b",
-            "a or b",
             "string(x) == 'y'",
+            'user["Country"]',
+            'event["Plan"]',
+            "a != b",
+            "a < b",
         ],
     )
     def test_non_bare_on_warns_and_omits_link(
         self, cli_runner: CliRunner, mock_workspace: MagicMock, on: str
     ) -> None:
-        """An expression in ``--on`` prints the §7 warning and omits report_url."""
+        """An expression in ``--on`` prints the warning and nulls report_url."""
         result = _invoke_query(
             cli_runner, mock_workspace, [*_SEG_ARGS, "--on", on, "--link"]
         )
 
         assert result.exit_code == 0, result.output
         assert "bare property name for --on only; link omitted" in _combined(result)
-        assert "report_url" not in json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        assert data["report_url"] is None
+        assert data["report_url_error"] == (
+            "--link supports a bare property name for --on only"
+        )
         mock_workspace.create_report_link.assert_not_called()
 
-    @pytest.mark.parametrize("on", ["Plan Type", "$city", "country", "Ünïcode prop"])
+    @pytest.mark.parametrize(
+        "on",
+        [
+            "Plan Type",
+            "$city",
+            "country",
+            "Ünïcode prop",
+            "Terms and Conditions",
+            "Sign In or Up",
+            "Undefined Reason",
+            "Price (USD)",
+        ],
+    )
     def test_bare_on_produces_link(
         self, cli_runner: CliRunner, mock_workspace: MagicMock, on: str
     ) -> None:
-        """Spaces, ``$``, and Unicode inside a plain name are bare."""
+        """Spaces, ``$``, Unicode, words like ``and``, and parentheses are bare."""
         mock_workspace.build_params.return_value = _PARAMS
         mock_workspace.create_report_link.return_value = _LINK
 
@@ -860,8 +981,54 @@ class TestSegmentationLink:
         assert result.exit_code == 0, result.output
         assert "could not create report link: server said no" in _combined(result)
         data = json.loads(result.stdout)
-        assert "report_url" not in data
+        assert data["report_url"] is None
+        assert data["report_url_error"] == "server said no"
         assert data["event"] == "Signup"
+
+    def test_auth_failure_on_link_is_isolated_too(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """Even an AuthenticationError from the link step leaves the query intact."""
+        mock_workspace.build_params.return_value = _PARAMS
+        mock_workspace.create_report_link.side_effect = AuthenticationError(
+            "Invalid credentials.", status_code=401
+        )
+
+        result = _invoke_query(cli_runner, mock_workspace, [*_SEG_ARGS, "--link"])
+
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data["report_url"] is None
+        assert "Invalid credentials" in data["report_url_error"]
+
+    def test_jq_report_url_prints_the_url(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """The documented ``--link --jq .report_url`` prints the URL string."""
+        mock_workspace.build_params.return_value = _PARAMS
+        mock_workspace.create_report_link.return_value = _LINK
+
+        result = _invoke_query(
+            cli_runner, mock_workspace, [*_SEG_ARGS, "--link", "--jq", ".report_url"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout.strip().strip('"') == _LINK.url
+
+    @pytest.mark.parametrize("fmt", ["jsonl", "csv", "plain"])
+    def test_link_with_other_formats(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock, fmt: str
+    ) -> None:
+        """``--link`` with jsonl, csv, or plain output still shows the URL."""
+        mock_workspace.build_params.return_value = _PARAMS
+        mock_workspace.create_report_link.return_value = _LINK
+
+        result = _invoke_query(
+            cli_runner, mock_workspace, [*_SEG_ARGS, "--link", "-f", fmt]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert _LINK.url in result.stdout
 
     def test_build_params_failure_warns_and_still_prints_result(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
@@ -903,26 +1070,16 @@ class TestSegmentationLink:
         assert _LINK.url in result.stdout.replace("\n", "")
 
     def test_token_list_is_importable(self) -> None:
-        """The bare-``--on`` token list is one module-level tuple."""
+        """The bare-``--on`` token list is one module-level tuple of symbols."""
         from mixpanel_headless.cli.commands.query import NON_BARE_ON_TOKENS
 
         assert isinstance(NON_BARE_ON_TOKENS, tuple)
-        for token in (
-            "properties[",
-            "(",
-            ")",
-            "==",
-            "!=",
-            "<",
-            ">",
-            "defined",
-            "boolean(",
-            "number(",
-            "string(",
-            " and ",
-            " or ",
-        ):
+        for token in ("[", "]", '"', "'", "==", "!=", "<", ">", "&&", "||"):
             assert token in NON_BARE_ON_TOKENS
+        for call in ("boolean(", "number(", "string(", "defined("):
+            assert call in NON_BARE_ON_TOKENS
+        for word in (" and ", " or ", "defined", "(", ")"):
+            assert word not in NON_BARE_ON_TOKENS
 
     def test_help_states_approximation(self, cli_runner: CliRunner) -> None:
         """``--help`` explains that the link reproduces a subset of the query."""
@@ -1027,6 +1184,49 @@ class TestSavedReportLinks:
         assert json.loads(result.stdout)["report_url"] == _REPORT_URL
         mock_workspace.saved_report_link.assert_called_once_with(8, report_type="flows")
         mock_workspace.create_report_link.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["query", "funnel", "456", "--from", "2026-08-01", "--to", "2026-08-31"],
+            ["query", "saved-report", "123"],
+            ["query", "flows", "8"],
+        ],
+    )
+    def test_saved_link_failure_never_fails_the_query(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock, args: list[str]
+    ) -> None:
+        """A raise from saved_report_link keeps the result and exit 0."""
+        mock_workspace.funnel.return_value = FunnelResult(
+            funnel_id=456,
+            funnel_name="Onboarding",
+            from_date="2026-08-01",
+            to_date="2026-08-31",
+            conversion_rate=0.5,
+            steps=[],
+        )
+        mock_workspace.query_saved_report.return_value = SavedReportResult(
+            bookmark_id=123,
+            computed_at="t",
+            from_date="d",
+            to_date="d",
+            headers=["$event"],
+            series={},
+        )
+        mock_workspace.query_saved_flows.return_value = FlowsResult(
+            bookmark_id=8, computed_at="2026-09-02T10:00:00"
+        )
+        mock_workspace.saved_report_link.side_effect = ParamValidationError(
+            "Unknown region 'xx'.", code="RL3_UNKNOWN_REGION"
+        )
+
+        result = _invoke_query(cli_runner, mock_workspace, [*args, "--link"])
+
+        assert result.exit_code == 0, result.output
+        assert "could not create report link: Unknown region" in _combined(result)
+        data = json.loads(result.stdout)
+        assert data["report_url"] is None
+        assert data["report_url_error"] == "Unknown region 'xx'."
 
     def test_saved_report_without_link_unchanged(
         self, cli_runner: CliRunner, mock_workspace: MagicMock

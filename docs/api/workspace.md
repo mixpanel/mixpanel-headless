@@ -175,7 +175,7 @@ import mixpanel_headless as mp
 
 ws = mp.Workspace()
 
-# Query → shareable URL (one App API call; the slug record is stored server-side)
+# Query → shareable URL (one App API POST; the slug record is stored server-side)
 result = ws.query(mp.Metric.total("Login"), last=7)
 link = ws.create_report_link(result, name="Logins, last 7 days")
 print(link.url)      # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw
@@ -189,7 +189,7 @@ df = ws.query_report_link(r).df
 ws.saved_report_link(123, report_type="funnels")
 ```
 
-Project and region mismatches raise `ReportLinkScopeMismatchError` before any HTTP call. Legacy `~(...)` hashes and board links raise `UnsupportedReportLinkError` with a hint. See the [Report Links guide](../guide/report-links.md) for the `mp reports link` / `mp reports resolve` CLI and the `--link` flags.
+Region mismatches raise `ReportLinkScopeMismatchError` before any HTTP call. Project and pinned-workspace mismatches raise it before the record fetch; for a shortlink that is after the one redirect GET. Legacy `~(...)` hashes and board links raise `UnsupportedReportLinkError` with a hint. See the [Report Links guide](../guide/report-links.md) for the `mp reports link` / `mp reports resolve` CLI and the `--link` flags.
 
 ## In-Session Switching
 

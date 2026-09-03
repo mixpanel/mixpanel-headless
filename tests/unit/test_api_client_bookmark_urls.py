@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -206,6 +207,62 @@ class TestCreateBookmarkUrl:
             client.create_bookmark_url(
                 {"slug": _SLUG, "type": "insights", "params": {}}
             )
+
+
+class TestCreateBookmarkUrlErrors:
+    """``create_bookmark_url`` maps error statuses like every App API call."""
+
+    def test_400_duplicate_slug_is_query_error(self, test_credentials: Session) -> None:
+        """A 400 keeps the server message and status."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json={"error": "slug already exists"})
+
+        with (
+            create_mock_client(test_credentials, handler) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.create_bookmark_url(
+                {"slug": _SLUG, "type": "insights", "params": _PARAMS}
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "slug already exists" in str(exc_info.value)
+
+    def test_401_is_authentication_error(self, test_credentials: Session) -> None:
+        """A 401 is AuthenticationError."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"error": "nope"})
+
+        with (
+            create_mock_client(test_credentials, handler) as client,
+            pytest.raises(AuthenticationError),
+        ):
+            client.create_bookmark_url(
+                {"slug": _SLUG, "type": "insights", "params": _PARAMS}
+            )
+
+    def test_429_after_retries_is_rate_limit_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A 429 on every attempt is RateLimitError after the retry budget."""
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(429, headers={"Retry-After": "1"})
+
+        with (
+            patch("mixpanel_headless._internal.api_client.time.sleep"),
+            create_mock_client(test_credentials, handler) as client,
+            pytest.raises(RateLimitError),
+        ):
+            client.create_bookmark_url(
+                {"slug": _SLUG, "type": "insights", "params": _PARAMS}
+            )
+
+        assert len(seen) == client._max_retries + 1
 
 
 class TestGetBookmarkUrl:
@@ -501,18 +558,157 @@ class TestResolveShortLink:
         assert exc.details["host"] == "mixpanel.com"
 
     def test_429(self, test_credentials: Session) -> None:
-        """A 429 is RateLimitError with Retry-After honored."""
+        """A 429 on every attempt is RateLimitError with Retry-After honored."""
+        seen: list[httpx.Request] = []
 
-        def handler(_request: httpx.Request) -> httpx.Response:
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
             return httpx.Response(429, headers={"Retry-After": "7"})
 
         with (
+            patch("mixpanel_headless._internal.api_client.time.sleep") as sleep,
             _short_link_client(test_credentials, handler) as client,
             pytest.raises(RateLimitError) as exc_info,
         ):
             client.resolve_short_link(_CODE)
 
         assert exc_info.value.retry_after == 7
+        assert len(seen) == client._max_retries + 1
+        assert sleep.call_count == client._max_retries
+
+    def test_429_then_redirect_retries_and_returns_target(
+        self, test_credentials: Session
+    ) -> None:
+        """A 429 followed by a 302 returns the target after one backoff sleep."""
+        responses = [
+            httpx.Response(429, headers={"Retry-After": "2"}),
+            httpx.Response(302, headers={"Location": _TARGET}),
+        ]
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return responses.pop(0)
+
+        with (
+            patch("mixpanel_headless._internal.api_client.time.sleep") as sleep,
+            create_mock_client(test_credentials, handler) as client,
+        ):
+            target = client.resolve_short_link(_CODE)
+
+        assert target == _TARGET
+        sleep.assert_called_once_with(2.0)
+
+    def test_403_is_query_error(self, test_credentials: Session) -> None:
+        """A 403 is QueryError(permission denied), as in ``_handle_response``."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403, json={"error": "forbidden"})
+
+        with (
+            _short_link_client(test_credentials, handler) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.resolve_short_link(_CODE)
+
+        assert exc_info.value.status_code == 403
+        assert "forbidden" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "location",
+        [f"/login?next=/s/{_CODE}", "/login", "/login/", "https://mixpanel.com/login/"],
+    )
+    def test_login_paths_are_authentication_errors(
+        self, test_credentials: Session, location: str
+    ) -> None:
+        """``/login`` and ``/login/...`` on any redirect are auth failures."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302, headers={"Location": location})
+
+        with (
+            _short_link_client(test_credentials, handler) as client,
+            pytest.raises(AuthenticationError),
+        ):
+            client.resolve_short_link(_CODE)
+
+    def test_login_prefix_lookalike_is_a_target(
+        self, test_credentials: Session
+    ) -> None:
+        """``/loginfoo`` is not the login page; it is returned as the target."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302, headers={"Location": "/loginfoo"})
+
+        with _short_link_client(test_credentials, handler) as client:
+            assert client.resolve_short_link(_CODE) == "https://mixpanel.com/loginfoo"
+
+    def test_200_script_with_non_json_escape_is_unexpected_response(
+        self, test_credentials: Session
+    ) -> None:
+        """A JavaScript-only escape such as ``\\x3f`` is not a crash."""
+        body = 'window.location.href = "https://mixpanel.com/project/3\\x3f";'
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text=body)
+
+        with (
+            _short_link_client(test_credentials, handler) as client,
+            pytest.raises(ShortLinkResolutionError) as exc_info,
+        ):
+            client.resolve_short_link(_CODE)
+
+        exc = exc_info.value
+        assert exc.code == "SHORT_LINK_UNEXPECTED_RESPONSE"
+        assert exc.details["status"] == 200
+        assert (
+            exc.details["hint"]
+            == "Open the shortlink in a browser and copy the full URL."
+        )
+
+    def test_200_script_with_empty_href_is_unexpected_response(
+        self, test_credentials: Session
+    ) -> None:
+        """An empty ``window.location.href`` string is not a target."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text='window.location.href = "";')
+
+        with (
+            _short_link_client(test_credentials, handler) as client,
+            pytest.raises(ShortLinkResolutionError) as exc_info,
+        ):
+            client.resolve_short_link(_CODE)
+
+        assert exc_info.value.code == "SHORT_LINK_UNEXPECTED_RESPONSE"
+
+    def test_200_script_relative_target_is_joined(
+        self, test_credentials: Session
+    ) -> None:
+        """A relative ``window.location.href`` is joined like a relative Location."""
+        body = f'window.location.href = "/project/12345/app/insights#{_SLUG}";'
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text=body)
+
+        with _short_link_client(test_credentials, handler) as client:
+            target = client.resolve_short_link(_CODE)
+
+        assert target == f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
+
+    def test_200_script_login_target_is_authentication_error(
+        self, test_credentials: Session
+    ) -> None:
+        """A 200 page that scripts a jump to ``/login`` is an auth failure."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, text=f'window.location.href = "/login?next=/s/{_CODE}";'
+            )
+
+        with (
+            _short_link_client(test_credentials, handler) as client,
+            pytest.raises(AuthenticationError),
+        ):
+            client.resolve_short_link(_CODE)
 
     def test_503(self, test_credentials: Session) -> None:
         """A 5xx is ServerError."""

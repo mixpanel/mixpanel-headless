@@ -539,6 +539,18 @@ def report_history(
 # =============================================================================
 
 
+def _stdin_is_tty() -> bool:
+    """Return whether stdin is an interactive terminal.
+
+    A seam for tests: ``CliRunner`` swaps ``sys.stdin``, so the check is
+    read through this function rather than at import time.
+
+    Returns:
+        ``True`` when stdin is a terminal.
+    """
+    return sys.stdin.isatty()
+
+
 def _read_params_source(
     source: str | None,
     params: str | None,
@@ -546,10 +558,15 @@ def _read_params_source(
 ) -> str:
     """Pick exactly one params source and return its raw text.
 
+    Stdin is read when nothing is given, when the positional is ``-``, when
+    ``--params -`` is given, or when ``--params-file -`` is given. In every
+    one of those forms an interactive terminal is refused, so the command
+    never blocks and waits for typed input.
+
     Args:
         source: The optional positional argument; only ``-`` (stdin) is valid.
-        params: The ``--params`` inline JSON text.
-        params_file: The ``--params-file`` path (``-`` also means stdin).
+        params: The ``--params`` inline JSON text (``-`` means stdin).
+        params_file: The ``--params-file`` path (``-`` means stdin).
 
     Returns:
         The raw JSON text to parse.
@@ -557,7 +574,7 @@ def _read_params_source(
     Raises:
         typer.Exit: With code 3 (INVALID_ARGS) when more than one source is
             given, the positional is not ``-``, the file cannot be read, or
-            nothing was given and stdin is a terminal.
+            stdin would be read from a terminal.
     """
     given = [x for x in (source, params, params_file) if x is not None]
     if len(given) > 1:
@@ -579,10 +596,10 @@ def _read_params_source(
         except OSError as exc:
             err_console.print(f"[red]Error:[/red] Cannot read --params-file: {exc}")
             raise typer.Exit(ExitCode.INVALID_ARGS) from exc
-    if not given and sys.stdin.isatty():
+    if _stdin_is_tty():
         err_console.print(
-            "[red]Error:[/red] Provide --params JSON, --params-file PATH, or pipe "
-            "a JSON object on stdin."
+            "[red]Error:[/red] stdin is a terminal. Provide --params JSON, "
+            "--params-file PATH, or pipe a JSON object on stdin."
         )
         raise typer.Exit(ExitCode.INVALID_ARGS)
     return sys.stdin.read()
@@ -601,7 +618,10 @@ def link_report(
     ] = None,
     params: Annotated[
         str | None,
-        typer.Option("--params", help="Report params as an inline JSON object."),
+        typer.Option(
+            "--params",
+            help="Report params as an inline JSON object, or '-' to read stdin.",
+        ),
     ] = None,
     params_file: Annotated[
         Path | None,
@@ -663,8 +683,8 @@ def link_report(
     Args:
         ctx: Typer context with global options.
         source: ``-`` to read stdin.
-        params: Inline JSON object.
-        params_file: File that holds the JSON object.
+        params: Inline JSON object, or ``-`` to read stdin.
+        params_file: File that holds the JSON object, or ``-`` to read stdin.
         report_type: insights, funnels, retention, or flows.
         name: Name stored with the record.
         description: Description stored with the record.
@@ -708,13 +728,15 @@ def link_report(
 
 
 def _warn_ignored_overrides(link: str) -> None:
-    """Print the §7 warning when a saved-report link carries a ``~(...)`` tail.
+    """Warn when a saved-report link carries a ``~(...)`` override tail.
 
-    The parse is pure and cheap. A parse failure is ignored here so the
+    Specified in ``specs/045-report-links/contracts/cli-commands.md`` §7. The
+    parse is pure and cheap. A parse failure is ignored here so the
     ``Workspace`` call raises the canonical error with the right exit code.
 
     Args:
-        link: The raw link string the user passed.
+        link: The raw link string the user passed, or the expanded target of
+            a shortlink.
     """
     try:
         parsed = parse_report_link(link)
@@ -736,7 +758,8 @@ def resolve_report(
         typer.Argument(
             help=(
                 "A full report URL, a shortlink (https://mixpanel.com/s/...), or a "
-                "bare 12-character slug. Quote URLs: '#' starts a shell comment."
+                "bare 12-character slug. Quote URLs so the shell does not "
+                "interpret '#'."
             ),
         ),
     ],
@@ -796,4 +819,6 @@ def resolve_report(
 
     with status_spinner(ctx, "Resolving report link..."):
         resolved = workspace.resolve_report_link(link)
+    if resolved.expanded_url is not None:
+        _warn_ignored_overrides(resolved.expanded_url)
     output_result(ctx, resolved.to_dict(), format=format, jq_filter=jq_filter)

@@ -413,6 +413,9 @@ def handle_errors(func: F) -> F:
             # per contracts/cli-commands.md §4. Caught BEFORE the generic
             # MixpanelHeadlessError so the exit code lands on 4 instead of 1.
             err_console.print(f"[red]error:[/red] {rich_escape(e.message)}")
+            hint = e.details.get("hint")
+            if hint:
+                err_console.print(f"[dim]hint:[/dim] {rich_escape(str(hint))}")
             raise typer.Exit(ExitCode.NOT_FOUND) from None
         except (
             ReportLinkParseError,

@@ -548,7 +548,7 @@ def build_user_params(self, **kwargs) -> dict[str, Any]: ...
 
 ### Share a Query as a Link
 
-Turn any query into a Mixpanel URL the user can open in the browser. One App API call; the report type is inferred from the result.
+Turn any query into a Mixpanel URL the user can open in the browser. One App API POST (plus a workspace lookup when none is pinned); the report type is inferred from the result.
 
 ```python
 result = ws.query(mp.Metric.total("Login"), last=7)

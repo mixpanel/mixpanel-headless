@@ -4712,6 +4712,11 @@ class MixpanelAPIClient:
                         "slug": slug,
                         "project_id": project_id,
                         "region": self.region,
+                        "hint": (
+                            "Switch to the project and region that created the "
+                            "link (ws.use(project=...); CLI: mp --project ... "
+                            "or mp --account ...) and retry."
+                        ),
                     },
                 ) from exc
             raise
@@ -4722,15 +4727,102 @@ class MixpanelAPIClient:
             )
         return result
 
+    @staticmethod
+    def _short_link_target(
+        request_url: str, raw_target: str, *, code: str, status: int
+    ) -> str:
+        """Join a shortlink target to the request URL and reject the login page.
+
+        Args:
+            request_url: The ``https://{host}/s/{code}`` URL that was fetched.
+            raw_target: The ``Location`` header or the scripted ``href``,
+                absolute or relative.
+            code: The shortlink code, for the message.
+            status: The HTTP status, for the error context.
+
+        Returns:
+            The absolute target URL.
+
+        Raises:
+            AuthenticationError: The target path is ``/login`` or under it.
+        """
+        target = urljoin(request_url, raw_target)
+        path = urlsplit(target).path
+        if path == "/login" or path.startswith("/login/"):
+            raise AuthenticationError(
+                f"Shortlink /s/{code} requires authentication; the server "
+                f"redirected to the login page.",
+                status_code=status,
+                request_method="GET",
+                request_url=request_url,
+            )
+        return target
+
+    def _get_short_link(self, url: str) -> httpx.Response:
+        """Send the shortlink GET, with the same 429 backoff as every API call.
+
+        Args:
+            url: The ``https://{host}/s/{code}`` URL.
+
+        Returns:
+            The first response whose status is not 429.
+
+        Raises:
+            RateLimitError: 429 on every attempt.
+            MixpanelHeadlessError: ``HTTP_ERROR`` on a transport failure.
+        """
+        headers = self._request_headers({"Authorization": self._get_auth_header()})
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = self._ensure_client().get(
+                    url,
+                    headers=headers,
+                    follow_redirects=False,
+                    timeout=DEFAULT_APP_TIMEOUT_S,
+                )
+            except httpx.HTTPError as e:
+                raise MixpanelHeadlessError(
+                    f"HTTP error: {e}",
+                    code="HTTP_ERROR",
+                    details={
+                        "error": str(e),
+                        "request_method": "GET",
+                        "request_url": url,
+                    },
+                ) from e
+            if response.status_code != 429:
+                return response
+            retry_after = self._parse_retry_after(response)
+            if attempt >= self._max_retries:
+                raise RateLimitError(
+                    retry_after=retry_after,
+                    status_code=response.status_code,
+                    request_method="GET",
+                    request_url=url,
+                    project_id=self.project_id,
+                )
+            wait_time = self._retry_wait_seconds(retry_after, attempt)
+            logger.warning(
+                "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
+                wait_time,
+                attempt + 1,
+                self._max_retries,
+            )
+            time.sleep(wait_time)
+        raise RateLimitError(  # pragma: no cover - loop always returns or raises
+            request_method="GET", request_url=url, project_id=self.project_id
+        )
+
     def resolve_short_link(self, code: str) -> str:
         """Expand a ``https://{host}/s/{code}`` shortlink to its target URL.
 
         Sends one authenticated GET with ``follow_redirects=False`` and reads
         the target from the ``Location`` header, or from the
         ``window.location.href`` script the server returns for very long
-        targets. It bypasses :meth:`_execute_with_retry` and
-        :meth:`_handle_response` because both treat a 3xx as an error. The
-        Authorization header is never logged.
+        targets. A relative target is joined to the request URL in both
+        cases. It bypasses :meth:`_execute_with_retry` and
+        :meth:`_handle_response` because both treat a 3xx as an error, but it
+        keeps the same 429 backoff. The Authorization header is never logged.
 
         Args:
             code: The shortlink code after ``/s/``.
@@ -4739,13 +4831,16 @@ class MixpanelAPIClient:
             The absolute target URL. It is not parsed or validated here.
 
         Raises:
-            AuthenticationError: 401, or a redirect to the login page.
+            AuthenticationError: 401, or a redirect (header or script) to
+                ``/login``.
             ReportLinkNotFoundError: ``SHORT_LINK_NOT_FOUND`` on a 404.
-            RateLimitError: 429.
+            QueryError: 403 (permission denied).
+            RateLimitError: 429 on every retry attempt.
             ServerError: 5xx.
             ShortLinkResolutionError: ``SHORT_LINK_NO_LOCATION`` for a 3xx
                 without ``Location``; ``SHORT_LINK_UNEXPECTED_RESPONSE`` for a
-                200 without the redirect script or any other status.
+                200 whose body has no decodable, non-empty redirect script, or
+                for any other status.
             MixpanelHeadlessError: ``HTTP_ERROR`` on a transport failure.
 
         Example:
@@ -4757,21 +4852,8 @@ class MixpanelAPIClient:
         """
         host = web_host(self.region)
         url = f"https://{host}/s/{code}"
-        headers = self._request_headers({"Authorization": self._get_auth_header()})
         logger.debug("resolving shortlink /s/%s on %s", code, host)
-        try:
-            response = self._ensure_client().get(
-                url,
-                headers=headers,
-                follow_redirects=False,
-                timeout=DEFAULT_APP_TIMEOUT_S,
-            )
-        except httpx.HTTPError as e:
-            raise MixpanelHeadlessError(
-                f"HTTP error: {e}",
-                code="HTTP_ERROR",
-                details={"error": str(e), "request_method": "GET", "request_url": url},
-            ) from e
+        response = self._get_short_link(url)
 
         status = response.status_code
         base_details: dict[str, Any] = {
@@ -4794,23 +4876,18 @@ class MixpanelAPIClient:
                         "hint": _SHORT_LINK_HINT,
                     },
                 )
-            target: str = urljoin(url, location)
-            if urlsplit(target).path.startswith("/login"):
-                raise AuthenticationError(
-                    f"Shortlink /s/{code} requires authentication; the server "
-                    f"redirected to the login page.",
-                    status_code=status,
-                    request_method="GET",
-                    request_url=url,
-                )
-            return target
+            return self._short_link_target(url, location, code=code, status=status)
 
         if status == 200:
             match = _SHORT_LINK_HREF_RE.search(response.text)
+            decoded: object = None
             if match is not None:
-                decoded = json.loads(match.group(1))
-                if isinstance(decoded, str) and decoded:
-                    return decoded
+                try:
+                    decoded = json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    decoded = None
+            if isinstance(decoded, str) and decoded:
+                return self._short_link_target(url, decoded, code=code, status=status)
             raise ShortLinkResolutionError(
                 f"Shortlink /s/{code} returned HTTP {status} with a body "
                 f"mixpanel-headless does not recognize.",
@@ -4825,19 +4902,30 @@ class MixpanelAPIClient:
                 request_method="GET",
                 request_url=url,
             )
+        if status == 403:
+            body: str | dict[str, Any] | None
+            try:
+                body = response.json()
+            except json.JSONDecodeError:
+                body = response.text[:500] if response.text else None
+            raise QueryError(
+                _error_message(body, "Permission denied"),
+                status_code=status,
+                response_body=body,
+                request_method="GET",
+                request_url=url,
+            )
         if status == 404:
             raise ReportLinkNotFoundError(
                 f"Shortlink /s/{code} does not exist on {host}.",
                 code="SHORT_LINK_NOT_FOUND",
-                details=base_details,
-            )
-        if status == 429:
-            raise RateLimitError(
-                retry_after=self._parse_retry_after(response),
-                status_code=status,
-                request_method="GET",
-                request_url=url,
-                project_id=self.project_id,
+                details={
+                    **base_details,
+                    "hint": (
+                        "Check the shortlink for typos, or open it in a browser "
+                        "and copy the full URL."
+                    ),
+                },
             )
         if status >= 500:
             raise ServerError(

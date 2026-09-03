@@ -36,7 +36,7 @@ Estimated scope: about 1,600 lines across 9 new files and 17 modified files, tes
 **Project Type**: Library and CLI feature addition. The `mixpanel-plugin/` skills call `Workspace` and pick up the new methods. Two SKILL.md files gain a short snippet each.
 
 **Performance Goals**:
-- `create_report_link` makes exactly one App API call.
+- `create_report_link` makes exactly one App API POST. Workspace auto-resolution, when no workspace is pinned or passed, may add a lookup call before it (post-review correction).
 - `resolve_report_link` makes at most two HTTP calls: one optional shortlink GET and one record GET.
 - `saved_report_link` and `parse_report_link` make zero network calls and finish in under 1 millisecond.
 - `query_report_link` on a `ResolvedReport` makes exactly one query call and no record fetch.
@@ -47,7 +47,7 @@ Estimated scope: about 1,600 lines across 9 new files and 17 modified files, tes
 - Project coverage stays at or above 90 percent.
 - Mutation score on `_internal/report_links.py` at or above 80 percent.
 - The Authorization header never appears in a log line, an error message, or CLI output.
-- Project and region mismatches fail before any HTTP call.
+- A region mismatch fails before any HTTP call. Project and workspace mismatches fail before the record fetch; for a shortlink that is after the one redirect GET (post-review correction).
 - The shortlink GET must not follow redirects, because `_handle_response` raises on 3xx.
 
 **Scale/Scope**:
@@ -150,7 +150,7 @@ The full list with rationale and alternatives is in [research.md](research.md). 
 4. **The parser is total.** It returns a `ParsedReportLink` for every recognizable Mixpanel URL. It raises `ReportLinkParseError` only for unrecognizable input. The resolver rejects unsupported kinds.
 5. **Legacy JSURL hashes are detected, not decoded.**
 6. **The shortlink GET bypasses `_execute_with_retry`** and uses `follow_redirects=False`.
-7. **Project and region mismatches fail before any HTTP call.**
+7. **A region mismatch fails before any HTTP call; project and workspace mismatches fail before the record fetch** (for a shortlink, after the one redirect GET).
 8. **`query_report_link` lives on `Workspace`.** Result dataclasses hold no workspace reference.
 9. **Shortlink creation is out of scope.**
 10. **Saved-report type mapping.** `SavedReportResult.report_type` yields `"funnel"`, but the URL table uses `"funnels"`. `saved_report_link` accepts both and normalizes.

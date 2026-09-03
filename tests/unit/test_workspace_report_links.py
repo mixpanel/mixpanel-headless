@@ -27,6 +27,7 @@ from mixpanel_headless.exceptions import (
     ReportLinkNotFoundError,
     ReportLinkParseError,
     ReportLinkScopeMismatchError,
+    ResponseValidationError,
     ShortLinkResolutionError,
     UnsupportedReportLinkError,
     ValidationError,
@@ -618,6 +619,26 @@ class TestResolveSlugLinks:
 
         assert exc_info.value.code == "REPORT_LINK_SLUG_NOT_FOUND"
 
+    def test_malformed_slug_record_raises_response_validation_error(
+        self, ws: Workspace, mock_api_client: MagicMock
+    ) -> None:
+        """A record whose ``params`` is not a dict fails response validation."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record(params="nope")
+
+        with pytest.raises(ResponseValidationError):
+            ws.resolve_report_link(_SLUG)
+
+    def test_slug_record_without_slug_raises_response_validation_error(
+        self, ws: Workspace, mock_api_client: MagicMock
+    ) -> None:
+        """A record with no ``slug`` key fails response validation."""
+        record = _slug_record()
+        del record["slug"]
+        mock_api_client.get_bookmark_url.return_value = record
+
+        with pytest.raises(ResponseValidationError):
+            ws.resolve_report_link(_SLUG)
+
     def test_dashboard_edited_bookmark_resolves_slug(
         self, ws: Workspace, mock_api_client: MagicMock
     ) -> None:
@@ -718,6 +739,65 @@ class TestResolveBookmarkLinks:
         assert str(exc) == "No saved report found with id 123 in project 12345 (us)."
         assert exc.details["bookmark_id"] == 123
         assert exc.details["kind"] == "bookmark"
+        assert "session_workspace_id" not in exc.details
+        assert exc.details["hint"] == (
+            "Check the saved report id, or switch to the project and region that "
+            "own it (ws.use(project=...); CLI: mp --project ...) and retry."
+        )
+
+    def test_unknown_bookmark_under_pinned_workspace_names_the_workspace(
+        self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
+    ) -> None:
+        """Pinned to 75, the GET is workspace-scoped, so the 404 says so."""
+        ws = workspace_factory(session=_PINNED_SESSION)
+        mock_api_client.get_bookmark.side_effect = QueryError(
+            "Resource not found", status_code=404
+        )
+
+        with pytest.raises(ReportLinkNotFoundError) as exc_info:
+            ws.resolve_report_link(
+                "https://mixpanel.com/project/12345/app/insights#report/123"
+            )
+
+        exc = exc_info.value
+        assert exc.code == "REPORT_LINK_BOOKMARK_NOT_FOUND"
+        assert str(exc) == (
+            "No saved report found with id 123 in project 12345 (us) under the "
+            "pinned workspace 75."
+        )
+        assert exc.details["session_workspace_id"] == 75
+        assert exc.details["hint"] == (
+            "The saved report may live in another workspace of this project. "
+            "Switch with ws.use(workspace=<id>) (CLI: mp --workspace <id> ...) "
+            "or unpin the workspace and retry."
+        )
+
+    @pytest.mark.parametrize(
+        ("app", "expected_tail"),
+        [("insights", "insights#report/123"), ("funnels", "funnels#view/123")],
+    )
+    def test_unknown_bookmark_type_falls_back_to_url_app_with_warning(
+        self,
+        ws: Workspace,
+        mock_api_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+        app: str,
+        expected_tail: str,
+    ) -> None:
+        """A bookmark type outside the hash table keeps the pasted app and warns."""
+        mock_api_client.get_bookmark.return_value = {**_BOOKMARK_RAW, "type": "user"}
+
+        with caplog.at_level("WARNING", logger="mixpanel_headless.workspace"):
+            resolved = ws.resolve_report_link(
+                f"https://mixpanel.com/project/12345/app/{app}#report/123"
+            )
+
+        assert resolved.report_type == "user"
+        assert resolved.url == f"https://mixpanel.com/project/12345/app/{expected_tail}"
+        assert any(
+            "unknown report type 'user'" in rec.getMessage() and app in rec.getMessage()
+            for rec in caplog.records
+        )
 
     def test_other_query_error_passes_through(
         self, ws: Workspace, mock_api_client: MagicMock
@@ -770,9 +850,10 @@ class TestResolveScopeAndUnsupported:
         exc = exc_info.value
         assert exc.code == "REPORT_LINK_PROJECT_MISMATCH"
         assert str(exc) == (
-            "Report link belongs to project 3 but the active session is project "
-            '12345. Switch with ws.use(project="3") (CLI: mp --project 3 ...) '
-            "and retry."
+            "Report link belongs to project 3 but the active session is project 12345."
+        )
+        assert exc.details["hint"] == (
+            'Switch with ws.use(project="3") (CLI: mp --project 3 ...) and retry.'
         )
         assert exc.details["link_project_id"] == 3
         assert exc.details["session_project_id"] == 12345
@@ -789,9 +870,11 @@ class TestResolveScopeAndUnsupported:
         exc = exc_info.value
         assert exc.code == "REPORT_LINK_REGION_MISMATCH"
         assert str(exc) == (
-            "Report link is on the eu region but the active account is on us. "
-            "Use an account for the eu region (CLI: mp --account <name> ...) "
-            "and retry."
+            "Report link is on the eu region but the active account is on us."
+        )
+        assert exc.details["hint"] == (
+            "Switch to an account on the eu region with "
+            'ws.use(account="<name>") (CLI: mp --account <name> ...) and retry.'
         )
         assert exc.details["link_region"] == "eu"
         assert exc.details["session_region"] == "us"
@@ -1279,7 +1362,7 @@ class TestQueryReportLinkScopeOnResolvedInput:
         assert exc.code == "REPORT_LINK_PROJECT_MISMATCH"
         assert exc.details["link_project_id"] == 3
         assert exc.details["session_project_id"] == 12345
-        assert 'ws.use(project="3")' in str(exc)
+        assert 'ws.use(project="3")' in exc.details["hint"]
         mock_live_query.query.assert_not_called()
 
     def test_region_mismatch_raises_before_query(
@@ -1360,6 +1443,24 @@ class TestResolveSlugWithUnknownServerType:
             resolved.url == f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
         )
 
+    def test_unknown_type_logs_a_warning(
+        self,
+        ws: Workspace,
+        mock_api_client: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The fallback URL is announced, because it may open the wrong app."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record(type="user")
+
+        with caplog.at_level("WARNING", logger="mixpanel_headless.workspace"):
+            ws.resolve_report_link(_SLUG)
+
+        assert any(
+            "unknown report type 'user'" in rec.getMessage()
+            and "insights" in rec.getMessage()
+            for rec in caplog.records
+        )
+
     def test_unknown_type_cannot_run(
         self, ws: Workspace, mock_api_client: MagicMock, mock_live_query: MagicMock
     ) -> None:
@@ -1390,8 +1491,13 @@ class TestWorkspaceScope:
         assert exc.code == "REPORT_LINK_WORKSPACE_MISMATCH"
         assert exc.details["link_workspace_id"] == 9
         assert exc.details["session_workspace_id"] == 75
-        assert "ws.use(workspace=9)" in str(exc)
-        assert "mp --workspace 9" in str(exc)
+        assert str(exc) == (
+            "Report link belongs to workspace 9 but the active session is pinned "
+            "to workspace 75."
+        )
+        assert exc.details["hint"] == (
+            "Switch with ws.use(workspace=9) (CLI: mp --workspace 9 ...) and retry."
+        )
         mock_api_client.get_bookmark_url.assert_not_called()
 
     def test_url_workspace_equal_to_pinned_is_fine(

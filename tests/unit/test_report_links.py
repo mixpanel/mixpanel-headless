@@ -706,3 +706,144 @@ class TestBuilders:
                     region="jp", project_id=3, bookmark_id=1, report_type="insights"
                 )
         assert exc_info.value.code == "RL3_UNKNOWN_REGION"
+
+
+class TestTableInvariants:
+    """The builder tables are read-only and agree with the public Literals."""
+
+    def test_slug_table_keys_match_report_link_type(self) -> None:
+        """``SLUG_APP_FOR_TYPE`` has exactly the ``ReportLinkType`` members."""
+        from typing import get_args
+
+        from mixpanel_headless.types import ReportLinkType
+
+        assert set(SLUG_APP_FOR_TYPE) == set(get_args(ReportLinkType))
+
+    def test_bookmark_table_keys_match_bookmark_type(self) -> None:
+        """``BOOKMARK_HASH_FOR_TYPE`` has exactly the ``BookmarkType`` members."""
+        from typing import get_args
+
+        from mixpanel_headless.types import BookmarkType
+
+        assert set(BOOKMARK_HASH_FOR_TYPE) == set(get_args(BookmarkType))
+
+    @pytest.mark.parametrize(
+        "table",
+        [SLUG_APP_FOR_TYPE, BOOKMARK_HASH_FOR_TYPE, APP_TO_REPORT_TYPE, WEB_HOSTS],
+    )
+    def test_tables_are_read_only(self, table: Any) -> None:
+        """Assignment into a builder table raises at runtime."""
+        with pytest.raises(TypeError):
+            table["x"] = "y"
+
+
+class TestParserTolerance:
+    """Review follow-ups: hash tails, schemes, and percent decoding."""
+
+    def test_trailing_slash_after_bookmark_hash(self) -> None:
+        """``#report/123/`` parses as bookmark 123."""
+        parsed = parse_report_link(
+            "https://mixpanel.com/project/3/app/insights#report/123/"
+        )
+        assert parsed.kind == "bookmark"
+        assert parsed.bookmark_id == 123
+        assert parsed.title_segment is None
+
+    def test_trailing_slash_after_slug(self) -> None:
+        """``#{slug}/`` parses as the slug."""
+        parsed = parse_report_link(
+            f"https://mixpanel.com/project/3/app/insights#{_SLUG}/"
+        )
+        assert parsed.kind == "slug"
+        assert parsed.slug == _SLUG
+
+    def test_query_tail_after_slug(self) -> None:
+        """``#{slug}?utm=x`` parses as the slug."""
+        parsed = parse_report_link(
+            f"https://mixpanel.com/project/3/app/insights#{_SLUG}?utm=x"
+        )
+        assert parsed.kind == "slug"
+        assert parsed.slug == _SLUG
+
+    def test_query_tail_after_bookmark_hash(self) -> None:
+        """``#report/123?utm=x`` parses as bookmark 123."""
+        parsed = parse_report_link(
+            "https://mixpanel.com/project/3/app/insights#report/123?utm=x"
+        )
+        assert parsed.kind == "bookmark"
+        assert parsed.bookmark_id == 123
+
+    def test_overrides_tail_keeps_question_mark_and_slash(self) -> None:
+        """A ``~(...)`` tail is never trimmed, even with ``?`` or ``/`` inside."""
+        parsed = parse_report_link(
+            "https://mixpanel.com/project/3/app/funnels#view/123/~(a~'x?y/z')/"
+        )
+        assert parsed.kind == "bookmark"
+        assert parsed.bookmark_id == 123
+        assert parsed.overrides_jsurl == "~(a~'x?y/z')/"
+
+    def test_slash_only_hash_is_empty(self) -> None:
+        """``#/`` is an empty hash."""
+        with pytest.raises(ReportLinkParseError) as exc_info:
+            parse_report_link("https://mixpanel.com/project/3/app/insights#/")
+        assert exc_info.value.code == "REPORT_LINK_EMPTY_HASH"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            f"javascript://mixpanel.com/project/3/app/insights#{_SLUG}",
+            f"ftp://mixpanel.com/project/3/app/insights#{_SLUG}",
+            f"file://mixpanel.com/project/3/app/insights#{_SLUG}",
+        ],
+    )
+    def test_non_http_scheme_is_unparseable(self, url: str) -> None:
+        """Only ``http`` and ``https`` are URL schemes for a report link."""
+        with pytest.raises(ReportLinkParseError) as exc_info:
+            parse_report_link(url)
+        assert exc_info.value.code == "REPORT_LINK_UNPARSEABLE"
+
+    @pytest.mark.parametrize("scheme", ["http", "HTTP", "Https"])
+    def test_http_schemes_parse(self, scheme: str) -> None:
+        """``http`` and any-case ``https`` are accepted."""
+        parsed = parse_report_link(
+            f"{scheme}://mixpanel.com/project/3/app/insights#{_SLUG}"
+        )
+        assert parsed.slug == _SLUG
+
+    def test_percent_hash_decodes_only_the_hash(self) -> None:
+        """Only ``%23`` is decoded; a ``%2F`` in the title stays encoded."""
+        parsed = parse_report_link(
+            "https://mixpanel.com/project/3/app/insights%23report/123/my%2Ftitle"
+        )
+        assert parsed.kind == "bookmark"
+        assert parsed.bookmark_id == 123
+        assert parsed.title_segment == "my%2Ftitle"
+
+    def test_percent_hash_lower_case(self) -> None:
+        """A lower-case ``%2f``-style escape of ``#`` is not a thing, but ``%23`` is."""
+        parsed = parse_report_link(
+            f"https://mixpanel.com/project/3/app/insights%23{_SLUG}"
+        )
+        assert parsed.slug == _SLUG
+
+    def test_non_digit_workspace_segment_is_unrecognized_path(self) -> None:
+        """``/view/x/`` is not a workspace id."""
+        with pytest.raises(ReportLinkParseError) as exc_info:
+            parse_report_link(
+                f"https://mixpanel.com/project/3/view/x/app/insights#{_SLUG}"
+            )
+        assert exc_info.value.code == "REPORT_LINK_UNRECOGNIZED_PATH"
+
+    def test_duplicate_fragment_keys_first_wins(self) -> None:
+        """``id=1&id=2`` on a boards link yields dashboard 1."""
+        parsed = parse_report_link(
+            "https://mixpanel.com/project/3/app/boards#id=1&id=2"
+        )
+        assert parsed.kind == "dashboard"
+        assert parsed.dashboard_id == 1
+
+    def test_scheme_without_host_is_unparseable(self) -> None:
+        """``https://`` alone has no host."""
+        with pytest.raises(ReportLinkParseError) as exc_info:
+            parse_report_link("https://")
+        assert exc_info.value.code == "REPORT_LINK_UNPARSEABLE"

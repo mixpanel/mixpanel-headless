@@ -31,18 +31,20 @@ Messages below are stable. Tests assert on them. Placeholders in braces are fill
 | Code | Message |
 |------|---------|
 | `REPORT_LINK_SLUG_NOT_FOUND` | `No unsaved report found for slug {slug} in project {project_id} ({region}). A slug is only readable in the project and region that created it.` |
-| `REPORT_LINK_BOOKMARK_NOT_FOUND` | `No saved report found with id {bookmark_id} in project {project_id} ({region}).` |
+| `REPORT_LINK_BOOKMARK_NOT_FOUND` | `No saved report found with id {bookmark_id} in project {project_id} ({region}).` With a pinned session workspace the lookup is workspace-scoped, so the message ends ` under the pinned workspace {session_workspace_id}.` and `details["session_workspace_id"]` is set. |
 | `SHORT_LINK_NOT_FOUND` | `Shortlink /s/{short_code} does not exist on {host}.` |
+
+Each carries a `hint` in `details` (post-review): switch to the project / region / workspace that owns the record, or check the id. The CLI prints it on a `hint:` line.
 
 ## 4. Scope mismatch (`ReportLinkScopeMismatchError`, exit 3)
 
-| Code | Message |
-|------|---------|
-| `REPORT_LINK_PROJECT_MISMATCH` | `Report link belongs to project {link_project_id} but the active session is project {session_project_id}. Switch with ws.use(project="{link_project_id}") (CLI: mp --project {link_project_id} ...) and retry.` |
-| `REPORT_LINK_REGION_MISMATCH` | `Report link is on the {link_region} region but the active account is on {session_region}. Use an account for the {link_region} region (CLI: mp --account <name> ...) and retry.` |
-| `REPORT_LINK_WORKSPACE_MISMATCH` | `Report link belongs to workspace {link_workspace_id} but the active session is pinned to workspace {session_workspace_id}. Switch with ws.use(workspace={link_workspace_id}) (CLI: mp --workspace {link_workspace_id} ...) and retry.` Applies only when the session has a pinned workspace and the link (or `ResolvedReport`) names one. Added from PR #223 review. |
+| Code | Message | Hint (`details["hint"]`) |
+|------|---------|--------------------------|
+| `REPORT_LINK_PROJECT_MISMATCH` | `Report link belongs to project {link_project_id} but the active session is project {session_project_id}.` | `Switch with ws.use(project="{link_project_id}") (CLI: mp --project {link_project_id} ...) and retry.` |
+| `REPORT_LINK_REGION_MISMATCH` | `Report link is on the {link_region} region but the active account is on {session_region}.` | `Switch to an account on the {link_region} region with ws.use(account="<name>") (CLI: mp --account <name> ...) and retry.` |
+| `REPORT_LINK_WORKSPACE_MISMATCH` | `Report link belongs to workspace {link_workspace_id} but the active session is pinned to workspace {session_workspace_id}.` Applies only when the session has a pinned workspace and the link (or `ResolvedReport`) names one. Added from PR #223 review. | `Switch with ws.use(workspace={link_workspace_id}) (CLI: mp --workspace {link_workspace_id} ...) and retry.` |
 
-All three fire before any HTTP call.
+The message states the mismatch; the hint states the fix (split in the second PR #223 review round, so the CLI `hint:` line is not a repeat of the message). The region check fires before any HTTP call, for shortlinks too. The project and workspace checks fire before the record fetch; for a shortlink that is after the one redirect GET, because the target is not known before it.
 
 ## 5. Shortlink resolution (`ShortLinkResolutionError`, exit 1)
 

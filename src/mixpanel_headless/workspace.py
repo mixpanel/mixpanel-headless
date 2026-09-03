@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -96,7 +96,6 @@ from mixpanel_headless._internal.query.user_validators import (
 from mixpanel_headless._internal.report_links import (
     BOOKMARK_HASH_FOR_TYPE,
     SLUG_APP_FOR_TYPE,
-    LinkRegion,
     ParsedReportLink,
     build_bookmark_url,
     build_slug_url,
@@ -11420,8 +11419,9 @@ class Workspace:
 
         Stores an **unsaved report** on the Mixpanel server under a
         client-minted 12-character slug and returns the web URL that opens it
-        in the report editor. One App API call. The record is created, never
-        overwritten.
+        in the report editor. One App API POST, plus workspace auto-resolution
+        (which can call the App API) when no workspace is pinned or passed.
+        The record is created, never overwritten.
 
         Args:
             params: Raw bookmark params, or a typed result from :meth:`query`,
@@ -11549,12 +11549,16 @@ class Workspace:
     def _check_report_link_scope(self, parsed: ParsedReportLink) -> None:
         """Reject a link whose region, project, or workspace differs from the session.
 
-        Runs before any HTTP call. A bare slug carries none of the three values
-        and so skips every check. The workspace check applies only when the
-        session has a pinned workspace **and** the link names one: Query-host
-        requests carry the pinned ``workspace_id``, so running a report under
-        a different data view would silently change its results. When either
-        side is unset there is nothing to contradict.
+        Runs before the record fetch. For a shortlink the region check runs
+        before the redirect GET and the project and workspace checks run on
+        the expanded target, after it. A bare slug carries none of the three
+        values and so skips every check. The workspace check applies only
+        when the session has a pinned workspace **and** the link names one:
+        Query-host requests carry the pinned ``workspace_id``, so running a
+        report under a different data view would silently change its results.
+        When either side is unset there is nothing to contradict. The message
+        states the mismatch; ``details["hint"]`` states the switch that fixes
+        it.
 
         Args:
             parsed: The parsed link (or a :class:`ResolvedReport` projected
@@ -11569,27 +11573,33 @@ class Workspace:
         if parsed.region is not None and parsed.region != session_region:
             raise ReportLinkScopeMismatchError(
                 f"Report link is on the {parsed.region} region but the active "
-                f"account is on {session_region}. Use an account for the "
-                f"{parsed.region} region (CLI: mp --account <name> ...) and retry.",
+                f"account is on {session_region}.",
                 code="REPORT_LINK_REGION_MISMATCH",
                 details={
                     **self._report_link_details(parsed),
                     "link_region": parsed.region,
                     "session_region": session_region,
+                    "hint": (
+                        f"Switch to an account on the {parsed.region} region with "
+                        f'ws.use(account="<name>") (CLI: mp --account <name> ...) '
+                        f"and retry."
+                    ),
                 },
             )
         session_project = int(self._session.project.id)
         if parsed.project_id is not None and parsed.project_id != session_project:
             raise ReportLinkScopeMismatchError(
                 f"Report link belongs to project {parsed.project_id} but the "
-                f"active session is project {session_project}. Switch with "
-                f'ws.use(project="{parsed.project_id}") '
-                f"(CLI: mp --project {parsed.project_id} ...) and retry.",
+                f"active session is project {session_project}.",
                 code="REPORT_LINK_PROJECT_MISMATCH",
                 details={
                     **self._report_link_details(parsed),
                     "link_project_id": parsed.project_id,
                     "session_project_id": session_project,
+                    "hint": (
+                        f'Switch with ws.use(project="{parsed.project_id}") '
+                        f"(CLI: mp --project {parsed.project_id} ...) and retry."
+                    ),
                 },
             )
         pinned = self._session.workspace
@@ -11600,14 +11610,16 @@ class Workspace:
         ):
             raise ReportLinkScopeMismatchError(
                 f"Report link belongs to workspace {parsed.workspace_id} but the "
-                f"active session is pinned to workspace {int(pinned.id)}. Switch "
-                f"with ws.use(workspace={parsed.workspace_id}) "
-                f"(CLI: mp --workspace {parsed.workspace_id} ...) and retry.",
+                f"active session is pinned to workspace {int(pinned.id)}.",
                 code="REPORT_LINK_WORKSPACE_MISMATCH",
                 details={
                     **self._report_link_details(parsed),
                     "link_workspace_id": parsed.workspace_id,
                     "session_workspace_id": int(pinned.id),
+                    "hint": (
+                        f"Switch with ws.use(workspace={parsed.workspace_id}) "
+                        f"(CLI: mp --workspace {parsed.workspace_id} ...) and retry."
+                    ),
                 },
             )
 
@@ -11660,9 +11672,14 @@ class Workspace:
             ``(parsed_target, expanded_url)``.
 
         Raises:
+            ReportLinkScopeMismatchError: ``REPORT_LINK_REGION_MISMATCH`` when
+                the shortlink host is on another region (before the GET).
             ShortLinkResolutionError: ``SHORT_LINK_CHAIN`` when the target is
                 another shortlink, plus the transport codes from
                 :meth:`MixpanelAPIClient.resolve_short_link`.
+            ReportLinkParseError: The expanded target is not a recognizable
+                Mixpanel report link.
+            AuthenticationError: The server redirected to the login page.
         """
         assert parsed.short_code is not None
         # The shortlink host names a region; a mismatch is knowable before the
@@ -11689,10 +11706,13 @@ class Workspace:
 
         Accepts a full Mixpanel URL to an unsaved report (slug) or a saved
         report (bookmark), a bare 12-character slug, or a
-        ``https://mixpanel.com/s/{code}`` shortlink. Region and project are
-        checked against the active session **before** any HTTP call. At most
-        two HTTP calls are made: one optional shortlink expansion and one
-        record fetch.
+        ``https://mixpanel.com/s/{code}`` shortlink. Region, project, and
+        pinned workspace are checked against the active session **before the
+        record fetch**. For a full URL or a bare slug that is before any HTTP
+        call. For a shortlink the region check runs before the redirect GET
+        and the project and workspace checks run on the expanded target. At
+        most two HTTP calls are made: one optional shortlink expansion and one
+        record fetch. Rate-limit retries are not counted.
 
         The result holds the raw params. Run them with
         :meth:`query_report_link`.
@@ -11712,7 +11732,7 @@ class Workspace:
                 ``~(...)`` hash.
             ReportLinkScopeMismatchError: The link's region or project
                 differs from the session, or its workspace differs from the
-                pinned session workspace (no HTTP call was made).
+                pinned session workspace. The record was not fetched.
             ReportLinkNotFoundError: The slug, saved report, or shortlink
                 does not exist in scope.
             ShortLinkResolutionError: The shortlink target could not be
@@ -11722,6 +11742,10 @@ class Workspace:
             RateLimitError: Rate limit exceeded (429).
             ServerError: Server-side errors (5xx).
             QueryError: Other App API rejections (400/403/422).
+            ResponseValidationError: The slug or bookmark record the server
+                returned does not match the expected shape.
+            MixpanelHeadlessError: A transport failure (``HTTP_ERROR``) or a
+                response that is not a JSON object.
 
         Example:
             ```python
@@ -11771,6 +11795,13 @@ class Workspace:
                     if hint_type is not None and hint_type in SLUG_APP_FOR_TYPE
                     else "insights"
                 )
+                logger.warning(
+                    "slug %s has unknown report type %r; the canonical URL uses "
+                    "the %s app and may not open it correctly",
+                    record.slug,
+                    record.bookmark_type,
+                    SLUG_APP_FOR_TYPE[slug_url_type],
+                )
             return ResolvedReport(
                 source="slug",
                 report_type=record.bookmark_type,
@@ -11803,11 +11834,38 @@ class Workspace:
             bookmark = self.get_bookmark(parsed.bookmark_id)
         except QueryError as exc:
             if exc.status_code == 404:
+                # get_bookmark is workspace-scoped when a workspace is pinned,
+                # so a report in a sibling workspace of the same project also
+                # 404s. Say so, instead of "not in this project".
+                if pinned is not None:
+                    raise ReportLinkNotFoundError(
+                        f"No saved report found with id {parsed.bookmark_id} in "
+                        f"project {project_id} ({region}) under the pinned "
+                        f"workspace {int(pinned.id)}.",
+                        code="REPORT_LINK_BOOKMARK_NOT_FOUND",
+                        details={
+                            **self._report_link_details(parsed),
+                            "session_workspace_id": int(pinned.id),
+                            "hint": (
+                                "The saved report may live in another workspace "
+                                "of this project. Switch with "
+                                "ws.use(workspace=<id>) (CLI: mp --workspace "
+                                "<id> ...) or unpin the workspace and retry."
+                            ),
+                        },
+                    ) from exc
                 raise ReportLinkNotFoundError(
                     f"No saved report found with id {parsed.bookmark_id} in "
                     f"project {project_id} ({region}).",
                     code="REPORT_LINK_BOOKMARK_NOT_FOUND",
-                    details=self._report_link_details(parsed),
+                    details={
+                        **self._report_link_details(parsed),
+                        "hint": (
+                            "Check the saved report id, or switch to the project "
+                            "and region that own it (ws.use(project=...); CLI: "
+                            "mp --project ...) and retry."
+                        ),
+                    },
                 ) from exc
             raise
         if parsed.overrides_jsurl is not None:
@@ -11816,11 +11874,16 @@ class Workspace:
                 parsed.overrides_jsurl,
             )
         report_type = bookmark.bookmark_type
-        url_type = (
-            report_type
-            if report_type in BOOKMARK_HASH_FOR_TYPE
-            else (parsed.report_type_hint or "insights")
-        )
+        url_type = report_type
+        if url_type not in BOOKMARK_HASH_FOR_TYPE:
+            url_type = parsed.report_type_hint or "insights"
+            logger.warning(
+                "saved report %s has unknown report type %r; the canonical URL "
+                "uses the %s app and may not open it correctly",
+                bookmark.id,
+                report_type,
+                parsed.app,
+            )
         return ResolvedReport(
             source="bookmark",
             report_type=report_type,
@@ -11904,7 +11967,7 @@ class Workspace:
                 ParsedReportLink(
                     kind=resolved.source,
                     raw=resolved.input,
-                    region=cast("LinkRegion", resolved.region),
+                    region=resolved.region,
                     project_id=resolved.project_id,
                     workspace_id=resolved.workspace_id,
                     slug=resolved.slug,
