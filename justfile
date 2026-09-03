@@ -108,6 +108,15 @@ conformance:
     set -euo pipefail
     uv run pytest conformance/tests -o addopts="" -q
     uv run pytest conformance/runner -o addopts="" -q
+    just conformance-stamps
+
+# Stamp-provenance guard (mirrors the CI step of the same name): every
+# corpus/contract stamp must be a 40-hex SHA reachable from origin/main, and
+# in-scope corpus content must not change against the merge-base with
+# origin/main unless manifest.source_commit changes too. Needs a fetched
+# origin/main. Protocol: conformance/record/README.md, "Which SHA to stamp".
+conformance-stamps *args:
+    uv run python -m conformance.record.check_stamps --main-ref origin/main --base-ref origin/main {{ args }}
 
 # Record-mode vector extraction over the full non-live suite (design D1.3/D3).
 # `-o addopts=""` is required: the repo default addopts pollute collection.

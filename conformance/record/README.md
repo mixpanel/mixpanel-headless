@@ -32,6 +32,60 @@ Notes:
   commit if changed with the new `source_commit`, then re-run the D9 smoke
   test (`just conformance-smoke`) before committing a regenerated corpus.
 
+### Which SHA to stamp (stamp-provenance rule)
+
+`--mp-record-commit` and the contract generator's `--generated-from` must
+name **the `main` commit whose `src/` is the code the vectors were
+extracted from**, as a full 40-hex SHA. Never stamp with the HEAD of the
+branch you are working on: this repo squash-merges PRs, so a branch SHA
+survives only in local reflogs and the stamp stops resolving once the
+branch is deleted (every stamp in the corpus before the 2026-09 re-pin had
+this defect — see `EXTRACTION-LEDGER.md`).
+
+CI enforces this with `conformance/record/check_stamps.py` (step
+"Stamp-provenance guard", before the drift check; locally
+`just conformance-stamps`):
+
+1. `manifest.source_commit`, every extracted `$bundle.source_commit`, and
+   every `conformance/contract/*.json` `generated_from` must be a 40-hex
+   SHA that is an ancestor of `origin/main`
+   (`git merge-base --is-ancestor`). Extracted bundle stamps must also
+   equal the manifest stamp. Authored bundles are exempt only through the
+   explicit `LEGACY_AUTHORED_STAMPS` allowlist in the script; a new
+   authored bundle, or an allowlisted one whose stamp changes, must carry
+   a reachable SHA.
+2. On pull requests: if any file under `conformance/vectors/**`
+   (excluding `authored/**` and `enums/**`) differs from the merge-base
+   with `main` in anything other than the stamp fields, then
+   `manifest.source_commit` must also differ from the merge-base's value.
+
+Consequence: a commit cannot contain its own SHA, so a PR that changes
+vectors cannot stamp them with its own future squash SHA. The repo adopts
+the **two-step protocol**:
+
+1. **Library PR.** Land the `src/` / `tests/` change WITHOUT touching
+   `conformance/vectors/` or `conformance/contract/`. The drift check will
+   fail on that PR if the change alters recorded behavior; that is the
+   expected signal, and the PR should say so (the R10.7 batch, PR #208,
+   is the precedent: "Conformance vectors deliberately NOT touched
+   (RE-PIN task owns re-extraction)"). Merge it; note the squash SHA on
+   `main`.
+2. **Re-pin PR.** Re-extract with `--mp-record-commit=<that squash SHA>`
+   and `--mp-record-date=<today>`, regenerate the contract with
+   `--generated-from <the same SHA>`, append an `EXTRACTION-LEDGER.md`
+   entry, and open a conformance-only PR. Rule 2 passes because the stamp
+   moved with the content; rule 1 passes because the SHA is on `main`.
+
+The single-PR alternative — stamping with the PR's merge-base on `main` —
+also satisfies both rules, but the stamp then names the code BEFORE the
+change and anyone following it will not find the source of the new
+vectors. It is NOT adopted. Use the two-step protocol.
+
+After each re-pin PR merges, the TypeScript port (`mixpanel-headless-ts`)
+re-pins to the same SHA: set `conformance-runner/corpus.config.json`
+`sourceCommit` to it, run `npm run sync:corpus` (which refuses to copy
+unless `manifest.source_commit` equals the pin), and commit.
+
 ## exclusions.args
 
 `exclusions.args` holds extra pytest selector arguments appended to the
@@ -61,7 +115,10 @@ exclusion cannot be runtime-detected; the file must stay shell-word-safe
 ## Drift check (D8)
 
 CI's `conformance` job re-extracts to `/tmp/re-extract` with the committed
-manifest's own stamps injected, then runs the bidirectional byte-diff:
+manifest's own stamps injected, then runs the bidirectional byte-diff.
+Because the stamps are injected back in, this check proves that the
+vectors reproduce but says nothing about whether the stamps are RIGHT;
+that is the job of the stamp-provenance guard above.
 
 ```bash
 uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors
