@@ -1604,8 +1604,8 @@ class ReportLinkError(MixpanelHeadlessError):
     Not in this family: the pure URL builders and ``create_report_link``
     input guards raise :class:`ParamValidationError` with the codes
     ``RL1_UNKNOWN_REPORT_TYPE``, ``RL2_INVALID_SLUG``, ``RL3_UNKNOWN_REGION``,
-    ``RL4_REPORT_TYPE_CONFLICT``, and ``RL5_RESOLVED_REPORT_INCONSISTENT``. A
-    ``try/except ReportLinkError`` does not catch them. Every failure in this
+    ``RL4_REPORT_TYPE_CONFLICT``, ``RL5_RESOLVED_REPORT_INCONSISTENT``, and
+    ``RL6_INVALID_ID``. A ``try/except ReportLinkError`` does not catch them. Every failure in this
     family carries a ``hint`` in ``details``.
 
     Example:
@@ -1855,6 +1855,7 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "RL3_UNKNOWN_REGION",
         "RL4_REPORT_TYPE_CONFLICT",
         "RL5_RESOLVED_REPORT_INCONSISTENT",
+        "RL6_INVALID_ID",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

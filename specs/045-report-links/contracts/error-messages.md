@@ -64,6 +64,8 @@ A redirect to `/login?next=...` does not use this class. It raises the existing 
 | `RL2_INVALID_SLUG` | `Invalid slug {slug!r}. A slug is exactly 12 characters from [0-9A-Za-z_-].` |
 | `RL3_UNKNOWN_REGION` | `Unknown region {region!r}. Expected one of: us, eu, in.` |
 | `RL4_REPORT_TYPE_CONFLICT` | `report_type={given!r} contradicts the {result_class} result, which is {inferred!r}. Omit report_type or pass a plain params dict.` |
+| `RL5_RESOLVED_REPORT_INCONSISTENT` | `ResolvedReport with source={source!r} requires {missing}.` |
+| `RL6_INVALID_ID` | `Invalid {field} {value}. An id is a positive integer.` |
 
 ## 7. CLI stderr warnings (exit 0)
 

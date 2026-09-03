@@ -24,7 +24,7 @@ from mixpanel_headless._internal.report_links import (
     is_slug,
     parse_report_link,
 )
-from mixpanel_headless.exceptions import ReportLinkParseError
+from mixpanel_headless.exceptions import ParamValidationError, ReportLinkParseError
 
 _SERVER_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
 _SERVER_RE = re.compile(r"^[0-9a-zA-Z_-]{12}$")
@@ -133,6 +133,47 @@ class TestRoundTrips:
         assert parsed.workspace_id == wid
         assert parsed.bookmark_id == bid
         assert parsed.report_type_hint == report_type
+
+
+class TestNonPositiveIds:
+    """§7.8 (review follow-up): a built URL always parses, so bad ids never build."""
+
+    @given(regions, st.integers(max_value=0), slugs, slug_types)
+    def test_slug_builder_rejects_non_positive_project(
+        self, region: str, pid: int, slug: str, report_type: str
+    ) -> None:
+        """Any project id at or below zero raises RL6 before a URL exists."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_slug_url(
+                region=region, project_id=pid, slug=slug, report_type=report_type
+            )
+        assert exc_info.value.code == "RL6_INVALID_ID"
+
+    @given(regions, project_ids, st.integers(max_value=0), bookmark_ids, bookmark_types)
+    def test_bookmark_builder_rejects_non_positive_workspace(
+        self, region: str, pid: int, wid: int, bid: int, report_type: str
+    ) -> None:
+        """Any workspace id at or below zero raises RL6 before a URL exists."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_bookmark_url(
+                region=region,
+                project_id=pid,
+                bookmark_id=bid,
+                report_type=report_type,
+                workspace_id=wid,
+            )
+        assert exc_info.value.code == "RL6_INVALID_ID"
+
+    @given(regions, project_ids, st.integers(max_value=0), bookmark_types)
+    def test_bookmark_builder_rejects_non_positive_bookmark(
+        self, region: str, pid: int, bid: int, report_type: str
+    ) -> None:
+        """Any bookmark id at or below zero raises RL6 before a URL exists."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_bookmark_url(
+                region=region, project_id=pid, bookmark_id=bid, report_type=report_type
+            )
+        assert exc_info.value.code == "RL6_INVALID_ID"
 
 
 class TestDecorationInvariance:

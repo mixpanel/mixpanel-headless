@@ -253,6 +253,29 @@ def generate_slug(*, choice: Callable[[str], str] = secrets.choice) -> str:
     return "".join(choice(SLUG_ALPHABET) for _ in range(SLUG_LENGTH))
 
 
+def _require_positive_id(field: str, value: int) -> None:
+    """Reject an id that the parser could never read back.
+
+    The path and hash grammars accept ASCII digit runs only, so a zero or
+    negative id would build a URL that :func:`parse_report_link` rejects.
+    Checking here keeps the build-then-parse round trip total.
+
+    Args:
+        field: The parameter name, for the message and ``details``.
+        value: The id to check.
+
+    Raises:
+        ParamValidationError: ``RL6_INVALID_ID`` when ``value`` is not a
+            positive integer.
+    """
+    if value <= 0:
+        raise ParamValidationError(
+            f"Invalid {field} {value}. An id is a positive integer.",
+            code="RL6_INVALID_ID",
+            details={"field": field, "value": value},
+        )
+
+
 def _project_path(project_id: int, workspace_id: int | None) -> str:
     """Return ``/project/{pid}`` with an optional ``/view/{wid}`` segment.
 
@@ -262,9 +285,15 @@ def _project_path(project_id: int, workspace_id: int | None) -> str:
 
     Returns:
         The path prefix without the ``/app/...`` tail.
+
+    Raises:
+        ParamValidationError: ``RL6_INVALID_ID`` when either id is not a
+            positive integer.
     """
+    _require_positive_id("project_id", project_id)
     if workspace_id is None:
         return f"/project/{project_id}"
+    _require_positive_id("workspace_id", workspace_id)
     return f"/project/{project_id}/view/{workspace_id}"
 
 
@@ -320,7 +349,8 @@ def build_slug_url(
 
     Raises:
         ParamValidationError: ``RL3_UNKNOWN_REGION``, ``RL1_UNKNOWN_REPORT_TYPE``,
-            or ``RL2_INVALID_SLUG``.
+            ``RL2_INVALID_SLUG``, or ``RL6_INVALID_ID`` (a zero or negative
+            project or workspace id).
 
     Example:
         ```python
@@ -364,8 +394,9 @@ def build_bookmark_url(
         ``https://{host}/project/{pid}[/view/{wid}]/app/{app}#{hash}``.
 
     Raises:
-        ParamValidationError: ``RL3_UNKNOWN_REGION`` or
-            ``RL1_UNKNOWN_REPORT_TYPE``.
+        ParamValidationError: ``RL3_UNKNOWN_REGION``, ``RL1_UNKNOWN_REPORT_TYPE``,
+            or ``RL6_INVALID_ID`` (a zero or negative project, workspace, or
+            bookmark id).
 
     Example:
         ```python
@@ -376,6 +407,7 @@ def build_bookmark_url(
         ```
     """
     host = web_host(region)
+    _require_positive_id("bookmark_id", bookmark_id)
     tail = _lookup_type(BOOKMARK_HASH_FOR_TYPE, report_type).format(id=bookmark_id)
     return f"https://{host}{_project_path(project_id, workspace_id)}/app/{tail}"
 

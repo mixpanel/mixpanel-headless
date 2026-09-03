@@ -37,8 +37,8 @@ may include API changes.
     `ReportLinkScopeMismatchError`, `ShortLinkResolutionError`; every
     instance carries a `hint` in `details`. Builder and input guard codes
     `RL1_UNKNOWN_REPORT_TYPE`, `RL2_INVALID_SLUG`, `RL3_UNKNOWN_REGION`,
-    `RL4_REPORT_TYPE_CONFLICT`, `RL5_RESOLVED_REPORT_INCONSISTENT` (raised as
-    `ParamValidationError`).
+    `RL4_REPORT_TYPE_CONFLICT`, `RL5_RESOLVED_REPORT_INCONSISTENT`,
+    `RL6_INVALID_ID` (raised as `ParamValidationError`).
   - CLI exit codes: `ReportLinkNotFoundError` → 4; `ReportLinkParseError`,
     `UnsupportedReportLinkError`, and `ReportLinkScopeMismatchError` → 3;
     `ShortLinkResolutionError` → 1. The CLI prints `details["hint"]` on a

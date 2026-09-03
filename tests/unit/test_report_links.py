@@ -693,6 +693,59 @@ class TestBuilders:
         )
         assert exc_info.value.details == {"slug": "short"}
 
+    @pytest.mark.parametrize(
+        ("kwargs", "field", "value"),
+        [
+            ({"project_id": 0}, "project_id", 0),
+            ({"project_id": -3}, "project_id", -3),
+            ({"workspace_id": 0}, "workspace_id", 0),
+            ({"workspace_id": -1}, "workspace_id", -1),
+        ],
+    )
+    def test_slug_non_positive_id_raises_rl6(
+        self, kwargs: dict[str, int], field: str, value: int
+    ) -> None:
+        """A zero or negative project or workspace id never reaches the URL."""
+        args: dict[str, Any] = {
+            "region": "us",
+            "project_id": 3,
+            "slug": _SLUG,
+            "report_type": "insights",
+            **kwargs,
+        }
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_slug_url(**args)
+        exc = exc_info.value
+        assert exc.code == "RL6_INVALID_ID"
+        assert str(exc) == f"Invalid {field} {value}. An id is a positive integer."
+        assert exc.details == {"field": field, "value": value}
+
+    @pytest.mark.parametrize(
+        ("kwargs", "field", "value"),
+        [
+            ({"project_id": 0}, "project_id", 0),
+            ({"workspace_id": -1}, "workspace_id", -1),
+            ({"bookmark_id": 0}, "bookmark_id", 0),
+            ({"bookmark_id": -1}, "bookmark_id", -1),
+        ],
+    )
+    def test_bookmark_non_positive_id_raises_rl6(
+        self, kwargs: dict[str, int], field: str, value: int
+    ) -> None:
+        """A zero or negative project, workspace, or bookmark id is rejected."""
+        args: dict[str, Any] = {
+            "region": "us",
+            "project_id": 3,
+            "bookmark_id": 123,
+            "report_type": "insights",
+            **kwargs,
+        }
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_bookmark_url(**args)
+        exc = exc_info.value
+        assert exc.code == "RL6_INVALID_ID"
+        assert exc.details == {"field": field, "value": value}
+
     @pytest.mark.parametrize("builder", ["slug", "bookmark"])
     def test_unknown_region_raises_rl3(self, builder: str) -> None:
         """Both builders reject an unknown region."""

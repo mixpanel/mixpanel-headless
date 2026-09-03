@@ -146,6 +146,8 @@ Builder guards raised as `ParamValidationError` and registered in `CODED_GUARD_R
 | `RL2_INVALID_SLUG` | `build_slug_url` | `is_slug(slug)` is false |
 | `RL3_UNKNOWN_REGION` | `web_host`, both builders | region not in `WEB_HOSTS` |
 | `RL4_REPORT_TYPE_CONFLICT` | `create_report_link` | explicit `report_type` contradicts the result class |
+| `RL5_RESOLVED_REPORT_INCONSISTENT` | `ResolvedReport.__post_init__` | `source="slug"` without `slug`, or `source="bookmark"` without `bookmark_id` (PR #223 review) |
+| `RL6_INVALID_ID` | both builders, `saved_report_link` | a zero or negative project, workspace, or bookmark id; the parser reads ASCII digit runs only, so such a URL would not round-trip (PR #223 review) |
 
 ## 8. Constants (pure module)
 

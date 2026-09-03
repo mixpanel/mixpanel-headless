@@ -11448,7 +11448,9 @@ class Workspace:
         Raises:
             ParamValidationError: ``RL4_REPORT_TYPE_CONFLICT`` on a
                 contradicting ``report_type``; ``RL1``/``RL3`` from the URL
-                builder.
+                builder; ``RL6_INVALID_ID`` for a zero or negative
+                ``workspace_id`` (checked after the POST, because the URL is
+                built from the stored record).
             BookmarkValidationError: Params failed schema validation
                 (raised before any network call).
             AuthenticationError: Invalid credentials (401).
@@ -12024,8 +12026,9 @@ class Workspace:
             the session region.
 
         Raises:
-            ParamValidationError: ``RL1_UNKNOWN_REPORT_TYPE`` or
-                ``RL3_UNKNOWN_REGION``.
+            ParamValidationError: ``RL1_UNKNOWN_REPORT_TYPE``,
+                ``RL3_UNKNOWN_REGION``, or ``RL6_INVALID_ID`` (a zero or
+                negative ``bookmark_id`` or ``workspace_id``).
 
         Example:
             ```python

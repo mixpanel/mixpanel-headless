@@ -74,15 +74,17 @@ The flag defaults to off. When off, output is byte-for-byte unchanged.
 | Command | With `--link` |
 |---------|---------------|
 | `mp query segmentation -e EVENT --from D --to D [-u UNIT] [--on PROP]` | Builds Insights params with `ws.build_params(event, from_date=, to_date=, unit=, group_by=on)` and calls `create_report_link`. Adds `report_url` to the output dict. |
-| `mp query segmentation ... --where EXPR --link` | Prints `warning: --link is not supported with --where; link omitted` to stderr. Omits `report_url`. Exit 0. |
-| `mp query segmentation ... --on 'properties["x"] > 1' --link` | Same warning for a non-bare breakdown. |
+| `mp query segmentation ... --where EXPR --link` | Prints `warning: --link is not supported with --where; link omitted` to stderr. Emits `report_url: null` and `report_url_error: "--link is not supported with --where"`. Exit 0. |
+| `mp query segmentation ... --on 'properties["x"] > 1' --link` | Prints `warning: --link supports a bare property name for --on only; link omitted`. Emits `report_url: null` and `report_url_error: "--link supports a bare property name for --on only"`. Exit 0. |
 | `mp query funnel FUNNEL_ID --link` | Adds `report_url = ws.saved_report_link(funnel_id, report_type="funnels")`. No network. |
 | `mp query saved-report ID --link` | Adds `report_url = ws.saved_report_link(id, report_type=result.report_type)`. `"funnel"` normalizes to `"funnels"`. No network. |
 | `mp query flows ID --link` | Adds `report_url = ws.saved_report_link(id, report_type="flows")`. No network. |
 
-**Bare property rule for `--on`**: the value is a bare property name unless it contains any of these tokens: `properties[`, `(`, `)`, `==`, `!=`, `<`, `>`, `defined`, `boolean(`, `number(`, `string(`, or the words ` and ` or ` or ` with spaces on both sides. Spaces, `$`, and Unicode inside a plain name are allowed, so `Plan Type` and `$city` are bare. An empty `--on` means no breakdown.
+**Output shape with `--link`** (revised in the PR #223 review): `report_url` is always present, as the URL string or `null`, so `--jq .report_url` yields one of the two. `report_url_error` is present only when the link was omitted and holds the reason. With `-f table` or `-f plain` a produced URL is printed as a `report_url: {url}` line after the result; an omitted link is announced on stderr only.
 
-**Failure isolation**: any `MixpanelHeadlessError` raised by `create_report_link` inside a query command prints `warning: could not create report link: {message}` to stderr. The query result still prints. Exit 0.
+**Bare property rule for `--on`** (revised in the PR #223 review): the value is a bare property name unless it contains any of these tokens: `[`, `]`, `"`, `'`, `==`, `!=`, `<`, `>`, `&&`, `||`, `boolean(`, `number(`, `string(`, `datetime(`, `list(`, `defined(`. Bare words are not tokens, so `Plan Type`, `$city`, `Terms and Conditions`, `Undefined Reason`, and `Price (USD)` are bare, and `user["Country"]` and `number(x)` are not. An empty `--on` means no breakdown.
+
+**Failure isolation** (revised in the PR #223 review): every `--link` call site, including the three `saved_report_link` sites, runs through one guard. Any `MixpanelHeadlessError`, including an auth, rate-limit, or server error, prints `warning: could not create report link: {message}` to stderr and emits `report_url: null` plus `report_url_error: {message}`. The query result still prints. Exit 0.
 
 **Not supported**: `mp query retention --link`, and `--link` on `event-counts`, `property-counts`, `frequency`, `activity-feed`, and the `segmentation-*` variants. The flag does not exist on those commands.
 

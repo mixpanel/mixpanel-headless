@@ -99,7 +99,7 @@ specs/045-report-links/
 ```text
 src/mixpanel_headless/
 ├── __init__.py                          # MODIFIED: export the report-link group
-├── exceptions.py                        # MODIFIED: ReportLinkError family + RL1..RL4 guard codes
+├── exceptions.py                        # MODIFIED: ReportLinkError family + RL1..RL6 guard codes
 ├── types.py                             # MODIFIED: ReportLinkType, BookmarkUrl, ReportLink, ResolvedReport, ReportLinkQueryResult
 ├── workspace.py                         # MODIFIED: create_report_link, resolve_report_link, query_report_link, saved_report_link, _report_link_workspace_id
 ├── CLAUDE.md                            # MODIFIED: method table
