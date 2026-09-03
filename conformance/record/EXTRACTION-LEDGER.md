@@ -7,6 +7,107 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 
+## 2026-09 re-pin: stamp `390c6e7f` → `c9991d1` (PR #223 provenance repair)
+
+### What was wrong
+
+1. **PR #223 (`c9991d1`, report links) re-used the previous stamps.** It
+   added 68 extracted vectors and 7 new bundles (3,052 → 3,120) and
+   regenerated the contract artifacts, but kept `manifest.source_commit`
+   `390c6e7fe79485d3844c75af78fb5fe90142af68` and `extraction_date`
+   `2026-08-21` from the PR #215 corpus. The TS sync
+   (`scripts/sync-corpus.sh`, keyed on `manifest.source_commit`) therefore
+   accepted new content under the old pin with no pin bump, and a reader
+   who checks out `390c6e7f` finds neither the report-links code nor the
+   report-links bundles. The regenerated contract artifacts were stamped
+   `generated_from` `4504f3e3d25749768b053ccfd46a07302d3fc5c4`, which is
+   the "[Spec Kit] Add tasks" commit on the PR #223 branch — BEFORE the
+   implementation (`git diff --stat 4504f3e3 14420ca6 -- src/`: 14 files,
+   +3,023/−17), so that stamp did not name the scanned code either.
+2. **Systemic: no stamp in the corpus was reachable from `main`.**
+   `git merge-base --is-ancestor <sha> main` fails for `390c6e7f` (the
+   pre-squash PR #215 branch tip; `main` has the squash `6f26131`),
+   `4504f3e3` (PR #223 branch; `main` has the squash `c9991d1`),
+   `52696743` (9 authored bundles) and `b5c1369` (1 authored bundle).
+   The repo squash-merges, so "the branch HEAD when I ran extraction"
+   yields SHAs that survive only in local reflogs. The D8 drift check
+   cannot catch any of this because it injects the committed stamps back
+   into the re-extraction.
+
+### Why `c9991d1` is the honest stamp
+
+`c9991d1eed03fec1830b6e460091724b9263b8aa` is the squash of PR #223 on
+`main`. Its tree is byte-identical to the PR head `14420ca6` (whole-tree
+`git diff 14420ca6 c9991d1` is empty), so its `src/` is exactly the code
+the committed vectors were extracted from. The re-extraction below is the
+proof.
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-09-03 \
+  --mp-record-commit=c9991d1eed03fec1830b6e460091724b9263b8aa
+uv run python -m conformance.contract.generate_contract \
+  --generated-from c9991d1eed03fec1830b6e460091724b9263b8aa
+```
+
+Interpreter and `tool_versions` matched the committed manifest exactly
+(Python 3.14.6, httpx 0.28.1, hypothesis 6.151.13, pydantic 2.13.3).
+Record run: **7,647 passed, 1 skipped, 563 deselected, 0 failed**.
+
+### Vector bodies are byte-identical
+
+`git diff --stat conformance/vectors/`: **165 files changed, 165
+insertions(+), 165 deletions(-)** — one line per file, every file inside
+the extracted scope. The 165 = `manifest.json` (`source_commit` +
+`extraction_date` only; the manifest with both keys deleted is identical
+to the committed one under `jq -S`) + the `$bundle` header of each of the
+164 extracted bundles (header with `source_commit` deleted, and every
+body line, byte-identical — checked programmatically over all 164).
+`conformance/contract/`: 4 files, one line each, `generated_from` only
+(content with the key deleted identical under `jq -S`). Counts unchanged:
+3,120 extracted (builder 1,785 / validation-error 65 / wire 1,270),
+164 bundles.
+
+`authored/**` and `enums/**` are untouched by design: record mode never
+emits them, and their `52696743` / `b5c1369` stamps are authored-time
+provenance for hand-written artifacts. They stay as-is and are carried by
+the `LEGACY_AUTHORED_STAMPS` allowlist in `check_stamps.py`; a NEW
+authored bundle must use a `main`-reachable stamp.
+
+### Determinism / drift proof
+
+Re-extraction into `/tmp/re-extract` with the NEW committed stamps
+injected (the exact CI command), then
+`uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors`:
+`drift check: CLEAN (byte-identical within D8 scope)`, exit 0.
+
+### New stamps
+
+| Stamp | Value |
+|---|---|
+| `manifest.source_commit` (+ 164 `$bundle.source_commit`) | `c9991d1eed03fec1830b6e460091724b9263b8aa` |
+| `manifest.extraction_date` | `2026-09-03` |
+| `contract/*.json` `generated_from` (4 artifacts) | `c9991d1eed03fec1830b6e460091724b9263b8aa` |
+
+### Rule going forward (enforced in CI)
+
+`conformance/record/check_stamps.py` runs in the `conformance` job before
+the drift check (`just conformance-stamps` locally): (1) every
+`source_commit` / `generated_from` must be a 40-hex SHA reachable from
+`origin/main` (authored bundles exempt only via the explicit legacy
+allowlist); (2) on pull requests, in-scope corpus content may not change
+without `manifest.source_commit` changing. Because a commit cannot carry
+its own SHA, vector changes follow the two-step protocol — library PR
+first without vector changes, then a re-pin PR stamped with the library
+PR's squash SHA — documented under "Which SHA to stamp" in `README.md`.
+On the `c9991d1` tree as merged, the guard reports 169 reachability
+findings (manifest + 164 bundles + 4 contract artifacts) and, against the
+previous `main` tip `6f26131`, 1 stamp-not-moved finding; on the repaired
+tree it is clean. The TS port re-pins `corpus.config.json` →
+`c9991d1eed03fec1830b6e460091724b9263b8aa` after this merges.
+
 ## P2-1 re-extraction (2026-08-15) — Phase-2 recorder-coverage closure
 
 ### Invocation
