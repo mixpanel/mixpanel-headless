@@ -999,7 +999,9 @@ class TestQueryReportLink:
         result = ws.query_report_link(_resolved("insights", _INSIGHTS_PARAMS))
 
         assert result is sentinel
-        mock_live_query.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345)
+        mock_live_query.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=None
+        )
 
     def test_funnels(self, ws: Workspace, mock_live_query: MagicMock) -> None:
         """funnels dispatches to query_funnel."""
@@ -1009,7 +1011,9 @@ class TestQueryReportLink:
         result = ws.query_report_link(_resolved("funnels", {"steps": []}))
 
         assert result is sentinel
-        mock_live_query.query_funnel.assert_called_once_with({"steps": []}, 12345)
+        mock_live_query.query_funnel.assert_called_once_with(
+            {"steps": []}, 12345, workspace_id=None
+        )
 
     def test_retention(self, ws: Workspace, mock_live_query: MagicMock) -> None:
         """retention dispatches to query_retention."""
@@ -1019,7 +1023,9 @@ class TestQueryReportLink:
         result = ws.query_report_link(_resolved("retention", {"r": 1}))
 
         assert result is sentinel
-        mock_live_query.query_retention.assert_called_once_with({"r": 1}, 12345)
+        mock_live_query.query_retention.assert_called_once_with(
+            {"r": 1}, 12345, workspace_id=None
+        )
 
     @pytest.mark.parametrize(
         ("params", "expected_mode"),
@@ -1046,7 +1052,7 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_live_query.query_flow.assert_called_once_with(
-            params, 12345, mode=expected_mode
+            params, 12345, mode=expected_mode, workspace_id=None
         )
 
     def test_flows_explicit_mode_wins(
@@ -1058,7 +1064,7 @@ class TestQueryReportLink:
         ws.query_report_link(_resolved("flows", {"chartType": "paths"}), mode="tree")
 
         mock_live_query.query_flow.assert_called_once_with(
-            {"chartType": "paths"}, 12345, mode="tree"
+            {"chartType": "paths"}, 12345, mode="tree", workspace_id=None
         )
 
     def test_launch_analysis_unsupported(
@@ -1103,7 +1109,9 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_api_client.get_bookmark_url.assert_called_once_with(_SLUG)
-        mock_live_query.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345)
+        mock_live_query.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=None
+        )
 
 
 # =============================================================================
@@ -1235,7 +1243,10 @@ class TestResolveShortLinks:
         mock_live_query.query.return_value = sentinel
 
         assert ws.query_report_link(_SHORT) is sentinel
-        mock_live_query.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345)
+        # The expanded target names /view/75/, so the report runs under 75.
+        mock_live_query.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=75
+        )
 
 
 # =============================================================================
@@ -1557,6 +1568,67 @@ class TestWorkspaceScope:
         svc.query.return_value = sentinel
 
         assert ws.query_report_link(_resolved("insights", _INSIGHTS_PARAMS)) is sentinel
+
+    def test_resolved_workspace_is_applied_when_session_is_unpinned(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """Resolve pinned to 75, clear the pin, run: the query still carries 75.
+
+        Greptile P1 on PR #223: a pin-clearing ``use(project=...)`` must not
+        silently turn a data-view report into a project-wide one.
+        """
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws_a = workspace_factory(session=_PINNED_SESSION)
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        resolved = ws_a.resolve_report_link(_SLUG)
+        assert resolved.workspace_id == 75
+
+        ws_b = workspace_factory(session=_TEST_SESSION)
+        svc = MagicMock(spec=LiveQueryService)
+        sentinel = QueryResult(computed_at="t", from_date="d", to_date="d")
+        svc.query.return_value = sentinel
+        ws_b._live_query = svc
+
+        assert ws_b.query_report_link(resolved) is sentinel
+        svc.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345, workspace_id=75)
+
+    def test_url_workspace_is_applied_when_session_is_unpinned(
+        self, ws: Workspace, mock_api_client: MagicMock, mock_live_query: MagicMock
+    ) -> None:
+        """An unpinned session runs a ``/view/9/`` link under workspace 9."""
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        mock_live_query.query.return_value = QueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+
+        ws.query_report_link(
+            f"https://mixpanel.com/project/12345/view/9/app/insights#{_SLUG}"
+        )
+
+        mock_live_query.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=9
+        )
+
+    def test_pinned_workspace_is_recorded_and_applied(
+        self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
+    ) -> None:
+        """A bare slug on a pinned session records 75 and runs under 75."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws = workspace_factory(session=_PINNED_SESSION)
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        svc = MagicMock(spec=LiveQueryService)
+        svc.query.return_value = QueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+        ws._live_query = svc
+
+        ws.query_report_link(_SLUG)
+
+        svc.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345, workspace_id=75)
 
     def test_scope_checked_after_use_workspace_switch(
         self,

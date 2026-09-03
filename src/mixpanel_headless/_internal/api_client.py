@@ -88,6 +88,24 @@ _SHORT_LINK_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _SHORT_LINK_HINT = "Open the shortlink in a browser and copy the full URL."
 
 
+def _explicit_workspace_params(workspace_id: int | None) -> dict[str, Any] | None:
+    """Build the query params that carry an explicit data view, or ``None``.
+
+    ``_request`` injects the pinned workspace with ``setdefault``, so a
+    ``workspace_id`` placed here wins over the pin. ``None`` leaves the
+    params empty and the pin rule unchanged.
+
+    Args:
+        workspace_id: The data view to run under, or ``None``.
+
+    Returns:
+        ``{"workspace_id": workspace_id}`` or ``None``.
+    """
+    if workspace_id is None:
+        return None
+    return {"workspace_id": workspace_id}
+
+
 def _error_message(response_body: str | dict[str, Any] | None, default: str) -> str:
     """Extract a human-readable error message from a parsed error body.
 
@@ -3095,6 +3113,8 @@ class MixpanelAPIClient:
     def insights_query(
         self,
         body: dict[str, Any],
+        *,
+        workspace_id: int | None = None,
     ) -> dict[str, Any]:
         """Execute an inline insights query via POST.
 
@@ -3105,6 +3125,10 @@ class MixpanelAPIClient:
         Args:
             body: Request body containing 'bookmark' (params dict),
                 'project_id' (int), and 'queryLimits' (dict).
+            workspace_id: Optional data view to run under. When set it is
+                sent as the ``workspace_id`` query parameter and wins over
+                the pinned session workspace. When ``None`` the pin, if
+                any, applies as usual.
 
         Returns:
             Raw API response with computed_at, date_range, headers,
@@ -3119,6 +3143,7 @@ class MixpanelAPIClient:
         result: dict[str, Any] = self._request(
             "POST",
             url,
+            params=_explicit_workspace_params(workspace_id),
             data=body,
             inject_project_id=False,
         )
@@ -3152,7 +3177,9 @@ class MixpanelAPIClient:
         result: dict[str, Any] = self._request("GET", url, params=params)
         return result
 
-    def arb_funnels_query(self, body: dict[str, Any]) -> dict[str, Any]:
+    def arb_funnels_query(
+        self, body: dict[str, Any], *, workspace_id: int | None = None
+    ) -> dict[str, Any]:
         """Execute an inline flow/funnel query via the arb_funnels endpoint.
 
         Posts bookmark params directly to ``/arb_funnels`` with a
@@ -3165,6 +3192,10 @@ class MixpanelAPIClient:
             body: Request body containing ``bookmark`` (params dict),
                 ``project_id`` (int), and ``query_type`` (str — one of
                 ``"flows_sankey"`` or ``"flows_top_paths"``).
+            workspace_id: Optional data view to run under. When set it is
+                sent as the ``workspace_id`` query parameter and wins over
+                the pinned session workspace. When ``None`` the pin, if
+                any, applies as usual.
 
         Returns:
             Raw API response with steps, flows, breakdowns, and
@@ -3179,6 +3210,7 @@ class MixpanelAPIClient:
         result: dict[str, Any] = self._request(
             "POST",
             url,
+            params=_explicit_workspace_params(workspace_id),
             data=body,
             inject_project_id=False,
         )

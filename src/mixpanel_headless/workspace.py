@@ -11558,9 +11558,10 @@ class Workspace:
         when the session has a pinned workspace **and** the link names one:
         Query-host requests carry the pinned ``workspace_id``, so running a
         report under a different data view would silently change its results.
-        When either side is unset there is nothing to contradict. The message
-        states the mismatch; ``details["hint"]`` states the switch that fixes
-        it.
+        When the session is unpinned there is nothing to contradict, and
+        :meth:`query_report_link` runs the report under the workspace it
+        records. The message states the mismatch; ``details["hint"]`` states
+        the switch that fixes it.
 
         Args:
             parsed: The parsed link (or a :class:`ResolvedReport` projected
@@ -11918,6 +11919,13 @@ class Workspace:
     ) -> ReportLinkQueryResult:
         """Run the query behind a report link through the matching engine.
 
+        The query runs under the workspace the report records
+        (:attr:`ResolvedReport.workspace_id`: the URL ``wid``, else the pin
+        at resolve time). That value is sent explicitly, so it also applies
+        on a session whose pin was cleared since, and a report resolved
+        under one data view never silently runs project-wide. A pinned
+        session that names a different workspace is rejected first.
+
         Args:
             link: A link string (resolved first with
                 :meth:`resolve_report_link`) or an already resolved
@@ -11979,19 +11987,30 @@ class Workspace:
         project_id = int(self._session.project.id)
         service = self._live_query_service
         report_type = resolved.report_type
+        # The report records the data view it was resolved in (URL wid, else
+        # the pin at resolve time). Run under that view even when the
+        # session pin was cleared since, so a retained report never turns
+        # project-wide by accident. An explicit value wins over the pin in
+        # the client; the scope check above already rejected a conflicting
+        # pin, so the two agree whenever both are set.
+        wid = resolved.workspace_id
         if report_type == "insights":
-            return service.query(resolved.params, project_id)
+            return service.query(resolved.params, project_id, workspace_id=wid)
         if report_type == "funnels":
-            return service.query_funnel(resolved.params, project_id)
+            return service.query_funnel(resolved.params, project_id, workspace_id=wid)
         if report_type == "retention":
-            return service.query_retention(resolved.params, project_id)
+            return service.query_retention(
+                resolved.params, project_id, workspace_id=wid
+            )
         if report_type == "flows":
             derived: str = mode if mode is not None else "sankey"
             if mode is None:
                 chart_type = resolved.params.get("chartType")
                 if chart_type in ("sankey", "paths", "tree"):
                     derived = str(chart_type)
-            return service.query_flow(resolved.params, project_id, mode=derived)
+            return service.query_flow(
+                resolved.params, project_id, mode=derived, workspace_id=wid
+            )
         raise UnsupportedReportLinkError(
             f"Report type {report_type!r} cannot be run through mixpanel-headless.",
             code="UNSUPPORTED_REPORT_TYPE",

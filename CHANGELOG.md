@@ -19,10 +19,15 @@ may include API changes.
     with the raw params. A region mismatch fails before any HTTP call; project
     and pinned-workspace mismatches fail before the record fetch.
   - `Workspace.query_report_link(link_or_resolved, *, mode=)` runs the params
-    through `query` / `query_funnel` / `query_retention` / `query_flow`. A
+    through `query` / `query_funnel` / `query_retention` / `query_flow`,
+    under the workspace the report records (the URL `wid`, else the pin at
+    resolve time), so a retained report never silently runs project-wide. A
     `ResolvedReport` whose recorded region or project differs from the
     active session, or whose recorded workspace differs from the pinned
-    session workspace, is rejected before any query.
+    session workspace, is rejected before any query. The four
+    `LiveQueryService` inline methods and `MixpanelAPIClient.insights_query`
+    / `arb_funnels_query` accept an optional `workspace_id` that wins over
+    the pin.
   - `Workspace.saved_report_link(bookmark_id, *, report_type=, workspace_id=)`
     builds a saved-report URL with no network call.
   - CLI: `mp reports link` and `mp reports resolve [--run] [--mode]`, plus an
