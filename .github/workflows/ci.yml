@@ -88,8 +88,13 @@ jobs:
       contents: read
 
     steps:
+      # fetch-depth: 0 — the stamp-provenance guard below runs
+      # `git merge-base --is-ancestor <stamp> origin/main`, which needs the
+      # full history, not the default single-commit checkout.
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -118,6 +123,25 @@ jobs:
 
       - name: Corpus runner
         run: uv run pytest conformance/runner -o addopts="" -q
+
+      # Stamp-provenance guard (conformance/record/check_stamps.py). The
+      # drift check below injects the committed manifest's own stamps back
+      # into the re-extraction, so it can never notice a WRONG stamp. This
+      # step checks that manifest.source_commit, every extracted
+      # $bundle.source_commit, and every contract generated_from is a
+      # 40-hex SHA reachable from main (rule 1) and, on pull requests, that
+      # in-scope corpus content did not change without the stamp changing
+      # (rule 2 — the PR #223 failure mode: 68 new vectors landed under the
+      # previous pin). Protocol: conformance/record/README.md, "Which SHA
+      # to stamp".
+      - name: Stamp-provenance guard
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          BASE_ARGS=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_ARGS="--base-ref origin/main"
+          fi
+          uv run python -m conformance.record.check_stamps --main-ref origin/main $BASE_ARGS
 
       # Re-extracts the full corpus with the committed manifest's own stamps
       # injected back in (D3: date/commit are inputs, never wall clock or
