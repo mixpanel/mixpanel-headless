@@ -14096,7 +14096,9 @@ class ResolvedReport:
             for a bookmark. May be ``launch-analysis``, which cannot be run.
         params: The raw parameters. Never merged with ``overrides``.
         project_id: Project the record lives in.
-        workspace_id: URL ``wid``, else the session pin, else ``None``.
+        workspace_id: URL ``wid``, else the session pin at resolve time,
+            else ``None``. :meth:`Workspace.query_report_link` runs under
+            exactly this scope; ``None`` means project-wide.
         region: Session region (``us``, ``eu``, or ``in``).
         url: Canonical rebuilt URL.
         input: What the caller passed.

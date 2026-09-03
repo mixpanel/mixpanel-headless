@@ -1000,7 +1000,7 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_live_query.query.assert_called_once_with(
-            _INSIGHTS_PARAMS, 12345, workspace_id=None
+            _INSIGHTS_PARAMS, 12345, workspace_id=None, inject_workspace_id=False
         )
 
     def test_funnels(self, ws: Workspace, mock_live_query: MagicMock) -> None:
@@ -1012,7 +1012,7 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_live_query.query_funnel.assert_called_once_with(
-            {"steps": []}, 12345, workspace_id=None
+            {"steps": []}, 12345, workspace_id=None, inject_workspace_id=False
         )
 
     def test_retention(self, ws: Workspace, mock_live_query: MagicMock) -> None:
@@ -1024,7 +1024,7 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_live_query.query_retention.assert_called_once_with(
-            {"r": 1}, 12345, workspace_id=None
+            {"r": 1}, 12345, workspace_id=None, inject_workspace_id=False
         )
 
     @pytest.mark.parametrize(
@@ -1052,7 +1052,11 @@ class TestQueryReportLink:
 
         assert result is sentinel
         mock_live_query.query_flow.assert_called_once_with(
-            params, 12345, mode=expected_mode, workspace_id=None
+            params,
+            12345,
+            mode=expected_mode,
+            workspace_id=None,
+            inject_workspace_id=False,
         )
 
     def test_flows_explicit_mode_wins(
@@ -1064,7 +1068,11 @@ class TestQueryReportLink:
         ws.query_report_link(_resolved("flows", {"chartType": "paths"}), mode="tree")
 
         mock_live_query.query_flow.assert_called_once_with(
-            {"chartType": "paths"}, 12345, mode="tree", workspace_id=None
+            {"chartType": "paths"},
+            12345,
+            mode="tree",
+            workspace_id=None,
+            inject_workspace_id=False,
         )
 
     def test_launch_analysis_unsupported(
@@ -1110,7 +1118,7 @@ class TestQueryReportLink:
         assert result is sentinel
         mock_api_client.get_bookmark_url.assert_called_once_with(_SLUG)
         mock_live_query.query.assert_called_once_with(
-            _INSIGHTS_PARAMS, 12345, workspace_id=None
+            _INSIGHTS_PARAMS, 12345, workspace_id=None, inject_workspace_id=False
         )
 
 
@@ -1245,7 +1253,7 @@ class TestResolveShortLinks:
         assert ws.query_report_link(_SHORT) is sentinel
         # The expanded target names /view/75/, so the report runs under 75.
         mock_live_query.query.assert_called_once_with(
-            _INSIGHTS_PARAMS, 12345, workspace_id=75
+            _INSIGHTS_PARAMS, 12345, workspace_id=75, inject_workspace_id=False
         )
 
 
@@ -1555,10 +1563,14 @@ class TestWorkspaceScope:
         assert exc_info.value.code == "REPORT_LINK_WORKSPACE_MISMATCH"
         svc.query.assert_not_called()
 
-    def test_resolved_report_without_workspace_runs_on_pinned_session(
+    def test_resolved_report_without_workspace_runs_project_wide_on_pinned_session(
         self, workspace_factory: Callable[..., Workspace]
     ) -> None:
-        """A report with no recorded workspace runs on a pinned session."""
+        """A report with no recorded workspace runs project-wide, pin or not.
+
+        Greptile P1 on PR #223: a later ``use(workspace=...)`` must not leak
+        its data view into a report that was resolved without one.
+        """
         from mixpanel_headless._internal.services.live_query import LiveQueryService
 
         ws = workspace_factory(session=_PINNED_SESSION)
@@ -1568,6 +1580,35 @@ class TestWorkspaceScope:
         svc.query.return_value = sentinel
 
         assert ws.query_report_link(_resolved("insights", _INSIGHTS_PARAMS)) is sentinel
+        svc.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=None, inject_workspace_id=False
+        )
+
+    def test_resolve_unpinned_then_pin_then_run_stays_project_wide(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """Resolve a bare slug unpinned, pin 75, run: no ``workspace_id`` at all."""
+        from mixpanel_headless._internal.services.live_query import LiveQueryService
+
+        ws_a = workspace_factory(session=_TEST_SESSION)
+        mock_api_client.get_bookmark_url.return_value = _slug_record()
+        resolved = ws_a.resolve_report_link(_SLUG)
+        assert resolved.workspace_id is None
+
+        ws_b = workspace_factory(session=_PINNED_SESSION)
+        svc = MagicMock(spec=LiveQueryService)
+        svc.query.return_value = QueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+        ws_b._live_query = svc
+
+        ws_b.query_report_link(resolved)
+
+        svc.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=None, inject_workspace_id=False
+        )
 
     def test_resolved_workspace_is_applied_when_session_is_unpinned(
         self,
@@ -1593,7 +1634,9 @@ class TestWorkspaceScope:
         ws_b._live_query = svc
 
         assert ws_b.query_report_link(resolved) is sentinel
-        svc.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345, workspace_id=75)
+        svc.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=75, inject_workspace_id=False
+        )
 
     def test_url_workspace_is_applied_when_session_is_unpinned(
         self, ws: Workspace, mock_api_client: MagicMock, mock_live_query: MagicMock
@@ -1609,7 +1652,7 @@ class TestWorkspaceScope:
         )
 
         mock_live_query.query.assert_called_once_with(
-            _INSIGHTS_PARAMS, 12345, workspace_id=9
+            _INSIGHTS_PARAMS, 12345, workspace_id=9, inject_workspace_id=False
         )
 
     def test_pinned_workspace_is_recorded_and_applied(
@@ -1628,7 +1671,9 @@ class TestWorkspaceScope:
 
         ws.query_report_link(_SLUG)
 
-        svc.query.assert_called_once_with(_INSIGHTS_PARAMS, 12345, workspace_id=75)
+        svc.query.assert_called_once_with(
+            _INSIGHTS_PARAMS, 12345, workspace_id=75, inject_workspace_id=False
+        )
 
     def test_scope_checked_after_use_workspace_switch(
         self,

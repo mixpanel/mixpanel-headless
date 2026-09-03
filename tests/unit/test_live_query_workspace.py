@@ -69,6 +69,35 @@ class TestWorkspacePassthrough:
 
         assert mock_api_client.arb_funnels_query.call_args.kwargs["workspace_id"] == 75
 
+    @pytest.mark.parametrize("method", ["query", "query_funnel", "query_retention"])
+    def test_insights_methods_forward_pin_opt_out(
+        self, service: LiveQueryService, mock_api_client: MagicMock, method: str
+    ) -> None:
+        """``inject_workspace_id=False`` reaches ``insights_query``."""
+        getattr(service, method)({"sections": {}}, 12345, inject_workspace_id=False)
+
+        kwargs = mock_api_client.insights_query.call_args.kwargs
+        assert kwargs["inject_workspace_id"] is False
+        assert kwargs["workspace_id"] is None
+
+    @pytest.mark.parametrize("method", ["query", "query_funnel", "query_retention"])
+    def test_insights_methods_default_to_pin_injection(
+        self, service: LiveQueryService, mock_api_client: MagicMock, method: str
+    ) -> None:
+        """Without the argument the pin still applies (``True``)."""
+        getattr(service, method)({"sections": {}}, 12345)
+
+        assert mock_api_client.insights_query.call_args.kwargs["inject_workspace_id"]
+
+    def test_query_flow_forwards_pin_opt_out(
+        self, service: LiveQueryService, mock_api_client: MagicMock
+    ) -> None:
+        """``query_flow`` forwards the opt-out to ``arb_funnels_query``."""
+        service.query_flow({"steps": []}, 12345, inject_workspace_id=False)
+
+        kwargs = mock_api_client.arb_funnels_query.call_args.kwargs
+        assert kwargs["inject_workspace_id"] is False
+
     def test_query_flow_defaults_to_none(
         self, service: LiveQueryService, mock_api_client: MagicMock
     ) -> None:

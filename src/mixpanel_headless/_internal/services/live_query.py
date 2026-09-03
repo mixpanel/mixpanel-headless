@@ -1129,6 +1129,7 @@ class LiveQueryService:
         project_id: int,
         *,
         workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> QueryResult:
         """Execute an inline insights query with pre-built bookmark params.
 
@@ -1140,7 +1141,9 @@ class LiveQueryService:
             project_id: Mixpanel project ID.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
-                ``None`` keeps the pin rule unchanged.
+            inject_workspace_id: Forwarded to the client. ``True`` (default)
+                lets the pinned session workspace apply when ``workspace_id``
+                is ``None``; ``False`` runs project-wide instead.
 
         Returns:
             QueryResult with series data and metadata.
@@ -1164,7 +1167,9 @@ class LiveQueryService:
             "project_id": project_id,
             "queryLimits": {"limit": 3000},
         }
-        raw = self._api_client.insights_query(body, workspace_id=workspace_id)
+        raw = self._api_client.insights_query(
+            body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
+        )
         return _transform_query_result(raw, bookmark_params)
 
     def query_funnel(
@@ -1173,6 +1178,7 @@ class LiveQueryService:
         project_id: int,
         *,
         workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> FunnelQueryResult:
         """Execute an inline funnel query with pre-built bookmark params.
 
@@ -1186,7 +1192,9 @@ class LiveQueryService:
             project_id: Mixpanel project ID.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
-                ``None`` keeps the pin rule unchanged.
+            inject_workspace_id: Forwarded to the client. ``True`` (default)
+                lets the pinned session workspace apply when ``workspace_id``
+                is ``None``; ``False`` runs project-wide instead.
 
         Returns:
             FunnelQueryResult with step data, conversion rates,
@@ -1211,7 +1219,9 @@ class LiveQueryService:
             "project_id": project_id,
             "queryLimits": {"limit": 3000},
         }
-        raw = self._api_client.insights_query(body, workspace_id=workspace_id)
+        raw = self._api_client.insights_query(
+            body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
+        )
         return _transform_funnel_result(raw, bookmark_params)
 
     def query_retention(
@@ -1220,6 +1230,7 @@ class LiveQueryService:
         project_id: int,
         *,
         workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> RetentionQueryResult:
         """Execute an inline retention query with pre-built bookmark params.
 
@@ -1233,7 +1244,9 @@ class LiveQueryService:
             project_id: Mixpanel project ID.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
-                ``None`` keeps the pin rule unchanged.
+            inject_workspace_id: Forwarded to the client. ``True`` (default)
+                lets the pinned session workspace apply when ``workspace_id``
+                is ``None``; ``False`` runs project-wide instead.
 
         Returns:
             RetentionQueryResult with cohort data, DataFrame,
@@ -1258,7 +1271,9 @@ class LiveQueryService:
             "project_id": project_id,
             "queryLimits": {"limit": 3000},
         }
-        raw = self._api_client.insights_query(body, workspace_id=workspace_id)
+        raw = self._api_client.insights_query(
+            body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
+        )
         return _transform_retention_result(raw, bookmark_params)
 
     def query_flow(
@@ -1268,6 +1283,7 @@ class LiveQueryService:
         mode: str = "sankey",
         *,
         workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> FlowQueryResult:
         """Execute an inline flow query with pre-built bookmark params.
 
@@ -1283,7 +1299,9 @@ class LiveQueryService:
             project_id: Mixpanel project ID.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
-                ``None`` keeps the pin rule unchanged.
+            inject_workspace_id: Forwarded to the client. ``True`` (default)
+                lets the pinned session workspace apply when ``workspace_id``
+                is ``None``; ``False`` runs project-wide instead.
             mode: Flow visualization mode — ``"sankey"`` for Sankey
                 diagrams, ``"paths"`` for top-paths analysis, or
                 ``"tree"`` for prefix tree analysis.
@@ -1319,7 +1337,9 @@ class LiveQueryService:
             "project_id": project_id,
             "query_type": query_type,
         }
-        raw = self._api_client.arb_funnels_query(body, workspace_id=workspace_id)
+        raw = self._api_client.arb_funnels_query(
+            body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
+        )
         return _transform_flow_result(raw, bookmark_params, mode=mode)
 
     def query_saved_flows(

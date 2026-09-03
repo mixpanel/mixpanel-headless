@@ -3115,6 +3115,7 @@ class MixpanelAPIClient:
         body: dict[str, Any],
         *,
         workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> dict[str, Any]:
         """Execute an inline insights query via POST.
 
@@ -3127,8 +3128,11 @@ class MixpanelAPIClient:
                 'project_id' (int), and 'queryLimits' (dict).
             workspace_id: Optional data view to run under. When set it is
                 sent as the ``workspace_id`` query parameter and wins over
-                the pinned session workspace. When ``None`` the pin, if
-                any, applies as usual.
+                the pinned session workspace.
+            inject_workspace_id: When ``True`` (default) and ``workspace_id``
+                is ``None``, the pinned session workspace, if any, is sent.
+                ``False`` sends no pin, so the query runs project-wide
+                unless ``workspace_id`` is set.
 
         Returns:
             Raw API response with computed_at, date_range, headers,
@@ -3146,6 +3150,7 @@ class MixpanelAPIClient:
             params=_explicit_workspace_params(workspace_id),
             data=body,
             inject_project_id=False,
+            inject_workspace_id=inject_workspace_id,
         )
         return result
 
@@ -3178,7 +3183,11 @@ class MixpanelAPIClient:
         return result
 
     def arb_funnels_query(
-        self, body: dict[str, Any], *, workspace_id: int | None = None
+        self,
+        body: dict[str, Any],
+        *,
+        workspace_id: int | None = None,
+        inject_workspace_id: bool = True,
     ) -> dict[str, Any]:
         """Execute an inline flow/funnel query via the arb_funnels endpoint.
 
@@ -3194,8 +3203,11 @@ class MixpanelAPIClient:
                 ``"flows_sankey"`` or ``"flows_top_paths"``).
             workspace_id: Optional data view to run under. When set it is
                 sent as the ``workspace_id`` query parameter and wins over
-                the pinned session workspace. When ``None`` the pin, if
-                any, applies as usual.
+                the pinned session workspace.
+            inject_workspace_id: When ``True`` (default) and ``workspace_id``
+                is ``None``, the pinned session workspace, if any, is sent.
+                ``False`` sends no pin, so the query runs project-wide
+                unless ``workspace_id`` is set.
 
         Returns:
             Raw API response with steps, flows, breakdowns, and
@@ -3213,6 +3225,7 @@ class MixpanelAPIClient:
             params=_explicit_workspace_params(workspace_id),
             data=body,
             inject_project_id=False,
+            inject_workspace_id=inject_workspace_id,
         )
         return result
 

@@ -11919,12 +11919,14 @@ class Workspace:
     ) -> ReportLinkQueryResult:
         """Run the query behind a report link through the matching engine.
 
-        The query runs under the workspace the report records
+        The query runs under the scope the report records
         (:attr:`ResolvedReport.workspace_id`: the URL ``wid``, else the pin
-        at resolve time). That value is sent explicitly, so it also applies
-        on a session whose pin was cleared since, and a report resolved
-        under one data view never silently runs project-wide. A pinned
-        session that names a different workspace is rejected first.
+        at resolve time, else ``None`` for project-wide). That scope is sent
+        explicitly and the session pin is never injected, so a pin cleared
+        or set after resolve time cannot change the data view: a report
+        resolved under workspace 75 runs under 75, and a report resolved
+        project-wide runs project-wide. A pinned session that contradicts a
+        recorded workspace is rejected first.
 
         Args:
             link: A link string (resolved first with
@@ -11987,21 +11989,22 @@ class Workspace:
         project_id = int(self._session.project.id)
         service = self._live_query_service
         report_type = resolved.report_type
-        # The report records the data view it was resolved in (URL wid, else
-        # the pin at resolve time). Run under that view even when the
-        # session pin was cleared since, so a retained report never turns
-        # project-wide by accident. An explicit value wins over the pin in
-        # the client; the scope check above already rejected a conflicting
-        # pin, so the two agree whenever both are set.
-        wid = resolved.workspace_id
+        # The report records the scope it was resolved in: the URL wid, else
+        # the pin at resolve time, else None for project-wide. Run under
+        # exactly that scope. The pin is never injected here, so a pin that
+        # was cleared or set since resolve time cannot change the data view;
+        # the scope check above already rejected a pin that contradicts a
+        # recorded workspace.
+        scope: dict[str, Any] = {
+            "workspace_id": resolved.workspace_id,
+            "inject_workspace_id": False,
+        }
         if report_type == "insights":
-            return service.query(resolved.params, project_id, workspace_id=wid)
+            return service.query(resolved.params, project_id, **scope)
         if report_type == "funnels":
-            return service.query_funnel(resolved.params, project_id, workspace_id=wid)
+            return service.query_funnel(resolved.params, project_id, **scope)
         if report_type == "retention":
-            return service.query_retention(
-                resolved.params, project_id, workspace_id=wid
-            )
+            return service.query_retention(resolved.params, project_id, **scope)
         if report_type == "flows":
             derived: str = mode if mode is not None else "sankey"
             if mode is None:
@@ -12009,7 +12012,7 @@ class Workspace:
                 if chart_type in ("sankey", "paths", "tree"):
                     derived = str(chart_type)
             return service.query_flow(
-                resolved.params, project_id, mode=derived, workspace_id=wid
+                resolved.params, project_id, mode=derived, **scope
             )
         raise UnsupportedReportLinkError(
             f"Report type {report_type!r} cannot be run through mixpanel-headless.",
