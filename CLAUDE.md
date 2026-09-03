@@ -337,9 +337,11 @@ python help.py Filter                  # type fields + construction patterns + r
 - TOML config (`~/.mp/config.toml`) + per-account state at `~/.mp/accounts/{name}/{tokens,client,me}.json` — schema unchanged from 042 (043-frictionless-auth)
 - Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib) for session replay (044-session-replay)
 - N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
+- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, Typer, Rich, pandas, Hypothesis, mutmut; stdlib-only URL parse/build module (045-report-links)
+- N/A — unsaved-report slug records live on the Mixpanel server per project and region; no new on-disk persistence (045-report-links)
 
 <!-- SPECKIT START -->
-Current plan: [specs/044-session-replay/plan.md](specs/044-session-replay/plan.md)
+Current plan: [specs/045-report-links/plan.md](specs/045-report-links/plan.md)
 
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan.

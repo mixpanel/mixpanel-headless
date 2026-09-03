@@ -16,10 +16,10 @@ flags.
 | `workspace.py` | `mp workspace` | Workspace axis (`list`, `use ID`, `show`) |
 | `target.py` | `mp target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
 | `session.py` | `mp session` | Resolved active-session viewer (`mp session [--bridge]`) |
-| `query.py` | `mp query` | Live Mixpanel API queries (segmentation, funnel, retention, …) |
+| `query.py` | `mp query` | Live Mixpanel API queries (segmentation, funnel, retention, …); opt-in `--link` on `segmentation`, `funnel`, `saved-report`, `flows` adds `report_url` and never fails the query |
 | `inspect.py` | `mp inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards.py` | `mp dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints, RCA) |
-| `reports.py` | `mp reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk operations, history) |
+| `reports.py` | `mp reports` | Report/bookmark CRUD (list, create, get, update, delete, bulk operations, history) + `link` (params → unsaved-report URL) and `resolve [--run] [--mode]` (URL / slug / shortlink → params or result) |
 | `cohorts.py` | `mp cohorts` | Cohort CRUD (list, create, get, update, delete, bulk operations) |
 | `flags.py` | `mp flags` | Feature flag CRUD |
 | `experiments.py` | `mp experiments` | Experiment CRUD |

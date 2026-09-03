@@ -89,6 +89,7 @@ plugins:
           - guide/live-analytics.md
           - guide/streaming.md
           - guide/session-replay.md
+          - guide/report-links.md
           - guide/entity-management.md
           - guide/data-governance.md
           - guide/business-context.md
@@ -145,6 +146,7 @@ plugins:
           - guide/live-analytics.md: "Segmentation, funnels, retention"
           - guide/streaming.md: "Stream events and profiles for ETL"
           - guide/session-replay.md: "Discover, fetch, and analyze rrweb session recordings"
+          - guide/report-links.md: "Share a query as a Mixpanel report URL; resolve a report URL, slug, or shortlink back into runnable params"
           - guide/entity-management.md: "Create, update, delete dashboards, reports, and cohorts"
           - guide/data-governance.md: "Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, enforcement, auditing, anomalies, and event deletion requests"
           - guide/business-context.md: "Read and write the markdown business context that grounds AI assistants (org and project scopes, 50,000-char cap)"
@@ -192,6 +194,7 @@ nav:
       - Live Analytics: guide/live-analytics.md
       - Streaming Data: guide/streaming.md
       - Session Replay: guide/session-replay.md
+      - Report Links: guide/report-links.md
       - Entity Management: guide/entity-management.md
       - Data Governance: guide/data-governance.md
       - Business Context: guide/business-context.md

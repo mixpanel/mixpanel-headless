@@ -13938,3 +13938,260 @@ class ReplayBundle(ResultWithDataFrame):
             "project_id": self.project_id,
             "replays": [r.to_dict() for r in self.replays],
         }
+
+
+# =============================================================================
+# Report links (045-report-links)
+# =============================================================================
+
+ReportLinkType = Literal["insights", "funnels", "retention", "flows"]
+"""The four report types the ``bookmark-urls`` (unsaved report) endpoint accepts.
+
+``launch-analysis`` is a valid :data:`BookmarkType` for saved-report URLs but
+cannot be stored as an unsaved-report slug record.
+"""
+
+
+class BookmarkUrl(BaseModel):
+    """The server record for an unsaved report, keyed by a 12-character slug.
+
+    Returned by ``GET /api/app/projects/{pid}/bookmark-urls/{slug}/``. The
+    ``bookmark_type`` field is aliased from ``"type"`` in the API response,
+    the same as :class:`Bookmark`. When the record references a saved
+    report, the server replaces ``bookmark_id`` with the full ``bookmark``.
+
+    Attributes:
+        slug: The 12-character slug.
+        bookmark_type: ``insights``, ``funnels``, ``retention``, or ``flows``
+            (aliased from ``"type"``).
+        params: The raw query parameters stored under the slug.
+        name: Optional report name.
+        description: Optional report description.
+        overrides: Stored overrides such as ``originDashboard``. Surfaced,
+            never merged into ``params``.
+        project_id: Project the record belongs to.
+        user_id: Creator id.
+        created_at: ISO timestamp from the server.
+        bookmark_id: Saved-report reference when the server did not expand it.
+        bookmark: The embedded saved report when one exists.
+
+    Example:
+        ```python
+        record = BookmarkUrl.model_validate(
+            {"slug": "EBrV5bW2u9Mw", "type": "insights", "params": {...}}
+        )
+        record.bookmark_type  # "insights"
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", populate_by_name=True)
+
+    slug: str
+    """The 12-character slug."""
+
+    bookmark_type: str = Field(alias="type")
+    """Report type (aliased from ``"type"``)."""
+
+    params: dict[str, Any] = Field(default_factory=dict)
+    """The raw query parameters stored under the slug."""
+
+    name: str | None = None
+    """Optional report name."""
+
+    description: str | None = None
+    """Optional report description."""
+
+    overrides: dict[str, Any] | None = None
+    """Stored overrides (for example ``originDashboard``). Never merged."""
+
+    project_id: int | None = None
+    """Project the record belongs to."""
+
+    user_id: int | None = None
+    """Creator id."""
+
+    created_at: str | None = None
+    """ISO timestamp from the server."""
+
+    bookmark_id: int | None = None
+    """Saved-report reference, present only when the server did not expand it."""
+
+    bookmark: Bookmark | None = None
+    """The embedded saved report when one exists."""
+
+
+@dataclass(frozen=True)
+class ReportLink:
+    """The result of :meth:`Workspace.create_report_link`.
+
+    Attributes:
+        url: The shareable web URL (``str(link)`` returns this).
+        slug: The 12-character slug headless minted and stored.
+        report_type: One of :data:`ReportLinkType`.
+        project_id: Project the slug record lives in.
+        workspace_id: Workspace in the URL, or ``None`` for a project-only URL.
+        name: Optional name stored with the record.
+        description: Optional description stored with the record.
+        bookmark_id: Optional saved-report reference stored with the record.
+        created_at: Server creation timestamp, when the response carried one.
+
+    Example:
+        ```python
+        link = ws.create_report_link(ws.build_params("Login", last=7))
+        print(link)      # the URL
+        link.to_dict()   # every field, JSON-serializable
+        ```
+    """
+
+    url: str
+    slug: str
+    report_type: ReportLinkType
+    project_id: int
+    workspace_id: int | None
+    name: str = ""
+    description: str = ""
+    bookmark_id: int | None = None
+    created_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize every field to a JSON-friendly dict.
+
+        Returns:
+            Dict with keys ``url``, ``slug``, ``report_type``, ``project_id``,
+            ``workspace_id``, ``name``, ``description``, ``bookmark_id``,
+            ``created_at``.
+        """
+        return {
+            "url": self.url,
+            "slug": self.slug,
+            "report_type": self.report_type,
+            "project_id": self.project_id,
+            "workspace_id": self.workspace_id,
+            "name": self.name,
+            "description": self.description,
+            "bookmark_id": self.bookmark_id,
+            "created_at": self.created_at,
+        }
+
+    def __str__(self) -> str:
+        """Return the URL so ``print(link)`` and ``f"{link}"`` are shell-friendly.
+
+        Returns:
+            The ``url`` field.
+        """
+        return self.url
+
+
+@dataclass(frozen=True)
+class ResolvedReport:
+    """The result of :meth:`Workspace.resolve_report_link`.
+
+    This is the input to :meth:`Workspace.query_report_link`. It holds the raw
+    query parameters; a typed decompile into ``Metric`` / ``Filter`` objects
+    is out of scope for 045.
+
+    Attributes:
+        source: Which record type was fetched: ``slug`` or ``bookmark``.
+        report_type: Server ``type`` for a slug, ``Bookmark.bookmark_type``
+            for a bookmark. May be ``launch-analysis``, which cannot be run.
+        params: The raw parameters. Never merged with ``overrides``.
+        project_id: Project the record lives in.
+        workspace_id: URL ``wid``, else the session pin at resolve time,
+            else ``None``. :meth:`Workspace.query_report_link` runs under
+            exactly this scope; ``None`` means project-wide.
+        region: Session region (``us``, ``eu``, or ``in``).
+        url: Canonical rebuilt URL.
+        input: What the caller passed.
+        expanded_url: The shortlink target when the input was a shortlink.
+        slug: Set for a slug record.
+        bookmark_id: Set for a bookmark link.
+        bookmark: Set for a bookmark link, or for a slug record with an
+            embedded bookmark.
+        name: Record name when present.
+        description: Record description when present.
+        overrides: Slug-record overrides when present.
+
+    Example:
+        ```python
+        resolved = ws.resolve_report_link("EBrV5bW2u9Mw")
+        resolved.report_type  # "insights"
+        df = ws.query_report_link(resolved).df
+        ```
+    """
+
+    source: Literal["slug", "bookmark"]
+    report_type: str
+    params: dict[str, Any]
+    project_id: int
+    workspace_id: int | None
+    region: Region
+    url: str
+    input: str
+    expanded_url: str | None = None
+    slug: str | None = None
+    bookmark_id: int | None = None
+    bookmark: Bookmark | None = None
+    name: str | None = None
+    description: str | None = None
+    overrides: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Tie ``source`` to the id field that must accompany it.
+
+        Raises:
+            ParamValidationError: ``RL5_RESOLVED_REPORT_INCONSISTENT`` when
+                ``source="slug"`` has no ``slug`` or ``source="bookmark"`` has
+                no ``bookmark_id``.
+        """
+        missing = None
+        if self.source == "slug" and self.slug is None:
+            missing = "slug"
+        elif self.source == "bookmark" and self.bookmark_id is None:
+            missing = "bookmark_id"
+        if missing is not None:
+            raise ParamValidationError(
+                f"ResolvedReport with source={self.source!r} requires {missing}.",
+                code="RL5_RESOLVED_REPORT_INCONSISTENT",
+                details={"source": self.source, "missing": missing},
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-friendly dict.
+
+        The ``bookmark`` field is dumped with
+        ``model_dump(mode="json", by_alias=True)`` so it round-trips through
+        the JSON formatter with the ``type`` key the API uses.
+
+        Returns:
+            Dict with one key per field.
+        """
+        return {
+            "source": self.source,
+            "report_type": self.report_type,
+            "params": self.params,
+            "project_id": self.project_id,
+            "workspace_id": self.workspace_id,
+            "region": self.region,
+            "url": self.url,
+            "input": self.input,
+            "expanded_url": self.expanded_url,
+            "slug": self.slug,
+            "bookmark_id": self.bookmark_id,
+            "bookmark": (
+                self.bookmark.model_dump(mode="json", by_alias=True)
+                if self.bookmark is not None
+                else None
+            ),
+            "name": self.name,
+            "description": self.description,
+            "overrides": self.overrides,
+        }
+
+
+ReportLinkQueryResult = (
+    QueryResult | FunnelQueryResult | RetentionQueryResult | FlowQueryResult
+)
+"""Return type of :meth:`Workspace.query_report_link`.
+
+Narrow with ``isinstance`` or by :attr:`ResolvedReport.report_type`.
+"""

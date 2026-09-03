@@ -270,6 +270,158 @@ class TestNoWorkspacePinned:
         assert captured[0].url.params.get("workspace_id") == "111"
 
 
+class TestExplicitWorkspaceOnInlineQueries:
+    """``insights_query`` / ``arb_funnels_query`` accept an explicit workspace.
+
+    045-report-links (PR #223 review): a resolved report records the
+    workspace it was resolved in. ``query_report_link`` passes it through
+    so an unpinned session still runs the report under that data view.
+    """
+
+    def test_insights_query_explicit_workspace_on_unpinned_session(
+        self, unpinned_session: Session
+    ) -> None:
+        """An explicit ``workspace_id`` reaches the query string with no pin.
+
+        Args:
+            unpinned_session: Session with no workspace pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            unpinned_session, captured, response_json={"headers": [], "series": {}}
+        )
+        with client:
+            client.insights_query(
+                {"bookmark": {}, "project_id": 12345}, workspace_id=75
+            )
+
+        assert captured[0].url.params.get("workspace_id") == "75"
+
+    def test_insights_query_explicit_workspace_wins_over_pin(
+        self, pinned_session: Session
+    ) -> None:
+        """An explicit ``workspace_id`` overrides the pinned one.
+
+        Args:
+            pinned_session: Session with workspace 777 pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            pinned_session, captured, response_json={"headers": [], "series": {}}
+        )
+        with client:
+            client.insights_query(
+                {"bookmark": {}, "project_id": 12345}, workspace_id=75
+            )
+
+        assert captured[0].url.params.get("workspace_id") == "75"
+
+    def test_insights_query_without_workspace_keeps_pin_behavior(
+        self, unpinned_session: Session
+    ) -> None:
+        """``workspace_id=None`` injects nothing on an unpinned session.
+
+        Args:
+            unpinned_session: Session with no workspace pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            unpinned_session, captured, response_json={"headers": [], "series": {}}
+        )
+        with client:
+            client.insights_query(
+                {"bookmark": {}, "project_id": 12345}, workspace_id=None
+            )
+
+        assert "workspace_id" not in captured[0].url.params
+
+    def test_arb_funnels_query_explicit_workspace(
+        self, unpinned_session: Session
+    ) -> None:
+        """``arb_funnels_query`` carries an explicit ``workspace_id`` too.
+
+        Args:
+            unpinned_session: Session with no workspace pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            unpinned_session, captured, response_json={"computed_at": "t"}
+        )
+        with client:
+            client.arb_funnels_query(
+                {"bookmark": {}, "project_id": 12345, "query_type": "flows_sankey"},
+                workspace_id=75,
+            )
+
+        assert "/api/query/arb_funnels" in str(captured[0].url)
+        assert captured[0].url.params.get("workspace_id") == "75"
+
+
+class TestInlineQueriesCanOptOutOfThePin:
+    """``inject_workspace_id=False`` runs an inline query project-wide.
+
+    045-report-links (PR #223 review): a report resolved with no data view
+    records ``workspace_id=None`` and must stay project-wide even after the
+    session pins a workspace later.
+    """
+
+    def test_insights_query_opt_out_omits_pin(self, pinned_session: Session) -> None:
+        """With the opt-out, a pinned session sends no ``workspace_id``.
+
+        Args:
+            pinned_session: Session with workspace 777 pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            pinned_session, captured, response_json={"headers": [], "series": {}}
+        )
+        with client:
+            client.insights_query(
+                {"bookmark": {}, "project_id": 12345}, inject_workspace_id=False
+            )
+
+        assert "workspace_id" not in captured[0].url.params
+
+    def test_insights_query_explicit_workspace_survives_opt_out(
+        self, pinned_session: Session
+    ) -> None:
+        """An explicit ``workspace_id`` is sent even with the pin opt-out.
+
+        Args:
+            pinned_session: Session with workspace 777 pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            pinned_session, captured, response_json={"headers": [], "series": {}}
+        )
+        with client:
+            client.insights_query(
+                {"bookmark": {}, "project_id": 12345},
+                workspace_id=75,
+                inject_workspace_id=False,
+            )
+
+        assert captured[0].url.params.get("workspace_id") == "75"
+
+    def test_arb_funnels_query_opt_out_omits_pin(self, pinned_session: Session) -> None:
+        """``arb_funnels_query`` honors the opt-out too.
+
+        Args:
+            pinned_session: Session with workspace 777 pinned.
+        """
+        captured: list[httpx.Request] = []
+        client = make_capture_client(
+            pinned_session, captured, response_json={"computed_at": "t"}
+        )
+        with client:
+            client.arb_funnels_query(
+                {"bookmark": {}, "project_id": 12345, "query_type": "flows_sankey"},
+                inject_workspace_id=False,
+            )
+
+        assert "workspace_id" not in captured[0].url.params
+
+
 class TestNonQueryHostsUnaffected:
     """App API and export host never receive a ``workspace_id`` param."""
 

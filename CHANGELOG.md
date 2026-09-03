@@ -5,6 +5,61 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Added
+
+- **Report links** (045, AIE-561 / AIE-562). Share a headless query as a
+  Mixpanel report URL and resolve a report URL back into runnable params.
+  - `Workspace.create_report_link(params_or_result, *, report_type=, name=,
+    description=, workspace_id=, bookmark_id=, validate=)` stores an unsaved
+    report under a 12-character slug and returns a `ReportLink`.
+  - `Workspace.resolve_report_link(link)` accepts a full URL, a bare slug, or a
+    `https://mixpanel.com/s/{code}` shortlink and returns a `ResolvedReport`
+    with the raw params. A region mismatch fails before any HTTP call; project
+    and pinned-workspace mismatches fail before the record fetch.
+  - `Workspace.query_report_link(link_or_resolved, *, mode=)` runs the params
+    through `query` / `query_funnel` / `query_retention` / `query_flow`,
+    under exactly the scope the report records (the URL `wid`, else the pin
+    at resolve time, else project-wide); the current pin is never injected,
+    so a pin cleared or set after resolve time cannot change the data view. A
+    `ResolvedReport` whose recorded region or project differs from the
+    active session, or whose recorded workspace differs from the pinned
+    session workspace, is rejected before any query. The four
+    `LiveQueryService` inline methods and `MixpanelAPIClient.insights_query`
+    / `arb_funnels_query` accept an optional `workspace_id` that wins over
+    the pin, and `inject_workspace_id=False` to run project-wide.
+  - `Workspace.saved_report_link(bookmark_id, *, report_type=, workspace_id=)`
+    builds a saved-report URL with no network call.
+  - CLI: `mp reports link` and `mp reports resolve [--run] [--mode]`, plus an
+    opt-in `--link` flag on `mp query segmentation`, `funnel`, `saved-report`,
+    and `flows` that adds `report_url` to the output. A link failure never
+    fails the query: `report_url` is `null` and `report_url_error` holds the
+    reason.
+  - Types: `ReportLinkType`, `BookmarkUrl`, `ReportLink`, `ResolvedReport`,
+    `ReportLinkQueryResult`.
+  - Exceptions: `ReportLinkError` and its subclasses `ReportLinkParseError`,
+    `UnsupportedReportLinkError`, `ReportLinkNotFoundError`,
+    `ReportLinkScopeMismatchError`, `ShortLinkResolutionError`; every
+    instance carries a `hint` in `details`. Builder and input guard codes
+    `RL1_UNKNOWN_REPORT_TYPE`, `RL2_INVALID_SLUG`, `RL3_UNKNOWN_REGION`,
+    `RL4_REPORT_TYPE_CONFLICT`, `RL5_RESOLVED_REPORT_INCONSISTENT`,
+    `RL6_INVALID_ID` (raised as `ParamValidationError`).
+  - CLI exit codes: `ReportLinkNotFoundError` → 4; `ReportLinkParseError`,
+    `UnsupportedReportLinkError`, and `ReportLinkScopeMismatchError` → 3;
+    `ShortLinkResolutionError` → 1. The CLI prints `details["hint"]` on a
+    `hint:` line for all of them.
+
+### Changed
+
+- **`BookmarkValidationError` now exits the CLI with code 3, not 1.** The
+  class is raised by about 15 pre-existing commands (`mp reports create`,
+  `mp reports update`, the dashboard verbs, and others) when params fail the
+  client-side schema check. `handle_errors` now prints
+  `error: params failed schema validation` plus one line per
+  `severity="error"` item and exits with `INVALID_ARGS` (3). Scripts that
+  test for exit code 1 on those commands must be updated.
+
 ## 0.2.2 — 2026-09-01
 
 Patch release: `schema_graph()` on large projects, query-engine bookmark

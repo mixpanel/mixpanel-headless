@@ -1582,6 +1582,135 @@ class UnsupportedReplayFormatError(SessionReplayError):
 
 
 # =============================================================================
+# Report-link exceptions (045-report-links)
+# =============================================================================
+
+
+class ReportLinkError(MixpanelHeadlessError):
+    """Base class for report-link failures (045-report-links).
+
+    Report links are Mixpanel web URLs that open a report in the browser.
+    Most failures in this family are local — a link that does not parse, a
+    link that points at another project or region, or a link kind that
+    headless cannot resolve — so the base is :class:`MixpanelHeadlessError`
+    rather than :class:`APIError`. The HTTP-shaped failures,
+    :class:`ReportLinkNotFoundError` and :class:`ShortLinkResolutionError`,
+    carry the parsed link fields in ``details`` instead of HTTP context.
+
+    Subclasses: :class:`ReportLinkParseError`,
+    :class:`UnsupportedReportLinkError`, :class:`ReportLinkNotFoundError`,
+    :class:`ReportLinkScopeMismatchError`, :class:`ShortLinkResolutionError`.
+
+    Not in this family: the pure URL builders and ``create_report_link``
+    input guards raise :class:`ParamValidationError` with the codes
+    ``RL1_UNKNOWN_REPORT_TYPE``, ``RL2_INVALID_SLUG``, ``RL3_UNKNOWN_REGION``,
+    ``RL4_REPORT_TYPE_CONFLICT``, ``RL5_RESOLVED_REPORT_INCONSISTENT``, and
+    ``RL6_INVALID_ID``. A ``try/except ReportLinkError`` does not catch them. Every failure in this
+    family carries a ``hint`` in ``details``.
+
+    Example:
+        ```python
+        try:
+            resolved = ws.resolve_report_link(link)
+        except ReportLinkError as exc:
+            print(exc.code, exc.details.get("hint"))
+        ```
+    """
+
+    _DEFAULT_CODE = "REPORT_LINK_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize a report-link error.
+
+        Args:
+            message: Human-readable error message; see
+                ``specs/045-report-links/contracts/error-messages.md`` for the
+                stable wording per code.
+            code: Machine-readable error code. Defaults to the subclass's
+                ``_DEFAULT_CODE``.
+            details: Parsed link fields that are available (``kind``,
+                ``region``, ``project_id``, ``workspace_id``, ``slug``,
+                ``bookmark_id``, ``short_code``) plus ``hint`` when one exists.
+        """
+        super().__init__(
+            message,
+            code=code if code is not None else self._DEFAULT_CODE,
+            details=details,
+        )
+
+
+class ReportLinkParseError(ReportLinkError):
+    """The input string is not a recognizable Mixpanel report link.
+
+    Codes: ``REPORT_LINK_UNPARSEABLE`` (default),
+    ``REPORT_LINK_NOT_MIXPANEL_HOST``, ``REPORT_LINK_UNRECOGNIZED_PATH``,
+    ``REPORT_LINK_UNRECOGNIZED_HASH``, ``REPORT_LINK_EMPTY_HASH``. The parser
+    is total: this is the only exception it raises for any input string.
+    """
+
+    _DEFAULT_CODE = "REPORT_LINK_UNPARSEABLE"
+
+
+class UnsupportedReportLinkError(ReportLinkError):
+    """The link was recognized but headless cannot resolve or run it.
+
+    Codes: ``UNSUPPORTED_REPORT_LINK`` (default), ``UNSUPPORTED_LEGACY_HASH``
+    (a ``~(...)`` JSURL hash), ``UNSUPPORTED_DASHBOARD_LINK`` (a board, not a
+    single report), ``UNSUPPORTED_REPORT_TYPE`` (for example
+    ``launch-analysis`` passed to ``query_report_link``).
+    """
+
+    _DEFAULT_CODE = "UNSUPPORTED_REPORT_LINK"
+
+
+class ReportLinkNotFoundError(ReportLinkError):
+    """The slug, saved report, or shortlink does not exist in scope.
+
+    Codes: ``REPORT_LINK_NOT_FOUND`` (default), ``REPORT_LINK_SLUG_NOT_FOUND``,
+    ``REPORT_LINK_BOOKMARK_NOT_FOUND``, ``SHORT_LINK_NOT_FOUND``. A slug is
+    readable only in the project and region that created it, so a 404 on a
+    slug often means the caller is on the wrong project.
+    """
+
+    _DEFAULT_CODE = "REPORT_LINK_NOT_FOUND"
+
+
+class ReportLinkScopeMismatchError(ReportLinkError):
+    """The link names a project or region other than the active session.
+
+    Codes: ``REPORT_LINK_SCOPE_MISMATCH`` (default),
+    ``REPORT_LINK_PROJECT_MISMATCH``, ``REPORT_LINK_REGION_MISMATCH``,
+    ``REPORT_LINK_WORKSPACE_MISMATCH`` (only when the session pins a
+    workspace and the link names a different one). The region check runs
+    before any HTTP call. The project and workspace checks run before the
+    record fetch; for a shortlink that is after the one redirect GET, because
+    the target is not known before it. The message names both values, and
+    ``details["hint"]`` names the ``ws.use(...)`` call and the ``mp --account``,
+    ``mp --project``, or ``mp --workspace`` flag that fixes it.
+    """
+
+    _DEFAULT_CODE = "REPORT_LINK_SCOPE_MISMATCH"
+
+
+class ShortLinkResolutionError(ReportLinkError):
+    """A ``/s/{code}`` shortlink could not be expanded to a full report URL.
+
+    Codes: ``SHORT_LINK_RESOLUTION_ERROR`` (default), ``SHORT_LINK_NO_LOCATION``
+    (3xx without ``Location``), ``SHORT_LINK_UNEXPECTED_RESPONSE`` (200 body
+    without the ``window.location.href`` script), ``SHORT_LINK_CHAIN`` (the
+    target is another shortlink; headless follows one redirect only).
+    """
+
+    _DEFAULT_CODE = "SHORT_LINK_RESOLUTION_ERROR"
+
+
+# =============================================================================
 # Coded-guard registry (E2 coding pass)
 # =============================================================================
 
@@ -1720,6 +1849,13 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "AC5_BEHAVIORS_NOT_LIST",
         "AC6_AS_OF_TIMESTAMP_FUTURE",
         "RESPONSE_VALIDATION_ERROR",
+        # -- 045-report-links: pure URL builder + create_report_link guards --
+        "RL1_UNKNOWN_REPORT_TYPE",
+        "RL2_INVALID_SLUG",
+        "RL3_UNKNOWN_REGION",
+        "RL4_REPORT_TYPE_CONFLICT",
+        "RL5_RESOLVED_REPORT_INCONSISTENT",
+        "RL6_INVALID_ID",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

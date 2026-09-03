@@ -11,6 +11,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `client_metadata.py` | `QUERY_ORIGIN` constant + `get_user_agent()` / `set_entry_point()` helpers — single source of truth for outbound client identification |
 | `me.py` | `MeService` + per-account `MeCache` (`~/.mp/accounts/{name}/me.json`) |
 | `pagination.py` | Cursor-based App API pagination |
+| `report_links.py` | Pure, stdlib-only report-link grammar (045): `parse_report_link` (total parser for report URLs, bare slugs, shortlinks, boards, legacy hashes), `build_slug_url` / `build_bookmark_url`, `generate_slug`; the `SLUG_APP_FOR_TYPE` table is the one line to change if the Insights app stops switching type from a funnels / retention slug |
 | `io_utils.py` | `atomic_write_bytes` — `O_EXCL` + `os.replace` writes with explicit mode bits |
 | `auth/` | The auth subsystem — see [`../auth_types.py`](../auth_types.py) for the public re-export and [`../../../context/auth-architecture-redesign.md`](../../../context/auth-architecture-redesign.md) for the design |
 | `auth/account.py` | `Account` discriminated union (`ServiceAccount` / `OAuthBrowserAccount` / `OAuthTokenAccount`) + `TokenResolver` protocol |

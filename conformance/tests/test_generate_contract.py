@@ -79,7 +79,9 @@ class TestErrorCodesArtifact:
     """Shape and content locks for ``error-codes.json`` (design C3)."""
 
     def test_exception_class_census(self, error_codes: dict[str, Any]) -> None:
-        """All 28 exported exception classes appear, with one root.
+        """All 34 exported exception classes appear, with one root.
+
+        28 from the E2 coding pass plus the six 045-report-links classes.
 
         Args:
             error_codes: The artifact body.
@@ -88,7 +90,7 @@ class TestErrorCodesArtifact:
             AssertionError: If the census or parent edges are wrong.
         """
         classes = error_codes["exception_classes"]
-        assert len(classes) == 28
+        assert len(classes) == 34
         roots = [name for name, parent in classes.items() if parent is None]
         assert roots == ["MixpanelHeadlessError"]
         for name, parent in classes.items():
@@ -148,7 +150,7 @@ class TestErrorCodesArtifact:
         twins = error_codes["coded_guard_twin_codes"]
         assert registry == sorted(exceptions_module.CODED_GUARD_REGISTRY)
         assert twins == sorted(exceptions_module.CODED_GUARD_TWIN_CODES)
-        assert len(registry) == 120
+        assert len(registry) == 126
         assert len(twins) == 9
 
     def test_registry_keeps_all_code_families(
@@ -189,7 +191,9 @@ class TestLiteralAliasesArtifact:
     """Shape and content locks for ``literal-aliases.json`` (design C2)."""
 
     def test_alias_and_enum_census(self, literal_aliases: dict[str, Any]) -> None:
-        """37 distinct Literal aliases and 8 Enum classes are captured.
+        """38 distinct Literal aliases and 8 Enum classes are captured.
+
+        37 at the TS-port pin plus ``ReportLinkType`` (045-report-links).
 
         Args:
             literal_aliases: The artifact body.
@@ -197,7 +201,7 @@ class TestLiteralAliasesArtifact:
         Raises:
             AssertionError: If the census drifts.
         """
-        assert len(literal_aliases["literal_aliases"]) == 37
+        assert len(literal_aliases["literal_aliases"]) == 38
         assert len(literal_aliases["enums"]) == 8
 
     def test_alias_members_spot_checks(self, literal_aliases: dict[str, Any]) -> None:
@@ -413,7 +417,9 @@ class TestModelCoverageArtifact:
     """Locks for ``model-coverage.json`` (design C5 item 5)."""
 
     def test_covers_all_exported_models(self, model_coverage: dict[str, Any]) -> None:
-        """All 125 exported Pydantic models are accounted for.
+        """All 126 exported Pydantic models are accounted for.
+
+        125 at the TS-port pin plus ``BookmarkUrl`` (045-report-links).
 
         Args:
             model_coverage: The artifact body.
@@ -421,8 +427,8 @@ class TestModelCoverageArtifact:
         Raises:
             AssertionError: If the census or row shape drifts.
         """
-        assert model_coverage["model_count"] == 125
-        assert len(model_coverage["models"]) == 125
+        assert model_coverage["model_count"] == 126
+        assert len(model_coverage["models"]) == 126
         for name, row in model_coverage["models"].items():
             assert row["status"] in (
                 "corpus_tag",
@@ -521,7 +527,7 @@ class TestCoverageOverrides:
         """
         overrides = load_coverage_overrides()
         assert overrides["deferrals"] == {}
-        assert len(overrides["authored_fixtures"]) == 31
+        assert len(overrides["authored_fixtures"]) == 32
         for name, path in overrides["authored_fixtures"].items():
             assert path.endswith(".test.ts"), name
 

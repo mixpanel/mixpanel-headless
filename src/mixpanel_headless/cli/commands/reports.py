@@ -13,23 +13,34 @@ via the App API:
 - linked-dashboards: Get dashboard IDs linked to a bookmark
 - dashboard-ids: Get dashboard IDs containing a bookmark
 - history: Get bookmark change history
+- link: Create a shareable link to an unsaved report from params (045)
+- resolve: Turn a report link, slug, or shortlink back into its params (045)
 """
 
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Annotated, cast
 
 import typer
 
+from mixpanel_headless._internal.report_links import parse_report_link
+from mixpanel_headless._literal_types import FlowChartType
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    ExitCode,
     err_console,
     get_workspace,
     handle_errors,
     output_result,
+    present_result,
     status_spinner,
 )
+from mixpanel_headless.cli.validators import validate_json_object, validate_literal
+from mixpanel_headless.exceptions import ReportLinkParseError
+from mixpanel_headless.types import ReportLinkType
 
 reports_app = typer.Typer(
     name="reports",
@@ -521,3 +532,297 @@ def report_history(
         format=format,
         jq_filter=jq_filter,
     )
+
+
+# =============================================================================
+# Report links (045-report-links)
+# =============================================================================
+
+
+def _stdin_is_tty() -> bool:
+    """Return whether stdin is an interactive terminal.
+
+    A seam for tests: ``CliRunner`` swaps ``sys.stdin``, so the check is
+    read through this function rather than at import time.
+
+    Returns:
+        ``True`` when stdin is a terminal.
+    """
+    return sys.stdin.isatty()
+
+
+def _read_params_source(
+    source: str | None,
+    params: str | None,
+    params_file: Path | None,
+) -> str:
+    """Pick exactly one params source and return its raw text.
+
+    Stdin is read when nothing is given, when the positional is ``-``, when
+    ``--params -`` is given, or when ``--params-file -`` is given. In every
+    one of those forms an interactive terminal is refused, so the command
+    never blocks and waits for typed input.
+
+    Args:
+        source: The optional positional argument; only ``-`` (stdin) is valid.
+        params: The ``--params`` inline JSON text (``-`` means stdin).
+        params_file: The ``--params-file`` path (``-`` means stdin).
+
+    Returns:
+        The raw JSON text to parse.
+
+    Raises:
+        typer.Exit: With code 3 (INVALID_ARGS) when more than one source is
+            given, the positional is not ``-``, the file cannot be read, or
+            stdin would be read from a terminal.
+    """
+    given = [x for x in (source, params, params_file) if x is not None]
+    if len(given) > 1:
+        err_console.print(
+            "[red]Error:[/red] Pass only one of --params, --params-file, or '-'."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    if source is not None and source != "-":
+        err_console.print(
+            "[red]Error:[/red] Only '-' (read stdin) is accepted as a positional "
+            "argument. Use --params JSON or --params-file PATH."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    if params is not None and params != "-":
+        return params
+    if params_file is not None and str(params_file) != "-":
+        try:
+            return params_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            err_console.print(f"[red]Error:[/red] Cannot read --params-file: {exc}")
+            raise typer.Exit(ExitCode.INVALID_ARGS) from exc
+    if _stdin_is_tty():
+        err_console.print(
+            "[red]Error:[/red] stdin is a terminal. Provide --params JSON, "
+            "--params-file PATH, or pipe a JSON object on stdin."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    return sys.stdin.read()
+
+
+@reports_app.command("link")
+@handle_errors
+def link_report(
+    ctx: typer.Context,
+    source: Annotated[
+        str | None,
+        typer.Argument(
+            metavar="[-]",
+            help="Pass '-' to read the params JSON object from stdin.",
+        ),
+    ] = None,
+    params: Annotated[
+        str | None,
+        typer.Option(
+            "--params",
+            help="Report params as an inline JSON object, or '-' to read stdin.",
+        ),
+    ] = None,
+    params_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--params-file",
+            help="Path to a file that holds the params JSON object.",
+        ),
+    ] = None,
+    report_type: Annotated[
+        str | None,
+        typer.Option(
+            "--type",
+            "-t",
+            help="Report type: insights, funnels, retention, flows. Default: insights.",
+        ),
+    ] = None,
+    name: Annotated[
+        str,
+        typer.Option("--name", "-n", help="Name stored with the unsaved report."),
+    ] = "",
+    description: Annotated[
+        str,
+        typer.Option("--description", "-d", help="Description stored with it."),
+    ] = "",
+    workspace_id: Annotated[
+        int | None,
+        typer.Option(
+            "--workspace-id",
+            help=(
+                "Workspace for the /view/{wid} URL segment. Default: the session "
+                "workspace, then auto-resolve, then a project-only URL."
+            ),
+        ),
+    ] = None,
+    bookmark_id: Annotated[
+        int | None,
+        typer.Option(
+            "--bookmark-id",
+            help="Saved report ID to reference from the unsaved report.",
+        ),
+    ] = None,
+    no_validate: Annotated[
+        bool,
+        typer.Option(
+            "--no-validate",
+            help="Skip the client-side params schema check before the upload.",
+        ),
+    ] = False,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Create a shareable link to an unsaved report from query params.
+
+    Stores the params on the Mixpanel server under a 12-character slug and
+    prints the URL that opens them in the report editor. Params come from
+    --params, --params-file, or stdin. With --format plain only the URL is
+    printed, so a shell can capture it.
+
+    Args:
+        ctx: Typer context with global options.
+        source: ``-`` to read stdin.
+        params: Inline JSON object, or ``-`` to read stdin.
+        params_file: File that holds the JSON object, or ``-`` to read stdin.
+        report_type: insights, funnels, retention, or flows.
+        name: Name stored with the record.
+        description: Description stored with the record.
+        workspace_id: Workspace for the URL segment.
+        bookmark_id: Saved report reference.
+        no_validate: Skip schema validation.
+        format: Output format (json, jsonl, table, csv, plain).
+        jq_filter: Optional jq filter expression for JSON output.
+
+    Example:
+        ```bash
+        mp reports link --params '{"sections": {...}}' --name "Logins"
+        cat params.json | mp reports link -f plain
+        mp reports link --params-file params.json --type funnels --jq .url
+        ```
+    """
+    raw_text = _read_params_source(source, params, params_file)
+    params_dict = validate_json_object(raw_text, "--params")
+    validated_type: ReportLinkType | None = None
+    if report_type is not None:
+        validated_type = cast(
+            ReportLinkType, validate_literal(report_type, ReportLinkType, "--type")
+        )
+
+    workspace = get_workspace(ctx)
+    with status_spinner(ctx, "Creating report link..."):
+        link = workspace.create_report_link(
+            params_dict,
+            report_type=validated_type,
+            name=name,
+            description=description,
+            workspace_id=workspace_id,
+            bookmark_id=bookmark_id,
+            validate=not no_validate,
+        )
+
+    if format == "plain":
+        typer.echo(link.url)
+        return
+    output_result(ctx, link.to_dict(), format=format, jq_filter=jq_filter)
+
+
+def _warn_ignored_overrides(link: str) -> None:
+    """Warn when a saved-report link carries a ``~(...)`` override tail.
+
+    Specified in ``specs/045-report-links/contracts/cli-commands.md`` §7. The
+    parse is pure and cheap. A parse failure is ignored here so the
+    ``Workspace`` call raises the canonical error with the right exit code.
+
+    Args:
+        link: The raw link string the user passed, or the expanded target of
+            a shortlink.
+    """
+    try:
+        parsed = parse_report_link(link)
+    except ReportLinkParseError:
+        return
+    if parsed.kind == "bookmark" and parsed.overrides_jsurl is not None:
+        err_console.print(
+            f"[yellow]warning:[/yellow] ignoring URL overrides "
+            f"{parsed.overrides_jsurl!r}; running the saved report's base params"
+        )
+
+
+@reports_app.command("resolve")
+@handle_errors
+def resolve_report(
+    ctx: typer.Context,
+    link: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "A full report URL, a shortlink (https://mixpanel.com/s/...), or a "
+                "bare 12-character slug. Quote URLs so the shell does not "
+                "interpret '#'."
+            ),
+        ),
+    ],
+    run: Annotated[
+        bool,
+        typer.Option(
+            "--run",
+            help="Run the resolved report and print the query result instead.",
+        ),
+    ] = False,
+    mode: Annotated[
+        str | None,
+        typer.Option(
+            "--mode",
+            help="Flows chart mode for --run: sankey, paths, or tree.",
+        ),
+    ] = None,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Resolve a report link to its query params, and optionally run it.
+
+    Without --run, prints the resolved report: type, params, project,
+    workspace, canonical URL, and the saved report when there is one. With
+    --run, resolves once, then runs the params through the matching query
+    engine and prints the typed result; the request count is the same as a
+    library call with a link string. A region mismatch fails before any
+    network call; project and workspace mismatches fail before the record
+    fetch.
+
+    Args:
+        ctx: Typer context with global options.
+        link: The link string.
+        run: Run the report instead of printing its params.
+        mode: Flows chart mode, used with --run.
+        format: Output format (json, jsonl, table, csv, plain).
+        jq_filter: Optional jq filter expression for JSON output.
+
+    Example:
+        ```bash
+        mp reports resolve 'https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw'
+        mp reports resolve EBrV5bW2u9Mw --jq .params
+        mp reports resolve 'https://mixpanel.com/s/AbC123' --run -f csv
+        mp reports resolve 'https://mixpanel.com/project/3/app/insights#report/123' --run
+        ```
+    """
+    _warn_ignored_overrides(link)
+    validated_mode: FlowChartType | None = None
+    if run and mode is not None:
+        validated_mode = cast(
+            FlowChartType, validate_literal(mode, FlowChartType, "--mode")
+        )
+    workspace = get_workspace(ctx)
+
+    with status_spinner(ctx, "Resolving report link..."):
+        resolved = workspace.resolve_report_link(link)
+    if resolved.expanded_url is not None:
+        _warn_ignored_overrides(resolved.expanded_url)
+
+    if run:
+        with status_spinner(ctx, "Running report link..."):
+            result = workspace.query_report_link(resolved, mode=validated_mode)
+        present_result(ctx, result, format, jq_filter=jq_filter)
+        return
+
+    output_result(ctx, resolved.to_dict(), format=format, jq_filter=jq_filter)
