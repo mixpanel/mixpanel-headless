@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 import typer
 from rich.markup import escape as rich_escape
@@ -216,6 +216,38 @@ def _with_link(data: dict[str, object], outcome: LinkOutcome) -> dict[str, objec
     if outcome.error is not None:
         data["report_url_error"] = outcome.error
     return data
+
+
+def _output_dict_with_link(
+    ctx: typer.Context,
+    data: dict[str, Any],
+    format: str,
+    jq_filter: str | None,
+    outcome: LinkOutcome | None,
+) -> None:
+    """Print a result dict, adding the ``report_url`` keys when ``--link`` was passed.
+
+    The dict twin of :func:`_present_with_link`, for results that have no
+    ``to_table_dict()``. Table and plain output keep the result unchanged
+    and print a produced URL as a separate ``report_url:`` line; every other
+    format gets the keys from :func:`_with_link`.
+
+    Args:
+        ctx: Typer context.
+        data: The result dict.
+        format: Output format.
+        jq_filter: Optional jq filter expression.
+        outcome: The link outcome, or ``None`` when ``--link`` was not passed.
+    """
+    if outcome is None:
+        output_result(ctx, data, format=format, jq_filter=jq_filter)
+        return
+    if format in ("table", "plain"):
+        output_result(ctx, data, format=format, jq_filter=jq_filter)
+        if outcome.url is not None:
+            typer.echo(f"report_url: {outcome.url}")
+        return
+    output_result(ctx, _with_link(data, outcome), format=format, jq_filter=jq_filter)
 
 
 def _present_with_link(
@@ -944,17 +976,16 @@ def query_saved_report(
     with status_spinner(ctx, "Querying saved report..."):
         result = workspace.query_saved_report(bookmark_id=bookmark_id)
 
-    data = result.to_dict()
-    if link:
-        _with_link(
-            data,
-            _guarded_link(
-                lambda: workspace.saved_report_link(
-                    bookmark_id, report_type=result.report_type
-                )
-            ),
+    outcome = (
+        _guarded_link(
+            lambda: workspace.saved_report_link(
+                bookmark_id, report_type=result.report_type
+            )
         )
-    output_result(ctx, data, format=format, jq_filter=jq_filter)
+        if link
+        else None
+    )
+    _output_dict_with_link(ctx, result.to_dict(), format, jq_filter, outcome)
 
 
 @query_app.command("flows")

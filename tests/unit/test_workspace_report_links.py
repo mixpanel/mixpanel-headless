@@ -1432,6 +1432,23 @@ class TestQueryReportLinkScopeOnResolvedInput:
         svc.query.assert_not_called()
 
 
+class TestCreateReportLinkValidatesBeforePost:
+    """Local input failures never leave an orphaned slug record on the server."""
+
+    @pytest.mark.parametrize("workspace_id", [0, -1])
+    def test_non_positive_workspace_id_raises_before_post(
+        self, ws: Workspace, mock_api_client: MagicMock, workspace_id: int
+    ) -> None:
+        """An explicit zero or negative workspace id raises RL6 with no POST."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_report_link(
+                _INSIGHTS_PARAMS, workspace_id=workspace_id, validate=False
+            )
+
+        assert exc_info.value.code == "RL6_INVALID_ID"
+        mock_api_client.create_bookmark_url.assert_not_called()
+
+
 class TestResolveSlugWithUnknownServerType:
     """An unknown record ``type`` resolves; the canonical URL falls back, never RL1."""
 

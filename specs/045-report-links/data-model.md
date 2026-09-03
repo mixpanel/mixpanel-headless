@@ -133,7 +133,7 @@ All new classes live in `exceptions.py` after the 044 session-replay block.
 | `ReportLinkParseError` | `ReportLinkError` | `REPORT_LINK_UNPARSEABLE` | `REPORT_LINK_NOT_MIXPANEL_HOST`, `REPORT_LINK_UNRECOGNIZED_PATH`, `REPORT_LINK_UNRECOGNIZED_HASH`, `REPORT_LINK_EMPTY_HASH` |
 | `UnsupportedReportLinkError` | `ReportLinkError` | `UNSUPPORTED_REPORT_LINK` | `UNSUPPORTED_LEGACY_HASH`, `UNSUPPORTED_DASHBOARD_LINK`, `UNSUPPORTED_REPORT_TYPE` |
 | `ReportLinkNotFoundError` | `ReportLinkError` | `REPORT_LINK_NOT_FOUND` | `REPORT_LINK_SLUG_NOT_FOUND`, `REPORT_LINK_BOOKMARK_NOT_FOUND`, `SHORT_LINK_NOT_FOUND` |
-| `ReportLinkScopeMismatchError` | `ReportLinkError` | `REPORT_LINK_SCOPE_MISMATCH` | `REPORT_LINK_PROJECT_MISMATCH`, `REPORT_LINK_REGION_MISMATCH` |
+| `ReportLinkScopeMismatchError` | `ReportLinkError` | `REPORT_LINK_SCOPE_MISMATCH` | `REPORT_LINK_PROJECT_MISMATCH`, `REPORT_LINK_REGION_MISMATCH`, `REPORT_LINK_WORKSPACE_MISMATCH` (PR #223 review) |
 | `ShortLinkResolutionError` | `ReportLinkError` | `SHORT_LINK_RESOLUTION_ERROR` | `SHORT_LINK_NO_LOCATION`, `SHORT_LINK_UNEXPECTED_RESPONSE`, `SHORT_LINK_CHAIN` |
 
 `details` always carries the parsed fields (`kind`, `region`, `project_id`, `slug`, `bookmark_id`, `short_code`, as available) plus a `hint` string when one exists.

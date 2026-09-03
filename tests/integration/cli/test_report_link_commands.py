@@ -522,7 +522,8 @@ class TestReportsResolve:
     def test_run_calls_query_report_link(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
     ) -> None:
-        """``--run`` runs the report and prints the typed result."""
+        """``--run`` resolves once, runs the ResolvedReport, prints the result."""
+        mock_workspace.resolve_report_link.return_value = _RESOLVED
         mock_workspace.query_report_link.return_value = _QUERY_RESULT
         link = f"https://mixpanel.com/project/12345/app/insights#{_SLUG}"
 
@@ -530,13 +531,14 @@ class TestReportsResolve:
 
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout) == _QUERY_RESULT.to_dict()
-        mock_workspace.query_report_link.assert_called_once_with(link, mode=None)
-        mock_workspace.resolve_report_link.assert_not_called()
+        mock_workspace.resolve_report_link.assert_called_once_with(link)
+        mock_workspace.query_report_link.assert_called_once_with(_RESOLVED, mode=None)
 
     def test_run_with_mode_forwards_mode(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
     ) -> None:
         """``--run --mode paths`` forwards the flows mode."""
+        mock_workspace.resolve_report_link.return_value = _RESOLVED
         mock_workspace.query_report_link.return_value = _QUERY_RESULT
 
         result = _invoke_reports(
@@ -544,7 +546,9 @@ class TestReportsResolve:
         )
 
         assert result.exit_code == 0, result.output
-        mock_workspace.query_report_link.assert_called_once_with(_SLUG, mode="paths")
+        mock_workspace.query_report_link.assert_called_once_with(
+            _RESOLVED, mode="paths"
+        )
 
     def test_run_with_invalid_mode_exits_3(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
@@ -555,12 +559,14 @@ class TestReportsResolve:
         )
 
         assert result.exit_code == 3
+        mock_workspace.resolve_report_link.assert_not_called()
         mock_workspace.query_report_link.assert_not_called()
 
     def test_run_table_format(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
     ) -> None:
         """``--run -f table`` goes through present_result's table path."""
+        mock_workspace.resolve_report_link.return_value = _RESOLVED
         mock_workspace.query_report_link.return_value = _QUERY_RESULT
 
         result = _invoke_reports(
@@ -595,6 +601,34 @@ class TestReportsResolve:
         assert result.exit_code == 0, result.output
         assert "ignoring URL overrides" in _combined(result)
         assert json.loads(result.stdout) == _RESOLVED.to_dict()
+
+    def test_run_resolves_once_and_warns_from_expanded_short_link(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """``--run`` resolves in the command, warns on ``~(...)``, runs the report."""
+        short = "https://mixpanel.com/s/AbC"
+        expanded = "https://mixpanel.com/project/12345/app/funnels#view/123/~(a~1)"
+        resolved = ResolvedReport(
+            **{
+                **_RESOLVED.__dict__,
+                "input": short,
+                "expanded_url": expanded,
+                "source": "bookmark",
+                "slug": None,
+                "bookmark_id": 123,
+            }
+        )
+        mock_workspace.resolve_report_link.return_value = resolved
+        mock_workspace.query_report_link.return_value = _QUERY_RESULT
+
+        result = _invoke_reports(
+            cli_runner, mock_workspace, ["resolve", short, "--run"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "ignoring URL overrides '~(a~1)'" in _combined(result)
+        mock_workspace.resolve_report_link.assert_called_once_with(short)
+        mock_workspace.query_report_link.assert_called_once_with(resolved, mode=None)
 
     def test_scope_mismatch_exits_3_with_both_projects(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
@@ -1227,6 +1261,34 @@ class TestSavedReportLinks:
         data = json.loads(result.stdout)
         assert data["report_url"] is None
         assert data["report_url_error"] == "Unknown region 'xx'."
+
+    @pytest.mark.parametrize("fmt", ["table", "plain"])
+    def test_saved_report_link_table_and_plain_print_a_separate_line(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock, fmt: str
+    ) -> None:
+        """Like the other ``--link`` commands: unchanged result, then a URL line."""
+        mock_workspace.query_saved_report.return_value = SavedReportResult(
+            bookmark_id=123,
+            computed_at="t",
+            from_date="d",
+            to_date="d",
+            headers=["$event"],
+            series={},
+        )
+        mock_workspace.saved_report_link.return_value = _REPORT_URL
+
+        result = _invoke_query(
+            cli_runner,
+            mock_workspace,
+            ["query", "saved-report", "123", "--link", "-f", fmt],
+        )
+
+        assert result.exit_code == 0, result.output
+        lines = result.stdout.rstrip("\n").split("\n")
+        assert lines[-1] == f"report_url: {_REPORT_URL}"
+        assert "report_url=" not in result.stdout
+        # The URL is not embedded in the formatted result itself.
+        assert _REPORT_URL not in "\n".join(lines[:-1]).replace("\n", "")
 
     def test_saved_report_without_link_unchanged(
         self, cli_runner: CliRunner, mock_workspace: MagicMock

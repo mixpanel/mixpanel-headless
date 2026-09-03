@@ -145,7 +145,7 @@ The singular `"funnel"` that `SavedReportResult.report_type` reports is accepted
 | The shortlink redirects to another shortlink | `ShortLinkResolutionError` / `SHORT_LINK_CHAIN` | Resolve the target shortlink directly. Headless follows one redirect only. |
 | The shortlink redirects to the login page | `AuthenticationError` | The credentials cannot see the shortlink. |
 
-Every error in the family subclasses `ReportLinkError` and carries the parsed link parts plus a `hint` in `details`. The CLI prints the hint on its own `hint:` line. CLI exit codes: not found 4; parse, unsupported, and scope errors 3; auth 2; shortlink extraction 1. The pure URL builders and the `create_report_link` input guards raise `ParamValidationError` (`RL1`..`RL5`), not a `ReportLinkError`.
+Every error in the family subclasses `ReportLinkError` and carries the parsed link parts plus a `hint` in `details`. The CLI prints the hint on its own `hint:` line. CLI exit codes: not found 4; parse, unsupported, and scope errors 3; auth 2; shortlink extraction 1. The pure URL builders and the `create_report_link` input guards raise `ParamValidationError` (`RL1`..`RL6`; `RL6_INVALID_ID` rejects a zero or negative project, workspace, or bookmark id), not a `ReportLinkError`. They fire before any network call.
 
 The parser tolerates surrounding whitespace, a trailing slash before or after `#`, a query string before `#` or a `?` tail after the slug or `report/{id}` hash, an upper-case host, a missing scheme, `http` as well as `https` (no other scheme), a percent-encoded `#` (no other escape is decoded), the legacy `/report/{pid}/` path form, and `mixpanel.org`.
 

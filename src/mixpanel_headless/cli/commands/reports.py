@@ -784,8 +784,11 @@ def resolve_report(
 
     Without --run, prints the resolved report: type, params, project,
     workspace, canonical URL, and the saved report when there is one. With
-    --run, runs the params through the matching query engine and prints the
-    typed result. Region and project mismatches fail before any network call.
+    --run, resolves once, then runs the params through the matching query
+    engine and prints the typed result; the request count is the same as a
+    library call with a link string. A region mismatch fails before any
+    network call; project and workspace mismatches fail before the record
+    fetch.
 
     Args:
         ctx: Typer context with global options.
@@ -804,21 +807,22 @@ def resolve_report(
         ```
     """
     _warn_ignored_overrides(link)
+    validated_mode: FlowChartType | None = None
+    if run and mode is not None:
+        validated_mode = cast(
+            FlowChartType, validate_literal(mode, FlowChartType, "--mode")
+        )
     workspace = get_workspace(ctx)
-
-    if run:
-        validated_mode: FlowChartType | None = None
-        if mode is not None:
-            validated_mode = cast(
-                FlowChartType, validate_literal(mode, FlowChartType, "--mode")
-            )
-        with status_spinner(ctx, "Resolving and running report link..."):
-            result = workspace.query_report_link(link, mode=validated_mode)
-        present_result(ctx, result, format, jq_filter=jq_filter)
-        return
 
     with status_spinner(ctx, "Resolving report link..."):
         resolved = workspace.resolve_report_link(link)
     if resolved.expanded_url is not None:
         _warn_ignored_overrides(resolved.expanded_url)
+
+    if run:
+        with status_spinner(ctx, "Running report link..."):
+            result = workspace.query_report_link(resolved, mode=validated_mode)
+        present_result(ctx, result, format, jq_filter=jq_filter)
+        return
+
     output_result(ctx, resolved.to_dict(), format=format, jq_filter=jq_filter)

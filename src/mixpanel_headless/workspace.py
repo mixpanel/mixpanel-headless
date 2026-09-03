@@ -11449,8 +11449,8 @@ class Workspace:
             ParamValidationError: ``RL4_REPORT_TYPE_CONFLICT`` on a
                 contradicting ``report_type``; ``RL1``/``RL3`` from the URL
                 builder; ``RL6_INVALID_ID`` for a zero or negative
-                ``workspace_id`` (checked after the POST, because the URL is
-                built from the stored record).
+                ``workspace_id``. All of these fire before the POST, so no
+                record is created for bad input.
             BookmarkValidationError: Params failed schema validation
                 (raised before any network call).
             AuthenticationError: Invalid credentials (401).
@@ -11488,6 +11488,15 @@ class Workspace:
         slug = generate_slug()
         wid = self._report_link_workspace_id(workspace_id)
         project_id = int(self._session.project.id)
+        # Build the URL before the POST so every local input guard (RL1, RL3,
+        # RL6) fires before a record exists on the server.
+        url = build_slug_url(
+            region=self._session.region,
+            project_id=project_id,
+            slug=slug,
+            report_type=resolved_type,
+            workspace_id=wid,
+        )
 
         body: dict[str, Any] = {
             "slug": slug,
@@ -11506,13 +11515,7 @@ class Workspace:
         created = response.get("created_at")
 
         return ReportLink(
-            url=build_slug_url(
-                region=self._session.region,
-                project_id=project_id,
-                slug=slug,
-                report_type=resolved_type,
-                workspace_id=wid,
-            ),
+            url=url,
             slug=slug,
             report_type=resolved_type,
             project_id=project_id,

@@ -39,9 +39,12 @@ just test-pbt-dev -k report_links
 Expected: the round trip, decoration invariance, totality, and slug invariants pass with the `dev` profile.
 
 ```bash
-uv run mutmut run --paths-to-mutate src/mixpanel_headless/_internal/report_links.py
+PYTEST_ADDOPTS="-k 'report_link or bookmark_url' -p no:cacheprovider" \
+  uv run mutmut run "mixpanel_headless._internal.report_links*"
 just mutate-results
 ```
+
+mutmut 3.5 has no `--paths-to-mutate` flag; the mutant-name prefix scopes the run to the pure module, and `PYTEST_ADDOPTS` keeps the stats pass on the report-link tests (two integration tests shell out from inside `mutants/` and would fail it). `mutmut results` lists only surviving mutants; count the emoji lines in the run output for the score.
 
 Expected: mutation score at or above 80 percent for the pure module.
 
