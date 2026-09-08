@@ -71,9 +71,12 @@ def _query_limits(limit: int | None) -> dict[str, int]:
         The ``queryLimits`` dict to place in the request body.
 
     Raises:
-        ValueError: If ``limit`` is outside 1 to
-            :data:`MAX_SEGMENTATION_LIMIT`. Raised before any HTTP call, so a
-            bad limit never costs a request against the project's rate budget.
+        ValueError: If ``limit`` is not an integer, or is outside 1 to
+            :data:`MAX_SEGMENTATION_LIMIT`. Booleans are rejected too, even
+            though ``bool`` subclasses ``int``: ``True`` would otherwise pass
+            the range check and serialize as JSON ``true``. Raised before any
+            HTTP call, so a bad limit never costs a request against the
+            project's rate budget.
 
     Example:
         ```python
@@ -85,9 +88,14 @@ def _query_limits(limit: int | None) -> dict[str, int]:
     """
     if limit is None:
         return {"limit": DEFAULT_SEGMENTATION_LIMIT}
-    if not 1 <= limit <= MAX_SEGMENTATION_LIMIT:
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or not 1 <= limit <= MAX_SEGMENTATION_LIMIT
+    ):
         raise ValueError(
-            f"limit must be between 1 and {MAX_SEGMENTATION_LIMIT}, got {limit}"
+            f"limit must be an integer between 1 and {MAX_SEGMENTATION_LIMIT}, "
+            f"got {limit!r}"
         )
     return {"limit": limit}
 
@@ -1197,7 +1205,7 @@ class LiveQueryService:
             QueryResult with series data and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -1254,7 +1262,7 @@ class LiveQueryService:
             and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -1311,7 +1319,7 @@ class LiveQueryService:
             and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.

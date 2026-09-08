@@ -79,6 +79,10 @@ def workspace_factory(mock_api_client: MagicMock) -> Callable[..., Workspace]:
     return factory
 
 
+LIMIT_ERROR = r"limit must be an integer between 1 and 50000"
+"""Expected message for every rejected ``limit``, as a ``pytest.raises`` regex."""
+
+
 MOCK_INSIGHTS_RESPONSE: dict[str, Any] = {
     "computed_at": "2025-01-15T12:00:00",
     "date_range": {"from_date": "2025-01-01", "to_date": "2025-01-31"},
@@ -170,8 +174,31 @@ class TestQueryLimitsValidator:
         Args:
             limit: A limit outside the accepted range.
         """
-        with pytest.raises(ValueError, match="limit must be between 1 and 50000"):
+        with pytest.raises(ValueError, match=LIMIT_ERROR):
             _query_limits(limit)
+
+    @pytest.mark.parametrize("limit", [True, False])
+    def test_rejects_booleans(self, limit: bool) -> None:
+        """Booleans are rejected even though ``bool`` subclasses ``int``.
+
+        ``True`` would otherwise pass the range check and serialize as JSON
+        ``true`` in the request body.
+
+        Args:
+            limit: A boolean that must not be treated as 1 or 0.
+        """
+        with pytest.raises(ValueError, match=LIMIT_ERROR):
+            _query_limits(limit)
+
+    @pytest.mark.parametrize("limit", [3000.0, 2999.5, "3000", None.__class__])
+    def test_rejects_non_integers(self, limit: object) -> None:
+        """Floats and other non-integers are rejected, even when in range.
+
+        Args:
+            limit: A non-integer value.
+        """
+        with pytest.raises(ValueError, match=LIMIT_ERROR):
+            _query_limits(limit)  # type: ignore[arg-type]
 
     def test_default_and_maximum_constants(self) -> None:
         """The exported constants match the documented server behavior."""
@@ -288,7 +315,7 @@ class TestServiceLimitPassthrough:
             mock_api_client: The recordable API client.
             method: Name of the service method under test.
         """
-        with pytest.raises(ValueError, match="limit must be between 1 and 50000"):
+        with pytest.raises(ValueError, match=LIMIT_ERROR):
             getattr(service, method)({"sections": {}}, 12345, limit=50_001)
         mock_api_client.insights_query.assert_not_called()
 
@@ -380,7 +407,7 @@ class TestWorkspaceLimitPassthrough:
         """
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="limit must be between 1 and 50000"):
+            with pytest.raises(ValueError, match=LIMIT_ERROR):
                 ws.query("Login", limit=0)
             mock_api_client.insights_query.assert_not_called()
         finally:
@@ -534,7 +561,7 @@ class TestRunParams:
         """
         ws = workspace_factory()
         try:
-            with pytest.raises(ValueError, match="limit must be between 1 and 50000"):
+            with pytest.raises(ValueError, match=LIMIT_ERROR):
                 getattr(ws, method)({"sections": {}}, limit=50_001)
             mock_api_client.insights_query.assert_not_called()
         finally:

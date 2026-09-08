@@ -2483,7 +2483,7 @@ class Workspace:
             QueryResult with series data, DataFrame, and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -3227,7 +3227,7 @@ class Workspace:
             FunnelQueryResult with step data, DataFrame, and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             BookmarkValidationError: If arguments violate validation
                 rules (before API call).
             ConfigError: If credentials are not available.
@@ -3304,7 +3304,7 @@ class Workspace:
             FunnelQueryResult with step data, DataFrame, and metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -4424,7 +4424,7 @@ class Workspace:
             metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             BookmarkValidationError: If arguments violate validation
                 rules (before API call).
             ConfigError: If credentials are not available.
@@ -4501,7 +4501,7 @@ class Workspace:
             metadata.
 
         Raises:
-            ValueError: ``limit`` outside 1 to 50000.
+            ValueError: ``limit`` is not an integer from 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
