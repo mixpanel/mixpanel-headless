@@ -47,6 +47,50 @@ if TYPE_CHECKING:
 _STEP_PREFIX_RE = re.compile(r"^(\d+)\.\s*(.+)$")
 """Matches step names like ``"1. Signup"`` and captures (index, event_name)."""
 
+DEFAULT_SEGMENTATION_LIMIT = 3000
+"""Segments returned per query when the caller does not ask for more.
+
+Matches the Mixpanel UI, which truncates a report at 3000 segments.
+"""
+
+MAX_SEGMENTATION_LIMIT = 50_000
+"""Largest ``queryLimits.limit`` the query API accepts.
+
+See https://docs.mixpanel.com/docs/export-methods#downloading-reports-via-the-ui.
+"""
+
+
+def _query_limits(limit: int | None) -> dict[str, int]:
+    """Build the ``queryLimits`` body fragment for a query request.
+
+    Args:
+        limit: Requested segment cap, or None for
+            :data:`DEFAULT_SEGMENTATION_LIMIT`.
+
+    Returns:
+        The ``queryLimits`` dict to place in the request body.
+
+    Raises:
+        ValueError: If ``limit`` is outside 1 to
+            :data:`MAX_SEGMENTATION_LIMIT`. Raised before any HTTP call, so a
+            bad limit never costs a request against the project's rate budget.
+
+    Example:
+        ```python
+        _query_limits(None)
+        # {"limit": 3000}
+        _query_limits(50_000)
+        # {"limit": 50000}
+        ```
+    """
+    if limit is None:
+        return {"limit": DEFAULT_SEGMENTATION_LIMIT}
+    if not 1 <= limit <= MAX_SEGMENTATION_LIMIT:
+        raise ValueError(
+            f"limit must be between 1 and {MAX_SEGMENTATION_LIMIT}, got {limit}"
+        )
+    return {"limit": limit}
+
 
 def _extract_steps_from_date_data(date_data: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract steps from date data, handling both regular and segmented formats.
@@ -1128,6 +1172,7 @@ class LiveQueryService:
         bookmark_params: dict[str, Any],
         project_id: int,
         *,
+        limit: int | None = None,
         workspace_id: int | None = None,
         inject_workspace_id: bool = True,
     ) -> QueryResult:
@@ -1139,6 +1184,9 @@ class LiveQueryService:
         Args:
             bookmark_params: Pre-built bookmark params dict.
             project_id: Mixpanel project ID.
+            limit: Segments to return, 1 to
+                :data:`MAX_SEGMENTATION_LIMIT`. Defaults to
+                :data:`DEFAULT_SEGMENTATION_LIMIT`.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
             inject_workspace_id: Forwarded to the client. ``True`` (default)
@@ -1149,6 +1197,7 @@ class LiveQueryService:
             QueryResult with series data and metadata.
 
         Raises:
+            ValueError: ``limit`` outside 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -1165,7 +1214,7 @@ class LiveQueryService:
         body: dict[str, Any] = {
             "bookmark": bookmark_params,
             "project_id": project_id,
-            "queryLimits": {"limit": 3000},
+            "queryLimits": _query_limits(limit),
         }
         raw = self._api_client.insights_query(
             body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
@@ -1177,6 +1226,7 @@ class LiveQueryService:
         bookmark_params: dict[str, Any],
         project_id: int,
         *,
+        limit: int | None = None,
         workspace_id: int | None = None,
         inject_workspace_id: bool = True,
     ) -> FunnelQueryResult:
@@ -1190,6 +1240,9 @@ class LiveQueryService:
         Args:
             bookmark_params: Pre-built funnel bookmark params dict.
             project_id: Mixpanel project ID.
+            limit: Segments to return, 1 to
+                :data:`MAX_SEGMENTATION_LIMIT`. Defaults to
+                :data:`DEFAULT_SEGMENTATION_LIMIT`.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
             inject_workspace_id: Forwarded to the client. ``True`` (default)
@@ -1201,6 +1254,7 @@ class LiveQueryService:
             and metadata.
 
         Raises:
+            ValueError: ``limit`` outside 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -1217,7 +1271,7 @@ class LiveQueryService:
         body: dict[str, Any] = {
             "bookmark": bookmark_params,
             "project_id": project_id,
-            "queryLimits": {"limit": 3000},
+            "queryLimits": _query_limits(limit),
         }
         raw = self._api_client.insights_query(
             body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id
@@ -1229,6 +1283,7 @@ class LiveQueryService:
         bookmark_params: dict[str, Any],
         project_id: int,
         *,
+        limit: int | None = None,
         workspace_id: int | None = None,
         inject_workspace_id: bool = True,
     ) -> RetentionQueryResult:
@@ -1242,6 +1297,9 @@ class LiveQueryService:
         Args:
             bookmark_params: Pre-built retention bookmark params dict.
             project_id: Mixpanel project ID.
+            limit: Segments to return, 1 to
+                :data:`MAX_SEGMENTATION_LIMIT`. Defaults to
+                :data:`DEFAULT_SEGMENTATION_LIMIT`.
             workspace_id: Optional data view to run under. Forwarded to the
                 client, where it wins over the pinned session workspace.
             inject_workspace_id: Forwarded to the client. ``True`` (default)
@@ -1253,6 +1311,7 @@ class LiveQueryService:
             and metadata.
 
         Raises:
+            ValueError: ``limit`` outside 1 to 50000.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid bookmark params.
             RateLimitError: Rate limit exceeded.
@@ -1269,7 +1328,7 @@ class LiveQueryService:
         body: dict[str, Any] = {
             "bookmark": bookmark_params,
             "project_id": project_id,
-            "queryLimits": {"limit": 3000},
+            "queryLimits": _query_limits(limit),
         }
         raw = self._api_client.insights_query(
             body, workspace_id=workspace_id, inject_workspace_id=inject_workspace_id

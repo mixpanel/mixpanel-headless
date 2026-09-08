@@ -2335,6 +2335,7 @@ class Workspace:
         mode: Literal["timeseries", "total", "table"] = "timeseries",
         time_comparison: TimeComparison | None = None,
         data_group_id: int | None = None,
+        limit: int | None = None,
     ) -> QueryResult:
         """Run a typed insights query against the Mixpanel API.
 
@@ -2388,6 +2389,11 @@ class Workspace:
             data_group_id: Optional data group ID for group-level
                 analytics. Scopes the query to a specific data group.
                 Default: ``None``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses. Raise it for a
+                high-cardinality breakdown, and check
+                ``result.meta["is_segmentation_limit_hit"]`` to see whether
+                the answer was still truncated.
 
         Returns:
             QueryResult with series data, DataFrame, and metadata.
@@ -2449,6 +2455,51 @@ class Workspace:
         return self._live_query_service.query(
             bookmark_params=params,
             project_id=int(self._session.project.id),
+            limit=limit,
+        )
+
+    def run_params(
+        self,
+        params: dict[str, Any],
+        *,
+        limit: int | None = None,
+        workspace_id: int | None = None,
+    ) -> QueryResult:
+        """Run pre-built insights bookmark params against the Mixpanel API.
+
+        The execution half of :meth:`build_params`. Use it when the params
+        need editing before they run, or when they express something the
+        typed builders do not cover, such as a lookup-table join breakdown.
+
+        Args:
+            params: Bookmark params dict, normally from
+                :meth:`build_params`. Sent as the request ``bookmark``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses.
+            workspace_id: Optional data view to run under. Wins over the
+                pinned session workspace.
+
+        Returns:
+            QueryResult with series data, DataFrame, and metadata.
+
+        Raises:
+            ValueError: ``limit`` outside 1 to 50000.
+            AuthenticationError: Invalid credentials.
+            QueryError: Invalid bookmark params.
+            RateLimitError: Rate limit exceeded.
+
+        Example:
+            ```python
+            params = ws.build_params("Login", group_by="$city", last=7)
+            params["sections"]["filter"] = my_custom_filter
+            result = ws.run_params(params, limit=50_000)
+            ```
+        """
+        return self._live_query_service.query(
+            bookmark_params=params,
+            project_id=int(self._session.project.id),
+            limit=limit,
+            workspace_id=workspace_id,
         )
 
     def build_params(
@@ -3115,6 +3166,7 @@ class Workspace:
         reentry_mode: FunnelReentryMode | None = None,
         time_comparison: TimeComparison | None = None,
         data_group_id: int | None = None,
+        limit: int | None = None,
     ) -> FunnelQueryResult:
         """Run a typed funnel query against the Mixpanel API.
 
@@ -3168,11 +3220,14 @@ class Workspace:
             data_group_id: Optional data group ID for group-level
                 analytics. Scopes the query to a specific data group.
                 Default: ``None``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses.
 
         Returns:
             FunnelQueryResult with step data, DataFrame, and metadata.
 
         Raises:
+            ValueError: ``limit`` outside 1 to 50000.
             BookmarkValidationError: If arguments violate validation
                 rules (before API call).
             ConfigError: If credentials are not available.
@@ -3222,6 +3277,49 @@ class Workspace:
         return self._live_query_service.query_funnel(
             bookmark_params=params,
             project_id=int(self._session.project.id),
+            limit=limit,
+        )
+
+    def run_funnel_params(
+        self,
+        params: dict[str, Any],
+        *,
+        limit: int | None = None,
+        workspace_id: int | None = None,
+    ) -> FunnelQueryResult:
+        """Run pre-built funnel bookmark params against the Mixpanel API.
+
+        The execution half of :meth:`build_funnel_params`.
+
+        Args:
+            params: Funnel bookmark params dict, normally from
+                :meth:`build_funnel_params`. Sent as the request
+                ``bookmark``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses.
+            workspace_id: Optional data view to run under. Wins over the
+                pinned session workspace.
+
+        Returns:
+            FunnelQueryResult with step data, DataFrame, and metadata.
+
+        Raises:
+            ValueError: ``limit`` outside 1 to 50000.
+            AuthenticationError: Invalid credentials.
+            QueryError: Invalid bookmark params.
+            RateLimitError: Rate limit exceeded.
+
+        Example:
+            ```python
+            params = ws.build_funnel_params(["Signup", "Purchase"])
+            result = ws.run_funnel_params(params, limit=50_000)
+            ```
+        """
+        return self._live_query_service.query_funnel(
+            bookmark_params=params,
+            project_id=int(self._session.project.id),
+            limit=limit,
+            workspace_id=workspace_id,
         )
 
     def build_funnel_params(
@@ -4273,6 +4371,7 @@ class Workspace:
         retention_cumulative: bool = False,
         time_comparison: TimeComparison | None = None,
         data_group_id: int | None = None,
+        limit: int | None = None,
     ) -> RetentionQueryResult:
         """Run a typed retention query against the Mixpanel API.
 
@@ -4317,12 +4416,15 @@ class Workspace:
             data_group_id: Optional data group ID for group-level
                 analytics. Scopes the query to a specific data group.
                 Default: ``None``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses.
 
         Returns:
             RetentionQueryResult with cohort data, DataFrame, and
             metadata.
 
         Raises:
+            ValueError: ``limit`` outside 1 to 50000.
             BookmarkValidationError: If arguments violate validation
                 rules (before API call).
             ConfigError: If credentials are not available.
@@ -4371,6 +4473,50 @@ class Workspace:
         return self._live_query_service.query_retention(
             bookmark_params=params,
             project_id=int(self._session.project.id),
+            limit=limit,
+        )
+
+    def run_retention_params(
+        self,
+        params: dict[str, Any],
+        *,
+        limit: int | None = None,
+        workspace_id: int | None = None,
+    ) -> RetentionQueryResult:
+        """Run pre-built retention bookmark params against the Mixpanel API.
+
+        The execution half of :meth:`build_retention_params`.
+
+        Args:
+            params: Retention bookmark params dict, normally from
+                :meth:`build_retention_params`. Sent as the request
+                ``bookmark``.
+            limit: Segments to return, 1 to 50000. Default ``None`` keeps
+                the 3000 the Mixpanel UI uses.
+            workspace_id: Optional data view to run under. Wins over the
+                pinned session workspace.
+
+        Returns:
+            RetentionQueryResult with cohort data, DataFrame, and
+            metadata.
+
+        Raises:
+            ValueError: ``limit`` outside 1 to 50000.
+            AuthenticationError: Invalid credentials.
+            QueryError: Invalid bookmark params.
+            RateLimitError: Rate limit exceeded.
+
+        Example:
+            ```python
+            params = ws.build_retention_params("Signup", "Login")
+            result = ws.run_retention_params(params, limit=50_000)
+            ```
+        """
+        return self._live_query_service.query_retention(
+            bookmark_params=params,
+            project_id=int(self._session.project.id),
+            limit=limit,
+            workspace_id=workspace_id,
         )
 
     def build_retention_params(
