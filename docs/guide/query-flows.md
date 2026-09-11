@@ -853,6 +853,20 @@ ws.create_bookmark(CreateBookmarkParams(
 ))
 ```
 
+### Running Built Params
+
+Use `run_flow_params()` to execute params that `build_flow_params()` produced (or params you wrote by hand). It returns the same `FlowQueryResult` as `query_flow()`. The chart mode is read from `params["chartType"]`, so sankey and paths params run as built. The builder stores `"sankey"` for tree mode, so pass `mode="tree"` explicitly for a tree query:
+
+```python
+params = ws.build_flow_params("Purchase", forward=3, reverse=1, last=90)
+params["steps"][0]["forward"] = 5   # edit before it runs
+result = ws.run_flow_params(params)
+
+tree_params = ws.build_flow_params("Purchase", mode="tree")
+tree = ws.run_flow_params(tree_params, mode="tree")
+```
+
+
 ## Flow Segments
 
 Break flow results down by a property, cohort, or frequency using the `segments` parameter:

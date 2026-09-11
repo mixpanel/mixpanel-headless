@@ -262,8 +262,10 @@ See [Auth → Workspace.use()](auth.md#workspaceuse-in-session-switching) for th
         - run_retention_params
         - query_flow
         - build_flow_params
+        - run_flow_params
         - query_user
         - build_user_params
+        - run_user_params
         - segmentation
         - funnel
         - retention

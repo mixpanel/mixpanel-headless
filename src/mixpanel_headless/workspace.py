@@ -407,6 +407,44 @@ def _check_step_direction(
     return []
 
 
+_FLOW_CHART_TYPE_TO_MODE: dict[str, str] = {
+    "sankey": "sankey",
+    "top-paths": "paths",
+    "paths": "paths",
+    "tree": "tree",
+}
+"""Maps a flow ``chartType`` value to the ``query_flow`` mode that runs it.
+
+``build_flow_params`` writes ``"top-paths"`` for paths mode and ``"sankey"``
+for both sankey and tree mode. ``"paths"`` and ``"tree"`` are accepted for
+hand-written params.
+"""
+
+
+def _flow_mode_from_params(params: dict[str, Any]) -> str:
+    """Derive the flow chart mode from pre-built flow params.
+
+    Args:
+        params: Flow bookmark params, normally from ``build_flow_params``.
+
+    Returns:
+        ``"sankey"``, ``"paths"``, or ``"tree"``. Missing or unknown
+        ``chartType`` values fall back to ``"sankey"``.
+
+    Example:
+        ```python
+        _flow_mode_from_params({"chartType": "top-paths"})
+        # "paths"
+        _flow_mode_from_params({})
+        # "sankey"
+        ```
+    """
+    chart_type = params.get("chartType")
+    if isinstance(chart_type, str):
+        return _FLOW_CHART_TYPE_TO_MODE.get(chart_type, "sankey")
+    return "sankey"
+
+
 class Workspace:
     """Unified entry point for Mixpanel data operations.
 
@@ -4108,6 +4146,56 @@ class Workspace:
             bookmark_params=params,
             project_id=int(self._session.project.id),
             mode=mode,
+        )
+
+    def run_flow_params(
+        self,
+        params: dict[str, Any],
+        *,
+        mode: Literal["sankey", "paths", "tree"] | None = None,
+        workspace_id: int | None = None,
+    ) -> FlowQueryResult:
+        """Run pre-built flow bookmark params against the Mixpanel API.
+
+        The execution half of :meth:`build_flow_params`.
+
+        Args:
+            params: Flow bookmark params dict, normally from
+                :meth:`build_flow_params`. Sent as the request ``bookmark``.
+            mode: Flow chart mode. ``None`` (default) derives it from
+                ``params["chartType"]``: ``"top-paths"`` or ``"paths"`` run
+                as paths, ``"tree"`` runs as tree, anything else runs as
+                sankey. The builder stores ``"sankey"`` for tree mode, so
+                pass ``mode="tree"`` explicitly to run a tree query.
+            workspace_id: Optional data view to run under. Wins over the
+                pinned session workspace.
+
+        Returns:
+            FlowQueryResult with steps, paths, or trees, DataFrame, and
+            metadata.
+
+        Raises:
+            AuthenticationError: Invalid credentials.
+            QueryError: Invalid bookmark params.
+            RateLimitError: Rate limit exceeded.
+
+        Example:
+            ```python
+            params = ws.build_flow_params("Login", mode="paths", last=7)
+            result = ws.run_flow_params(params)
+            print(result.df.head())
+
+            # Tree mode is not recoverable from the params
+            params = ws.build_flow_params("Login", mode="tree")
+            result = ws.run_flow_params(params, mode="tree")
+            ```
+        """
+        resolved_mode = mode if mode is not None else _flow_mode_from_params(params)
+        return self._live_query_service.query_flow(
+            bookmark_params=params,
+            project_id=int(self._session.project.id),
+            mode=resolved_mode,
+            workspace_id=workspace_id,
         )
 
     def build_flow_params(
@@ -10016,8 +10104,58 @@ class Workspace:
             include_all_users=include_all_users,
         )
 
-        # Route by mode
-        if mode == "aggregate":
+        return self.run_user_params(
+            params, limit=limit, parallel=parallel, workers=workers
+        )
+
+    def run_user_params(
+        self,
+        params: dict[str, Any],
+        *,
+        limit: int | None = 1,
+        parallel: bool = False,
+        workers: int = 5,
+    ) -> UserQueryResult:
+        """Run pre-built Engage API params against the Mixpanel API.
+
+        The execution half of :meth:`build_user_params`. The mode is read
+        from the params: a dict that carries an aggregate ``action`` key
+        runs as an aggregate query, any other dict runs as a profiles
+        query. ``limit``, ``parallel`` and ``workers`` are execution
+        settings that :meth:`build_user_params` does not store, so they
+        are passed here with the same defaults as :meth:`query_user`.
+
+        Args:
+            params: Engage API params dict, normally from
+                :meth:`build_user_params`.
+            limit: Maximum profiles to return in profiles mode. ``None``
+                fetches all matching profiles. Ignored in aggregate mode.
+                Default: ``1``.
+            parallel: Fetch profile pages concurrently. Ignored when
+                ``limit`` is ``1`` or in aggregate mode. Default: ``False``.
+            workers: Maximum concurrent workers for parallel fetching.
+                Default: ``5``.
+
+        Returns:
+            ``UserQueryResult`` with profiles or aggregate data, total
+            count, DataFrame, and execution metadata.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            RateLimitError: API rate limit exceeded (429).
+            APIError: Other API communication errors.
+
+        Example:
+            ```python
+            params = ws.build_user_params(
+                mode="profiles", where=Filter.equals("plan", "premium")
+            )
+            params["output_properties"] = json.dumps(["$email", "ltv"])
+            result = ws.run_user_params(params, limit=500, parallel=True)
+            print(result.df.head())
+            ```
+        """
+        if "action" in params:
             aggregate_data, total, computed_at, meta = self._execute_user_aggregate(
                 params
             )
