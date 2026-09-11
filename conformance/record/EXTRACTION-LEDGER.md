@@ -7,6 +7,100 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 
+## 2026-09-11 re-pin: stamp `c9991d1` → `b61b94c` (PR #225 `limit=` + `run_*_params`)
+
+Step 2 of the two-step protocol (README, "Which SHA to stamp") for PR #225
+(`add limit param to query methods, plus run_*_params`), squash-merged to
+`main` as `b61b94c0204597930439ddc170219547d6095586` on 2026-09-11.
+
+### Why `b61b94c` is the honest stamp
+
+PR #225 landed `src/` + `tests/` only and left `conformance/vectors/` and
+`conformance/contract/` untouched, so its `conformance` check went red on
+the drift step with 5 `bundle_only_in_candidate` findings + 1
+`manifest_differs` finding (expected, and flagged on the PR). `main` moved
+past `b61b94c` before this re-pin (dependabot bumps #226–#229), but
+`git diff --stat b61b94c origin/main -- src tests conformance` is empty,
+so the extraction below ran against exactly the `src/` at `b61b94c`.
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-09-11 \
+  --mp-record-commit=b61b94c0204597930439ddc170219547d6095586
+uv run python -m conformance.contract.generate_contract \
+  --generated-from b61b94c0204597930439ddc170219547d6095586
+```
+
+Interpreter and `tool_versions` unchanged from the committed manifest
+(Python 3.14.6, httpx 0.28.1, hypothesis 6.151.13, pydantic 2.13.3).
+Record run: **7,713 passed, 1 skipped, 563 deselected, 0 failed**
+(7,647 → 7,713: the 66 tests PR #225 added in
+`tests/unit/test_query_limit.py` and
+`tests/unit/test_run_flow_user_params.py`).
+
+### What changed — purely additive
+
+5 new bundles, 16 new vectors, all `builder` kind. No committed bundle
+body changed: `git diff --numstat conformance/vectors/` is one line
+in/one line out for every pre-existing file (the `$bundle.source_commit`
+header), so no recorded request body moved. The default (`limit=None` →
+`3000`) path is byte-identical to the `c9991d1` corpus.
+
+| New bundle | Vectors |
+|---|---:|
+| `bookmarks/test_query_limit.jsonl` | 2 |
+| `funnels/test_query_limit.jsonl` | 1 |
+| `retention/test_query_limit.jsonl` | 1 |
+| `engage/test_run_flow_user_params.jsonl` | 4 |
+| `flows/test_run_flow_user_params.jsonl` | 8 |
+
+### Headline counts (manifest `counts`)
+
+| Field | `c9991d1` | `b61b94c` | Δ |
+|---|---:|---:|---:|
+| `total` | 3,120 | 3,136 | +16 |
+| `by_kind.builder` | 1,785 | 1,801 | +16 |
+| `by_kind.wire` | 1,270 | 1,270 | 0 |
+| `by_kind.validation-error` | 65 | 65 | 0 |
+| `by_capability.bookmarks` | 442 | 444 | +2 |
+| `by_capability.engage` | 233 | 237 | +4 |
+| `by_capability.flows` | 64 | 72 | +8 |
+| `by_capability.funnels` | 152 | 153 | +1 |
+| `by_capability.retention` | 81 | 82 | +1 |
+| `with_setup` | 121 | 121 | 0 |
+| bundles (extracted) | 164 | 169 | +5 |
+
+Exclusion buckets that moved (the rest of the new tests): `no_seam_hit`
+2,337 → 2,362 (+25), `wire_call_no_transport` 742 → 783 (+41). Every
+other bucket is unchanged.
+
+### Contract artifacts
+
+`conformance/contract/*.json`: 4 files, one line each, `generated_from`
+only. No new tagged type, error code, or literal alias — the content with
+that key deleted is identical to the `c9991d1` artifacts.
+
+### Determinism / drift proof
+
+Re-extraction into `/tmp/re-extract` with the new committed stamps
+injected (the exact CI command), then
+`uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors`:
+`drift check: CLEAN (byte-identical within D8 scope)`, exit 0.
+`just conformance-stamps` (rules 1 + 2): pass.
+
+### New stamps
+
+| Stamp | Value |
+|---|---|
+| `manifest.source_commit` (+ 169 `$bundle.source_commit`) | `b61b94c0204597930439ddc170219547d6095586` |
+| `manifest.extraction_date` | `2026-09-11` |
+| `contract/*.json` `generated_from` (4 artifacts) | `b61b94c0204597930439ddc170219547d6095586` |
+
+After this merges, the TS port re-pins `corpus.config.json`
+`sourceCommit` to `b61b94c…` and runs `npm run sync:corpus`.
+
 ## 2026-09 re-pin: stamp `390c6e7f` → `c9991d1` (PR #223 provenance repair)
 
 ### What was wrong
