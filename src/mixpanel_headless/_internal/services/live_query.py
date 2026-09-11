@@ -56,7 +56,8 @@ Matches the Mixpanel UI, which truncates a report at 3000 segments.
 MAX_SEGMENTATION_LIMIT = 50_000
 """Largest ``queryLimits.limit`` the query API accepts.
 
-See https://docs.mixpanel.com/docs/export-methods#downloading-reports-via-the-ui.
+The cap is enforced server-side. A larger value is rejected with
+``Query limit exceeds max limit of 50000 (<n> was given)``.
 """
 
 

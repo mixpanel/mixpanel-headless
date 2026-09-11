@@ -253,10 +253,13 @@ See [Auth → Workspace.use()](auth.md#workspaceuse-in-session-switching) for th
         - get_business_context_chain
         - query
         - build_params
+        - run_params
         - query_funnel
         - build_funnel_params
+        - run_funnel_params
         - query_retention
         - build_retention_params
+        - run_retention_params
         - query_flow
         - build_flow_params
         - query_user
