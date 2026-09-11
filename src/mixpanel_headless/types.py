@@ -35,6 +35,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    TypeAlias,
     TypedDict,
     TypeVar,
     cast,
@@ -50,13 +51,14 @@ from mixpanel_headless._literal_types import (
 from mixpanel_headless._literal_types import CustomPropertyType as CustomPropertyType
 from mixpanel_headless._literal_types import FilterDateUnit as FilterDateUnit
 from mixpanel_headless._literal_types import FilterOperator as FilterOperator
-from mixpanel_headless._literal_types import FilterPropertyType as FilterPropertyType
-from mixpanel_headless._literal_types import FiltersCombinator as FiltersCombinator
 from mixpanel_headless._literal_types import (
+    FilterOperatorInput,
     FlowAnchorType,
     FlowNodeType,
     FlowSessionEvent,
 )
+from mixpanel_headless._literal_types import FilterPropertyType as FilterPropertyType
+from mixpanel_headless._literal_types import FiltersCombinator as FiltersCombinator
 from mixpanel_headless._literal_types import FlowChartType as FlowChartType
 from mixpanel_headless._literal_types import (
     FlowConversionWindowUnit as FlowConversionWindowUnit,
@@ -7144,6 +7146,16 @@ class Formula:
             )
 
 
+FilterValue: TypeAlias = (
+    str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None
+)
+"""Every shape ``Filter._value`` may hold.
+
+Lists of dicts carry cohort selectors (``Filter.in_cohort``), which is the
+one place a loosely-typed payload is unavoidable; everything else is a
+scalar, a list of scalars, or ``None`` for value-less operators.
+"""
+
 _FILTER_WIRE_OPERATORS: Final[frozenset[str]] = frozenset(get_args(FilterOperator))
 """Runtime view of :data:`FilterOperator` for construction-time validation."""
 
@@ -7196,6 +7208,34 @@ normalizing them changes nothing on the wire.
 
 _BOOLEAN_FILTER_OPERATORS: Final[frozenset[str]] = frozenset({"true", "false"})
 """The only operators the platform accepts for ``filterType == "boolean"``."""
+
+
+def _unknown_filter_operator_message(operator: object) -> str:
+    """Build the ``ValueError`` text for an operator ``Filter`` cannot accept.
+
+    Shared by the non-string guard and the literal-membership guard so both
+    failure modes read identically.
+
+    Args:
+        operator: The rejected ``_operator`` value (any type).
+
+    Returns:
+        A message naming the operator, listing the valid wire operators, and
+        pointing at the factory methods and the accepted alias spellings.
+
+    Example:
+        ```python
+        _unknown_filter_operator_message("bigger_than")
+        # "Unknown Filter operator 'bigger_than'. Valid operators: [...]. Prefer ..."
+        ```
+    """
+    return (
+        f"Unknown Filter operator {operator!r}. Valid operators: "
+        f"{sorted(_FILTER_WIRE_OPERATORS)}. Prefer the factory methods "
+        "(Filter.equals(), Filter.greater_than(), Filter.is_set(), "
+        "Filter.is_true(), ...); their names are also accepted as "
+        f"operator aliases: {sorted(_FILTER_OPERATOR_ALIASES)}."
+    )
 
 
 def _boolean_filter_value(value: object) -> bool | None:
@@ -7255,17 +7295,17 @@ class Filter:
     _property: str | CustomPropertyRef | InlineCustomProperty
     """Property to filter on (name, ref, or inline)."""
 
-    _operator: FilterOperator
-    """Internal operator string. Must be one of the values in :data:`FilterOperator`.
+    _operator: FilterOperatorInput
+    """Operator string. After construction, always a :data:`FilterOperator` member.
 
-    Direct construction also accepts the factory-method names listed in
-    :data:`_FILTER_OPERATOR_ALIASES`; ``__post_init__`` rewrites them to the
-    wire spelling before anything reads this field.
+    The declared type is the wider :data:`FilterOperatorInput` so direct
+    construction may pass a factory-method name (``"greater_than"``,
+    ``"is_set"``, ...); ``__post_init__`` rewrites any such alias to the wire
+    spelling before anything reads this field, so readers may treat the
+    stored value as :data:`FilterOperator`.
     """
 
-    _value: (
-        str | int | float | list[str] | list[int | float] | list[dict[str, Any]] | None
-    )
+    _value: FilterValue
     """Value(s) to compare against.
 
     Shape varies by operator: list for equals/not_equals, str for
@@ -7300,25 +7340,34 @@ class Filter:
         Runs on every construction, including the factory classmethods
         (whose output is already canonical and passes through untouched):
 
-        1. A factory-method spelling in :data:`_FILTER_OPERATOR_ALIASES`
-           (``"greater_than"``, ``"is_set"``, ...) is rewritten to the wire
-           operator that factory emits.
-        2. On a ``boolean`` property, ``equals`` / ``does not equal`` with a
+        1. ``_operator`` must be a string; a factory-method spelling in
+           :data:`_FILTER_OPERATOR_ALIASES` (``"greater_than"``, ``"is_set"``,
+           ...) is rewritten to the wire operator that factory emits, and the
+           result must be a :data:`FilterOperator` member.
+        2. The effective property type is derived the same way
+           ``build_filter_entry`` derives ``filterType``: an
+           ``InlineCustomProperty`` with a declared ``property_type`` wins
+           over ``_property_type``.
+        3. On a ``boolean`` property, ``equals`` / ``does not equal`` with a
            bool value collapse to ``true`` / ``false`` with ``_value=None``,
-           matching ``Filter.is_true()`` / ``Filter.is_false()``.
-        3. The operator must then be a :data:`FilterOperator` member, and a
-           ``boolean`` property must use ``true`` / ``false``.
-        4. The pre-existing ``list_contains`` shape guards run last.
+           matching ``Filter.is_true()`` / ``Filter.is_false()``; any other
+           operator on a boolean property is rejected.
+        4. ``true`` / ``false`` (however spelled) take no value: a non-``None``
+           ``_value`` is rejected on every property type, because the
+           platform serializes boolean filters with ``filterValue: null``.
+        5. The pre-existing ``list_contains`` shape guards run last.
 
         Already-valid input is never rewritten: a wire operator and its value
         serialize exactly as given.
 
         Raises:
-            ValueError: If ``_operator`` is neither a :data:`FilterOperator`
-                member nor a known alias, or if a ``boolean`` property uses
-                an operator other than ``true`` / ``false``. The message
-                names the offending operator, lists the valid operators, and
-                points at the factory methods.
+            ValueError: If ``_operator`` is not a string, is neither a
+                :data:`FilterOperator` member nor a known alias, is an
+                operator other than ``true`` / ``false`` on a boolean
+                property, or is ``true`` / ``false`` with a non-``None``
+                value. The message names the offending operator, lists the
+                valid operators where relevant, and points at the factory
+                methods.
             ParamValidationError: If ``_operator == "list_contains"`` but
                 ``_list_item_filters`` (``LC1_MISSING_ITEM_FILTERS``) or
                 ``_list_item_quantifier`` (``LC2_MISSING_QUANTIFIER``) is
@@ -7335,34 +7384,39 @@ class Filter:
             # ValueError: Unknown Filter operator 'bigger_than'. Valid operators: [...]
             ```
         """
-        operator: object = self._operator
-        if isinstance(operator, str) and operator in _FILTER_OPERATOR_ALIASES:
-            operator = _FILTER_OPERATOR_ALIASES[operator]
-        if self._property_type == "boolean" and operator in (
-            "equals",
-            "does not equal",
-        ):
+        raw: object = self._operator
+        # isinstance first: a list/dict/None operator must not reach a set
+        # lookup (TypeError: unhashable) — it gets the same ValueError.
+        if not isinstance(raw, str):
+            raise ValueError(_unknown_filter_operator_message(raw))
+        operator: str = _FILTER_OPERATOR_ALIASES.get(raw, raw)
+        if operator not in _FILTER_WIRE_OPERATORS:
+            raise ValueError(_unknown_filter_operator_message(operator))
+        # Mirror build_filter_entry: an inline custom property's declared
+        # type overrides _property_type for filterType / defaultType.
+        prop = self._property
+        effective_type: str = self._property_type
+        if isinstance(prop, InlineCustomProperty) and prop.property_type is not None:
+            effective_type = prop.property_type
+        if effective_type == "boolean" and operator in ("equals", "does not equal"):
             truth = _boolean_filter_value(self._value)
             if truth is not None:
                 operator = "true" if truth == (operator == "equals") else "false"
                 object.__setattr__(self, "_value", None)
-        if operator not in _FILTER_WIRE_OPERATORS:
-            raise ValueError(
-                f"Unknown Filter operator {operator!r}. Valid operators: "
-                f"{sorted(_FILTER_WIRE_OPERATORS)}. Prefer the factory methods "
-                "(Filter.equals(), Filter.greater_than(), Filter.is_set(), "
-                "Filter.is_true(), ...); their names are also accepted as "
-                f"operator aliases: {sorted(_FILTER_OPERATOR_ALIASES)}."
-            )
-        if (
-            self._property_type == "boolean"
-            and operator not in _BOOLEAN_FILTER_OPERATORS
-        ):
+        if effective_type == "boolean" and operator not in _BOOLEAN_FILTER_OPERATORS:
             raise ValueError(
                 f"Filter operator {operator!r} is not valid for a boolean property "
-                f"({self._property!r}); boolean filters only support 'true' and "
-                "'false' with no value. Use Filter.is_true() / Filter.is_false(), "
-                "or pass value True / False with operator 'equals'."
+                f"({prop!r}); boolean filters only support 'true' and 'false' "
+                "with no value. Use Filter.is_true() / Filter.is_false(), or pass "
+                "value True / False with operator 'equals'."
+            )
+        if operator in _BOOLEAN_FILTER_OPERATORS and self._value is not None:
+            raise ValueError(
+                f"Filter operator {operator!r} takes no value (got "
+                f"{self._value!r}); the platform serializes boolean filters with "
+                "filterValue null. Use Filter.is_true() / Filter.is_false(), or "
+                "pass value True / False with operator 'equals' on a boolean "
+                "property."
             )
         if operator != self._operator:
             object.__setattr__(self, "_operator", cast(FilterOperator, operator))

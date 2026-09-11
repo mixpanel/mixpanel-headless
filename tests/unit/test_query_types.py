@@ -19,7 +19,7 @@ from mixpanel_headless._internal.bookmark_enums import (
     MATH_PROPERTY_OPTIONAL,
     MATH_REQUIRING_PROPERTY,
 )
-from mixpanel_headless._literal_types import FilterOperator
+from mixpanel_headless._literal_types import FilterOperator, FilterOperatorInput
 from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 from mixpanel_headless.types import (
     _FILTER_OPERATOR_ALIASES,
@@ -29,8 +29,10 @@ from mixpanel_headless.types import (
     FrequencyBreakdown,
     FrequencyFilter,
     GroupBy,
+    InlineCustomProperty,
     ListItemGroupMode,
     Metric,
+    PropertyInput,
     QueryResult,
     TimeComparison,
     _filter_unchecked,
@@ -2321,7 +2323,7 @@ class TestFilterDirectConstruction:
     def test_report_row_greater_than(self) -> None:
         """Filter("gold", "greater_than", 10, "number") == Filter.greater_than("gold", 10)."""
         factory = Filter.greater_than("gold", 10)
-        positional = Filter("gold", "greater_than", 10, "number")  # type: ignore[arg-type]
+        positional = Filter("gold", "greater_than", 10, "number")
         assert positional == factory
         assert build_filter_entry(positional)["filterOperator"] == "is greater than"
         assert _wire(positional) == _wire(factory)
@@ -2329,7 +2331,7 @@ class TestFilterDirectConstruction:
     def test_report_row_is_set(self) -> None:
         """Filter("class", "is_set", None) == Filter.is_set("class")."""
         factory = Filter.is_set("class")
-        positional = Filter("class", "is_set", None)  # type: ignore[arg-type]
+        positional = Filter("class", "is_set", None)
         assert positional == factory
         assert build_filter_entry(positional)["filterOperator"] == "is set"
         assert _wire(positional) == _wire(factory)
@@ -2397,7 +2399,89 @@ class TestFilterDirectConstruction:
         assert _direct("flag", "true", None, "boolean") == Filter.is_true("flag")
         assert _direct("flag", "false", None, "boolean") == Filter.is_false("flag")
 
+    @pytest.mark.parametrize("operator", ["true", "false", "is_true", "is_false"])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("yes", id="string"),
+            pytest.param(True, id="bool"),
+            pytest.param(1, id="int"),
+            pytest.param([True], id="list"),
+        ],
+    )
+    @pytest.mark.parametrize("property_type", ["boolean", "string"])
+    def test_true_false_operators_reject_non_none_value(
+        self, operator: str, value: Any, property_type: str
+    ) -> None:
+        """``true`` / ``false`` (and their aliases) carry no value; anything else is rejected."""
+        with pytest.raises(ValueError, match="no value") as excinfo:
+            _direct("flag", operator, value, property_type)
+        assert "Filter.is_true" in str(excinfo.value)
+        assert "Filter.is_false" in str(excinfo.value)
+
+    # --- Inline custom properties: the inline type wins ---
+
+    @staticmethod
+    def _inline(property_type: str | None) -> InlineCustomProperty:
+        """Build a one-input inline custom property with the given declared type.
+
+        Args:
+            property_type: The inline property's ``property_type`` (or ``None``).
+
+        Returns:
+            An ``InlineCustomProperty`` over a single ``plan`` input.
+        """
+        return InlineCustomProperty(
+            formula="A",
+            inputs={"A": PropertyInput("plan")},
+            property_type=property_type,  # type: ignore[arg-type]
+        )
+
+    def test_boolean_inline_custom_property_rejects_contains(self) -> None:
+        """A boolean inline custom property is governed by the boolean rules."""
+        with pytest.raises(ValueError, match="boolean"):
+            Filter(self._inline("boolean"), "contains", "tr", "string")
+
+    def test_boolean_inline_custom_property_collapses_equals_true(self) -> None:
+        """``equals`` + ``True`` on a boolean inline custom property becomes ``true``/None."""
+        f = Filter(self._inline("boolean"), "equals", True, "string")
+        assert f._operator == "true"
+        assert f._value is None
+        entry = build_filter_entry(f)
+        assert entry["filterType"] == "boolean"
+        assert entry["filterOperator"] == "true"
+        assert entry["filterValue"] is None
+
+    def test_inline_custom_property_without_type_uses_filter_type(self) -> None:
+        """With no inline type declared, the Filter's own ``_property_type`` governs."""
+        f = Filter(self._inline(None), "equals", ["x"], "string")
+        assert f._operator == "equals"
+        assert f._value == ["x"]
+        with pytest.raises(ValueError, match="boolean"):
+            Filter(self._inline(None), "contains", "tr", "boolean")
+
     # --- Unknown operators ---
+
+    @pytest.mark.parametrize(
+        "operator",
+        [
+            pytest.param(["equals"], id="list"),
+            pytest.param({"op": "equals"}, id="dict"),
+            pytest.param(None, id="none"),
+            pytest.param(7, id="int"),
+        ],
+    )
+    def test_non_string_operator_raises_value_error(self, operator: object) -> None:
+        """Unhashable or non-string operators get the same ValueError, not TypeError."""
+        with pytest.raises(ValueError, match="Unknown Filter operator") as excinfo:
+            Filter("gold", operator, 10, "number")  # type: ignore[arg-type]
+        assert "Filter.greater_than" in str(excinfo.value)
+
+    def test_filter_operator_input_is_literal_union_of_wire_and_aliases(self) -> None:
+        """``FilterOperatorInput`` spells exactly the wire operators plus every alias."""
+        assert set(get_args(FilterOperatorInput)) == set(
+            get_args(FilterOperator)
+        ) | set(_FILTER_OPERATOR_ALIASES)
 
     def test_unknown_operator_raises_value_error_with_guidance(self) -> None:
         """An operator outside the literal and alias sets fails immediately."""

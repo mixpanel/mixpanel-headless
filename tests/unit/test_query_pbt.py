@@ -971,3 +971,35 @@ class TestFilterOperatorValidationInvariant:
             between_wire
         )
         assert build_segfilter_entry(between_alias)["filter"]["operator"] == "><"
+
+    @given(
+        op=st.sampled_from(["true", "false", "is_true", "is_false"]),
+        value=st.one_of(
+            st.text(min_size=1, max_size=10),
+            st.booleans(),
+            st.integers(),
+            st.lists(st.booleans(), min_size=1, max_size=3),
+        ),
+        property_type=st.sampled_from(["boolean", "string"]),
+    )
+    def test_true_false_with_any_non_none_value_is_rejected(
+        self, op: str, value: object, property_type: str
+    ) -> None:
+        """``true`` / ``false`` (and aliases) never accept a value — on any property type."""
+        with pytest.raises(ValueError, match="no value"):
+            _direct(op, value, property_type)
+
+    @given(
+        op=st.one_of(
+            st.none(),
+            st.integers(),
+            st.floats(allow_nan=False),
+            st.lists(st.text(max_size=5), max_size=3),
+            st.dictionaries(st.text(max_size=5), st.integers(), max_size=3),
+            st.tuples(st.text(max_size=5)),
+        )
+    )
+    def test_non_string_operator_is_rejected_with_value_error(self, op: object) -> None:
+        """Unhashable / non-string operators raise the same ValueError, never TypeError."""
+        with pytest.raises(ValueError, match="Unknown Filter operator"):
+            _direct(op, None)  # type: ignore[arg-type]

@@ -473,12 +473,14 @@ def _segfilter_row_sweep() -> tuple[FuzzCall, ...]:
             (
                 api,
                 {
-                    "f": Filter(
+                    # Built raw: "is equal to" is a NUMBER_OPERATOR_MAP row the
+                    # FilterOperator literal does not spell — the map is
+                    # deliberately wider (segfilter.py:59-70) — and the
+                    # constructor would normalize it to "equals" before the
+                    # sweep reached segfilter. Every row must arrive verbatim.
+                    "f": _filter_unchecked(
                         _property="p",
-                        # "is equal to" is a NUMBER_OPERATOR_MAP row the
-                        # FilterOperator literal does not spell — the map
-                        # is deliberately wider (segfilter.py:59-70).
-                        _operator=num_op,  # type: ignore[arg-type]
+                        _operator=num_op,
                         _value=None if num_op in setness else 5,
                         _property_type="number",
                     )
@@ -491,11 +493,13 @@ def _segfilter_row_sweep() -> tuple[FuzzCall, ...]:
             (
                 api,
                 {
-                    "f": Filter(
+                    # Built raw for the same reason: "between" is a
+                    # NUMBER_OPERATOR_MAP row outside the FilterOperator
+                    # literal that the constructor would rewrite to
+                    # "is between" (see above).
+                    "f": _filter_unchecked(
                         _property="p",
-                        # "between" is a NUMBER_OPERATOR_MAP row outside
-                        # the FilterOperator literal (see above).
-                        _operator=range_op,  # type: ignore[arg-type]
+                        _operator=range_op,
                         _value=range_value,
                         _property_type="number",
                     )

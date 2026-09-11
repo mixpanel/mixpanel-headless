@@ -187,12 +187,12 @@ class TestSegfilterNumberOperators:
 
         ``"is equal to"`` is a ``NUMBER_OPERATOR_MAP`` row outside the
         ``FilterOperator`` literal; ``Filter.__post_init__`` accepts it as
-        an alias of ``"equals"`` (hence the type: ignore) and the segfilter
-        output is unchanged.
+        an alias of ``"equals"`` (it is a ``FilterOperatorInput`` member)
+        and the segfilter output is unchanged.
         """
         f = Filter(
             _property="count",
-            _operator="is equal to",  # type: ignore[arg-type]
+            _operator="is equal to",
             _value=42,
             _property_type="number",
             _resource_type="events",
@@ -205,7 +205,7 @@ class TestSegfilterNumberOperators:
         """'is equal to' and 'equals' produce identical segfilter entries."""
         alias = Filter(
             _property="count",
-            _operator="is equal to",  # type: ignore[arg-type]
+            _operator="is equal to",
             _value=42,
             _property_type="number",
         )
@@ -224,7 +224,7 @@ class TestSegfilterNumberOperators:
         bounds: list[int | float] = [1, 10]
         alias = Filter(
             _property="amount",
-            _operator="between",  # type: ignore[arg-type]
+            _operator="between",
             _value=bounds,
             _property_type="number",
         )

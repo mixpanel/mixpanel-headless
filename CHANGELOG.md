@@ -94,7 +94,13 @@ may include API changes.
   `"is between"` (same `==` / `><` segfilter output). On a `boolean`
   property, `equals` / `does not equal` with a `True` / `False` value collapse
   to `true` / `false` with `filterValue: null`, matching `Filter.is_true()` /
-  `Filter.is_false()`; any other operator on a boolean property is rejected.
+  `Filter.is_false()`; any other operator on a boolean property is rejected,
+  and `true` / `false` (however spelled) reject any non-`None` value. A
+  boolean `InlineCustomProperty` is governed by the same rules (the inline
+  type wins, as in `build_filter_entry`). Non-string operators raise the same
+  `ValueError` rather than `TypeError`. The `_operator` field is typed as the
+  new `FilterOperatorInput` literal (wire operators plus aliases) so the
+  positional call type-checks; the stored value is always canonical.
   Already-valid input is never rewritten. The `Filter` docstring no longer
   claims the class is "never instantiated directly".
 

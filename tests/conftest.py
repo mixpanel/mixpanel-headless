@@ -6,7 +6,7 @@ import os
 import tempfile
 from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
     from mixpanel_headless._internal.api_client import MixpanelAPIClient
     from mixpanel_headless._internal.auth.session import Session
     from mixpanel_headless._internal.config import ConfigManager
-    from mixpanel_headless.types import Filter
+    from mixpanel_headless.types import Filter, FilterValue
 
 
 def make_session(
@@ -345,7 +345,7 @@ def rate_limit_handler() -> Callable[[httpx.Request], httpx.Response]:
 def make_unchecked_filter(
     property: str,
     operator: str,
-    value: Any,
+    value: FilterValue,
     property_type: str = "string",
     resource_type: str = "events",
 ) -> Filter:

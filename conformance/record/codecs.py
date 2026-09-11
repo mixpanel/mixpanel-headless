@@ -474,7 +474,10 @@ def _tuple_fields(cls: type) -> frozenset[str]:
     )
 
 
-def _rebuild_dataclass(cls: type, kwargs: Mapping[str, Any]) -> Any:
+def _rebuild_dataclass(
+    cls: type,
+    kwargs: Mapping[str, Any],  # Any: values are decoded from arbitrary vector JSON
+) -> Any:  # Any: returns whichever codec dataclass ``cls`` names
     """Instantiate ``cls`` from decoded vector fields.
 
     Every codec dataclass goes through its own constructor — except
