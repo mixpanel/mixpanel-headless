@@ -9573,9 +9573,13 @@ class FrequencyFilter:
     is excluded from every daily bucket. An empty series (zero-row
     DataFrame) is therefore the expected result when no user reaches
     the threshold inside one bucket, not a sign that the filter failed.
-    When the intent is "at least N times over the period", pass
-    ``unit="month"`` or choose a ``unit`` and date range that together
-    form a single bucket.
+    Choose the ``unit`` that matches the period you mean: ``"day"`` for
+    "N times in a day", ``"month"`` for "N times in a month".
+    ``unit="month"`` over a multi-month range still yields one threshold
+    per month; "N times over the whole period" needs a date range that
+    fits inside a single bucket. ``last=`` is always a number of days
+    regardless of ``unit``, so pin a month with ``from_date`` /
+    ``to_date``.
 
     ``date_range_value`` / ``date_range_unit`` render as a
     ``behavior.dateRange`` lookback on the wire. In a 2026-09-11 probe
@@ -9613,9 +9617,9 @@ class FrequencyFilter:
         # "Users who logged in at least 5 times": the count is taken per
         # bucket, so the query's unit decides what "5 times" means.
 
-        # Per DAY (default unit): only users with 5+ logins on the same
-        # day. Often an empty series even when thousands of users logged
-        # in 5+ times across the month.
+        # Per DAY (default unit): purchases by users with 5+ logins on
+        # the same day. Often an empty series even when thousands of
+        # users logged in 5+ times across the month.
         daily = ws.query(
             "Purchase",
             where=FrequencyFilter("Login", value=5),
@@ -9623,7 +9627,7 @@ class FrequencyFilter:
             to_date="2026-03-31",
         )
 
-        # Per MONTH: users with 5+ logins anywhere in March.
+        # Per MONTH: purchases by users with 5+ logins anywhere in March.
         monthly = ws.query(
             "Purchase",
             where=FrequencyFilter("Login", value=5),
@@ -9632,7 +9636,7 @@ class FrequencyFilter:
             unit="month",
         )
 
-        # Count only purchases over 50, at least 3 per month
+        # Logins by users with 3+ purchases over 50 in the month
         result = ws.query(
             "Login",
             where=FrequencyFilter(
@@ -9640,7 +9644,8 @@ class FrequencyFilter:
                 value=3,
                 event_filters=[Filter.greater_than("amount", 50)],
             ),
-            last=3,
+            from_date="2026-03-01",
+            to_date="2026-03-31",
             unit="month",
         )
         ```
@@ -9656,10 +9661,12 @@ class FrequencyFilter:
     """Comparison operator."""
 
     date_range_value: int | None = None
-    """Lookback window size (no observable effect on inline insights filters)."""
+    """Lookback window size. No observable effect on inline insights filters in
+    a 2026-09-11 probe; unverified against platform fixtures."""
 
     date_range_unit: Literal["day", "week", "month"] | None = None
-    """Lookback window unit (no observable effect on inline insights filters)."""
+    """Lookback window unit. No observable effect on inline insights filters in
+    a 2026-09-11 probe; unverified against platform fixtures."""
 
     event_filters: list[Filter] | None = None
     """Property filters applied to the frequency event."""

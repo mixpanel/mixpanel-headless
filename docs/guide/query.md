@@ -691,7 +691,7 @@ Filter to users who performed an event a certain number of times using `Frequenc
 ```python
 from mixpanel_headless import FrequencyFilter
 
-# Only users who purchased at least 3 times in a month
+# Logins in March by users who purchased at least 3 times that month
 result = ws.query(
     "Login",
     where=FrequencyFilter(
@@ -699,7 +699,8 @@ result = ws.query(
         value=3,
         operator="is at least",
     ),
-    last=3,
+    from_date="2026-03-01",
+    to_date="2026-03-31",
     unit="month",
 )
 ```
@@ -715,22 +716,27 @@ Operators: `"is at least"`, `"is at most"`, `"is greater than"`, `"is less than"
     empty `series` / zero-row `df` is the expected result when no user reaches
     the threshold inside one bucket, not a sign that the filter failed.
 
-    When you mean "at least N times over the period", pass `unit="month"`
-    (or pick a `unit` and date range that form a single bucket).
+    Choose the `unit` that matches the period you mean: `"day"` for "N times
+    in a day", `"month"` for "N times in a month". `unit="month"` over a
+    multi-month range still yields one threshold per month; "N times over the
+    whole period" needs a date range that fits inside a single bucket. `last=`
+    is always a number of *days* regardless of `unit`, so pin a month with
+    `from_date` / `to_date`.
 
     Measured on a seeded 10,000-user dataset (event `enter dungeon`,
     2026-03-01 to 2026-03-31), with every library number matching a DuckDB
-    ground-truth count over the raw events:
+    ground-truth count over the raw events. The default `math="total"` counts
+    events; `math="unique"` counts users.
 
-    | Query | Library result | What was counted |
-    |---|---|---|
-    | unfiltered, `unit="day"`, summed | 30,541 | 30,541 events from 8,281 users |
-    | `FrequencyFilter(value=2)`, `unit="day"`, summed | 3,893 | users with 2+ **on the same day** (1,894 user-days) |
-    | `FrequencyFilter(value=3)`, `unit="day"` | 305 | same-day 3+ |
-    | `FrequencyFilter(value=4)`, `unit="day"` | 20 | same-day 4+ |
-    | `FrequencyFilter(value=5)`, `unit="day"` | **empty series** | same-day 5+: none. Whole-month 5+: 2,571 users, 16,363 events |
-    | `FrequencyFilter(value=2)`, `unit="month"`, total | 29,188 | whole-month 2+ (6,928 users) |
-    | `FrequencyFilter(value=2)`, `unit="month"`, unique | 6,928 | 6,928 users |
+    | Query | `math` | Library result | Ground truth |
+    |---|---|---|---|
+    | unfiltered, `unit="day"`, summed over days | `total` (default) | 30,541 | 30,541 events from 8,281 users |
+    | `FrequencyFilter(value=2)`, `unit="day"`, summed over days | `total` | 3,893 | 3,893 events by users with 2+ **on the same day** (1,894 user-days) |
+    | `FrequencyFilter(value=3)`, `unit="day"` | `total` | 305 | 305 events, same-day 3+ |
+    | `FrequencyFilter(value=4)`, `unit="day"` | `total` | 20 | 20 events, same-day 4+ |
+    | `FrequencyFilter(value=5)`, `unit="day"` | `total` | **empty series** | same-day 5+: no user-days. Whole-month 5+: 2,571 users, 16,363 events (not what a daily query measures) |
+    | `FrequencyFilter(value=2)`, `unit="month"` | `total` | 29,188 | 29,188 events by the 6,928 users with 2+ in the month |
+    | `FrequencyFilter(value=2)`, `unit="month"` | `unique` | 6,928 | 6,928 users with 2+ in the month |
 
 !!! note "`date_range_value` / `date_range_unit` are unverified for inline filters"
     These two parameters render as a `behavior.dateRange` lookback on the

@@ -2432,8 +2432,12 @@ class Workspace:
                 bucket (``unit``), not over the whole date range: with
                 the default ``unit="day"`` it keeps only users who reach
                 the count within a single day, and an empty series is the
-                expected result when nobody does. Use ``unit="month"`` (or
-                a single-bucket range) for "N times over the period". See
+                expected result when nobody does. Choose the ``unit`` that
+                matches the period you mean (``"day"`` for "N times in a
+                day", ``"month"`` for "N times in a month");
+                ``unit="month"`` over a multi-month range still yields one
+                threshold per month, and "over the whole period" needs a
+                date range that fits inside one bucket. See
                 ``FrequencyFilter``.
             formula: Formula expression referencing events by position
                 (A, B, C...). Requires 2+ events. Cannot be combined

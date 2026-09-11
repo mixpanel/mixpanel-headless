@@ -67,8 +67,9 @@ may include API changes.
   date range. With the default `unit="day"`, `FrequencyFilter("Login",
   value=5)` keeps only users who logged in 5+ times on a single day and
   returns an empty series when nobody does, even if thousands did so across
-  the month; pass `unit="month"` (or a single-bucket range) for "N times
-  over the period". The `Workspace.query(where=...)` docstring, the query
+  the month; choose the `unit` that matches the threshold period
+  (`"month"` for "N times in a month"). The `Workspace.query(where=...)`
+  docstring, the query
   guide, and the mixpanelyst skill carry the same warning. The
   `date_range_value` / `date_range_unit` parameters are documented as having
   no observable effect on inline insights filters in a 2026-09-11 probe
