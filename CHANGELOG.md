@@ -5,11 +5,16 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased
+## 0.2.3 — 2026-09-11
+
+Patch release: report links (create, resolve, and run a Mixpanel report
+URL from headless params), a CLI exit-code change for
+`BookmarkValidationError`, and the plugin manifest catches up to the
+library version.
 
 ### Added
 
-- **Report links** (045, AIE-561 / AIE-562). Share a headless query as a
+- **Report links** (045, AIE-561 / AIE-562, #223). Share a headless query as a
   Mixpanel report URL and resolve a report URL back into runnable params.
   - `Workspace.create_report_link(params_or_result, *, report_type=, name=,
     description=, workspace_id=, bookmark_id=, validate=)` stores an unsaved
@@ -58,7 +63,9 @@ may include API changes.
   client-side schema check. `handle_errors` now prints
   `error: params failed schema validation` plus one line per
   `severity="error"` item and exits with `INVALID_ARGS` (3). Scripts that
-  test for exit code 1 on those commands must be updated.
+  test for exit code 1 on those commands must be updated. (#223)
+- Plugin: the manifest version is now `0.2.3`, in step with the library.
+  It stayed at `0.2.1` through the `0.2.2` release.
 
 ## 0.2.2 — 2026-09-01
 
