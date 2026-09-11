@@ -407,6 +407,17 @@ def _check_step_direction(
     return []
 
 
+_FLOW_MERGE_TYPE_TO_MODE: dict[str, str] = {
+    "tree": "tree",
+    "list": "paths",
+    "graph": "sankey",
+}
+"""Maps a flow ``flows_merge_type`` value to the ``query_flow`` mode that runs it.
+
+``build_flow_params`` writes this key for every mode, so it is the
+authoritative source when present.
+"""
+
 _FLOW_CHART_TYPE_TO_MODE: dict[str, str] = {
     "sankey": "sankey",
     "top-paths": "paths",
@@ -415,30 +426,38 @@ _FLOW_CHART_TYPE_TO_MODE: dict[str, str] = {
 }
 """Maps a flow ``chartType`` value to the ``query_flow`` mode that runs it.
 
-``build_flow_params`` writes ``"top-paths"`` for paths mode and ``"sankey"``
-for both sankey and tree mode. ``"paths"`` and ``"tree"`` are accepted for
-hand-written params.
+Fallback for params without ``flows_merge_type``. ``build_flow_params``
+writes ``"top-paths"`` for paths mode and ``"sankey"`` for both sankey and
+tree mode, so ``chartType`` alone cannot tell tree from sankey. ``"paths"``
+and ``"tree"`` are accepted for hand-written params.
 """
 
 
 def _flow_mode_from_params(params: dict[str, Any]) -> str:
     """Derive the flow chart mode from pre-built flow params.
 
+    ``flows_merge_type`` wins when present and recognised. ``chartType`` is
+    the fallback. Anything else runs as sankey.
+
     Args:
         params: Flow bookmark params, normally from ``build_flow_params``.
 
     Returns:
-        ``"sankey"``, ``"paths"``, or ``"tree"``. Missing or unknown
-        ``chartType`` values fall back to ``"sankey"``.
+        ``"sankey"``, ``"paths"``, or ``"tree"``.
 
     Example:
         ```python
+        _flow_mode_from_params({"chartType": "sankey", "flows_merge_type": "tree"})
+        # "tree"
         _flow_mode_from_params({"chartType": "top-paths"})
         # "paths"
         _flow_mode_from_params({})
         # "sankey"
         ```
     """
+    merge_type = params.get("flows_merge_type")
+    if isinstance(merge_type, str) and merge_type in _FLOW_MERGE_TYPE_TO_MODE:
+        return _FLOW_MERGE_TYPE_TO_MODE[merge_type]
     chart_type = params.get("chartType")
     if isinstance(chart_type, str):
         return _FLOW_CHART_TYPE_TO_MODE.get(chart_type, "sankey")
@@ -4162,11 +4181,13 @@ class Workspace:
         Args:
             params: Flow bookmark params dict, normally from
                 :meth:`build_flow_params`. Sent as the request ``bookmark``.
-            mode: Flow chart mode. ``None`` (default) derives it from
-                ``params["chartType"]``: ``"top-paths"`` or ``"paths"`` run
-                as paths, ``"tree"`` runs as tree, anything else runs as
-                sankey. The builder stores ``"sankey"`` for tree mode, so
-                pass ``mode="tree"`` explicitly to run a tree query.
+            mode: Flow chart mode. ``None`` (default) derives it from the
+                params: ``flows_merge_type`` (``"tree"``, ``"list"`` for
+                paths, ``"graph"`` for sankey) when present, else
+                ``chartType`` (``"top-paths"`` or ``"paths"`` for paths,
+                ``"tree"``, anything else sankey). Params from
+                :meth:`build_flow_params` always resolve to the mode they
+                were built with. Pass a value to override.
             workspace_id: Optional data view to run under. Wins over the
                 pinned session workspace.
 
@@ -4181,13 +4202,9 @@ class Workspace:
 
         Example:
             ```python
-            params = ws.build_flow_params("Login", mode="paths", last=7)
-            result = ws.run_flow_params(params)
+            params = ws.build_flow_params("Login", mode="tree", last=7)
+            result = ws.run_flow_params(params)   # runs as tree
             print(result.df.head())
-
-            # Tree mode is not recoverable from the params
-            params = ws.build_flow_params("Login", mode="tree")
-            result = ws.run_flow_params(params, mode="tree")
             ```
         """
         resolved_mode = mode if mode is not None else _flow_mode_from_params(params)

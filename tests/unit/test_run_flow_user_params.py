@@ -7,8 +7,9 @@ These two methods are the execution half of ``build_flow_params`` and
 Covers:
 
 - ``run_flow_params``: posts the params as the request ``bookmark``, derives
-  the flows ``query_type`` from ``params["chartType"]``, accepts an explicit
-  ``mode=`` override (needed for ``tree``), forwards ``workspace_id``, and
+  the flows ``query_type`` from ``params["flows_merge_type"]`` (falling back
+  to ``chartType``), accepts an explicit ``mode=`` override, forwards
+  ``workspace_id``, and
   sends the same body as ``query_flow`` for the same arguments.
 - ``run_user_params``: routes to the Engage ``stats`` endpoint when the
   params carry an aggregate ``action``, otherwise to profile export; forwards
@@ -241,13 +242,14 @@ class TestRunFlowParams:
         finally:
             ws.close()
 
-    def test_explicit_mode_overrides_chart_type(
+    def test_derives_tree_mode_from_flows_merge_type(
         self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
     ) -> None:
-        """``mode="tree"`` selects the tree query even though params say sankey.
+        """Params built with ``mode="tree"`` run as a tree query without help.
 
-        The builder emits ``chartType: "sankey"`` for tree mode, so tree is
-        only reachable through the explicit override.
+        The builder writes ``chartType: "sankey"`` for tree mode and records
+        the real mode in ``flows_merge_type: "tree"``. The runner must read
+        the merge type, or tree params would silently run as sankey.
 
         Args:
             workspace_factory: Factory for a mocked Workspace.
@@ -258,11 +260,64 @@ class TestRunFlowParams:
         try:
             params = ws.build_flow_params("Login", mode="tree")
             assert params["chartType"] == "sankey"
+            assert params["flows_merge_type"] == "tree"
 
-            result = ws.run_flow_params(params, mode="tree")
+            result = ws.run_flow_params(params)
 
             assert flow_body(mock_api_client)["query_type"] == "flows"
             assert result.mode == "tree"
+        finally:
+            ws.close()
+
+    @pytest.mark.parametrize("built_mode", ["sankey", "paths", "tree"])
+    def test_every_built_mode_round_trips(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+        built_mode: str,
+    ) -> None:
+        """``run_flow_params`` sends the same body as ``query_flow`` for each mode.
+
+        Args:
+            workspace_factory: Factory for a mocked Workspace.
+            mock_api_client: The recordable API client.
+            built_mode: The flow mode passed to the builder.
+        """
+        mock_api_client.arb_funnels_query.return_value = {
+            **MOCK_SANKEY_RESPONSE,
+            "trees": [],
+            "flows": [],
+        }
+        ws = workspace_factory()
+        try:
+            ws.query_flow("Login", mode=built_mode)  # type: ignore[arg-type]
+            direct = flow_body(mock_api_client)
+
+            ws.run_flow_params(ws.build_flow_params("Login", mode=built_mode))  # type: ignore[arg-type]
+            round_trip = flow_body(mock_api_client)
+
+            assert round_trip == direct
+        finally:
+            ws.close()
+
+    def test_explicit_mode_overrides_params(
+        self, workspace_factory: Callable[..., Workspace], mock_api_client: MagicMock
+    ) -> None:
+        """``mode=`` wins over whatever the params record.
+
+        Args:
+            workspace_factory: Factory for a mocked Workspace.
+            mock_api_client: The recordable API client.
+        """
+        mock_api_client.arb_funnels_query.return_value = MOCK_TOP_PATHS_RESPONSE
+        ws = workspace_factory()
+        try:
+            params = ws.build_flow_params("Login", mode="tree")
+
+            result = ws.run_flow_params(params, mode="paths")
+
+            assert flow_body(mock_api_client)["query_type"] == "flows_top_paths"
+            assert result.mode == "paths"
         finally:
             ws.close()
 
@@ -275,6 +330,18 @@ class TestRunFlowParams:
             ({"steps": [], "chartType": "paths"}, "flows_top_paths"),
             ({"steps": [], "chartType": "tree"}, "flows"),
             ({"steps": [], "chartType": "something-else"}, "flows_sankey"),
+            ({"steps": [], "flows_merge_type": "tree"}, "flows"),
+            ({"steps": [], "flows_merge_type": "list"}, "flows_top_paths"),
+            ({"steps": [], "flows_merge_type": "graph"}, "flows_sankey"),
+            (
+                {"steps": [], "chartType": "sankey", "flows_merge_type": "tree"},
+                "flows",
+            ),
+            (
+                {"steps": [], "chartType": "top-paths", "flows_merge_type": "list"},
+                "flows_top_paths",
+            ),
+            ({"steps": [], "flows_merge_type": "unknown"}, "flows_sankey"),
         ],
     )
     def test_chart_type_to_query_type(
@@ -284,9 +351,10 @@ class TestRunFlowParams:
         params: dict[str, Any],
         expected: str,
     ) -> None:
-        """Hand-written params map ``chartType`` to the right ``query_type``.
+        """Hand-written params map to the right ``query_type``.
 
-        Missing or unknown chart types fall back to sankey.
+        ``flows_merge_type`` is authoritative when present. ``chartType``
+        is the fallback. Missing or unknown values fall back to sankey.
 
         Args:
             workspace_factory: Factory for a mocked Workspace.
