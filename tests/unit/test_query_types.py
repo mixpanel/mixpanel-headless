@@ -6,18 +6,23 @@ Formula dataclass, and QueryResult.df behavior per mode (T045, T049).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
-from typing import Any
+from dataclasses import FrozenInstanceError
+from typing import Any, get_args
 
 import pytest
 
+from mixpanel_headless._internal.bookmark_builders import build_filter_entry
 from mixpanel_headless._internal.bookmark_enums import (
     MATH_NO_PER_USER,
     MATH_PROPERTY_OPTIONAL,
     MATH_REQUIRING_PROPERTY,
 )
+from mixpanel_headless._literal_types import FilterOperator
 from mixpanel_headless.exceptions import ParamTypeError, ParamValidationError
 from mixpanel_headless.types import (
+    _FILTER_OPERATOR_ALIASES,
     CustomPropertyRef,
     Filter,
     Formula,
@@ -28,6 +33,7 @@ from mixpanel_headless.types import (
     Metric,
     QueryResult,
     TimeComparison,
+    _filter_unchecked,
 )
 
 # =============================================================================
@@ -2217,3 +2223,348 @@ class TestCodedFrequencyFilterCodes:
         with pytest.raises(ParamValidationError) as excinfo:
             FrequencyFilter(**kwargs)
         assert excinfo.value.code == code
+
+
+# =============================================================================
+# Direct construction: operator validation + factory-method aliases
+# =============================================================================
+
+
+def _direct(
+    property: str, operator: str, value: Any, property_type: str = "string"
+) -> Filter:
+    """Construct a Filter positionally with an untyped operator string.
+
+    Args:
+        property: Property name.
+        operator: Raw operator spelling (wire operator, alias, or garbage).
+        value: Raw ``_value`` payload.
+        property_type: Raw ``_property_type`` value.
+
+    Returns:
+        The constructed ``Filter`` (after ``__post_init__`` ran).
+    """
+    return Filter(property, operator, value, property_type)  # type: ignore[arg-type]
+
+
+def _public_factory_names() -> set[str]:
+    """Enumerate ``Filter``'s public classmethod factories from the class body.
+
+    Returns:
+        Names of every ``@classmethod`` on ``Filter`` not prefixed with ``_``.
+    """
+    return {
+        name
+        for name, attr in vars(Filter).items()
+        if isinstance(attr, classmethod) and not name.startswith("_")
+    }
+
+
+_FACTORY_SAMPLE_CALLS: dict[str, Callable[[], Filter]] = {
+    "equals": lambda: Filter.equals("country", "US"),
+    "not_equals": lambda: Filter.not_equals("browser", "IE"),
+    "contains": lambda: Filter.contains("browser", "Chrome"),
+    "not_contains": lambda: Filter.not_contains("url", "test"),
+    "greater_than": lambda: Filter.greater_than("gold", 10),
+    "less_than": lambda: Filter.less_than("age", 30),
+    "between": lambda: Filter.between("amount", 10, 100),
+    "not_between": lambda: Filter.not_between("age", 18, 65),
+    "at_least": lambda: Filter.at_least("age", 18),
+    "at_most": lambda: Filter.at_most("age", 65),
+    "is_set": lambda: Filter.is_set("class"),
+    "is_not_set": lambda: Filter.is_not_set("class"),
+    "starts_with": lambda: Filter.starts_with("url", "https"),
+    "ends_with": lambda: Filter.ends_with("url", ".html"),
+    "is_true": lambda: Filter.is_true("flag"),
+    "is_false": lambda: Filter.is_false("flag"),
+    "in_cohort": lambda: Filter.in_cohort(123),
+    "not_in_cohort": lambda: Filter.not_in_cohort(123),
+    "on": lambda: Filter.on("signup", "2026-01-01"),
+    "not_on": lambda: Filter.not_on("signup", "2026-01-01"),
+    "before": lambda: Filter.before("signup", "2026-01-01"),
+    "since": lambda: Filter.since("signup", "2026-01-01"),
+    "in_the_last": lambda: Filter.in_the_last("signup", 7, "day"),
+    "not_in_the_last": lambda: Filter.not_in_the_last("signup", 7, "day"),
+    "date_between": lambda: Filter.date_between("signup", "2026-01-01", "2026-02-01"),
+    "date_not_between": lambda: Filter.date_not_between(
+        "signup", "2026-01-01", "2026-02-01"
+    ),
+    "in_the_next": lambda: Filter.in_the_next("renewal", 7, "day"),
+    "list_contains": lambda: Filter.list_contains("cart", sku="A1"),
+}
+"""One representative call per public factory, keyed by factory name."""
+
+
+def _wire(f: Filter) -> str:
+    """Serialize a Filter's bookmark entry to a canonical JSON string.
+
+    Args:
+        f: Filter to serialize.
+
+    Returns:
+        ``json.dumps(build_filter_entry(f), sort_keys=True)``.
+    """
+    return json.dumps(build_filter_entry(f), sort_keys=True)
+
+
+class TestFilterDirectConstruction:
+    """Direct ``Filter(...)`` construction validates and normalizes ``_operator``.
+
+    Regression coverage for the MP Bench report where the factory-method
+    spelling (``"greater_than"``, ``"is_set"``, boolean ``"equals"``) was
+    serialized verbatim as ``filterOperator`` and rejected by the query API
+    with HTTP 400.
+    """
+
+    # --- The report's table: factory path == positional path, byte for byte ---
+
+    def test_report_row_greater_than(self) -> None:
+        """Filter("gold", "greater_than", 10, "number") == Filter.greater_than("gold", 10)."""
+        factory = Filter.greater_than("gold", 10)
+        positional = Filter("gold", "greater_than", 10, "number")  # type: ignore[arg-type]
+        assert positional == factory
+        assert build_filter_entry(positional)["filterOperator"] == "is greater than"
+        assert _wire(positional) == _wire(factory)
+
+    def test_report_row_is_set(self) -> None:
+        """Filter("class", "is_set", None) == Filter.is_set("class")."""
+        factory = Filter.is_set("class")
+        positional = Filter("class", "is_set", None)  # type: ignore[arg-type]
+        assert positional == factory
+        assert build_filter_entry(positional)["filterOperator"] == "is set"
+        assert _wire(positional) == _wire(factory)
+
+    def test_report_row_boolean_equals_true(self) -> None:
+        """Filter("flag", "equals", True, "boolean") == Filter.is_true("flag")."""
+        factory = Filter.is_true("flag")
+        positional = Filter("flag", "equals", True, "boolean")
+        assert positional == factory
+        entry = build_filter_entry(positional)
+        assert entry["filterOperator"] == "true"
+        assert entry["filterValue"] is None
+        assert _wire(positional) == _wire(factory)
+
+    # --- Boolean normalization table ---
+
+    @pytest.mark.parametrize(
+        ("operator", "value", "expected"),
+        [
+            pytest.param("equals", True, "true", id="equals-True"),
+            pytest.param("equals", False, "false", id="equals-False"),
+            pytest.param("does not equal", True, "false", id="does-not-equal-True"),
+            pytest.param("does not equal", False, "true", id="does-not-equal-False"),
+            pytest.param("not_equals", True, "false", id="not_equals-alias-True"),
+            pytest.param("not_equals", False, "true", id="not_equals-alias-False"),
+            pytest.param("equals", [True], "true", id="equals-list-True"),
+            pytest.param("equals", [False], "false", id="equals-list-False"),
+            pytest.param("is_true", None, "true", id="is_true-alias"),
+            pytest.param("is_false", None, "false", id="is_false-alias"),
+        ],
+    )
+    def test_boolean_operators_normalize_to_true_false(
+        self, operator: str, value: Any, expected: str
+    ) -> None:
+        """Boolean equals/not-equals with a bool value collapse to true/false + None."""
+        f = _direct("flag", operator, value, "boolean")
+        assert f._operator == expected
+        assert f._value is None
+        twin = Filter.is_true("flag") if expected == "true" else Filter.is_false("flag")
+        assert f == twin
+        assert _wire(f) == _wire(twin)
+
+    @pytest.mark.parametrize(
+        ("operator", "value"),
+        [
+            pytest.param("is set", None, id="is-set"),
+            pytest.param("equals", "yes", id="equals-string"),
+            pytest.param("equals", 1, id="equals-int-not-bool"),
+            pytest.param("equals", None, id="equals-none"),
+            pytest.param("equals", [True, False], id="equals-two-bools"),
+            pytest.param("contains", "tr", id="contains"),
+        ],
+    )
+    def test_boolean_rejects_non_boolean_operators(
+        self, operator: str, value: Any
+    ) -> None:
+        """A boolean-typed Filter only accepts true/false after normalization."""
+        with pytest.raises(ValueError, match="boolean") as excinfo:
+            _direct("flag", operator, value, "boolean")
+        assert "Filter.is_true" in str(excinfo.value)
+        assert "Filter.is_false" in str(excinfo.value)
+
+    def test_boolean_wire_operators_accepted_unchanged(self) -> None:
+        """Filter("flag", "true", None, "boolean") stays exactly as given."""
+        assert _direct("flag", "true", None, "boolean") == Filter.is_true("flag")
+        assert _direct("flag", "false", None, "boolean") == Filter.is_false("flag")
+
+    # --- Unknown operators ---
+
+    def test_unknown_operator_raises_value_error_with_guidance(self) -> None:
+        """An operator outside the literal and alias sets fails immediately."""
+        with pytest.raises(ValueError) as excinfo:
+            Filter("gold", "bigger_than", 10, "number")  # type: ignore[arg-type]
+        message = str(excinfo.value)
+        assert "'bigger_than'" in message
+        for wire in get_args(FilterOperator):
+            assert f"'{wire}'" in message
+        assert "Filter.greater_than" in message
+
+    @pytest.mark.parametrize("operator", ["", "GREATER_THAN", "is greater than ", ">"])
+    def test_near_miss_spellings_are_rejected(self, operator: str) -> None:
+        """Case, whitespace, and symbol variants are not silently accepted."""
+        with pytest.raises(ValueError, match="Unknown Filter operator"):
+            _direct("gold", operator, 10, "number")
+
+    def test_unknown_operator_error_is_not_a_coded_guard(self) -> None:
+        """The construction guard is a plain ValueError (no registry code)."""
+        with pytest.raises(ValueError) as excinfo:
+            _direct("gold", "bigger_than", 10, "number")
+        assert not isinstance(excinfo.value, ParamValidationError)
+
+    # --- Already-valid inputs are untouched ---
+
+    @pytest.mark.parametrize(
+        ("operator", "value", "property_type"),
+        [
+            pytest.param("is greater than", 18, "number", id="number"),
+            pytest.param("equals", "US", "string", id="equals-bare-string"),
+            pytest.param("equals", ["US"], "string", id="equals-list"),
+            pytest.param("is set", None, "string", id="is-set"),
+            pytest.param("was on", ["2026-01-01"], "datetime", id="datetime"),
+            pytest.param("true", None, "string", id="true-on-string-type"),
+        ],
+    )
+    def test_valid_wire_operators_pass_through_unchanged(
+        self, operator: str, value: Any, property_type: str
+    ) -> None:
+        """No alias or value rewriting happens for an already-valid operator."""
+        f = _direct("p", operator, value, property_type)
+        assert f._operator == operator
+        assert f._value == value
+        assert f._property_type == property_type
+
+    def test_list_contains_guard_still_runs_after_normalization(self) -> None:
+        """The pre-existing LC1 guard is preserved behind the operator check."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            _direct("cart", "list_contains", None, "object")
+        assert excinfo.value.code == "LC1_MISSING_ITEM_FILTERS"
+
+    # --- Alias table is derived from the factory methods on the class ---
+
+    def test_sample_calls_cover_every_public_factory(self) -> None:
+        """The sample-call table tracks the class: adding a factory fails here."""
+        assert set(_FACTORY_SAMPLE_CALLS) == _public_factory_names()
+
+    def test_alias_keys_are_factory_names(self) -> None:
+        """Every alias key is a public factory name or a documented segfilter spelling.
+
+        ``"is equal to"`` is the one non-factory key: it is a
+        ``NUMBER_OPERATOR_MAP`` row in ``segfilter.py`` that pre-dates the
+        ``FilterOperator`` literal and is kept constructible for that path.
+        """
+        assert set(_FILTER_OPERATOR_ALIASES) <= _public_factory_names() | {
+            "is equal to"
+        }
+
+    @pytest.mark.parametrize(
+        ("alias", "wire"),
+        [
+            pytest.param("is equal to", "equals", id="is-equal-to"),
+            pytest.param("between", "is between", id="between"),
+        ],
+    )
+    def test_segfilter_compat_spellings_normalize(self, alias: str, wire: str) -> None:
+        """The two segfilter-only spellings normalize to their literal twins."""
+        f = _direct("count", alias, 42, "number")
+        assert f._operator == wire
+        assert f == _direct("count", wire, 42, "number")
+
+
+class TestFilterUnchecked:
+    """``_filter_unchecked`` rebuilds a Filter verbatim, bypassing ``__post_init__``.
+
+    It exists for the conformance codec and for tests that drive downstream
+    builder guards with operators the constructor now rejects.
+    """
+
+    def test_sets_fields_verbatim_without_validation(self) -> None:
+        """An operator the constructor rejects is stored as given."""
+        f = _filter_unchecked(_property="p", _operator="was frobnicated", _value=None)
+        assert isinstance(f, Filter)
+        # str() sidesteps mypy's Literal non-overlap check: the whole point is
+        # that the field holds a spelling outside the FilterOperator literal.
+        assert str(f._operator) == "was frobnicated"
+        assert f._value is None
+
+    def test_does_not_normalize_aliases(self) -> None:
+        """Alias spellings are kept verbatim — faithful rehydration, not construction."""
+        f = _filter_unchecked(
+            _property="gold",
+            _operator="greater_than",
+            _value=10,
+            _property_type="number",
+        )
+        assert str(f._operator) == "greater_than"
+
+    def test_applies_dataclass_defaults(self) -> None:
+        """Omitted optional fields take the dataclass defaults."""
+        f = _filter_unchecked(_property="p", _operator="is set", _value=None)
+        assert f._property_type == "string"
+        assert f._resource_type == "events"
+        assert f._date_unit is None
+        assert f._list_item_filters is None
+        assert f._list_item_quantifier is None
+
+    def test_equals_constructed_filter_for_valid_fields(self) -> None:
+        """With canonical fields the result is equal to a normally built Filter."""
+        f = _filter_unchecked(
+            _property="gold",
+            _operator="is greater than",
+            _value=10,
+            _property_type="number",
+        )
+        assert f == Filter.greater_than("gold", 10)
+        assert _wire(f) == _wire(Filter.greater_than("gold", 10))
+
+    def test_missing_required_field_raises_type_error(self) -> None:
+        """Required fields (no dataclass default) must be supplied."""
+        with pytest.raises(TypeError, match="_value"):
+            _filter_unchecked(_property="p", _operator="is set")
+
+    def test_unknown_field_raises_type_error(self) -> None:
+        """Fields that are not on the dataclass are rejected, not silently dropped."""
+        with pytest.raises(TypeError, match="_bogus"):
+            _filter_unchecked(_property="p", _operator="is set", _value=None, _bogus=1)
+
+    def test_result_is_still_frozen(self) -> None:
+        """Bypassing ``__post_init__`` does not thaw the instance."""
+        f = _filter_unchecked(_property="p", _operator="is set", _value=None)
+        with pytest.raises(FrozenInstanceError):
+            f._operator = "equals"  # type: ignore[misc]
+
+    def test_alias_values_are_wire_operators(self) -> None:
+        """Every alias resolves to a member of the FilterOperator literal."""
+        assert set(_FILTER_OPERATOR_ALIASES.values()) <= set(get_args(FilterOperator))
+
+    @pytest.mark.parametrize("name", sorted(_FACTORY_SAMPLE_CALLS))
+    def test_alias_table_matches_operator_each_factory_emits(self, name: str) -> None:
+        """A factory whose name is not itself a wire operator must be aliased."""
+        factory = _FACTORY_SAMPLE_CALLS[name]()
+        assert factory._operator == _FILTER_OPERATOR_ALIASES.get(name, name)
+
+    @pytest.mark.parametrize(
+        "name", sorted(set(_FACTORY_SAMPLE_CALLS) - {"list_contains"})
+    )
+    def test_positional_alias_reproduces_factory_byte_for_byte(self, name: str) -> None:
+        """Rebuilding a factory result positionally via its name yields the same wire."""
+        factory = _FACTORY_SAMPLE_CALLS[name]()
+        positional = Filter(
+            factory._property,
+            name,  # type: ignore[arg-type]
+            factory._value,
+            factory._property_type,
+            factory._resource_type,
+            factory._date_unit,
+        )
+        assert positional == factory
+        assert _wire(positional) == _wire(factory)

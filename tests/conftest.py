@@ -6,7 +6,7 @@ import os
 import tempfile
 from collections.abc import Callable, Generator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from mixpanel_headless._internal.api_client import MixpanelAPIClient
     from mixpanel_headless._internal.auth.session import Session
     from mixpanel_headless._internal.config import ConfigManager
+    from mixpanel_headless.types import Filter
 
 
 def make_session(
@@ -339,3 +340,48 @@ def rate_limit_handler() -> Callable[[httpx.Request], httpx.Response]:
         return httpx.Response(429, headers={"Retry-After": "60"})
 
     return handler
+
+
+def make_unchecked_filter(
+    property: str,
+    operator: str,
+    value: Any,
+    property_type: str = "string",
+    resource_type: str = "events",
+) -> Filter:
+    """Build a ``Filter`` that bypasses ``Filter.__post_init__`` entirely.
+
+    ``Filter`` validates and normalizes ``_operator`` at construction time, so
+    a deliberately invalid operator can no longer be smuggled through the
+    constructor. Tests that exercise the *downstream* operator guards
+    (segfilter ``SG1``/``SG2``/``SG3``, engage selector ``ES13``) use this
+    positional convenience wrapper around
+    ``mixpanel_headless.types._filter_unchecked`` to reach those branches
+    with the raw field values they need.
+
+    Args:
+        property: Raw ``_property`` value.
+        operator: Raw ``_operator`` value (may be deliberately invalid).
+        value: Raw ``_value`` payload.
+        property_type: Raw ``_property_type`` value (may be invalid).
+        resource_type: Raw ``_resource_type`` value.
+
+    Returns:
+        A frozen ``Filter`` whose fields are set verbatim, with no alias
+        normalization or operator validation applied.
+
+    Example:
+        ```python
+        f = make_unchecked_filter("p", "was frobnicated", None)
+        # f._operator == "was frobnicated"  (Filter(...) would raise ValueError)
+        ```
+    """
+    from mixpanel_headless.types import _filter_unchecked
+
+    return _filter_unchecked(
+        _property=property,
+        _operator=operator,
+        _value=value,
+        _property_type=property_type,
+        _resource_type=resource_type,
+    )

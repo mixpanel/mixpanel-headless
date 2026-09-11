@@ -77,6 +77,7 @@ from mixpanel_headless.types import (
     RetentionEvent,
     TimeComparison,
     UserAction,
+    _filter_unchecked,
 )
 
 FuzzCall = tuple[str, dict[str, Any]]
@@ -238,10 +239,11 @@ _SELECTOR_OPERATORS: tuple[str, ...] = (
     "is not set",
     "true",
     "false",
-    # Unsupported spellings — the ES13 fallthrough. ``list_contains`` is
-    # deliberately absent: ``Filter.__post_init__`` rejects it without
-    # ``_list_item_filters``, so the draw would fail at CONSTRUCTION and
-    # never reach the translation under test.
+    # Unsupported spellings — the ES13 fallthrough. ``Filter.__post_init__``
+    # rejects these at construction, so the draw below rebuilds the Filter
+    # field-for-field via ``_filter_unchecked`` to reach the translation
+    # under test. ``list_contains`` is deliberately absent: it needs
+    # ``_list_item_filters`` / ``_list_item_quantifier`` to be meaningful.
     "",
     "was frobnicated",
     "is within",
@@ -252,9 +254,10 @@ _SELECTOR_OPERATORS: tuple[str, ...] = (
 def _escaping_filters(draw: st.DrawFn) -> Filter:
     """Draw a Filter with escaping-biased property names and values.
 
-    Filters are built through the dataclass constructor (not the typed
-    factories) so the drawn operator/value combinations can be mismatched
-    on purpose — every ES guard must be reachable.
+    Filters are built field-for-field via ``_filter_unchecked`` (not the
+    typed factories, and not the validating constructor) so the drawn
+    operator/value combinations can be mismatched on purpose — every ES
+    guard must be reachable.
 
     Args:
         draw: Hypothesis draw function.
@@ -283,10 +286,10 @@ def _escaping_filters(draw: st.DrawFn) -> Filter:
         )
     else:
         value = draw(st.one_of(st.none(), _ESCAPING_TEXT))
-    return Filter(
+    return _filter_unchecked(
         _property=draw(_ESCAPING_TEXT),
-        _operator=operator,  # type: ignore[arg-type]
-        _value=value,  # type: ignore[arg-type]
+        _operator=operator,
+        _value=value,
     )
 
 
@@ -390,7 +393,9 @@ _FILTERS_TO_SELECTOR = FuzzTarget(
             {
                 "filters": [
                     Filter.is_set("p"),
-                    Filter("p", "was frobnicated", None),  # type: ignore[arg-type]
+                    _filter_unchecked(
+                        _property="p", _operator="was frobnicated", _value=None
+                    ),
                 ]
             },
         ),
@@ -400,7 +405,9 @@ _FILTERS_TO_SELECTOR = FuzzTarget(
             {
                 "filters": [
                     Filter(123, "is set", None),  # type: ignore[arg-type]
-                    Filter("p", "was frobnicated", None),  # type: ignore[arg-type]
+                    _filter_unchecked(
+                        _property="p", _operator="was frobnicated", _value=None
+                    ),
                 ]
             },
         ),

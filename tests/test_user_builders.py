@@ -18,6 +18,7 @@ from mixpanel_headless._internal.query.user_builders import (
 )
 from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import CohortCriteria, CohortDefinition, Filter
+from tests.conftest import make_unchecked_filter
 
 # =============================================================================
 # filter_to_selector — individual operator mapping
@@ -689,21 +690,21 @@ class TestCodedEngageSelectorCodes:
 
     def test_es13_direct_raises_coded_error(self) -> None:
         """Unsupported operator raises ES13."""
-        f = Filter("p", "was frobnicated", None)  # type: ignore[arg-type]
+        f = make_unchecked_filter("p", "was frobnicated", None)
         with pytest.raises(ParamValidationError) as excinfo:
             filter_to_selector(f)
         assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
 
     def test_es13_seam_raises_coded_error(self) -> None:
         """filters_to_selector surfaces ES13 for unsupported operators."""
-        f = Filter("p", "is within", None)  # type: ignore[arg-type]
+        f = make_unchecked_filter("p", "is within", None)
         with pytest.raises(ParamValidationError) as excinfo:
             filters_to_selector([f])
         assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
 
     def test_es_guards_stay_catchable_as_value_error(self) -> None:
         """Converted ES* guards remain catchable via bare ValueError."""
-        f = Filter("p", "was frobnicated", None)  # type: ignore[arg-type]
+        f = make_unchecked_filter("p", "was frobnicated", None)
         with pytest.raises(ValueError) as excinfo:
             filter_to_selector(f)
         assert isinstance(excinfo.value, ParamValidationError)

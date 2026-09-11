@@ -474,8 +474,45 @@ def _tuple_fields(cls: type) -> frozenset[str]:
     )
 
 
+def _rebuild_dataclass(cls: type, kwargs: Mapping[str, Any]) -> Any:
+    """Instantiate ``cls`` from decoded vector fields.
+
+    Every codec dataclass goes through its own constructor — except
+    ``Filter``, which is rebuilt field-for-field via
+    ``mixpanel_headless.types._filter_unchecked`` so ``Filter.__post_init__``
+    does not run. The codec's job is to reproduce the *recorded* object
+    faithfully: pinned vectors capture the downstream builders' own guard
+    behaviour (engage ``ES13``, segfilter ``SG1`` / ``SG2`` / ``SG3``) on a
+    Filter that was already constructed at record time. Since the
+    constructor started rejecting non-literal operators and normalizing
+    alias spellings, re-running it here would either refuse to rebuild
+    those inputs or silently rewrite them before the builder under test
+    ever sees them. The builders' behaviour on the rebuilt Filter is
+    unchanged, so the pinned outputs still hold.
+
+    Args:
+        cls: The dataclass named by the payload's ``$type``.
+        kwargs: Decoded field values keyed by dataclass field name.
+
+    Returns:
+        A new ``cls`` instance carrying exactly the recorded fields.
+
+    Raises:
+        Exception: Whatever the constructor (or the unchecked rebuild)
+            raises for the given fields; the caller wraps it.
+    """
+    from mixpanel_headless.types import Filter, _filter_unchecked
+
+    if cls is Filter:
+        return _filter_unchecked(**kwargs)
+    return cls(**kwargs)
+
+
 def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
     """Reconstruct a frozen dataclass from its tagged-object fields.
+
+    ``Filter`` payloads are rebuilt without re-running ``__post_init__``;
+    see :func:`_rebuild_dataclass` for why.
 
     Args:
         cls: The dataclass named by the payload's ``$type``.
@@ -502,7 +539,7 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
             decoded = tuple(decoded)
         kwargs[name] = decoded
     try:
-        return cls(**kwargs)
+        return _rebuild_dataclass(cls, kwargs)
     except Exception as exc:
         raise UndecodableValueError(
             f"could not reconstruct {cls.__name__} from vector fields: {exc}"

@@ -32,7 +32,8 @@ from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import BookmarkValidationError
-from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
+from mixpanel_headless.types import ProfilePageResult, UserQueryResult
+from tests.conftest import make_unchecked_filter
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -1340,7 +1341,7 @@ class TestQueryUserValueErrorWrapping:
         workspace_factory: Callable[..., Workspace],
     ) -> None:
         """Unsupported filter operator raises BookmarkValidationError."""
-        f = Filter("prop", "unsupported_op", "val")  # type: ignore[arg-type]
+        f = make_unchecked_filter("prop", "unsupported_op", "val")
         ws = workspace_factory()
         try:
             with pytest.raises(BookmarkValidationError):
