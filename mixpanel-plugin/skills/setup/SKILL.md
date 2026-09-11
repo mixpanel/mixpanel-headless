@@ -169,4 +169,4 @@ ws = mp.Workspace(account="team", project="67890")   # both axes
 ws.use(project="98765").events()                     # in-session switch (no re-auth)
 ```
 
-_The mixpanelyst skill auto-triggers on analytics questions. For the analytical frameworks that guide investigations, see [analytical-frameworks.md](../mixpanelyst/references/analytical-frameworks.md). For the complete Python API, see [python-api.md](../mixpanelyst/references/python-api.md)._
+_The mixpanelyst skill auto-triggers on analytics questions. For the analytical frameworks that guide investigations, see the [Exploratory Analysis Workflow](../mixpanelyst/SKILL.md#exploratory-analysis-workflow) in the mixpanelyst skill. For the complete Python API, see the [mixpanel_headless API Reference](../mixpanelyst/SKILL.md)._
