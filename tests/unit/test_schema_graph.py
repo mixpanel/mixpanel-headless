@@ -24,6 +24,7 @@ import typer.testing
 from pydantic import SecretStr
 
 from mixpanel_headless._internal.api_client import (
+    PER_EVENT_PROPERTIES_CHUNK_SIZE,
     MixpanelAPIClient,
     _canonical_resource_type,
 )
@@ -392,6 +393,7 @@ class TestApiClientPerEventProperties:
         def handler(request: httpx.Request) -> httpx.Response:
             seen["url"] = str(request.url.copy_with(query=None))
             seen["params"] = dict(request.url.params)
+            seen["names"] = request.url.params.get_list("name[]")
             return httpx.Response(
                 200,
                 json={
@@ -401,10 +403,11 @@ class TestApiClientPerEventProperties:
                 },
             )
 
-        rows = _client(handler).list_per_event_properties()
+        rows = _client(handler).list_per_event_properties(["Purchase"])
         assert seen["url"] == "https://mixpanel.com/api/query/data_definitions/events"
         assert seen["params"]["fetch_per_event_properties"] == "true"
         assert seen["params"]["project_id"] == "12345"
+        assert seen["names"] == ["Purchase"]
         assert rows == [{"name": "Purchase", "properties": [{"name": "amount"}]}]
 
     def test_uses_export_timeout(self) -> None:
@@ -415,7 +418,7 @@ class TestApiClientPerEventProperties:
             seen["timeout"] = request.extensions.get("timeout")
             return httpx.Response(200, json={"results": []})
 
-        _client(handler).list_per_event_properties()
+        _client(handler).list_per_event_properties(["Purchase"])
         assert seen["timeout"]["read"] == 600.0
 
     def test_raises_on_unexpected_shape(self) -> None:
@@ -425,7 +428,59 @@ class TestApiClientPerEventProperties:
             return httpx.Response(200, json={"results": {"unexpected": "shape"}})
 
         with pytest.raises(MixpanelHeadlessError, match="expected list"):
-            _client(handler).list_per_event_properties()
+            _client(handler).list_per_event_properties(["Purchase"])
+
+    def test_splits_names_into_chunks(self) -> None:
+        """Names beyond the chunk size are gathered one request per chunk.
+
+        Unchunked, the server serializes every event of the project inside a
+        single request and large projects outlive the gateway deadline.
+        """
+        chunks: list[list[str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            chunks.append(request.url.params.get_list("name[]"))
+            return httpx.Response(200, json={"results": []})
+
+        names = [
+            f"Event {index}" for index in range(PER_EVENT_PROPERTIES_CHUNK_SIZE + 1)
+        ]
+        _client(handler).list_per_event_properties(names)
+        assert [len(chunk) for chunk in chunks] == [PER_EVENT_PROPERTIES_CHUNK_SIZE, 1]
+        assert [name for chunk in chunks for name in chunk] == names
+
+    def test_concatenates_chunk_rows_in_order(self) -> None:
+        """Rows from every chunk are returned, in chunk order."""
+        names = [
+            f"Event {index}" for index in range(PER_EVENT_PROPERTIES_CHUNK_SIZE + 2)
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested = request.url.params.get_list("name[]")
+            return httpx.Response(
+                200,
+                json={
+                    "results": [{"name": name, "properties": []} for name in requested]
+                },
+            )
+
+        rows = _client(handler).list_per_event_properties(names)
+        assert [row["name"] for row in rows] == names
+
+    def test_defaults_to_every_event_in_the_lexicon(self) -> None:
+        """Called with no names, the gather resolves them from the event listing."""
+        seen: list[list[str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if "data-definitions/events" in request.url.path:
+                return httpx.Response(
+                    200, json=[{"name": "Purchase"}, {"displayName": "nameless"}]
+                )
+            seen.append(request.url.params.get_list("name[]"))
+            return httpx.Response(200, json={"results": []})
+
+        _client(handler).list_per_event_properties()
+        assert seen == [["Purchase"]]
 
 
 class TestCanonicalResourceType:
@@ -500,6 +555,20 @@ class TestDiscoveryGetSchemaGraph:
         assert api.list_per_event_properties.call_count == 1
         for call in api.list_property_definitions.call_args_list:
             assert not call.kwargs.get("include_events")
+
+    def test_per_event_gather_receives_listed_event_names(self) -> None:
+        """The gather is scoped to the names the event listing returned.
+
+        Nameless listing rows are skipped — they carry no invertible edges.
+        """
+        api = self._mock_api()
+        api.list_event_definitions.return_value = [
+            {"name": "Purchase"},
+            {"displayName": "nameless"},
+            {"name": "Login"},
+        ]
+        DiscoveryService(api).get_schema_graph()
+        api.list_per_event_properties.assert_called_once_with(["Purchase", "Login"])
 
     def test_per_event_rows_malformed_entries_skipped(self) -> None:
         """Nameless events and malformed property entries contribute no edges."""

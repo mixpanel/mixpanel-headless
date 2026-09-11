@@ -223,6 +223,9 @@ _SERVER_DEADLINE_MARGIN_S: float = 15.0
 DEFAULT_APP_TIMEOUT_S: float = APP_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
 DEFAULT_QUERY_TIMEOUT_S: float = QUERY_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
 
+# Chunk size for the per-event properties gather, matching the Lexicon export.
+PER_EVENT_PROPERTIES_CHUNK_SIZE: int = 200
+
 
 def _parse_feed_date(value: str, field: str) -> datetime:
     """Parse a ``YYYY-MM-DD`` activity-feed date, raising QueryError on bad input.
@@ -7262,7 +7265,9 @@ class MixpanelAPIClient:
             include_zero_counts=include_zero_counts,
         )
 
-    def list_per_event_properties(self) -> list[dict[str, Any]]:
+    def list_per_event_properties(
+        self, names: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """List every event with the properties observed on it (query API).
 
         Calls ``GET {query}/data_definitions/events`` with
@@ -7271,9 +7276,19 @@ class MixpanelAPIClient:
         This is the relationship source for the schema graph: the App API's
         ``includeEvents=true`` bulk call computes the same event<->property join
         behind a ~120s gateway deadline it cannot meet on large projects, while
-        the query-API route permits longer runs, so this request is sent with
+        the query-API route permits longer runs, so each request is sent with
         the export timeout. A pinned workspace is injected as ``workspace_id``
         and the server applies its event-name filters.
+
+        Issued one request per ``name[]`` chunk of
+        :data:`PER_EVENT_PROPERTIES_CHUNK_SIZE` events, since an unchunked
+        gather makes the server serialize the whole project inside one request
+        and outlive its gateway deadline on large projects. Chunks return
+        disjoint event rows, so the concatenation is the unchunked result.
+
+        Args:
+            names: Event names to gather properties for. Defaults to every
+                event in the project's Lexicon.
 
         Returns:
             List of event dicts; each carries a ``properties`` list of property
@@ -7293,19 +7308,31 @@ class MixpanelAPIClient:
                 rows[0]["properties"][0]["name"]  # "amount"
             ```
         """
+        if names is None:
+            names = [
+                str(row["name"])
+                for row in self.list_event_definitions()
+                if row.get("name")
+            ]
         url = self._build_url("query", "/data_definitions/events")
-        result = self._request(
-            "GET",
-            url,
-            params={"fetch_per_event_properties": "true"},
-            timeout=self._export_timeout,
-        )
-        rows = result.get("results") if isinstance(result, dict) else result
-        if not isinstance(rows, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from per-event properties: "
-                f"expected list, got {type(rows).__name__}",
+        rows: list[dict[str, Any]] = []
+        for start in range(0, len(names), PER_EVENT_PROPERTIES_CHUNK_SIZE):
+            result = self._request(
+                "GET",
+                url,
+                params={
+                    "fetch_per_event_properties": "true",
+                    "name[]": names[start : start + PER_EVENT_PROPERTIES_CHUNK_SIZE],
+                },
+                timeout=self._export_timeout,
             )
+            chunk = result.get("results") if isinstance(result, dict) else result
+            if not isinstance(chunk, list):
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from per-event properties: "
+                    f"expected list, got {type(chunk).__name__}",
+                )
+            rows.extend(chunk)
         return rows
 
     def update_property_definition(

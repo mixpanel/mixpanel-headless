@@ -873,7 +873,8 @@ class DiscoveryService:
         properties when ``include_user_properties`` is set (the default). The
         per-event gather (``data_definitions/events?fetch_per_event_properties``)
         is inverted client-side into per-property ``events`` lists, which
-        :class:`SchemaGraphResult` folds into the adjacency maps. The App API's
+        :class:`SchemaGraphResult` folds into the adjacency maps. That gather is
+        chunked by event name, so it is one call per chunk. The App API's
         ``includeEvents=true`` bulk call is deliberately not used: it computes
         the same join behind a ~120s gateway deadline it cannot meet on large
         projects.
@@ -910,7 +911,9 @@ class DiscoveryService:
             resource_type="Event",
             include_density=include_density,
         )
-        per_event_rows = self._api_client.list_per_event_properties()
+        per_event_rows = self._api_client.list_per_event_properties(
+            [str(row["name"]) for row in events if row.get("name")]
+        )
         property_to_events = _invert_per_event_properties(per_event_rows)
         # Attach the inverted edges as per-property ``events`` lists (copies,
         # not mutations) so ``properties`` keeps its single-source-of-truth
