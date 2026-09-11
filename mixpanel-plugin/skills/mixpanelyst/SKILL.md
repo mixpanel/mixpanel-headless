@@ -892,10 +892,12 @@ result = ws.query("Login", math='unique',
 
 **FrequencyFilter counts per bucket, not per date range.** The engine evaluates the threshold inside each `unit` bucket. With the default `unit="day"`, `FrequencyFilter("Login", value=5)` keeps only users with 5+ logins *on the same day*, and returns an EMPTY series when nobody does, even if thousands of users logged in 5+ times across the month. An empty result is the expected outcome for a threshold nobody reaches within one bucket; do not report it as "no such users". For "at least N times over the period", use `unit="month"` (or a range that is a single bucket). `date_range_value` / `date_range_unit` had no observable effect on inline filters in a 2026-09-11 probe and are unverified; do not rely on them to widen the window. `FrequencyFilter` is accepted by `query()` / `build_params()` only, not by `query_flow()`.
 
-| `FrequencyFilter("Login", value=5)`, March 1-31 | Result |
+Measured on a seeded gaming dataset (10,000 users, March 2026), `FrequencyFilter("enter dungeon", value=5)`, 2026-03-01 to 2026-03-31:
+
+| Query unit | Result |
 |---|---|
-| `unit="day"` (default) | empty series (no user had 5+ logins on one day) |
-| `unit="month"` | 2,571 users who logged in 5+ times in March |
+| `unit="day"` (default) | empty series (no user entered the dungeon 5+ times on one day) |
+| `unit="month"` | 2,571 of 8,281 active users (5+ entries anywhere in March) |
 
 **When to reach for each:**
 - Property values are messy or need derivation → **Custom Property**
