@@ -607,10 +607,14 @@ class TestRegionProbeUnderApiBaseUrlOverride:
         bases, _orders = self._run_with_spy(monkeypatch)
         assert bases == ["https://proxy.example/mp"]
 
-    def test_app_base_alone_also_collapses_probe(
+    def test_app_base_alone_keeps_three_region_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``MP_APP_BASE_URL`` alone re-homes ``/me`` and collapses the order too.
+        """``MP_APP_BASE_URL`` alone re-homes ``/me`` but must NOT collapse the walk.
+
+        Query / Export / Engage still use the live regional hosts, so the
+        region the probe persists still matters; collapsing to ``us`` would
+        mislabel an EU or India credential.
 
         Args:
             monkeypatch: pytest monkeypatch fixture.
@@ -618,7 +622,20 @@ class TestRegionProbeUnderApiBaseUrlOverride:
         monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000/")
         bases, orders = self._run_with_spy(monkeypatch)
         assert bases == ["http://app.internal:9000"]
-        assert orders == [("us",)]
+        assert orders == [("us", "eu", "in")]
+
+    def test_app_base_alone_ignores_mp_region_for_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """App-only override + ``MP_REGION=eu`` still walks the full order.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000")
+        monkeypatch.setenv("MP_REGION", "eu")
+        _bases, orders = self._run_with_spy(monkeypatch)
+        assert orders == [("us", "eu", "in")]
 
     def test_unset_keeps_live_host_and_default_order(
         self, monkeypatch: pytest.MonkeyPatch
@@ -632,13 +649,15 @@ class TestRegionProbeUnderApiBaseUrlOverride:
         assert bases == ["https://mixpanel.com"]
         assert orders == [("us", "eu", "in")]
 
-    def test_narration_mentions_override_base(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """With ``narrate`` supplied, the first line names the override base.
+    @staticmethod
+    def _narration_lines(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        """Run the probe with a canned success and return the narration lines.
 
         Args:
             monkeypatch: pytest monkeypatch fixture.
+
+        Returns:
+            Every string passed to ``narrate``, in order.
         """
         from pydantic import SecretStr
 
@@ -646,8 +665,6 @@ class TestRegionProbeUnderApiBaseUrlOverride:
         from mixpanel_headless._internal.auth.region_probe import (
             probe_region_for_credential,
         )
-
-        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
 
         def _spy_probe(
             client_factory: object,
@@ -680,5 +697,59 @@ class TestRegionProbeUnderApiBaseUrlOverride:
             narrate=lines.append,
         )
         assert lines
-        assert "http://127.0.0.1:8080" in lines[0]
-        assert "MP_API_BASE_URL" in lines[0]
+        return lines
+
+    def test_narration_names_api_base_url_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """API-only override: first line names the base and ``MP_API_BASE_URL`` only.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+        first = self._narration_lines(monkeypatch)[0]
+        assert "http://127.0.0.1:8080" in first
+        assert "MP_API_BASE_URL" in first
+        assert "MP_APP_BASE_URL" not in first
+
+    def test_narration_names_app_base_url_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """App-only override: first line names the App base and ``MP_APP_BASE_URL`` only.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000")
+        first = self._narration_lines(monkeypatch)[0]
+        assert "http://app.internal:9000" in first
+        assert "MP_APP_BASE_URL" in first
+        assert "MP_API_BASE_URL" not in first
+
+    def test_narration_names_both_when_both_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Both set: first line names the App base (where ``/me`` lives) and both vars.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+        monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000")
+        first = self._narration_lines(monkeypatch)[0]
+        assert "http://app.internal:9000" in first
+        assert "MP_API_BASE_URL" in first
+        assert "MP_APP_BASE_URL" in first
+
+    def test_narration_unchanged_without_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No override: the legacy first line is emitted verbatim.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        assert self._narration_lines(monkeypatch)[0] == (
+            "Probing regions for /me access ..."
+        )

@@ -26,6 +26,7 @@ from mixpanel_headless._internal.api_client import (
     DEFAULT_QUERY_TIMEOUT_S,
     ENDPOINTS,
     MixpanelAPIClient,
+    _api_family_for,
     _endpoints_for,
 )
 from mixpanel_headless._internal.auth.session import Session
@@ -754,6 +755,162 @@ class TestWorkspaceIdInjectionUnderOverride:
         ) as client:
             client.get_events()
         assert "workspace_id" not in recorder.requests[0].url.params
+
+
+# =============================================================================
+# _api_family_for — longest-prefix family classification
+# =============================================================================
+
+
+class TestApiFamilyFor:
+    """``_api_family_for`` picks the family whose base is the longest URL prefix."""
+
+    @pytest.mark.parametrize(
+        ("url", "family"),
+        [
+            ("https://mixpanel.com/api/query/insights", "query"),
+            ("https://mixpanel.com/api/query/engage/", "engage"),
+            ("https://mixpanel.com/api/query/engage/stats", "engage"),
+            ("https://data.mixpanel.com/api/2.0/export", "export"),
+            ("https://mixpanel.com/api/app/projects/1/dashboards", "app"),
+            ("https://example.com/api/query/insights", None),
+        ],
+    )
+    def test_live_table_classification(self, url: str, family: str | None) -> None:
+        """Live URLs classify by their own family; engage beats query as a prefix.
+
+        Args:
+            url: The request URL.
+            family: The expected family, or ``None`` for a foreign host.
+        """
+        assert _api_family_for(url, ENDPOINTS["us"]) == family
+
+    def test_longest_prefix_wins_under_collision(self) -> None:
+        """When one base is a prefix of another family's URL, the longer base wins."""
+        table = {
+            "query": "https://proxy/api/query",
+            "export": "https://proxy/api/2.0",
+            "engage": "https://proxy/api/query/engage",
+            "app": "https://proxy/api/query/api/app",
+        }
+        assert _api_family_for("https://proxy/api/query/api/app/x", table) == "app"
+        assert _api_family_for("https://proxy/api/query/insights", table) == "query"
+        assert _api_family_for("https://proxy/api/query/engage/", table) == "engage"
+
+
+class TestPrefixCollisionConfigs:
+    """Split configs where one base is a prefix of another family stay correct."""
+
+    @staticmethod
+    def _seen_for(
+        session: Session,
+        call: str,
+        monkeypatch: pytest.MonkeyPatch,
+        env: dict[str, str],
+    ) -> httpx.Request:
+        """Issue one request under ``env`` and return it for inspection.
+
+        Args:
+            session: Session for the client (pinned to workspace 777).
+            call: ``"app"`` to issue an App API GET, ``"query"`` for ``get_events``.
+            monkeypatch: pytest monkeypatch fixture.
+            env: Override variables to export for the call.
+
+        Returns:
+            The single captured ``httpx.Request``.
+        """
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        recorder = _Recorder()
+        with MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(recorder)
+        ) as client:
+            if call == "app":
+                client.app_request("GET", "/projects/12345/dashboards")
+            else:
+                client.get_events()
+        assert len(recorder.requests) == 1
+        return recorder.requests[0]
+
+    _APP_UNDER_QUERY = {
+        "MP_API_BASE_URL": "https://proxy",
+        "MP_APP_BASE_URL": "https://proxy/api/query",
+    }
+    """App base nested under the query prefix (reviewer config 1)."""
+
+    _QUERY_UNDER_APP = {
+        "MP_API_BASE_URL": "https://proxy/api/app",
+        "MP_APP_BASE_URL": "https://proxy",
+    }
+    """Query prefix nested under the app base (the colliding reverse)."""
+
+    _REVERSE_LITERAL = {
+        "MP_API_BASE_URL": "https://proxy/api/query",
+        "MP_APP_BASE_URL": "https://proxy",
+    }
+    """The literal reverse of config 1 (no textual overlap; must still be right)."""
+
+    @pytest.mark.parametrize(
+        "env", [_APP_UNDER_QUERY, _QUERY_UNDER_APP, _REVERSE_LITERAL]
+    )
+    def test_app_request_is_app_family(
+        self,
+        env: dict[str, str],
+        pinned_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """App requests get the App timeout and no ``workspace_id`` in every config.
+
+        Args:
+            env: Override variables for the config under test.
+            pinned_session: Session with workspace 777 pinned.
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        request = self._seen_for(pinned_session, "app", monkeypatch, env)
+        assert request.url.path.endswith("/api/app/projects/12345/dashboards")
+        assert request.extensions["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
+        assert "workspace_id" not in request.url.params
+
+    @pytest.mark.parametrize(
+        "env", [_APP_UNDER_QUERY, _QUERY_UNDER_APP, _REVERSE_LITERAL]
+    )
+    def test_query_request_is_query_family(
+        self,
+        env: dict[str, str],
+        pinned_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Query requests get the Query timeout and carry ``workspace_id`` in every config.
+
+        Args:
+            env: Override variables for the config under test.
+            pinned_session: Session with workspace 777 pinned.
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        request = self._seen_for(pinned_session, "query", monkeypatch, env)
+        assert request.url.path.endswith("/api/query/events/names")
+        assert request.extensions["timeout"]["read"] == DEFAULT_QUERY_TIMEOUT_S
+        assert request.url.params.get("workspace_id") == "777"
+
+    def test_live_engage_request_still_carries_workspace_id(
+        self, pinned_session: Session
+    ) -> None:
+        """Unchanged live rule: Engage URLs are workspace-scoped like Query URLs.
+
+        Args:
+            pinned_session: Session with workspace 777 pinned.
+        """
+        recorder = _Recorder()
+        with MixpanelAPIClient(
+            session=pinned_session, _transport=httpx.MockTransport(recorder)
+        ) as client:
+            client.engage_stats()
+        request = recorder.requests[0]
+        assert str(request.url).startswith(
+            "https://mixpanel.com/api/query/engage/stats"
+        )
+        assert request.url.params.get("workspace_id") == "777"
+        assert request.extensions["timeout"]["read"] == DEFAULT_QUERY_TIMEOUT_S
 
 
 # =============================================================================

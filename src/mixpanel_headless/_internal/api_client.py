@@ -20,7 +20,7 @@ import os
 import random
 import re
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
@@ -309,22 +309,73 @@ def _endpoints_for(region: str) -> dict[str, str]:
     return table
 
 
+# Families whose requests are scoped by the pinned ``workspace_id``. Engage
+# is included because its live URL sits under the Query prefix
+# (``/api/query/engage``), which is how the old ``startswith(query)`` check
+# classified it; keeping it here preserves that behaviour exactly.
+_WORKSPACE_SCOPED_FAMILIES = frozenset({"query", "engage"})
+
+
+def _api_family_for(url: str, endpoints: Mapping[str, str]) -> str | None:
+    """Classify ``url`` by the API family whose base is its longest prefix.
+
+    Longest-prefix (rather than first-match) matters in two places: live
+    Engage URLs also start with the Query base, and split overrides can nest
+    one family's base under another's (``MP_API_BASE_URL=https://proxy`` with
+    ``MP_APP_BASE_URL=https://proxy/api/query`` puts the App base under the
+    Query prefix). Picking the longest matching base classifies both cases
+    correctly; ``startswith`` against a single family does not.
+
+    Args:
+        url: The full request URL.
+        endpoints: A family → base-URL table, normally from
+            :func:`_endpoints_for`.
+
+    Returns:
+        The matching family name (``"query"`` / ``"export"`` / ``"engage"`` /
+        ``"app"``), or ``None`` when no base is a prefix of ``url`` (for
+        example a foreign host passed to ``request``).
+
+    Example:
+        ```python
+        _api_family_for("https://mixpanel.com/api/query/engage/", ENDPOINTS["us"])
+        # "engage"
+        _api_family_for("https://example.com/x", ENDPOINTS["us"])
+        # None
+        ```
+    """
+    best: str | None = None
+    best_len = -1
+    for family, base in endpoints.items():
+        if len(base) > best_len and url.startswith(base):
+            best, best_len = family, len(base)
+    return best
+
+
 _VALID_REGIONS: tuple[Region, ...] = ("us", "eu", "in")
 
 
 def _override_probe_order() -> tuple[Region, ...] | None:
-    """Return the single-region probe order when an API-host override is active.
+    """Return the single-region probe order when ``MP_API_BASE_URL`` is active.
 
     Used by ``auth.region_probe.probe_region_for_credential``. With
-    ``MP_API_BASE_URL`` or ``MP_APP_BASE_URL`` set, all three regions resolve
-    to the same host, so walking ``us → eu → in`` would hit it three times
-    on failure for no gain. The region label still has to be *some* valid
-    region (it is persisted on the account and used for non-URL purposes),
-    so it is taken from ``MP_REGION`` when that is valid, else ``us``.
+    ``MP_API_BASE_URL`` set, every family — and therefore every region —
+    resolves to the same host, so walking ``us → eu → in`` would hit it
+    three times on failure for no gain. The region label still has to be
+    *some* valid region (it is persisted on the account and used for non-URL
+    purposes), so it is taken from ``MP_REGION`` when that is valid, else
+    ``us``.
+
+    ``MP_APP_BASE_URL`` on its own deliberately does **not** collapse the
+    walk: Query, Export and Engage still go to the live regional hosts, so
+    the region the probe discovers still decides where those requests land.
+    Collapsing to ``us`` there would persist the wrong region for an EU or
+    India credential. (Each probe then hits the App override base, which is
+    harmless.)
 
     Returns:
-        A one-element tuple when an override is active; ``None`` when neither
-        variable is set (callers then use ``probe_region``'s default order).
+        A one-element tuple when ``MP_API_BASE_URL`` is set; ``None``
+        otherwise (callers then use ``probe_region``'s default order).
 
     Example:
         ```python
@@ -334,15 +385,47 @@ def _override_probe_order() -> tuple[Region, ...] | None:
         # ("eu",)
         ```
     """
-    if not (
-        _base_url_override(API_BASE_URL_ENV) or _base_url_override(APP_BASE_URL_ENV)
-    ):
+    if not _base_url_override(API_BASE_URL_ENV):
         return None
     requested = os.environ.get("MP_REGION", "")
     for region in _VALID_REGIONS:
         if requested == region:
             return (region,)
     return ("us",)
+
+
+def _override_probe_narration() -> str | None:
+    """Build the first ``mp login`` probe narration line under an override.
+
+    Names whichever override variable(s) are active so a user debugging a
+    login failure sees the configuration that actually shaped the probe.
+
+    Returns:
+        ``None`` when neither variable is set (the caller emits its legacy
+        line). With ``MP_API_BASE_URL`` set: a line naming the single probe
+        base. With only ``MP_APP_BASE_URL`` set: a line saying regions are
+        still walked, at the App override base.
+
+    Example:
+        ```python
+        os.environ["MP_APP_BASE_URL"] = "http://app.internal:9000"
+        _override_probe_narration()
+        # "Probing regions at http://app.internal:9000 (MP_APP_BASE_URL override) for /me access ..."
+        ```
+    """
+    active = [
+        name
+        for name in (API_BASE_URL_ENV, APP_BASE_URL_ENV)
+        if _base_url_override(name)
+    ]
+    if not active:
+        return None
+    # The App URL is region-independent under either override.
+    base = _probe_base_url(_endpoints_for("us")["app"])
+    label = f"({' + '.join(active)} override)"
+    if _base_url_override(API_BASE_URL_ENV):
+        return f"Probing {base} {label} for /me ..."
+    return f"Probing regions at {base} {label} for /me access ..."
 
 
 def _probe_base_url(app_url: str) -> str:
@@ -684,7 +767,8 @@ class MixpanelAPIClient:
         """
         if self._timeout is not None:
             return self._timeout
-        if url.startswith(_endpoints_for(self._session.account.region)["app"]):
+        family = _api_family_for(url, _endpoints_for(self._session.account.region))
+        if family == "app":
             return DEFAULT_APP_TIMEOUT_S
         return DEFAULT_QUERY_TIMEOUT_S
 
@@ -1135,8 +1219,10 @@ class MixpanelAPIClient:
             params = {}
         if inject_project_id:
             params["project_id"] = self._session.project.id
-        if inject_workspace_id and url.startswith(
-            _endpoints_for(self._session.account.region)["query"]
+        if (
+            inject_workspace_id
+            and _api_family_for(url, _endpoints_for(self._session.account.region))
+            in _WORKSPACE_SCOPED_FAMILIES
         ):
             if self._workspace_id is not None:
                 params.setdefault("workspace_id", self._workspace_id)

@@ -102,7 +102,8 @@ Details:
 - **`MP_REGION` is still required** and still meaningful for everything that is not a URL (account records, `/me` domain cross-checks, report-link hostnames). Report links (`create_report_link` / `saved_report_link`) keep producing real `*.mixpanel.com` URLs.
 - **`mp login` region probe.** Probing `us → eu → in` against one host is pointless, so under the override the probe runs once against the base and labels the account with `MP_REGION` (when it is `us`/`eu`/`in`) or `us`.
 - **Plain `http://` bases are accepted** with no extra flag. They are intended for local or headless deployments only — never send real credentials over cleartext to a remote host.
-- **`MP_APP_BASE_URL`** (optional) re-homes just the App API family at `{app_base}/api/app`. It works on its own (the other three families stay live) or on top of `MP_API_BASE_URL` (App API moves to the second host).
+- **`MP_APP_BASE_URL`** (optional) re-homes just the App API family at `{app_base}/api/app`. It works on its own (the other three families stay live) or on top of `MP_API_BASE_URL` (App API moves to the second host). With only `MP_APP_BASE_URL` set, `mp login` still walks `us → eu → in` (each `/me` probe hits the App override base) because the region it persists still decides which live cluster the Query, Export and Engage families use.
+- **Family detection is longest-prefix.** The App-vs-Query timeout and the `workspace_id` injection classify a URL by the family whose base is its longest prefix, so split configs where one base sits under the other (for example `MP_API_BASE_URL=https://proxy` with `MP_APP_BASE_URL=https://proxy/api/query`) still classify every request correctly.
 
 With neither variable set, behaviour is byte-identical to the per-region defaults.
 
