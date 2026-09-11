@@ -2426,8 +2426,15 @@ class Workspace:
             group_by: Break down results by property or cohort membership.
                 Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
                 list of any mix.
-            where: Filter results by conditions. Accepts a Filter
-                or list of Filters.
+            where: Filter results by conditions. Accepts a Filter, a
+                FrequencyFilter, or a list mixing both. A
+                ``FrequencyFilter`` threshold is evaluated per time
+                bucket (``unit``), not over the whole date range: with
+                the default ``unit="day"`` it keeps only users who reach
+                the count within a single day, and an empty series is the
+                expected result when nobody does. Use ``unit="month"`` (or
+                a single-bucket range) for "N times over the period". See
+                ``FrequencyFilter``.
             formula: Formula expression referencing events by position
                 (A, B, C...). Requires 2+ events. Cannot be combined
                 with Formula objects in ``events``.
@@ -2615,7 +2622,9 @@ class Workspace:
             group_by: Break down results by property or cohort membership.
                 Accepts a string, ``GroupBy``, ``CohortBreakdown``, or
                 list of any mix.
-            where: Filter results by conditions.
+            where: Filter results by conditions. A ``FrequencyFilter``
+                threshold is evaluated per ``unit`` bucket, not over the
+                whole date range; see ``FrequencyFilter`` and ``query``.
             formula: Formula expression referencing events by position.
             formula_label: Display label for formula result.
             rolling: Rolling window size in periods.

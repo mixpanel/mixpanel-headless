@@ -881,17 +881,26 @@ result = ws.query("Login", math='unique',
     last=30, mode='total')
 # Reveals: do frequent purchasers also log in more?
 
-# Filter to users who purchased 3+ times in 30 days, then analyze their flow
-result = ws.query_flow("Login", forward=3,
-    where=FrequencyFilter("Purchase", value=3, date_range_value=30, date_range_unit="day"),
-    last=30)
-# Reveals: what do repeat purchasers do after logging in?
+# Logins by users who purchased 3+ times in a month.
+# ALWAYS pass unit="month" (or a single-bucket range) with FrequencyFilter:
+# the threshold is counted PER TIME BUCKET, not over the date range.
+result = ws.query("Login", math='unique',
+    where=FrequencyFilter("Purchase", value=3),
+    last=3, unit='month')
+# Reveals: how many repeat purchasers are active each month?
 ```
+
+**FrequencyFilter counts per bucket, not per date range.** The engine evaluates the threshold inside each `unit` bucket. With the default `unit="day"`, `FrequencyFilter("Login", value=5)` keeps only users with 5+ logins *on the same day*, and returns an EMPTY series when nobody does, even if thousands of users logged in 5+ times across the month. An empty result is the expected outcome for a threshold nobody reaches within one bucket; do not report it as "no such users". For "at least N times over the period", use `unit="month"` (or a range that is a single bucket). `date_range_value` / `date_range_unit` had no observable effect on inline filters in a 2026-09-11 probe and are unverified; do not rely on them to widen the window. `FrequencyFilter` is accepted by `query()` / `build_params()` only, not by `query_flow()`.
+
+| `FrequencyFilter("Login", value=5)`, March 1-31 | Result |
+|---|---|
+| `unit="day"` (default) | empty series (no user had 5+ logins on one day) |
+| `unit="month"` | 2,571 users who logged in 5+ times in March |
 
 **When to reach for each:**
 - Property values are messy or need derivation → **Custom Property**
 - Population requires behavioral criteria (did X, didn't do Y, frequency thresholds) → **Inline Cohort**
-- You need to segment by event frequency (how often, not just whether) → **FrequencyBreakdown/Filter**
+- You need to segment by event frequency (how often, not just whether) → **FrequencyBreakdown/Filter** (with `unit="month"` for whole-period thresholds)
 - You need to compare in-cohort vs out-of-cohort behavior → **CohortBreakdown** with `include_negated=True`
 - You need to track a segment's size as a time series → **CohortMetric** (saved cohorts only)
 
@@ -1076,7 +1085,7 @@ Full reference: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/api/
 | `FlowStep` | Flow anchor event with per-step forward/reverse configuration |
 | `TimeComparison` | Period-over-period comparison (`.relative("month")`, `.absolute_start(...)`) |
 | `FrequencyBreakdown` | Break down by how often users performed an event |
-| `FrequencyFilter` | Filter by how often users performed an event |
+| `FrequencyFilter` | Filter by how often users performed an event (counted per `unit` bucket; pass `unit="month"` for "over the period") |
 | `CohortBreakdown` | Break down results by cohort membership |
 | `CohortDefinition` | Inline cohort definition for user queries |
 | `CohortCriteria` | Atomic condition for cohort membership |

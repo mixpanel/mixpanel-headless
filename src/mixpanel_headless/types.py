@@ -9565,12 +9565,35 @@ class FrequencyFilter:
     ``where=`` parameter to restrict results to users meeting a
     frequency threshold.
 
+    The threshold is evaluated **per query time bucket** (the query's
+    ``unit``), not over the whole report date range. With the default
+    ``unit="day"``, ``FrequencyFilter("Login", value=5)`` keeps only
+    users who logged in five or more times within a single day; a user
+    who logged in 30 times in a month but never five times on one day
+    is excluded from every daily bucket. An empty series (zero-row
+    DataFrame) is therefore the expected result when no user reaches
+    the threshold inside one bucket, not a sign that the filter failed.
+    When the intent is "at least N times over the period", pass
+    ``unit="month"`` or choose a ``unit`` and date range that together
+    form a single bucket.
+
+    ``date_range_value`` / ``date_range_unit`` render as a
+    ``behavior.dateRange`` lookback on the wire. In a 2026-09-11 probe
+    against the analytics query API they had no observable effect on
+    inline insights filters: results were identical with and without a
+    31-day lookback. Their behavior for inline filters has not been
+    verified against Mixpanel's internal fixtures. Do not rely on them
+    to widen the counting window; use ``unit`` instead.
+
     Attributes:
         event: Event name to count frequency for.
         operator: Comparison operator. Default: ``"is at least"``.
-        value: Threshold value for the comparison.
+        value: Threshold value for the comparison, counted per query
+            time bucket (see above).
         date_range_value: Lookback window size. Must be paired with
-            ``date_range_unit``.
+            ``date_range_unit``. Emitted as ``behavior.dateRange``; no
+            observable effect on inline insights filters (unverified,
+            see above).
         date_range_unit: Lookback window unit (``"day"``, ``"week"``,
             ``"month"``). Must be paired with ``date_range_value``.
         event_filters: Property filters applied to the frequency event
@@ -9585,20 +9608,40 @@ class FrequencyFilter:
 
     Example:
         ```python
-        from mixpanel_headless import FrequencyFilter
+        from mixpanel_headless import Filter, FrequencyFilter
 
-        # Users who logged in at least 5 times
-        result = ws.query("Purchase", where=FrequencyFilter("Login", value=5))
+        # "Users who logged in at least 5 times": the count is taken per
+        # bucket, so the query's unit decides what "5 times" means.
 
-        # Users who purchased 3+ times in the last 30 days
+        # Per DAY (default unit): only users with 5+ logins on the same
+        # day. Often an empty series even when thousands of users logged
+        # in 5+ times across the month.
+        daily = ws.query(
+            "Purchase",
+            where=FrequencyFilter("Login", value=5),
+            from_date="2026-03-01",
+            to_date="2026-03-31",
+        )
+
+        # Per MONTH: users with 5+ logins anywhere in March.
+        monthly = ws.query(
+            "Purchase",
+            where=FrequencyFilter("Login", value=5),
+            from_date="2026-03-01",
+            to_date="2026-03-31",
+            unit="month",
+        )
+
+        # Count only purchases over 50, at least 3 per month
         result = ws.query(
             "Login",
             where=FrequencyFilter(
                 "Purchase",
                 value=3,
-                date_range_value=30,
-                date_range_unit="day",
+                event_filters=[Filter.greater_than("amount", 50)],
             ),
+            last=3,
+            unit="month",
         )
         ```
     """
@@ -9607,16 +9650,16 @@ class FrequencyFilter:
     """Event name to count frequency for."""
 
     value: int | float
-    """Threshold value for the comparison."""
+    """Threshold value for the comparison, counted per query time bucket."""
 
     operator: FrequencyFilterOperator = "is at least"
     """Comparison operator."""
 
     date_range_value: int | None = None
-    """Lookback window size."""
+    """Lookback window size (no observable effect on inline insights filters)."""
 
     date_range_unit: Literal["day", "week", "month"] | None = None
-    """Lookback window unit."""
+    """Lookback window unit (no observable effect on inline insights filters)."""
 
     event_filters: list[Filter] | None = None
     """Property filters applied to the frequency event."""
