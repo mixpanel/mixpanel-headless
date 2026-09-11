@@ -529,6 +529,8 @@ ws.stream_events(from_date="...", to_date="...")  # Stream events
 | `MP_TARGET` | Apply a saved target (mutually exclusive with `MP_ACCOUNT`/`MP_PROJECT_ID`/`MP_WORKSPACE_ID`) |
 | `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file location |
+| `MP_API_BASE_URL` | Route every API family at one alternate host (`{base}/api/query`, `{base}/api/2.0`, `{base}/api/query/engage`, `{base}/api/app`); plain `http://` allowed for local / headless deployments; `MP_REGION` still required |
+| `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
 
 ### Output Formats
 

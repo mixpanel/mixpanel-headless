@@ -484,3 +484,201 @@ class TestRegionProbeFactoryURLStripping:
         assert captured_base_urls
         observed = captured_base_urls[0].rstrip("/")
         assert observed == "https://mixpanel.com"
+
+
+class TestRegionProbeUnderApiBaseUrlOverride:
+    """``MP_API_BASE_URL`` collapses the probe to one attempt at the override.
+
+    Probing ``us → eu → in`` makes no sense when every region maps to the
+    same host, so the factory binds to the override base and the probe
+    order becomes a single region: ``MP_REGION`` when it is a valid region,
+    else ``us``.
+    """
+
+    @staticmethod
+    def _run_with_spy(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> tuple[list[str], list[tuple[Region, ...]]]:
+        """Run ``probe_region_for_credential`` with ``probe_region`` replaced by a spy.
+
+        The spy calls the factory for the first region in ``order``,
+        records the resulting ``base_url`` and the ``order`` tuple it was
+        handed, and returns a canned success for that region.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+
+        Returns:
+            ``(captured_base_urls, captured_orders)`` after one call.
+        """
+        from pydantic import SecretStr
+
+        from mixpanel_headless._internal.auth import region_probe as rp_mod
+        from mixpanel_headless._internal.auth.region_probe import (
+            probe_region_for_credential,
+        )
+
+        captured_base_urls: list[str] = []
+        captured_orders: list[tuple[Region, ...]] = []
+
+        def _spy_probe(
+            client_factory: object,
+            headers: dict[str, str],
+            *,
+            timeout_seconds: float = 5.0,
+            order: tuple[Region, ...] = ("us", "eu", "in"),
+        ) -> rp_mod.RegionProbeResult:
+            """Record the factory base URL and order, then succeed.
+
+            Args:
+                client_factory: The region → client factory under test.
+                headers: Ignored credential headers.
+                timeout_seconds: Ignored.
+                order: The probe ordering handed in by the caller.
+
+            Returns:
+                A canned success for ``order[0]``.
+            """
+            captured_orders.append(order)
+            client = client_factory(order[0])  # type: ignore[operator]
+            captured_base_urls.append(str(client.base_url).rstrip("/"))
+            client.close()
+            return rp_mod.RegionProbeResult(region=order[0], attempts=[(order[0], 200)])
+
+        monkeypatch.setattr(rp_mod, "probe_region", _spy_probe)
+        probe_region_for_credential(
+            account_type="service_account",
+            username="u",
+            secret=SecretStr("s"),
+            token=None,
+            token_env=None,
+        )
+        return captured_base_urls, captured_orders
+
+    def test_override_binds_factory_to_base_and_probes_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Override set, ``MP_REGION`` unset → one ``us`` probe at the base.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080/")
+        bases, orders = self._run_with_spy(monkeypatch)
+        assert bases == ["http://127.0.0.1:8080"]
+        assert orders == [("us",)]
+
+    def test_override_uses_mp_region_when_valid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``MP_REGION=eu`` under the override → single ``eu`` probe.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+        monkeypatch.setenv("MP_REGION", "eu")
+        bases, orders = self._run_with_spy(monkeypatch)
+        assert bases == ["http://127.0.0.1:8080"]
+        assert orders == [("eu",)]
+
+    def test_override_ignores_invalid_mp_region(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unrecognised ``MP_REGION`` falls back to ``us`` (no crash).
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+        monkeypatch.setenv("MP_REGION", "mars")
+        _bases, orders = self._run_with_spy(monkeypatch)
+        assert orders == [("us",)]
+
+    def test_override_with_path_prefix_keeps_prefix_in_base(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A path-prefixed base keeps its prefix so ``/api/app/me`` lands under it.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "https://proxy.example/mp")
+        bases, _orders = self._run_with_spy(monkeypatch)
+        assert bases == ["https://proxy.example/mp"]
+
+    def test_app_base_alone_also_collapses_probe(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``MP_APP_BASE_URL`` alone re-homes ``/me`` and collapses the order too.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000/")
+        bases, orders = self._run_with_spy(monkeypatch)
+        assert bases == ["http://app.internal:9000"]
+        assert orders == [("us",)]
+
+    def test_unset_keeps_live_host_and_default_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without the override the factory binds to ``mixpanel.com`` and probes all.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        bases, orders = self._run_with_spy(monkeypatch)
+        assert bases == ["https://mixpanel.com"]
+        assert orders == [("us", "eu", "in")]
+
+    def test_narration_mentions_override_base(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With ``narrate`` supplied, the first line names the override base.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        from pydantic import SecretStr
+
+        from mixpanel_headless._internal.auth import region_probe as rp_mod
+        from mixpanel_headless._internal.auth.region_probe import (
+            probe_region_for_credential,
+        )
+
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+
+        def _spy_probe(
+            client_factory: object,
+            headers: dict[str, str],
+            *,
+            timeout_seconds: float = 5.0,
+            order: tuple[Region, ...] = ("us", "eu", "in"),
+        ) -> rp_mod.RegionProbeResult:
+            """Return a canned success without touching the factory.
+
+            Args:
+                client_factory: Ignored.
+                headers: Ignored.
+                timeout_seconds: Ignored.
+                order: The probe ordering handed in by the caller.
+
+            Returns:
+                A canned success for ``order[0]``.
+            """
+            return rp_mod.RegionProbeResult(region=order[0], attempts=[(order[0], 200)])
+
+        monkeypatch.setattr(rp_mod, "probe_region", _spy_probe)
+        lines: list[str] = []
+        probe_region_for_credential(
+            account_type="service_account",
+            username="u",
+            secret=SecretStr("s"),
+            token=None,
+            token_env=None,
+            narrate=lines.append,
+        )
+        assert lines
+        assert "http://127.0.0.1:8080" in lines[0]
+        assert "MP_API_BASE_URL" in lines[0]

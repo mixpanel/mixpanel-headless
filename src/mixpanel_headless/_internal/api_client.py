@@ -2,7 +2,9 @@
 
 Low-level HTTP client for all Mixpanel APIs. Handles:
 - Authentication via HTTP Basic auth (service accounts) or OAuth 2.0 Bearer tokens
-- Regional endpoint routing (US, EU, India)
+- Regional endpoint routing (US, EU, India), or a single alternate host via
+  ``MP_API_BASE_URL`` / ``MP_APP_BASE_URL`` (read per request, see
+  :func:`_endpoints_for`)
 - Automatic rate limit handling with exponential backoff
 - Streaming JSONL parsing for large exports
 
@@ -21,7 +23,7 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -29,6 +31,7 @@ from mixpanel_headless._internal.auth.account import (
     Account,
     OAuthBrowserAccount,
     OAuthTokenAccount,
+    Region,
     ServiceAccount,
     TokenResolver,
 )
@@ -222,6 +225,156 @@ QUERY_API_SERVER_DEADLINE_S: float = 488.0
 _SERVER_DEADLINE_MARGIN_S: float = 15.0
 DEFAULT_APP_TIMEOUT_S: float = APP_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
 DEFAULT_QUERY_TIMEOUT_S: float = QUERY_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_MARGIN_S
+
+# Alternate-host override. When ``MP_API_BASE_URL`` is set, the per-region
+# table above is bypassed and every API family resolves to a fixed path
+# prefix on that one base (the prefixes a headless Mixpanel pod's nginx
+# routes on). ``MP_APP_BASE_URL`` optionally re-homes just the App API.
+API_BASE_URL_ENV = "MP_API_BASE_URL"
+APP_BASE_URL_ENV = "MP_APP_BASE_URL"
+_OVERRIDE_PATH_PREFIXES: dict[str, str] = {
+    "query": "/api/query",
+    "export": "/api/2.0",
+    "engage": "/api/query/engage",
+    "app": "/api/app",
+}
+
+
+def _base_url_override(env_name: str) -> str:
+    """Read one base-URL override env var, normalised for concatenation.
+
+    Args:
+        env_name: ``API_BASE_URL_ENV`` or ``APP_BASE_URL_ENV``.
+
+    Returns:
+        The value with trailing slashes stripped, or ``""`` when the variable
+        is unset, empty, or consists only of slashes (all treated as unset).
+
+    Example:
+        ```python
+        os.environ["MP_API_BASE_URL"] = "http://127.0.0.1:8080/"
+        _base_url_override("MP_API_BASE_URL")
+        # "http://127.0.0.1:8080"
+        ```
+    """
+    return os.environ.get(env_name, "").rstrip("/")
+
+
+def _endpoints_for(region: str) -> dict[str, str]:
+    """Resolve the API-family → base-URL table for ``region``, honouring overrides.
+
+    Reads ``MP_API_BASE_URL`` / ``MP_APP_BASE_URL`` from ``os.environ`` on
+    every call (never at import time) so ``use(account=...)`` swaps and test
+    monkeypatching keep working. Every read of :data:`ENDPOINTS` inside the
+    client goes through this function so the ``startswith`` checks that pick
+    the App-vs-Query timeout and inject ``workspace_id`` stay correct under
+    an override.
+
+    Args:
+        region: Mixpanel region key (``"us"`` / ``"eu"`` / ``"in"``).
+
+    Returns:
+        With neither variable set: the live ``ENDPOINTS[region]`` object
+        itself (byte-identical behaviour). With ``MP_API_BASE_URL`` set: a
+        fresh table mapping ``query`` → ``{base}/api/query``, ``export`` →
+        ``{base}/api/2.0``, ``engage`` → ``{base}/api/query/engage`` and
+        ``app`` → ``{base}/api/app``. With ``MP_APP_BASE_URL`` set: the
+        ``app`` entry becomes ``{app_base}/api/app`` on top of whichever
+        table applies. The live table is never mutated.
+
+    Raises:
+        KeyError: ``region`` is not a key of :data:`ENDPOINTS` (only reachable
+            when no override applies, matching prior behaviour).
+
+    Example:
+        ```python
+        os.environ["MP_API_BASE_URL"] = "http://devbox:8080"
+        _endpoints_for("eu")["export"]
+        # "http://devbox:8080/api/2.0"
+        ```
+    """
+    api_base = _base_url_override(API_BASE_URL_ENV)
+    app_base = _base_url_override(APP_BASE_URL_ENV)
+    if not api_base and not app_base:
+        return ENDPOINTS[region]
+    if api_base:
+        table = {
+            family: f"{api_base}{prefix}"
+            for family, prefix in _OVERRIDE_PATH_PREFIXES.items()
+        }
+    else:
+        table = dict(ENDPOINTS[region])
+    if app_base:
+        table["app"] = f"{app_base}{_OVERRIDE_PATH_PREFIXES['app']}"
+    return table
+
+
+_VALID_REGIONS: tuple[Region, ...] = ("us", "eu", "in")
+
+
+def _override_probe_order() -> tuple[Region, ...] | None:
+    """Return the single-region probe order when an API-host override is active.
+
+    Used by ``auth.region_probe.probe_region_for_credential``. With
+    ``MP_API_BASE_URL`` or ``MP_APP_BASE_URL`` set, all three regions resolve
+    to the same host, so walking ``us → eu → in`` would hit it three times
+    on failure for no gain. The region label still has to be *some* valid
+    region (it is persisted on the account and used for non-URL purposes),
+    so it is taken from ``MP_REGION`` when that is valid, else ``us``.
+
+    Returns:
+        A one-element tuple when an override is active; ``None`` when neither
+        variable is set (callers then use ``probe_region``'s default order).
+
+    Example:
+        ```python
+        os.environ["MP_API_BASE_URL"] = "http://127.0.0.1:8080"
+        os.environ["MP_REGION"] = "eu"
+        _override_probe_order()
+        # ("eu",)
+        ```
+    """
+    if not (
+        _base_url_override(API_BASE_URL_ENV) or _base_url_override(APP_BASE_URL_ENV)
+    ):
+        return None
+    requested = os.environ.get("MP_REGION", "")
+    for region in _VALID_REGIONS:
+        if requested == region:
+            return (region,)
+    return ("us",)
+
+
+def _probe_base_url(app_url: str) -> str:
+    """Derive the ``httpx.Client`` base for the ``/api/app/me`` region probe.
+
+    ``probe_region`` issues ``/api/app/me`` relative to the client base, so
+    the base must be the App API URL *minus* its ``/api/app`` suffix. That
+    keeps any extra path prefix an override base carries (e.g.
+    ``https://proxy.example/mp``) in front of ``/api/app/me``. When the URL
+    does not end in ``/api/app`` the path is dropped entirely and the
+    scheme + host are used (the pre-override behaviour).
+
+    Args:
+        app_url: The App API base URL for a region (live or overridden).
+
+    Returns:
+        The base URL to bind the probe client to, without a trailing slash.
+
+    Example:
+        ```python
+        _probe_base_url("https://mixpanel.com/api/app")
+        # "https://mixpanel.com"
+        _probe_base_url("https://proxy.example/mp/api/app/")
+        # "https://proxy.example/mp"
+        ```
+    """
+    trimmed = app_url.rstrip("/")
+    app_prefix = _OVERRIDE_PATH_PREFIXES["app"]
+    if trimmed.endswith(app_prefix):
+        return trimmed[: -len(app_prefix)]
+    parts = urlsplit(trimmed)
+    return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
 
 
 def _parse_feed_date(value: str, field: str) -> datetime:
@@ -480,10 +633,11 @@ class MixpanelAPIClient:
             path: API endpoint path (e.g., "/segmentation").
 
         Returns:
-            Full URL for the endpoint.
+            Full URL for the endpoint. Honours ``MP_API_BASE_URL`` /
+            ``MP_APP_BASE_URL`` via :func:`_endpoints_for`.
         """
         region = self._session.account.region
-        base = ENDPOINTS[region][api_type]
+        base = _endpoints_for(region)[api_type]
         # Ensure path starts with /
         if not path.startswith("/"):
             path = f"/{path}"
@@ -530,7 +684,7 @@ class MixpanelAPIClient:
         """
         if self._timeout is not None:
             return self._timeout
-        if url.startswith(ENDPOINTS[self._session.account.region]["app"]):
+        if url.startswith(_endpoints_for(self._session.account.region)["app"]):
             return DEFAULT_APP_TIMEOUT_S
         return DEFAULT_QUERY_TIMEOUT_S
 
@@ -982,7 +1136,7 @@ class MixpanelAPIClient:
         if inject_project_id:
             params["project_id"] = self._session.project.id
         if inject_workspace_id and url.startswith(
-            ENDPOINTS[self._session.account.region]["query"]
+            _endpoints_for(self._session.account.region)["query"]
         ):
             if self._workspace_id is not None:
                 params.setdefault("workspace_id", self._workspace_id)

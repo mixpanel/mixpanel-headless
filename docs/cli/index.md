@@ -522,6 +522,8 @@ These resolve via `env > param > target > bridge > [active] > default_project` �
 | `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
+| `MP_API_BASE_URL` | Route every API family at one alternate host (`{base}/api/query`, `{base}/api/2.0`, `{base}/api/query/engage`, `{base}/api/app`); no CLI flag needed — see [Configuration → Alternate API host](../getting-started/configuration.md#alternate-api-host-mp_api_base_url) |
+| `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
 
 ## Examples
 
