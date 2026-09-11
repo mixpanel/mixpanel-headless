@@ -105,9 +105,11 @@ with mp.Workspace() as ws:
 
 **Core Analytics**: `segmentation()`, `funnel()`, `retention()`, `query_saved_report()`
 
-**Typed Flow Queries**: `query_flow()`, `build_flow_params()`
+**Pre-built params**: `run_params()`, `run_funnel_params()`, `run_retention_params()`, `run_flow_params()`, `run_user_params()` — execute what the matching `build_*_params()` produce, including params the typed builders cannot express. `query()`, `query_funnel()`, `query_retention()` and all three `run_*_params()` take `limit=` (1 to 50000, default 3000) for high-cardinality breakdowns.
 
-**User Profile Queries**: `query_user()`, `build_user_params()`
+**Typed Flow Queries**: `query_flow()`, `build_flow_params()`, `run_flow_params()`
+
+**User Profile Queries**: `query_user()`, `build_user_params()`, `run_user_params()`
 
 **Extended Live Queries**: `event_counts()`, `property_counts()`, `activity_feed()`, `query_saved_flows()`, `frequency()`, `segmentation_numeric()`, `segmentation_sum()`, `segmentation_average()`
 

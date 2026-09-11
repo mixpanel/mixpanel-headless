@@ -926,6 +926,19 @@ ws.create_bookmark(CreateBookmarkParams(
 ))
 ```
 
+### Running Built Params
+
+Use `run_params()` to execute params that `build_params()` produced (or params you wrote by hand). It returns the same `QueryResult` as `query()`, and it is the way to run params the typed builder cannot express, such as a lookup-table join breakdown:
+
+```python
+params = ws.build_params("Login", group_by="$city", last=7)
+params["sections"]["filter"] = my_custom_filter   # edit before it runs
+result = ws.run_params(params, limit=50_000)
+print(result.df.head())
+```
+
+Both `query()` and `run_params()` accept `limit=` (1 to 50000, default 3000) to raise the segment cap for high-cardinality breakdowns. Check `result.meta["is_segmentation_limit_hit"]` to see whether the result was still truncated.
+
 ## What's Next
 
 `query()` is the foundation for a family of typed query methods. Each follows the same pattern — typed Python arguments generating the correct bookmark params:
