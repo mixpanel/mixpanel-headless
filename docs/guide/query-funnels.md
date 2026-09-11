@@ -778,6 +778,18 @@ ws.create_bookmark(CreateBookmarkParams(
 ))
 ```
 
+### Running Built Params
+
+Use `run_funnel_params()` to execute params that `build_funnel_params()` produced (or params you wrote by hand). It returns the same `FunnelQueryResult` as `query_funnel()`, and it is the way to run params the typed builder cannot express, such as a lookup-table join breakdown:
+
+```python
+params = ws.build_funnel_params(["Signup", "Add to Cart", "Purchase"], last=90)
+result = ws.run_funnel_params(params, limit=50_000)
+print(result.df.head())
+```
+
+Both `query_funnel()` and `run_funnel_params()` accept `limit=` (1 to 50000, default 3000) to raise the segment cap for high-cardinality breakdowns. Check `result.meta["is_segmentation_limit_hit"]` to see whether the result was still truncated.
+
 ## Next Steps
 
 - [Insights Queries](query.md) — Typed analytics with DAU, formulas, filters, and breakdowns

@@ -561,7 +561,9 @@ _DOCS_BASE = "https://mixpanel.github.io/mixpanel-headless"
 
 _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
     (
-        frozenset({"query_user", "build_user_params", "UserQueryResult"}),
+        frozenset(
+            {"query_user", "build_user_params", "run_user_params", "UserQueryResult"}
+        ),
         "guide/query-users/index.md",
         "User profile queries — filtering, sorting, aggregate counts",
     ),
@@ -570,6 +572,7 @@ _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
             {
                 "query_flow",
                 "build_flow_params",
+                "run_flow_params",
                 "query_saved_flows",
                 "FlowQueryResult",
                 "FlowStep",
@@ -588,6 +591,7 @@ _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
             {
                 "query_retention",
                 "build_retention_params",
+                "run_retention_params",
                 "RetentionQueryResult",
                 "RetentionEvent",
                 "RetentionMathType",
@@ -603,6 +607,7 @@ _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
             {
                 "query_funnel",
                 "build_funnel_params",
+                "run_funnel_params",
                 "FunnelQueryResult",
                 "FunnelStep",
                 "Exclusion",
@@ -618,6 +623,7 @@ _REFERENCE_HINTS: list[tuple[frozenset[str], str, str]] = [
             {
                 "query",
                 "build_params",
+                "run_params",
                 "QueryResult",
                 "MathType",
                 "PerUserAggregation",
