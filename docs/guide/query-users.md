@@ -181,6 +181,21 @@ import json
 print(json.dumps(params, indent=2))
 ```
 
+## Running Built Params
+
+Use `run_user_params()` to execute params that `build_user_params()` produced (or params you wrote by hand). It returns the same `UserQueryResult` as `query_user()`. The mode is read from the params: a dict with an aggregate `action` runs as an aggregate query, anything else runs as a profiles query. `limit`, `parallel`, and `workers` are execution settings the builder does not store, so pass them here:
+
+```python
+params = ws.build_user_params(
+    mode="profiles",
+    where=Filter.equals("plan", "premium"),
+    properties=["$email", "ltv"],
+)
+result = ws.run_user_params(params, limit=500, parallel=True)
+print(result.df.head())
+```
+
+
 ## What's Next
 
 - [Unified Query System](unified-query-system.md) — how all five engines work together
