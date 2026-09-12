@@ -9,6 +9,20 @@ may include API changes.
 
 ### Added
 
+- **`MP_API_BASE_URL` — route every API family at one alternate host.** When
+  set (trailing slash tolerated; read per request, not at import), the
+  per-region `ENDPOINTS` lookup is bypassed and the four families resolve to
+  path prefixes on that single base: `query` → `{base}/api/query`, `export` →
+  `{base}/api/2.0`, `engage` → `{base}/api/query/engage`, `app` →
+  `{base}/api/app`. The `mp` CLI inherits it with no flag. App-vs-Query
+  timeout selection and pinned `workspace_id` injection key off the family,
+  so they behave identically under the override. `mp login`'s region probe
+  collapses to one probe at the base (region label from `MP_REGION` when
+  valid, else `us`). Plain `http://` bases are accepted and intended for
+  local / headless deployments only. `MP_REGION` remains required and
+  meaningful for non-URL uses. Optional `MP_APP_BASE_URL` re-homes only the
+  App API family at `{app_base}/api/app`. With both unset, behaviour is
+  byte-identical to before.
 - **Report links** (045, AIE-561 / AIE-562). Share a headless query as a
   Mixpanel report URL and resolve a report URL back into runnable params.
   - `Workspace.create_report_link(params_or_result, *, report_type=, name=,

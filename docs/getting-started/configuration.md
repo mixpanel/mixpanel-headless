@@ -63,6 +63,8 @@ Service accounts are the right default for unattended automation. OAuth browser 
 | `MP_AUTH_FILE` | Override path to the Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
+| `MP_API_BASE_URL` | Route every API family at one alternate host — see [Alternate API host](#alternate-api-host-mp_api_base_url) |
+| `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
 
 These map onto the [credential resolution chain](#credential-resolution-chain) below.
 
@@ -71,6 +73,39 @@ These map onto the [credential resolution chain](#credential-resolution-chain) b
 
 !!! note "`mp login` auth-type detection"
     The same env presence drives `mp login`'s auth-type detection: `MP_USERNAME` + `MP_SECRET` set → `service_account`; `MP_OAUTH_TOKEN` set → `oauth_token`; otherwise the browser PKCE flow. Pass `--service-account` or `--token-env VAR` to force a non-browser path.
+
+## Alternate API host (`MP_API_BASE_URL`)
+
+By default the client picks its hosts per region (`mixpanel.com`, `eu.mixpanel.com`, `in.mixpanel.com`, plus the `data*.mixpanel.com` export hosts). Set `MP_API_BASE_URL` to point **every** API family at one alternate host instead — a headless Mixpanel pod behind a single nginx front door, a local proxy, or an in-sandbox fake server:
+
+```bash
+export MP_API_BASE_URL=http://devbox:8080
+export MP_USERNAME=... MP_SECRET=... MP_PROJECT_ID=... MP_REGION=us
+
+mp inspect events          # → GET http://devbox:8080/api/query/events/names
+```
+
+When set (a trailing slash is tolerated), the region lookup is bypassed and the families resolve to fixed path prefixes on that base:
+
+| API family | URL under the override | Live `us` equivalent |
+|---|---|---|
+| Query (`/insights`, `/segmentation`, `/events/names`, …) | `{base}/api/query` | `https://mixpanel.com/api/query` |
+| Export (`stream_events`) | `{base}/api/2.0` | `https://data.mixpanel.com/api/2.0` |
+| Engage (`query_user`, `stream_profiles`) | `{base}/api/query/engage` | `https://mixpanel.com/api/query/engage` |
+| App API (dashboards, cohorts, Lexicon, `/me`, …) | `{base}/api/app` | `https://mixpanel.com/api/app` |
+
+Details:
+
+- **Read per request, not at import.** `Workspace.use(account=...)` swaps, long-lived processes, and test monkeypatching all see the current value.
+- **The `mp` CLI and the Python library share the client**, so the CLI needs no extra flag.
+- **Route-aware behaviour is preserved.** The App-vs-Query read-timeout choice and the pinned `workspace_id` injection key off the API family, not the hostname, so they behave identically under the override.
+- **`MP_REGION` is still required** and still meaningful for everything that is not a URL (account records, `/me` domain cross-checks, report-link hostnames). Report links (`create_report_link` / `saved_report_link`) keep producing real `*.mixpanel.com` URLs.
+- **`mp login` region probe.** Probing `us → eu → in` against one host is pointless, so under the override the probe runs once against the base and labels the account with `MP_REGION` (when it is `us`/`eu`/`in`) or `us`.
+- **Plain `http://` bases are accepted** with no extra flag. They are intended for local or headless deployments only — never send real credentials over cleartext to a remote host.
+- **`MP_APP_BASE_URL`** (optional) re-homes just the App API family at `{app_base}/api/app`. It works on its own (the other three families stay live) or on top of `MP_API_BASE_URL` (App API moves to the second host). With only `MP_APP_BASE_URL` set, `mp login` still walks `us → eu → in` (each `/me` probe hits the App override base) because the region it persists still decides which live cluster the Query, Export and Engage families use.
+- **Family detection is longest-prefix.** The App-vs-Query timeout and the `workspace_id` injection classify a URL by the family whose base is its longest prefix, so split configs where one base sits under the other (for example `MP_API_BASE_URL=https://proxy` with `MP_APP_BASE_URL=https://proxy/api/query`) still classify every request correctly.
+
+With neither variable set, behaviour is byte-identical to the per-region defaults.
 
 ## Setting Up an Account
 

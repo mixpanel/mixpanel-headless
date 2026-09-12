@@ -139,6 +139,8 @@ _MP_ENV_VARS = (
     "MP_WORKSPACE_ID",
     "MP_STORAGE_DIR",
     "MP_OAUTH_STORAGE_DIR",
+    "MP_API_BASE_URL",
+    "MP_APP_BASE_URL",
 )
 
 

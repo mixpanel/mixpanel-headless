@@ -20,6 +20,14 @@ Design constraints (per ``contracts/python-api.md`` §2.1):
 - **No logging or stderr writes.** Progress narration is the caller's
   job; the function returns or raises with structured data.
 
+Alternate-host override: when ``MP_API_BASE_URL`` is set, every region maps
+to the same host, so ``probe_region_for_credential`` collapses the walk to
+a single probe at that base — the region is ``MP_REGION`` when it names a
+valid region, else ``us``. ``MP_APP_BASE_URL`` alone re-homes ``/me`` but
+keeps the full ``us → eu → in`` walk, because the discovered region still
+routes the live Query / Export / Engage hosts. See
+``api_client._override_probe_order``.
+
 Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
 """
 
@@ -27,7 +35,6 @@ from __future__ import annotations
 
 import base64
 import os
-import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -202,6 +209,11 @@ def probe_region_for_credential(
 ) -> Region:
     """Build the credential header, probe ``us → eu → in``, return the region.
 
+    Under an API-host override (``MP_API_BASE_URL`` / ``MP_APP_BASE_URL``)
+    the walk collapses to one probe at the override base and the returned
+    region is ``MP_REGION`` (when valid) or ``us`` — see
+    ``api_client._override_probe_order``.
+
     Replaces the two near-identical inlined blocks that
     ``cli/commands/account.py::_probe_region_for_credential`` and
     ``accounts.py::_login_unified_new_credential`` used to carry. Both
@@ -227,7 +239,8 @@ def probe_region_for_credential(
             leave it ``None`` for silent operation.
 
     Returns:
-        The first region whose ``/me`` returned 200.
+        The first region whose ``/me`` returned 200 (under an override: the
+        single probed region).
 
     Raises:
         ConfigError: Missing credential material for the given
@@ -236,7 +249,12 @@ def probe_region_for_credential(
         RegionProbeError / RegionProbeNetworkError: Propagated from
             :func:`probe_region` when no region accepts the credential.
     """
-    from mixpanel_headless._internal.api_client import ENDPOINTS
+    from mixpanel_headless._internal.api_client import (
+        _endpoints_for,
+        _override_probe_narration,
+        _override_probe_order,
+        _probe_base_url,
+    )
 
     if account_type == "service_account":
         if username is None or secret is None:
@@ -265,21 +283,38 @@ def probe_region_for_credential(
         )
 
     def _factory(region: Region) -> httpx.Client:
-        """Build a region-scoped ``httpx.Client`` bound to the API host."""
-        app_url = ENDPOINTS[region]["app"]
-        # ``ENDPOINTS[*]["app"]`` is currently
-        # ``https://mixpanel.com/api/app`` — strip the path so
-        # ``probe_region`` can issue ``/api/app/me`` against the host
-        # root. ``urlsplit`` handles trailing slashes, future version
-        # segments, query strings, and fragments without a fragile
-        # substring search.
-        parts = urllib.parse.urlsplit(app_url)
-        base = urllib.parse.urlunsplit((parts.scheme, parts.netloc, "", "", ""))
-        return httpx.Client(base_url=base)
+        """Build a region-scoped ``httpx.Client`` bound to the App API host.
 
+        Args:
+            region: The region whose App API host to bind to. Ignored for
+                URL purposes when an API-host override is active.
+
+        Returns:
+            A client whose ``base_url`` is the App API URL minus
+            ``/api/app`` (see ``api_client._probe_base_url``), so
+            ``probe_region`` can issue ``/api/app/me`` relative to it.
+
+        Raises:
+            KeyError: ``region`` is not a key of ``api_client.ENDPOINTS``.
+                Unreachable via ``probe_region``, which only passes
+                ``us`` / ``eu`` / ``in``.
+
+        Example:
+            ```python
+            client = _factory("eu")
+            str(client.base_url)  # "https://eu.mixpanel.com/"
+            client.close()
+            ```
+        """
+        return httpx.Client(base_url=_probe_base_url(_endpoints_for(region)["app"]))
+
+    override_order = _override_probe_order()
     if narrate is not None:
-        narrate("Probing regions for /me access ...")
-    result = probe_region(_factory, headers)
+        narrate(_override_probe_narration() or "Probing regions for /me access ...")
+    if override_order is None:
+        result = probe_region(_factory, headers)
+    else:
+        result = probe_region(_factory, headers, order=override_order)
     if narrate is not None:
         for region_name, status in result.attempts:
             marker = "✓" if status == 200 else "✗"
