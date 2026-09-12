@@ -156,6 +156,79 @@ def test_filter_list_contains_restores_tuple_fields() -> None:
     assert isinstance(decoded._list_item_filters, tuple)
 
 
+@pytest.mark.parametrize(
+    "operator", ["was frobnicated", "is within", "magical_unicorn"]
+)
+def test_filter_decode_rehydrates_rejected_operators_verbatim(operator: str) -> None:
+    """A recorded Filter with a non-literal operator decodes without running ``__post_init__``.
+
+    Pinned vectors capture the *builders'* guard behaviour (ES13 / SG1 / SG2 /
+    SG3) on an already-constructed Filter. Since ``Filter.__post_init__``
+    started rejecting unknown operators, the codec must rebuild the recorded
+    object faithfully — field for field — rather than re-validate it, or those
+    vectors could never reach the guard they pin.
+
+    Args:
+        operator: An operator spelling ``Filter(...)`` now rejects.
+
+    Raises:
+        AssertionError: If decode raises or alters the recorded fields.
+    """
+    payload = {
+        "$type": "Filter",
+        "_property": "p",
+        "_operator": operator,
+        "_value": None,
+        "_property_type": "string",
+        "_resource_type": "events",
+        "_date_unit": None,
+        "_list_item_filters": None,
+        "_list_item_quantifier": None,
+    }
+    decoded = decode_value(payload)
+    assert isinstance(decoded, Filter)
+    assert decoded._operator == operator
+    assert decoded._property_type == "string"
+
+
+def test_filter_decode_does_not_normalize_alias_spellings() -> None:
+    """Decode is a faithful rebuild: an alias spelling stays verbatim, unlike ``Filter(...)``.
+
+    Raises:
+        AssertionError: If the codec rewrote ``_operator`` on the way in.
+    """
+    payload = {
+        "$type": "Filter",
+        "_property": "gold",
+        "_operator": "greater_than",
+        "_value": 10,
+        "_property_type": "number",
+    }
+    decoded = decode_value(payload)
+    assert isinstance(decoded, Filter)
+    # str() sidesteps mypy's Literal non-overlap check: the whole point is
+    # that the field holds a spelling outside the FilterOperator literal.
+    assert str(decoded._operator) == "greater_than"
+    assert decoded._resource_type == "events"
+
+
+def test_filter_decode_still_rejects_unknown_fields() -> None:
+    """The unknown-field guard runs before the faithful rebuild for Filter too.
+
+    Raises:
+        AssertionError: If an extra field slips through.
+    """
+    payload = {
+        "$type": "Filter",
+        "_property": "p",
+        "_operator": "is set",
+        "_value": None,
+        "_bogus": 1,
+    }
+    with pytest.raises(UndecodableValueError, match="_bogus"):
+        decode_value(payload)
+
+
 def test_cohort_definition_round_trip_preserves_to_dict() -> None:
     """``CohortDefinition`` (init=False) reconstructs via all_of/any_of.
 

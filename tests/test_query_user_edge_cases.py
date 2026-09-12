@@ -32,6 +32,7 @@ from mixpanel_headless._internal.query.user_validators import (
 )
 from mixpanel_headless.exceptions import BookmarkValidationError
 from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
+from tests.conftest import make_unchecked_filter
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
 _TEST_SESSION = Session(
@@ -689,12 +690,7 @@ class TestTier2CrashPaths:
         Verifies the catch-all at user_builders.py:142 raises a clear
         ValueError with the operator name.
         """
-        f = Filter(
-            _property="fake",
-            _operator="unknown_op",  # type: ignore[arg-type]
-            _value=None,
-            _property_type="string",
-        )
+        f = make_unchecked_filter("fake", "unknown_op", None, "string")
 
         with pytest.raises(ValueError, match="Unsupported filter operator.*unknown_op"):
             filter_to_selector(f)

@@ -12,8 +12,10 @@ Uses Hypothesis to verify:
 
 from __future__ import annotations
 
+from typing import get_args
 from unittest.mock import MagicMock
 
+import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import SecretStr
@@ -28,11 +30,14 @@ from mixpanel_headless._internal.bookmark_enums import (
     VALID_PROPERTY_TYPES,
     VALID_RESOURCE_TYPES,
 )
+from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.validation import (
     validate_bookmark,
     validate_query_args,
 )
+from mixpanel_headless._literal_types import FilterOperator
 from mixpanel_headless.types import (
+    _FILTER_OPERATOR_ALIASES,
     Filter,
     Formula,
     GroupBy,
@@ -857,3 +862,144 @@ class TestFormulaPositionValidation:
                 f"Position {max_letter} valid with {n_events} events "
                 f"but invalid with {n_events + 1}"
             )
+
+
+# =============================================================================
+# Filter direct construction: operator validation + alias normalization
+# =============================================================================
+
+_WIRE_OPERATORS: frozenset[str] = frozenset(get_args(FilterOperator))
+"""Runtime view of the ``FilterOperator`` literal."""
+
+
+def _direct(
+    operator: str, value: object = None, property_type: str = "string"
+) -> Filter:
+    """Construct a Filter positionally with an untyped operator string.
+
+    Args:
+        operator: Raw operator spelling (wire operator, alias, or garbage).
+        value: Raw ``_value`` payload.
+        property_type: Raw ``_property_type`` value.
+
+    Returns:
+        The constructed ``Filter`` (after ``__post_init__`` ran).
+    """
+    return Filter("p", operator, value, property_type)  # type: ignore[arg-type]
+
+
+class TestFilterOperatorValidationInvariant:
+    """``Filter.__post_init__`` accepts wire operators, maps aliases, rejects the rest."""
+
+    @given(op=st.sampled_from(sorted(_WIRE_OPERATORS - {"list_contains"})))
+    def test_every_wire_operator_is_accepted_unchanged(self, op: str) -> None:
+        """Every FilterOperator literal member round-trips through the constructor."""
+        f = _direct(op, None)
+        assert f._operator == op
+        assert f._value is None
+
+    @given(alias=st.sampled_from(sorted(_FILTER_OPERATOR_ALIASES)))
+    def test_every_alias_normalizes_to_a_wire_operator(self, alias: str) -> None:
+        """Every factory-method spelling maps onto a FilterOperator literal member."""
+        f = _direct(alias, None)
+        assert f._operator == _FILTER_OPERATOR_ALIASES[alias]
+        assert f._operator in _WIRE_OPERATORS
+
+    @given(op=st.text())
+    def test_every_other_string_is_rejected(self, op: str) -> None:
+        """Any string outside the literal set and the alias set raises ValueError."""
+        assume(op not in _WIRE_OPERATORS)
+        assume(op not in _FILTER_OPERATOR_ALIASES)
+        with pytest.raises(ValueError, match="Unknown Filter operator"):
+            _direct(op, None)
+
+    @given(op=st.sampled_from(sorted(_WIRE_OPERATORS)))
+    def test_case_and_whitespace_variants_are_rejected(self, op: str) -> None:
+        """Upper-casing or padding a valid operator does not sneak through."""
+        for variant in (op.upper(), f" {op}", f"{op} "):
+            assume(variant not in _WIRE_OPERATORS)
+            assume(variant not in _FILTER_OPERATOR_ALIASES)
+            with pytest.raises(ValueError, match="Unknown Filter operator"):
+                _direct(variant, None)
+
+    @given(truth=st.booleans(), negated=st.booleans())
+    def test_boolean_equality_collapses_to_true_false(
+        self, truth: bool, negated: bool
+    ) -> None:
+        """Boolean equals/not-equals with a bool value equals the is_true/is_false twin."""
+        operator = "does not equal" if negated else "equals"
+        f = _direct(operator, truth, "boolean")
+        expected_true = truth != negated
+        twin = Filter.is_true("p") if expected_true else Filter.is_false("p")
+        assert f == twin
+        assert build_filter_entry(f) == build_filter_entry(twin)
+
+    @given(
+        op=st.sampled_from(sorted(_WIRE_OPERATORS - {"true", "false", "list_contains"}))
+    )
+    def test_boolean_type_rejects_every_non_boolean_wire_operator(
+        self, op: str
+    ) -> None:
+        """On a boolean property only ``true`` / ``false`` survive validation."""
+        with pytest.raises(ValueError, match="boolean"):
+            _direct(op, None, "boolean")
+
+    @given(
+        value=st.integers(min_value=-10_000, max_value=10_000),
+        low=st.integers(min_value=-10_000, max_value=10_000),
+        high=st.integers(min_value=-10_000, max_value=10_000),
+    )
+    def test_segfilter_compat_aliases_preserve_segfilter_output(
+        self, value: int, low: int, high: int
+    ) -> None:
+        """'is equal to' / 'between' yield the same segfilter entry as their literal twins.
+
+        Both spellings are ``NUMBER_OPERATOR_MAP`` rows outside the
+        ``FilterOperator`` literal; normalizing them must not change what
+        ``build_segfilter_entry`` emits (``==`` and ``><``).
+        """
+        equal_alias = _direct("is equal to", value, "number")
+        equal_wire = _direct("equals", value, "number")
+        assert equal_alias == equal_wire
+        assert build_segfilter_entry(equal_alias) == build_segfilter_entry(equal_wire)
+        assert build_segfilter_entry(equal_alias)["filter"]["operator"] == "=="
+
+        between_alias = _direct("between", [low, high], "number")
+        between_wire = Filter.between("p", low, high)
+        assert between_alias == between_wire
+        assert build_segfilter_entry(between_alias) == build_segfilter_entry(
+            between_wire
+        )
+        assert build_segfilter_entry(between_alias)["filter"]["operator"] == "><"
+
+    @given(
+        op=st.sampled_from(["true", "false", "is_true", "is_false"]),
+        value=st.one_of(
+            st.text(min_size=1, max_size=10),
+            st.booleans(),
+            st.integers(),
+            st.lists(st.booleans(), min_size=1, max_size=3),
+        ),
+        property_type=st.sampled_from(["boolean", "string"]),
+    )
+    def test_true_false_with_any_non_none_value_is_rejected(
+        self, op: str, value: object, property_type: str
+    ) -> None:
+        """``true`` / ``false`` (and aliases) never accept a value — on any property type."""
+        with pytest.raises(ValueError, match="no value"):
+            _direct(op, value, property_type)
+
+    @given(
+        op=st.one_of(
+            st.none(),
+            st.integers(),
+            st.floats(allow_nan=False),
+            st.lists(st.text(max_size=5), max_size=3),
+            st.dictionaries(st.text(max_size=5), st.integers(), max_size=3),
+            st.tuples(st.text(max_size=5)),
+        )
+    )
+    def test_non_string_operator_is_rejected_with_value_error(self, op: object) -> None:
+        """Unhashable / non-string operators raise the same ValueError, never TypeError."""
+        with pytest.raises(ValueError, match="Unknown Filter operator"):
+            _direct(op, None)  # type: ignore[arg-type]

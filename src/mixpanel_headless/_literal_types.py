@@ -561,6 +561,73 @@ wire format and so mypy catches typos at every Filter classmethod
 factory call site.
 """
 
+FilterOperatorInput = Literal[
+    # --- FilterOperator members (the canonical wire spellings) ---
+    "contains",
+    "does not contain",
+    "does not equal",
+    "ends with",
+    "equals",
+    "false",
+    "is at least",
+    "is at most",
+    "is between",
+    "is greater than",
+    "is less than",
+    "is not set",
+    "is set",
+    "list_contains",
+    "not between",
+    "starts with",
+    "true",
+    "was before",
+    "was between",
+    "was in the",
+    "was in the next",
+    "was not between",
+    "was not in the",
+    "was not on",
+    "was on",
+    "was since",
+    # --- Filter factory-method names accepted as aliases ---
+    "at_least",
+    "at_most",
+    "before",
+    "between",
+    "date_between",
+    "date_not_between",
+    "ends_with",
+    "greater_than",
+    "in_cohort",
+    "in_the_last",
+    "in_the_next",
+    "is_false",
+    "is_not_set",
+    "is_set",
+    "is_true",
+    "less_than",
+    "not_between",
+    "not_contains",
+    "not_equals",
+    "not_in_cohort",
+    "not_in_the_last",
+    "not_on",
+    "on",
+    "since",
+    "starts_with",
+    # --- Segmentation-``where`` spelling kept constructible ---
+    "is equal to",
+]
+"""Every spelling ``Filter(...)`` accepts for ``_operator`` on direct construction.
+
+The union of :data:`FilterOperator`, the public ``Filter`` factory-method
+names (``"greater_than"``, ``"is_set"``, ...) and the segfilter-only
+``"is equal to"``. ``Filter.__post_init__`` normalizes any alias to its
+:data:`FilterOperator` member, so a constructed Filter always *stores* a
+canonical operator; this wider type only describes what may be passed in.
+Kept in lockstep with ``types._FILTER_OPERATOR_ALIASES`` by a unit test.
+"""
+
 FilterDateUnit = Literal["hour", "day", "week", "month"]
 """Time unit for relative date filters.
 

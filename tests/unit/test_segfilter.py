@@ -20,6 +20,7 @@ from mixpanel_headless._internal.segfilter import (
 )
 from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import Filter
+from tests.conftest import make_unchecked_filter
 
 # =============================================================================
 # String Operators
@@ -184,13 +185,14 @@ class TestSegfilterNumberOperators:
     def test_is_equal_to_number(self) -> None:
         """Number 'is equal to' maps to '==' with stringified operand.
 
-        Exercises segfilter's backward-compat dispatch for the
-        ``"is equal to"`` alias (no Filter classmethod produces this
-        value, hence the type: ignore).
+        ``"is equal to"`` is a ``NUMBER_OPERATOR_MAP`` row outside the
+        ``FilterOperator`` literal; ``Filter.__post_init__`` accepts it as
+        an alias of ``"equals"`` (it is a ``FilterOperatorInput`` member)
+        and the segfilter output is unchanged.
         """
         f = Filter(
             _property="count",
-            _operator="is equal to",  # type: ignore[arg-type]
+            _operator="is equal to",
             _value=42,
             _property_type="number",
             _resource_type="events",
@@ -198,7 +200,41 @@ class TestSegfilterNumberOperators:
         result = build_segfilter_entry(f)
 
         assert result["filter"]["operator"] == "=="
-        assert result["filter"]["operand"] == "42"
+
+    def test_is_equal_to_alias_matches_equals_output(self) -> None:
+        """'is equal to' and 'equals' produce identical segfilter entries."""
+        alias = Filter(
+            _property="count",
+            _operator="is equal to",
+            _value=42,
+            _property_type="number",
+        )
+        canonical = Filter(
+            _property="count", _operator="equals", _value=42, _property_type="number"
+        )
+        assert alias._operator == "equals"
+        assert build_segfilter_entry(alias) == build_segfilter_entry(canonical)
+        assert build_segfilter_entry(alias)["filter"] == {
+            "operator": "==",
+            "operand": "42",
+        }
+
+    def test_between_alias_matches_is_between_output(self) -> None:
+        """'between' and 'is between' produce identical segfilter entries."""
+        bounds: list[int | float] = [1, 10]
+        alias = Filter(
+            _property="amount",
+            _operator="between",
+            _value=bounds,
+            _property_type="number",
+        )
+        canonical = Filter.between("amount", 1, 10)
+        assert alias == canonical
+        assert build_segfilter_entry(alias) == build_segfilter_entry(canonical)
+        assert build_segfilter_entry(alias)["filter"] == {
+            "operator": "><",
+            "operand": ["1", "10"],
+        }
 
     def test_not_equals_number(self) -> None:
         """Number 'does not equal' maps to '!=' with stringified operand."""
@@ -499,37 +535,19 @@ class TestSegfilterEdgeCases:
 
     def test_unknown_operator_raises(self) -> None:
         """Unknown operator for a property type raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value="y",
-            _property_type="string",
-            _resource_type="events",
-        )
+        f = make_unchecked_filter("x", "magical_unicorn", "y", "string")
         with pytest.raises(ValueError, match="Unknown string operator"):
             build_segfilter_entry(f)
 
     def test_unknown_number_operator_raises(self) -> None:
         """Unknown number operator raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value=1,
-            _property_type="number",
-            _resource_type="events",
-        )
+        f = make_unchecked_filter("x", "magical_unicorn", 1, "number")
         with pytest.raises(ValueError, match="Unknown number operator"):
             build_segfilter_entry(f)
 
     def test_unknown_datetime_operator_raises(self) -> None:
         """Unknown datetime operator raises ValueError."""
-        f = Filter(
-            _property="x",
-            _operator="magical_unicorn",  # type: ignore[arg-type]
-            _value="2026-01-01",
-            _property_type="datetime",
-            _resource_type="events",
-        )
+        f = make_unchecked_filter("x", "magical_unicorn", "2026-01-01", "datetime")
         with pytest.raises(ValueError, match="Unknown datetime operator"):
             build_segfilter_entry(f)
 
@@ -560,16 +578,11 @@ def _filter_with(operator: str, value: Any, property_type: str) -> Filter:
         property_type: Raw ``_property_type`` value (may be invalid).
 
     Returns:
-        A ``Filter`` bypassing the classmethod constructors, matching the
-        edge-case construction pattern used elsewhere in this file.
+        A ``Filter`` bypassing both the classmethod constructors and
+        ``Filter.__post_init__`` validation, matching the edge-case
+        construction pattern used elsewhere in this file.
     """
-    return Filter(
-        _property="x",
-        _operator=operator,  # type: ignore[arg-type]
-        _value=value,
-        _property_type=property_type,  # type: ignore[arg-type]
-        _resource_type="events",
-    )
+    return make_unchecked_filter("x", operator, value, property_type)
 
 
 class TestCodedSegfilterCodes:

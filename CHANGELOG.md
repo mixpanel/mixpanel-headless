@@ -74,6 +74,36 @@ may include API changes.
   `severity="error"` item and exits with `INVALID_ARGS` (3). Scripts that
   test for exit code 1 on those commands must be updated.
 
+### Fixed
+
+- **`Filter(...)` built positionally no longer serializes an unvalidated
+  operator.** `Filter("gold", "greater_than", 10, "number")` used to emit
+  `"filterOperator": "greater_than"` verbatim and fail server-side with HTTP
+  400 (`Unsupported operator for filter_type number`). `Filter.__post_init__`
+  now validates `_operator` against the `FilterOperator` literal and raises
+  `ValueError` immediately — naming the bad operator, listing the valid wire
+  operators, and pointing at the factory methods — instead of surfacing a
+  generic `QueryError` one HTTP round trip later. The factory-method spellings
+  are accepted as aliases and normalized to the wire operator
+  (`"greater_than"` → `"is greater than"`, `"is_set"` → `"is set"`,
+  `"not_between"` → `"not between"`, `"in_the_last"` → `"was in the"`, and so
+  on for every public `Filter` classmethod), so the positional call now
+  produces byte-identical output to the equivalent factory. The two
+  segmentation-`where` spellings that pre-date the literal, `"is equal to"`
+  and `"between"`, stay constructible as aliases of `"equals"` and
+  `"is between"` (same `==` / `><` segfilter output). On a `boolean`
+  property, `equals` / `does not equal` with a `True` / `False` value collapse
+  to `true` / `false` with `filterValue: null`, matching `Filter.is_true()` /
+  `Filter.is_false()`; any other operator on a boolean property is rejected,
+  and `true` / `false` (however spelled) reject any non-`None` value. A
+  boolean `InlineCustomProperty` is governed by the same rules (the inline
+  type wins, as in `build_filter_entry`). Non-string operators raise the same
+  `ValueError` rather than `TypeError`. The `_operator` field is typed as the
+  new `FilterOperatorInput` literal (wire operators plus aliases) so the
+  positional call type-checks; the stored value is always canonical.
+  Already-valid input is never rewritten. The `Filter` docstring no longer
+  claims the class is "never instantiated directly".
+
 ### Documentation
 
 - `FrequencyFilter` now documents that the query engine evaluates its
