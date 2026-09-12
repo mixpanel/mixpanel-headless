@@ -106,11 +106,26 @@ record invocation (word-split via `$(cat ...)` by both the CI drift step and
 No D10 *exclusion* selectors live here: every exclusion besides
 `-m "not live"` is detected at runtime by the plugin (Hypothesis via
 `hasattr(item.obj, "hypothesis")`, CLI via `CliRunner.invoke` observation,
-`destructive` via marker, the rest per-capture at emit time), which keeps
+`destructive` via marker, `env_base_url_override` via an `os.environ` check
+at each capture, the rest per-capture at emit time), which keeps
 the corpus denominator honest without brittle `-k` selectors (see
 `EXTRACTION-LEDGER.md`). Add exclusion selectors here only if a future
 exclusion cannot be runtime-detected; the file must stay shell-word-safe
 (no comments, no quotes needing evaluation).
+
+Runtime-detected buckets that are NOT in the D10 design list:
+
+- `env_base_url_override` — captures taken while `MP_API_BASE_URL` /
+  `MP_APP_BASE_URL` was set; the recorded URLs are host-dependent and
+  cannot replay without that environment. The plugin reads both variables
+  at every entry-call open and every transport interaction (not only at
+  setup, because the tests set them with `monkeypatch.setenv` inside the
+  test body) and flags the test capture; the classifier then withholds
+  every vector from that test and lists its nodeid in
+  `manifest.exclusion_details` (PR #235's override tests are the whole
+  population). Added at the 2026-09-11 `0dde506` re-pin, where the
+  unfiltered extraction produced 30 loopback-host `wire` vectors that
+  failed 26/30 under the runner.
 
 ## Drift check (D8)
 

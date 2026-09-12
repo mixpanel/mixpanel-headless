@@ -420,6 +420,34 @@ def _input_contains_string(node: Any, needle: str) -> bool:
     return False
 
 
+_BASE_URL_OVERRIDE_ENV_VARS = ("MP_API_BASE_URL", "MP_APP_BASE_URL")
+"""Environment variables that re-home recorded request URLs (PR #235).
+
+The library reads both per request (``api_client._base_url_override``), so
+any capture taken while either is non-empty carries a host the runner
+cannot rebuild without that environment. Checked at capture time — never
+only at setup — because tests set them with ``monkeypatch.setenv`` inside
+the test body."""
+
+
+def _base_url_override_active() -> bool:
+    """Report whether a base-URL override is set in the current environment.
+
+    Returns:
+        True when ``MP_API_BASE_URL`` or ``MP_APP_BASE_URL`` is present in
+        ``os.environ`` with a non-empty value; False otherwise (an empty
+        string is ignored, matching the library).
+
+    Example:
+        ```python
+        os.environ["MP_API_BASE_URL"] = "http://127.0.0.1:8080"
+        _base_url_override_active()
+        # True
+        ```
+    """
+    return any(os.environ.get(name) for name in _BASE_URL_OVERRIDE_ENV_VARS)
+
+
 def _module_clock_mocked(func: Callable[..., Any]) -> bool:
     """Detect a test-local clock mock shadowing the D1.4 freeze (design D1.2).
 
@@ -773,6 +801,8 @@ class RecordSession:
         """
         capture = self._current
         assert capture is not None  # guarded by the wrapper
+        if _base_url_override_active():
+            capture.env_base_url_override = True
         instance: Any = args[0] if (is_method and args) else None
         excluded: str | None = None
         arguments: dict[str, Any] = {}
@@ -1123,6 +1153,8 @@ class RecordSession:
         capture = self._current
         if capture is None or capture.suppressed_category is not None:
             return None
+        if _base_url_override_active():
+            capture.env_base_url_override = True
         span = (
             self._thread_state.span_stack[-1] if self._thread_state.span_stack else None
         )
