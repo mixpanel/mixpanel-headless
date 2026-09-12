@@ -175,6 +175,13 @@ class TestCapture:
         interactions: Transport interactions in firing order.
         cli_used: True when ``CliRunner.invoke`` ran inside the test
             (design D10 per-test CLI detection).
+        env_base_url_override: True when ``MP_API_BASE_URL`` or
+            ``MP_APP_BASE_URL`` was non-empty in ``os.environ`` at the
+            moment any entry call or transport interaction was captured.
+            The library reads both per request, so every URL recorded
+            under them is host-dependent and cannot replay without that
+            environment; the classifier excludes the whole test as
+            ``env_base_url_override``.
         outcome: Final pytest outcome (``passed``/``failed``/``skipped``).
     """
 
@@ -183,6 +190,7 @@ class TestCapture:
     entry_calls: list[EntryCallCapture] = field(default_factory=list)
     interactions: list[RecordedInteraction] = field(default_factory=list)
     cli_used: bool = False
+    env_base_url_override: bool = False
     outcome: str = "passed"
 
 

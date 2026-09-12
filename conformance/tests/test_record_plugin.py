@@ -748,3 +748,134 @@ def test_error_only_init_guard_error_captured(
     error = calls[0].error
     assert isinstance(error, ParamValidationError)
     assert error.code == "TC0_INVALID_TYPE"
+
+
+def _annotation_handler(request: httpx.Request) -> httpx.Response:
+    """Serve one fixed annotation regardless of the request host.
+
+    Args:
+        request: The incoming request (ignored).
+
+    Returns:
+        A 200 JSON response holding one annotation.
+    """
+    del request
+    return httpx.Response(
+        200,
+        json={
+            "status": "ok",
+            "results": [
+                {
+                    "id": 1,
+                    "project_id": 12345,
+                    "date": "2026-03-31",
+                    "description": "hi",
+                    "tags": [],
+                }
+            ],
+        },
+    )
+
+
+@pytest.mark.parametrize("env_name", ["MP_API_BASE_URL", "MP_APP_BASE_URL"])
+def test_env_base_url_override_marks_entry_call_capture(
+    record_session: RecordSession,
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    """An entry call made under a base-URL override marks the capture.
+
+    Both ``MP_API_BASE_URL`` and ``MP_APP_BASE_URL`` re-home the recorded
+    request URL, so a capture taken while either is non-empty must carry
+    ``env_base_url_override`` for the emit-side classifier to exclude.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+        env_name: The override variable under test.
+
+    Raises:
+        AssertionError: If the capture is not marked.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    monkeypatch.delenv("MP_API_BASE_URL", raising=False)
+    monkeypatch.delenv("MP_APP_BASE_URL", raising=False)
+    nodeid = f"tests/unit/test_fake.py::test_override_{env_name}"
+    record_session.begin_test(nodeid, None)
+    # Set INSIDE the test body, mirroring ``monkeypatch.setenv`` in the
+    # override tests: a setup-time check alone would miss it.
+    monkeypatch.setenv(env_name, "http://127.0.0.1:8080")
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.nodeid == nodeid
+    assert capture.env_base_url_override is True
+    assert len(capture.interactions) == 1
+    assert capture.interactions[0].request.scheme_host == "http://127.0.0.1:8080"
+
+
+def test_env_base_url_override_marks_raw_transport_capture(
+    record_session: RecordSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A raw transport interaction under the override marks the capture too.
+
+    The mark is taken at transport time as well as at entry-call time, so
+    traffic that never crosses a registry seam still classifies as
+    ``env_base_url_override`` rather than ``raw_transport_no_entrypoint``.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+
+    Raises:
+        AssertionError: If the capture is not marked.
+    """
+    monkeypatch.delenv("MP_APP_BASE_URL", raising=False)
+    nodeid = "tests/unit/test_fake.py::test_override_raw"
+    record_session.begin_test(nodeid, None)
+    monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+    with httpx.Client(transport=httpx.MockTransport(_annotation_handler)) as raw:
+        raw.get("http://127.0.0.1:8080/api/app/projects/12345/annotations/")
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.env_base_url_override is True
+    assert capture.entry_calls == []
+    assert len(capture.interactions) == 1
+
+
+def test_env_base_url_override_unset_leaves_capture_unmarked(
+    record_session: RecordSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without either override variable the capture stays unmarked.
+
+    An empty-string value counts as unset (the library ignores it), so
+    ``MP_APP_BASE_URL=""`` must not mark the capture either.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+
+    Raises:
+        AssertionError: If the capture is marked.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    monkeypatch.delenv("MP_API_BASE_URL", raising=False)
+    monkeypatch.setenv("MP_APP_BASE_URL", "")
+    nodeid = "tests/unit/test_fake.py::test_no_override"
+    record_session.begin_test(nodeid, None)
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.env_base_url_override is False
+    assert capture.interactions[0].request.scheme_host == "https://mixpanel.com"
