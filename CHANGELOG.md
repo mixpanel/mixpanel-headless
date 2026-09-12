@@ -60,6 +60,21 @@ may include API changes.
   `severity="error"` item and exits with `INVALID_ARGS` (3). Scripts that
   test for exit code 1 on those commands must be updated.
 
+### Documentation
+
+- `FrequencyFilter` now documents that the query engine evaluates its
+  threshold **per query time bucket** (`unit`), not over the whole report
+  date range. With the default `unit="day"`, `FrequencyFilter("Login",
+  value=5)` keeps only users who logged in 5+ times on a single day and
+  returns an empty series when nobody does, even if thousands did so across
+  the month; choose the `unit` that matches the threshold period
+  (`"month"` for "N times in a month"). The `Workspace.query(where=...)`
+  docstring, the query
+  guide, and the mixpanelyst skill carry the same warning. The
+  `date_range_value` / `date_range_unit` parameters are documented as having
+  no observable effect on inline insights filters in a 2026-09-11 probe
+  (unverified against platform fixtures); they are unchanged on the wire.
+
 ## 0.2.2 — 2026-09-01
 
 Patch release: `schema_graph()` on large projects, query-engine bookmark
@@ -84,6 +99,11 @@ correctness, retry/error-path hardening, and a storage env-var rename.
   contract's `globalDataGroupId` at the sections level; a `TypeError` in
   the sensitive-data 403 sniff is fixed; OAuth bearer tokens are redacted
   from error-detail payloads. (#208)
+    - Upgrade note: on 0.2.1 every `Workspace.query(where=FrequencyFilter(...))`
+      call fails with a server 5xx (`ServerError: Server error: An unknown
+      error occurred.`) because the query engine cannot evaluate the old
+      clause shape. The failure gives no hint at its cause and there is no
+      client-side workaround; upgrade to `mixpanel-headless>=0.2.2`.
 - Retry and error paths hardened: negative, non-finite, or garbage
   `Retry-After` values fall back to exponential backoff and are capped at
   the 60s ceiling; a JSON-null `results` page is treated as empty and a

@@ -691,7 +691,7 @@ Filter to users who performed an event a certain number of times using `Frequenc
 ```python
 from mixpanel_headless import FrequencyFilter
 
-# Only users who purchased at least 3 times
+# Logins in March by users who purchased at least 3 times that month
 result = ws.query(
     "Login",
     where=FrequencyFilter(
@@ -699,24 +699,58 @@ result = ws.query(
         value=3,
         operator="is at least",
     ),
-    last=30,
-)
-
-# With a lookback window — purchased at least 3 times in the last 30 days
-result = ws.query(
-    "Login",
-    where=FrequencyFilter(
-        event="Purchase",
-        value=3,
-        operator="is at least",
-        date_range_value=30,
-        date_range_unit="day",
-    ),
-    last=90,
+    from_date="2026-03-01",
+    to_date="2026-03-31",
+    unit="month",
 )
 ```
 
 Operators: `"is at least"`, `"is at most"`, `"is greater than"`, `"is less than"`, `"is equal to"`.
+
+!!! warning "The count is evaluated per time bucket, not over the date range"
+    The query engine evaluates a `FrequencyFilter` threshold **inside each
+    time bucket of the query** (`unit`). With the default `unit="day"`,
+    `FrequencyFilter("Purchase", value=3)` keeps only users who purchased three
+    or more times *on the same day*; a user who purchased 30 times in a month
+    but never three times on one day is excluded from every daily bucket. An
+    empty `series` / zero-row `df` is the expected result when no user reaches
+    the threshold inside one bucket, not a sign that the filter failed.
+
+    Choose the `unit` that matches the period you mean: `"day"` for "N times
+    in a day", `"month"` for "N times in a month". `unit="month"` over a
+    multi-month range still yields one threshold per month; "N times over the
+    whole period" needs a date range that fits inside a single bucket. `last=`
+    is always a number of *days* regardless of `unit`, so pin a month with
+    `from_date` / `to_date`.
+
+    Measured on a seeded 10,000-user dataset (event `enter dungeon`,
+    2026-03-01 to 2026-03-31), with every library number matching a DuckDB
+    ground-truth count over the raw events. The default `math="total"` counts
+    events; `math="unique"` counts users.
+
+    | Query | `math` | Library result | Ground truth |
+    |---|---|---|---|
+    | unfiltered, `unit="day"`, summed over days | `total` (default) | 30,541 | 30,541 events from 8,281 users |
+    | `FrequencyFilter(value=2)`, `unit="day"`, summed over days | `total` | 3,893 | 3,893 events by users with 2+ **on the same day** (1,894 user-days) |
+    | `FrequencyFilter(value=3)`, `unit="day"` | `total` | 305 | 305 events, same-day 3+ |
+    | `FrequencyFilter(value=4)`, `unit="day"` | `total` | 20 | 20 events, same-day 4+ |
+    | `FrequencyFilter(value=5)`, `unit="day"` | `total` | **empty series** | same-day 5+: no user-days. Whole-month 5+: 2,571 users, 16,363 events (not what a daily query measures) |
+    | `FrequencyFilter(value=2)`, `unit="month"` | `total` | 29,188 | 29,188 events by the 6,928 users with 2+ in the month |
+    | `FrequencyFilter(value=2)`, `unit="month"` | `unique` | 6,928 | 6,928 users with 2+ in the month |
+
+!!! note "`date_range_value` / `date_range_unit` are unverified for inline filters"
+    These two parameters render as a `behavior.dateRange` lookback on the
+    wire. In a 2026-09-11 probe against the analytics query API they had no
+    observable effect on inline insights filters: a 31-day lookback returned
+    the same numbers as no lookback. Their behavior for inline filters has not
+    been verified against Mixpanel's internal fixtures. Do not rely on them to
+    widen the counting window; use `unit` instead.
+
+!!! tip "On 0.2.1? Upgrade"
+    `mixpanel-headless` 0.2.1 emitted a frequency-filter clause the query
+    engine could not evaluate, so every `FrequencyFilter` query failed with
+    `ServerError: Server error: An unknown error occurred.` There is no
+    client-side workaround; upgrade to `>=0.2.2`.
 
 ## Data Groups
 
