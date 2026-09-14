@@ -5,7 +5,14 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased
+## 0.2.3 — 2026-09-14
+
+Patch release: report links (create, resolve, and run a Mixpanel report
+URL from headless params), `MP_API_BASE_URL` single-host routing, a
+`limit=` parameter plus `run_*_params` on the query methods, `Filter`
+operator validation on direct construction, a CLI exit-code change for
+`BookmarkValidationError`, and the plugin manifest catches up to the
+library version.
 
 ### Added
 
@@ -22,8 +29,18 @@ may include API changes.
   local / headless deployments only. `MP_REGION` remains required and
   meaningful for non-URL uses. Optional `MP_APP_BASE_URL` re-homes only the
   App API family at `{app_base}/api/app`. With both unset, behaviour is
-  byte-identical to before.
-- **Report links** (045, AIE-561 / AIE-562). Share a headless query as a
+  byte-identical to before. (#235)
+- **`limit=` on the query methods, plus `run_*_params`.** `query()`,
+  `query_funnel()`, and `query_retention()` accept `limit=` (1 to 50000,
+  default 3000) to raise the segment cap for
+  high-cardinality breakdowns; check `result.meta["is_segmentation_limit_hit"]`
+  to see whether the result was still truncated. New `run_params()`,
+  `run_funnel_params()`, `run_retention_params()`, `run_flow_params()`,
+  and `run_user_params()` execute a params dict that the matching
+  `build_*_params()` produced (or one written by hand) and return the same
+  result type as the typed query method, so params the typed builder
+  cannot express can still run. (#225)
+- **Report links** (045, AIE-561 / AIE-562, #223). Share a headless query as a
   Mixpanel report URL and resolve a report URL back into runnable params.
   - `Workspace.create_report_link(params_or_result, *, report_type=, name=,
     description=, workspace_id=, bookmark_id=, validate=)` stores an unsaved
@@ -72,7 +89,9 @@ may include API changes.
   client-side schema check. `handle_errors` now prints
   `error: params failed schema validation` plus one line per
   `severity="error"` item and exits with `INVALID_ARGS` (3). Scripts that
-  test for exit code 1 on those commands must be updated.
+  test for exit code 1 on those commands must be updated. (#223)
+- Plugin: the manifest version is now `0.2.3`, in step with the library.
+  It stayed at `0.2.1` through the `0.2.2` release.
 
 ### Fixed
 
@@ -102,7 +121,7 @@ may include API changes.
   new `FilterOperatorInput` literal (wire operators plus aliases) so the
   positional call type-checks; the stored value is always canonical.
   Already-valid input is never rewritten. The `Filter` docstring no longer
-  claims the class is "never instantiated directly".
+  claims the class is "never instantiated directly". (#236)
 
 ### Documentation
 
@@ -118,6 +137,8 @@ may include API changes.
   `date_range_value` / `date_range_unit` parameters are documented as having
   no observable effect on inline insights filters in a 2026-09-11 probe
   (unverified against platform fixtures); they are unchanged on the wire.
+  (#234)
+- Plugin: dead reference links in the setup skill are fixed. (#230)
 
 ## 0.2.2 — 2026-09-01
 
