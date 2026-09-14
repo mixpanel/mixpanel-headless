@@ -120,7 +120,9 @@ Runtime-detected buckets that are NOT in the D10 design list:
   cannot replay without that environment. The plugin reads both variables
   at every entry-call open and every transport interaction (not only at
   setup, because the tests set them with `monkeypatch.setenv` inside the
-  test body) and flags the test capture; the classifier then withholds
+  test body), applies the library's own unset rule (a value that is empty
+  after `rstrip("/")` — `""`, `"/"`, `"///"` — is NOT an override), and
+  flags the test capture; the classifier then withholds
   every vector from that test and lists its nodeid in
   `manifest.exclusion_details` (PR #235's override tests are the whole
   population). Added at the 2026-09-11 `0dde506` re-pin, where the

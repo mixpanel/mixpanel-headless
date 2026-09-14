@@ -433,19 +433,30 @@ the test body."""
 def _base_url_override_active() -> bool:
     """Report whether a base-URL override is set in the current environment.
 
+    Applies the library's own rule (``api_client._base_url_override``):
+    the value is read with trailing slashes stripped, and an empty result
+    means unset. So ``""``, ``"/"`` and ``"///"`` do NOT count as active —
+    under those values the library still builds the live regional hosts
+    and the capture stays replayable.
+
     Returns:
         True when ``MP_API_BASE_URL`` or ``MP_APP_BASE_URL`` is present in
-        ``os.environ`` with a non-empty value; False otherwise (an empty
-        string is ignored, matching the library).
+        ``os.environ`` with a value that is non-empty after
+        ``rstrip("/")``; False otherwise.
 
     Example:
         ```python
         os.environ["MP_API_BASE_URL"] = "http://127.0.0.1:8080"
         _base_url_override_active()
         # True
+        os.environ["MP_API_BASE_URL"] = "///"
+        _base_url_override_active()
+        # False
         ```
     """
-    return any(os.environ.get(name) for name in _BASE_URL_OVERRIDE_ENV_VARS)
+    return any(
+        os.environ.get(name, "").rstrip("/") for name in _BASE_URL_OVERRIDE_ENV_VARS
+    )
 
 
 def _module_clock_mocked(func: Callable[..., Any]) -> bool:

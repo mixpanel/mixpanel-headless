@@ -176,8 +176,10 @@ class TestCapture:
         cli_used: True when ``CliRunner.invoke`` ran inside the test
             (design D10 per-test CLI detection).
         env_base_url_override: True when ``MP_API_BASE_URL`` or
-            ``MP_APP_BASE_URL`` was non-empty in ``os.environ`` at the
+            ``MP_APP_BASE_URL`` was active in ``os.environ`` at the
             moment any entry call or transport interaction was captured.
+            "Active" follows the library's rule: non-empty after trailing
+            slashes are stripped (``""``, ``"/"``, ``"///"`` mean unset).
             The library reads both per request, so every URL recorded
             under them is host-dependent and cannot replay without that
             environment; the classifier excludes the whole test as

@@ -849,17 +849,26 @@ def test_env_base_url_override_marks_raw_transport_capture(
     assert len(capture.interactions) == 1
 
 
+@pytest.mark.parametrize("env_name", ["MP_API_BASE_URL", "MP_APP_BASE_URL"])
+@pytest.mark.parametrize("value", ["", "/", "//", "///"])
 def test_env_base_url_override_unset_leaves_capture_unmarked(
-    record_session: RecordSession, monkeypatch: pytest.MonkeyPatch
+    record_session: RecordSession,
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+    value: str,
 ) -> None:
-    """Without either override variable the capture stays unmarked.
+    """A degenerate override value leaves the capture unmarked.
 
-    An empty-string value counts as unset (the library ignores it), so
-    ``MP_APP_BASE_URL=""`` must not mark the capture either.
+    The library reads each variable with ``rstrip("/")`` and treats the
+    empty result as unset, so an empty or slash-only value leaves requests
+    on the live regional hosts. The recorder must apply the same rule, or
+    it would exclude a replayable capture (PR #237 review).
 
     Args:
         record_session: The activated record session.
         monkeypatch: pytest env patcher.
+        env_name: The override variable under test.
+        value: The degenerate value the library treats as unset.
 
     Raises:
         AssertionError: If the capture is marked.
@@ -867,7 +876,8 @@ def test_env_base_url_override_unset_leaves_capture_unmarked(
     from mixpanel_headless._internal.api_client import MixpanelAPIClient
 
     monkeypatch.delenv("MP_API_BASE_URL", raising=False)
-    monkeypatch.setenv("MP_APP_BASE_URL", "")
+    monkeypatch.delenv("MP_APP_BASE_URL", raising=False)
+    monkeypatch.setenv(env_name, value)
     nodeid = "tests/unit/test_fake.py::test_no_override"
     record_session.begin_test(nodeid, None)
     client = MixpanelAPIClient(
