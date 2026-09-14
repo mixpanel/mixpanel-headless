@@ -1137,6 +1137,7 @@ _DETAILED_EXCLUSIONS = frozenset(
         "unserializable_input",
         "test_local_clock",
         "fs_dependent",
+        "env_base_url_override",
         "layer3_deferred",
         "raw_transport_no_entrypoint",
         "freeze_incompatible",
@@ -1200,6 +1201,12 @@ def _classify_capture(
         return []
     if capture.outcome == "failed":
         exclusions.add("freeze_incompatible", nodeid)
+        return []
+    if capture.env_base_url_override:
+        # Captures taken while MP_API_BASE_URL / MP_APP_BASE_URL was set:
+        # the recorded URLs are host-dependent (loopback / proxy hosts)
+        # and cannot replay without that environment (PR #235 tests).
+        exclusions.add("env_base_url_override", nodeid)
         return []
     vectors: list[_PendingVector] = []
     for call in capture.entry_calls:

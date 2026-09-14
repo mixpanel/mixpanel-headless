@@ -7,6 +7,212 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 
+## 2026-09-11 re-pin: stamp `b61b94c` → `0dde506` (PR #235 `MP_API_BASE_URL` + PR #236 `Filter` operator validation)
+
+Step 2 of the two-step protocol (README, "Which SHA to stamp") for two
+library PRs squash-merged to `main` on 2026-09-11:
+
+- PR #235 `feat(api-client): MP_API_BASE_URL routes every API family at one
+  alternate host` → `c93b00cd8c3a6bbd4833ba6f9be38d086b19f01d`
+- PR #236 `fix(types): validate Filter operator on direct construction and
+  accept factory-method aliases` → `0dde50608a6af026e94cdb75bacbcebe5ce105db`
+
+PR #234 (`2034a7a`, FrequencyFilter docs) sits between them and records
+nothing. One re-pin covers both PRs: `main` did not move after #236
+merged, so `0dde506` is the exact `src/` + `tests/` this corpus was
+extracted from, and `git log b61b94c..0dde506 -- src tests conformance`
+is exactly #233 (the previous re-pin, `conformance/` only), #234, #235,
+#236.
+
+This re-pin also ships one recorder change (same PR, separate commit):
+the `env_base_url_override` exclusion bucket described under "What
+changed". Without it the re-extraction produced 30 unreplayable vectors.
+
+### Why `0dde506` is the honest stamp
+
+Both PRs landed `src/` + `tests/` (plus, for #236, recorder tooling in
+`conformance/record/codecs.py` and `conformance/differential/strategies.py`)
+and left `conformance/vectors/` and `conformance/contract/` untouched, so
+each went red on the drift step as flagged in its body: #235 with 9
+findings (7 `bundle_only_in_candidate`, `api_index_differs`,
+`manifest_differs`), #236 with 97 findings (93 `vector_only_in_candidate`,
+2 `bundle_header_differs`, 1 `vector_bytes_differ`, `manifest_differs`).
+The re-extraction below reproduces #236's findings exactly. Of #235's 7
+candidate bundles it keeps 2 (the 4 vectors recorded with the override
+UNSET) and routes the other 26 vectors, plus 5 override tests that never
+reached the transport, into the new exclusion bucket; the
+`api_index_differs` finding disappears with them (see "api-index").
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-09-11 \
+  --mp-record-commit=0dde50608a6af026e94cdb75bacbcebe5ce105db
+uv run python -m conformance.contract.generate_contract \
+  --generated-from 0dde50608a6af026e94cdb75bacbcebe5ce105db
+```
+
+Interpreter and `tool_versions` unchanged from the committed manifest
+(Python 3.14.6, httpx 0.28.1, hypothesis 6.151.13, pydantic 2.13.3).
+Record run: **7,939 passed, 1 skipped, 563 deselected, 0 failed**
+(7,713 → 7,939: the tests #235 added in
+`tests/unit/test_api_base_url_override.py`,
+`tests/unit/test_api_base_url_override_pbt.py`, `tests/unit/test_region_probe.py`
+and #236 added in `tests/unit/test_query_types.py`,
+`tests/unit/test_query_pbt.py`, `tests/unit/test_segfilter.py`).
+
+The recorder does not delete stale bundle files. The first, pre-fix
+extraction in this worktree had written seven
+`*/test_api_base_url_override.jsonl` bundles; the five the fixed
+recorder no longer produces (`bookmarks`, `entities`, `funnels`,
+`retention`, `streaming`) were removed by hand as leftover output, not
+as a vector edit — the drift check's bidirectional bundle-path set
+comparison is what proves the committed tree equals the recorder's.
+
+### What changed
+
+**PR #235 — new exclusion bucket `env_base_url_override` (31 nodeids),
+2 new bundles, 4 new `wire` vectors.** The override tests run the
+`MixpanelAPIClient` / `Workspace` facade under
+`MP_API_BASE_URL=http://127.0.0.1:8080` (or `MP_APP_BASE_URL`) set with
+`monkeypatch.setenv` inside the test body, through `httpx.MockTransport`.
+The library reads both variables per request, so the recorded request
+URLs carried the override prefixes (`/api/query`, `/api/2.0`,
+`/api/query/engage`, `/api/app`) on the loopback host. The runner replays
+without that environment and builds the live per-region hosts, so 26 of
+the 30 vectors the unfixed recorder emitted failed `just conformance`
+(the other 4 are the UNSET-path controls below). Vectors are never
+hand-edited; the fix is recorder-side:
+
+- `conformance/record/plugin.py` reads `MP_API_BASE_URL` /
+  `MP_APP_BASE_URL` from `os.environ` at every entry-call open and every
+  transport interaction (not at setup — the tests set them mid-body) and
+  flags `TestCapture.env_base_url_override`.
+- `conformance/record/emit.py::_classify_capture` routes a flagged test
+  to `exclusions.add("env_base_url_override", nodeid)` before the
+  builder/wire emit branches; the bucket is in `_DETAILED_EXCLUSIONS`, so
+  the 31 nodeids are listed in `manifest.exclusion_details`.
+
+All 31 are in `tests/unit/test_api_base_url_override.py`:
+`TestWorkspaceFacadeHitsOverride` 9, `TestPrefixCollisionConfigs` 6,
+`TestBuildUrlUnderOverride` 5, `TestClientRequestsHitOverride` 5,
+`TestTimeoutSelectionUnderOverride` 3, `TestWorkspaceIdInjectionUnderOverride` 3.
+26 of them had emitted the failing `wire` vectors; the other 5 had
+landed in `wire_call_no_transport` (entry call ran, request never built)
+and now classify by the environment they ran under instead. The
+Hypothesis file `test_api_base_url_override_pbt.py` was already excluded
+as `hypothesis`; the `test_region_probe.py` override cases hit no
+registry seam and stay in `no_seam_hit`.
+
+The 4 kept vectors are the tests that assert the override is INERT when
+unset, so they record live hosts and replay cleanly:
+
+| New bundle | Vectors | Source tests |
+|---|---:|---|
+| `discovery/test_api_base_url_override.jsonl` | 3 | `TestUnsetIsLive::test_query_url_matches_live_region[us|eu|in]` (`api_client.get_events` on `https://mixpanel.com` / `eu.` / `in.`) |
+| `engage/test_api_base_url_override.jsonl` | 1 | `TestPrefixCollisionConfigs::test_live_engage_request_still_carries_workspace_id` (`api_client.engage_stats`) |
+
+**PR #236 — 93 new `builder` vectors and 1 changed vector**, all in the
+`filters` capability:
+
+- `filters/test_query_types.jsonl`: +87 `bookmark_builders.build_filter_entry`
+  vectors — 54 positional-alias-vs-factory byte-for-byte pairs
+  (`TestFilterUnchecked::test_positional_alias_reproduces_factory_byte_for_byte`),
+  20 boolean `equals` / `does not equal` → `true` / `false` collapse cases,
+  9 bug-report rows (`greater_than`, `is_set`, boolean `equals` + `True`),
+  and 4 inline-custom-property / guard-ordering cases.
+- `filters/test_segfilter.jsonl`: +6 `segfilter.build_segfilter_entry`
+  vectors (3 × `between` → `is between`, 3 × `is equal to` → `equals`,
+  each asserting the same `><` / `==` output as the canonical spelling).
+- **1 changed vector:**
+  `filters/segfilter.build_segfilter_entry/test_segfilter-testsegfilternumberoperators-test_is_equal_to_number`
+  now records `_operator: "equals"` where it recorded `"is equal to"`.
+  `Filter.__post_init__` normalizes the legacy segfilter-only spelling at
+  construction, so the recorded *input* moved; the output (`==`) did not.
+  This is the only pre-existing vector body that changed (flagged in
+  #236's Follow-ups).
+
+### api-index
+
+Unchanged: no key added, removed, or altered. With the override tests
+excluded, the eight `workspace.*` keys they were the first to record
+(`workspace.events`, `workspace.funnel`, `workspace.query`,
+`workspace.query_funnel`, `workspace.query_retention`,
+`workspace.query_user`, `workspace.retention`, `workspace.stream_events`)
+are not added, and `api_client.request` / `api_client.app_request` keep
+`capability: "entities"` — the unfixed extraction had flipped them to
+`discovery` because `discovery/test_api_base_url_override.jsonl` sorted
+before the first `entities` bundle hitting those seams (D4.4 first-vector
+rule). The surviving `discovery` bundle only touches
+`api_client.get_events`, which already carried `discovery`.
+
+### Headline counts (manifest `counts`)
+
+| Field | `b61b94c` | `0dde506` | Δ |
+|---|---:|---:|---:|
+| `total` | 3,136 | 3,233 | +97 |
+| `by_kind.builder` | 1,801 | 1,894 | +93 |
+| `by_kind.wire` | 1,270 | 1,274 | +4 |
+| `by_kind.validation-error` | 65 | 65 | 0 |
+| `by_capability.discovery` | 95 | 98 | +3 |
+| `by_capability.engage` | 237 | 238 | +1 |
+| `by_capability.filters` | 191 | 284 | +93 |
+| `with_setup` | 121 | 121 | 0 |
+| bundles (extracted) | 169 | 171 | +2 |
+
+Every other `by_capability` entry is unchanged.
+
+Exclusion buckets that moved: `cli` 594 → 595, `hypothesis` 550 → 563,
+`no_seam_hit` 2,362 → 2,406, `wire_call_no_transport` 783 → 784, and two
+buckets that were empty and are now populated:
+**`env_base_url_override` 0 → 31** (above) and **`uncoded_raise` 0 → 50**.
+All 50 are `tests/unit/test_query_types.py::TestFilterDirectConstruction`
+cases that expect the plain `ValueError` from `Filter.__post_init__`.
+That guard is deliberately uncoded (#236: the contract pins the
+coded-guard registry at 126 entries), so the recorder logs these on the
+D4.3 worklist instead of recording `validation-error` vectors. Giving the
+constructor guard a code and recording that family is an open follow-up.
+
+### Contract artifacts
+
+`conformance/contract/*.json`: 4 files, one line each. `error-codes.json`,
+`literal-aliases.json`, and `model-coverage.json` change `generated_from`
+only (content with that key removed is identical to the `b61b94c`
+artifacts); `FilterOperatorInput` (new in `_literal_types.py`) is not
+exported in `__all__`, so the literal-alias count is unchanged.
+`tag-universe.json` also moves three per-tag vector counts, all from the
+new `filters` vectors: `Filter` 409 → 501, `InlineCustomProperty` 35 → 36,
+`PropertyInput` 45 → 46. No tag was added or removed. (The unfixed
+extraction had also moved `datetime` 71 → 72 via an override
+`stream_events` vector; that vector is now excluded.)
+
+### Determinism / drift proof
+
+Re-extraction into `/tmp/re-extract-repin` with the new committed stamps
+injected (the exact CI command; record run again 7,939 passed, 1 skipped,
+563 deselected), then
+`uv run python -m conformance.record.diff /tmp/re-extract-repin conformance/vectors`:
+`drift check: CLEAN (byte-identical within D8 scope)`, exit 0.
+`just conformance-stamps` (rules 1 + 2):
+`stamp check: CLEAN (all stamps reachable from main; stamp moved with content)`.
+`just conformance-smoke` (D9 deliberate-break suite): `smoke result: PASS`.
+`uv run pytest conformance/runner`: 3,453 passed, 0 failed (3,233
+extracted + authored + enums; the pre-fix corpus ran 3,479 with 26 failed).
+
+### New stamps
+
+| Stamp | Value |
+|---|---|
+| `manifest.source_commit` (+ 171 `$bundle.source_commit`) | `0dde50608a6af026e94cdb75bacbcebe5ce105db` |
+| `manifest.extraction_date` | `2026-09-11` |
+| `contract/*.json` `generated_from` (4 artifacts) | `0dde50608a6af026e94cdb75bacbcebe5ce105db` |
+
+After this merges, the TS port re-pins `corpus.config.json`
+`sourceCommit` to `0dde506…` and runs `npm run sync:corpus`. If its
+manifest schema enumerates exclusion bucket names, it must add
+`env_base_url_override`.
+
 ## 2026-09-11 re-pin: stamp `c9991d1` → `b61b94c` (PR #225 `limit=` + `run_*_params`)
 
 Step 2 of the two-step protocol (README, "Which SHA to stamp") for PR #225

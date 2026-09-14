@@ -859,3 +859,76 @@ def test_bundle_framing_line_safe_with_hazard_codepoints(tmp_path: Path) -> None
     ]
     vector = _json.loads(vector_line)
     assert vector["call"]["input"]["events"] == [hazard_string]
+
+
+# ---------------------------------------------------------------------------
+# env_base_url_override exclusion (captures taken under MP_API_BASE_URL /
+# MP_APP_BASE_URL — host-dependent, never replayable without that env)
+# ---------------------------------------------------------------------------
+
+
+def test_env_base_url_override_capture_excluded(tmp_path: Path) -> None:
+    """A capture marked ``env_base_url_override`` emits no vector at all.
+
+    Both the wire vector and any builder vector from the same test are
+    withheld, the test is counted once under ``env_base_url_override``,
+    and its nodeid is listed in ``manifest.exclusion_details`` (it is a
+    detail category). No other exclusion bucket is touched.
+
+    Args:
+        tmp_path: Output directory for the emit pass.
+
+    Raises:
+        AssertionError: If a vector leaks or the bucket is mis-counted.
+    """
+    import json as jsonlib
+
+    wire = _wire_capture("tests/unit/test_api_base_url_override.py::test_wire")
+    wire.env_base_url_override = True
+    builder = _builder_capture("tests/unit/test_api_base_url_override.py::test_build")
+    builder.env_base_url_override = True
+    builder_call = builder.entry_calls[0]
+    builder_call.index = 1
+    wire.entry_calls.append(builder_call)
+    control = _builder_capture("tests/unit/test_fake.py::test_control")
+    captures = [wire, control]
+    nodeids = [capture.nodeid for capture in captures]
+
+    summary = emit_corpus(captures, nodeids, _options(tmp_path))
+
+    assert summary.total_vectors == 1  # the unmarked control only
+    assert summary.exclusions.get("env_base_url_override") == 1
+    assert summary.exclusions.get("raw_transport_no_entrypoint", 0) == 0
+    assert summary.exclusions.get("wire_call_no_transport", 0) == 0
+    bundles = list(tmp_path.rglob("*.jsonl"))
+    assert len(bundles) == 1
+    assert "test_api_base_url_override" not in bundles[0].read_text("utf-8")
+    manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert manifest["exclusions"]["env_base_url_override"] == 1
+    assert manifest["exclusion_details"]["env_base_url_override"] == [wire.nodeid]
+    assert "api_client.list_annotations" not in jsonlib.loads(
+        (tmp_path / "api-index.json").read_text("utf-8")
+    )
+
+
+def test_env_base_url_override_unset_capture_unaffected(tmp_path: Path) -> None:
+    """An unmarked capture emits exactly as before the bucket existed.
+
+    Args:
+        tmp_path: Output directory for the emit pass.
+
+    Raises:
+        AssertionError: If the vector is withheld or the bucket appears.
+    """
+    import json as jsonlib
+
+    wire = _wire_capture("tests/unit/test_fake.py::test_wire_plain")
+    assert wire.env_base_url_override is False
+
+    summary = emit_corpus([wire], [wire.nodeid], _options(tmp_path))
+
+    assert summary.total_vectors == 1
+    assert "env_base_url_override" not in summary.exclusions
+    manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert "env_base_url_override" not in manifest["exclusions"]
+    assert "env_base_url_override" not in manifest["exclusion_details"]
