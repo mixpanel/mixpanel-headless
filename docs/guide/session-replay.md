@@ -13,6 +13,7 @@ Session replay answers "what did this user actually *do*?" — the click-by-clic
 - Correlate a tracked Mixpanel event with the on-screen actions around it (`include_mixpanel_events`).
 - Rank the most-clicked elements, find rage-click bursts, or surface sessions with console errors across many replays.
 - Export the raw rrweb stream to feed Mixpanel's JS player or your own tooling (`to_rrweb_player_json`).
+- Read mobile app sessions (iOS, Android, React Native, Flutter) as screens, taps, and rage-tap bursts (see [Mobile and Screenshot Replays](#mobile-and-screenshot-replays)).
 
 The surface is built on the same signed-CDN endpoints Mixpanel's own MCP server uses. It does **not** persist anything to disk — signed URLs are time-bounded bearer credentials handled in process.
 
@@ -136,6 +137,143 @@ err = bundle.error_sessions()     # a NEW bundle of only the replays with consol
 ```
 
 `top_clicks` (and `elements_df`) count **genuine clicks only** — a real user click fires both a `focused` and a `clicked` interaction, and counting both would double every click, so the focus-only interactions are excluded.
+
+## Mobile and Screenshot Replays
+
+The iOS (`swift-sr`), Android (`android-sr`), React Native, and Flutter SDKs record sessions differently from the JavaScript SDK. They have no DOM to record. Each screen goes into the stream as a screenshot image. When the SDK has wireframes turned on, each screen also goes in as a *wireframe*: a flat list of the screen's elements (role, text, and bounds). Flutter makes screenshot recordings on every target: mobile, web, and desktop.
+
+The analyzer reads these recordings too. The same `fetch_replay`, `replays_for_user`, and `mp replays analyze` calls work, with no options to set.
+
+### Detecting a screenshot recording
+
+`Replay.capture` tells you which kind of recording you have:
+
+- `"screenshot"` — the stream has at least one `mp_wireframe` event, or it has Meta events and none of them carries a page URL (`href`). Every mobile and Flutter SDK sends Meta events without `href`.
+- `"dom"` — every other replay, including a replay with no Meta event. Web replays give the same output as before.
+
+The analyzer decides the recording type once, before it reads the events. So a touch that comes before the first wireframe (common on iOS) is still read as a mobile tap.
+
+```python
+replay = ws.fetch_replay("a436a4ec-076b-4a14-851c-b6a80f7c6fdc")
+
+print(replay.capture)          # "screenshot"
+print(replay.has_wireframes)   # True
+print(replay.screen_path())    # ["Home", "Settings"]
+print(replay.page_path())      # [] — screenshot recordings have no URLs
+```
+
+`has_wireframes` is `False` for a screenshot recording made with wireframes turned off. That replay still gives taps, scrolls, and clicks, but no screens, and every tap target is a bare point.
+
+### Reading the timeline
+
+A screenshot recording gives four kinds of timeline lines:
+
+```text
+1789482332: Wireframe: Home [16,38,54,27] | text [363,27,48,48] | This is home Fragment [8,88,395,27] | button:View Jokes (Compose) [98,155,215,48] | …
+1789482352: Tapped at (383, 51)
+1789482353: Wireframe: Settings [72,38,76,27] | image [0,24,56,56] | button:Re-initialize Session Replay [16,100,379,40] | Current Status: [16,168,94,20] | Initialized ✓ [16,192,76,20] | text [363,27,48,48]
+1789482354: Tapped at (182, 142)
+```
+
+(The first `Wireframe:` line is cut short here; the analyzer prints every element.)
+
+**`Wireframe:` lines** (action `"screen"`) show one screen. Elements are separated by `|`, in the order the SDK sent them:
+
+- A bare label is a text element: `Home`.
+- `role:label` is any other role: `button:Save`, `input:Email`, `image`, `switch`. The roles seen in real recordings are `text`, `image`, `button`, `input`, and `switch` (React Native).
+- An element with no label shows its role only: `text [363,27,48,48]` is an unlabeled text element, usually an icon.
+- `[x,y,w,h]` is the element's rect in logical pixels, from the top-left corner. An element with no usable bounds has no rect.
+
+A label is cut at 50 characters with `…`, and a `|` inside a label becomes `/` so the separator stays clear. Masked text has no label: iOS omits it and Android sends `null`.
+
+**Screens are keyframes, not a continuous record.** The analyzer keeps the screen that was showing when each gesture started, and up to two screens after the gesture ended. Consecutive identical screens appear once. A replay with no gestures shows its first and last screen. This keeps animation frames out of the timeline, but it also means that something can happen between two screens without a line of its own.
+
+**`Tapped at (x, y)`** (action `"touch_start"`, `metadata["interaction"] == "tapped"`) is a touch that moved 10 px or less before the finger lifted. **`Scrolled`** (action `"scroll"`) is a touch that moved farther. A touch that the system cancelled gives no line. The analyzer classifies each touch when the finger lifts, so the tap timestamp is the lift time.
+
+**`Clicked at (x, y)`** (action `"click"`) is a mouse click in a Flutter web or desktop recording. These clicks count in `top_clicks()`, `rage_clicks()`, and `n_clicks`, the same as web clicks. Mobile taps do not: they are `touch_start` actions.
+
+Consecutive identical lines collapse into `(×N)`, as they do for web replays. Seven taps at one point become `Tapped at (257, 638) (×7)`. The collapsed line shows the timestamp of the first tap only, so it hides how long the burst lasted. Use `rage_taps()` (below) for real burst timing.
+
+### What a tap hit
+
+The description always shows the point. The structured action says which element the point hit. The analyzer hit tests each tap and click against the screen that was showing at finger-down:
+
+1. Elements whose rect contains the point are candidates. A non-text role (a button or an input) wins over a text element, and then the smallest rect wins. `metadata["attribution"]` is `"bounds"`.
+2. With no containing rect, the nearest element within 8 px wins. Real taps often land just outside a button edge. `metadata["attribution"]` is `"bounds_slop"`.
+3. With no element near the point, `target_desc` is the point, `"(x, y)"`, and there is no `metadata["hit"]`.
+
+`target_desc` names the hit element: the bare label for text, `role:label` for other roles, or `role [x,y,w,h]` for an element with no label. `metadata["hit"]` holds the element's `role`, `text`, and `bounds`.
+
+```python
+for a in replay.actions:
+    if a.action == "touch_start":
+        print(a.description, "→", a.target_desc, a.metadata.get("attribution"))
+# Tapped at (383, 51) → text [363,27,48,48] bounds
+# Tapped at (182, 142) → button:Re-initialize Session Replay bounds_slop
+```
+
+Rects can overlap, so a hit is an inference, not a fact the SDK sent.
+
+To rank tapped elements across mobile replays, group the tap actions yourself:
+
+```python
+taps = bundle.actions_df.query("action == 'touch_start'")
+print(taps.groupby("target_desc").size().sort_values(ascending=False).head(10))
+```
+
+### Screen headings and fingerprints
+
+The SDKs send no screen name. For each `"screen"` action, `target_desc` is an **approximate heading**: the label of the top-most labeled text element on screen (smallest `y`, then smallest `x`). A screen with no labeled text, for example a fully masked one, gets `"(screen)"`. The heading can be a clock, a back button label, or the same title on several different screens. Treat it as a hint, not an identity.
+
+`metadata["fingerprint"]` is a short hash of the rendered `Wireframe:` line, so identical screens share it. Use the fingerprint to count screen visits, and the heading to label them. Screen metadata also holds `elements` (the parsed element list), `viewport`, `scale`, and `element_count`.
+
+`ReplayBundle.screens_df` has one row per screen: `replay_id`, `t`, `heading`, `fingerprint`, `element_count`, and `description`.
+
+```python
+visits = (
+    bundle.screens_df
+    .groupby("fingerprint")
+    .agg(heading=("heading", "first"), visits=("replay_id", "size"))
+    .sort_values("visits", ascending=False)
+)
+print(visits.head(3))
+```
+
+`default_label_fn` gives screen labels such as `screen:Home@(no-url)`, so `find_pattern` works on mobile sequences too.
+
+### Coordinate scaling
+
+Tap points use the coordinate space of the Meta event. Some Android SDK builds send wireframe bounds in physical pixels (for example, a 1080-wide viewport on a 411-wide screen). When the wireframe `viewport` width differs from the Meta width by more than 5%, the analyzer multiplies the bounds by `meta_width / viewport_width` before it hit tests. `metadata["scale"]` records the factor (`1.0` when the spaces match), and `metadata["elements"]` holds the scaled bounds. The `Wireframe:` description keeps the raw bounds. An element whose rect is fully outside the screen width gets `"offscreen": True`, and the heading and the hit test ignore it.
+
+### Rage and dead taps
+
+`ReplayBundle.rage_taps()` finds bursts of taps near one point in screenshot recordings:
+
+```python
+print(bundle.rage_taps())   # threshold=3, window_ms=2000, radius_px=24, grace_ms=1000
+#    replay_id        t_start          t_end  ...    y  count  kind
+# 0  81cf456f…  1789663316578  1789663317798  ...  638     20  rage
+# 1  81cf456f…  1789663335106  1789663336038  ...  368     33  rage
+# 2  81cf456f…  1789663345601  1789663346674  ...  678     39  dead
+```
+
+A burst is `threshold` or more finger-downs within `window_ms` of the first one and within `radius_px` of its point. The method counts finger-downs from `rrweb_events` (touch starts, plus clicks in Flutter web and desktop), not the `Tapped` lines. When fingers overlap in a fast burst, many finger-downs produce only a few classified taps. In the example above, 20 finger-downs produce only 8 `Tapped` lines.
+
+Each burst is classified by the screen changes from its first finger-down to `grace_ms` after its last one:
+
+- **`"dead"`** — the screen never changed. The control did nothing.
+- **`"rage"`** — the screen changed once or a few times while the user kept tapping.
+- **Intentional, not reported** — the screen changed for each tap, or for all taps but one. A quantity stepper or a carousel works this way.
+
+The columns are `replay_id`, `t_start`, `t_end` (Unix ms), `target_desc` (the hit-test target at the first finger-down), `x` and `y` (the first finger-down point), `count`, and `kind`. Web replays give no rows: use `rage_clicks()` for them.
+
+### Limits
+
+- **Headings are approximate.** Two different screens can share a heading, and one screen can get a different heading after a small change. Use the fingerprint for identity.
+- **Masked text is gone.** A masked label is not in the recording, so a masked screen has only roles and rects, and its heading is `"(screen)"`.
+- **Some screens are mid-animation.** An "after" screen can be a frame from the middle of a transition. Its elements can have negative `x` or sit past the right edge.
+- **`(×N)` hides the time span.** A collapsed line shows the first timestamp only. Use `rage_taps()` or `actions_df` for real timing.
+- **No URLs.** `url` is `None`, `page_path()` is empty, and `where(contains_url=...)` matches nothing. Use `screen_path()` instead.
 
 ## Filters and Comparison
 
