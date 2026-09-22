@@ -10,6 +10,8 @@ invariants:
 - No two consecutive screen actions have the same description.
 - The screen count never exceeds the per-session cap.
 - Screenshot taps and clicks report coordinates only, never a DOM element.
+- ``rage_taps`` never raises, reports only ``rage`` or ``dead`` bursts
+  within its limits, and ignores DOM recordings.
 - A DOM recording (no wireframe, and a Meta ``href`` or no Meta event at
   all) keeps the web behavior: the touch inputs that only screenshot
   recordings use change nothing, and the output matches a small model of
@@ -30,7 +32,9 @@ from mixpanel_headless._internal.replays.rrweb_analyzer import (
     RrwebAnalyzer,
     _render_markdown,
     detect_capture,
+    hit_target_desc,
 )
+from mixpanel_headless.types import Replay, ReplayBundle
 
 # =============================================================================
 # Strategies
@@ -356,6 +360,9 @@ def test_screenshot_taps_and_clicks_report_points_only(
 ) -> None:
     """In a screenshot recording, taps and clicks never name a DOM element.
 
+    A tap or click targets its hit-test element, its point, or a
+    placeholder; the description always shows the point only.
+
     Args:
         events: A random mixed stream.
     """
@@ -364,9 +371,14 @@ def test_screenshot_taps_and_clicks_report_points_only(
     for action in RrwebAnalyzer().analyze(events).actions:
         if action.action in ("touch_start", "click"):
             assert _SCREENSHOT_POINT_RE.match(action.description), action.description
-            assert action.target_desc in ("(tap)", "(click)") or (
-                _SCREENSHOT_TARGET_RE.match(action.target_desc)
-            )
+            if "hit" in action.metadata:
+                assert action.metadata["attribution"] in ("bounds", "bounds_slop")
+                assert action.target_desc == hit_target_desc(action.metadata["hit"])
+            else:
+                assert "attribution" not in action.metadata
+                assert action.target_desc in ("(tap)", "(click)") or (
+                    _SCREENSHOT_TARGET_RE.match(action.target_desc)
+                )
 
 
 @given(events=_dom_streams())
@@ -415,3 +427,40 @@ def test_stream_without_meta_is_dom(events: list[dict[str, Any]]) -> None:
     """
     no_meta = [e for e in events if e["type"] != 4]
     assert detect_capture(no_meta) == "dom"
+
+
+@given(
+    events=_mixed_streams,
+    threshold=st.integers(min_value=1, max_value=4),
+    window_ms=st.integers(min_value=0, max_value=3000),
+)
+@settings(deadline=None)
+def test_rage_taps_never_raises_and_respects_its_limits(
+    events: list[dict[str, Any]], threshold: int, window_ms: int
+) -> None:
+    """``rage_taps`` never raises, and each row respects the burst limits.
+
+    Args:
+        events: A random mixed stream.
+        threshold: The minimum finger-downs per burst.
+        window_ms: The maximum burst span.
+    """
+    stamps = [e["timestamp"] for e in events if e["timestamp"] > 0] or [1]
+    replay = Replay(
+        replay_id="r",
+        distinct_id=None,
+        project_id=1,
+        start_time=min(stamps),
+        end_time=max(stamps),
+        retention_days=30,
+        rrweb_events=events,
+        actions=RrwebAnalyzer().analyze(events).actions,
+    )
+    bundle = ReplayBundle(replays=[replay], computed_at="now", project_id=1)
+    df = bundle.rage_taps(threshold=threshold, window_ms=window_ms)
+    for row in df.to_dict("records"):
+        assert row["kind"] in ("rage", "dead")
+        assert int(row["count"]) >= threshold
+        assert 0 <= int(row["t_end"]) - int(row["t_start"]) <= window_ms
+    if replay.capture == "dom":
+        assert df.empty

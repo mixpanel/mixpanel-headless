@@ -15,9 +15,12 @@ Conventions:
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import pandas as pd
+
+from mixpanel_headless._internal.replays.rrweb_analyzer import finger_downs
 
 if TYPE_CHECKING:
     from mixpanel_headless.types import ReplayBundle
@@ -127,6 +130,97 @@ def rage_clicks(
             else:
                 i += 1
     return pd.DataFrame(rows, columns=["replay_id", "t_start", "target_desc", "count"])
+
+
+_RAGE_TAP_COLUMNS = [
+    "replay_id",
+    "t_start",
+    "t_end",
+    "target_desc",
+    "x",
+    "y",
+    "count",
+    "kind",
+]
+
+
+def rage_taps(
+    bundle: ReplayBundle,
+    threshold: int = 3,
+    window_ms: int = 2000,
+    radius_px: float = 24,
+    grace_ms: int = 1000,
+) -> pd.DataFrame:
+    """Rage and dead tap bursts in the bundle's screenshot recordings.
+
+    Finger-downs come from each replay's ``rrweb_events`` (see
+    :func:`finger_downs`); DOM recordings give none. Bursts form greedily
+    in time order: an unused finger-down opens a burst, and every later
+    unused finger-down within ``window_ms`` of it and within
+    ``radius_px`` of its point joins. A finger-down at another point does
+    not break the burst. A burst with at least ``threshold`` members is
+    classified by the ``"screen"`` actions with a timestamp after the first
+    finger-down and no later than ``grace_ms`` after the last one: none
+    is ``"dead"``; at least ``max(1, count - 1)`` is an intentional run of
+    taps and is skipped; anything between is ``"rage"``.
+
+    Args:
+        bundle: The bundle to scan.
+        threshold: Minimum finger-downs per burst. Default 3.
+        window_ms: Maximum burst span from the first finger-down, in
+            milliseconds. Default 2000.
+        radius_px: Maximum distance from the first finger-down, in
+            touch-space pixels. Default 24.
+        grace_ms: Time after the last finger-down in which a screen change
+            still counts, in milliseconds. Default 1000.
+
+    Returns:
+        DataFrame with columns ``replay_id``, ``t_start``, ``t_end``,
+        ``target_desc``, ``x``, ``y``, ``count``, ``kind`` — one row per
+        reported burst, in replay order and then time order.
+    """
+    rows: list[dict[str, object]] = []
+    for replay in bundle.replays:
+        downs = finger_downs(replay.rrweb_events)
+        if len(downs) < threshold:
+            continue
+        screen_times = [a.timestamp for a in replay.actions if a.action == "screen"]
+        used = [False] * len(downs)
+        for i, first in enumerate(downs):
+            if used[i]:
+                continue
+            members = [i]
+            for j in range(i + 1, len(downs)):
+                candidate = downs[j]
+                if candidate.timestamp - first.timestamp > window_ms:
+                    break
+                if not used[j] and (
+                    math.hypot(candidate.x - first.x, candidate.y - first.y)
+                    <= radius_px
+                ):
+                    members.append(j)
+            if len(members) < threshold:
+                continue
+            for j in members:
+                used[j] = True
+            t_start = first.timestamp
+            t_end = downs[members[-1]].timestamp
+            changes = sum(1 for t in screen_times if t_start < t <= t_end + grace_ms)
+            if changes >= max(1, len(members) - 1):
+                continue
+            rows.append(
+                {
+                    "replay_id": replay.replay_id,
+                    "t_start": t_start,
+                    "t_end": t_end,
+                    "target_desc": first.target_desc,
+                    "x": first.x,
+                    "y": first.y,
+                    "count": len(members),
+                    "kind": "dead" if changes == 0 else "rage",
+                }
+            )
+    return pd.DataFrame(rows, columns=_RAGE_TAP_COLUMNS)
 
 
 def long_pauses(bundle: ReplayBundle, threshold_s: float = 10) -> pd.DataFrame:

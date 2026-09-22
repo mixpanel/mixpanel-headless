@@ -1577,14 +1577,16 @@ class TestScreenshotStructuredActions:
     """The action labels, targets, and metadata of screenshot actions."""
 
     def test_screen_action_fields(self) -> None:
-        """A screen is a ``screen`` action with the placeholder target."""
+        """A screen is a ``screen`` action targeted at its heading."""
         result = RrwebAnalyzer().analyze([_wireframe(1000, _el("text", "Home"))])
         (screen,) = result.actions
         assert screen.action == "screen"
-        assert screen.target_desc == "(screen)"
+        assert screen.target_desc == "Home"
         assert screen.description == "Wireframe: Home"
         assert screen.target_node_id is None
         assert screen.url is None
+        assert screen.metadata["element_count"] == 1
+        assert screen.metadata["scale"] == 1.0
 
     def test_screen_action_carries_current_url(self) -> None:
         """A screen action carries the URL of the latest Meta ``href``."""
@@ -2155,3 +2157,537 @@ class TestNonPositiveTimestamps:
         ]
         result = RrwebAnalyzer().analyze(events)
         assert result.markdown_summary == "2: Tapped at (2, 2)"
+
+
+# =============================================================================
+# Structured screen data: heading, elements, scale, fingerprint
+# =============================================================================
+
+
+def _wireframe_vp(ts: int, viewport: Any, *elements: Any) -> dict[str, Any]:
+    """Build an ``mp_wireframe`` Custom event that carries a ``viewport``.
+
+    Args:
+        ts: Unix ms timestamp.
+        viewport: The payload ``viewport`` value (``[w, h]`` from the SDK).
+        *elements: The screen elements, in client order.
+
+    Returns:
+        The rrweb Custom event dict.
+    """
+    payload = {"viewport": viewport, "elements": list(elements)}
+    return {
+        "type": 5,
+        "timestamp": ts,
+        "data": {"tag": "mp_wireframe", "payload": payload},
+    }
+
+
+def _meta_width(ts: int, width: Any, height: Any = 914) -> dict[str, Any]:
+    """Build a Meta event without ``href`` that carries a screen size.
+
+    Args:
+        ts: Unix ms timestamp.
+        width: The Meta ``width`` (the touch coordinate space).
+        height: The Meta ``height``.
+
+    Returns:
+        The rrweb Meta event dict.
+    """
+    return {"type": 4, "timestamp": ts, "data": {"width": width, "height": height}}
+
+
+def _only_screen(events: list[dict[str, Any]]) -> UserAction:
+    """Analyze ``events`` and return the one screen action.
+
+    Args:
+        events: An rrweb stream with exactly one emitted screen.
+
+    Returns:
+        The screen action.
+    """
+    screens = [
+        a for a in RrwebAnalyzer().analyze(events).actions if a.action == "screen"
+    ]
+    assert len(screens) == 1
+    return screens[0]
+
+
+class TestScreenHeading:
+    """The ``target_desc`` of a screen action is an approximate heading."""
+
+    def test_topmost_labeled_text_wins(self) -> None:
+        """The labeled text element with the smallest y, then x, is the heading."""
+        screen = _only_screen(
+            [
+                _wireframe(
+                    1000,
+                    _el("text", "Body", bounds=(16, 200, 100, 20)),
+                    _el("text", "Right", bounds=(300, 38, 50, 20)),
+                    _el("text", "Title", bounds=(16, 38, 80, 20)),
+                )
+            ]
+        )
+        assert screen.target_desc == "Title"
+
+    def test_non_text_and_unlabeled_elements_are_skipped(self) -> None:
+        """Buttons and label-less text elements are never the heading."""
+        screen = _only_screen(
+            [
+                _wireframe(
+                    1000,
+                    _el("button", "Back", bounds=(0, 0, 40, 40)),
+                    _el("text", None, bounds=(50, 5, 40, 40)),
+                    _el("text", "   ", bounds=(50, 6, 40, 40)),
+                    _el("text", "Settings", bounds=(72, 38, 76, 27)),
+                )
+            ]
+        )
+        assert screen.target_desc == "Settings"
+
+    def test_offscreen_text_is_skipped(self) -> None:
+        """A text element fully outside the screen width is not the heading."""
+        screen = _only_screen(
+            [
+                _meta_width(500, 402),
+                _wireframe(
+                    1000,
+                    _el("text", "Next page", bounds=(420, 10, 100, 20)),
+                    _el("text", "Sliding", bounds=(-150, 12, 100, 20)),
+                    _el("text", "Current", bounds=(16, 60, 100, 20)),
+                ),
+            ]
+        )
+        assert screen.target_desc == "Current"
+
+    def test_without_bounds_first_labeled_text_in_client_order(self) -> None:
+        """With no bounds at all, the first labeled text element is the heading."""
+        screen = _only_screen(
+            [_wireframe(1000, _el("button", "Go"), _el("text", "A"), _el("text", "B"))]
+        )
+        assert screen.target_desc == "A"
+
+    def test_fallback_placeholder(self) -> None:
+        """A screen with no labeled text element keeps ``(screen)``."""
+        screen = _only_screen(
+            [_wireframe(1000, _el("button", "Go", bounds=(0, 0, 10, 10)), _el("text"))]
+        )
+        assert screen.target_desc == "(screen)"
+
+    def test_heading_label_is_cut_like_the_rendered_label(self) -> None:
+        """The heading uses the cut label of the rendered string."""
+        screen = _only_screen(
+            [_wireframe(1000, _el("text", "x" * 60, bounds=(0, 1, 5, 5)))]
+        )
+        assert screen.target_desc == "x" * 50 + "…"
+
+
+class TestScreenMetadata:
+    """The structured metadata of a screen action."""
+
+    def test_elements_are_sanitized(self) -> None:
+        """Elements carry role, cut label, integer bounds, and the offscreen flag."""
+        screen = _only_screen(
+            [
+                _meta_width(500, 411),
+                _wireframe(
+                    1000,
+                    _el(" button ", "  Copy | Paste  ", bounds=(1.9, 2.0, 30, 40)),
+                    _el(7, None, bounds=(0, 0, 0, 0)),
+                    "junk",
+                    _el("text", "y" * 60, bounds=(500, 10, 20, 20)),
+                ),
+            ]
+        )
+        assert screen.metadata["elements"] == [
+            {
+                "role": "button",
+                "text": "Copy | Paste",
+                "bounds": [1, 2, 30, 40],
+                "offscreen": False,
+            },
+            {"role": "element", "text": None, "bounds": None, "offscreen": False},
+            {
+                "role": "text",
+                "text": "y" * 50 + "…",
+                "bounds": [500, 10, 20, 20],
+                "offscreen": True,
+            },
+        ]
+        assert screen.metadata["element_count"] == 3
+
+    def test_viewport_is_recorded_when_valid(self) -> None:
+        """A valid payload ``viewport`` is recorded as integer ``[w, h]``."""
+        screen = _only_screen([_wireframe_vp(1000, [411.0, 914], _el("text", "A"))])
+        assert screen.metadata["viewport"] == [411, 914]
+
+    @pytest.mark.parametrize(
+        "viewport", [None, [411], "411x914", [0, 914], [True, 914], ["411", 914]]
+    )
+    def test_invalid_viewport_is_omitted(self, viewport: Any) -> None:
+        """A missing or malformed ``viewport`` is not recorded.
+
+        Args:
+            viewport: The malformed payload ``viewport``.
+        """
+        screen = _only_screen([_wireframe_vp(1000, viewport, _el("text", "A"))])
+        assert "viewport" not in screen.metadata
+        assert screen.metadata["scale"] == 1.0
+
+    def test_scale_applies_when_widths_differ_by_more_than_five_percent(
+        self,
+    ) -> None:
+        """Physical-pixel bounds scale into the Meta (touch) space.
+
+        The rendered description keeps the raw bounds, as upstream does.
+        """
+        screen = _only_screen(
+            [
+                _meta_width(500, 411, 866),
+                _wireframe_vp(
+                    1000, [1080, 2400], _el("button", "Go", bounds=(0, 1080, 540, 200))
+                ),
+            ]
+        )
+        assert screen.metadata["scale"] == pytest.approx(411 / 1080)
+        assert screen.metadata["elements"][0]["bounds"] == [0, 411, 206, 76]
+        assert screen.description == "Wireframe: button:Go [0,1080,540,200]"
+
+    @pytest.mark.parametrize("meta_width", [412, 411, 400])
+    def test_small_width_difference_is_not_a_scale(self, meta_width: int) -> None:
+        """A width ratio within 5% of 1.0 is rounding or system bars, not a scale.
+
+        Args:
+            meta_width: The Meta width against a 411-wide viewport.
+        """
+        screen = _only_screen(
+            [
+                _meta_width(500, meta_width),
+                _wireframe_vp(1000, [411, 731], _el("text", "A", bounds=(1, 2, 3, 4))),
+            ]
+        )
+        assert screen.metadata["scale"] == 1.0
+        assert screen.metadata["elements"][0]["bounds"] == [1, 2, 3, 4]
+
+    def test_no_scale_without_meta_width(self) -> None:
+        """Without a Meta width there is nothing to scale against."""
+        screen = _only_screen(
+            [_wireframe_vp(1000, [1080, 2400], _el("text", "A", bounds=(0, 0, 9, 9)))]
+        )
+        assert screen.metadata["scale"] == 1.0
+
+    @pytest.mark.parametrize("width", [None, 0, -5, "411", True, float("nan")])
+    def test_unusable_meta_width_is_ignored(self, width: Any) -> None:
+        """A Meta width that is not a positive finite number is ignored.
+
+        Args:
+            width: The malformed Meta width.
+        """
+        screen = _only_screen(
+            [
+                _meta_width(500, width),
+                _wireframe_vp(
+                    1000, [1080, 2400], _el("text", "A", bounds=(0, 0, 9, 9))
+                ),
+            ]
+        )
+        assert screen.metadata["scale"] == 1.0
+        assert screen.metadata["elements"][0]["offscreen"] is False
+
+    def test_offscreen_uses_the_scaled_viewport_without_meta_width(self) -> None:
+        """Without a Meta width, the viewport width bounds the screen."""
+        screen = _only_screen(
+            [_wireframe_vp(1000, [400, 800], _el("text", "A", bounds=(410, 0, 9, 9)))]
+        )
+        assert screen.metadata["elements"][0]["offscreen"] is True
+
+    def test_fingerprint_is_stable_and_short(self) -> None:
+        """Identical screens share a fingerprint; different screens do not."""
+        events = [
+            _wireframe(1000, _el("text", "Home")),
+            *_touch(1500),
+            _wireframe(2000, _el("text", "Details")),
+            *_touch(2500),
+            _wireframe(3000, _el("text", "Home")),
+        ]
+        screens = [
+            a for a in RrwebAnalyzer().analyze(events).actions if a.action == "screen"
+        ]
+        prints = [s.metadata["fingerprint"] for s in screens]
+        assert prints[0] == prints[2]
+        assert prints[0] != prints[1]
+        assert all(len(p) == 12 and int(p, 16) >= 0 for p in prints)
+
+
+# =============================================================================
+# Tap-to-element attribution (hit test)
+# =============================================================================
+
+
+def _only_action(events: list[dict[str, Any]], action: str) -> UserAction:
+    """Analyze ``events`` and return the one action with the given label.
+
+    Args:
+        events: An rrweb stream.
+        action: The action label to select.
+
+    Returns:
+        The single matching action.
+    """
+    matches = [a for a in RrwebAnalyzer().analyze(events).actions if a.action == action]
+    assert len(matches) == 1
+    return matches[0]
+
+
+class TestHitTest:
+    """Screenshot taps and clicks name the element under the point."""
+
+    def test_containing_labeled_button(self) -> None:
+        """A tap inside a labeled button targets ``role:label``."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("button", "Save", bounds=(10, 10, 100, 40))),
+                *_touch(2000, x=50, y=30),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button:Save"
+        assert tap.description == "Tapped at (50, 30)"
+        assert tap.metadata["hit"] == {
+            "role": "button",
+            "text": "Save",
+            "bounds": [10, 10, 100, 40],
+        }
+        assert tap.metadata["attribution"] == "bounds"
+        assert (tap.metadata["x"], tap.metadata["y"]) == (50, 30)
+
+    def test_text_hit_uses_bare_label(self) -> None:
+        """A tap on a labeled text element targets the bare label."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("text", "Cupcake", bounds=(72, 104, 62, 21))),
+                *_touch(2000, x=80, y=110),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "Cupcake"
+
+    def test_unlabeled_hit_uses_role_and_bounds(self) -> None:
+        """A label-less element targets ``role [x,y,w,h]`` (an icon, for example)."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("text", None, bounds=(363, 27, 48, 48))),
+                *_touch(2000, x=383, y=51),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "text [363,27,48,48]"
+        assert tap.metadata["hit"]["text"] is None
+
+    def test_non_text_role_beats_text_role(self) -> None:
+        """A button that contains the point beats a text label inside it."""
+        tap = _only_action(
+            [
+                _wireframe(
+                    1000,
+                    _el("text", "Save", bounds=(20, 15, 40, 20)),
+                    _el("button", None, bounds=(10, 10, 100, 40)),
+                ),
+                *_touch(2000, x=30, y=20),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button [10,10,100,40]"
+
+    def test_smallest_area_wins_among_equals(self) -> None:
+        """Among containing elements of the same kind, the smallest wins."""
+        tap = _only_action(
+            [
+                _wireframe(
+                    1000,
+                    _el("image", None, bounds=(0, 0, 400, 800)),
+                    _el("image", "Avatar", bounds=(10, 10, 40, 40)),
+                ),
+                *_touch(2000, x=20, y=20),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "image:Avatar"
+
+    def test_edges_are_inside(self) -> None:
+        """A point on the rect edge is inside."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("button", "Go", bounds=(10, 10, 10, 10))),
+                *_touch(2000, x=20, y=20),
+            ],
+            "touch_start",
+        )
+        assert tap.metadata["attribution"] == "bounds"
+
+    def test_slop_catches_a_near_miss(self) -> None:
+        """A tap 2 px below a button attributes to it with ``bounds_slop``."""
+        tap = _only_action(
+            [
+                _wireframe(
+                    1000,
+                    _el("button", "Re-initialize", bounds=(16, 100, 379, 40)),
+                    _el("text", "Status", bounds=(16, 168, 94, 20)),
+                ),
+                *_touch(2000, x=182, y=142),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button:Re-initialize"
+        assert tap.metadata["attribution"] == "bounds_slop"
+
+    def test_slop_prefers_the_nearest_element(self) -> None:
+        """Within the slop, the nearest element wins over the role preference."""
+        tap = _only_action(
+            [
+                _wireframe(
+                    1000,
+                    _el("button", "Far", bounds=(0, 0, 100, 10)),
+                    _el("text", "Near", bounds=(0, 17, 100, 10)),
+                ),
+                *_touch(2000, x=50, y=15),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "Near"
+
+    def test_beyond_slop_is_no_hit(self) -> None:
+        """A tap more than 8 px from every element has no hit."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("button", "Go", bounds=(0, 0, 10, 10))),
+                *_touch(2000, x=30, y=30),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "(30, 30)"
+        assert "hit" not in tap.metadata
+        assert "attribution" not in tap.metadata
+
+    def test_offscreen_and_boundless_elements_are_never_hit(self) -> None:
+        """Offscreen elements and elements without bounds are not candidates."""
+        tap = _only_action(
+            [
+                _meta_width(500, 100),
+                _wireframe(
+                    1000,
+                    _el("button", "Offscreen", bounds=(100, 0, 50, 50)),
+                    _el("button", "Nowhere"),
+                ),
+                *_touch(2000, x=101, y=10),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "(101, 10)"
+
+    def test_hit_uses_scaled_bounds(self) -> None:
+        """The hit test compares the touch point with the scaled bounds."""
+        tap = _only_action(
+            [
+                _meta_width(500, 411, 866),
+                _wireframe_vp(
+                    1000, [1080, 2400], _el("button", "Go", bounds=(0, 1080, 540, 200))
+                ),
+                *_touch(2000, x=100, y=420),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button:Go"
+        assert tap.metadata["hit"]["bounds"] == [0, 411, 206, 76]
+
+    def test_uses_the_screen_at_gesture_start(self) -> None:
+        """The tap targets the screen under the finger-down, not the next one."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("button", "Before", bounds=(0, 0, 100, 100))),
+                _touch_start(2000, x=50, y=50),
+                _wireframe(2050, _el("button", "After", bounds=(0, 0, 100, 100))),
+                _touch_end(2100, x=50, y=50),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button:Before"
+
+    def test_flushed_open_gesture_uses_its_screen(self) -> None:
+        """A gesture flushed at the end still targets its own screen."""
+        tap = _only_action(
+            [
+                _wireframe(1000, _el("button", "Before", bounds=(0, 0, 100, 100))),
+                _touch_start(2000, x=50, y=50),
+                _wireframe(2050, _el("button", "After", bounds=(0, 0, 100, 100))),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "button:Before"
+
+    def test_tap_before_any_screen_has_no_hit(self) -> None:
+        """A tap with no screen yet targets its point."""
+        tap = _only_action(
+            [
+                *_touch(500, x=5, y=6),
+                _wireframe(1000, _el("button", "Go", bounds=(0, 0, 100, 100))),
+            ],
+            "touch_start",
+        )
+        assert tap.target_desc == "(5, 6)"
+
+    def test_skipped_wireframe_is_not_the_current_screen(self) -> None:
+        """A wireframe with a timestamp of zero or less never becomes current."""
+        events = [
+            _wireframe(0, _el("button", "Bad", bounds=(0, 0, 100, 100))),
+            _meta_no_href(1),
+            *_touch(2000, x=5, y=6),
+        ]
+        tap = _only_action(events, "touch_start")
+        assert tap.target_desc == "(5, 6)"
+
+    def test_screenshot_click_is_hit_tested(self) -> None:
+        """A screenshot click targets the element under the pointer."""
+        click = _only_action(
+            [
+                _wireframe(1000, _el("button", "Buy", bounds=(0, 0, 100, 100))),
+                _screenshot_click(2000, x=10, y=10),
+            ],
+            "click",
+        )
+        assert click.target_desc == "button:Buy"
+        assert click.description == "Clicked at (10, 10)"
+        assert click.metadata["attribution"] == "bounds"
+
+
+class TestRealFixtureStructure:
+    """Headings, targets, and scale on the real replays."""
+
+    def test_android_headings_and_tap_targets(self) -> None:
+        """The Android replay gives Home and Settings, the icon, and the button."""
+        actions = (
+            RrwebAnalyzer().analyze(_load_fixture("android-wireframe-001")).actions
+        )
+        assert [a.target_desc for a in actions] == [
+            "Home",
+            "text [363,27,48,48]",
+            "Settings",
+            "button:Re-initialize Session Replay",
+        ]
+        assert actions[1].metadata["attribution"] == "bounds"
+        assert actions[3].metadata["attribution"] == "bounds_slop"
+
+    def test_masked_physical_pixel_replay_scales(self) -> None:
+        """The masked replay has physical-pixel bounds and gets a scale."""
+        (screen,) = (
+            RrwebAnalyzer()
+            .analyze(_load_fixture("android-wireframe-masked-001"))
+            .actions
+        )
+        assert screen.metadata["viewport"] == [1080, 2400]
+        assert screen.metadata["scale"] == pytest.approx(411 / 1080)
+        assert screen.target_desc == "(screen)"
+        assert all(
+            e["bounds"] is None or e["bounds"][0] + e["bounds"][2] <= 412
+            for e in screen.metadata["elements"]
+        )

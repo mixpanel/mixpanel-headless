@@ -13505,6 +13505,67 @@ class Replay(ResultWithDataFrame):
             if a.action == "navigate" and a.url is not None
         ]
 
+    @property
+    def capture(self) -> Literal["dom", "screenshot"]:
+        """The recording type, read from the raw rrweb events.
+
+        ``"dom"`` is a recording of a real page DOM (the Mixpanel JavaScript
+        SDK). ``"screenshot"`` is a recording whose DOM is one screenshot
+        image per screen: the iOS, Android, React Native, and Flutter SDKs,
+        including Flutter web and desktop. A stream is a screenshot
+        recording when it has any ``mp_wireframe`` event, or when it has
+        Meta events and none of them carries a page URL (``href``). A
+        replay with no events, or with no Meta event, is ``"dom"``.
+
+        Returns:
+            ``"dom"`` or ``"screenshot"``.
+
+        Example:
+            ```python
+            replay = ws.fetch_replay("0a1b2c…")
+            if replay.capture == "screenshot":
+                print(replay.screen_path())
+            ```
+        """
+        from mixpanel_headless._internal.replays.rrweb_analyzer import (
+            detect_capture,
+        )
+
+        return detect_capture(self.rrweb_events)
+
+    @property
+    def has_wireframes(self) -> bool:
+        """Whether the replay holds wireframe screens (``"screen"`` actions).
+
+        Screenshot recordings carry wireframes only when the SDK has them
+        turned on, so a screenshot recording can have none.
+
+        Returns:
+            True when at least one action is a ``"screen"`` action.
+        """
+        return any(a.action == "screen" for a in self.actions)
+
+    def screen_path(self) -> list[str]:
+        """Screen sequence of the replay: the mobile form of :meth:`page_path`.
+
+        Each entry is the ``target_desc`` of a ``"screen"`` action: an
+        approximate heading (the top-most labeled text element), or
+        ``"(screen)"`` when the screen has no labeled text. The SDKs send
+        no screen name, so the heading is a heuristic. Screens are sampled
+        around gestures, and consecutive identical screens appear once.
+
+        Returns:
+            Screen headings in timestamp order; empty for a replay without
+            wireframes.
+
+        Example:
+            ```python
+            replay.screen_path()
+            # ["Home", "Settings"]
+            ```
+        """
+        return [a.target_desc for a in self.actions if a.action == "screen"]
+
     def to_rrweb_player_json(self) -> list[dict[str, Any]]:
         """Timestamp-sorted rrweb events ready for the rrweb JS player.
 
@@ -13647,6 +13708,9 @@ class ReplayBundle(ResultWithDataFrame):
         default=None, repr=False, kw_only=True
     )
     _elements_df_cache: pd.DataFrame | None = field(
+        default=None, repr=False, kw_only=True
+    )
+    _screens_df_cache: pd.DataFrame | None = field(
         default=None, repr=False, kw_only=True
     )
 
@@ -13880,6 +13944,46 @@ class ReplayBundle(ResultWithDataFrame):
         return result
 
     @property
+    def screens_df(self) -> pd.DataFrame:
+        """One row per wireframe screen action across the bundle.
+
+        Screens exist only in screenshot recordings with wireframes turned
+        on (see :attr:`Replay.capture` and :attr:`Replay.has_wireframes`).
+        ``heading`` is the action's ``target_desc``: an approximate heading,
+        not a screen name. Identical screens share a ``fingerprint``, so
+        grouping by it counts screen visits across sessions.
+
+        Columns: ``replay_id``, ``t``, ``heading``, ``fingerprint``,
+        ``element_count``, ``description``.
+        """
+        if self._screens_df_cache is not None:
+            return self._screens_df_cache
+        cols = [
+            "replay_id",
+            "t",
+            "heading",
+            "fingerprint",
+            "element_count",
+            "description",
+        ]
+        rows = [
+            {
+                "replay_id": r.replay_id,
+                "t": a.timestamp,
+                "heading": a.target_desc,
+                "fingerprint": a.metadata.get("fingerprint"),
+                "element_count": a.metadata.get("element_count"),
+                "description": a.description,
+            }
+            for r in self.replays
+            for a in r.actions
+            if a.action == "screen"
+        ]
+        result = pd.DataFrame(rows, columns=cols)
+        object.__setattr__(self, "_screens_df_cache", result)
+        return result
+
+    @property
     def df(self) -> pd.DataFrame:
         """Default DataFrame projection for the bundle (data-model §2.6).
 
@@ -13945,6 +14049,68 @@ class ReplayBundle(ResultWithDataFrame):
         from mixpanel_headless._internal.replays.aggregators import rage_clicks
 
         return rage_clicks(self, threshold=threshold, window_ms=window_ms)
+
+    def rage_taps(
+        self,
+        threshold: int = 3,
+        window_ms: int = 2000,
+        radius_px: float = 24,
+        grace_ms: int = 1000,
+    ) -> pd.DataFrame:
+        """Find rage and dead taps in screenshot recordings.
+
+        Thin wrapper over the bundle-level ``rage_taps`` aggregator. A burst
+        is ``threshold`` or more finger-downs within ``window_ms`` of the
+        first one and within ``radius_px`` of its point. Finger-downs
+        (touch starts, plus mouse clicks in Flutter web and desktop) are
+        counted from ``rrweb_events``, not from the emitted tap actions,
+        because a fast burst with overlapping fingers produces far fewer
+        classified taps. Only screenshot recordings count; web replays use
+        :meth:`rage_clicks`.
+
+        Each burst is classified by the screen changes (``"screen"``
+        actions) after its first finger-down and up to ``grace_ms`` after
+        its last one:
+
+        - no change: ``kind="dead"``, the control did nothing;
+        - at least one change for each tap but one: intentional (a quantity
+          stepper or a carousel), so the burst is not reported;
+        - otherwise: ``kind="rage"``, the screen changed only once or a few
+          times while the user kept tapping.
+
+        Args:
+            threshold: Minimum finger-downs for a burst. Default 3.
+            window_ms: Maximum time from the first to the last finger-down
+                of a burst, in milliseconds. Default 2000.
+            radius_px: Maximum distance of a finger-down from the burst's
+                first point, in touch-space pixels. Default 24.
+            grace_ms: Time after the last finger-down in which a screen
+                change still counts as the burst's result, in
+                milliseconds. Default 1000.
+
+        Returns:
+            A DataFrame with columns ``replay_id``, ``t_start``, ``t_end``,
+            ``target_desc`` (the hit-test target at the first finger-down),
+            ``x`` and ``y`` (the first finger-down point), ``count``, and
+            ``kind`` (``"rage"`` or ``"dead"``). Empty (with those columns)
+            when no burst qualifies.
+
+        Example:
+            ```python
+            bundle.rage_taps()
+            #   replay_id        t_start  ...  count  kind
+            # 0     81cf…  1789663316578  ...     20  rage
+            ```
+        """
+        from mixpanel_headless._internal.replays.aggregators import rage_taps
+
+        return rage_taps(
+            self,
+            threshold=threshold,
+            window_ms=window_ms,
+            radius_px=radius_px,
+            grace_ms=grace_ms,
+        )
 
     def long_pauses(self, threshold_s: float = 10) -> pd.DataFrame:
         """Find idle stretches between consecutive actions longer than a threshold.

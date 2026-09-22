@@ -29,10 +29,11 @@ In a screenshot recording, touches go through a gesture state machine
 scroll. A mouse click is a one-event gesture. Wireframe screens are
 sampled around each gesture only, so animation frames do not flood the
 timeline. The screenshot image never names the element, so taps and
-clicks report their coordinates instead. The wireframe rendering and the
-gesture rules follow the upstream analyzer's mobile support; the
-recording-type decision, the click rule, and the input type guards are
-local changes.
+clicks report their coordinates, and a hit test against the current
+wireframe screen names the element in ``target_desc``. The wireframe
+rendering and the gesture rules follow the upstream analyzer's mobile
+support. The recording-type decision, the click rule, the input type
+guards, the structured screen data, and the hit test are local changes.
 
 This module is a fork. The initial cut took its DOM tracker, debouncing
 thresholds, mouse-interaction naming, and console-plugin event detection
@@ -50,13 +51,16 @@ The structured-action mapping from internal interactions to public
 - ``Clicked {desc}`` / ``Double-clicked`` / ``Right-clicked`` → ``click``
 - ``Focused {desc}`` → ``click`` (with ``metadata["interaction"]="focus"``)
 - ``Tapped {desc}`` → ``touch_start``
-- ``Wireframe: {elements}`` (screenshot recordings) → ``screen``
+- ``Wireframe: {elements}`` (screenshot recordings) → ``screen`` (the
+  ``target_desc`` is an approximate heading; ``metadata`` holds the
+  structured elements, viewport, scale, fingerprint, and element count)
 - ``Tapped at ({x}, {y})`` / ``Tapped`` (screenshot recordings) →
-  ``touch_start`` (with ``metadata["interaction"]="tapped"`` and the
-  ``x`` / ``y`` coordinates when known)
+  ``touch_start`` (with ``metadata["interaction"]="tapped"``, the
+  ``x`` / ``y`` coordinates when known, and ``hit`` / ``attribution``
+  when the point hits a screen element, which ``target_desc`` then names)
 - ``Clicked at ({x}, {y})`` / ``Clicked`` (screenshot recordings) →
-  ``click`` (with ``metadata["interaction"]="clicked"`` and the
-  coordinates when known)
+  ``click`` (with ``metadata["interaction"]="clicked"`` and the same
+  coordinate and hit fields as a tap)
 - ``Scrolled`` (scroll events, and touch gestures that travel) → ``scroll``
 - ``Set {desc} to {state}`` / ``Entered ... in {desc}`` / ``Modified
   {desc}`` → ``input``
@@ -66,6 +70,7 @@ The structured-action mapping from internal interactions to public
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
@@ -665,12 +670,431 @@ class DOMTracker:
 
 
 # =============================================================================
-# MobileWireframeTracker — gesture-gated sampler for wireframe screens
+# Structured screen data and the tap hit test
 # =============================================================================
 
 
 _SCREEN_TARGET = "(screen)"
-"""Placeholder ``target_desc`` for a screen action."""
+"""Fallback ``target_desc`` for a screen with no usable heading."""
+
+_MAX_ELEMENT_TEXT = 50
+"""Cap for one element label, before the ellipsis."""
+
+SCALE_TOLERANCE = 0.05
+"""Width ratios within this distance of 1.0 are not a coordinate scale.
+
+Small differences come from rounding (a 412-wide Meta against a 411-wide
+viewport) or from system bars, not from a change of pixel unit.
+"""
+
+HIT_SLOP_PX = 8.0
+"""Distance (touch-space px) within which a near miss still hits an element."""
+
+FINGERPRINT_LENGTH = 12
+"""Hex characters in a screen fingerprint."""
+
+
+def _bounds_ints(bounds: Any) -> list[int] | None:
+    """Return an element's ``[x, y, w, h]`` rect as integers, or None.
+
+    A missing, malformed, or all-zero rect carries no geometry. Only
+    finite numbers count; a bool or a string makes the rect malformed.
+    Floats truncate toward zero.
+
+    Args:
+        bounds: The raw ``bounds`` value of one element.
+
+    Returns:
+        The four integers, or None when the rect is omitted.
+    """
+    if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
+        return None
+    values: list[int] = []
+    for value in bounds:
+        number = _finite_number(value)
+        if number is None:
+            return None
+        values.append(int(number))
+    if not any(values):
+        return None
+    return values
+
+
+def _clean_role(raw_role: Any) -> str:
+    """Return a stripped element role, or ``"element"`` when unusable.
+
+    Args:
+        raw_role: The raw ``role`` value.
+
+    Returns:
+        The role string.
+    """
+    role = raw_role.strip() if isinstance(raw_role, str) else ""
+    return role or "element"
+
+
+def _clean_label(raw_text: Any) -> str:
+    """Return a stripped element label, cut at the label cap with an ellipsis.
+
+    Args:
+        raw_text: The raw ``text`` value.
+
+    Returns:
+        The label, or ``""`` when the value is not a non-blank string.
+    """
+    text = raw_text.strip() if isinstance(raw_text, str) else ""
+    if len(text) > _MAX_ELEMENT_TEXT:
+        text = text[:_MAX_ELEMENT_TEXT] + "…"
+    return text
+
+
+def _positive_number(value: Any) -> float | None:
+    """Return ``value`` as a positive finite float, or None.
+
+    Args:
+        value: A raw JSON value.
+
+    Returns:
+        The float, or None when the value is not a positive finite number.
+    """
+    number = _finite_number(value)
+    return number if number is not None and number > 0 else None
+
+
+@dataclass(frozen=True)
+class ScreenStructure:
+    """The structured form of one wireframe screen.
+
+    Attributes:
+        elements: One dict per element, in client order, with the keys
+            ``role``, ``text`` (None when empty), ``bounds`` (``[x, y, w,
+            h]`` integers in the touch coordinate space, or None), and
+            ``offscreen`` (True when the rect lies fully outside the screen
+            width).
+        viewport: The payload ``viewport`` as integer ``[w, h]``, or None.
+        scale: The factor applied to convert the bounds into the touch
+            space; ``1.0`` when the spaces match.
+    """
+
+    elements: list[dict[str, Any]]
+    viewport: list[int] | None
+    scale: float
+
+
+def screen_structure(payload: Any, meta_width: float | None) -> ScreenStructure:
+    """Build the structured form of a wireframe payload.
+
+    The touch coordinates follow the Meta event ``width``. Some SDK builds
+    send the wireframe bounds in physical pixels instead; the payload
+    ``viewport`` then differs from the Meta width. When the ratio
+    ``meta_width / viewport[0]`` differs from 1.0 by more than
+    :data:`SCALE_TOLERANCE`, every rect is multiplied by it (and rounded).
+    An element whose scaled rect lies fully outside ``[0, screen width]``
+    is flagged ``offscreen``. The screen width is the Meta width, or the
+    scaled viewport width without a Meta width.
+
+    Labels follow the rendered string's rules (stripped, cut at 50
+    characters) but keep ``|`` characters, which only the rendered
+    separator needs to replace.
+
+    Args:
+        payload: The raw wireframe ``payload`` value. A value that is not a
+            dict, or an ``elements`` value that is not a list, gives no
+            elements. Elements that are not dicts are skipped.
+        meta_width: The latest usable Meta ``width``, or None.
+
+    Returns:
+        The :class:`ScreenStructure`.
+
+    Example:
+        ```python
+        s = screen_structure(
+            {"viewport": [1080, 2400], "elements": [
+                {"role": "button", "text": "Go", "bounds": [0, 1080, 540, 200]}]},
+            411.0,
+        )
+        s.elements[0]["bounds"]
+        # [0, 411, 206, 76]
+        ```
+    """
+    raw_payload: dict[str, Any] = payload if isinstance(payload, dict) else {}
+    raw_elements = raw_payload.get("elements")
+    elements_in = raw_elements if isinstance(raw_elements, list) else []
+
+    viewport: list[int] | None = None
+    raw_viewport = raw_payload.get("viewport")
+    if isinstance(raw_viewport, (list, tuple)) and len(raw_viewport) == 2:
+        vw = _positive_number(raw_viewport[0])
+        vh = _positive_number(raw_viewport[1])
+        if vw is not None and vh is not None:
+            viewport = [int(vw), int(vh)]
+
+    scale = 1.0
+    if viewport is not None and meta_width is not None:
+        ratio = meta_width / viewport[0]
+        if abs(ratio - 1.0) > SCALE_TOLERANCE:
+            scale = ratio
+
+    screen_width: float | None = meta_width
+    if screen_width is None and viewport is not None:
+        screen_width = viewport[0] * scale
+
+    elements: list[dict[str, Any]] = []
+    for el in elements_in:
+        if not isinstance(el, dict):
+            continue
+        bounds = _bounds_ints(el.get("bounds"))
+        if bounds is not None and scale != 1.0:
+            bounds = [round(v * scale) for v in bounds]
+        offscreen = False
+        if bounds is not None and screen_width is not None:
+            x, _, w, _ = bounds
+            offscreen = x + w <= 0 or x >= screen_width
+        elements.append(
+            {
+                "role": _clean_role(el.get("role")),
+                "text": _clean_label(el.get("text")) or None,
+                "bounds": bounds,
+                "offscreen": offscreen,
+            }
+        )
+    return ScreenStructure(elements=elements, viewport=viewport, scale=scale)
+
+
+def screen_heading(elements: Sequence[dict[str, Any]]) -> str:
+    """Pick an approximate heading for a screen.
+
+    The heading is the label of the top-most on-screen ``text`` element
+    that has a label: the smallest ``y``, then the smallest ``x``. When no
+    such element has bounds, the first labeled ``text`` element in client
+    order wins. The heading is a heuristic, not a screen name: the SDKs
+    send no screen name.
+
+    Args:
+        elements: The ``elements`` of a :class:`ScreenStructure`.
+
+    Returns:
+        The heading, or ``"(screen)"`` when no labeled text element exists.
+    """
+    labeled = [
+        e for e in elements if e["role"] == "text" and e["text"] and not e["offscreen"]
+    ]
+    placed = [e for e in labeled if e["bounds"] is not None]
+    if placed:
+        top = min(placed, key=lambda e: (e["bounds"][1], e["bounds"][0]))
+        return str(top["text"])
+    if labeled:
+        return str(labeled[0]["text"])
+    return _SCREEN_TARGET
+
+
+def _rect_distance(bounds: list[int], x: float, y: float) -> float:
+    """Return the distance from a point to a rect; 0.0 inside or on the edge.
+
+    Args:
+        bounds: The ``[x, y, w, h]`` rect.
+        x: The point x.
+        y: The point y.
+
+    Returns:
+        The Euclidean distance in px.
+    """
+    bx, by, bw, bh = bounds
+    dx = max(bx - x, 0.0, x - (bx + bw))
+    dy = max(by - y, 0.0, y - (by + bh))
+    return math.hypot(dx, dy)
+
+
+def hit_test(
+    elements: Sequence[dict[str, Any]], x: float, y: float
+) -> tuple[dict[str, Any], str] | None:
+    """Find the screen element under a touch or click point.
+
+    Only on-screen elements with bounds are candidates. When rects contain
+    the point (edges included), a non-text role beats a ``text`` role, and
+    then the smallest area wins; the attribution is ``"bounds"``. With no
+    containing rect, the nearest element within :data:`HIT_SLOP_PX` wins
+    (then a non-text role, then the smallest area); the attribution is
+    ``"bounds_slop"``. Rects can overlap, so the result is an inference.
+
+    Args:
+        elements: The ``elements`` of a :class:`ScreenStructure`.
+        x: The point x, in the touch coordinate space.
+        y: The point y, in the touch coordinate space.
+
+    Returns:
+        ``(element, attribution)``, or None when no element is near.
+    """
+    scored: list[tuple[float, bool, int, int]] = []
+    for index, e in enumerate(elements):
+        bounds = e["bounds"]
+        if bounds is None or e["offscreen"]:
+            continue
+        distance = _rect_distance(bounds, x, y)
+        if distance <= HIT_SLOP_PX:
+            scored.append((distance, e["role"] == "text", bounds[2] * bounds[3], index))
+    if not scored:
+        return None
+    inside = [s for s in scored if s[0] == 0.0]
+    if inside:
+        best = min(inside, key=lambda s: (s[1], s[2], s[3]))
+        return elements[best[3]], "bounds"
+    best = min(scored)
+    return elements[best[3]], "bounds_slop"
+
+
+def hit_target_desc(element: dict[str, Any]) -> str:
+    """Describe a hit element for ``target_desc``.
+
+    Args:
+        element: An element dict of a :class:`ScreenStructure`.
+
+    Returns:
+        The bare label for a labeled ``text`` element, ``role:label`` for
+        another labeled role, and ``role [x,y,w,h]`` (touch-space bounds)
+        for an element without a label, such as an icon.
+    """
+    role = str(element["role"])
+    text = element["text"]
+    if text:
+        return str(text) if role == "text" else f"{role}:{text}"
+    x, y, w, h = element["bounds"]
+    return f"{role} [{x},{y},{w},{h}]"
+
+
+def _hit_fields(
+    screen: Sequence[dict[str, Any]] | None, point: tuple[int, int]
+) -> tuple[str, dict[str, Any]]:
+    """Return the ``target_desc`` and metadata extras for a point.
+
+    Args:
+        screen: The elements of the screen that was current, or None.
+        point: The integer ``(x, y)`` point.
+
+    Returns:
+        ``(target_desc, extras)``. With a hit, the extras hold ``hit``
+        (role, text, bounds) and ``attribution``; without one, the target
+        is ``"(x, y)"`` and the extras are empty.
+    """
+    px, py = point
+    hit = hit_test(screen, px, py) if screen else None
+    if hit is None:
+        return f"({px}, {py})", {}
+    element, attribution = hit
+    return hit_target_desc(element), {
+        "hit": {
+            "role": element["role"],
+            "text": element["text"],
+            "bounds": list(element["bounds"]),
+        },
+        "attribution": attribution,
+    }
+
+
+def _fingerprint(description: str) -> str:
+    """Return a short stable hash of a rendered screen description.
+
+    Args:
+        description: The ``Wireframe: …`` description.
+
+    Returns:
+        The first :data:`FINGERPRINT_LENGTH` hex characters of its SHA-1.
+    """
+    digest = hashlib.sha1(description.encode("utf-8"), usedforsecurity=False)
+    return digest.hexdigest()[:FINGERPRINT_LENGTH]
+
+
+def _event_timestamp(event: dict[str, Any]) -> int:
+    """Return an event's timestamp as an int, or 0 when it is unusable.
+
+    Args:
+        event: A raw rrweb event dict.
+
+    Returns:
+        The integer timestamp.
+    """
+    number = _finite_number(event.get("timestamp"))
+    return int(number) if number is not None else 0
+
+
+@dataclass(frozen=True)
+class FingerDown:
+    """One finger-down (or screenshot click) in a screenshot recording.
+
+    Attributes:
+        timestamp: Unix ms timestamp of the event.
+        x: The integer x coordinate.
+        y: The integer y coordinate.
+        target_desc: The hit-test target against the screen that was
+            current at the event, or ``"(x, y)"`` without a hit.
+    """
+
+    timestamp: int
+    x: int
+    y: int
+    target_desc: str
+
+
+def finger_downs(events: Sequence[Any]) -> list[FingerDown]:
+    """List every finger-down of a screenshot recording, in timestamp order.
+
+    A finger-down is a TOUCH_START, or a mouse CLICK (Flutter web and
+    desktop send clicks). These are counted directly from the raw events,
+    because the analyzer classifies a gesture at lift-off: overlapping
+    fingers and drifting lift-off points turn many finger-downs into
+    scrolls or into no action. Events without usable coordinates or with a
+    timestamp of zero or less are skipped. A DOM recording gives an empty
+    list.
+
+    Args:
+        events: Raw rrweb event dicts, in any order.
+
+    Returns:
+        The :class:`FingerDown` records, sorted by timestamp.
+    """
+    if detect_capture(events) != "screenshot":
+        return []
+    dict_events = [e for e in events if isinstance(e, dict)]
+    meta_width: float | None = None
+    screen: list[dict[str, Any]] | None = None
+    downs: list[FingerDown] = []
+    for event in sorted(dict_events, key=_event_timestamp):
+        raw_data = event.get("data")
+        data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+        timestamp = _event_timestamp(event)
+        event_type = event.get("type")
+        if event_type == EventType.META:
+            width = _positive_number(data.get("width"))
+            if width is not None:
+                meta_width = width
+        elif (
+            event_type == EventType.CUSTOM
+            and data.get("tag") == WIREFRAME_TAG
+            and timestamp > 0
+        ):
+            screen = screen_structure(data.get("payload"), meta_width).elements
+        elif (
+            event_type == EventType.INCREMENTAL_SNAPSHOT
+            and data.get("source") == IncrementalSource.MOUSE_INTERACTION
+            and data.get("type")
+            in (MouseInteractionType.TOUCH_START, MouseInteractionType.CLICK)
+            and timestamp > 0
+        ):
+            point = _point(data.get("x"), data.get("y"))
+            if point is None:
+                continue
+            target_desc, _ = _hit_fields(screen, point)
+            downs.append(
+                FingerDown(
+                    timestamp=timestamp, x=point[0], y=point[1], target_desc=target_desc
+                )
+            )
+    return downs
+
+
+# =============================================================================
+# MobileWireframeTracker — gesture-gated sampler for wireframe screens
+# =============================================================================
 
 
 class MobileWireframeTracker:
@@ -697,7 +1121,7 @@ class MobileWireframeTracker:
     """
 
     WIREFRAME_TAG = WIREFRAME_TAG
-    MAX_ELEMENT_TEXT = 50  # cap for one element label, before the ellipsis
+    MAX_ELEMENT_TEXT = _MAX_ELEMENT_TEXT
     MAX_AFTER_FRAMES = 2  # screens to keep after each gesture
     MAX_WIREFRAMES = 1000  # cap on emitted screens per session
     # Separator between rendered elements. Labels carry no quotes, so a
@@ -713,8 +1137,24 @@ class MobileWireframeTracker:
         self._last_desc: str | None = None
         self._cap_logged = False
 
+    @property
+    def current_elements(self) -> list[dict[str, Any]] | None:
+        """The structured elements of the latest screen, or None before any.
+
+        This is the screen the user sees now, whether or not the sampler
+        emitted it. The hit test for a tap uses it.
+        """
+        if self._pending is None:
+            return None
+        elements: list[dict[str, Any]] = self._pending.metadata["elements"]
+        return elements
+
     def process_wireframe(
-        self, timestamp: int, data: dict[str, Any], url: str | None
+        self,
+        timestamp: int,
+        data: dict[str, Any],
+        url: str | None,
+        meta_width: float | None = None,
     ) -> None:
         """Buffer one Custom event; emit it at once when it is an "after" screen.
 
@@ -724,26 +1164,44 @@ class MobileWireframeTracker:
         analysis. A payload or an ``elements`` value of the wrong type
         gives an empty screen.
 
+        The screen action carries the approximate heading
+        (:func:`screen_heading`) as ``target_desc`` and the structured data
+        in ``metadata``: ``elements`` and ``scale`` (see
+        :func:`screen_structure`), ``viewport`` when the payload has a
+        valid one, ``fingerprint`` (a short hash of the description), and
+        ``element_count``. The description keeps the raw bounds.
+
         Args:
             timestamp: Unix ms timestamp of the event.
             data: The event ``data`` dict.
             url: The current page URL, if a Meta event set one.
+            meta_width: The latest usable Meta ``width``, or None.
         """
         if data.get("tag") != self.WIREFRAME_TAG or timestamp <= 0:
             return
         payload = data.get("payload")
         elements = payload.get("elements") if isinstance(payload, dict) else None
+        description = (
+            f"{WIREFRAME_SCREEN_PREFIX}"
+            f"{self._render_elements(elements if isinstance(elements, list) else [])}"
+        )
+        structure = screen_structure(payload, meta_width)
+        metadata: dict[str, Any] = {
+            "elements": structure.elements,
+            "scale": structure.scale,
+            "fingerprint": _fingerprint(description),
+            "element_count": len(structure.elements),
+        }
+        if structure.viewport is not None:
+            metadata["viewport"] = structure.viewport
         action = UserAction(
             timestamp=timestamp,
             action="screen",
             target_node_id=None,
-            target_desc=_SCREEN_TARGET,
+            target_desc=screen_heading(structure.elements),
             url=url,
-            metadata={},
-            description=(
-                f"{WIREFRAME_SCREEN_PREFIX}"
-                f"{self._render_elements(elements if isinstance(elements, list) else [])}"
-            ),
+            metadata=metadata,
+            description=description,
         )
         if self._first is None:
             self._first = action
@@ -824,15 +1282,8 @@ class MobileWireframeTracker:
         Returns:
             ``"[x,y,w,h]"``, or ``""`` when the rect is omitted.
         """
-        if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
-            return ""
-        values: list[int] = []
-        for value in bounds:
-            number = _finite_number(value)
-            if number is None:
-                return ""
-            values.append(int(number))
-        if not any(values):
+        values = _bounds_ints(bounds)
+        if values is None:
             return ""
         x, y, w, h = values
         return f"[{x},{y},{w},{h}]"
@@ -860,9 +1311,8 @@ class MobileWireframeTracker:
         for el in elements:
             if not isinstance(el, dict):
                 continue
-            raw_role = el.get("role")
-            role = raw_role.strip() if isinstance(raw_role, str) else ""
-            role = role or "element"
+            role = _clean_role(el.get("role"))
+            # Replace the pipe before the cut, as the upstream analyzer does.
             raw_text = el.get("text")
             text = raw_text.strip() if isinstance(raw_text, str) else ""
             text = text.replace("|", "/")
@@ -890,6 +1340,8 @@ class _Gesture:
         node_id: The raw rrweb node id of the finger-down event.
         x: The raw finger-down x value.
         y: The raw finger-down y value.
+        screen: The structured elements of the screen that was current at
+            finger-down, or None before any screen; the tap hit test uses it.
         travel: The largest distance from ``start`` seen so far, in px.
     """
 
@@ -898,6 +1350,7 @@ class _Gesture:
     node_id: Any
     x: Any
     y: Any
+    screen: list[dict[str, Any]] | None = None
     travel: float = 0.0
 
 
@@ -974,6 +1427,8 @@ class EventAnalyzer:
         self.pages: list[PageVisit] = []
         self.errors: list[ConsoleError] = []
         self.current_url: str | None = None
+        # The latest usable Meta width: the touch coordinate space.
+        self.meta_width: float | None = None
         self.last_scroll_time = 0
         self.last_selection_time = 0
         self.last_input_time: dict[int, int] = {}
@@ -1040,10 +1495,20 @@ class EventAnalyzer:
         elif event_type == EventType.PLUGIN:
             self._process_plugin_event(timestamp, data)
         elif event_type == EventType.CUSTOM:
-            self.wireframe_tracker.process_wireframe(timestamp, data, self.current_url)
+            self.wireframe_tracker.process_wireframe(
+                timestamp, data, self.current_url, self.meta_width
+            )
 
     def _process_meta(self, timestamp: int, data: dict[str, Any]) -> None:
-        """Handle navigations (Meta events): update current URL + emit action."""
+        """Handle Meta events: record the screen width; emit a navigation.
+
+        A positive finite ``width`` becomes the touch coordinate space for
+        wireframe scaling. A non-empty ``href`` updates the current URL and
+        emits a ``navigate`` action.
+        """
+        width = _positive_number(data.get("width"))
+        if width is not None:
+            self.meta_width = width
         url = data.get("href")
         if url:
             self.current_url = url
@@ -1200,6 +1665,7 @@ class EventAnalyzer:
             node_id=node_id,
             x=x,
             y=y,
+            screen=self.wireframe_tracker.current_elements,
         )
         self.wireframe_tracker.on_gesture_end()
 
@@ -1214,13 +1680,18 @@ class EventAnalyzer:
         node_id: Any,
         x: Any,
         y: Any,
+        screen: list[dict[str, Any]] | None,
     ) -> None:
-        """Emit a tap or a click that reports its point, not an element.
+        """Emit a tap or a click that reports its point.
 
-        With usable coordinates the description is ``{verb} at (x, y)``, the
-        target is ``(x, y)``, and the metadata carries integer ``x`` and
-        ``y``. Without them the description is the bare verb and the target
-        is ``fallback_target``.
+        With usable coordinates the description is ``{verb} at (x, y)`` and
+        the metadata carries integer ``x`` and ``y``. The point is then hit
+        tested against ``screen`` (:func:`hit_test`): with a hit, the target
+        names the element and the metadata adds ``hit`` and
+        ``attribution``; without one, the target is ``(x, y)``. Without
+        coordinates the description is the bare verb and the target is
+        ``fallback_target``. The description never names the element, so
+        it stays equal to the upstream analyzer's text.
 
         Args:
             timestamp: Unix ms timestamp of the action.
@@ -1231,6 +1702,8 @@ class EventAnalyzer:
             node_id: The raw rrweb node id.
             x: The raw x coordinate.
             y: The raw y coordinate.
+            screen: The elements of the screen that was current when the
+                gesture started, or None.
         """
         metadata: dict[str, Any] = {"interaction": interaction}
         point = _point(x, y)
@@ -1240,9 +1713,10 @@ class EventAnalyzer:
         else:
             px, py = point
             description = f"{verb} at ({px}, {py})"
-            target_desc = f"({px}, {py})"
             metadata["x"] = px
             metadata["y"] = py
+            target_desc, extras = _hit_fields(screen, point)
+            metadata.update(extras)
         self._emit(
             timestamp,
             action,
@@ -1269,7 +1743,12 @@ class EventAnalyzer:
             self._flush_active_touch_as_tap()
         self.wireframe_tracker.on_gesture_start()
         self._active_touch = _Gesture(
-            timestamp=timestamp, start=_coords(x, y), node_id=node_id, x=x, y=y
+            timestamp=timestamp,
+            start=_coords(x, y),
+            node_id=node_id,
+            x=x,
+            y=y,
+            screen=self.wireframe_tracker.current_elements,
         )
 
     def _process_touch_move(self, timestamp: int, data: dict[str, Any]) -> None:
@@ -1340,6 +1819,7 @@ class EventAnalyzer:
             node_id if node_id is not None else gesture.node_id,
             x if x is not None else gesture.x,
             y if y is not None else gesture.y,
+            gesture.screen,
         )
 
     def _cancel_touch(self) -> None:
@@ -1355,7 +1835,14 @@ class EventAnalyzer:
             return
         self.wireframe_tracker.on_gesture_end()
 
-    def _emit_tap(self, timestamp: int, node_id: Any, x: Any, y: Any) -> None:
+    def _emit_tap(
+        self,
+        timestamp: int,
+        node_id: Any,
+        x: Any,
+        y: Any,
+        screen: list[dict[str, Any]] | None,
+    ) -> None:
         """Emit a confirmed tap in a screenshot recording.
 
         Args:
@@ -1363,6 +1850,8 @@ class EventAnalyzer:
             node_id: The raw rrweb node id.
             x: The raw x coordinate.
             y: The raw y coordinate.
+            screen: The elements of the screen that was current at
+                finger-down, or None; the hit test uses it.
         """
         self._emit_point_action(
             timestamp,
@@ -1373,6 +1862,7 @@ class EventAnalyzer:
             node_id=node_id,
             x=x,
             y=y,
+            screen=screen,
         )
 
     def _flush_active_touch_as_tap(self) -> None:
@@ -1385,7 +1875,9 @@ class EventAnalyzer:
         self._active_touch = None
         if gesture is None:
             return
-        self._emit_tap(gesture.timestamp, gesture.node_id, gesture.x, gesture.y)
+        self._emit_tap(
+            gesture.timestamp, gesture.node_id, gesture.x, gesture.y, gesture.screen
+        )
 
     def _process_scroll(self, timestamp: int, data: dict[str, Any]) -> None:
         """Emit a debounced scroll action for a scroll event."""

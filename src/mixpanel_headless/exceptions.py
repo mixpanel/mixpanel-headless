@@ -1554,14 +1554,13 @@ class ReplayNotFoundError(SessionReplayError):
 
 
 class UnsupportedReplayFormatError(SessionReplayError):
-    """Replay bytes are not in rrweb format (mobile or other non-web recording).
+    """Replay bytes are not in rrweb format.
 
     Raised by the CDN walker when the first event of a recording lacks the
-    standard rrweb keys (``type`` / ``data`` / ``timestamp``). Mobile session
-    replays (iOS / Android) use a different on-disk format that the rrweb
-    analyzer cannot interpret. Discovery still works because
-    ``$mp_session_record`` / ``$mp_replay_id`` are platform-agnostic, but the
-    bytes and analyzer layers are web-only.
+    standard rrweb keys (``type`` / ``data`` / ``timestamp``). The analyzer
+    reads rrweb recordings only. Current Mixpanel SDKs (web, iOS, Android,
+    React Native, and Flutter) all send rrweb-shaped recordings, so this
+    error means an unknown or damaged format.
 
     This is a typed :class:`SessionReplayError` (not the builtin
     ``NotImplementedError`` used in earlier cuts) so callers can branch on it
@@ -1573,9 +1572,7 @@ class UnsupportedReplayFormatError(SessionReplayError):
         format (str): The detected shape — always ``"non-rrweb"``.
 
     The default ``status_code`` is 501 (Not Implemented): no HTTP request
-    failed, the format simply isn't supported yet.
-
-    See error-messages.md §9 for the canonical message wording.
+    failed; the analyzer has no reader for the format.
     """
 
     _DEFAULT_CODE = "UNSUPPORTED_REPLAY_FORMAT"

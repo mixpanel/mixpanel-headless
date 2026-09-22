@@ -8,7 +8,7 @@ The service stays pure-bytes:
   ``signed_at`` timestamp, hydrates :class:`SignedReplay` instances.
 - ``fetch_files`` / ``walk_cdn_async`` — parallel CDN walker with batched
   ``httpx.AsyncClient`` GETs, 404-as-end-sentinel, 403-as-expiry retry,
-  mobile-replay detection, ``max_files`` upper bound.
+  non-rrweb format detection, ``max_files`` upper bound.
 - ``discover`` / ``events_for`` — Insights-API discovery for
   ``$mp_session_record`` events (delegates to a caller-supplied ``query_fn``
   to avoid a circular dependency on :class:`Workspace`).
@@ -255,7 +255,7 @@ class ReplaysService:
             SignedURLExpiredError: Re-sign retry also returned 403, or
                 ``re_sign_on_expiry=False``.
             UnsupportedReplayFormatError: First event in the walk doesn't look
-                like rrweb (mobile replay or unknown format).
+                like rrweb (an unknown recording format).
             MixpanelHeadlessError: Network errors during CDN fetch.
         """
 
@@ -325,7 +325,7 @@ class ReplaysService:
         """
         current_signed = signed
         file_num = 0
-        mobile_checked = False
+        format_checked = False
         re_signed_once = False
 
         async with httpx.AsyncClient(
@@ -373,14 +373,14 @@ class ReplaysService:
                     status, events = results[i]
                     if status != 200 or not events:
                         continue
-                    if not mobile_checked:
-                        mobile_checked = True
+                    if not format_checked:
+                        format_checked = True
                         if not _looks_like_rrweb(events[0]):
                             raise UnsupportedReplayFormatError(
-                                f"Replay {signed.replay_id} appears to be a "
-                                f"mobile session (non-rrweb format). Mobile "
-                                f"session replays are not yet supported by "
-                                f"mixpanel-headless. Track upstream at SR-230.",
+                                f"Replay {signed.replay_id} is not in rrweb "
+                                f"format: its first event lacks the rrweb "
+                                f"type, data, and timestamp keys, so "
+                                f"mixpanel-headless cannot read it.",
                                 details={
                                     "replay_id": signed.replay_id,
                                     "format": "non-rrweb",

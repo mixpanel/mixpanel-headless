@@ -363,11 +363,16 @@ class TestFetchFilesCredentialRedaction:
 # =============================================================================
 
 
-class TestMobileReplayDetection:
-    """First event missing rrweb keys → UnsupportedReplayFormatError per §9."""
+class TestNonRrwebDetection:
+    """First event missing rrweb keys → UnsupportedReplayFormatError."""
 
     def test_non_rrweb_first_event_raises_unsupported_format(self) -> None:
-        """Mobile replays use a different recording format; fail with a typed error."""
+        """Bytes that are not rrweb-shaped fail with a typed error.
+
+        The message must not claim that mobile replays are unsupported:
+        current mobile SDKs send rrweb-shaped recordings, which the
+        analyzer reads.
+        """
         # First file's first event lacks 'type', 'data', and 'timestamp'.
         file_contents: dict[int, list[dict[str, Any]] | None] = {
             0: [{"mobile_event": "tap", "ts": 1716810000}],
@@ -377,7 +382,9 @@ class TestMobileReplayDetection:
         transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
         service = ReplaysService(api, _async_transport=transport)
 
-        with pytest.raises(UnsupportedReplayFormatError, match="mobile session") as ei:
+        with pytest.raises(
+            UnsupportedReplayFormatError, match="is not in rrweb format"
+        ) as ei:
             service.fetch_files(
                 _signed(),
                 retention_days=30,
@@ -387,6 +394,8 @@ class TestMobileReplayDetection:
         # Typed so the CLI maps it to a clean exit code, and callers can branch.
         assert ei.value.details["replay_id"] == _signed().replay_id
         assert ei.value.details["format"] == "non-rrweb"
+        assert "mobile" not in str(ei.value).lower()
+        assert "SR-230" not in str(ei.value)
 
 
 # =============================================================================

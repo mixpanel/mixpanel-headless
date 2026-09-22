@@ -397,16 +397,15 @@ def handle_errors(func: F) -> F:
             )
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None
         except UnsupportedReplayFormatError as e:
-            # 044 — replay bytes aren't rrweb (mobile / non-web format). Maps to
+            # 044 — replay bytes aren't rrweb-shaped (unknown format). Maps to
             # GENERAL_ERROR (1) per contracts/error-messages.md §9. Caught BEFORE
             # the generic MixpanelHeadlessError so the curated one-liner is shown
             # instead of a leaked traceback (it used to be a builtin
             # NotImplementedError that no handler caught).
             replay_id = e.details.get("replay_id")
             err_console.print(
-                f"[red]error:[/red] replay {rich_escape(str(replay_id))} appears"
-                f" to be a mobile session (non-rrweb format) — not yet supported"
-                f" by mixpanel-headless."
+                f"[red]error:[/red] replay {rich_escape(str(replay_id))} is not"
+                f" in rrweb format — mixpanel-headless cannot read it."
             )
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None
         except ReportLinkNotFoundError as e:
