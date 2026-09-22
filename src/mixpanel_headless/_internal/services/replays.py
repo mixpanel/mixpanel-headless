@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
+from mixpanel_headless._internal.replays.rrweb_analyzer import _event_timestamp
 from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     ReplayNotFoundError,
@@ -68,12 +69,13 @@ _CDN_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=30.0)
 
 
 def _looks_like_rrweb(event: object) -> bool:
-    """Heuristic: does this look like an rrweb web-recording event?
+    """Heuristic: does this look like an rrweb event?
 
-    rrweb event shape always includes at minimum ``type`` (int discriminator),
-    ``data`` (dict), and ``timestamp`` (int ms). Mobile session replays use a
-    different recording format that lacks these keys; we treat absence as
-    "not rrweb" and surface a forward-compat
+    The check is shallow: the event must be a dict with the ``type``,
+    ``data``, and ``timestamp`` keys. It does not check the value types.
+    Every current Mixpanel SDK (web, iOS, Android, React Native, and
+    Flutter) sends rrweb-shaped events, so a failed check means an unknown
+    or damaged format, which the walker reports as
     :class:`UnsupportedReplayFormatError`.
 
     Args:
@@ -386,7 +388,11 @@ class ReplaysService:
                                     "format": "non-rrweb",
                                 },
                             )
-                    for ev in sorted(events, key=lambda e: int(e.get("timestamp", 0))):
+                    # A damaged file can hold entries that are not dicts, or
+                    # unusable timestamps: skip the former, sort the latter
+                    # as 0, so the walk itself never raises.
+                    dict_events = [ev for ev in events if isinstance(ev, dict)]
+                    for ev in sorted(dict_events, key=_event_timestamp):
                         yield ev
 
                 if terminate_at < len(results):

@@ -31,6 +31,7 @@ from mixpanel_headless._internal.replays.rrweb_analyzer import (
     MarkdownReporter,
     MobileWireframeTracker,
     RrwebAnalyzer,
+    _event_timestamp,
     _render_markdown,
     actions_contain_wireframes,
     analyze_events,
@@ -2979,3 +2980,112 @@ class TestLiftOffPointFallback:
         ]
         (tap,) = RrwebAnalyzer().analyze(events).actions
         assert tap.description == "Tapped at (7, 9)"
+
+
+class TestInvalidTimestampsNeverRaise:
+    """Unusable event timestamps are read as 0 and never raise."""
+
+    @pytest.mark.parametrize(
+        "value", ["abc", None, float("nan"), float("inf"), True, [1], {"t": 1}]
+    )
+    def test_event_timestamp_helper_gives_zero(self, value: Any) -> None:
+        """The shared helper reads an unusable timestamp as 0.
+
+        Args:
+            value: The raw timestamp value.
+        """
+        assert _event_timestamp({"timestamp": value}) == 0
+
+    def test_event_timestamp_helper_reads_numbers(self) -> None:
+        """Finite ints and floats become ints; a missing key or non-dict gives 0."""
+        assert _event_timestamp({"timestamp": 1500}) == 1500
+        assert _event_timestamp({"timestamp": 1500.9}) == 1500
+        assert _event_timestamp({"timestamp": 1e30}) == int(1e30)
+        assert _event_timestamp({}) == 0
+        assert _event_timestamp("junk") == 0
+
+    @pytest.mark.parametrize("value", ["abc", None, float("nan"), float("inf")])
+    def test_analyze_drops_actions_with_bad_timestamps(self, value: Any) -> None:
+        """An event with an unusable timestamp emits no action and never raises.
+
+        Args:
+            value: The raw timestamp value.
+        """
+        events = [
+            _meta(1000, "/x"),
+            {"type": 4, "timestamp": value, "data": {"href": "/bad"}},
+            _meta(2000, "/y"),
+        ]
+        result = RrwebAnalyzer().analyze(events)
+        assert result.markdown_summary == "1: Navigated to /x\n2: Navigated to /y"
+
+    def test_analyze_keeps_a_huge_timestamp(self) -> None:
+        """A finite but huge timestamp is still a timestamp."""
+        result = RrwebAnalyzer().analyze([_meta(1e30, "/x")])  # type: ignore[arg-type]
+        assert result.actions[0].timestamp == int(1e30)
+
+    def test_analyze_skips_non_dict_events(self) -> None:
+        """Entries that are not dicts are skipped."""
+        events: list[Any] = [_meta(1000, "/x"), "junk", None, 7]
+        result = RrwebAnalyzer().analyze(events)
+        assert result.markdown_summary == "1: Navigated to /x"
+
+
+class TestTouchMoveWithoutUsablePositions:
+    """A drag with no open gesture is a scroll only with a usable position."""
+
+    def test_positions_without_usable_coordinates_are_not_a_scroll(self) -> None:
+        """Junk positions and an open-gesture-free drag record nothing."""
+        events = [
+            _meta_no_href(1),
+            {
+                "type": 3,
+                "timestamp": 2000,
+                "data": {
+                    "source": 6,
+                    "positions": [
+                        None,
+                        {"x": "1", "y": 2},
+                        {"x": float("nan"), "y": 1},
+                    ],
+                },
+            },
+        ]
+        assert RrwebAnalyzer().analyze(events).actions == []
+
+    def test_one_usable_position_is_a_scroll(self) -> None:
+        """One usable position among junk still records the scroll."""
+        events = [
+            _meta_no_href(1),
+            {
+                "type": 3,
+                "timestamp": 2000,
+                "data": {"source": 6, "positions": [None, {"x": 1, "y": 2}]},
+            },
+        ]
+        assert analyze_events(events) == "2: Scrolled"
+
+
+class TestFlushArmsAfterScreens:
+    """A gesture flushed by a new finger-down arms the "after" screens."""
+
+    def test_screens_between_overlapping_touches_are_captured(self) -> None:
+        """Screens that arrive after the flush are captured as after-frames.
+
+        Before, the flushed gesture armed nothing, so the screens between
+        the second finger-down and its lift-off were dropped (only the last
+        one survived, as the trailing screen).
+        """
+        events = [
+            _wireframe(1000, _el("text", "A")),
+            _touch_start(2000, x=10, y=20),
+            _touch_start(2100, x=10, y=20),  # flushes the first gesture
+            _wireframe(2150, _el("text", "B")),
+            _wireframe(2170, _el("text", "C")),
+            _wireframe(2190, _el("text", "D")),
+            _touch_end(2300, x=10, y=20),
+        ]
+        assert analyze_events(events) == (
+            "1: Wireframe: A\n2: Tapped at (10, 20)\n2: Wireframe: B\n"
+            "2: Wireframe: C\n2: Wireframe: D\n2: Tapped at (10, 20)"
+        )

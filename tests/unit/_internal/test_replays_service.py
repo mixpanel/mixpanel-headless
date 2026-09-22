@@ -721,3 +721,32 @@ class TestEventsForParsing:
 
 # Ensure the module is importable as a package for pytest collection.
 _ = json
+
+
+class TestDamagedFiles:
+    """A damaged CDN file cannot raise in the walker's sort or yield."""
+
+    def test_non_dict_entries_and_bad_timestamps_do_not_raise(self) -> None:
+        """Entries that are not dicts are skipped; bad timestamps sort as 0."""
+        file_contents: dict[int, Any] = {
+            0: [
+                _rrweb_event(20),
+                "junk",
+                {"type": 3, "data": {}, "timestamp": "abc"},
+                None,
+                _rrweb_event(10),
+                7,
+                {"type": 3, "data": {}},
+            ],
+            1: None,
+        }
+        api = _mock_api_client()
+        transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
+        service = ReplaysService(api, _async_transport=transport)
+
+        events = service.fetch_files(
+            _signed(), retention_days=30, max_files=500, concurrency=50
+        )
+
+        assert all(isinstance(e, dict) for e in events)
+        assert [e.get("timestamp") for e in events] == ["abc", None, 10, 20]

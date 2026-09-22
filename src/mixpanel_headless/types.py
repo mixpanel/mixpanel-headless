@@ -13262,10 +13262,15 @@ def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         Dict with the seven ``events_df`` columns populated; missing
-        attributes are ``None``. ``raw`` always points at the original
+        attributes are ``None``, and an unusable timestamp gives ``t = 0``.
+        ``raw`` always points at the original
         event so callers can fall back to it for any analyzer-specific
         introspection.
     """
+    from mixpanel_headless._internal.replays.rrweb_analyzer import (
+        _event_timestamp,
+    )
+
     type_ = event.get("type")
     raw_data = event.get("data")
     data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
@@ -13278,7 +13283,7 @@ def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
     target_node_id = data.get("id") if isinstance(data.get("id"), int) else None
     url = data.get("href") if type_ == _RRWEB_TYPE_META else None
     return {
-        "t": int(event.get("timestamp", 0)),
+        "t": _event_timestamp(event),
         "type": type_,
         "source": source,
         "mouse_type": mouse_type,
@@ -13575,12 +13580,14 @@ class Replay(ResultWithDataFrame):
 
         Returns:
             A new list of the raw rrweb dicts sorted ascending by
-            ``timestamp``. The originals are not mutated.
+            ``timestamp``. An unusable timestamp sorts as 0. The originals
+            are not mutated.
         """
-        return sorted(
-            self.rrweb_events,
-            key=lambda e: int(e.get("timestamp", 0)),
+        from mixpanel_headless._internal.replays.rrweb_analyzer import (
+            _event_timestamp,
         )
+
+        return sorted(self.rrweb_events, key=_event_timestamp)
 
     @property
     def summary_markdown(self) -> str:

@@ -39,7 +39,9 @@ set. Web replays give the same output as before.
     less is a tap (`Tapped at (x, y)`, action `touch_start`); more is a
     scroll (`Scrolled`, action `scroll`). A cancelled touch emits nothing.
     A gesture whose lift-off never arrives is a tap at its finger-down,
-    or a scroll when its drag already passed 10 px.
+    or a scroll when its drag already passed 10 px; like a lift-off, it
+    arms the "after" screens, so screens between overlapping touches are
+    sampled.
   - A mouse click (Flutter web and desktop) is `Clicked at (x, y)`, action
     `click`, so `rage_clicks()` and `top_clicks()` see it.
   - Wireframe screens are sampled around each gesture (the screen before
@@ -85,6 +87,12 @@ set. Web replays give the same output as before.
   raising `ParamValidationError`, so one bad event no longer fails a whole
   `fetch_replay`. Malformed wireframe input (wrong types, non-finite
   numbers) degrades instead of raising.
+- An unusable rrweb timestamp (a string, None, a bool, NaN, or infinity)
+  reads as 0 everywhere, instead of raising: in the analyzer (the action is
+  dropped), `Replay.events_df` (`t` is 0), `Replay.to_rrweb_player_json()`
+  (it sorts first), the CDN walk, and `fetch_replay` (the window uses the
+  usable timestamps; with none, it raises `ReplayNotFoundError`). The CDN
+  walk and the analyzer also skip entries that are not dicts.
 - `UnsupportedReplayFormatError` no longer says that mobile replays are
   unsupported. It now means the bytes are not rrweb-shaped (an unknown or
   damaged format). The CLI message changes to match.

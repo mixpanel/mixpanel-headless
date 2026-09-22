@@ -1044,15 +1044,23 @@ def _fingerprint(description: str) -> str:
     return digest.hexdigest()[:FINGERPRINT_LENGTH]
 
 
-def _event_timestamp(event: dict[str, Any]) -> int:
+def _event_timestamp(event: Any) -> int:
     """Return an event's timestamp as an int, or 0 when it is unusable.
 
+    Shared by every reader of raw rrweb timestamps (the analyzer, the
+    ``Replay`` projections, the CDN walker, and ``fetch_replay``), so a
+    damaged event cannot raise. A finite int or float is truncated to an
+    int. A string, None, a bool, NaN, infinity, a missing key, or an event
+    that is not a dict gives 0; actions at timestamp 0 are dropped.
+
     Args:
-        event: A raw rrweb event dict.
+        event: A raw rrweb event, normally a dict.
 
     Returns:
-        The integer timestamp.
+        The integer timestamp, or 0.
     """
+    if not isinstance(event, dict):
+        return 0
     number = _finite_number(event.get("timestamp"))
     return int(number) if number is not None else 0
 
@@ -1183,6 +1191,10 @@ class MobileWireframeTracker:
 
         This is the screen the user sees now, whether or not the sampler
         emitted it. The hit test for a tap uses it.
+
+        Returns:
+            The ``elements`` list of the latest buffered screen (see
+            :func:`screen_structure`), or None when no wireframe arrived yet.
         """
         if self._pending is None:
             return None
@@ -1520,9 +1532,15 @@ class EventAnalyzer:
         )
 
     def process_event(self, event: dict[str, Any]) -> None:
-        """Dispatch a single rrweb event to its type-specific handler."""
+        """Dispatch a single rrweb event to its type-specific handler.
+
+        An entry that is not a dict is skipped. An unusable timestamp reads
+        as 0 (see :func:`_event_timestamp`), so its action is dropped.
+        """
+        if not isinstance(event, dict):
+            return
         event_type = event.get("type")
-        timestamp = int(event.get("timestamp", 0))
+        timestamp = _event_timestamp(event)
         raw_data = event.get("data")
         data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
 
@@ -1810,7 +1828,11 @@ class EventAnalyzer:
         positions = raw_positions if isinstance(raw_positions, list) else []
         gesture = self._active_touch
         if gesture is None:
-            if positions:
+            if any(
+                isinstance(pos, dict)
+                and _coords(pos.get("x"), pos.get("y")) is not None
+                for pos in positions
+            ):
                 self._record_scroll(timestamp)
             return
         if gesture.start is None:
@@ -1916,12 +1938,15 @@ class EventAnalyzer:
         Used when a TOUCH_END never arrives (a dropped event, or the session
         ends mid-touch). A gesture whose drag travel already passed
         :attr:`TAP_MAX_TRAVEL_PX` is a scroll; any other gesture is a tap at
-        its finger-down point. Does nothing when no gesture is open.
+        its finger-down point. Either way the "after" screens are armed, as
+        at a lift-off, so screens that arrive between overlapping touches are
+        sampled. Does nothing when no gesture is open.
         """
         gesture = self._active_touch
         self._active_touch = None
         if gesture is None:
             return
+        self.wireframe_tracker.on_gesture_end()
         if gesture.travel > self.TAP_MAX_TRAVEL_PX:
             self._record_scroll(gesture.timestamp)
             return
@@ -2174,7 +2199,9 @@ class RrwebAnalyzer:
         if not events:
             return AnalyzerResult()
 
-        sorted_events = sorted(events, key=lambda e: int(e.get("timestamp", 0)))
+        sorted_events = sorted(
+            (e for e in events if isinstance(e, dict)), key=_event_timestamp
+        )
 
         dom_tracker = DOMTracker()
         event_analyzer = EventAnalyzer(

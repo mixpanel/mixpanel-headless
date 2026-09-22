@@ -5,7 +5,8 @@ events, scroll events, Meta events, and console errors) check these
 invariants:
 
 - The analyzer never raises, also on malformed wireframe input, on
-  events with a timestamp of zero or less (such actions are dropped), on
+  events with a timestamp of zero or less or an unusable timestamp (a
+  string, None, NaN, infinity; such actions are dropped), on
   sub-pixel or zero viewport widths, on huge Meta widths, and on labels
   with lone surrogates.
 - Actions come out in timestamp order, and the markdown renders from them.
@@ -32,6 +33,7 @@ from hypothesis import strategies as st
 from mixpanel_headless._internal.replays.rrweb_analyzer import (
     MobileWireframeTracker,
     RrwebAnalyzer,
+    _event_timestamp,
     _render_markdown,
     detect_capture,
     hit_target_desc,
@@ -42,8 +44,14 @@ from mixpanel_headless.types import Replay, ReplayBundle
 # Strategies
 # =============================================================================
 
-_timestamps = st.integers(min_value=-5, max_value=20_000)
-"""Event timestamps, with some zero or negative values."""
+_good_timestamps = st.integers(min_value=-5, max_value=20_000)
+_timestamps = st.one_of(
+    _good_timestamps,
+    _good_timestamps,
+    _good_timestamps,
+    st.sampled_from(["abc", None, float("nan"), float("inf"), True, 1e30]),
+)
+"""Event timestamps: mostly integers (some zero or negative), sometimes junk."""
 
 _coordinate = st.one_of(
     st.integers(min_value=-2000, max_value=2000),
@@ -300,9 +308,9 @@ def _web_model(events: list[dict[str, Any]]) -> list[str]:
     """
     out: list[str] = []
     last_scroll = 0
-    for event in sorted(events, key=lambda e: int(e["timestamp"])):
+    for event in sorted(events, key=_event_timestamp):
         data = event["data"]
-        ts = int(event["timestamp"])
+        ts = _event_timestamp(event)
         if event["type"] == 3 and data.get("source") == 3:
             if ts - last_scroll > 1000 and ts > 0:
                 out.append("Scrolled")
@@ -475,7 +483,7 @@ def test_rage_taps_never_raises_and_respects_its_limits(
         threshold: The minimum finger-downs per burst.
         window_ms: The maximum burst span.
     """
-    stamps = [e["timestamp"] for e in events if e["timestamp"] > 0] or [1]
+    stamps = [t for t in map(_event_timestamp, events) if t > 0] or [1]
     replay = Replay(
         replay_id="r",
         distinct_id=None,

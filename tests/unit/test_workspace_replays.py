@@ -744,3 +744,35 @@ class TestCodedReplayGuardCodes:
             ws.list_replays()
         assert isinstance(excinfo.value, ParamValidationError)
         assert excinfo.value.code == "WR4_REPLAY_SELECTOR_REQUIRED"
+
+
+class TestFetchReplayBadTimestamps:
+    """``fetch_replay`` derives its window from usable timestamps only."""
+
+    def test_bad_timestamps_do_not_raise(self) -> None:
+        """Unusable timestamps are ignored for ``start_time`` / ``end_time``."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.sign.return_value = [_signed()]
+        svc.fetch_files.return_value = [
+            {"type": 4, "data": {}, "timestamp": "abc"},
+            {"type": 3, "data": {}, "timestamp": None},
+            {"type": 3, "data": {}, "timestamp": float("nan")},
+            {"type": 3, "data": {}, "timestamp": 1716810000000},
+            {"type": 3, "data": {}, "timestamp": 1716810015000},
+        ]
+
+        replay = ws.fetch_replay("r-1", retention_days=30)
+
+        assert replay.start_time == 1716810000000
+        assert replay.end_time == 1716810015000
+
+    def test_no_usable_timestamp_is_not_found(self) -> None:
+        """A stream with no usable timestamp raises ReplayNotFoundError."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.sign.return_value = [_signed()]
+        svc.fetch_files.return_value = [{"type": 4, "data": {}, "timestamp": "abc"}]
+
+        with pytest.raises(mp.ReplayNotFoundError):
+            ws.fetch_replay("r-1", retention_days=30)
