@@ -15,37 +15,61 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, get_args
 
-HelpKind = Literal[
-    "overview",
-    "class",
+ExportKind = Literal[
+    "module",
+    "exception",
+    "enum",
     "model",
     "dataclass",
-    "enum",
+    "class",
     "literal",
     "alias",
-    "exception",
     "function",
-    "method",
-    "property",
-    "parameter",
-    "module",
     "constant",
-    "listing",
-    "search",
 ]
-"""Classification of a help entry (what kind of object the query resolved to)."""
+"""Classification of a package export: exactly what ``inventory.classify()`` returns.
+
+The order follows the classification rules, so a module wins over a class
+and an exception over an enum.
+"""
+
+MemberKind = Literal[ExportKind, "method", "property"]
+"""Classification of a listing row or search hit.
+
+Every ``ExportKind`` plus the two kinds that only exist as class members:
+``method`` (instance, class, and static methods alike) and ``property``.
+"""
+
+HelpKind = Literal[MemberKind, "overview", "listing", "parameter"]
+"""Classification of a help entry (what kind of object the query resolved to).
+
+Every ``MemberKind`` plus the three kinds that only exist as whole entries:
+the package ``overview``, a ``listing`` (``Workspace``, ``types``,
+``exceptions``), and a single ``parameter`` of a callable. A search result
+is a ``SearchResult``, not a ``HelpEntry``, and has no kind.
+"""
 
 HelpFormat = Literal["text", "markdown", "json"]
 """Output format accepted by the renderers and the CLI ``--format`` option."""
 
+EXPORT_KINDS: tuple[ExportKind, ...] = get_args(ExportKind)
+"""Runtime tuple of every ``ExportKind`` value, in classification-rule order."""
+
+MEMBER_KINDS: tuple[MemberKind, ...] = get_args(MemberKind)
+"""Runtime tuple of every ``MemberKind`` value: ``EXPORT_KINDS`` then ``method``, ``property``."""
+
 HELP_KINDS: tuple[HelpKind, ...] = get_args(HelpKind)
-"""Runtime tuple of every ``HelpKind`` value, for validation and strategies."""
+"""Runtime tuple of every ``HelpKind`` value: ``MEMBER_KINDS`` then the entry-only kinds."""
 
 HELP_FORMATS: tuple[HelpFormat, ...] = get_args(HelpFormat)
 """Runtime tuple of every ``HelpFormat`` value, for validation of ``--format``."""
 
 MatchedOn = Literal["name", "doc", "member"]
-"""Where a search hit matched: the name, the docstring summary, or an enum member."""
+"""Where a search hit matched: the name, the docstring summary, or a member.
+
+The ``member`` tier covers enum members (``NAME = repr(value)``) and the
+values of ``Literal`` aliases.
+"""
 
 ParamKind = Literal[
     "positional_only",
@@ -214,7 +238,7 @@ class MemberDoc:
     """
 
     name: str
-    kind: HelpKind
+    kind: MemberKind
     summary: str = ""
     signature: SignatureDoc | None = None
 
@@ -400,14 +424,17 @@ class SearchHit:
     """One search result row.
 
     Attributes:
-        category: Display category (``exception``, ``enum``, ``type``, ``function``,
-            ``method``, ``property``, ``literal``, ...).
+        category: Display category: the ``ExportKind`` of an export or
+            module member (``exception``, ``enum``, ``model``, ``dataclass``,
+            ``class``, ``literal``, ``alias``, ``function``, ``module``,
+            ``constant``), or ``method`` / ``property`` for ``Workspace``
+            members.
         name: Matched name, qualified for ``Workspace`` members.
         summary: First docstring line, or ``""``.
         matched_on: Which part of the entry matched the term.
     """
 
-    category: str
+    category: MemberKind
     name: str
     summary: str
     matched_on: MatchedOn
@@ -454,10 +481,13 @@ class SearchResult:
 
 
 __all__ = [
+    "EXPORT_KINDS",
     "HELP_FORMATS",
     "HELP_KINDS",
+    "MEMBER_KINDS",
     "PARAM_KINDS",
     "DocSections",
+    "ExportKind",
     "FieldDoc",
     "Group",
     "HelpEntry",
@@ -466,6 +496,7 @@ __all__ = [
     "Hint",
     "MatchedOn",
     "MemberDoc",
+    "MemberKind",
     "ParamDoc",
     "ParamKind",
     "SearchHit",

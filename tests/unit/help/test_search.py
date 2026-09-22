@@ -5,8 +5,8 @@ surface. These tests lock:
 
 - the three match tiers and their order: names, then docstring summaries,
   then enum members and Literal values;
-- the category vocabulary, which is the inventory ``HelpKind`` plus
-  ``method`` / ``property`` for ``Workspace`` members (Literal aliases
+- the category vocabulary (``MemberKind``): the inventory ``ExportKind``
+  plus ``method`` / ``property`` for ``Workspace`` members (Literal aliases
   are ``literal``, never ``function``);
 - the display names: ``Workspace.<member>`` and ``<module>.<member>``;
 - deduplication by ``(category, name)``;

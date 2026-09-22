@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import typing
 
 import pytest
 
@@ -33,6 +34,7 @@ from mixpanel_headless._internal.help.models import (
     HelpKind,
     Hint,
     MemberDoc,
+    MemberKind,
     ParamDoc,
     SearchHit,
     SearchResult,
@@ -177,13 +179,13 @@ def search_result() -> SearchResult:
     """Return a two-hit search result for ``"cohort"``.
 
     Returns:
-        A ``SearchResult`` with one ``type`` hit and one ``method`` hit.
+        A ``SearchResult`` with one ``model`` hit and one ``method`` hit.
     """
     return SearchResult(
         term="cohort",
         hits=(
             SearchHit(
-                category="type",
+                category="model",
                 name="Cohort",
                 summary="A saved cohort.",
                 matched_on="name",
@@ -377,14 +379,7 @@ def make_entries() -> dict[HelpKind, HelpEntry]:
 
 
 ENTRIES = make_entries()
-"""One representative entry per renderable ``HelpKind``."""
-
-RENDERED_KINDS: tuple[HelpKind, ...] = tuple(k for k in HELP_KINDS if k != "search")
-"""Every ``HelpKind`` a ``HelpEntry`` can carry into ``render``.
-
-``search`` is the kind of a ``SearchResult``, which has its own renderers;
-no ``HelpEntry`` is ever built with it.
-"""
+"""One representative entry per ``HelpKind``."""
 
 EXPECTED_HEADS: dict[HelpKind, tuple[str, str]] = {
     "overview": ("mixpanel_headless 0.3.0", "# mixpanel_headless 0.3.0"),
@@ -418,12 +413,12 @@ EXPECTED_HEADS: dict[HelpKind, tuple[str, str]] = {
 
 
 def test_make_entries_covers_every_kind() -> None:
-    """The fixture and head tables have exactly one entry per renderable kind."""
-    assert set(ENTRIES) == set(RENDERED_KINDS)
-    assert set(EXPECTED_HEADS) == set(RENDERED_KINDS)
+    """The fixture and head tables have exactly one entry per ``HelpKind``."""
+    assert set(ENTRIES) == set(HELP_KINDS)
+    assert set(EXPECTED_HEADS) == set(HELP_KINDS)
 
 
-@pytest.mark.parametrize("kind", RENDERED_KINDS)
+@pytest.mark.parametrize("kind", HELP_KINDS)
 def test_every_kind_renders_its_head_line_in_text_and_markdown(kind: HelpKind) -> None:
     """Each kind's text and markdown output starts with the kind-specific head line.
 
@@ -435,7 +430,7 @@ def test_every_kind_renders_its_head_line_in_text_and_markdown(kind: HelpKind) -
     assert render(ENTRIES[kind], "markdown").splitlines()[0] == md_head
 
 
-@pytest.mark.parametrize("kind", RENDERED_KINDS)
+@pytest.mark.parametrize("kind", HELP_KINDS)
 def test_every_kind_renders_json_as_its_dict(kind: HelpKind) -> None:
     """Each kind's JSON output parses back to ``entry.to_dict()``.
 
@@ -445,24 +440,26 @@ def test_every_kind_renders_json_as_its_dict(kind: HelpKind) -> None:
     assert json.loads(render(ENTRIES[kind], "json")) == ENTRIES[kind].to_dict()
 
 
-def test_every_rendered_kind_has_a_text_and_markdown_renderer() -> None:
-    """Both renderer tables list exactly the kinds a ``HelpEntry`` can carry."""
-    assert set(_TEXT_RENDERERS) == set(RENDERED_KINDS)
-    assert set(_MD_RENDERERS) == set(RENDERED_KINDS)
+def test_every_help_kind_has_a_text_and_markdown_renderer() -> None:
+    """Both renderer tables list exactly ``HELP_KINDS``."""
+    assert set(_TEXT_RENDERERS) == set(HELP_KINDS)
+    assert set(_MD_RENDERERS) == set(HELP_KINDS)
 
 
 def test_kind_without_renderer_raises() -> None:
-    """A ``HelpEntry`` whose kind has no renderer raises instead of printing generically."""
+    """An entry whose runtime kind is outside ``HelpKind`` raises instead of printing generically."""
     entry = HelpEntry(
-        kind="search",
-        name="search",
-        qualname="mixpanel_headless.reference.search",
+        kind=typing.cast("HelpKind", "nonesuch"),
+        name="nonesuch",
+        qualname="mixpanel_headless.nonesuch",
         summary="Summary line.",
         doc=DocSections(),
     )
-    with pytest.raises(ValueError, match="No text renderer for help kind 'search'"):
+    with pytest.raises(ValueError, match="No text renderer for help kind 'nonesuch'"):
         render_text(entry)
-    with pytest.raises(ValueError, match="No markdown renderer for help kind 'search'"):
+    with pytest.raises(
+        ValueError, match="No markdown renderer for help kind 'nonesuch'"
+    ):
         render_markdown(entry)
 
 
@@ -501,7 +498,7 @@ def test_json_round_trips_search(search_result: SearchResult) -> None:
     assert json.loads(render_search_json(search_result)) == search_result.to_dict()
 
 
-@pytest.mark.parametrize("kind", RENDERED_KINDS)
+@pytest.mark.parametrize("kind", HELP_KINDS)
 def test_text_has_no_rich_markup_and_no_trailing_newline(kind: HelpKind) -> None:
     """Text output carries no Rich markup close tags and no trailing newline.
 
@@ -1286,7 +1283,7 @@ def test_search_text_exact(search_result: SearchResult) -> None:
         [
             '# Search: "cohort" — 2 matches',
             "",
-            "  [type     ] Cohort                   A saved cohort.",
+            "  [model    ] Cohort                   A saved cohort.",
             "  [method   ] Workspace.create_cohort  Create a cohort.",
         ]
     )
@@ -1294,12 +1291,15 @@ def test_search_text_exact(search_result: SearchResult) -> None:
 
 
 def test_search_text_long_category_is_not_truncated() -> None:
-    """A category longer than 9 characters prints in full."""
+    """A runtime category longer than 9 characters prints in full (the column is a minimum)."""
     result = SearchResult(
         term="x",
         hits=(
             SearchHit(
-                category="verylongcategory", name="X", summary="", matched_on="doc"
+                category=typing.cast("MemberKind", "verylongcategory"),
+                name="X",
+                summary="",
+                matched_on="doc",
             ),
         ),
     )
@@ -1463,7 +1463,7 @@ def test_markdown_escapes_pipes_in_cells() -> None:
     assert "| `T` | a \\| b |" in render_markdown(entry)
 
 
-@pytest.mark.parametrize("kind", RENDERED_KINDS)
+@pytest.mark.parametrize("kind", HELP_KINDS)
 def test_markdown_has_no_trailing_newline_and_no_rich_markup(kind: HelpKind) -> None:
     """Markdown output ends without a newline and contains no Rich close tags.
 

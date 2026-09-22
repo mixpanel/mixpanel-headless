@@ -40,6 +40,7 @@ from mixpanel_headless._internal.help.docstrings import first_line, parse_docstr
 from mixpanel_headless._internal.help.introspect import format_type
 from mixpanel_headless._internal.help.models import (
     HELP_KINDS,
+    MEMBER_KINDS,
     PARAM_KINDS,
     DocSections,
     FieldDoc,
@@ -293,6 +294,7 @@ def test_parse_docstring_never_raises(doc: str | None) -> None:
 # =============================================================================
 
 _KIND = st.sampled_from(HELP_KINDS)
+_MEMBER_KIND = st.sampled_from(MEMBER_KINDS)
 _STR = st.text(max_size=20)
 _OPT_STR = st.one_of(st.none(), _STR)
 _STRS = st.lists(_STR, max_size=3).map(tuple)
@@ -327,7 +329,7 @@ _FIELD_DOCS = st.builds(
 _MEMBER_DOCS = st.builds(
     MemberDoc,
     name=_STR,
-    kind=_KIND,
+    kind=_MEMBER_KIND,
     summary=_STR,
     signature=st.one_of(st.none(), _SIGNATURES),
 )
@@ -373,7 +375,7 @@ _SEARCH_RESULTS = st.builds(
     hits=st.lists(
         st.builds(
             SearchHit,
-            category=_STR,
+            category=_MEMBER_KIND,
             name=_STR,
             summary=_STR,
             matched_on=st.sampled_from(["name", "doc", "member"]),

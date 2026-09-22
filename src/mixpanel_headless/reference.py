@@ -31,11 +31,13 @@ import json
 import sys
 import types
 import typing
+from collections.abc import Callable
 from typing import TYPE_CHECKING, TextIO
 
 from mixpanel_headless._internal.help.models import (
     HELP_FORMATS,
     DocSections,
+    ExportKind,
     FieldDoc,
     Group,
     HelpEntry,
@@ -43,6 +45,7 @@ from mixpanel_headless._internal.help.models import (
     HelpKind,
     Hint,
     MemberDoc,
+    MemberKind,
     ParamDoc,
     SearchHit,
     SearchResult,
@@ -89,7 +92,7 @@ _SEARCH_USAGE = (
 )
 """Text printed for a bare ``search`` query."""
 
-_TYPES_LISTING_GROUPS: tuple[tuple[str, HelpKind], ...] = (
+_TYPES_LISTING_GROUPS: tuple[tuple[str, ExportKind], ...] = (
     ("models", "model"),
     ("dataclasses", "dataclass"),
     ("enums", "enum"),
@@ -475,22 +478,7 @@ def _assemble(target: Target, *, domain: str | None) -> HelpEntry:
         return _types_listing() if target.qualname == "types" else _exceptions_listing()
     if _is_workspace_class(target):
         return _workspace_listing(domain)
-    builders = {
-        "method": _callable_entry,
-        "function": _callable_entry,
-        "property": _property_entry,
-        "parameter": _parameter_entry,
-        "class": _class_entry,
-        "model": _class_entry,
-        "dataclass": _class_entry,
-        "enum": _enum_entry,
-        "literal": _literal_entry,
-        "alias": _alias_entry,
-        "exception": _exception_entry,
-        "module": _module_entry,
-        "constant": _constant_entry,
-    }
-    return builders[target.kind](target)
+    return _ENTRY_BUILDERS[target.kind](target)
 
 
 def _hints(qualname: str, kind: HelpKind) -> tuple[Hint, ...]:
@@ -550,7 +538,7 @@ def _alias_doc(name: str) -> str:
     return ALIAS_DOCS.get(name, "")
 
 
-def _member_summary(obj: object, kind: HelpKind, name: str) -> str:
+def _member_summary(obj: object, kind: MemberKind, name: str) -> str:
     """Return the listing summary for a member or export.
 
     Args:
@@ -567,7 +555,7 @@ def _member_summary(obj: object, kind: HelpKind, name: str) -> str:
     return _summary(obj)
 
 
-def _member_doc(name: str, obj: object, kind: HelpKind) -> MemberDoc:
+def _member_doc(name: str, obj: object, kind: MemberKind) -> MemberDoc:
     """Build a ``MemberDoc`` with a compact signature for callables.
 
     Args:
@@ -1166,3 +1154,26 @@ def _constant_entry(target: Target) -> HelpEntry:
         values=(value,),
         hints=_hints(target.qualname, "constant"),
     )
+
+
+_ENTRY_BUILDERS: dict[HelpKind, Callable[[Target], HelpEntry]] = {
+    "method": _callable_entry,
+    "function": _callable_entry,
+    "property": _property_entry,
+    "parameter": _parameter_entry,
+    "class": _class_entry,
+    "model": _class_entry,
+    "dataclass": _class_entry,
+    "enum": _enum_entry,
+    "literal": _literal_entry,
+    "alias": _alias_entry,
+    "exception": _exception_entry,
+    "module": _module_entry,
+    "constant": _constant_entry,
+}
+"""Entry builder per target kind.
+
+``overview`` and ``listing`` are absent on purpose: their entries are
+synthesized without a ``Target`` object, and ``_assemble`` handles them
+before consulting this table. Together the two cover every ``HelpKind``.
+"""

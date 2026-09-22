@@ -33,7 +33,7 @@ from mixpanel_headless._internal.help import introspect as introspect_module
 from mixpanel_headless._internal.help import inventory as inventory_module
 from mixpanel_headless._internal.help import relations as relations_module
 from mixpanel_headless._internal.help import search as search_module
-from mixpanel_headless._internal.help.models import HELP_FORMATS
+from mixpanel_headless._internal.help.models import HELP_FORMATS, HELP_KINDS
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless._internal.help.relations import exception_tree, raised_by
 from mixpanel_headless._literal_types import ALIAS_DOCS
@@ -166,6 +166,10 @@ class TestModuleSurface:
         """``reference.search`` returns the same result as the internal search."""
         assert ref.search("cohort").hits == search_module.search("cohort").hits
         assert len(ref.search("cohort", limit=2).hits) == 2
+
+    def test_assembler_covers_every_help_kind(self) -> None:
+        """Every ``HelpKind`` is a synthetic kind or has a builder in the assembler table."""
+        assert set(ref._ENTRY_BUILDERS) | {"overview", "listing"} == set(HELP_KINDS)
 
     def test_render_rejects_unknown_format(self) -> None:
         """``render`` raises ``ValueError`` for an unknown format."""

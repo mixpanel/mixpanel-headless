@@ -68,7 +68,7 @@ The model has no kind-specific fields, so a few kinds reuse generic slots:
 - ``overview``: ``summary`` is the version string printed after the name;
   ``doc.body`` is the grammar text; ``groups`` render as tables whose rows
   show the compact signature when a member has one.
-- ``search``: a ``SearchResult``. Hits render in the order given with
+- a ``SearchResult`` (no kind; it is not a ``HelpEntry``): hits render in the order given with
   ``[category ]`` padded to nine characters inside the brackets and a name
   column sized to the longest hit. A miss prints ``No matches for "term"``
   and then ``Did you mean?`` with ``suggestions`` when there are any.
@@ -186,8 +186,8 @@ def render_text(entry: HelpEntry) -> str:
         The text rendering without a trailing newline.
 
     Raises:
-        ValueError: When ``entry.kind`` has no text renderer (``search`` is
-            the kind of a ``SearchResult`` and never reaches here).
+        ValueError: When ``entry.kind`` is not a ``HelpKind`` at runtime;
+            every ``HelpKind`` has a renderer.
     """
     renderer = _TEXT_RENDERERS.get(entry.kind)
     if renderer is None:
@@ -205,7 +205,8 @@ def render_markdown(entry: HelpEntry) -> str:
         The markdown rendering without a trailing newline.
 
     Raises:
-        ValueError: When ``entry.kind`` has no markdown renderer.
+        ValueError: When ``entry.kind`` is not a ``HelpKind`` at runtime;
+            every ``HelpKind`` has a renderer.
     """
     renderer = _MD_RENDERERS.get(entry.kind)
     if renderer is None:
@@ -941,7 +942,7 @@ _TEXT_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "constant": _text_constant,
     "listing": _text_listing,
 }
-"""Text renderer per kind; every kind a ``HelpEntry`` can carry has one."""
+"""Text renderer per kind; every ``HelpKind`` has one."""
 
 
 # =============================================================================
@@ -1363,7 +1364,7 @@ _MD_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "constant": _md_constant,
     "listing": _md_listing,
 }
-"""Markdown renderer per kind; every kind a ``HelpEntry`` can carry has one."""
+"""Markdown renderer per kind; every ``HelpKind`` has one."""
 
 
 __all__ = [

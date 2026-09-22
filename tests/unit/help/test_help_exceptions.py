@@ -28,9 +28,9 @@ def _hit(name: str) -> SearchHit:
         name: Export name to place in the hit.
 
     Returns:
-        A ``SearchHit`` in the ``type`` category matched on its name.
+        A ``SearchHit`` in the ``dataclass`` category matched on its name.
     """
-    return SearchHit(category="type", name=name, summary="", matched_on="name")
+    return SearchHit(category="dataclass", name=name, summary="", matched_on="name")
 
 
 class TestHierarchy:

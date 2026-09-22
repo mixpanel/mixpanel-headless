@@ -6,7 +6,8 @@ The models are frozen ``slots=True`` dataclasses. These tests lock:
   models convert recursively, output is JSON-serializable);
 - immutability (assignment raises ``FrozenInstanceError``) and hashability;
 - the defaults that let callers build partial ``HelpEntry`` values;
-- the ``HELP_KINDS`` / ``HELP_FORMATS`` runtime constants.
+- the ``EXPORT_KINDS`` / ``MEMBER_KINDS`` / ``HELP_KINDS`` / ``HELP_FORMATS``
+  runtime constants and how each kind tuple extends the previous one.
 """
 
 from __future__ import annotations
@@ -18,10 +19,13 @@ from typing import get_args
 import pytest
 
 from mixpanel_headless._internal.help.models import (
+    EXPORT_KINDS,
     HELP_FORMATS,
     HELP_KINDS,
+    MEMBER_KINDS,
     PARAM_KINDS,
     DocSections,
+    ExportKind,
     FieldDoc,
     Group,
     HelpEntry,
@@ -29,6 +33,7 @@ from mixpanel_headless._internal.help.models import (
     HelpKind,
     Hint,
     MemberDoc,
+    MemberKind,
     ParamDoc,
     ParamKind,
     SearchHit,
@@ -168,11 +173,35 @@ def entry(
 # =============================================================================
 
 
-def test_help_kinds_matches_literal() -> None:
-    """``HELP_KINDS`` holds exactly the ``HelpKind`` literal members, in order."""
+def test_export_kinds_matches_literal() -> None:
+    """``EXPORT_KINDS`` holds exactly the ``ExportKind`` literal members, in order."""
+    assert get_args(ExportKind) == EXPORT_KINDS
+    assert set(EXPORT_KINDS) == {
+        "module",
+        "exception",
+        "enum",
+        "model",
+        "dataclass",
+        "class",
+        "literal",
+        "alias",
+        "function",
+        "constant",
+    }
+    assert len(EXPORT_KINDS) == len(set(EXPORT_KINDS))
+
+
+def test_member_kinds_extends_export_kinds() -> None:
+    """``MEMBER_KINDS`` is ``EXPORT_KINDS`` plus the two class-member kinds."""
+    assert get_args(MemberKind) == MEMBER_KINDS
+    assert (*EXPORT_KINDS, "method", "property") == MEMBER_KINDS
+
+
+def test_help_kinds_extends_member_kinds() -> None:
+    """``HELP_KINDS`` is ``MEMBER_KINDS`` plus the three entry-only kinds, and no ``search``."""
     assert get_args(HelpKind) == HELP_KINDS
-    assert "class" in HELP_KINDS
-    assert "search" in HELP_KINDS
+    assert (*MEMBER_KINDS, "overview", "listing", "parameter") == HELP_KINDS
+    assert "search" not in HELP_KINDS
     assert len(HELP_KINDS) == len(set(HELP_KINDS))
 
 
@@ -310,7 +339,7 @@ def test_search_hit_to_dict() -> None:
 def test_search_result_to_dict() -> None:
     """``SearchResult.to_dict()`` nests hits and lists suggestions."""
     hit = SearchHit(
-        category="type", name="Cohort", summary="A cohort.", matched_on="doc"
+        category="model", name="Cohort", summary="A cohort.", matched_on="doc"
     )
     result = SearchResult(term="cohort", hits=(hit,), suggestions=("Cohorts",))
     assert result.to_dict() == {
@@ -479,7 +508,7 @@ def test_search_result_defaults() -> None:
         (Group(title="g", items=()), "title"),
         (UsageDoc(method="m", params=()), "method"),
         (DocSections(), "summary"),
-        (SearchHit(category="type", name="n", summary="", matched_on="name"), "name"),
+        (SearchHit(category="class", name="n", summary="", matched_on="name"), "name"),
         (SearchResult(term="t"), "term"),
     ],
     ids=lambda value: type(value).__name__ if not isinstance(value, str) else value,
@@ -530,7 +559,7 @@ def test_help_entry_is_hashable_and_equal(entry: HelpEntry) -> None:
 
 def test_search_result_is_hashable() -> None:
     """``SearchResult`` with nested hits is hashable."""
-    hit = SearchHit(category="type", name="Cohort", summary="", matched_on="name")
+    hit = SearchHit(category="class", name="Cohort", summary="", matched_on="name")
     result = SearchResult(term="cohort", hits=(hit,), suggestions=("a",))
     assert isinstance(hash(result), int)
 

@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from mixpanel_headless._internal.help.models import HelpKind
+from mixpanel_headless._internal.help.models import ExportKind, MemberKind
 
 __all__ = [
     "Export",
@@ -57,7 +57,7 @@ class Export:
     """
 
     name: str
-    kind: HelpKind
+    kind: ExportKind
     obj: object = field(compare=False)
 
 
@@ -67,8 +67,8 @@ _ALIAS_ORIGINS: frozenset[object] = frozenset(
 """``typing.get_origin`` results that mark a ``Union`` / ``Annotated`` alias."""
 
 
-def classify(obj: object) -> HelpKind:
-    """Classify a runtime object into one ``HelpKind``.
+def classify(obj: object) -> ExportKind:
+    """Classify a runtime object into one ``ExportKind``.
 
     The rules apply in this order, and the first match wins:
 
@@ -90,7 +90,7 @@ def classify(obj: object) -> HelpKind:
         obj: The object to classify.
 
     Returns:
-        The ``HelpKind`` for ``obj``.
+        The ``ExportKind`` for ``obj``.
 
     Example:
         ```python
@@ -123,7 +123,7 @@ def classify(obj: object) -> HelpKind:
 
 _INVENTORY: tuple[Export, ...] | None = None
 _BY_NAME: dict[str, Export] = {}
-_WORKSPACE_MEMBERS: tuple[tuple[str, HelpKind], ...] | None = None
+_WORKSPACE_MEMBERS: tuple[tuple[str, MemberKind], ...] | None = None
 
 
 def _build_inventory() -> tuple[Export, ...]:
@@ -184,11 +184,11 @@ def export(name: str) -> Export | None:
     return _BY_NAME.get(name)
 
 
-def exports_of_kind(kind: HelpKind) -> tuple[Export, ...]:
+def exports_of_kind(kind: ExportKind) -> tuple[Export, ...]:
     """Return the inventory rows of one kind, in name order.
 
     Args:
-        kind: The ``HelpKind`` to filter on.
+        kind: The ``ExportKind`` to filter on.
 
     Returns:
         Matching rows; empty when no export has that kind.
@@ -196,7 +196,7 @@ def exports_of_kind(kind: HelpKind) -> tuple[Export, ...]:
     return tuple(row for row in inventory() if row.kind == kind)
 
 
-def _build_workspace_members() -> tuple[tuple[str, HelpKind], ...]:
+def _build_workspace_members() -> tuple[tuple[str, MemberKind], ...]:
     """Collect the public ``Workspace`` properties and methods.
 
     Classification uses ``inspect.getattr_static`` so a property is never
@@ -209,7 +209,7 @@ def _build_workspace_members() -> tuple[tuple[str, HelpKind], ...]:
     """
     from mixpanel_headless.workspace import Workspace
 
-    members: list[tuple[str, HelpKind]] = []
+    members: list[tuple[str, MemberKind]] = []
     for name in sorted(dir(Workspace)):
         if name.startswith("_"):
             continue
@@ -221,7 +221,7 @@ def _build_workspace_members() -> tuple[tuple[str, HelpKind], ...]:
     return tuple(members)
 
 
-def workspace_members() -> tuple[tuple[str, HelpKind], ...]:
+def workspace_members() -> tuple[tuple[str, MemberKind], ...]:
     """Return the cached public ``Workspace`` members.
 
     Returns:

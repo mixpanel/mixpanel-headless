@@ -5,7 +5,7 @@ builds on:
 
 - the inventory is the deduplicated, sorted ``mixpanel_headless.__all__``
   and never comes from ``dir()``;
-- every export classifies to exactly one ``HelpKind``, with the
+- every export classifies to exactly one ``ExportKind``, with the
   exported ``Literal`` aliases classified as ``literal`` and cross-checked
   against ``ALIAS_DOCS``;
 - ``workspace_members()`` lists the public ``Workspace`` properties and
@@ -38,7 +38,7 @@ from mixpanel_headless._internal.help.inventory import (
     module_members,
     workspace_members,
 )
-from mixpanel_headless._internal.help.models import HELP_KINDS, HelpKind
+from mixpanel_headless._internal.help.models import EXPORT_KINDS, ExportKind
 from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.workspace import Workspace
 
@@ -173,7 +173,7 @@ class TestExport:
 
 
 class TestClassify:
-    """``classify`` maps a runtime object to exactly one ``HelpKind``."""
+    """``classify`` maps a runtime object to exactly one ``ExportKind``."""
 
     @pytest.mark.parametrize(
         ("obj", "expected"),
@@ -199,12 +199,12 @@ class TestClassify:
             pytest.param(_Point(x=1), "constant", id="instance"),
         ],
     )
-    def test_classifies(self, obj: object, expected: HelpKind) -> None:
+    def test_classifies(self, obj: object, expected: ExportKind) -> None:
         """Each sample object classifies to its expected kind.
 
         Args:
             obj: The object to classify.
-            expected: The expected ``HelpKind``.
+            expected: The expected ``ExportKind``.
         """
         assert classify(obj) == expected
 
@@ -245,9 +245,13 @@ class TestInventory:
         for row in inventory():
             assert row.obj is getattr(mp, row.name)
 
-    def test_every_kind_is_a_help_kind(self) -> None:
-        """Every row carries a kind from ``HELP_KINDS``."""
-        assert {row.kind for row in inventory()} <= set(HELP_KINDS)
+    def test_every_kind_is_an_export_kind(self) -> None:
+        """Every row carries a kind from ``EXPORT_KINDS``."""
+        assert {row.kind for row in inventory()} <= set(EXPORT_KINDS)
+
+    def test_every_export_kind_appears_in_the_inventory(self) -> None:
+        """``ExportKind`` names nothing ``classify`` never returns for a real export."""
+        assert {row.kind for row in inventory()} == set(EXPORT_KINDS)
 
     def test_no_private_names(self) -> None:
         """No row name starts with an underscore."""
@@ -270,12 +274,12 @@ class TestInventory:
             pytest.param("MathType", "literal", id="literal"),
         ],
     )
-    def test_known_exports(self, name: str, expected: HelpKind) -> None:
+    def test_known_exports(self, name: str, expected: ExportKind) -> None:
         """Named exports classify to their documented kinds.
 
         Args:
             name: Export name.
-            expected: Expected ``HelpKind``.
+            expected: Expected ``ExportKind``.
         """
         row = export(name)
         assert row is not None
@@ -303,14 +307,9 @@ class TestInventory:
         assert "Workspace" in [row.name for row in exports_of_kind("class")]
 
     def test_exports_of_kind_partitions_inventory(self) -> None:
-        """Summing every kind group gives the whole inventory."""
-        total = sum(len(exports_of_kind(kind)) for kind in HELP_KINDS)
+        """Summing every export kind group gives the whole inventory."""
+        total = sum(len(exports_of_kind(kind)) for kind in EXPORT_KINDS)
         assert total == len(inventory())
-
-    def test_exports_of_kind_unknown_kind_is_empty(self) -> None:
-        """Kinds that never appear at the package root give an empty tuple."""
-        assert exports_of_kind("overview") == ()
-        assert exports_of_kind("parameter") == ()
 
     def test_export_miss_returns_none(self) -> None:
         """Unknown, private, and dotted names give ``None``."""

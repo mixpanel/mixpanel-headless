@@ -42,7 +42,7 @@ from mixpanel_headless._internal.help.inventory import (
     inventory,
     workspace_members,
 )
-from mixpanel_headless._internal.help.models import HelpKind, UsageDoc
+from mixpanel_headless._internal.help.models import ExportKind, UsageDoc
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS, domain_of
 
 __all__ = [
@@ -55,12 +55,12 @@ __all__ = [
     "used_by",
 ]
 
-_TYPE_KINDS: frozenset[HelpKind] = frozenset(
+_TYPE_KINDS: frozenset[ExportKind] = frozenset(
     {"class", "model", "dataclass", "enum", "literal", "alias", "exception"}
 )
 """Export kinds that count as *types* for ``referenced_types``."""
 
-_VALUE_COMPARED_KINDS: frozenset[HelpKind] = frozenset({"literal", "alias"})
+_VALUE_COMPARED_KINDS: frozenset[ExportKind] = frozenset({"literal", "alias"})
 """Kinds whose export object may be inlined by ``get_type_hints`` and so also match by ``==``."""
 
 _Annotation = tuple[str, tuple[object, ...], str]

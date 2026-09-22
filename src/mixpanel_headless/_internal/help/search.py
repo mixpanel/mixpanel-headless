@@ -47,7 +47,12 @@ from mixpanel_headless._internal.help.inventory import (
     module_members,
     workspace_members,
 )
-from mixpanel_headless._internal.help.models import MatchedOn, SearchHit, SearchResult
+from mixpanel_headless._internal.help.models import (
+    MatchedOn,
+    MemberKind,
+    SearchHit,
+    SearchResult,
+)
 from mixpanel_headless._internal.help.resolve import suggestions_for
 from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.exceptions import HelpLookupError
@@ -80,7 +85,7 @@ class _Entry:
             definition order; empty for every other kind.
     """
 
-    category: str
+    category: MemberKind
     name: str
     summary: str
     members: tuple[str, ...]

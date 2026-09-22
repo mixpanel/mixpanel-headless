@@ -42,7 +42,7 @@ from mixpanel_headless._internal.help.inventory import (
     exports_of_kind,
     workspace_members,
 )
-from mixpanel_headless._internal.help.models import HelpKind, UsageDoc
+from mixpanel_headless._internal.help.models import ExportKind, UsageDoc
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless._internal.help.relations import (
     clear_cache,
@@ -305,7 +305,7 @@ class TestReferencedTypes:
 
     def test_functions_and_modules_are_never_referenced(self) -> None:
         """Only type-like kinds qualify; functions, modules, and constants do not."""
-        excluded: tuple[HelpKind, ...] = ("module", "function", "constant")
+        excluded: tuple[ExportKind, ...] = ("module", "function", "constant")
         excluded_names = {
             row.name for kind in excluded for row in exports_of_kind(kind)
         }
