@@ -82,7 +82,7 @@ _BUILTIN_CALLABLE_TYPES: tuple[type, ...] = (
     types.MethodWrapperType,
     types.ClassMethodDescriptorType,
 )
-"""C-level callables (builtins and slot wrappers) that may lack a signature."""
+"""C-level callables (builtins and slot wrappers) the resolver never treats as members."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,17 +462,23 @@ def _class_member_names(cls: type) -> tuple[str, ...]:
             names.append(name)
             continue
         bound = getattr(cls, name, None)
-        if callable(bound) and not _is_uninspectable_builtin(bound):
+        if callable(bound) and not _is_c_level_callable(bound):
             names.append(name)
     return tuple(sorted(names))
 
 
-def _is_uninspectable_builtin(obj: object) -> bool:
-    """Tell whether ``obj`` is a C-level callable without a usable signature.
+def _is_c_level_callable(obj: object) -> bool:
+    """Tell whether ``obj`` is a C-level callable inherited from a framework base.
 
-    Such members reach exported classes only through framework bases
-    (``str`` on a ``str`` enum, ``dict`` on a typed dict, ``BaseException``)
-    and cannot be documented, so the resolver treats them as absent. Python
+    Such members reach exported classes only through bases the package does
+    not own (``str`` on a ``str`` enum, ``dict`` on a typed dict,
+    ``BaseException``). They have no docstring the parser understands and
+    member listings already hide them, so the resolver treats them as absent.
+
+    The test is the object's type, not whether ``inspect.signature``
+    succeeds: CPython adds text signatures to builtins release by release
+    (``BaseException.with_traceback`` gained one in 3.13), and a help query
+    must resolve the same way on every supported interpreter. Python
     callables are never excluded here, even when their signature is broken;
     that case is a bug the signature builder reports.
 
@@ -481,23 +487,16 @@ def _is_uninspectable_builtin(obj: object) -> bool:
 
     Returns:
         ``True`` when ``obj`` is a builtin function or method, slot wrapper,
-        method descriptor, or method wrapper for which ``inspect.signature``
-        raises ``ValueError``.
+        method descriptor, or method wrapper.
 
     Example:
         ```python
-        _is_uninspectable_builtin(str.maketrans)   # True
-        _is_uninspectable_builtin(str.upper)       # False (has a text signature)
-        _is_uninspectable_builtin(BaseModel.model_dump)   # False (Python)
+        _is_c_level_callable(str.maketrans)              # True
+        _is_c_level_callable(str.upper)                  # True
+        _is_c_level_callable(BaseModel.model_dump)       # False (Python)
         ```
     """
-    if not isinstance(obj, _BUILTIN_CALLABLE_TYPES):
-        return False
-    try:
-        inspect.signature(cast("Callable[..., object]", obj))
-    except ValueError:
-        return True
-    return False
+    return isinstance(obj, _BUILTIN_CALLABLE_TYPES)
 
 
 # =============================================================================

@@ -40,9 +40,10 @@ entries.
   that accept them; modules list their `__all__`; exceptions show their
   subclass tree; private fields are hidden and factory classmethods are
   listed under Construction. The inventory comes from `__all__` and is
-  cached per process. Inherited builtins that Python cannot inspect
-  (`FeatureFlagStatus.maketrans`, reached through the `str` base) are a
-  plain miss, not an error; inspectable inherited callables such as
+  cached per process. C-level members inherited through a framework base
+  (`FeatureFlagStatus.maketrans` from `str`, `HelpLookupError.with_traceback`
+  from `BaseException`) are a plain miss on every supported Python version,
+  not an error; inherited Python callables such as
   `CreateDashboardParams.model_dump` resolve.
 - **`mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME]
   [--no-hints]`.** No auth: the command ignores `-a / -p / -w / -t` and never

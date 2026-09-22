@@ -358,9 +358,25 @@ class TestClassMembers:
         assert target.owner is mp.FeatureFlagStatus
 
     def test_exception_member(self) -> None:
-        """Members of exported exceptions resolve like any class member."""
-        target = resolve("HelpLookupError.with_traceback")
+        """Members of exported exceptions resolve like any class member.
+
+        ``to_dict`` is inherited from ``MixpanelHeadlessError``, a Python
+        method defined in the package, so it resolves on every interpreter.
+        """
+        target = resolve("HelpLookupError.to_dict")
         assert target.kind == "method"
+        assert target.owner is mp.HelpLookupError
+
+    def test_inherited_c_level_member_is_a_miss_on_every_interpreter(self) -> None:
+        """``BaseException.with_traceback`` is a miss whether or not it has a signature.
+
+        CPython gives ``with_traceback`` a text signature only from 3.13 on.
+        The resolver must not let the interpreter version decide what
+        resolves, so every C-level callable inherited through a framework
+        base is treated as absent.
+        """
+        with pytest.raises(HelpLookupError):
+            resolve("HelpLookupError.with_traceback")
 
     def test_unknown_member_raises(self) -> None:
         """An unknown class member raises ``HelpLookupError``."""
@@ -690,11 +706,21 @@ class TestEdgeCases:
         with pytest.raises(HelpLookupError):
             resolve("FeatureFlagStatus.maketrans.x")
 
-    def test_inspectable_builtin_member_still_resolves(self) -> None:
-        """An inherited builtin with a text signature stays resolvable."""
-        target = resolve("FeatureFlagStatus.upper")
+    def test_inherited_builtin_with_text_signature_is_also_a_miss(self) -> None:
+        """``str.upper`` has a text signature, and it is still a miss.
+
+        The rule is about where the member comes from, not about whether
+        ``inspect.signature`` succeeds, so the outcome is the same on every
+        supported Python version.
+        """
+        with pytest.raises(HelpLookupError):
+            resolve("FeatureFlagStatus.upper")
+
+    def test_inherited_python_member_from_a_dependency_resolves(self) -> None:
+        """A Python-level inherited member such as ``model_dump`` still resolves."""
+        target = resolve("CreateDashboardParams.model_dump")
         assert target.kind == "method"
-        assert target.owner is mp.FeatureFlagStatus
+        assert target.owner is mp.CreateDashboardParams
 
     def test_callable_with_bogus_signature_has_no_parameters(
         self, monkeypatch: pytest.MonkeyPatch
