@@ -4,15 +4,19 @@ Two hand-maintained tables live here:
 
 - :data:`WORKSPACE_DOMAINS` groups every public ``Workspace`` method under a
   short lowercase domain title. It mirrors the section comments in
-  ``workspace.py`` collapsed to about thirty domains. Names are explicit, not
-  patterns, so ``tests/unit/help/test_registry_completeness.py`` can assert
-  that every public method appears exactly once and that every registered
-  name exists. A new ``Workspace`` method without a domain fails CI.
+  ``workspace.py``, collapsed into a few dozen domains. Names are explicit,
+  not patterns, so ``tests/unit/help/test_registry_completeness.py`` can
+  assert that every public method appears exactly once and that every
+  registered name exists. A new ``Workspace`` method without a domain fails
+  CI.
 - :data:`REFERENCE_HINTS` maps query tokens (export names, ``Workspace``
-  method names) to a hosted documentation page. The table replaces the
-  plugin-local ``_REFERENCE_HINTS`` in the old ``help.py`` script. Every path
-  is a source path relative to ``docs/`` so the same test can assert the
-  page exists; :func:`hint_url` turns it into the hosted URL.
+  method names, namespace module members) to a hosted documentation page.
+  The table mirrors the plugin-local ``_REFERENCE_HINTS`` in
+  ``mixpanel-plugin/skills/mixpanelyst/scripts/help.py``. Every path is a
+  source path relative to ``docs/`` so the same test can assert the page
+  exists; :func:`hint_url` turns it into the hosted URL. Every trigger names
+  something public and every registered ``Workspace`` method has a rule;
+  ``tests/unit/help/test_hints.py`` guards both.
 
 Nothing in this module imports ``Workspace`` or touches the network. The
 tables are plain tuples so they are hashable and safe to cache.
@@ -551,7 +555,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "MathType, Filter, GroupBy, Formula, validation rules",
         "guide/query.md",
     ),
-    # --- session replay (044) ---------------------------------------------
+    # --- session replay ---------------------------------------------------
     (
         (
             "list_replays",
@@ -582,7 +586,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "session replay — discover, sign, fetch, and analyze rrweb recordings",
         "guide/session-replay.md",
     ),
-    # --- report links (045) -----------------------------------------------
+    # --- report links -----------------------------------------------------
     (
         (
             "create_report_link",
@@ -604,7 +608,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "report links — share a query as a URL, resolve a URL back into params",
         "guide/report-links.md",
     ),
-    # --- business context (AIE-147) ---------------------------------------
+    # --- business context -------------------------------------------------
     (
         (
             "get_business_context",
@@ -619,7 +623,8 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "business context — org and project markdown that grounds AI assistants",
         "guide/business-context.md",
     ),
-    # --- entity management: reports, dashboards, cohorts -------------------
+    # --- entity management: reports, dashboards, cohorts, flags, experiments,
+    #     annotations, webhooks, alerts -------------------------------------
     (
         (
             "create_bookmark",
@@ -632,7 +637,6 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "bookmark_linked_dashboard_ids",
             "get_bookmark_history",
             "validate_bookmark",
-            "query_saved_report",
             "CreateBookmarkParams",
             "UpdateBookmarkParams",
             "BulkUpdateBookmarkEntry",
@@ -709,7 +713,129 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "cohort CRUD (entity management)",
         "guide/entity-management.md",
     ),
-    # --- data governance (027 / 028) --------------------------------------
+    (
+        (
+            "list_feature_flags",
+            "create_feature_flag",
+            "get_feature_flag",
+            "update_feature_flag",
+            "delete_feature_flag",
+            "archive_feature_flag",
+            "restore_feature_flag",
+            "duplicate_feature_flag",
+            "set_flag_test_users",
+            "get_flag_history",
+            "get_flag_limits",
+            "FeatureFlag",
+            "FeatureFlagStatus",
+            "FlagContractStatus",
+            "CreateFeatureFlagParams",
+            "UpdateFeatureFlagParams",
+            "FlagHistoryParams",
+            "FlagHistoryResponse",
+            "FlagLimitsResponse",
+            "ServingMethod",
+            "SetTestUsersParams",
+        ),
+        "feature flag CRUD, archive and restore, test users, history (entity management)",
+        "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_experiments",
+            "create_experiment",
+            "get_experiment",
+            "update_experiment",
+            "delete_experiment",
+            "launch_experiment",
+            "conclude_experiment",
+            "decide_experiment",
+            "archive_experiment",
+            "restore_experiment",
+            "duplicate_experiment",
+            "list_erf_experiments",
+            "Experiment",
+            "ExperimentStatus",
+            "ExperimentCreator",
+            "CreateExperimentParams",
+            "UpdateExperimentParams",
+            "DuplicateExperimentParams",
+            "ExperimentConcludeParams",
+            "ExperimentDecideParams",
+        ),
+        "experiment CRUD and lifecycle — launch, conclude, decide (entity management)",
+        "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_annotations",
+            "create_annotation",
+            "get_annotation",
+            "update_annotation",
+            "delete_annotation",
+            "list_annotation_tags",
+            "create_annotation_tag",
+            "Annotation",
+            "AnnotationTag",
+            "AnnotationUser",
+            "CreateAnnotationParams",
+            "UpdateAnnotationParams",
+            "CreateAnnotationTagParams",
+        ),
+        "annotation CRUD and annotation tags (entity management)",
+        "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_webhooks",
+            "create_webhook",
+            "update_webhook",
+            "delete_webhook",
+            "test_webhook",
+            "ProjectWebhook",
+            "WebhookAuthType",
+            "CreateWebhookParams",
+            "UpdateWebhookParams",
+            "WebhookMutationResult",
+            "WebhookTestParams",
+            "WebhookTestResult",
+        ),
+        "webhook CRUD and connectivity tests (entity management)",
+        "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_alerts",
+            "create_alert",
+            "get_alert",
+            "update_alert",
+            "delete_alert",
+            "bulk_delete_alerts",
+            "get_alert_count",
+            "get_alert_history",
+            "test_alert",
+            "get_alert_screenshot_url",
+            "validate_alerts_for_bookmark",
+            "CustomAlert",
+            "AlertBookmark",
+            "AlertCreator",
+            "AlertProject",
+            "AlertWorkspace",
+            "AlertFrequencyPreset",
+            "CreateAlertParams",
+            "UpdateAlertParams",
+            "AlertCount",
+            "AlertHistoryResponse",
+            "AlertHistoryPagination",
+            "AlertScreenshotResponse",
+            "AlertValidation",
+            "ValidateAlertsForBookmarkParams",
+            "ValidateAlertsForBookmarkResponse",
+        ),
+        "alert CRUD, history, screenshots, and bookmark validation (entity management)",
+        "guide/entity-management.md",
+    ),
+    # --- data governance --------------------------------------------------
     (
         (
             "get_event_definitions",
@@ -881,6 +1007,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "segmentation_numeric",
             "segmentation_sum",
             "segmentation_average",
+            "query_saved_report",
             "SegmentationResult",
             "FunnelResult",
             "FunnelResultStep",
@@ -900,7 +1027,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "segmentation, funnels, retention (legacy live queries)",
         "guide/live-analytics.md",
     ),
-    # --- auth and accounts (042 / 043) ------------------------------------
+    # --- auth and accounts ------------------------------------------------
     (
         (
             "use",
@@ -942,26 +1069,44 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "auth and accounts — account types, sessions, targets, in-session switching",
         "api/auth.md",
     ),
-    # --- CLI ---------------------------------------------------------------
+    # --- cross-cutting: core exceptions and pagination ---------------------
     (
-        ("cli", "mp", "command", "commands"),
-        "the mp command-line interface — every command, flag, and output format",
-        "cli/commands.md",
+        (
+            "MixpanelHeadlessError",
+            "APIError",
+            "QueryError",
+            "RateLimitError",
+            "ServerError",
+            "InvalidArgumentError",
+            "ParamTypeError",
+            "ParamValidationError",
+            "ResponseValidationError",
+            "HelpLookupError",
+        ),
+        "exception hierarchy — base classes, API errors, validation errors",
+        "api/exceptions.md",
+    ),
+    (
+        ("CursorPagination", "PaginatedResponse"),
+        "shared result and pagination types",
+        "api/types.md",
     ),
 )
 """Ordered ``(triggers, title, docs source path)`` hint rules.
 
-``triggers`` are query tokens — export names and ``Workspace`` method
-names. A query such as ``Workspace.query_funnel`` splits on ``.`` into the
-tokens ``Workspace`` and ``query_funnel``; the first rule whose trigger set
-intersects the token set wins. The old script matched whole tokens rather
-than substrings because generic triggers such as ``query`` false-positive on
-compound names like ``query_saved_report``; keep that rule in ``hints.py``.
-Specific engines precede the generic insights rule so ``query_funnel``
-picks the funnels page. Dashboards point at the entity-management guide;
-plugin-local ``dashboard-expert`` pointers belong in plugin markdown.
-Every ``path`` is relative to ``docs/`` in the repository; use
-:func:`hint_url` for the hosted URL.
+``triggers`` are query tokens — export names, ``Workspace`` method names,
+and namespace module members; a token that names nothing public can never
+fire, so none is registered. A query such as ``Workspace.query_funnel``
+splits on ``.`` into the tokens ``Workspace`` and ``query_funnel``; the
+first rule whose trigger set intersects the token set wins. Matching is on
+whole tokens rather than substrings, as in the plugin script, because
+generic triggers such as ``query`` false-positive on compound names like
+``query_saved_report``; keep that rule in ``hints.py``. Specific engines
+precede the generic insights rule so ``query_funnel`` picks the funnels
+page. Dashboards point at the entity-management guide; plugin-local
+``dashboard-expert`` pointers belong in plugin markdown. Every ``path`` is
+relative to ``docs/`` in the repository; use :func:`hint_url` for the
+hosted URL.
 """
 
 

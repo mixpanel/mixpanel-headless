@@ -8,6 +8,8 @@ Covers the docs-hint lookup:
   otherwise the first ``REFERENCE_HINTS`` rule whose trigger set intersects
   the token set wins (so ``query_funnel`` picks funnels before insights).
 - Every returned URL is hosted under ``DOCS_BASE``.
+- Coverage: every registered ``Workspace`` domain, and every method in it,
+  yields a hint, so no entity family is left without a documentation tip.
 """
 
 from __future__ import annotations
@@ -15,10 +17,12 @@ from __future__ import annotations
 import pytest
 
 from mixpanel_headless._internal.help.hints import hints_for, tokens
+from mixpanel_headless._internal.help.inventory import inventory
 from mixpanel_headless._internal.help.models import Hint
 from mixpanel_headless._internal.help.registry import (
     DOCS_BASE,
     REFERENCE_HINTS,
+    WORKSPACE_DOMAINS,
     WORKSPACE_HINT,
     hint_url,
 )
@@ -107,10 +111,92 @@ class TestHintsFor:
         assert hints_for((), kind="class") == ()
 
     def test_whole_tokens_only(self) -> None:
-        """``query_saved_report`` is not the ``query`` trigger (whole-token rule)."""
-        hints = hints_for(("Workspace", "query_saved_report"), kind="method")
-        assert hints != hints_for(("query",), kind="method")
-        assert hints == () or hints[0].url != hint_url("guide/query.md")
+        """``query_saved_report`` is not the ``query`` trigger (whole-token rule).
+
+        It has its own trigger that points at the live-analytics guide, the
+        page that documents it, rather than the insights query guide.
+        """
+        (hint,) = hints_for(("Workspace", "query_saved_report"), kind="method")
+        assert hint.url == hint_url("guide/live-analytics.md")
+        assert hint != hints_for(("query",), kind="method")[0]
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "create_feature_flag",
+            "get_flag_limits",
+            "create_experiment",
+            "list_erf_experiments",
+            "create_annotation",
+            "create_annotation_tag",
+            "create_webhook",
+            "test_webhook",
+            "create_alert",
+            "validate_alerts_for_bookmark",
+        ],
+    )
+    def test_entity_families_pick_entity_management(self, method: str) -> None:
+        """Flag, experiment, annotation, webhook, and alert methods share one guide.
+
+        Args:
+            method: A ``Workspace`` method from one of the five entity families.
+        """
+        (hint,) = hints_for(tokens(f"Workspace.{method}"), kind="method")
+        assert hint.url == hint_url("guide/entity-management.md")
+
+    @pytest.mark.parametrize(
+        "export",
+        [
+            "FeatureFlag",
+            "Experiment",
+            "Annotation",
+            "ProjectWebhook",
+            "CreateAlertParams",
+        ],
+    )
+    def test_entity_family_types_pick_entity_management(self, export: str) -> None:
+        """The entity-family types point at the same guide as their methods.
+
+        Args:
+            export: An exported type from one of the five entity families.
+        """
+        (hint,) = hints_for((export,), kind="model")
+        assert hint.url == hint_url("guide/entity-management.md")
+
+    def test_every_domain_yields_a_hint(self) -> None:
+        """Every registered ``Workspace`` domain has at least one hinted method."""
+        silent = [
+            title
+            for title, methods in WORKSPACE_DOMAINS
+            if not any(
+                hints_for(("Workspace", method), kind="method") for method in methods
+            )
+        ]
+        assert silent == []
+
+    def test_every_type_export_yields_a_hint(self) -> None:
+        """Every exported type, exception, alias, and constant has a documentation hint.
+
+        Namespace modules and bare functions are the only exports allowed to
+        go without one.
+        """
+        silent = [
+            row.name
+            for row in inventory()
+            if row.kind not in ("module", "function")
+            and hints_for((row.name,), kind=row.kind) == ()
+        ]
+        assert silent == []
+
+    def test_every_registered_method_yields_a_hint(self) -> None:
+        """Every method in ``WORKSPACE_DOMAINS`` has a documentation hint."""
+        silent = [
+            method
+            for _title, methods in WORKSPACE_DOMAINS
+            for method in methods
+            if hints_for(("Workspace", method), kind="method") == ()
+        ]
+        assert silent == []
 
     def test_case_insensitive_trigger(self) -> None:
         """``filter`` matches the ``Filter`` trigger."""

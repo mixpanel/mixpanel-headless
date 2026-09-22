@@ -8,7 +8,8 @@ These tests lock four invariants that keep ``mp.help()`` output current:
   ``ALIAS_DOCS``, and every key in that dict names such an export.
 - Every public ``Workspace`` method appears in exactly one domain of
   ``WORKSPACE_DOMAINS`` and every registered name exists.
-- Every ``REFERENCE_HINTS`` source path exists under ``docs/``.
+- Every ``REFERENCE_HINTS`` source path exists under ``docs/`` and every
+  trigger token names something public, so no rule is dead.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import mixpanel_headless as mp
 from mixpanel_headless._internal.help.inventory import (
     exports_of_kind,
     inventory,
+    module_members,
     workspace_members,
 )
 from mixpanel_headless._internal.help.registry import (
@@ -95,6 +97,21 @@ def _public_workspace_methods() -> list[str]:
         if callable(getattr(Workspace, name)):
             names.append(name)
     return sorted(names)
+
+
+def _public_names_lowercased() -> set[str]:
+    """Return every name a help query token can resolve to, lowercased.
+
+    Returns:
+        Export names, public ``Workspace`` member names, and the ``__all__``
+        members of the exported namespace modules.
+    """
+    names = {row.name for row in inventory()}
+    names |= {name for name, _kind in workspace_members()}
+    for row in exports_of_kind("module"):
+        if inspect.ismodule(row.obj):
+            names |= set(module_members(row.obj))
+    return {name.lower() for name in names}
 
 
 def _registered_methods() -> list[str]:
@@ -395,9 +412,10 @@ class TestReferenceHints:
             "guide/business-context.md",
             "guide/data-governance.md",
             "api/auth.md",
-            "cli/commands.md",
             "guide/entity-management.md",
             "guide/discovery.md",
+            "guide/live-analytics.md",
+            "guide/streaming.md",
             "guide/query.md",
             "guide/query-funnels.md",
             "guide/query-retention.md",
@@ -408,6 +426,55 @@ class TestReferenceHints:
     def test_required_pages_are_hinted(self, needle: str) -> None:
         """The required docs pages each appear at least once."""
         assert needle in {path for _t, _title, path in REFERENCE_HINTS}
+
+    def test_every_trigger_names_a_public_name(self) -> None:
+        """Each trigger, lowercased, is an export, a ``Workspace`` member, or a module member.
+
+        A trigger that names nothing public can never fire, because the
+        query must first resolve to a help entry.
+        """
+        public = _public_names_lowercased()
+        dead = sorted(
+            trigger
+            for triggers, _title, _path in REFERENCE_HINTS
+            for trigger in triggers
+            if trigger.lower() not in public
+        )
+        assert dead == []
+
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "create_feature_flag",
+            "create_experiment",
+            "create_annotation",
+            "create_webhook",
+            "create_alert",
+        ],
+    )
+    def test_entity_family_methods_point_at_entity_management(
+        self, method: str
+    ) -> None:
+        """The first rule that triggers on each entity-family method is entity management.
+
+        Args:
+            method: A ``Workspace`` method from one of the five entity families.
+        """
+        for triggers, _title, path in REFERENCE_HINTS:
+            if method in triggers:
+                assert path == "guide/entity-management.md"
+                break
+        else:  # pragma: no cover - defensive
+            pytest.fail(f"no hint triggers on {method}")
+
+    def test_query_saved_report_points_at_live_analytics(self) -> None:
+        """``query_saved_report`` is documented on the live-analytics page."""
+        for triggers, _title, path in REFERENCE_HINTS:
+            if "query_saved_report" in triggers:
+                assert path == "guide/live-analytics.md"
+                break
+        else:  # pragma: no cover - defensive
+            pytest.fail("no hint triggers on query_saved_report")
 
     def test_dashboard_methods_point_at_entity_management(self) -> None:
         """The first entry that triggers on ``create_dashboard`` is entity management."""
