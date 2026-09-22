@@ -9,16 +9,20 @@ Two rules shape this module:
 - **Display the source annotation.** ``format_type`` keeps the text that
   ``inspect.signature`` returns (a string under ``from __future__ import
   annotations``), so alias names such as ``MathType`` stay visible. Resolved
-  hints from ``typing.get_type_hints`` feed only the inline allowed values.
+  hints from ``typing.get_type_hints`` are used where the text is not
+  enough: the inline allowed values here, the Pydantic annotation fallback
+  when a field has no source text, and the type matching in
+  :mod:`.relations`.
 - **Private members hidden, constructors shown.** Field and member names
   that start with ``_`` are omitted. Classmethods and staticmethods whose
   return annotation names the class itself (or ``Self``) form the
   *construction* section.
 
-``resolved_hints`` never raises: ``typing.get_type_hints`` fails with
-``NameError`` on classes whose annotations name ``TYPE_CHECKING``-only
-imports (``FlowQueryResult``, ``SchemaGraphResult``), and the module then
-degrades to the string form.
+``resolved_hints`` never raises on a bad annotation. When
+``typing.get_type_hints`` fails on an object (``FlowQueryResult`` and
+``SchemaGraphResult`` name ``nx.DiGraph``, a ``TYPE_CHECKING``-only import,
+on a private field), every annotation is evaluated on its own and only the
+failing names are left out, logged at DEBUG level.
 """
 
 from __future__ import annotations
@@ -26,7 +30,10 @@ from __future__ import annotations
 import dataclasses
 import enum
 import inspect
+import logging
 import re
+import sys
+import types
 import typing
 from collections.abc import Callable
 from typing import Annotated, Literal
@@ -49,8 +56,12 @@ _CLASS_REPR_RE = re.compile(r"<class '([^']*)'>")
 _FORWARD_REF_RE = re.compile(r"ForwardRef\('([^']*)'\)")
 """Matches ``ForwardRef('Name')`` and captures the name."""
 
-_QUOTED_RE = re.compile(r"""^(['"])(.*)\1$""")
-"""Matches a whole string wrapped in one pair of quotes (a quoted forward reference)."""
+_QUOTED_RE = re.compile(r"""^(['"])([^'"]*)\1$""")
+"""Matches a whole string wrapped in one pair of quotes (a quoted forward reference).
+
+The inner group excludes quotes, so ``"A" | "B"`` is not mistaken for one
+quoted name ``A" | "B``.
+"""
 
 _UNION_KEYWORDS = ("Optional", "Union")
 """Subscript names rewritten to ``|`` form by ``_rewrite_unions``."""
@@ -77,11 +88,25 @@ _CONFIG_DEFAULTS: tuple[tuple[str, object], ...] = (
 """Model config keys reported by ``model_config_doc`` when they differ from these."""
 
 _HINTS_CACHE: dict[int, tuple[object, dict[str, object]]] = {}
-"""Per-process cache for ``resolved_hints``: ``id(obj) -> (obj, hints)``.
+"""Per-process cache for ``resolved_hints``: ``id(target) -> (target, hints)``.
 
-The object is stored with its hints so its ``id`` cannot be recycled while the
-entry is alive.
+``target`` is the object's ``__func__`` when it has one (bound methods are
+rebuilt on every attribute access, so their own ``id`` never repeats) and
+the object itself otherwise. The target is stored with its hints so its
+``id`` cannot be recycled while the entry is alive.
 """
+
+_ANNOTATION_ERRORS = (NameError, TypeError, SyntaxError, AttributeError)
+"""Exceptions an annotation raises when it cannot be evaluated at runtime.
+
+``NameError`` for a name imported only under ``TYPE_CHECKING``, ``TypeError``
+for a non-annotatable object or a subscript on a non-generic, ``SyntaxError``
+for a malformed string, ``AttributeError`` for a dotted path into a module
+that lacks the attribute. Anything else is a bug and propagates.
+"""
+
+_LOG = logging.getLogger(__name__)
+"""Module logger; unresolved annotations are reported at DEBUG level."""
 
 _PARAM_KIND_NAMES: dict[inspect._ParameterKind, ParamKind] = {
     inspect.Parameter.POSITIONAL_ONLY: "positional_only",
@@ -168,8 +193,10 @@ def _rewrite_unions(text: str) -> str:
     """Rewrite ``Optional[X]`` and ``Union[A, B]`` subscripts to pipe form.
 
     Brackets are matched, so nested forms such as
-    ``Optional[Dict[str, int]]`` become ``Dict[str, int] | None``. A name that
-    merely ends in ``Optional`` or ``Union`` (``MyUnion[int]``) is left alone.
+    ``Optional[Dict[str, int]]`` become ``Dict[str, int] | None``. Quoted
+    members lose their quotes (``Union["A", "B"]`` becomes ``A | B``). A name
+    that merely ends in ``Optional`` or ``Union`` (``MyUnion[int]``) is left
+    alone.
 
     Args:
         text: An annotation string.
@@ -193,7 +220,9 @@ def _rewrite_unions(text: str) -> str:
             index += 1
             continue
         inner = _rewrite_unions(text[open_at + 1 : close_at])
-        parts = [part.strip() for part in _split_top_level(inner)]
+        parts = [
+            _QUOTED_RE.sub(r"\2", part.strip()) for part in _split_top_level(inner)
+        ]
         if keyword == "Optional":
             parts.append("None")
         out.append(" | ".join(parts))
@@ -272,44 +301,167 @@ def _split_top_level(text: str) -> list[str]:
 
 
 def resolved_hints(obj: object) -> dict[str, object]:
-    """Return ``typing.get_type_hints(obj, include_extras=True)`` or ``{}``.
+    """Return the resolved type hints of ``obj``, one annotation at a time if needed.
 
-    Any exception (``NameError`` for ``TYPE_CHECKING``-only names, ``TypeError``
-    for objects without annotations) degrades to an empty dict so callers fall
-    back to the string annotation. Results are cached per object;
-    ``clear_cache`` empties the cache.
+    ``typing.get_type_hints(obj, include_extras=True)`` is tried first. When
+    it raises, every annotation is evaluated on its own, so one unresolvable
+    name (``nx.DiGraph`` on the private ``FlowQueryResult._graph_cache``
+    field, imported only under ``TYPE_CHECKING``) drops that single entry
+    instead of every hint of the object. Each failure is logged at DEBUG level
+    with the object, the annotation name, and the exception.
+
+    Results are cached per underlying function or class: a bound method is
+    keyed by its ``__func__``, so ``Filter.equals`` fetched twice shares one
+    entry. ``clear_cache`` empties the cache.
 
     Args:
         obj: A class, function, method, or module.
 
     Returns:
         A fresh copy of the resolved hints keyed by parameter or field name,
-        with ``"return"`` for callables; ``{}`` when resolution fails.
+        with ``"return"`` for callables. Names whose annotation cannot be
+        evaluated are absent; an object without annotations gives ``{}``.
 
     Example:
         ```python
-        resolved_hints(Workspace.query)["mode"]   # Literal['timeseries', 'total', 'table']
-        resolved_hints(FlowQueryResult)           # {} — networkx is TYPE_CHECKING-only
+        resolved_hints(Workspace.query)["mode"]     # Literal['timeseries', 'total', 'table']
+        resolved_hints(FlowQueryResult)["mode"]     # Literal['sankey', 'paths', 'tree']
+        "_graph_cache" in resolved_hints(FlowQueryResult)   # False
         ```
     """
-    key = id(obj)
+    target = getattr(obj, "__func__", obj)
+    key = id(target)
     cached = _HINTS_CACHE.get(key)
-    if cached is not None and cached[0] is obj:
+    if cached is not None and cached[0] is target:
         return dict(cached[1])
     try:
         hints: dict[str, object] = dict(typing.get_type_hints(obj, include_extras=True))
-    except Exception:  # noqa: BLE001 - any failure means "no resolved hints"
-        hints = {}
-    _HINTS_CACHE[key] = (obj, hints)
+    except _ANNOTATION_ERRORS as exc:
+        _LOG.debug(
+            "get_type_hints failed for %r (%r); resolving each annotation on its own",
+            obj,
+            exc,
+        )
+        hints = _hints_per_name(obj)
+    _HINTS_CACHE[key] = (target, hints)
     return dict(hints)
 
 
-def clear_cache() -> None:
-    """Empty the ``resolved_hints`` cache.
+def _hints_per_name(obj: object) -> dict[str, object]:
+    """Resolve the annotations of ``obj`` one name at a time.
+
+    Classes are walked base-first through the MRO, as ``typing.get_type_hints``
+    does, so a subclass annotation shadows a base one; each class's annotations
+    are evaluated in its own module namespace with the class namespace as
+    locals. Callables and modules are evaluated in their own globals.
+
+    Args:
+        obj: A class, function, method, module, or any other object.
 
     Returns:
-        ``None``.
+        The hints that could be evaluated; ``{}`` for objects without
+        annotations.
     """
+    if isinstance(obj, type):
+        hints: dict[str, object] = {}
+        for klass in reversed(obj.__mro__):
+            module = sys.modules.get(getattr(klass, "__module__", "") or "")
+            globalns = dict(vars(module)) if module is not None else {}
+            raw = _raw_annotations(klass)
+            hints.update(_evaluate_each(raw, globalns, dict(vars(klass)), owner=klass))
+        return hints
+    if isinstance(obj, types.ModuleType):
+        return _evaluate_each(_raw_annotations(obj), dict(vars(obj)), None, owner=obj)
+    unwrapped = inspect.unwrap(obj) if callable(obj) else obj
+    globalns = dict(getattr(unwrapped, "__globals__", {}))
+    return _evaluate_each(_raw_annotations(obj), globalns, None, owner=obj)
+
+
+def _raw_annotations(obj: object) -> dict[str, object]:
+    """Read the unevaluated annotations of one class, callable, or module.
+
+    Args:
+        obj: The object to read.
+
+    Returns:
+        ``inspect.get_annotations(obj)`` as a fresh dict; ``{}`` when the
+        object carries no annotations (``TypeError`` for values such as
+        ``42``) or its lazily evaluated annotations cannot be built.
+    """
+    try:
+        return dict(inspect.get_annotations(obj))  # type: ignore[arg-type]
+    except _ANNOTATION_ERRORS as exc:
+        _LOG.debug("no readable annotations on %r (%r)", obj, exc)
+        return {}
+
+
+def _evaluate_each(
+    raw: dict[str, object],
+    globalns: dict[str, object],
+    localns: dict[str, object] | None,
+    *,
+    owner: object,
+) -> dict[str, object]:
+    """Evaluate a mapping of annotations, skipping and logging the ones that fail.
+
+    Args:
+        raw: ``name -> annotation`` as written (strings under
+            ``from __future__ import annotations``, objects otherwise).
+        globalns: Globals for string evaluation (the defining module's namespace).
+        localns: Locals for string evaluation (the class namespace), or ``None``.
+        owner: The object the annotations belong to, for the debug log line.
+
+    Returns:
+        ``name -> resolved hint`` for every annotation that evaluated.
+    """
+    hints: dict[str, object] = {}
+    for name, annotation in raw.items():
+        try:
+            hints[name] = _evaluate_annotation(annotation, globalns, localns)
+        except _ANNOTATION_ERRORS as exc:
+            _LOG.debug(
+                "annotation %r of %r left unresolved: %s (%r)",
+                name,
+                owner,
+                annotation,
+                exc,
+            )
+    return hints
+
+
+def _evaluate_annotation(
+    annotation: object,
+    globalns: dict[str, object],
+    localns: dict[str, object] | None,
+) -> object:
+    """Evaluate one annotation the way ``typing.get_type_hints`` would.
+
+    Args:
+        annotation: A string annotation, a type, or ``None``.
+        globalns: Globals for string evaluation.
+        localns: Locals for string evaluation, or ``None``.
+
+    Returns:
+        The evaluated hint; ``None`` becomes ``type(None)``.
+
+    Raises:
+        NameError: When the string names something not imported at runtime.
+        TypeError: When the string subscripts something that is not generic.
+        SyntaxError: When the string is not a valid expression.
+        AttributeError: When the string dots into a missing module attribute.
+    """
+    if annotation is None:
+        return type(None)
+    if not isinstance(annotation, str):
+        return annotation
+    # Annotation strings come from this package's own source files (or the
+    # caller's test fixtures), the same text typing.get_type_hints evaluates.
+    value = eval(annotation, globalns, localns)  # noqa: S307
+    return type(None) if value is None else value
+
+
+def clear_cache() -> None:
+    """Empty the ``resolved_hints`` cache."""
     _HINTS_CACHE.clear()
 
 
@@ -384,9 +536,14 @@ def signature_doc(
         owner: Class that defines ``func``; used only to unwrap descriptors.
 
     Returns:
-        The signature. When ``inspect.signature`` raises (builtins without a
-        text signature, objects with a bogus ``__signature__``), the result has
-        ``params=()`` and ``returns=None``.
+        The signature.
+
+    Raises:
+        ValueError: When ``inspect.signature`` cannot build a signature (a
+            builtin without a text signature, an object with a bogus
+            ``__signature__``). Every callable the help system documents is
+            defined in this package, so this is a bug, not a display case.
+        TypeError: When ``func`` is not callable.
 
     Example:
         ```python
@@ -399,10 +556,7 @@ def signature_doc(
     if owner is not None and isinstance(func, (classmethod, staticmethod)):
         func = func.__get__(None, owner)
     display = name if name is not None else _callable_name(func)
-    try:
-        signature = inspect.signature(func)  # type: ignore[arg-type]
-    except (ValueError, TypeError):
-        return SignatureDoc(name=display)
+    signature = inspect.signature(func)  # type: ignore[arg-type]
     hints = resolved_hints(func)
     descriptions = dict(parse_docstring(inspect.getdoc(func)).args)
     params: list[ParamDoc] = []

@@ -298,7 +298,7 @@ class TestReferencedTypes:
 
     def test_string_fallback(self) -> None:
         """Unresolvable annotations still yield the names present as whole words."""
-        assert resolved_hints(_unresolvable) == {}
+        assert "where" not in resolved_hints(_unresolvable)
         pairs = referenced_types(_unresolvable)
         assert [name for name, _summary in pairs] == ["Filter", "FlowQueryResult"]
         assert pairs[0][1] == first_line(Filter.__doc__)

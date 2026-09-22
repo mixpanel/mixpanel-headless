@@ -8,7 +8,9 @@ Covers the signature and field introspection helpers:
   plus private-field elision on ``Filter`` and ``Replay``.
 - ``model_config_doc`` on a fixture that sets all four keys.
 - ``class_sections`` on ``Filter``, ``QueryResult``, and a plain class.
-- ``resolved_hints`` degrading to ``{}`` on ``FlowQueryResult``.
+- ``resolved_hints`` resolving ``FlowQueryResult`` one field at a time when
+  the whole-class ``get_type_hints`` call fails, and caching bound methods by
+  their underlying function.
 
 Real-library assertions lock counts measured on 2026-09-21: ``MathType`` has
 22 values and ``Filter`` has 28 factory classmethods.
@@ -19,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import inspect
+import logging
 import typing
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -33,6 +36,7 @@ from mixpanel_headless import (
     FlowQueryResult,
     QueryResult,
     Replay,
+    SchemaGraphResult,
     Workspace,
 )
 from mixpanel_headless._internal.help import introspect
@@ -245,6 +249,21 @@ class NoSignature:
         """Do nothing."""
 
 
+class Adder:
+    """Fixture callable instance: has a signature but no ``__name__``."""
+
+    def __call__(self, x: int) -> int:
+        """Return the argument.
+
+        Args:
+            x: Any integer.
+
+        Returns:
+            ``x`` unchanged.
+        """
+        return x
+
+
 def _plain_function(name: str, count: int = 1, *, mode: Mode = "fast") -> str:
     """Fixture module-level function with a keyword-only Literal parameter.
 
@@ -325,6 +344,11 @@ def test_format_type_objects(annotation: object, expected: str) -> None:
         ("collections.abc.Iterator[Event]", "Iterator[Event]"),
         ("ForwardRef('Filter')", "Filter"),
         ("'Filter'", "Filter"),
+        ('"Filter"', "Filter"),
+        ('Union["A", "B"]', "A | B"),
+        ("Union['A', 'B']", "A | B"),
+        ("Optional['Filter']", "Filter | None"),
+        ("'A' | 'B'", "'A' | 'B'"),
         ("OptionalThing[int]", "OptionalThing[int]"),
         ("MyUnion[int]", "MyUnion[int]"),
         (
@@ -387,17 +411,152 @@ def test_resolved_hints_resolves_workspace_query() -> None:
     assert hints["return"] is QueryResult
 
 
-def test_resolved_hints_returns_empty_dict_on_name_error() -> None:
-    """``FlowQueryResult`` cannot resolve (``networkx`` is TYPE_CHECKING-only)."""
+def test_resolved_hints_resolves_per_field_when_one_annotation_fails() -> None:
+    """One unresolvable private field does not wipe the public hints of a dataclass.
+
+    ``FlowQueryResult._graph_cache`` names ``nx.DiGraph`` (``networkx`` is a
+    ``TYPE_CHECKING``-only import), so ``typing.get_type_hints`` raises; the
+    public ``mode`` Literal must still resolve.
+    """
     with pytest.raises(NameError):
         typing.get_type_hints(FlowQueryResult)
-    assert resolved_hints(FlowQueryResult) == {}
+    hints = resolved_hints(FlowQueryResult)
+    assert typing.get_origin(hints["mode"]) is Literal
+    assert typing.get_args(hints["mode"]) == ("sankey", "paths", "tree")
+    assert "_graph_cache" not in hints
+    public = {f.name for f in dataclasses.fields(FlowQueryResult) if f.name[0] != "_"}
+    assert public <= set(hints)
+    assert resolved_hints(SchemaGraphResult)
+    assert "_graph_cache" not in resolved_hints(SchemaGraphResult)
+
+
+def test_resolved_hints_resolves_per_parameter_for_callables() -> None:
+    """A callable with one bad annotation keeps its other parameter and return hints."""
+
+    def partly(a: UndefinedName, b: Mode) -> int:  # type: ignore[name-defined]  # noqa: F821
+        """Fixture whose first annotation names nothing importable.
+
+        Args:
+            a: Unresolvable.
+            b: Resolvable Literal.
+
+        Returns:
+            Zero.
+        """
+        return 0
+
+    hints = resolved_hints(partly)
+    assert "a" not in hints
+    assert hints["b"] == Mode
+    assert hints["return"] is int
+
+
+def test_resolved_hints_shadows_base_annotations_like_get_type_hints() -> None:
+    """Per-name resolution walks the MRO base-first so a subclass annotation wins."""
+
+    class Base:
+        """Fixture base with a resolvable and an unresolvable annotation."""
+
+        shared: int
+        broken: MissingName  # type: ignore[name-defined]  # noqa: F821
+
+    class Derived(Base):
+        """Fixture subclass that re-annotates ``shared``."""
+
+        shared: str  # type: ignore[assignment]
+        own: Mode
+
+    hints = resolved_hints(Derived)
+    assert hints == {"shared": str, "own": Mode}
+
+
+def test_resolved_hints_logs_unresolved_names_at_debug(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Each unresolvable annotation is logged at DEBUG with its name and the error."""
+
+    def partly(a: UndefinedName) -> None:  # type: ignore[name-defined]  # noqa: F821
+        """Fixture.
+
+        Args:
+            a: Unresolvable.
+        """
+
+    with caplog.at_level(logging.DEBUG, logger=introspect.__name__):
+        assert resolved_hints(partly) == {"return": type(None)}
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "get_type_hints" in message and "partly" in message for message in messages
+    )
+    assert any("'a'" in message and "UndefinedName" in message for message in messages)
 
 
 def test_resolved_hints_returns_empty_dict_for_non_annotatable() -> None:
-    """Objects that ``get_type_hints`` rejects yield ``{}`` instead of raising."""
+    """Objects without annotations yield ``{}`` instead of raising."""
     assert resolved_hints(42) == {}
     assert resolved_hints("text") == {}
+
+
+def test_dataclass_fields_doc_flow_query_result_mode_has_values() -> None:
+    """``FlowQueryResult.mode`` lists its Literal members inline."""
+    by_name = {doc.name: doc for doc in dataclass_fields_doc(FlowQueryResult)}
+    assert by_name["mode"].values == ("sankey", "paths", "tree")
+    assert by_name["mode"].annotation == "Literal['sankey', 'paths', 'tree']"
+
+
+def test_describe_flow_query_result_mode_values() -> None:
+    """The public ``describe`` path shows the ``mode`` values of ``FlowQueryResult``."""
+    from mixpanel_headless.reference import describe
+
+    entry = describe("FlowQueryResult")
+    mode = next(f for f in entry.fields if f.name == "mode")
+    assert mode.values == ("sankey", "paths", "tree")
+
+
+def _literal_source(annotation: object) -> bool:
+    """Tell whether a source annotation spells out a ``Literal[...]``.
+
+    Args:
+        annotation: A raw ``inspect`` or ``dataclasses.Field`` annotation.
+
+    Returns:
+        ``True`` when the annotation text contains ``Literal[``.
+    """
+    return "Literal[" in (
+        annotation if isinstance(annotation, str) else repr(annotation)
+    )
+
+
+def test_every_literal_dataclass_field_has_values() -> None:
+    """Every public dataclass field written as ``Literal[...]`` resolves to values."""
+    from mixpanel_headless._internal.help.inventory import exports_of_kind
+
+    checked = 0
+    for export in exports_of_kind("dataclass"):
+        cls = export.obj
+        assert isinstance(cls, type)
+        docs = {doc.name: doc for doc in dataclass_fields_doc(cls)}
+        for fld in dataclasses.fields(cls):
+            if fld.name.startswith("_") or not _literal_source(fld.type):
+                continue
+            checked += 1
+            assert docs[fld.name].values, f"{export.name}.{fld.name} has no values"
+    assert checked >= 1
+
+
+def test_every_literal_workspace_parameter_has_values() -> None:
+    """Every ``Workspace`` parameter written as ``Literal[...]`` resolves to values."""
+    checked = 0
+    for name, value in vars(Workspace).items():
+        if name.startswith("_") or not inspect.isfunction(value):
+            continue
+        docs = {p.name.lstrip("*"): p for p in signature_doc(value, name=name).params}
+        for pname, param in inspect.signature(value).parameters.items():
+            if pname == "self" or not _literal_source(param.annotation):
+                continue
+            checked += 1
+            assert docs[pname].values, f"Workspace.{name}.{pname} has no values"
+    assert checked >= 40
 
 
 def test_resolved_hints_keeps_annotated_extras() -> None:
@@ -429,6 +588,39 @@ def test_resolved_hints_returns_a_copy() -> None:
     hints = resolved_hints(_plain_function)
     hints.clear()
     assert resolved_hints(_plain_function)["name"] is str
+
+
+def test_resolved_hints_cache_keys_bound_methods_by_function() -> None:
+    """Two lookups of the same classmethod share one cache entry keyed by ``__func__``."""
+    first = Filter.equals
+    second = Filter.equals
+    assert first is not second
+    resolved_hints(first)
+    size = len(introspect._HINTS_CACHE)
+    resolved_hints(second)
+    assert len(introspect._HINTS_CACHE) == size
+    assert id(Filter.equals.__func__) in introspect._HINTS_CACHE
+
+
+def test_class_sections_filter_does_not_grow_the_hints_cache() -> None:
+    """Repeated ``Filter`` introspection reuses the cache instead of adding entries."""
+    class_sections(Filter)
+    size = len(introspect._HINTS_CACHE)
+    assert size >= 28
+    class_sections(Filter)
+    class_sections(Filter)
+    assert len(introspect._HINTS_CACHE) == size
+
+
+def test_rendering_filter_three_times_keeps_cache_size() -> None:
+    """``describe("Filter")`` rendered three times leaves the hints cache unchanged."""
+    from mixpanel_headless.reference import describe, render
+
+    render(describe("Filter"))
+    size = len(introspect._HINTS_CACHE)
+    render(describe("Filter"))
+    render(describe("Filter"))
+    assert len(introspect._HINTS_CACHE) == size
 
 
 # =============================================================================
@@ -629,10 +821,32 @@ def test_signature_doc_returns_none_for_none_annotation() -> None:
     assert signature_doc(Plain.__init__).returns == "None"
 
 
-def test_signature_doc_when_signature_unavailable() -> None:
-    """When ``inspect.signature`` raises, the result has no params and no return."""
-    doc = signature_doc(NoSignature(), name="mystery")
-    assert doc == SignatureDoc(name="mystery", params=(), returns=None)
+def test_signature_doc_raises_when_signature_unavailable() -> None:
+    """``inspect.signature`` errors propagate instead of degrading to no parameters."""
+    with pytest.raises((TypeError, ValueError), match="__signature__"):
+        signature_doc(NoSignature(), name="mystery")
+    with pytest.raises(TypeError, match="not a callable"):
+        signature_doc(42)
+
+
+def test_inspect_signature_succeeds_for_every_documented_callable() -> None:
+    """Every callable the help system documents has an inspectable signature."""
+    from mixpanel_headless._internal.help.inventory import inventory
+
+    checked = 0
+    for export in inventory():
+        if export.kind == "function":
+            inspect.signature(export.obj)  # type: ignore[arg-type]
+            checked += 1
+        elif export.kind in ("class", "model", "dataclass", "exception"):
+            assert isinstance(export.obj, type)
+            for section in class_sections(export.obj):
+                checked += sum(member.signature is not None for member in section)
+    for name, value in vars(Workspace).items():
+        if not name.startswith("_") and inspect.isfunction(value):
+            inspect.signature(value)
+            checked += 1
+    assert checked >= 250
 
 
 def test_signature_doc_on_a_class_uses_init_params() -> None:
@@ -952,7 +1166,9 @@ def test_bases_doc_exception_chain() -> None:
 
 def test_signature_doc_name_falls_back_to_type_name() -> None:
     """A callable object without ``__name__`` is named after its type."""
-    assert signature_doc(NoSignature()).name == "NoSignature"
+    doc = signature_doc(Adder())
+    assert doc.name == "Adder"
+    assert [param.name for param in doc.params] == ["x"]
 
 
 def test_class_sections_classmethod_without_return_is_a_method() -> None:
