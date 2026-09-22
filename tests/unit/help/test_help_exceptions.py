@@ -15,6 +15,7 @@ import mixpanel_headless as mp
 from mixpanel_headless._internal.help.models import SearchHit
 from mixpanel_headless.exceptions import (
     HelpDomainError,
+    HelpDomainReason,
     HelpLookupError,
     MixpanelHeadlessError,
 )
@@ -256,16 +257,15 @@ class TestDomainErrorMessage:
             "'Filter' is not the Workspace class."
         )
 
-    def test_message_never_says_no_help_entry(self) -> None:
-        """No reason produces the parent's ``No help entry`` sentence."""
-        for reason in ("unknown", "ambiguous", "not_workspace"):
-            exc = HelpDomainError(
-                "Workspace",
-                domain="x",
-                domains=TITLES,
-                reason=reason,  # type: ignore[arg-type]
-            )
-            assert "No help entry" not in str(exc)
+    @pytest.mark.parametrize("reason", ["unknown", "ambiguous", "not_workspace"])
+    def test_message_never_says_no_help_entry(self, reason: HelpDomainReason) -> None:
+        """No reason produces the parent's ``No help entry`` sentence.
+
+        Args:
+            reason: The domain-error reason under test.
+        """
+        exc = HelpDomainError("Workspace", domain="x", domains=TITLES, reason=reason)
+        assert "No help entry" not in str(exc)
 
 
 class TestDomainErrorDetails:
