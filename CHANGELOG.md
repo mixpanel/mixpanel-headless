@@ -89,6 +89,14 @@ set. Web replays give the same output as before.
   unsupported. It now means the bytes are not rrweb-shaped (an unknown or
   damaged format). The CLI message changes to match.
 
+### Notes
+
+- Plugin 0.3.1: the `mixpanelyst` skill gains guidance for mobile and
+  screenshot replays (call `rage_taps()` first, use `screen_path()` and
+  `screens_df` for screen flow, read `metadata["hit"]` for tap targets)
+  and triggers on questions about rage taps on mobile. The skill still
+  uses its bundled help script.
+
 ## 0.3.0 — 2026-09-21
 
 Minor release: built-in API help. A top-level `mp.help()` function,
