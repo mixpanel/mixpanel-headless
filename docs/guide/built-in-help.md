@@ -254,7 +254,7 @@ CLI exit codes (this table is the reference; the CLI page and the changelog summ
 | --- | --- | --- |
 | `0` | Entry found; search with one or more hits. | stdout |
 | `2` | An option value the parser rejects, for example `-f table`. Click prints the usage error. | stderr |
-| `3` | `--jq` without `-f json`; bare `search` with no term (`Error: search needs a term. Usage: mp help search <term>`); a `--domain` that is unknown or ambiguous, or given with a query other than `Workspace` (`HelpDomainError`: `Error: <message>` plus one `Domains: ...` line when titles apply). Nothing on stdout. | stderr |
+| `3` | `--jq` without `-f json`; bare `search` with no term (`Error: search needs a term. Usage: mp help search <term>`); a `--domain` that is unknown or ambiguous, or given with anything other than the `Workspace` query — the overview, another name, or `search` (`HelpDomainError`: `Error: <message>` plus one `Domains: ...` line when titles apply). Nothing on stdout. | stderr |
 | `4` | Describe miss, also when `--domain` was passed; search with zero hits. The miss line and search view (or the JSON error object) print first. | stdout |
 
 A miss prints one line, `No help entry for 'Cohor'. Did you mean: Cohort, Workspace.cohorts, CohortInfo, SavedCohort, CohortMetric?`, then the search view for the same term. Under `-f json` the miss is an object with `error`, `query`, `suggestions`, and `hits`.

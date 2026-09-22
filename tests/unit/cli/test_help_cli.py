@@ -289,6 +289,47 @@ class TestExitCodes:
         )
         assert "No help entry" not in result.output
 
+    def test_domain_on_search_exits_3(self, runner: CliRunner) -> None:
+        """``--domain`` with a ``search`` query exits 3 with the domain message."""
+        result = runner.invoke(app, ["help", "search", "cohort", "--domain", "dash"])
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert result.stderr == (
+            "Error: --domain applies only to the Workspace listing; "
+            "'search cohort' is not the Workspace class.\n"
+        )
+        assert "Search:" not in result.output
+
+    def test_domain_on_search_json_keeps_stdout_clean(self, runner: CliRunner) -> None:
+        """Under ``-f json`` a search with ``--domain`` still writes nothing to stdout."""
+        result = runner.invoke(
+            app, ["help", "search", "cohort", "--domain", "dash", "-f", "json"]
+        )
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert "--domain applies only to the Workspace listing" in result.stderr
+
+    def test_bare_search_with_domain_reports_missing_term(
+        self, runner: CliRunner
+    ) -> None:
+        """A bare ``search`` is reported before the ``--domain`` check."""
+        result = runner.invoke(app, ["help", "search", "--domain", "dashboards"])
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert result.stderr == (
+            "Error: search needs a term. Usage: mp help search <term>\n"
+        )
+
+    def test_domain_on_overview_exits_3(self, runner: CliRunner) -> None:
+        """``--domain`` with no query (the overview) exits 3, not the listing."""
+        result = runner.invoke(app, ["help", "--domain", "dashboards"])
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert result.stderr.startswith(
+            "Error: --domain applies only to the Workspace listing;"
+        )
+        assert "Domains:" not in result.stderr
+
     def test_domain_error_keeps_json_stdout_clean(self, runner: CliRunner) -> None:
         """Under ``-f json`` a domain error writes nothing to stdout."""
         result = runner.invoke(

@@ -50,9 +50,11 @@ entries.
   commands, whose default is `json`); `--jq` requires `-f json`. Exit codes:
   0 found, or a search with hits; 2 for an option value the parser rejects;
   3 on stderr for `--jq` without `-f json`, a bare `search` with no term,
-  or a `--domain` that is unknown, ambiguous, or given with a query other
-  than `Workspace`; 4 for a miss or a search with zero hits, with the miss
-  line and search view on stdout. `python3 -m mixpanel_headless help ...` runs
+  or a `--domain` that is unknown, ambiguous, or given with anything other
+  than the `Workspace` query (`mp help search cohort --domain dashboards`
+  and `mp help --domain dashboards` both exit 3 with the same message as
+  `mp help Filter --domain dashboards`); 4 for a miss or a search with
+  zero hits, with the miss line and search view on stdout. `python3 -m mixpanel_headless help ...` runs
   the same command where `mp` is not on `PATH`. Output goes through
   `typer.echo`, so literal `[property]` / `[method]` tags survive.
 - **`HelpLookupError`** (`MixpanelHeadlessError`, not `APIError`) — raised

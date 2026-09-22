@@ -16,9 +16,10 @@ Exit codes:
        usage error.
     3: flag misuse, reported on stderr with nothing on stdout: ``--jq``
        without ``-f json``, ``search`` with no term, or a ``--domain`` that is
-       unknown, ambiguous, or paired with a query other than ``Workspace``
+       unknown, ambiguous, or paired with anything other than the
+       ``Workspace`` query — the overview, another name, or ``search``
        (``HelpDomainError``; the valid titles follow on one ``Domains:``
-       line).
+       line when they apply).
     4: not found. A describe miss prints the message and suggestions on
        stdout (a JSON error object under ``-f json``); a search with no
        hits prints its normal view first (``{"term": ..., "hits": []}``
@@ -87,7 +88,8 @@ def _domain_error_text(exc: HelpDomainError) -> str:
     """Build the stderr text for a rejected ``--domain``.
 
     Args:
-        exc: The domain error raised by :func:`describe`.
+        exc: The domain error raised by :func:`describe`, or the one the
+            search branch builds when ``--domain`` accompanies ``search``.
 
     Returns:
         The error message, followed by one ``Domains: ...`` line when the
@@ -158,8 +160,9 @@ def help_command(
 
     Raises:
         typer.Exit: Exit 3 for flag misuse (``--jq`` without ``-f json``, a
-            bare ``search``, a rejected ``--domain``); exit 4 for a lookup
-            miss or a search with no hits.
+            bare ``search``, a rejected ``--domain`` — including ``--domain``
+            with ``search`` or with no query); exit 4 for a lookup miss or a
+            search with no hits.
 
     Example:
         ```bash
@@ -184,6 +187,13 @@ def help_command(
     if mode == "search":
         if not payload:
             _fail(_SEARCH_USAGE, ExitCode.INVALID_ARGS)
+        if domain is not None:
+            # Same contract as describe(): --domain belongs to the Workspace
+            # listing only, so a search with it is flag misuse, not a miss.
+            rejected = HelpDomainError(
+                f"search {payload}", domain=domain, reason="not_workspace"
+            )
+            _fail(_domain_error_text(rejected), ExitCode.INVALID_ARGS)
         result = search(payload)
         rendered = render(result, fmt)
         if not result.hits:
