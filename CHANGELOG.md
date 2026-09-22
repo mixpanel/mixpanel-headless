@@ -5,13 +5,7 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## 0.4.0 — 2026-09-22
-
-Minor release: session replays from the iOS, Android, React Native, and
-Flutter SDKs. The rrweb analyzer now reads screenshot-based recordings:
-wireframe screens, touch gestures, and Flutter web and desktop clicks.
-One new action label, `"screen"`, joins the closed `UserAction.action`
-set. Web replays give the same output as before.
+## Unreleased
 
 ### Added
 
@@ -104,7 +98,7 @@ set. Web replays give the same output as before.
 
 ### Notes
 
-- Plugin 0.3.1: the `mixpanelyst` skill gains guidance for mobile and
+- Plugin: the `mixpanelyst` skill gains guidance for mobile and
   screenshot replays (call `rage_taps()` first, use `screen_path()` and
   `screens_df` for screen flow, read `metadata["hit"]` for tap targets)
   and triggers on questions about rage taps on mobile. The skill still
