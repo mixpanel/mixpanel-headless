@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import enum
 import inspect
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from mixpanel_headless._internal.help.docstrings import first_line
@@ -57,7 +58,7 @@ from mixpanel_headless._internal.help.resolve import suggestions_for
 from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.exceptions import HelpLookupError
 
-__all__ = ["clear_cache", "search"]
+__all__ = ["IndexEntry", "build_index", "clear_cache", "search", "search_index"]
 
 
 _NO_DOC_KINDS: frozenset[str] = frozenset({"literal", "alias", "constant"})
@@ -73,7 +74,7 @@ _TIER_RANK: dict[MatchedOn, int] = {"name": 0, "doc": 1, "member": 2}
 
 
 @dataclass(frozen=True, slots=True)
-class _Entry:
+class IndexEntry:
     """One row of the search index.
 
     Attributes:
@@ -111,7 +112,7 @@ class _Entry:
         return None
 
 
-_INDEX: tuple[_Entry, ...] | None = None
+_INDEX: tuple[IndexEntry, ...] | None = None
 _INDEX_SOURCE: tuple[Export, ...] | None = None
 
 
@@ -149,19 +150,19 @@ def _export_members(row: Export) -> tuple[str, ...]:
     return ()
 
 
-def _export_entries() -> list[_Entry]:
+def _export_entries() -> list[IndexEntry]:
     """Build index rows for every inventory export.
 
     Returns:
         One row per export, category = inventory kind.
     """
     return [
-        _Entry(row.kind, row.name, _export_summary(row), _export_members(row))
+        IndexEntry(row.kind, row.name, _export_summary(row), _export_members(row))
         for row in inventory()
     ]
 
 
-def _workspace_entries() -> list[_Entry]:
+def _workspace_entries() -> list[IndexEntry]:
     """Build index rows for the public ``Workspace`` members.
 
     Returns:
@@ -171,7 +172,7 @@ def _workspace_entries() -> list[_Entry]:
     from mixpanel_headless.workspace import Workspace
 
     return [
-        _Entry(
+        IndexEntry(
             kind,
             f"Workspace.{name}",
             first_line(inspect.getdoc(inspect.getattr_static(Workspace, name))),
@@ -181,7 +182,7 @@ def _workspace_entries() -> list[_Entry]:
     ]
 
 
-def _module_entries() -> list[_Entry]:
+def _module_entries() -> list[IndexEntry]:
     """Build index rows for the members of every exported namespace module.
 
     Returns:
@@ -189,14 +190,14 @@ def _module_entries() -> list[_Entry]:
         member's classified kind (``function`` for the current namespaces)
         and first docstring line.
     """
-    entries: list[_Entry] = []
+    entries: list[IndexEntry] = []
     for row in inventory():
         if row.kind != "module" or not inspect.ismodule(row.obj):
             continue
         for member in module_members(row.obj):
             obj = getattr(row.obj, member)
             entries.append(
-                _Entry(
+                IndexEntry(
                     classify(obj),
                     f"{row.name}.{member}",
                     first_line(inspect.getdoc(obj)),
@@ -206,22 +207,36 @@ def _module_entries() -> list[_Entry]:
     return entries
 
 
-def _build_index() -> tuple[_Entry, ...]:
-    """Build the deduplicated search index.
+def build_index(entries: Iterable[IndexEntry]) -> tuple[IndexEntry, ...]:
+    """Deduplicate and order raw index rows.
 
     Rows are keyed on ``(category, name)``; the first row for a key wins, so
     exports take precedence over any later view with the same display name.
 
+    Args:
+        entries: Raw rows in view order (exports, then ``Workspace``
+            members, then namespace module members).
+
     Returns:
-        The index rows sorted by ``(category, name)``.
+        The unique rows sorted by ``(category, name)``, compared by code
+        point.
     """
-    unique: dict[tuple[str, str], _Entry] = {}
-    for entry in (*_export_entries(), *_workspace_entries(), *_module_entries()):
+    unique: dict[tuple[str, str], IndexEntry] = {}
+    for entry in entries:
         unique.setdefault((entry.category, entry.name), entry)
     return tuple(sorted(unique.values(), key=lambda e: (e.category, e.name)))
 
 
-def _index() -> tuple[_Entry, ...]:
+def _build_index() -> tuple[IndexEntry, ...]:
+    """Build the deduplicated search index over the live library.
+
+    Returns:
+        The index rows sorted by ``(category, name)``.
+    """
+    return build_index((*_export_entries(), *_workspace_entries(), *_module_entries()))
+
+
+def _index() -> tuple[IndexEntry, ...]:
     """Return the cached index, rebuilding it when the inventory changed.
 
     Returns:
@@ -270,15 +285,42 @@ def search(term: str, *, limit: int | None = None) -> SearchResult:
         # ("Filter", ...)
         ```
     """
+    return search_index(_index(), term, limit=limit, suggest=suggestions_for)
+
+
+def search_index(
+    index: Sequence[IndexEntry],
+    term: str,
+    *,
+    limit: int | None = None,
+    suggest: Callable[[str], tuple[str, ...]],
+) -> SearchResult:
+    """Search a prepared index; the pure core of :func:`search`.
+
+    Args:
+        index: Rows from :func:`build_index`.
+        term: Text to look for, as :func:`search` takes it.
+        limit: As :func:`search`.
+        suggest: Called with the stripped term on a miss; its result
+            becomes ``suggestions``.
+
+    Returns:
+        The ``SearchResult``, with the ordering and miss rules of
+        :func:`search`.
+
+    Raises:
+        HelpLookupError: When ``term`` is empty or whitespace only.
+        ValueError: When ``limit`` is negative.
+    """
     if limit is not None and limit < 0:
         raise ValueError(f"limit must be >= 0, got {limit}")
     needle = term.strip().lower()
     if not needle:
         raise HelpLookupError("")
-    matched = [hit for entry in _index() if (hit := entry.match(needle)) is not None]
+    matched = [hit for entry in index if (hit := entry.match(needle)) is not None]
     matched.sort(key=lambda h: (_TIER_RANK[h.matched_on], h.category, h.name))
     if not matched:
-        return SearchResult(term=term, suggestions=suggestions_for(term.strip()))
+        return SearchResult(term=term, suggestions=suggest(term.strip()))
     hits = tuple(matched if limit is None else matched[:limit])
     return SearchResult(term=term, hits=hits)
 
