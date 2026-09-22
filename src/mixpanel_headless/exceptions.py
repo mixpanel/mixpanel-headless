@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.auth.account import Region
+    from mixpanel_headless._internal.help.models import SearchHit
 
 
 class MixpanelHeadlessError(Exception):
@@ -1708,6 +1709,170 @@ class ShortLinkResolutionError(ReportLinkError):
     """
 
     _DEFAULT_CODE = "SHORT_LINK_RESOLUTION_ERROR"
+
+
+# Built-in help
+
+
+class HelpLookupError(MixpanelHeadlessError):
+    """A ``mixpanel_headless.help()`` / ``reference.describe()`` query matched nothing.
+
+    Raised by :func:`mixpanel_headless.reference.describe` (and re-raised by
+    :func:`mixpanel_headless.reference.search` for an empty term) when the
+    query names no export, no ``Workspace`` member, and no parameter. The
+    lookup is fully offline, so this is never an HTTP failure and the base is
+    :class:`MixpanelHeadlessError`, not :class:`APIError`. The CLI maps it to
+    ``ExitCode.NOT_FOUND`` (4).
+
+    The instance carries the structured recovery data the plain-text
+    ``help()`` wrapper prints: close-name suggestions (``difflib``) and the
+    first search hits for the same term.
+
+    Attributes:
+        query: The query string as the caller gave it.
+        suggestions: Close names in ``difflib`` order; ``()`` when none.
+        hits: Search hits (``SearchHit`` records) for the query; ``()`` when
+            none.
+
+    Example:
+        ```python
+        from mixpanel_headless import HelpLookupError, reference
+
+        try:
+            reference.describe("Filtr")
+        except HelpLookupError as exc:
+            print(exc.query)
+            # Filtr
+            print(exc.suggestions)
+            # ('Filter', 'DropFilter', 'FilterOperator', 'FilterDateUnit', 'FrequencyFilter')
+            print(exc.hits)
+            # ()
+        ```
+    """
+
+    def __init__(
+        self,
+        query: str,
+        *,
+        suggestions: Sequence[str] = (),
+        hits: Sequence[SearchHit] = (),
+    ) -> None:
+        """Initialize a help lookup miss.
+
+        Args:
+            query: The query string that matched nothing.
+            suggestions: Close names to offer, most similar first. Stored as
+                a tuple. Rendered as ``Did you mean: a, b, c?`` when non-empty.
+            hits: Search hits for the same term. Stored as a tuple and kept
+                out of the message; the ``help()`` wrapper prints them.
+                ``details["hits"]`` carries their ``to_dict()`` form.
+        """
+        self.query: str = query
+        self.suggestions: tuple[str, ...] = tuple(suggestions)
+        self.hits: tuple[SearchHit, ...] = tuple(hits)
+        message = f"No help entry for '{query}'."
+        if self.suggestions:
+            message += f" Did you mean: {', '.join(self.suggestions)}?"
+        super().__init__(
+            message,
+            code="HELP_NOT_FOUND",
+            details={
+                "query": query,
+                "suggestions": list(self.suggestions),
+                "hits": [hit.to_dict() for hit in self.hits],
+            },
+        )
+
+
+HelpDomainReason = Literal["unknown", "ambiguous", "not_workspace"]
+"""Why a ``domain=`` filter was rejected; selects the message shape."""
+
+
+class HelpDomainError(HelpLookupError):
+    """The ``domain=`` filter of a help query was rejected.
+
+    Raised by :func:`mixpanel_headless.reference.describe` when ``domain``
+    matches no registered ``Workspace`` domain title, matches several titles
+    (an ambiguous prefix), or is given with a query other than the
+    ``Workspace`` listing. The query itself resolved fine, so this is not a
+    lookup miss: :func:`mixpanel_headless.reference.help` re-raises it
+    instead of printing suggestions, and the CLI maps it to
+    ``ExitCode.INVALID_ARGS`` (3) instead of ``NOT_FOUND`` (4).
+
+    It subclasses :class:`HelpLookupError` so an ``except HelpLookupError``
+    still catches it; ``suggestions`` mirrors ``domains`` and ``hits`` is
+    always empty.
+
+    Attributes:
+        query: The help query text (``"Workspace"``, ``"Filter"``), never
+            the domain. An empty string is the overview, and the
+            ``not_workspace`` message names it as such.
+        domain: The ``domain=`` value as the caller gave it.
+        domains: Every registered title for an unknown domain, the candidate
+            titles for an ambiguous prefix, ``()`` for a non-``Workspace``
+            query.
+        reason: ``"unknown"``, ``"ambiguous"``, or ``"not_workspace"``.
+
+    Example:
+        ```python
+        from mixpanel_headless import HelpDomainError, reference
+
+        try:
+            reference.describe("Workspace", domain="se")
+        except HelpDomainError as exc:
+            print(exc)
+            # Ambiguous domain 'se': session and switching, session replay.
+            print(exc.reason, exc.domains)
+            # ambiguous ('session and switching', 'session replay')
+        ```
+    """
+
+    def __init__(
+        self,
+        query: str,
+        *,
+        domain: str,
+        domains: Sequence[str] = (),
+        reason: HelpDomainReason = "unknown",
+    ) -> None:
+        """Initialize a rejected domain filter.
+
+        Args:
+            query: The help query text the filter was applied to.
+            domain: The rejected ``domain=`` value.
+            domains: Titles to offer: all of them for ``unknown``, the
+                candidates for ``ambiguous``, nothing for ``not_workspace``.
+                Stored as a tuple and mirrored into ``suggestions``.
+            reason: Which check failed; picks the message.
+        """
+        self.query = query
+        self.domain: str = domain
+        self.domains: tuple[str, ...] = tuple(domains)
+        self.reason: HelpDomainReason = reason
+        self.suggestions = self.domains
+        self.hits = ()
+        if reason == "ambiguous":
+            message = f"Ambiguous domain '{domain}': {', '.join(self.domains)}."
+        elif reason == "not_workspace":
+            subject = f"'{query}'" if query else "the overview"
+            message = (
+                "--domain applies only to the Workspace listing; "
+                f"{subject} is not the Workspace class."
+            )
+        else:
+            message = f"Unknown domain '{domain}'."
+        MixpanelHeadlessError.__init__(
+            self,
+            message,
+            code="HELP_BAD_DOMAIN",
+            details={
+                "query": query,
+                "domain": domain,
+                "domains": list(self.domains),
+                "suggestions": list(self.domains),
+                "hits": [],
+            },
+        )
 
 
 # =============================================================================

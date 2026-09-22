@@ -11,7 +11,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `client_metadata.py` | `QUERY_ORIGIN` constant + `get_user_agent()` / `set_entry_point()` helpers — single source of truth for outbound client identification |
 | `me.py` | `MeService` + per-account `MeCache` (`~/.mp/accounts/{name}/me.json`) |
 | `pagination.py` | Cursor-based App API pagination |
-| `report_links.py` | Pure, stdlib-only report-link grammar (045): `parse_report_link` (total parser for report URLs, bare slugs, shortlinks, boards, legacy hashes), `build_slug_url` / `build_bookmark_url`, `generate_slug`; the `SLUG_APP_FOR_TYPE` table is the one line to change if the Insights app stops switching type from a funnels / retention slug |
+| `report_links.py` | Pure, stdlib-only report-link grammar: `parse_report_link` (total parser for report URLs, bare slugs, shortlinks, boards, legacy hashes), `build_slug_url` / `build_bookmark_url`, `generate_slug`; the `SLUG_APP_FOR_TYPE` table is the one line to change if the Insights app stops switching type from a funnels / retention slug |
 | `io_utils.py` | `atomic_write_bytes` — `O_EXCL` + `os.replace` writes with explicit mode bits |
 | `auth/` | The auth subsystem — see [`../auth_types.py`](../auth_types.py) for the public re-export and [`../../../context/auth-architecture-redesign.md`](../../../context/auth-architecture-redesign.md) for the design |
 | `auth/account.py` | `Account` discriminated union (`ServiceAccount` / `OAuthBrowserAccount` / `OAuthTokenAccount`) + `TokenResolver` protocol |
@@ -27,6 +27,17 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/bridge.py` | `BridgeFile` v2 schema + `load_bridge` / `export_bridge` / `remove_bridge` (Cowork credential courier) |
 | `query/` | Query engine builders and validators (`user_builders.py`, `user_validators.py`) |
 | `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention) |
+| `help/` | Built-in API reference behind `mixpanel_headless.reference` and `mp help`; offline — no network, no config read, never constructs a `Workspace` |
+| `help/models.py` | Frozen `slots=True` result dataclasses with `to_dict()`: `HelpEntry`, `SearchResult`, `SearchHit`, `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`, `Group`, `UsageDoc`, `Hint` (all re-exported from the package root); three kind families `ExportKind` (what `classify()` returns) ⊂ `MemberKind` (+ `method`, `property`; the type of `SearchHit.category`) ⊂ `HelpKind` (+ `overview`, `listing`, `parameter`), plus `ParamKind` and `HelpFormat`; the `HelpEntry` docstring hosts the per-kind field packing table; `MemberDoc.__post_init__` rejects an unknown kind or a kind / signature mismatch |
+| `help/docstrings.py` | Google-style docstring parser (`parse_docstring` → `DocSections`) |
+| `help/inventory.py` | Public-surface inventory from the deduplicated `__all__` + `Workspace` members + namespace `__all__`s; classifies each name to one `ExportKind` |
+| `help/registry.py` | `WORKSPACE_DOMAINS` (ordered domains, every public `Workspace` method in exactly one), `REFERENCE_HINTS` (every trigger names something public; every domain yields at least one hint), `WORKSPACE_HINT`, `DOCS_BASE`, `hint_url()`, `domain_of()`; a completeness test fails on any unregistered method |
+| `help/resolve.py` | Query-string and object resolution to inventory targets (exact → unique case-insensitive → `HelpLookupError` with suggestions); a rejected `domain=` raises `HelpDomainError` |
+| `help/introspect.py` | Signature, field, model-config, and class-section extraction; source annotations kept for display, resolved hints (per name, so one bad annotation drops one entry) used for cross-references and allowed values; `ParamDoc.kind` records the `inspect` parameter kind |
+| `help/relations.py` | `used_by`, `referenced_types`, `see_also` (domain-based), exception subclass tree |
+| `help/search.py` | Case-insensitive substring search over names, docstring summaries, enum members, and Literal values; hits sort by tier (`name`, then `doc`, then `member`), then category, then name; duplicates removed |
+| `help/hints.py` | Hosted-docs hint selection (first matching trigger set wins; none for `types` / `exceptions`) |
+| `help/render.py` | Pure renderers (`text`, `markdown`, `json`) — no Rich markup, no I/O; reads the fields the `HelpEntry` docstring assigns to each kind, prints `*` / `/` signature markers, and indents exception-tree rows from `MemberDoc.depth` |
 
 ## Auth Resolution
 

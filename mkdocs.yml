@@ -93,12 +93,14 @@ plugins:
           - guide/entity-management.md
           - guide/data-governance.md
           - guide/business-context.md
+          - guide/built-in-help.md
         API Reference:
           - api/index.md
           - api/workspace.md
           - api/auth.md
           - api/exceptions.md
           - api/types.md
+          - api/help.md
         CLI Reference:
           - cli/index.md
           - cli/commands.md
@@ -150,12 +152,14 @@ plugins:
           - guide/entity-management.md: "Create, update, delete dashboards, reports, and cohorts"
           - guide/data-governance.md: "Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, enforcement, auditing, anomalies, and event deletion requests"
           - guide/business-context.md: "Read and write the markdown business context that grounds AI assistants (org and project scopes, 50,000-char cap)"
+          - guide/built-in-help.md: "Offline API reference from Python (mp.help, mp.reference) and the CLI (mp help): query grammar, text/markdown/json formats, --domain filter, agent tips"
         API Reference:
           - api/index.md: "Python API overview"
           - api/workspace.md: "Workspace class - main entry point"
           - api/auth.md: "Authentication and credentials"
           - api/exceptions.md: "Exception hierarchy"
           - api/types.md: "Result types (SegmentationResult, etc.)"
+          - api/help.md: "Built-in help — mixpanel_headless.reference (describe, search, render, clear_cache), the HelpEntry / SearchResult result types, HelpLookupError and HelpDomainError"
         CLI Reference:
           - cli/index.md: "CLI overview and output formats"
           - cli/commands.md: "Complete command reference"
@@ -198,12 +202,14 @@ nav:
       - Entity Management: guide/entity-management.md
       - Data Governance: guide/data-governance.md
       - Business Context: guide/business-context.md
+      - Built-in Help: guide/built-in-help.md
   - API Reference:
       - Overview: api/index.md
       - Workspace: api/workspace.md
       - Auth: api/auth.md
       - Exceptions: api/exceptions.md
       - Result Types: api/types.md
+      - Built-in Help: api/help.md
   - CLI Reference:
       - Overview: cli/index.md
       - Commands: cli/commands.md

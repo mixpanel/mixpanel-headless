@@ -34,6 +34,7 @@ from mixpanel_headless.exceptions import (
     ConfigError,
     DateRangeTooLargeError,
     EventNotFoundError,
+    HelpLookupError,
     InvalidArgumentError,
     MixpanelHeadlessError,
     OAuthError,
@@ -448,6 +449,15 @@ def handle_errors(func: F) -> F:
                         f"  {rich_escape(item.path)}: {rich_escape(item.message)}"
                     )
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
+        except HelpLookupError as e:
+            # Safety net only: ``mp help`` catches HelpLookupError (and its
+            # HelpDomainError subclass) itself, before the error reaches this
+            # decorator, and prints the suggestions on stdout. Should one
+            # escape from elsewhere, it maps to NOT_FOUND (4) like the other
+            # "named thing does not exist" errors above. Catch BEFORE the
+            # generic MixpanelHeadlessError branch.
+            err_console.print(f"[red]No help entry:[/red] {rich_escape(e.message)}")
+            raise typer.Exit(ExitCode.NOT_FOUND) from None
         except MixpanelHeadlessError as e:
             err_console.print(f"[red]Error:[/red] {rich_escape(e.message)}")
             raise typer.Exit(ExitCode.GENERAL_ERROR) from None

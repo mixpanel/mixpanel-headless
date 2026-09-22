@@ -10,7 +10,7 @@ flags.
 
 | File | Command Group | Purpose |
 |------|---------------|---------|
-| `login.py` | `mp login` | Guided account add (region probe, project picker, name derivation) — orchestrator landed in 043 / AIE-117 |
+| `login.py` | `mp login` | Guided account add (region probe, project picker, name derivation) |
 | `account.py` | `mp account` | Account CRUD + lifecycle (`list`, `add`, `update`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`, `export-bridge`, `remove-bridge`) |
 | `project.py` | `mp project` | Project axis (`list` from `/me`, `use ID`, `show`) |
 | `workspace.py` | `mp workspace` | Workspace axis (`list`, `use ID`, `show`) |
@@ -33,6 +33,7 @@ flags.
 | `lookup_tables.py` | `mp lookup-tables` | Lookup-table CRUD + upload/download (data governance) |
 | `schemas.py` | `mp schemas` | Project / workspace JSON schemas |
 | `business_context.py` | `mp business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
+| `help.py` | `mp help` | Offline API reference: `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]`; plain function registered with `app.command(name="help")` like `login`; defaults to `text` output (unlike entity commands whose default is `json`), ignores `-a/-p/-w/-t`, never calls `get_workspace`; exit 4 (stdout) on a miss or a search with zero hits, 3 (stderr) for `--jq` without `-f json`, bare `search`, or a rejected `--domain` (`HelpDomainError`), 2 for a parser-rejected option value; the miss text comes from `reference.render_miss` so CLI and Python print the same thing |
 
 ## Command Pattern
 
@@ -68,6 +69,10 @@ All data commands support `--format`:
 - `table` (default for list commands): Rich ASCII table
 - `csv`: Comma-separated with headers
 - `plain`: Minimal text output
+
+`mp help` is different: its `-f` accepts `text` (default), `markdown`, and
+`json` only, because the command is documentation rather than data. It
+ignores `-a/-p/-w/-t` and never calls `get_workspace`.
 
 ## Exit Codes
 

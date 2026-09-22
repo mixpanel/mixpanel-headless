@@ -5,6 +5,116 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## 0.3.0 — 2026-09-21
+
+Minor release: built-in API help. A top-level `mp.help()` function,
+a structured `mp.reference` module, and an `mp help` CLI command provide
+offline API reference for the whole public surface. All three need no
+credentials and touch no config file. `__all__` loses ten duplicate
+entries.
+
+### Added
+
+- **`mixpanel_headless.help(query=None, *, format="text", file=None,
+  hints=True, domain=None)`.** Prints reference text for any public name
+  and returns `None`, like the builtin. Accepts the string grammar
+  (`"Workspace.query"`, `"Workspace.query.events"`, `"Filter"`,
+  `"MathType"`, `"accounts"`, `"types"`, `"exceptions"`,
+  `"search cohort"`) and object forms (`mp.help(mp.Filter)`,
+  `mp.help(ws.query)`, `mp.help(mp)`). `domain=` filters the `Workspace`
+  listing to one of 32 domains. A miss prints one `No help entry for 'X'.
+  Did you mean: ...?` line and the first search hits instead of raising.
+  Import the package with an alias (`import mixpanel_headless as mp`); `from mixpanel_headless import
+  help` shadows the Python builtin.
+- **`mixpanel_headless.reference`** — structured access behind `help()`:
+  `describe(query, *, hints=, domain=) -> HelpEntry`,
+  `search(term, *, limit=) -> SearchResult`,
+  `render(entry, format) -> str`, and `clear_cache()`. Result types are
+  frozen `slots=True` dataclasses with `to_dict()`: `HelpEntry`,
+  `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`,
+  `Group`, `UsageDoc`, `Hint`, `SearchResult`, `SearchHit`, plus the
+  `ExportKind`, `MemberKind`, `HelpKind`, and `HelpFormat` literals. All
+  eleven result types are also root exports (`mp.HelpEntry`, ...), so
+  `mp help HelpEntry` describes them. Every export kind has a view:
+  Literal aliases show their allowed values and the `Workspace` methods
+  that accept them; modules list their `__all__`; exceptions show their
+  subclass tree; private fields are hidden and factory classmethods are
+  listed under Construction. The inventory comes from `__all__` and is
+  cached per process. C-level members inherited through a framework base
+  (`FeatureFlagStatus.maketrans` from `str`, `HelpLookupError.with_traceback`
+  from `BaseException`) are a plain miss on every supported Python version,
+  not an error; inherited Python callables such as
+  `CreateDashboardParams.model_dump` resolve.
+- **`mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME]
+  [--no-hints]`.** No auth: the command ignores `-a / -p / -w / -t` and never
+  builds a `Workspace`. The default format is `text` (unlike entity
+  commands, whose default is `json`); `--jq` requires `-f json`. Exit codes:
+  0 found, or a search with hits; 2 for an option value the parser rejects;
+  3 on stderr for `--jq` without `-f json`, a bare `search` with no term,
+  or a `--domain` that is unknown, ambiguous, or given with anything other
+  than the `Workspace` query (`mp help search cohort --domain dashboards`
+  and `mp help --domain dashboards` both exit 3 with the same message as
+  `mp help Filter --domain dashboards`); 4 for a miss or a search with
+  zero hits, with the miss line and search view on stdout. Under `-f json`,
+  `--jq` filters the miss object and the empty search object the same way
+  it filters a hit (`mp help Nope -f json --jq .error` prints one JSON
+  string and still exits 4). `python3 -m mixpanel_headless help ...` runs
+  the same command where `mp` is not on `PATH`. Output goes through
+  `typer.echo`, so literal `[property]` / `[method]` tags survive.
+- **`HelpLookupError`** (`MixpanelHeadlessError`, not `APIError`) — raised
+  by `reference.describe()` on a miss and by `reference.search()` for an
+  empty term. Carries `query`, `suggestions`, and `hits`; `details` and
+  `to_dict()` include the hits as dicts. The CLI maps it to
+  `ExitCode.NOT_FOUND` (4).
+- **`HelpDomainError`** (`HelpLookupError` subclass, code `HELP_BAD_DOMAIN`)
+  — raised by `reference.describe()` when `domain=` names no registered
+  `Workspace` domain, matches several titles, or is given with a query other
+  than `Workspace`. Carries `query`, `domain`, `domains`, and `reason`
+  (`unknown`, `ambiguous`, `not_workspace`; the `HelpDomainReason` literal).
+  `help()` re-raises it instead of printing a miss; the CLI prints the
+  message and one `Domains:` line on stderr and exits 3.
+- Rendered signatures print the `*` and `/` markers of `inspect.signature`,
+  so keyword-only and positional-only parameters read as they are declared
+  (`mp help Workspace.segmentation` shows `*,` after `event`). `ParamDoc.kind`
+  carries the same fact in JSON: `positional_only`, `positional_or_keyword`,
+  `var_positional`, `keyword_only`, or `var_keyword`.
+- Type hints resolve one name at a time, so a single annotation that cannot
+  be evaluated (a `TYPE_CHECKING`-only import on a private field) no longer
+  blanks the allowed values of every other field on the class;
+  `FlowQueryResult.mode` lists its values.
+- `MemberDoc.depth` carries the nesting level of an exception subclass tree,
+  and names no longer carry leading spaces in JSON. `HelpEntry.domain` holds
+  the registry domain title of a `Workspace` method and `HelpEntry.value` the
+  `repr` of a constant, so JSON consumers no longer read those facts out of
+  `groups`, `bases`, or `values`. `ParamDoc.annotation` is `null` when the
+  source has none.
+- Every exported Literal, Union, and Annotated alias and every constant
+  without a docstring of its own (`MathType`, `TimeUnit`, `Region`, `Account`,
+  `PropertySpec`, `BUSINESS_CONTEXT_MAX_CHARS`, ...) carries a one-line
+  description, so `mp help <Alias>` and every row of `mp help types` show a
+  summary.
+- Every `Workspace` domain (feature flags, experiments, annotations,
+  webhooks, and alerts included) yields a hosted-docs hint, so every
+  `Workspace.<method>` entry ends with a `Tip:` pointer.
+- Docs: new [Built-in Help guide](docs/guide/built-in-help.md) and
+  [API page](docs/api/help.md); both are listed in `llms.txt`.
+
+### Changed
+
+- **Ten duplicate names removed from `__all__`.** `MathType`,
+  `PerUserAggregation`, `FunnelMathType`, `RetentionAlignment`,
+  `RetentionMode`, `RetentionMathType`, `CustomPropertyType`,
+  `FilterOperator`, `FilterPropertyType`, and `FilterDateUnit` were each
+  listed twice. Every name is still exported once; there is no behavior
+  change.
+
+### Notes
+
+- Plugin: this release does not change the Claude Code plugin. The
+  `mixpanelyst` skill still uses its bundled help script; the next plugin
+  release switches it to `mp help` / `mp.help()` and requires
+  `mixpanel-headless>=0.3.0`.
+
 ## 0.2.3 — 2026-09-14
 
 Patch release: report links (create, resolve, and run a Mixpanel report

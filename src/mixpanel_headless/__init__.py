@@ -5,7 +5,7 @@ Complete programmable interface to Mixpanel analytics: discover your schema,
 run live analytics, stream data, and manage entities via the App API.
 """
 
-from mixpanel_headless import accounts, session, targets
+from mixpanel_headless import accounts, reference, session, targets
 from mixpanel_headless._internal.validation import validate_bookmark
 from mixpanel_headless._literal_types import (
     CohortAggregationType,
@@ -64,6 +64,9 @@ from mixpanel_headless.exceptions import (
     ConfigError,
     DateRangeTooLargeError,
     EventNotFoundError,
+    HelpDomainError,
+    HelpDomainReason,
+    HelpLookupError,
     InvalidArgumentError,
     MixpanelHeadlessError,
     OAuthError,
@@ -89,6 +92,20 @@ from mixpanel_headless.exceptions import (
     UnsupportedReportLinkError,
     ValidationError,
     WorkspaceScopeError,
+)
+from mixpanel_headless.reference import (
+    DocSections,
+    FieldDoc,
+    Group,
+    HelpEntry,
+    Hint,
+    MemberDoc,
+    ParamDoc,
+    SearchHit,
+    SearchResult,
+    SignatureDoc,
+    UsageDoc,
+    help,
 )
 from mixpanel_headless.replay_labels import (
     default_label_fn,
@@ -305,7 +322,7 @@ from mixpanel_headless.types import (
 )
 from mixpanel_headless.workspace import Workspace
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 __all__ = [
     # Core
@@ -404,6 +421,23 @@ __all__ = [
     "RegionProbeNetworkError",
     "WorkspaceScopeError",
     "BusinessContextValidationError",
+    # Built-in help
+    "HelpLookupError",
+    "HelpDomainError",
+    "HelpDomainReason",
+    "help",
+    "reference",
+    "HelpEntry",
+    "SearchResult",
+    "SearchHit",
+    "ParamDoc",
+    "SignatureDoc",
+    "FieldDoc",
+    "MemberDoc",
+    "Group",
+    "DocSections",
+    "UsageDoc",
+    "Hint",
     # Session-replay exceptions (044)
     "SessionReplayError",
     "SessionReplayAccessError",
@@ -593,17 +627,11 @@ __all__ = [
     "BusinessContext",
     "BusinessContextChain",
     # Query API types (Phase 029)
-    "MathType",
-    "PerUserAggregation",
     "Metric",
     "Filter",
     "Formula",
     "GroupBy",
     "ListItemGroupMode",
-    "CustomPropertyType",
-    "FilterDateUnit",
-    "FilterOperator",
-    "FilterPropertyType",
     "QueryResult",
     # Schema Registry & Data Governance types (Phase 028)
     "SchemaEntry",
@@ -628,13 +656,9 @@ __all__ = [
     "FunnelStep",
     "Exclusion",
     "HoldingConstant",
-    "FunnelMathType",
     "FunnelQueryResult",
     # Retention Query types (Phase 033)
-    "RetentionAlignment",
     "RetentionEvent",
-    "RetentionMathType",
-    "RetentionMode",
     "RetentionQueryResult",
     # Flow Query types (Phase 034)
     "FlowStep",
