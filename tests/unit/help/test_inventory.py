@@ -1,17 +1,17 @@
-"""Unit tests for ``mixpanel_headless._internal.help.inventory`` (Plan 047, D3/D4/D13).
+"""Unit tests for ``mixpanel_headless._internal.help.inventory``.
 
 These tests lock the public-surface inventory that every other help module
 builds on:
 
 - the inventory is the deduplicated, sorted ``mixpanel_headless.__all__``
-  (D3) and never comes from ``dir()``;
-- every export classifies to exactly one ``HelpKind`` (D4), with the
+  and never comes from ``dir()``;
+- every export classifies to exactly one ``HelpKind``, with the
   exported ``Literal`` aliases classified as ``literal`` and cross-checked
   against ``LITERAL_ALIAS_DOCS``;
 - ``workspace_members()`` lists the public ``Workspace`` properties and
-  methods (§2.4);
+  methods;
 - ``module_members()`` follows a namespace module's ``__all__``;
-- the inventory is cached per process and ``clear_cache()`` resets it (D13).
+- the inventory is cached per process and ``clear_cache()`` resets it.
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ class TestExport:
 
 
 class TestClassify:
-    """``classify`` maps a runtime object to one ``HelpKind`` per D4."""
+    """``classify`` maps a runtime object to exactly one ``HelpKind``."""
 
     @pytest.mark.parametrize(
         ("obj", "expected"),
@@ -200,7 +200,7 @@ class TestClassify:
         ],
     )
     def test_classifies(self, obj: object, expected: HelpKind) -> None:
-        """Each sample object gets the kind D4 assigns to it.
+        """Each sample object classifies to its expected kind.
 
         Args:
             obj: The object to classify.
@@ -226,7 +226,7 @@ class TestClassify:
 
 
 class TestInventory:
-    """``inventory()`` is the deduplicated, sorted ``__all__`` (D3)."""
+    """``inventory()`` is the deduplicated, sorted ``__all__``."""
 
     def test_size_matches_unique_all(self) -> None:
         """One row per unique ``__all__`` name."""
@@ -271,7 +271,7 @@ class TestInventory:
         ],
     )
     def test_known_exports(self, name: str, expected: HelpKind) -> None:
-        """Named exports classify as the plan's design decisions say.
+        """Named exports classify to their documented kinds.
 
         Args:
             name: Export name.
@@ -290,7 +290,7 @@ class TestInventory:
         assert len(literals) == 38
 
     def test_exports_of_kind_fixed_groups(self) -> None:
-        """The small kind groups hold the names the plan enumerates (§2.4)."""
+        """The small kind groups hold exactly the expected names."""
         assert [row.name for row in exports_of_kind("module")] == [
             "accounts",
             "reference",
@@ -338,7 +338,7 @@ class TestWorkspaceMembers:
         assert len(members) == len(properties) + len(methods)
 
     def test_counts(self) -> None:
-        """The counts match §2.4: 5 properties and 209 methods."""
+        """``Workspace`` exposes 5 public properties and 209 public methods."""
         members = workspace_members()
         assert sum(1 for _, kind in members if kind == "property") == 5
         assert sum(1 for _, kind in members if kind == "method") == 209
@@ -396,7 +396,7 @@ class TestModuleMembers:
 
 
 # =============================================================================
-# Cache (D13)
+# Cache
 # =============================================================================
 
 

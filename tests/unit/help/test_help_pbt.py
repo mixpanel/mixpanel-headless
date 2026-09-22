@@ -493,7 +493,7 @@ _REAL_ANNOTATIONS = st.sampled_from(_real_annotations())
 
 
 def _assert_clean(text: str) -> None:
-    """Assert a ``format_type`` result carries none of the P3 noise markers.
+    """Assert a ``format_type`` result carries no module-prefix or repr noise.
 
     Args:
         text: Output of ``format_type``.

@@ -1,15 +1,15 @@
 """Unit tests for ``mixpanel_headless._internal.help.relations``.
 
-Covers Plan 047 Phase 3 steps 6–8:
+Covers the cross-reference helpers:
 
-- ``used_by`` (P12, F10, D6): exact hint-tree matching on ``Workspace``
-  method parameters, the Literal-alias case, and the string fallback.
-- ``referenced_types`` (P13): exported types in a callable's parameter and
+- ``used_by``: exact hint-tree matching on ``Workspace`` method
+  parameters, the Literal-alias case, and the string fallback.
+- ``referenced_types``: exported types in a callable's parameter and
   return annotations, with the owner class excluded.
-- ``see_also`` (P14, D5): domain siblings from ``WORKSPACE_DOMAINS``.
-- ``exception_tree`` / ``subclasses_of`` / ``raised_by`` (§4.2 ``exception``
-  row): the exported exception hierarchy and the ``Raises:`` index.
-- Per-name caching and ``clear_cache`` (D13).
+- ``see_also``: domain siblings from ``WORKSPACE_DOMAINS``.
+- ``exception_tree`` / ``subclasses_of`` / ``raised_by``: the exported
+  exception hierarchy and the ``Raises:`` index.
+- Per-name caching and ``clear_cache``.
 
 Real-library counts were measured on 2026-09-21: ``Filter`` is accepted by
 10 ``Workspace`` methods (exact matching; the substring approach the old
@@ -113,7 +113,7 @@ def _unresolvable(where: Filter | Undefined, limit: int) -> FlowQueryResult:  # 
 
 
 class TestUsedBy:
-    """``used_by`` (P12 with F10 fixed)."""
+    """``used_by`` matches parameter types exactly, never by substring."""
 
     def test_filter_count_and_parameter_names(self) -> None:
         """``Filter`` is accepted by exactly 10 methods, always via ``where``."""
@@ -138,7 +138,7 @@ class TestUsedBy:
                 assert any(node is target.obj for node in _hint_tree(hints[param]))
 
     def test_substring_matches_are_excluded(self) -> None:
-        """Methods that only mention ``FrequencyFilter`` or ``FilterOperator`` are excluded (F10)."""
+        """Mentions of ``FrequencyFilter`` or ``FilterOperator`` alone do not count."""
         exact = {usage.method for usage in used_by("Filter")}
         substring = {
             name
@@ -155,7 +155,7 @@ class TestUsedBy:
                     assert all(node is not target.obj for node in _hint_tree(hint))
 
     def test_cohort_does_not_match_cohort_prefixed_types(self) -> None:
-        """``Cohort`` is only ever returned, so nothing accepts it (F10)."""
+        """``Cohort`` is only ever returned, so nothing accepts it."""
         assert used_by("Cohort") == ()
         target = export("Cohort")
         assert target is not None
@@ -200,7 +200,7 @@ class TestUsedBy:
     def test_string_fallback_uses_word_boundaries(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The fallback does not let ``Cohort`` match ``CohortMetric`` (F10)."""
+        """The fallback does not let ``Cohort`` match ``CohortMetric``."""
         monkeypatch.setattr(relations, "resolved_hints", lambda _obj: {})
         clear_cache()
         for usage in used_by("Cohort"):
@@ -211,7 +211,7 @@ class TestUsedBy:
 
 
 class TestReferencedTypes:
-    """``referenced_types`` (P13)."""
+    """``referenced_types`` collects exported types from annotations."""
 
     def test_create_dashboard(self) -> None:
         """The parameter type and the return type appear with their summaries."""
@@ -267,7 +267,7 @@ class TestReferencedTypes:
 
 
 class TestSeeAlso:
-    """``see_also`` (domain-based, D5)."""
+    """``see_also`` returns domain siblings from ``WORKSPACE_DOMAINS``."""
 
     def test_create_dashboard_siblings(self) -> None:
         """Siblings are the other ``dashboards`` methods, sorted, without itself."""
@@ -304,7 +304,7 @@ class TestExceptionTree:
         assert exception_tree()[0] == ("MixpanelHeadlessError", 0)
 
     def test_known_depths(self) -> None:
-        """The four-level chain from §2.4 has depths 0 through 3."""
+        """The chain down to ``SignedURLExpiredError`` spans depths 0 through 3."""
         tree = exception_tree()
         assert ("APIError", 1) in tree
         assert ("SessionReplayError", 2) in tree
@@ -407,7 +407,7 @@ class TestRaisedBy:
 
 
 class TestCache:
-    """Per-name caching and ``clear_cache`` (D13)."""
+    """Per-name caching and ``clear_cache``."""
 
     def test_used_by_is_cached(self) -> None:
         """Repeated calls return the identical tuple."""

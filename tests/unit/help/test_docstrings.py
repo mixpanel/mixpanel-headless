@@ -1,7 +1,7 @@
 """Unit tests for ``mixpanel_headless._internal.help.docstrings``.
 
 ``parse_docstring`` splits a Google-style docstring into ``DocSections``.
-These tests cover every case in Plan 047 Phase 1 step 2 with small literal
+These tests cover each section header and edge case with small literal
 docstrings, plus structural assertions on real docstrings from the library.
 """
 
@@ -85,7 +85,7 @@ def test_body_is_everything_before_first_header() -> None:
 
 
 def test_summary_stops_at_first_header() -> None:
-    """Text before ``Args:`` is the summary; the header itself is not included (P15)."""
+    """Text before ``Args:`` is the summary; the header itself is not included."""
     doc = "Summary line.\n\nArgs:\n    x: X."
     result = parse_docstring(doc)
     assert result.summary == "Summary line."

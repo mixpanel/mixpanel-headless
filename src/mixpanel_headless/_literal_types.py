@@ -649,7 +649,7 @@ FiltersCombinator = Literal["all", "any"]
 """
 
 # =============================================================================
-# One-line descriptions for the built-in help (Plan 047, D4)
+# One-line descriptions for the built-in help
 # =============================================================================
 
 LITERAL_ALIAS_DOCS: dict[str, str] = {
@@ -869,6 +869,6 @@ __all__ = [
     "FilterPropertyType",
     "FilterDateUnit",
     "FiltersCombinator",
-    # Built-in help (047)
+    # Built-in help
     "LITERAL_ALIAS_DOCS",
 ]

@@ -1,4 +1,4 @@
-"""Query resolution for the built-in help (Plan 047, P1/P16/D10/D12).
+"""Query resolution for the built-in help.
 
 This module answers one question: *what object does this query name, and
 what kind is it?* It stops there. Signature extraction, field listing, and
@@ -12,11 +12,11 @@ Two entry points:
   :func:`resolve`.
 - :func:`resolve` turns a describe query — a string or an object — into a
   :class:`Target`. Misses raise :class:`~mixpanel_headless.HelpLookupError`
-  with "Did you mean?" suggestions (P16); ``hits`` is always empty here and
+  with "Did you mean?" suggestions; ``hits`` is always empty here and
   the public API layer adds search hits.
 
-String grammar (P1, §4.2): the first dotted segment must be an inventory
-name — an exact match, else a unique case-insensitive match (D10). Later
+String grammar: the first dotted segment must be an inventory
+name — an exact match, else a unique case-insensitive match. Later
 segments walk members: ``Workspace.query`` (method), ``Workspace.account``
 (property), ``Workspace.query.events`` (parameter), ``Filter.equals``
 (classmethod), ``FeatureFlagStatus.ACTIVE`` (enum member, ``constant``),
@@ -24,13 +24,13 @@ segments walk members: ``Workspace.query`` (method), ``Workspace.account``
 are ``listing`` targets; ``None`` or blank text is the ``overview``. Private
 names (leading underscore) never resolve.
 
-Object grammar (D12): classes, functions, and modules resolve by identity in
+Object grammar: classes, functions, and modules resolve by identity in
 the inventory; bound methods resolve through their owner *class* (the
 instance is never used and no config is read); properties resolve through
 their getter; instances resolve to their exported class; anything outside
 ``mixpanel_headless`` raises.
 
-Nothing here performs I/O (D9).
+Nothing here performs I/O.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def parse_query(text: str) -> tuple[QueryMode, str]:
     """Split raw help text into a routing mode and its payload.
 
     Tokens are split on whitespace, so ``"search   cohort"`` and
-    ``"search cohort"`` are equal (§4.2). Only a lowercase leading ``search``
+    ``"search cohort"`` are equal. Only a lowercase leading ``search``
     token selects search mode.
 
     Args:
@@ -152,7 +152,7 @@ def resolve(query: str | object | None) -> Target:
 
     Args:
         query: ``None`` or blank text for the overview; a dotted path from
-            the package root (P1); or a public object (D12). A ``str``-based
+            the package root; or a public object. A ``str``-based
             enum member is an object, not text. A ``search ...``
             string is not accepted here — route it with :func:`parse_query`
             first; passed directly it is a plain miss.
@@ -162,7 +162,7 @@ def resolve(query: str | object | None) -> Target:
 
     Raises:
         HelpLookupError: When the query names nothing public. ``suggestions``
-            follows P16: close export and ``Workspace`` member names at the
+            holds close export and ``Workspace`` member names at the
             root; the parent's close members (prefixed with the parent) on a
             dotted miss, or the parent itself when nothing is close; the
             candidate names on an ambiguous case-insensitive match.
@@ -183,7 +183,7 @@ def resolve(query: str | object | None) -> Target:
 
 
 def suggestions_for(query: str) -> tuple[str, ...]:
-    """Return root-level "Did you mean?" names for a missed query (P16).
+    """Return root-level "Did you mean?" names for a missed query.
 
     Candidates are every export name plus every public ``Workspace`` member
     name; a member that is not also an export is displayed as
@@ -452,8 +452,13 @@ def _class_member_names(cls: type) -> tuple[str, ...]:
         skipped.
     """
     members = cls.__members__ if issubclass(cls, enum.Enum) else {}
+    # Walk the MRO instead of ``dir(cls)``: ``Enum.__dir__`` hides inherited
+    # methods (such as ``str.maketrans`` on a ``str`` enum) on Python 3.10.
+    attributes: set[str] = set()
+    for klass in cls.__mro__:
+        attributes.update(vars(klass))
     names: list[str] = []
-    for name in sorted(set(dir(cls)) | set(members)):
+    for name in sorted(attributes | set(members)):
         if name.startswith("_"):
             continue
         if name in members:
@@ -471,7 +476,7 @@ def _class_member_names(cls: type) -> tuple[str, ...]:
 
 
 def _match(wanted: str, candidates: Sequence[str]) -> list[str]:
-    """Match a name exactly, else case-insensitively (D10).
+    """Match a name exactly, else case-insensitively.
 
     Args:
         wanted: The name as typed.
@@ -518,7 +523,7 @@ def _pick(wanted: str, candidates: Sequence[str], parent: str, query: str) -> st
 def _child_suggestions(
     wanted: str, candidates: Sequence[str], parent: str
 ) -> tuple[str, ...]:
-    """Build P16 suggestions for a dotted miss.
+    """Build "Did you mean?" suggestions for a dotted miss.
 
     Args:
         wanted: The segment that matched nothing.
@@ -550,7 +555,7 @@ def _close_matches(wanted: str, display: Mapping[str, str]) -> tuple[str, ...]:
 
 
 # =============================================================================
-# Object queries (D12)
+# Object queries
 # =============================================================================
 
 

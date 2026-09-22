@@ -7,7 +7,7 @@ may include API changes.
 
 ## 0.3.0 — 2026-09-21
 
-Minor release: built-in API help (047). A top-level `mp.help()` function,
+Minor release: built-in API help. A top-level `mp.help()` function,
 a structured `mp.reference` module, and an `mp help` CLI command replace
 the plugin's standalone `help.py` script. All three work offline, need no
 credentials, and touch no config file. `__all__` loses ten duplicate

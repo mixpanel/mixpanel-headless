@@ -1,4 +1,4 @@
-"""Structured result model for the built-in API reference (Plan 047 §4.3).
+"""Structured result model for the built-in API reference.
 
 Every type here is a frozen ``slots=True`` dataclass built from tuples, so
 instances are hashable and safe to cache per process. Each type exposes

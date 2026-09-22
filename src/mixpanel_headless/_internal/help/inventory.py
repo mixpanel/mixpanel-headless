@@ -1,7 +1,7 @@
-"""Public-surface inventory for the built-in help (Plan 047, D3/D4/D13).
+"""Public-surface inventory for the built-in help.
 
 The inventory is the deduplicated, sorted ``mixpanel_headless.__all__``.
-``dir()`` is never used for the package root (D3), so a name reaches the
+``dir()`` is never used for the package root, so a name reaches the
 help system only when the package exports it on purpose. Each row is an
 :class:`Export` that pairs the name with its :func:`classify` kind and the
 runtime object.
@@ -12,9 +12,9 @@ Three more views complete the surface every other help module builds on:
 - :func:`module_members` — a namespace module's ``__all__``;
 - :func:`exports_of_kind` / :func:`export` — filtered and keyed access.
 
-The inventory is built once per process and cached in module state (D13).
+The inventory is built once per process and cached in module state.
 :func:`clear_cache` drops the cache. Building it imports nothing outside the
-package, reads no config file, and never constructs a ``Workspace`` (D9).
+package, reads no config file, and never constructs a ``Workspace``.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ _ALIAS_ORIGINS: frozenset[object] = frozenset(
 
 
 def classify(obj: object) -> HelpKind:
-    """Classify a runtime object into one ``HelpKind`` (D4).
+    """Classify a runtime object into one ``HelpKind``.
 
     The rules apply in this order, and the first match wins:
 
@@ -147,7 +147,7 @@ def _build_inventory() -> tuple[Export, ...]:
 
 
 def inventory() -> tuple[Export, ...]:
-    """Return the cached public inventory (D3, D13).
+    """Return the cached public inventory.
 
     Returns:
         The deduplicated, name-sorted rows for ``mixpanel_headless.__all__``.
@@ -222,7 +222,7 @@ def _build_workspace_members() -> tuple[tuple[str, HelpKind], ...]:
 
 
 def workspace_members() -> tuple[tuple[str, HelpKind], ...]:
-    """Return the cached public ``Workspace`` members (§2.4).
+    """Return the cached public ``Workspace`` members.
 
     Returns:
         ``(name, kind)`` pairs sorted by name, kind ``"property"`` or
@@ -255,7 +255,7 @@ def module_members(mod: types.ModuleType) -> tuple[str, ...]:
 
 
 def clear_cache() -> None:
-    """Drop the cached inventory and ``Workspace`` member list (D13).
+    """Drop the cached inventory and ``Workspace`` member list.
 
     The next call to :func:`inventory` or :func:`workspace_members` rebuilds
     the cache from the live package.

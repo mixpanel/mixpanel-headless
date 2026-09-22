@@ -1,4 +1,4 @@
-"""Google-style docstring parser for the built-in API reference (Plan 047).
+"""Google-style docstring parser for the built-in API reference.
 
 ``parse_docstring`` splits a docstring into :class:`~.models.DocSections`.
 It is pure: no imports of library objects, no I/O, and it never raises on
@@ -28,7 +28,7 @@ Conventions (chosen here and locked by ``tests/unit/help/test_docstrings.py``):
   ``Notes:`` are dedented text with newlines kept. Repeated sections of one
   kind join with a blank line.
 - ``Attributes:`` is recognized so that it ends the body, but its content is
-  dropped: the plan's ``DocSections`` has no ``attributes`` field.
+  dropped: ``DocSections`` has no ``attributes`` field.
 """
 
 from __future__ import annotations

@@ -1,19 +1,19 @@
-"""Unit tests for ``mixpanel_headless._internal.help.resolve`` (Plan 047, P1/P16/D9/D10/D12).
+"""Unit tests for ``mixpanel_headless._internal.help.resolve``.
 
 The resolver answers one question: *what object does this query name, and
 what kind is it?* These tests lock:
 
 - the query grammar split (``parse_query``) between overview, describe, and
   search;
-- dotted-path navigation from the package root (P1) for exports,
+- dotted-path navigation from the package root for exports,
   ``Workspace`` members, class members, namespace-module members, and
   callable parameters;
-- exact-then-unique-case-insensitive name matching (D10), with a natural
+- exact-then-unique-case-insensitive name matching, with a natural
   ambiguity (``Session`` / ``session``) that must raise;
-- object queries (D12) for classes, functions, bound and unbound methods,
+- object queries for classes, functions, bound and unbound methods,
   modules, the package, a ``Workspace`` instance, and foreign objects;
-- "Did you mean?" suggestions on a miss (P16);
-- the D9 isolation guarantee: resolution reads no config and writes no file.
+- "Did you mean?" suggestions on a miss;
+- the isolation guarantee: resolution reads no config and writes no file.
 """
 
 from __future__ import annotations
@@ -160,7 +160,7 @@ class TestParseQuery:
 
 
 # =============================================================================
-# String queries — P1 and §4.2
+# String queries
 # =============================================================================
 
 
@@ -227,8 +227,8 @@ class TestExports:
             pytest.param("BUSINESS_CONTEXT_MAX_CHARS", "constant", id="constant"),
         ],
     )
-    def test_p1_kinds(self, query: str, kind: str) -> None:
-        """The P1 examples resolve to the kinds §4.2 lists.
+    def test_query_kinds(self, query: str, kind: str) -> None:
+        """Each documented query form resolves to its expected kind.
 
         Args:
             query: Query text.
@@ -320,7 +320,7 @@ class TestParameters:
 
 
 class TestClassMembers:
-    """``<Class>.<member>`` resolves for any public class (§4.2)."""
+    """``<Class>.<member>`` resolves for any public class."""
 
     def test_classmethod(self) -> None:
         """``Filter.equals`` is a ``method`` owned by ``Filter``."""
@@ -403,7 +403,7 @@ class TestModuleMembers:
 
 
 class TestCaseInsensitive:
-    """Exact match first, then a unique case-insensitive match (D10)."""
+    """Exact match first, then a unique case-insensitive match."""
 
     def test_filter_lowercase(self) -> None:
         """``filter`` resolves to ``Filter``."""
@@ -478,12 +478,12 @@ class TestPrivateAndMalformed:
 
 
 # =============================================================================
-# Suggestions — P16
+# Suggestions
 # =============================================================================
 
 
 class TestSuggestions:
-    """Misses carry ``difflib`` suggestions per P16."""
+    """Misses carry ``difflib`` close-match suggestions."""
 
     def test_root_miss_suggests_close_exports(self) -> None:
         """A misspelled export suggests the close export names."""
@@ -527,7 +527,7 @@ class TestSuggestions:
         assert info.value.suggestions == ()
 
     def test_suggestions_for(self) -> None:
-        """``suggestions_for`` is the root-level P16 rule, capped at five."""
+        """``suggestions_for`` matches against root-level names, capped at five."""
         matches = suggestions_for("Filtr")
         assert matches[0] == "Filter"
         assert len(matches) <= 5
@@ -541,7 +541,7 @@ class TestSuggestions:
 
 
 # =============================================================================
-# Object queries — D12
+# Object queries
 # =============================================================================
 
 
@@ -701,7 +701,7 @@ class TestEdgeCases:
 
 
 # =============================================================================
-# D9 — no side effects
+# No side effects
 # =============================================================================
 
 

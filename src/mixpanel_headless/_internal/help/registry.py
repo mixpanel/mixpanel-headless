@@ -1,4 +1,4 @@
-"""Static registries for the built-in help (Plan 047, D5 and D8).
+"""Static registries for the built-in help.
 
 Two hand-maintained tables live here:
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Final
 
 # =============================================================================
-# Workspace domains (D5)
+# Workspace domains
 # =============================================================================
 
 WORKSPACE_DOMAINS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
@@ -399,7 +399,7 @@ WORKSPACE_DOMAINS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
 )
 """Ordered ``(domain title, method names)`` pairs covering every public ``Workspace`` method.
 
-Titles are lowercase phrases in the order the plan lists them (D5). The
+Titles are lowercase phrases in a fixed display order. The
 ``ESCAPE HATCHES`` section of ``workspace.py`` holds only the ``api``
 property, and properties are listed separately by the resolver, so that
 section has no domain here.
@@ -435,7 +435,7 @@ def domain_of(method_name: str) -> str | None:
 
 
 # =============================================================================
-# Reference hints (D8)
+# Reference hints
 # =============================================================================
 
 DOCS_BASE: Final[str] = "https://mixpanel.github.io/mixpanel-headless/"
@@ -445,7 +445,7 @@ WORKSPACE_HINT: Final[tuple[str, str]] = (
     "complete method signatures organized by domain",
     "api/workspace.md",
 )
-"""Hint for the bare ``Workspace`` query: ``(title, docs source path)`` (P17)."""
+"""Hint for the bare ``Workspace`` query: ``(title, docs source path)``."""
 
 REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
     # --- typed query engines: most specific first ------------------------
@@ -949,7 +949,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "cli/commands.md",
     ),
 )
-"""Ordered ``(triggers, title, docs source path)`` hint rules (D8, P17).
+"""Ordered ``(triggers, title, docs source path)`` hint rules.
 
 ``triggers`` are query tokens — export names and ``Workspace`` method
 names. A query such as ``Workspace.query_funnel`` splits on ``.`` into the
@@ -958,8 +958,8 @@ intersects the token set wins. The old script matched whole tokens rather
 than substrings because generic triggers such as ``query`` false-positive on
 compound names like ``query_saved_report``; keep that rule in ``hints.py``.
 Specific engines precede the generic insights rule so ``query_funnel``
-picks the funnels page. Dashboards point at the entity-management guide
-(F8): plugin-local ``dashboard-expert`` pointers belong in plugin markdown.
+picks the funnels page. Dashboards point at the entity-management guide;
+plugin-local ``dashboard-expert`` pointers belong in plugin markdown.
 Every ``path`` is relative to ``docs/`` in the repository; use
 :func:`hint_url` for the hosted URL.
 """

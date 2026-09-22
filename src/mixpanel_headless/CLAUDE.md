@@ -22,7 +22,7 @@ Public API for the Mixpanel data library. Import from here, not from `_internal`
 | `exceptions.py` | Exception hierarchy with structured error context |
 | `types.py` | Result dataclasses (SegmentationResult, FunnelResult, etc.) + AccountSummary |
 | `_literal_types.py` | Literal type aliases (TimeUnit, CountType, HourDayUnit) + `LITERAL_ALIAS_DOCS` (one description line per alias, shown by `mp help`) |
-| `reference.py` | Built-in API help (047): `help()` (re-exported as `mp.help`), `describe()`, `search()`, `render()`, `clear_cache()`, and the frozen result types (`HelpEntry`, `SearchResult`, …); offline, no config, no `Workspace` |
+| `reference.py` | Built-in API help: `help()` (re-exported as `mp.help`), `describe()`, `search()`, `render()`, `clear_cache()`, and the frozen result types (`HelpEntry`, `SearchResult`, …); offline, no config, no `Workspace` |
 | `_internal/` | Private implementation (do not import directly) |
 | `cli/` | Command-line interface |
 
@@ -98,7 +98,7 @@ with mp.Workspace() as ws:
 - `mp.session.show()` — read the persisted `[active]` block as `ActiveSession`
 - `mp.session.use(account=, project=, workspace=, target=)` — write to `[active]`
 
-## Built-in Help (047)
+## Built-in Help
 
 - `mp.help(query=None, *, format="text", file=None, hints=True, domain=None)` — print reference text for any public name (`"Workspace.query"`, `"Filter"`, `"MathType"`, `"search cohort"`, or an object such as `mp.Filter`); returns `None`
 - `mp.reference.describe(query) -> HelpEntry`, `mp.reference.search(term) -> SearchResult`, `mp.reference.render(entry, format)`, `mp.reference.clear_cache()` — structured access
@@ -171,7 +171,7 @@ MixpanelHeadlessError
 ├── ReportLinkError         # 045 — ReportLinkParseError / UnsupportedReportLinkError /
 │                           #       ReportLinkNotFoundError / ReportLinkScopeMismatchError /
 │                           #       ShortLinkResolutionError
-└── HelpLookupError         # 047 — reference.describe() miss; carries query / suggestions / hits; CLI exit 4
+└── HelpLookupError         # reference.describe() miss; carries query / suggestions / hits; CLI exit 4
 ```
 
 All exceptions provide `.to_dict()` for JSON serialization and structured `.details`.

@@ -1,14 +1,14 @@
 """Unit tests for ``mixpanel_headless._internal.help.introspect``.
 
-Covers Plan 047 Phase 3 steps 1–5:
+Covers the signature and field introspection helpers:
 
-- ``format_type`` (P3) on concrete annotations and strings.
-- ``signature_doc`` (P2, D6) on ``Workspace.query`` and local fixtures.
-- ``dataclass_fields_doc`` (P9) and ``pydantic_fields_doc`` (P4, P10) on
-  local fixtures, plus private-field elision (D7) on ``Filter`` and ``Replay``.
-- ``model_config_doc`` (P11) on a fixture that sets all four keys.
-- ``class_sections`` (D7) on ``Filter``, ``QueryResult``, and a plain class.
-- ``resolved_hints`` degrading to ``{}`` on ``FlowQueryResult`` (§2.4).
+- ``format_type`` on concrete annotations and strings.
+- ``signature_doc`` on ``Workspace.query`` and local fixtures.
+- ``dataclass_fields_doc`` and ``pydantic_fields_doc`` on local fixtures,
+  plus private-field elision on ``Filter`` and ``Replay``.
+- ``model_config_doc`` on a fixture that sets all four keys.
+- ``class_sections`` on ``Filter``, ``QueryResult``, and a plain class.
+- ``resolved_hints`` degrading to ``{}`` on ``FlowQueryResult``.
 
 Real-library assertions lock counts measured on 2026-09-21: ``MathType`` has
 22 values and ``Filter`` has 28 factory classmethods.
@@ -273,7 +273,7 @@ def _reset_cache() -> typing.Iterator[None]:
 
 
 # =============================================================================
-# format_type (P3)
+# format_type
 # =============================================================================
 
 
@@ -338,7 +338,7 @@ def test_format_type_objects(annotation: object, expected: str) -> None:
     ],
 )
 def test_format_type_strings(text: str, expected: str) -> None:
-    """String annotations are cleaned but otherwise kept as written (D6).
+    """String annotations are cleaned but otherwise kept as written.
 
     Args:
         text: The source annotation string.
@@ -470,12 +470,12 @@ def test_allowed_values(hint: object, expected: tuple[str, ...]) -> None:
 
 
 # =============================================================================
-# signature_doc (P2, D6)
+# signature_doc
 # =============================================================================
 
 
 def test_signature_doc_workspace_query() -> None:
-    """P2 on ``Workspace.query``: strings kept, values filled, ``self`` removed."""
+    """``Workspace.query``: strings kept, values filled, ``self`` removed."""
     doc = signature_doc(Workspace.query)
     assert doc.name == "query"
     names = [param.name for param in doc.params]
@@ -604,7 +604,7 @@ def test_signature_doc_on_a_class_uses_init_params() -> None:
 
 
 # =============================================================================
-# compact_signature (P12 compact form)
+# compact_signature
 # =============================================================================
 
 
@@ -619,15 +619,15 @@ def test_compact_signature_names_and_defaults_only() -> None:
     assert compact_signature(SignatureDoc("noop")) == "noop()"
 
 
-def test_compact_signature_filter_equals_matches_plan_example() -> None:
-    """``Filter.equals`` compacts to the form shown in Plan 047 §4.4."""
+def test_compact_signature_filter_equals() -> None:
+    """``Filter.equals`` compacts to the one-line form used in listings."""
     assert compact_signature(signature_doc(Filter.equals)) == (
         "equals(property, value, resource_type='events')"
     )
 
 
 # =============================================================================
-# dataclass_fields_doc (P9, D7)
+# dataclass_fields_doc
 # =============================================================================
 
 
@@ -654,12 +654,12 @@ def test_dataclass_fields_doc_fixture() -> None:
 
 
 def test_dataclass_fields_doc_filter_has_no_public_fields() -> None:
-    """Every ``Filter`` field is private, so the public list is empty (D7)."""
+    """Every ``Filter`` field is private, so the public list is empty."""
     assert dataclass_fields_doc(Filter) == ()
 
 
 def test_dataclass_fields_doc_replay_omits_private_caches() -> None:
-    """``Replay`` shows its nine public fields and no ``_*_cache`` field (D7)."""
+    """``Replay`` shows its nine public fields and no ``_*_cache`` field."""
     docs = dataclass_fields_doc(Replay)
     names = [doc.name for doc in docs]
     assert not any(name.startswith("_") for name in names)
@@ -685,12 +685,12 @@ def test_dataclass_fields_doc_non_dataclass_is_empty() -> None:
 
 
 # =============================================================================
-# pydantic_fields_doc (P4, P10)
+# pydantic_fields_doc
 # =============================================================================
 
 
 def test_pydantic_fields_doc_person() -> None:
-    """Required, factory, constraints, explicit alias, and None default (P10)."""
+    """Required, factory, constraints, explicit alias, and None default."""
     docs = pydantic_fields_doc(Person)
     assert [doc.name for doc in docs] == [
         "name",
@@ -730,7 +730,7 @@ def test_pydantic_fields_doc_person() -> None:
 
 
 def test_pydantic_fields_doc_inline_enum_and_literal_values() -> None:
-    """P4: enum members appear inline, also inside ``list[...]`` and ``| None``."""
+    """Enum members appear inline, also inside ``list[...]`` and ``| None``."""
     by_name = {doc.name: doc for doc in pydantic_fields_doc(Person)}
     assert by_name["color"].values == ("RED", "GREEN")
     assert by_name["color"].default == "<Color.RED: 'red'>"
@@ -763,7 +763,7 @@ def test_pydantic_fields_doc_non_model_is_empty() -> None:
 
 
 # =============================================================================
-# model_config_doc (P11)
+# model_config_doc
 # =============================================================================
 
 
@@ -794,7 +794,7 @@ def test_model_config_doc_explicit_default_values_are_elided() -> None:
 
 
 # =============================================================================
-# enum_values / enum_members (P5)
+# enum_values / enum_members
 # =============================================================================
 
 
@@ -815,7 +815,7 @@ def test_enum_values_real_enum() -> None:
 
 
 # =============================================================================
-# class_sections (D7)
+# class_sections
 # =============================================================================
 
 

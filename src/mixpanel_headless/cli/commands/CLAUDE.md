@@ -33,7 +33,7 @@ flags.
 | `lookup_tables.py` | `mp lookup-tables` | Lookup-table CRUD + upload/download (data governance) |
 | `schemas.py` | `mp schemas` | Project / workspace JSON schemas |
 | `business_context.py` | `mp business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
-| `help.py` | `mp help` | Offline API reference (047): `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]`; plain function registered with `app.command(name="help")` like `login`; defaults to `text` output (unlike entity commands whose default is `json`), ignores `-a/-p/-w/-t`, never calls `get_workspace`; exit 4 on a miss, 3 for `--jq` without `-f json` or an unknown `--domain` |
+| `help.py` | `mp help` | Offline API reference: `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]`; plain function registered with `app.command(name="help")` like `login`; defaults to `text` output (unlike entity commands whose default is `json`), ignores `-a/-p/-w/-t`, never calls `get_workspace`; exit 4 on a miss, 3 for `--jq` without `-f json` or an unknown `--domain` |
 
 ## Command Pattern
 

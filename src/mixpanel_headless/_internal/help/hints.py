@@ -1,4 +1,4 @@
-"""Hosted-documentation hints for the built-in API reference (Plan 047 P17, D8).
+"""Hosted-documentation hints for the built-in API reference.
 
 :func:`hints_for` picks at most one :class:`~.models.Hint` for a query:
 
@@ -65,7 +65,7 @@ def tokens(query: str) -> tuple[str, ...]:
 
 
 def hints_for(query_tokens: tuple[str, ...], *, kind: HelpKind) -> tuple[Hint, ...]:
-    """Return the documentation hint for a query, if any (P17, D8).
+    """Return the documentation hint for a query, if any.
 
     Args:
         query_tokens: Output of :func:`tokens` for the query. Case does not

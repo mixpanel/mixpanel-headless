@@ -1711,7 +1711,7 @@ class ShortLinkResolutionError(ReportLinkError):
     _DEFAULT_CODE = "SHORT_LINK_RESOLUTION_ERROR"
 
 
-# Built-in help (Plan 047)
+# Built-in help
 
 
 class HelpLookupError(MixpanelHeadlessError):

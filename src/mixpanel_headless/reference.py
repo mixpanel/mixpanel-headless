@@ -1,10 +1,10 @@
 """Built-in API reference: ``help()``, ``describe()``, ``search()``, ``render()``.
 
-This module is the public face of the offline help system (Plan 047). It
+This module is the public face of the offline help system. It
 introspects the installed ``mixpanel_headless`` package and answers questions
 about its own surface — signatures, fields, enum values, Literal aliases,
 exception trees, ``Workspace`` domains — without a network call, without a
-config file, and without building a ``Workspace`` (D9).
+config file, and without building a ``Workspace``.
 
 Three ways to use it:
 
@@ -23,7 +23,7 @@ Import cost: only the result models, the exception type, and ``typing`` are
 imported at module level. The introspection modules (inventory, resolver,
 introspection, relations, search, hints, renderers) are imported lazily
 inside the functions that need them, so ``import mixpanel_headless`` pays
-nothing measurable for this module (plan §9).
+nothing measurable for this module.
 """
 
 from __future__ import annotations
@@ -83,14 +83,14 @@ _PACKAGE = "mixpanel_headless"
 _WORKSPACE = "Workspace"
 _LLMS_URL = "https://mixpanel.github.io/mixpanel-headless/llms.txt"
 _MISS_HITS = 5
-"""How many search hits a ``describe()`` miss carries (D10)."""
+"""How many search hits a ``describe()`` miss carries."""
 
 _SEARCH_USAGE = (
     "Usage: help('search <term>')\n"
     "  Case-insensitive substring search over exports, Workspace members,\n"
     "  enum members, and Literal values. Example: help('search cohort')."
 )
-"""Text printed for a bare ``search`` query (P20)."""
+"""Text printed for a bare ``search`` query."""
 
 _TYPES_LISTING_GROUPS: tuple[tuple[str, HelpKind], ...] = (
     ("models", "model"),
@@ -313,7 +313,7 @@ def render(entry: HelpEntry | SearchResult, format: HelpFormat = "text") -> str:
 
 
 def clear_cache() -> None:
-    """Drop every per-process help cache (D13).
+    """Drop every per-process help cache.
 
     Clears the inventory, resolved type hints, relations (used by, raised
     by, exception map), and the search index. The next call rebuilds them
@@ -343,7 +343,7 @@ def clear_cache() -> None:
 
 
 def _search_usage(format: HelpFormat) -> str:
-    """Return the P20 usage text for a bare ``search`` query.
+    """Return the usage text for a bare ``search`` query.
 
     Args:
         format: The requested output format.
@@ -390,7 +390,7 @@ def _render_miss(exc: HelpLookupError, format: HelpFormat) -> str:
 
 
 def _with_hits(exc: HelpLookupError) -> HelpLookupError:
-    """Attach the first search hits for the missed query to a resolver error (D10).
+    """Attach the first search hits for the missed query to a resolver error.
 
     Args:
         exc: The error raised by the resolver (``hits`` is always empty there).
@@ -479,7 +479,7 @@ def _assemble(target: Target, *, domain: str | None) -> HelpEntry:
 
 
 def _hints(qualname: str, kind: HelpKind) -> tuple[Hint, ...]:
-    """Pick the documentation hint for a query (P17, D8).
+    """Pick the documentation hint for a query.
 
     Args:
         qualname: The canonical query string.
@@ -576,7 +576,7 @@ def _member_doc(name: str, obj: object, kind: HelpKind) -> MemberDoc:
 
 
 def _overview_entry() -> HelpEntry:
-    """Build the package overview (§4.2 first row).
+    """Build the package overview entry.
 
     The domain table is packed as text in ``doc.body`` (two columns) so the
     whole view stays under 60 lines; ``groups`` is empty.
@@ -634,9 +634,9 @@ def _overview_entry() -> HelpEntry:
 
 
 def _types_listing() -> HelpEntry:
-    """Build the ``types`` listing: public types grouped by kind (P7).
+    """Build the ``types`` listing: public types grouped by kind.
 
-    ``Workspace`` is the facade, not a type, so it is left out (P7).
+    ``Workspace`` is the facade, not a type, so it is left out.
 
     Returns:
         The ``listing`` entry with six groups and no hints.
@@ -668,7 +668,7 @@ def _types_listing() -> HelpEntry:
 
 
 def _exceptions_listing() -> HelpEntry:
-    """Build the ``exceptions`` listing as an indented tree (P8).
+    """Build the ``exceptions`` listing as an indented tree.
 
     Returns:
         The ``listing`` entry with one ``Exceptions`` group and no hints.
@@ -705,7 +705,7 @@ def _export_summary(name: str) -> str:
 
 
 def _workspace_listing(domain: str | None) -> HelpEntry:
-    """Build the grouped ``Workspace`` listing (F6, D5).
+    """Build the grouped ``Workspace`` listing.
 
     Args:
         domain: ``None`` for every group (properties first, then the
@@ -787,7 +787,7 @@ def _match_domain(domain: str) -> str:
 
 
 def _callable_entry(target: Target) -> HelpEntry:
-    """Build a ``method`` or ``function`` entry (P2, P13, P14).
+    """Build a ``method`` or ``function`` entry.
 
     Args:
         target: A callable target.
@@ -888,7 +888,7 @@ def _parameter_entry(target: Target) -> HelpEntry:
 
 
 def _class_entry(target: Target) -> HelpEntry:
-    """Build a ``class``, ``model``, or ``dataclass`` entry (D7, P9–P12).
+    """Build a ``class``, ``model``, or ``dataclass`` entry.
 
     Args:
         target: A class target.
@@ -935,7 +935,7 @@ def _class_entry(target: Target) -> HelpEntry:
 
 
 def _enum_entry(target: Target) -> HelpEntry:
-    """Build an ``enum`` entry: member table, docstring, used by (P5).
+    """Build an ``enum`` entry: member table, docstring, used by.
 
     Args:
         target: An enum class target.
@@ -970,7 +970,7 @@ def _enum_entry(target: Target) -> HelpEntry:
 
 
 def _literal_entry(target: Target) -> HelpEntry:
-    """Build a ``literal`` entry: allowed values, docs line, used by (F1).
+    """Build a ``literal`` entry: allowed values, docs line, used by.
 
     Args:
         target: A Literal alias target.
@@ -1080,7 +1080,7 @@ def _exception_entry(target: Target) -> HelpEntry:
 
 
 def _module_entry(target: Target) -> HelpEntry:
-    """Build a ``module`` entry: ``__all__`` members with summaries (F5).
+    """Build a ``module`` entry: ``__all__`` members with summaries.
 
     Args:
         target: A namespace-module target.

@@ -1,10 +1,10 @@
-"""Pure renderers for the built-in API reference (Plan 047 §4.4, D2, D9, D11).
+"""Pure renderers for the built-in API reference.
 
 Every function here maps a :class:`~.models.HelpEntry` or
 :class:`~.models.SearchResult` to a string. There is no I/O, no Rich, and no
 import from any help module other than :mod:`.models`. Output never contains
 Rich markup, so the literal ``[property]`` and ``[method]`` tags survive when
-the CLI prints through ``typer.echo`` (F12). Returned strings carry no trailing
+the CLI prints through ``typer.echo``. Returned strings carry no trailing
 newline; callers add one with ``print``.
 
 Formats
@@ -101,7 +101,7 @@ CATEGORY_WIDTH = 9
 """Width of the ``[category ]`` column in search rows (matches the script's ``:9s``)."""
 
 _MEMBER_TAG_KINDS: frozenset[str] = frozenset({"property", "method"})
-"""Member kinds whose listing rows carry a literal ``[kind]`` tag (F12)."""
+"""Member kinds whose listing rows carry a literal ``[kind]`` tag."""
 
 Block = list[str]
 """A block of output lines; blocks are joined with one blank line between them."""
@@ -310,8 +310,8 @@ def _wrap_values(
 ) -> Block:
     """Wrap values joined by `` | `` into lines no wider than ``width`` when possible.
 
-    Continuation lines start with ``| `` so every separator stays visible
-    (Plan 047 §4.4 ``MathType`` example). A single value longer than ``width``
+    Continuation lines start with ``| `` so every separator stays visible,
+    as in the ``MathType`` value list. A single value longer than ``width``
     still prints on its own line.
 
     Args:
@@ -360,7 +360,7 @@ def _compact_signature(sig: SignatureDoc, prefix: str = "") -> str:
 
 
 def _signature_block(name: str, sig: SignatureDoc) -> Block:
-    """Format the multi-line signature block (parity row P2).
+    """Format the multi-line signature block.
 
     Args:
         name: Display name printed before the opening parenthesis.
@@ -415,7 +415,7 @@ def _tagged_summary(member: MemberDoc) -> str:
 
 
 def _field_row(field: FieldDoc) -> str:
-    """Format one ``Fields (public):`` row (parity rows P4, P9, P10).
+    """Format one ``Fields (public):`` row.
 
     Args:
         field: The field.
@@ -441,7 +441,7 @@ def _field_row(field: FieldDoc) -> str:
 
 
 def _usage_label(usage: UsageDoc) -> str:
-    """Format one ``Used by`` / ``Raised by`` row (parity row P12, compact).
+    """Format one compact ``Used by`` / ``Raised by`` row.
 
     Args:
         usage: The usage.
@@ -679,7 +679,7 @@ def _text_parameter(entry: HelpEntry) -> list[Block]:
 
 
 def _text_class(entry: HelpEntry) -> list[Block]:
-    """Render a ``class``, ``model``, or ``dataclass`` entry (D7, P9–P11).
+    """Render a ``class``, ``model``, or ``dataclass`` entry.
 
     Args:
         entry: The entry.
@@ -710,7 +710,7 @@ def _text_class(entry: HelpEntry) -> list[Block]:
 
 
 def _text_enum(entry: HelpEntry) -> list[Block]:
-    """Render an ``enum`` entry: header, member table, docstring (P5).
+    """Render an ``enum`` entry: header, member table, docstring.
 
     Args:
         entry: The entry.

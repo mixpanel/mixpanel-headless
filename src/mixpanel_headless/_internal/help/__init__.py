@@ -1,4 +1,4 @@
-"""Built-in API reference help (Plan 047).
+"""Built-in API reference help.
 
 Private implementation behind :mod:`mixpanel_headless.reference` and
 :func:`mixpanel_headless.help`. Modules in this package introspect the

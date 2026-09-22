@@ -23,7 +23,7 @@ state-change verb.
 | `cohorts` | Cohort CRUD (list, create, get, update, delete, bulk ops) |
 | `flags` / `experiments` / `alerts` / `annotations` / `webhooks` / `lexicon` / `drop-filters` / `custom-properties` / `custom-events` / `lookup-tables` / `schemas` | Entity CRUD + data governance for the matching App API surface |
 | `business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
-| `help` | Top-level command — `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` prints the offline API reference (047). Defaults to `text` output, unlike entity commands whose default is `json`; ignores `-a/-p/-w/-t` and never calls `get_workspace`. Exit 4 on a miss; 3 for `--jq` without `-f json` or an unknown `--domain` |
+| `help` | Top-level command — `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` prints the offline API reference. Defaults to `text` output, unlike entity commands whose default is `json`; ignores `-a/-p/-w/-t` and never calls `get_workspace`. Exit 4 on a miss; 3 for `--jq` without `-f json` or an unknown `--domain` |
 
 ## Files
 

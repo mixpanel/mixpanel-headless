@@ -1,10 +1,10 @@
-"""CliRunner tests for ``mp help`` (Plan 047, Phase 5).
+"""CliRunner tests for ``mp help``.
 
-Covers every example in ``context/help-integration-plan.md`` §4.5, the
-exit-code contract (0 found, 4 miss, 3 invalid flags), the three output
-formats, ``--jq`` gating, ``--domain`` filtering, ``--no-hints``, variadic
-query tokens, the literal ``[property]`` tag (F12), and isolation from the
-config file and the auth flags (D9).
+Covers the documented command-line examples, the exit-code contract
+(0 found, 4 miss, 3 invalid flags), the three output formats, ``--jq``
+gating, ``--domain`` filtering, ``--no-hints``, variadic query tokens, the
+literal ``[property]`` tag, and isolation from the config file and the
+auth flags.
 """
 
 from __future__ import annotations
@@ -53,8 +53,8 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-class TestPlanExamples:
-    """Every command line listed in plan §4.5 exits 0 with the expected shape."""
+class TestDocumentedExamples:
+    """Every documented command line exits 0 with the expected shape."""
 
     def test_overview(self, runner: CliRunner) -> None:
         """``mp help`` prints the overview with the version and llms.txt link."""
@@ -124,7 +124,7 @@ class TestPlanExamples:
 
 
 class TestExitCodes:
-    """Exit codes follow §4.5: 0 found, 4 miss, 3 flag misuse."""
+    """Exit codes: 0 found, 4 miss, 3 flag misuse."""
 
     def test_miss_exits_4_with_suggestions_on_stdout(self, runner: CliRunner) -> None:
         """An unknown query exits 4 and prints suggestions on stdout."""
@@ -234,7 +234,7 @@ class TestFlags:
 
 
 class TestIsolation:
-    """D9: the command reads no config and ignores the auth flags."""
+    """The command reads no config and ignores the auth flags."""
 
     def test_empty_home_stays_empty(
         self, runner: CliRunner, _isolated_env: Path
@@ -251,7 +251,7 @@ class TestIsolation:
         assert "class Filter" in result.output
 
     def test_property_tag_survives(self, runner: CliRunner) -> None:
-        """The literal ``[property]`` tag is not eaten as Rich markup (F12)."""
+        """The literal ``[property]`` tag is not eaten as Rich markup."""
         result = runner.invoke(app, ["help", "Workspace", "--domain", "dashboards"])
         assert result.exit_code == 0
         listing = runner.invoke(app, ["help", "Workspace"])

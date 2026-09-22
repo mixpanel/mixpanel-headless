@@ -406,7 +406,7 @@ __all__ = [
     "RegionProbeNetworkError",
     "WorkspaceScopeError",
     "BusinessContextValidationError",
-    # Built-in help (047)
+    # Built-in help
     "HelpLookupError",
     "help",
     "reference",

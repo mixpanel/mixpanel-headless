@@ -1,6 +1,6 @@
 """Unit tests for ``mixpanel_headless._internal.help.hints``.
 
-Covers Plan 047 Phase 4 step 3 (P17, D8):
+Covers the docs-hint lookup:
 
 - ``tokens`` splits a query on ``.`` and whitespace into whole tokens.
 - ``hints_for`` returns at most one hint: the bare ``Workspace`` query
@@ -65,7 +65,7 @@ class TestHintsFor:
         assert hint.url == hint_url("guide/query.md")
 
     def test_workspace_alone_picks_api_page(self) -> None:
-        """The bare ``Workspace`` query points at the hosted API reference (P17)."""
+        """The bare ``Workspace`` query points at the hosted API reference."""
         title, path = WORKSPACE_HINT
         assert hints_for(("Workspace",), kind="listing") == (
             Hint(title, hint_url(path)),
@@ -79,7 +79,7 @@ class TestHintsFor:
 
     @pytest.mark.parametrize("query", ["types", "exceptions"])
     def test_listings_get_no_hint(self, query: str) -> None:
-        """``types`` and ``exceptions`` suppress hints (P17)."""
+        """``types`` and ``exceptions`` suppress hints."""
         assert hints_for(tokens(query), kind="listing") == ()
 
     def test_listing_kind_suppresses_even_with_triggers(self) -> None:
@@ -87,17 +87,17 @@ class TestHintsFor:
         assert hints_for(("Filter", "query_funnel"), kind="listing") == ()
 
     def test_create_dashboard_picks_entity_management(self) -> None:
-        """Dashboard queries point at the entity-management guide (F8)."""
+        """Dashboard queries point at the entity-management guide."""
         (hint,) = hints_for(tokens("Workspace.create_dashboard"), kind="method")
         assert hint.url == hint_url("guide/entity-management.md")
 
     def test_replays_for_user_picks_session_replay(self) -> None:
-        """Session-replay queries point at the session-replay guide (F9)."""
+        """Session-replay queries point at the session-replay guide."""
         (hint,) = hints_for(tokens("Workspace.replays_for_user"), kind="method")
         assert hint.url == hint_url("guide/session-replay.md")
 
     def test_login_unified_picks_auth(self) -> None:
-        """Auth queries point at the auth API page (F9)."""
+        """Auth queries point at the auth API page."""
         (hint,) = hints_for(tokens("login_unified"), kind="function")
         assert hint.url == hint_url("api/auth.md")
 

@@ -27,7 +27,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/bridge.py` | `BridgeFile` v2 schema + `load_bridge` / `export_bridge` / `remove_bridge` (Cowork credential courier) |
 | `query/` | Query engine builders and validators (`user_builders.py`, `user_validators.py`) |
 | `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention) |
-| `help/` | Built-in API reference (047) behind `mixpanel_headless.reference` and `mp help`; offline — no network, no config read, never constructs a `Workspace` |
+| `help/` | Built-in API reference behind `mixpanel_headless.reference` and `mp help`; offline — no network, no config read, never constructs a `Workspace` |
 | `help/models.py` | Frozen `slots=True` result dataclasses with `to_dict()`: `HelpEntry`, `SearchResult`, `SearchHit`, `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`, `Group`, `UsageDoc`, `Hint`; `HelpKind` / `HelpFormat` literals |
 | `help/docstrings.py` | Google-style docstring parser (`parse_docstring` → `DocSections`) |
 | `help/inventory.py` | Public-surface inventory from the deduplicated `__all__` + `Workspace` members + namespace `__all__`s; classifies each name to one `HelpKind` |

@@ -1,4 +1,4 @@
-"""Case-insensitive substring search over the public surface (Plan 047, P18/P19).
+"""Case-insensitive substring search over the public surface.
 
 :func:`search` ports the plugin script's ``help.py search`` onto the
 inventory. It indexes three views of the library:
@@ -6,7 +6,7 @@ inventory. It indexes three views of the library:
 - every export in :func:`~mixpanel_headless._internal.help.inventory.inventory`,
   with its inventory kind as the category (``exception``, ``enum``, ``model``,
   ``dataclass``, ``class``, ``literal``, ``alias``, ``function``, ``module``,
-  ``constant``) — F2 is fixed because Literal aliases are ``literal`` and
+  ``constant``); Literal aliases are ``literal``, not ``constant``, and
   carry their ``LITERAL_ALIAS_DOCS`` summary;
 - every public ``Workspace`` member, displayed as ``Workspace.<name>`` with
   category ``method`` or ``property``;
@@ -23,11 +23,11 @@ Each entry matches in one of three tiers, and the highest tier wins:
 Hits are ordered by tier, then by ``(category, name)``. The index is keyed
 on ``(category, name)``, so no pair repeats. A miss returns
 ``SearchResult(term, hits=(), suggestions=...)`` from
-:func:`~mixpanel_headless._internal.help.resolve.suggestions_for` (P19) and
+:func:`~mixpanel_headless._internal.help.resolve.suggestions_for` and
 never raises for a non-empty term.
 
-The text index is built once per inventory tuple and cached in module state
-(D13). :func:`clear_cache` drops it; a new inventory tuple (after
+The text index is built once per inventory tuple and cached in module state.
+:func:`clear_cache` drops it; a new inventory tuple (after
 ``inventory.clear_cache()``) also triggers a rebuild.
 """
 
@@ -231,7 +231,7 @@ def _index() -> tuple[_Entry, ...]:
 
 
 def search(term: str, *, limit: int | None = None) -> SearchResult:
-    """Search the public surface for a case-insensitive substring (P18, P19).
+    """Search the public surface for a case-insensitive substring.
 
     Args:
         term: Text to look for. Surrounding whitespace is ignored for
@@ -244,7 +244,7 @@ def search(term: str, *, limit: int | None = None) -> SearchResult:
         A ``SearchResult`` whose ``hits`` are ordered by tier (``name``,
         ``doc``, ``member``) and then by ``(category, name)``, with no
         repeated ``(category, name)`` pair. On a miss ``hits`` is empty and
-        ``suggestions`` holds up to five close names (P16); the function
+        ``suggestions`` holds up to five close names; the function
         never raises for a non-empty term.
 
     Raises:
@@ -276,7 +276,7 @@ def search(term: str, *, limit: int | None = None) -> SearchResult:
 
 
 def clear_cache() -> None:
-    """Drop the cached search index (D13).
+    """Drop the cached search index.
 
     The next :func:`search` call rebuilds the index from the live inventory.
     """

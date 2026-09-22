@@ -1,4 +1,4 @@
-"""Unit tests for ``HelpLookupError`` (Plan 047, D10).
+"""Unit tests for ``HelpLookupError``.
 
 Covers the hierarchy, the structured attributes ``query`` / ``suggestions`` /
 ``hits``, the message format with and without suggestions, ``to_dict()``

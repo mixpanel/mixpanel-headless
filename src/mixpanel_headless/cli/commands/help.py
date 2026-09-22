@@ -1,14 +1,14 @@
-"""``mp help`` Typer command (Plan 047, Phase 5).
+"""``mp help`` Typer command.
 
 Offline reference help for the library. The command wraps
 :func:`mixpanel_headless.reference.describe` /
 :func:`mixpanel_headless.reference.search` and prints the rendered text with
-``typer.echo`` only, so literal tags such as ``[property]`` survive (F12).
+``typer.echo`` only, so literal tags such as ``[property]`` survive.
 
-Unlike the entity commands, the default output format is ``text`` (D11),
+Unlike the entity commands, the default output format is ``text``,
 because the command is documentation, not data. The command never calls
 ``get_workspace`` or ``get_config``, ignores the global ``-a/-p/-w/-t``
-flags, and touches no file (D9).
+flags, and touches no file.
 
 Exit codes:
     0: entry found and printed.
@@ -38,10 +38,10 @@ HelpFormatOption = Annotated[
         click_type=click.Choice(["text", "markdown", "json"]),
     ),
 ]
-"""``-f/--format`` restricted to the three help formats (D11)."""
+"""``-f/--format`` restricted to the three help formats."""
 
 _SEARCH_USAGE = "Usage: mp help search <term>"
-"""Line printed for a bare ``search`` query (P20)."""
+"""Line printed for a bare ``search`` query."""
 
 
 def _emit(text: str) -> None:

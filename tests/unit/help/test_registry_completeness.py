@@ -1,13 +1,13 @@
-"""Completeness guards for the built-in help registry (Plan 047, D3/D4/D5/D8).
+"""Completeness guards for the built-in help registry.
 
 These tests lock four invariants that keep ``mp.help()`` output current:
 
-- ``mixpanel_headless.__all__`` has no duplicate names (F7).
+- ``mixpanel_headless.__all__`` has no duplicate names.
 - Every exported ``Literal`` alias has a one-line entry in
-  ``LITERAL_ALIAS_DOCS`` and every key in that dict is exported (D4).
+  ``LITERAL_ALIAS_DOCS`` and every key in that dict is exported.
 - Every public ``Workspace`` method appears in exactly one domain of
-  ``WORKSPACE_DOMAINS`` and every registered name exists (D5).
-- Every ``REFERENCE_HINTS`` source path exists under ``docs/`` (D8).
+  ``WORKSPACE_DOMAINS`` and every registered name exists.
+- Every ``REFERENCE_HINTS`` source path exists under ``docs/``.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def _registered_methods() -> list[str]:
 
 
 class TestAllUniqueness:
-    """``__all__`` carries each public name once (D3, F7)."""
+    """``__all__`` carries each public name once."""
 
     def test_all_has_no_duplicates(self) -> None:
         """``len(__all__)`` equals the size of its set."""
@@ -96,10 +96,10 @@ class TestAllUniqueness:
 
 
 class TestLiteralAliasDocs:
-    """Every exported ``Literal`` alias is described in ``LITERAL_ALIAS_DOCS`` (D4)."""
+    """Every exported ``Literal`` alias is described in ``LITERAL_ALIAS_DOCS``."""
 
     def test_probe_finds_the_expected_alias_count(self) -> None:
-        """The package exports exactly 38 ``Literal`` aliases (plan §2.4)."""
+        """The package exports exactly 38 ``Literal`` aliases."""
         assert len(_exported_literal_aliases()) == 38
 
     def test_every_exported_literal_alias_has_an_entry(self) -> None:
@@ -133,7 +133,7 @@ class TestLiteralAliasDocs:
 
 
 class TestWorkspaceDomains:
-    """``WORKSPACE_DOMAINS`` covers every public ``Workspace`` method once (D5)."""
+    """``WORKSPACE_DOMAINS`` covers every public ``Workspace`` method once."""
 
     def test_every_public_method_is_registered_once(self) -> None:
         """Each public ``Workspace`` method appears in exactly one domain."""
@@ -171,11 +171,11 @@ class TestWorkspaceDomains:
             assert len(names) > 0
 
     def test_domain_count_is_about_thirty(self) -> None:
-        """The 46 section comments collapse to roughly 30 domains (plan D5)."""
+        """The domain table groups ``Workspace`` methods into roughly 30 domains."""
         assert 28 <= len(WORKSPACE_DOMAINS) <= 36
 
     def test_expected_domain_titles_are_present(self) -> None:
-        """The titles named in plan D5 are all present."""
+        """The expected domain titles are all present."""
         titles = {title for title, _names in WORKSPACE_DOMAINS}
         expected = {
             "session and switching",
@@ -252,7 +252,7 @@ class TestDomainOf:
         ],
     )
     def test_known_methods(self, method: str, expected: str) -> None:
-        """Known methods resolve to the plan D5 domain title."""
+        """Known methods resolve to their expected domain title."""
         assert domain_of(method) == expected
 
     def test_unknown_returns_none(self) -> None:
@@ -269,7 +269,7 @@ class TestDomainOf:
 
 
 class TestReferenceHints:
-    """``REFERENCE_HINTS`` is well formed and points at real docs pages (D8)."""
+    """``REFERENCE_HINTS`` is well formed and points at real docs pages."""
 
     def test_shape(self) -> None:
         """Each entry is ``(triggers, title, path)`` with non-empty string members."""
@@ -291,7 +291,7 @@ class TestReferenceHints:
             assert len(triggers) == len(set(triggers))
 
     def test_paths_are_hosted_docs_not_plugin_local(self) -> None:
-        """No hint points at the plugin's ``dashboard-expert`` files (F8)."""
+        """No hint points at the plugin's ``dashboard-expert`` files."""
         for _triggers, _title, path in REFERENCE_HINTS:
             assert "dashboard-expert" not in path
             assert "skills/" not in path
@@ -315,7 +315,7 @@ class TestReferenceHints:
         ],
     )
     def test_required_pages_are_hinted(self, needle: str) -> None:
-        """The plan's required pages (D8, F9) each appear at least once."""
+        """The required docs pages each appear at least once."""
         assert needle in {path for _t, _title, path in REFERENCE_HINTS}
 
     def test_dashboard_methods_point_at_entity_management(self) -> None:
@@ -328,7 +328,7 @@ class TestReferenceHints:
             pytest.fail("no hint triggers on create_dashboard")
 
     def test_funnel_entry_precedes_insights_entry(self) -> None:
-        """``query_funnel`` is triggered before the generic insights entry (P17)."""
+        """``query_funnel`` is triggered before the generic insights entry."""
         paths = [path for _t, _title, path in REFERENCE_HINTS]
         assert paths.index("guide/query-funnels.md") < paths.index("guide/query.md")
 

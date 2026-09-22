@@ -1,18 +1,18 @@
-"""Unit tests for ``mixpanel_headless._internal.help.search`` (Plan 047, P18/P19/F2).
+"""Unit tests for ``mixpanel_headless._internal.help.search``.
 
 ``search(term)`` is a case-insensitive substring search over the public
 surface. These tests lock:
 
 - the three match tiers and their order: names, then docstring summaries,
-  then enum members and Literal values (P18);
+  then enum members and Literal values;
 - the category vocabulary, which is the inventory ``HelpKind`` plus
-  ``method`` / ``property`` for ``Workspace`` members (F2 fixes the old
-  ``[function]`` label for Literal aliases);
+  ``method`` / ``property`` for ``Workspace`` members (Literal aliases
+  are ``literal``, never ``function``);
 - the display names: ``Workspace.<member>`` and ``<module>.<member>``;
 - deduplication by ``(category, name)``;
 - ``limit`` truncation and the empty-term error;
 - the miss path: no hits, "Did you mean?" suggestions, never an exception
-  for a non-empty term (P19);
+  for a non-empty term;
 - module-state caching and ``clear_cache()``.
 """
 
@@ -118,7 +118,7 @@ class TestResultShape:
 
 
 # =============================================================================
-# Match tiers and ordering (P18)
+# Match tiers and ordering
 # =============================================================================
 
 
@@ -156,7 +156,7 @@ class TestOrdering:
     def test_retention_first_hit_is_the_first_name_hit_by_category(self) -> None:
         """``search("retention")`` starts with the ``class`` row ``RetentionCohortData``.
 
-        The plan example named ``RetentionAlignment``; on the real inventory the
+        ``RetentionAlignment`` also matches by name; on the real inventory the
         ``(category, name)`` sort puts the ``class`` row ahead of the ``literal``
         row.
         """
@@ -190,7 +190,7 @@ class TestOrdering:
 
 
 # =============================================================================
-# Categories (P18, F2)
+# Categories
 # =============================================================================
 
 
@@ -198,7 +198,7 @@ class TestCategories:
     """Categories are the inventory kinds plus ``method`` / ``property``."""
 
     def test_literal_alias_has_literal_category_and_summary(self) -> None:
-        """F2: ``CohortAggregationType`` is ``literal`` with a non-empty summary."""
+        """``CohortAggregationType`` is ``literal`` with a non-empty summary."""
         hit = _by_name(search("cohort"), "CohortAggregationType")
         assert hit.category == "literal"
         assert hit.summary
@@ -273,7 +273,7 @@ class TestCategories:
 
 
 # =============================================================================
-# Member hits (P18)
+# Member hits
 # =============================================================================
 
 
@@ -369,7 +369,7 @@ class TestCaseInsensitivity:
 
 
 # =============================================================================
-# Miss path (P19)
+# Miss path
 # =============================================================================
 
 

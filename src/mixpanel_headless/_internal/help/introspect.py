@@ -1,16 +1,16 @@
-"""Signature, field, and class-section extraction for the built-in help (Plan 047).
+"""Signature, field, and class-section extraction for the built-in help.
 
 Pure introspection over already-imported objects: no I/O, no network, no
 ``Workspace`` construction. Every function here returns the frozen models
 from :mod:`.models` or plain strings and tuples.
 
-Two rules from the plan shape this module:
+Two rules shape this module:
 
-- **D6 — display the source annotation.** ``format_type`` keeps the text that
+- **Display the source annotation.** ``format_type`` keeps the text that
   ``inspect.signature`` returns (a string under ``from __future__ import
   annotations``), so alias names such as ``MathType`` stay visible. Resolved
   hints from ``typing.get_type_hints`` feed only the inline allowed values.
-- **D7 — private members hidden, constructors shown.** Field and member names
+- **Private members hidden, constructors shown.** Field and member names
   that start with ``_`` are omitted. Classmethods and staticmethods whose
   return annotation names the class itself (or ``Self``) form the
   *construction* section.
@@ -41,7 +41,7 @@ _PREFIX_RE = re.compile(
     r"\b(?:typing_extensions|typing|collections\.abc|builtins|"
     r"mixpanel_headless(?:\.\w+)*)\."
 )
-"""Module prefixes removed from display strings (P3 plus in-package paths)."""
+"""Module prefixes removed from display strings."""
 
 _CLASS_REPR_RE = re.compile(r"<class '([^']*)'>")
 """Matches ``<class 'pkg.Name'>`` and captures the dotted name."""
@@ -88,19 +88,19 @@ _Sections = tuple[tuple[MemberDoc, ...], tuple[MemberDoc, ...], tuple[MemberDoc,
 
 
 # =============================================================================
-# Annotation display (P3, D6)
+# Annotation display
 # =============================================================================
 
 
 def format_type(annotation: object) -> str:
     """Return the display string for an annotation.
 
-    Cleanup rules (P3): strip ``typing.`` / ``typing_extensions.`` /
+    Cleanup rules: strip ``typing.`` / ``typing_extensions.`` /
     ``collections.abc.`` and every ``mixpanel_headless...`` module prefix,
     unwrap ``<class '...'>`` and ``ForwardRef('...')``, replace ``NoneType``
     with ``None``, and rewrite ``Optional[X]`` / ``Union[A, B]`` to ``X | None``
-    / ``A | B``. String annotations are cleaned but otherwise kept as written
-    (D6), so alias names such as ``MathType`` survive. The result is a fixed
+    / ``A | B``. String annotations are cleaned but otherwise kept as written,
+    so alias names such as ``MathType`` survive. The result is a fixed
     point: ``format_type(format_type(x)) == format_type(x)``.
 
     Args:
@@ -134,7 +134,7 @@ def format_type(annotation: object) -> str:
 
 
 def _clean_once(text: str) -> str:
-    """Apply every P3 cleanup rule to ``text`` one time.
+    """Apply every cleanup rule to ``text`` one time.
 
     ``format_type`` loops this function to a fixed point, because one rule can
     expose input for another (for example a prefix removal that joins two
@@ -258,7 +258,7 @@ def _split_top_level(text: str) -> list[str]:
 
 
 # =============================================================================
-# Resolved hints and allowed values (P4)
+# Resolved hints and allowed values
 # =============================================================================
 
 
@@ -267,7 +267,7 @@ def resolved_hints(obj: object) -> dict[str, object]:
 
     Any exception (``NameError`` for ``TYPE_CHECKING``-only names, ``TypeError``
     for objects without annotations) degrades to an empty dict so callers fall
-    back to the string annotation (§2.4). Results are cached per object;
+    back to the string annotation. Results are cached per object;
     ``clear_cache`` empties the cache.
 
     Args:
@@ -348,7 +348,7 @@ def allowed_values(hint: object) -> tuple[str, ...]:
 
 
 # =============================================================================
-# Signatures (P2, P12)
+# Signatures
 # =============================================================================
 
 
@@ -358,7 +358,7 @@ def signature_doc(
     name: str | None = None,
     owner: type | None = None,
 ) -> SignatureDoc:
-    """Build a ``SignatureDoc`` for a callable (P2).
+    """Build a ``SignatureDoc`` for a callable.
 
     One ``ParamDoc`` per parameter: a leading ``self`` / ``cls`` is dropped;
     ``*args`` and ``**kwargs`` keep their prefixes in ``name``; ``annotation``
@@ -462,7 +462,7 @@ def _param_doc(
 
 
 def compact_signature(sig: SignatureDoc) -> str:
-    """Render a one-line ``name(a, b=1)`` form: names and defaults only (P12).
+    """Render a one-line ``name(a, b=1)`` form: names and defaults only.
 
     Args:
         sig: A signature produced by ``signature_doc``.
@@ -484,15 +484,15 @@ def compact_signature(sig: SignatureDoc) -> str:
 
 
 # =============================================================================
-# Fields (P9, P10, P4, D7)
+# Fields
 # =============================================================================
 
 
 def dataclass_fields_doc(cls: type) -> tuple[FieldDoc, ...]:
-    """Document the public fields of a dataclass (P9).
+    """Document the public fields of a dataclass.
 
     Fields are kept in definition order. Names that start with ``_`` are
-    omitted (D7). ``default`` is ``repr(default)``, ``<factory_name>`` for a
+    omitted. ``default`` is ``repr(default)``, ``<factory_name>`` for a
     ``default_factory`` (for example ``<list>``), or ``None`` when required.
     ``annotation`` is the source annotation through ``format_type``;
     ``values`` come from resolved hints; ``description`` comes from the
@@ -555,7 +555,7 @@ def _factory_display(factory: object) -> str:
 
 
 def pydantic_fields_doc(cls: type[BaseModel]) -> tuple[FieldDoc, ...]:
-    """Document the public fields of a Pydantic model (P10, P4).
+    """Document the public fields of a Pydantic model.
 
     Rules: a required field has ``required=True`` and ``default=None``; a
     ``default_factory`` shows as ``<factory_name>``; a literal ``None``
@@ -564,7 +564,7 @@ def pydantic_fields_doc(cls: type[BaseModel]) -> tuple[FieldDoc, ...]:
     field metadata (``max_length=50``, ``ge=0``, ``pattern=...``). ``alias``
     is the JSON alias when it differs from the name, whether set explicitly
     or produced by ``alias_generator``. ``annotation`` prefers the source
-    annotation text (D6) and falls back to the resolved ``FieldInfo``
+    annotation text and falls back to the resolved ``FieldInfo``
     annotation. ``values`` are inline enum member names or Literal values.
     ``description`` is ``Field(description=...)`` or the class docstring
     ``Args:`` entry. Underscore-prefixed names never reach ``model_fields``
@@ -726,7 +726,7 @@ def _pydantic_alias(
 
 
 def model_config_doc(cls: type[BaseModel]) -> tuple[tuple[str, str], ...]:
-    """Return non-default Pydantic model config entries (P11).
+    """Return non-default Pydantic model config entries.
 
     Tracked keys: ``frozen`` (default ``False``), ``extra`` (default
     ``"ignore"``), ``populate_by_name`` (default ``False``), and
@@ -763,7 +763,7 @@ def model_config_doc(cls: type[BaseModel]) -> tuple[tuple[str, str], ...]:
 
 
 # =============================================================================
-# Enums (P5)
+# Enums
 # =============================================================================
 
 
@@ -780,7 +780,7 @@ def enum_values(cls: type[enum.Enum]) -> tuple[str, ...]:
 
 
 def enum_members(cls: type[enum.Enum]) -> tuple[tuple[str, str], ...]:
-    """Return ``(name, repr(value))`` pairs for an enum (P5 member table).
+    """Return ``(name, repr(value))`` pairs for an enum member table.
 
     Args:
         cls: An ``Enum`` subclass.
@@ -797,12 +797,12 @@ def enum_members(cls: type[enum.Enum]) -> tuple[tuple[str, str], ...]:
 
 
 # =============================================================================
-# Class sections and bases (D7)
+# Class sections and bases
 # =============================================================================
 
 
 def class_sections(cls: type) -> _Sections:
-    """Split the public members of a class into three sorted sections (D7).
+    """Split the public members of a class into three sorted sections.
 
     Only members defined on classes in the same top-level package as ``cls``
     (``mixpanel_headless`` for library classes) are considered, so ``object``,

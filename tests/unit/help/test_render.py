@@ -9,7 +9,7 @@ string. These tests lock:
   values]`` header, search columns, ``No matches for "x"``);
 - markdown output uses ``##`` headings, fenced blocks, and link hints;
 - JSON output parses back into ``to_dict()``;
-- the literal ``[property]`` / ``[method]`` tags survive (F12) and no Rich
+- the literal ``[property]`` / ``[method]`` tags survive and no Rich
   markup is emitted;
 - an unknown format raises ``ValueError``.
 """
@@ -58,7 +58,7 @@ ENTITY_HINT = Hint(
     title="dashboards, reports, and cohorts (entity management)",
     url=f"{DOCS}/guide/entity-management/index.md",
 )
-"""Hint fixture matching the plan's canonical ``create_dashboard`` example."""
+"""Hint fixture for the ``create_dashboard`` reference example."""
 
 # =============================================================================
 # Fixtures
@@ -67,7 +67,7 @@ ENTITY_HINT = Hint(
 
 @pytest.fixture
 def method_entry() -> HelpEntry:
-    """Return the plan §4.4 ``Workspace.create_dashboard`` entry.
+    """Return a hand-built ``Workspace.create_dashboard`` entry.
 
     Returns:
         A ``method`` entry with signature, doc sections, two referenced types,
@@ -463,7 +463,7 @@ def test_text_has_no_rich_markup_and_no_trailing_newline(kind: HelpKind) -> None
 
 
 def test_method_text_exact(method_entry: HelpEntry) -> None:
-    """The canonical ``create_dashboard`` entry renders the §4.4 layout."""
+    """The canonical ``create_dashboard`` entry renders the expected text layout."""
     expected = "\n".join(
         [
             "Workspace.create_dashboard(",

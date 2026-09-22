@@ -1,16 +1,16 @@
-"""Unit tests for ``mixpanel_headless.reference`` (Plan 047 Phase 4 steps 5–6, §4.2).
+"""Unit tests for ``mixpanel_headless.reference``.
 
 The public module assembles one ``HelpEntry`` per ``HelpKind`` from the
 private ``_internal/help`` building blocks and prints it through ``help()``.
 These tests lock, with real library objects:
 
-- one structural ``describe()`` test per §4.2 grammar row (counts and
+- one structural ``describe()`` test per query-grammar form (counts and
   shapes, never prose, so docstring edits elsewhere do not break them);
 - ``help()`` routing (overview / ``search <term>`` / describe), the ``file``
   and ``format`` arguments, the miss path (``Did you mean?`` plus search
-  hits, never an exception), and the P20 usage text for a bare ``search``;
+  hits, never an exception), and the usage text for a bare ``search``;
 - ``domain=`` filtering for ``Workspace`` and its error cases;
-- the D9 isolation guarantee (no file is created under an empty ``HOME``);
+- the isolation guarantee (no file is created under an empty ``HOME``);
 - ``clear_cache()`` fan-out to every internal cache;
 - a guard: every inventory name and every ``Workspace`` member describes and
   renders in all three formats without raising.
@@ -110,7 +110,7 @@ def _group_titles(entry: ref.HelpEntry) -> list[str]:
 
 
 # =============================================================================
-# Module surface (Phase 4 step 6)
+# Module surface
 # =============================================================================
 
 
@@ -174,7 +174,7 @@ class TestModuleSurface:
 
 
 # =============================================================================
-# describe(): one test per §4.2 row
+# describe(): one test per query-grammar form
 # =============================================================================
 
 
@@ -411,7 +411,7 @@ class TestEnumsAndLiterals:
         assert entry.summary == ref.describe("FeatureFlagStatus").summary
 
     def test_enum_member_object_form(self) -> None:
-        """An enum member object resolves to its enum class (D12 instance rule)."""
+        """An enum member object resolves to its enum class, like any other instance."""
         assert ref.describe(mp.FeatureFlagStatus.ENABLED) == ref.describe(
             "FeatureFlagStatus"
         )
@@ -479,7 +479,7 @@ class TestAliasExceptionModuleConstant:
 
 
 class TestListings:
-    """``types`` and ``exceptions`` listings (P7, P8, P17)."""
+    """``types`` and ``exceptions`` listings."""
 
     def test_types_listing(self) -> None:
         """``types`` has six groups and covers every type-like export."""
@@ -574,7 +574,7 @@ class TestHintsFlag:
 
 
 class TestDescribeMiss:
-    """A miss raises ``HelpLookupError`` with suggestions and search hits (D10)."""
+    """A miss raises ``HelpLookupError`` with suggestions and search hits."""
 
     def test_miss_carries_hits(self) -> None:
         """The error carries suggestions and up to five search hits."""
@@ -599,7 +599,7 @@ class TestDescribeMiss:
 
 
 # =============================================================================
-# help(): printing wrapper (Phase 4 step 5)
+# help(): printing wrapper
 # =============================================================================
 
 
@@ -648,7 +648,7 @@ class TestHelpPrinting:
         assert payload["hits"]
 
     def test_search_without_term_prints_usage(self) -> None:
-        """A bare ``search`` prints a short usage text (P20) and does not raise."""
+        """A bare ``search`` prints a short usage text and does not raise."""
         text = _capture("search")
         assert "search <term>" in text
         assert "No help entry" not in text
@@ -716,17 +716,17 @@ class TestHelpPrinting:
             ref.help("Filter", domain="funnel query", file=io.StringIO())
 
     def test_no_rich_markup(self) -> None:
-        """Listing output keeps the literal ``[property]`` tag (F12)."""
+        """Listing output keeps the literal ``[property]`` tag."""
         assert "[property]" in _capture("Workspace")
 
 
 # =============================================================================
-# D9 isolation, caching, guard
+# Isolation, caching, guard
 # =============================================================================
 
 
 class TestIsolation:
-    """Help never reads config or writes a file (D9)."""
+    """Help never reads config or writes a file."""
 
     def test_describe_creates_no_file(self, isolated_home: Path) -> None:
         """``describe("Workspace.query")`` leaves the empty home empty.
@@ -750,7 +750,7 @@ class TestIsolation:
 
 
 class TestClearCache:
-    """``clear_cache()`` fans out to every internal cache (D13)."""
+    """``clear_cache()`` fans out to every internal cache."""
 
     def test_clears_every_cache(self) -> None:
         """Inventory, hints, relations, and search caches are all dropped."""

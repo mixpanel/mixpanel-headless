@@ -82,7 +82,7 @@ class TestErrorCodesArtifact:
         """All 35 exported exception classes appear, with one root.
 
         28 from the E2 coding pass, the six 045-report-links classes, and
-        ``HelpLookupError`` from 047 (built-in help).
+        ``HelpLookupError`` from the built-in help feature.
 
         Args:
             error_codes: The artifact body.

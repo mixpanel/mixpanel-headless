@@ -1,18 +1,18 @@
-"""Cross-references for the built-in API reference (Plan 047 P12–P14, D5, D6).
+"""Cross-references for the built-in API reference.
 
 This module answers "what else is connected to this name?":
 
 - :func:`used_by` — the ``Workspace`` methods whose **parameters** accept an
-  exported type (P12 "Used by Workspace"), with the parameter names.
+  exported type (the "Used by Workspace" section), with the parameter names.
 - :func:`referenced_types` — the exported types named in a callable's
-  parameter and return annotations (P13 "Referenced types").
+  parameter and return annotations (the "Referenced types" section).
 - :func:`see_also` — the other methods in the same ``WORKSPACE_DOMAINS``
-  domain (P14, replacing the old entity-noun heuristic per D5).
+  domain (this replaces the older entity-noun heuristic).
 - :func:`exception_tree`, :func:`subclasses_of`, :func:`raised_by` — the
   exported exception hierarchy and the ``Workspace`` methods whose
-  ``Raises:`` section names an exception (§4.2 ``exception`` row).
+  ``Raises:`` section names an exception.
 
-Detection follows D6. For every callable the module resolves
+For every callable the module resolves
 ``typing.get_type_hints`` through :func:`~.introspect.resolved_hints` and
 walks the hint tree with ``typing.get_args`` (through ``Union``, ``Optional``,
 ``list``, ``dict``, ``Sequence``, ``Callable``, and ``Annotated``). A
@@ -20,9 +20,9 @@ parameter references an export when the export object appears in that tree
 by identity. Literal and Union aliases also match by value, because
 ``get_type_hints`` may inline an equal ``Literal[...]``. When hints cannot be
 resolved (``{}``), the module falls back to a word-boundary regex on the
-string annotation, so ``Cohort`` never matches ``CohortMetric`` (F10).
+string annotation, so ``Cohort`` never matches ``CohortMetric``.
 
-Results are cached per name in module state (D13); :func:`clear_cache`
+Results are cached per name in module state; :func:`clear_cache`
 drops them. Nothing here touches the network, reads config, or constructs
 a ``Workspace``.
 """
@@ -58,7 +58,7 @@ __all__ = [
 _TYPE_KINDS: frozenset[HelpKind] = frozenset(
     {"class", "model", "dataclass", "enum", "literal", "alias", "exception"}
 )
-"""Export kinds that count as *types* for ``referenced_types`` (P13)."""
+"""Export kinds that count as *types* for ``referenced_types``."""
 
 _VALUE_COMPARED_KINDS: frozenset[HelpKind] = frozenset({"literal", "alias"})
 """Kinds whose export object may be inlined by ``get_type_hints`` and so also match by ``==``."""
@@ -78,7 +78,7 @@ _EXCEPTIONS: dict[str, type[BaseException]] | None = None
 
 
 # =============================================================================
-# Annotation trees (D6)
+# Annotation trees
 # =============================================================================
 
 
@@ -152,7 +152,7 @@ def _annotations_of(func: object) -> tuple[_Annotation, ...]:
 
 
 def _matches(row: Export, nodes: tuple[object, ...], text: str) -> bool:
-    """Decide whether one annotation references an export (D6).
+    """Decide whether one annotation references an export.
 
     Args:
         row: The inventory row to look for.
@@ -198,11 +198,10 @@ def _method_annotations() -> tuple[tuple[str, tuple[_Annotation, ...]], ...]:
 
 
 def used_by(name: str) -> tuple[UsageDoc, ...]:
-    """Return the ``Workspace`` methods whose parameters accept an export (P12).
+    """Return the ``Workspace`` methods whose parameters accept an export.
 
     Only parameters count; a method that merely *returns* the type is not a
-    usage. Matching is exact (D6), so ``Cohort`` does not match
-    ``CohortMetric`` (F10).
+    usage. Matching is exact, so ``Cohort`` does not match ``CohortMetric``.
 
     Args:
         name: An export name such as ``"Filter"`` or ``"MathType"``.
@@ -260,7 +259,7 @@ def _summary(row: Export) -> str:
 
     Literal and Union aliases have no docstring of their own — their
     ``__doc__`` is the generic ``typing`` class text — so their line comes
-    from ``LITERAL_ALIAS_DOCS`` (D4).
+    from ``LITERAL_ALIAS_DOCS``.
 
     Args:
         row: The inventory row.
@@ -276,7 +275,7 @@ def _summary(row: Export) -> str:
 
 
 def referenced_types(func: object) -> tuple[tuple[str, str], ...]:
-    """Return the exported types named in a callable's annotations (P13).
+    """Return the exported types named in a callable's annotations.
 
     Parameters and the return annotation both count. Only type-like kinds
     qualify (classes, models, dataclasses, enums, exceptions, Literal and
@@ -312,7 +311,7 @@ def referenced_types(func: object) -> tuple[tuple[str, str], ...]:
 
 
 def see_also(qualname: str) -> tuple[str, tuple[str, ...]]:
-    """Return the domain siblings of a ``Workspace`` method (P14, D5).
+    """Return the domain siblings of a ``Workspace`` method.
 
     Args:
         qualname: A help query string such as ``"Workspace.create_dashboard"``.
@@ -500,7 +499,7 @@ def raised_by(exc_name: str) -> tuple[UsageDoc, ...]:
 
 
 def clear_cache() -> None:
-    """Drop every cached relation (D13).
+    """Drop every cached relation.
 
     The next call rebuilds the ``Workspace`` annotation trees, the
     ``Raises:`` index, the exception map, and the per-name results.
