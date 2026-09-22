@@ -13,8 +13,7 @@ top-level `mp.help()` function, a structured `mp.reference` module, and an
 surface. All three need no credentials and touch no config file. The replay
 analyzer now reads mobile and other screenshot-based recordings (iOS,
 Android, React Native, Flutter): taps, scrolls, wireframe screens, and a new
-`rage_taps()` aggregator. `__all__` loses ten duplicate entries, and the
-plugin manifest moves to `0.3.0`.
+`rage_taps()` aggregator. `__all__` loses ten duplicate entries.
 
 ### Added
 
@@ -201,9 +200,9 @@ plugin manifest moves to `0.3.0`.
   `screens_df` for screen flow, read `metadata["hit"]` for tap targets)
   and triggers on questions about rage taps on mobile.
 - Plugin: the `mixpanelyst` skill still uses its bundled help script; the
-  next plugin release switches it to `mp help` / `mp.help()` and requires
-  `mixpanel-headless>=0.3.0`.
-- Plugin: the manifest version is now `0.3.0`, in step with the library.
+  next plugin release switches it to `mp help` / `mp.help()`, requires
+  `mixpanel-headless>=0.3.0`, and moves the manifest version to `0.3.0`.
+  The manifest stays at `0.2.3` in this release.
 
 ## 0.2.3 — 2026-09-14
 
