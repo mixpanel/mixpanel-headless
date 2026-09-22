@@ -675,13 +675,53 @@ class TestEdgeCases:
         assert set(info.value.suggestions) == {"Twins.Alpha", "Twins.alpha"}
         assert resolve("Twins.alpha").member == "alpha"
 
-    def test_builtin_without_signature_has_no_parameters(self) -> None:
-        """A builtin whose signature is unavailable exposes no parameters."""
-        target = resolve("FeatureFlagStatus.maketrans")
-        assert target.kind == "method"
+    def test_uninspectable_builtin_member_is_a_miss(self) -> None:
+        """An inherited builtin without a signature is not a member.
+
+        ``str.maketrans`` reaches a ``str``-based enum through the MRO but
+        ``inspect.signature`` cannot describe it, so the resolver treats it as
+        a miss with the usual suggestions instead of letting the signature
+        builder raise ``ValueError`` later.
+        """
         with pytest.raises(HelpLookupError) as info:
+            resolve("FeatureFlagStatus.maketrans")
+        assert info.value.query == "FeatureFlagStatus.maketrans"
+        assert info.value.suggestions
+        with pytest.raises(HelpLookupError):
             resolve("FeatureFlagStatus.maketrans.x")
-        assert info.value.suggestions == ("FeatureFlagStatus.maketrans",)
+
+    def test_inspectable_builtin_member_still_resolves(self) -> None:
+        """An inherited builtin with a text signature stays resolvable."""
+        target = resolve("FeatureFlagStatus.upper")
+        assert target.kind == "method"
+        assert target.owner is mp.FeatureFlagStatus
+
+    def test_callable_with_bogus_signature_has_no_parameters(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Python callable whose signature cannot be built has no parameters.
+
+        The member itself still resolves (it is not a builtin); only the
+        parameter walk below it treats the signature as empty.
+
+        Args:
+            monkeypatch: Pytest monkeypatch fixture.
+        """
+
+        class _Odd:
+            """Class whose method carries an invalid ``__signature__``."""
+
+            def method(self) -> None:
+                """Method with a bogus signature attribute."""
+
+            method.__signature__ = "not a signature"  # type: ignore[attr-defined]
+
+        rows = (*inventory(), Export(name="Odd", kind="class", obj=_Odd))
+        monkeypatch.setattr(inventory_module, "_INVENTORY", rows)
+        assert resolve("Odd.method").kind == "method"
+        with pytest.raises(HelpLookupError) as info:
+            resolve("Odd.method.x")
+        assert info.value.suggestions == ("Odd.method",)
 
     def test_property_without_getter_raises(self) -> None:
         """A bare ``property()`` has no getter to resolve through."""

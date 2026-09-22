@@ -215,6 +215,16 @@ class TestExitCodes:
         assert "Domains:" not in result.output
         assert result.stderr == ""
 
+    def test_uninspectable_builtin_member_exits_4(self, runner: CliRunner) -> None:
+        """An inherited builtin without a signature is a plain miss, exit 4."""
+        result = runner.invoke(app, ["help", "FeatureFlagStatus.maketrans"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout.startswith(
+            "No help entry for 'FeatureFlagStatus.maketrans'."
+        )
+        assert "Invalid argument" not in result.output
+        assert result.stderr == ""
+
     def test_jq_without_json_exits_3(self, runner: CliRunner) -> None:
         """``--jq`` requires ``-f json``."""
         result = runner.invoke(app, ["help", "Filter", "--jq", ".kind"])

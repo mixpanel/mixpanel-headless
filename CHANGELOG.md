@@ -40,7 +40,10 @@ entries.
   that accept them; modules list their `__all__`; exceptions show their
   subclass tree; private fields are hidden and factory classmethods are
   listed under Construction. The inventory comes from `__all__` and is
-  cached per process.
+  cached per process. Inherited builtins that Python cannot inspect
+  (`FeatureFlagStatus.maketrans`, reached through the `str` base) are a
+  plain miss, not an error; inspectable inherited callables such as
+  `CreateDashboardParams.model_dump` resolve.
 - **`mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME]
   [--no-hints]`.** No auth: the command ignores `-a / -p / -w / -t` and never
   builds a `Workspace`. The default format is `text` (unlike entity

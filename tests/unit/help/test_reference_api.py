@@ -904,6 +904,19 @@ class TestDescribeMiss:
         with pytest.raises(HelpLookupError):
             ref.describe(json)
 
+    def test_uninspectable_builtin_member_is_a_miss(self) -> None:
+        """An inherited builtin without a signature is a miss, not a ``ValueError``.
+
+        ``str.maketrans`` is reachable on a ``str``-based enum but has no
+        inspectable signature; inspectable inherited callables such as the
+        Pydantic ``model_dump`` keep working.
+        """
+        with pytest.raises(HelpLookupError) as info:
+            ref.describe("FeatureFlagStatus.maketrans")
+        assert not isinstance(info.value, HelpDomainError)
+        assert info.value.query == "FeatureFlagStatus.maketrans"
+        assert ref.describe("CreateDashboardParams.model_dump").kind == "method"
+
     def test_parameter_missing_from_signature_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

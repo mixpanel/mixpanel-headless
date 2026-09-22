@@ -74,6 +74,15 @@ _CALLABLE_KINDS: frozenset[str] = frozenset({"method", "function"})
 _SELF_NAMES: frozenset[str] = frozenset({"self", "cls"})
 _SUGGESTION_LIMIT = 5
 _SUGGESTION_CUTOFF = 0.5
+_BUILTIN_CALLABLE_TYPES: tuple[type, ...] = (
+    types.BuiltinFunctionType,
+    types.BuiltinMethodType,
+    types.WrapperDescriptorType,
+    types.MethodDescriptorType,
+    types.MethodWrapperType,
+    types.ClassMethodDescriptorType,
+)
+"""C-level callables (builtins and slot wrappers) that may lack a signature."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,12 +438,15 @@ def _class_member_names(cls: type) -> tuple[str, ...]:
 
     Returns:
         Sorted names of public properties, callables, and enum members.
-        Plain data attributes (``model_config``, dataclass defaults) are
-        skipped.
+        Plain data attributes (``model_config``, dataclass defaults) and
+        inherited builtins without an inspectable signature (``str.maketrans``
+        on a ``str`` enum) are skipped; inherited builtins that do have one
+        (``str.upper``) and inherited Python callables (Pydantic's
+        ``model_dump``) are kept.
     """
     members = cls.__members__ if issubclass(cls, enum.Enum) else {}
     # Walk the MRO instead of ``dir(cls)``: ``Enum.__dir__`` hides inherited
-    # methods (such as ``str.maketrans`` on a ``str`` enum) on Python 3.10.
+    # methods (such as ``str.upper`` on a ``str`` enum) on Python 3.10.
     attributes: set[str] = set()
     for klass in cls.__mro__:
         attributes.update(vars(klass))
@@ -446,9 +458,46 @@ def _class_member_names(cls: type) -> tuple[str, ...]:
             names.append(name)
             continue
         static = inspect.getattr_static(cls, name)
-        if isinstance(static, property) or callable(getattr(cls, name, None)):
+        if isinstance(static, property):
+            names.append(name)
+            continue
+        bound = getattr(cls, name, None)
+        if callable(bound) and not _is_uninspectable_builtin(bound):
             names.append(name)
     return tuple(sorted(names))
+
+
+def _is_uninspectable_builtin(obj: object) -> bool:
+    """Tell whether ``obj`` is a C-level callable without a usable signature.
+
+    Such members reach exported classes only through framework bases
+    (``str`` on a ``str`` enum, ``dict`` on a typed dict, ``BaseException``)
+    and cannot be documented, so the resolver treats them as absent. Python
+    callables are never excluded here, even when their signature is broken;
+    that case is a bug the signature builder reports.
+
+    Args:
+        obj: The bound member (``getattr(cls, name)``).
+
+    Returns:
+        ``True`` when ``obj`` is a builtin function or method, slot wrapper,
+        method descriptor, or method wrapper for which ``inspect.signature``
+        raises ``ValueError``.
+
+    Example:
+        ```python
+        _is_uninspectable_builtin(str.maketrans)   # True
+        _is_uninspectable_builtin(str.upper)       # False (has a text signature)
+        _is_uninspectable_builtin(BaseModel.model_dump)   # False (Python)
+        ```
+    """
+    if not isinstance(obj, _BUILTIN_CALLABLE_TYPES):
+        return False
+    try:
+        inspect.signature(cast("Callable[..., object]", obj))
+    except ValueError:
+        return True
+    return False
 
 
 # =============================================================================
