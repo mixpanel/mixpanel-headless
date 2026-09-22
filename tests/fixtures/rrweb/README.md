@@ -114,7 +114,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `android-wireframe-001.json`
 
-- Source: project 1055570, replay `a436a4ec-076b-4a14-851c-b6a80f7c6fdc`.
+- Source: an internal Mixpanel SDK test project, replay `a436a4ec-076b-4a14-851c-b6a80f7c6fdc`.
 - SDK: `android-sr`. Duration: 21 s. Window: full replay.
 - Meta 411×914. Wireframe viewport 411×914.
 - Events: 11 (type 2: 4, type 3: 4, type 4: 1, type 5: 2).
@@ -125,7 +125,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `android-wireframe-masked-001.json`
 
-- Source: project 1055570, replay `51723b08-e878-42da-a9b3-ca49c3e10042`.
+- Source: an internal Mixpanel SDK test project, replay `51723b08-e878-42da-a9b3-ca49c3e10042`.
 - SDK: `android-sr` (an older build). Duration: 0 s. Window: full replay.
 - Meta 411×866. Wireframe viewport 1080×2400.
 - Events: 3 (type 2: 1, type 4: 1, type 5: 1).
@@ -135,7 +135,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `android-snacks-001.json`
 
-- Source: project 4003103, replay `e30f6237-e675-4283-832d-8bef10cfd398`.
+- Source: an internal Mixpanel SDK test project, replay `e30f6237-e675-4283-832d-8bef10cfd398`.
 - SDK: `android-sr`. Duration: 158 s. Window: full replay.
 - Meta 411×914. Wireframe viewport 411×914.
 - Events: 85 (type 2: 30, type 3: 32, type 4: 7, type 5: 16).
@@ -146,7 +146,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `ios-early-touch-001.json`
 
-- Source: project 4003103, replay `EA4E8C42-D044-4F2B-858F-32A70E8111FD`.
+- Source: an internal Mixpanel SDK test project, replay `EA4E8C42-D044-4F2B-858F-32A70E8111FD`.
 - SDK: `swift-sr`. Duration: 2 s. Window: full replay.
 - Meta 402×874. Wireframe viewport 402×874.
 - Events: 6 (type 2: 1, type 3: 3, type 4: 1, type 5: 1).
@@ -158,7 +158,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `ios-wireframe-001.json`
 
-- Source: project 4003103, replay `6CDBD778-46BE-4C7F-964C-7E4223198532`.
+- Source: an internal Mixpanel SDK test project, replay `6CDBD778-46BE-4C7F-964C-7E4223198532`.
 - SDK: `swift-sr`. Duration: 13 s. Window: full replay.
 - Meta 402×874. Wireframe viewport 402×874.
 - Events: 23 (type 2: 5, type 3: 10, type 4: 2, type 5: 6).
@@ -170,7 +170,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `flutter-android-rage-001.json`
 
-- Source: project 4003103, replay `81cf456f-3bde-4369-90c0-ba7f6db546ef`.
+- Source: an internal Mixpanel SDK test project, replay `81cf456f-3bde-4369-90c0-ba7f6db546ef`.
 - SDK: `flutter-sr` on Android. Duration: 125 s. Window: full replay.
 - Meta 412×915. Wireframe viewport 411×914 (a rounding difference, not
   a scale difference).
@@ -186,7 +186,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `flutter-web-clicks-001.json`
 
-- Source: project 4003103, replay `3c5cfb4b-3d77-4e1a-8c3e-8cbdf3059be0`.
+- Source: an internal Mixpanel SDK test project, replay `3c5cfb4b-3d77-4e1a-8c3e-8cbdf3059be0`.
 - SDK: `flutter-sr` on the web. Duration: 25 s. Window: full replay.
 - Meta 1200×1213. Wireframe viewport 1200×1213.
 - Events: 37 (type 2: 20, type 3: 9, type 4: 1, type 5: 7).
@@ -197,7 +197,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `rn-ios-001.json`
 
-- Source: project 4003103, replay `9F276478-C1D6-4464-AE6E-C647BF724287`.
+- Source: an internal Mixpanel SDK test project, replay `9F276478-C1D6-4464-AE6E-C647BF724287`.
 - SDK: `react-native-sr` on iOS. Duration: 35 s. Window: full replay.
 - Meta 390×844. Wireframe viewport 390×844.
 - Events: 54 (type 2: 12, type 3: 29, type 4: 4, type 5: 9).
@@ -208,7 +208,7 @@ Event counts below use the rrweb type codes: 2 = FullSnapshot,
 
 ### `rn-android-no-wireframe-001.json`
 
-- Source: project 4003103, replay `553483d1-e1bb-4d21-be6f-1bc3435a77e4`.
+- Source: an internal Mixpanel SDK test project, replay `553483d1-e1bb-4d21-be6f-1bc3435a77e4`.
 - SDK: `react-native-sr` on Android. Duration: 29 s. Window: full replay.
 - Meta 411×914. No wireframes.
 - Events: 15 (type 2: 8, type 3: 6, type 4: 1).
