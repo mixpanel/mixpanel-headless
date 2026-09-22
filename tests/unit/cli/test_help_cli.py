@@ -365,8 +365,9 @@ class TestExitCodes:
         result = runner.invoke(app, ["help", "--domain", "dashboards"])
         assert result.exit_code == ExitCode.INVALID_ARGS
         assert result.stdout == ""
-        assert result.stderr.startswith(
-            "Error: --domain applies only to the Workspace listing;"
+        assert result.stderr == (
+            "Error: --domain applies only to the Workspace listing; "
+            "the overview is not the Workspace class.\n"
         )
         assert "Domains:" not in result.stderr
 

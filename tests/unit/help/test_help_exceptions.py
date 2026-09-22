@@ -272,6 +272,15 @@ class TestDomainErrorMessage:
             "'Filter' is not the Workspace class."
         )
 
+    def test_not_workspace_on_overview_names_the_overview(self) -> None:
+        """An empty query is the overview, so the message says so, not ``''``."""
+        exc = HelpDomainError("", domain="dashboards", reason="not_workspace")
+        assert str(exc) == (
+            "--domain applies only to the Workspace listing; "
+            "the overview is not the Workspace class."
+        )
+        assert "''" not in str(exc)
+
     @pytest.mark.parametrize("reason", ["unknown", "ambiguous", "not_workspace"])
     def test_message_never_says_no_help_entry(self, reason: HelpDomainReason) -> None:
         """No reason produces the parent's ``No help entry`` sentence.

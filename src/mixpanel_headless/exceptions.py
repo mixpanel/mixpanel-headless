@@ -1805,7 +1805,8 @@ class HelpDomainError(HelpLookupError):
 
     Attributes:
         query: The help query text (``"Workspace"``, ``"Filter"``), never
-            the domain.
+            the domain. An empty string is the overview, and the
+            ``not_workspace`` message names it as such.
         domain: The ``domain=`` value as the caller gave it.
         domains: Every registered title for an unknown domain, the candidate
             titles for an ambiguous prefix, ``()`` for a non-``Workspace``
@@ -1853,9 +1854,10 @@ class HelpDomainError(HelpLookupError):
         if reason == "ambiguous":
             message = f"Ambiguous domain '{domain}': {', '.join(self.domains)}."
         elif reason == "not_workspace":
+            subject = f"'{query}'" if query else "the overview"
             message = (
                 "--domain applies only to the Workspace listing; "
-                f"'{query}' is not the Workspace class."
+                f"{subject} is not the Workspace class."
             )
         else:
             message = f"Unknown domain '{domain}'."
