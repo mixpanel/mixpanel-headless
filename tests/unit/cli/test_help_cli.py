@@ -1,25 +1,35 @@
 """CliRunner tests for ``mp help``.
 
 Covers the documented command-line examples, the exit-code contract
-(0 found, 4 miss, 3 invalid flags), the three output formats, ``--jq``
-gating, ``--domain`` filtering, ``--no-hints``, variadic query tokens, the
+(0 found, 4 miss or empty search, 3 flag misuse, 2 bad option value), the
+stdout / stderr split (results and misses on stdout, flag misuse on
+stderr), the three output formats, ``--jq`` gating, ``--domain``
+filtering and its error cases, ``--no-hints``, variadic query tokens, the
 literal ``[property]`` tag, and isolation from the config file and the
 auth flags.
 """
 
 from __future__ import annotations
 
+import io
 import json
 import os
 from pathlib import Path
 
 import click
 import pytest
+import typer
 from typer.testing import CliRunner
 
+from mixpanel_headless import reference as ref
+from mixpanel_headless._internal.help.models import HELP_FORMATS
+from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.cli.utils import ExitCode, handle_errors
-from mixpanel_headless.exceptions import HelpLookupError
+from mixpanel_headless.exceptions import HelpDomainError, HelpLookupError
+
+DOMAIN_TITLES = tuple(title for title, _ in WORKSPACE_DOMAINS)
+"""Every registered ``Workspace`` domain title, in registry order."""
 
 
 @pytest.fixture(autouse=True)
@@ -88,12 +98,24 @@ class TestDocumentedExamples:
         assert "Tip:" in result.output
 
     def test_json_with_jq(self, runner: CliRunner) -> None:
-        """``-f json --jq`` applies the filter to the JSON payload."""
+        """``-f json --jq`` applies the filter: one JSON string per line."""
         result = runner.invoke(
             app, ["help", "Filter", "-f", "json", "--jq", ".construction[].name"]
         )
         assert result.exit_code == 0, result.output
-        assert "equals" in result.output
+        lines = result.stdout.splitlines()
+        assert lines
+        values = [json.loads(line) for line in lines]
+        assert all(isinstance(value, str) for value in values)
+        assert "equals" in values
+        assert "kind" not in result.stdout
+
+    def test_json_with_jq_single_value(self, runner: CliRunner) -> None:
+        """A filter that yields one value prints that value alone."""
+        result = runner.invoke(app, ["help", "Filter", "-f", "json", "--jq", ".kind"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == "dataclass"
+        assert result.stdout == '"dataclass"\n'
 
     def test_markdown(self, runner: CliRunner) -> None:
         """``-f markdown`` emits a fenced code block."""
@@ -124,46 +146,145 @@ class TestDocumentedExamples:
 
 
 class TestExitCodes:
-    """Exit codes: 0 found, 4 miss, 3 flag misuse."""
+    """Exit codes: 0 found, 4 miss or empty search, 3 flag misuse."""
 
     def test_miss_exits_4_with_suggestions_on_stdout(self, runner: CliRunner) -> None:
-        """An unknown query exits 4 and prints suggestions on stdout."""
+        """An unknown query exits 4 and prints suggestions on stdout only."""
         result = runner.invoke(app, ["help", "Workspace.query_funel"])
         assert result.exit_code == ExitCode.NOT_FOUND
-        assert "No help entry for 'Workspace.query_funel'." in result.output
-        assert "Did you mean?" in result.output
-        assert "Workspace.query_funnel" in result.output
+        assert result.stdout.startswith("No help entry for 'Workspace.query_funel'.")
+        assert "Did you mean: " in result.stdout
+        assert "Workspace.query_funnel" in result.stdout
+        assert result.stderr == ""
+
+    def test_miss_with_hits_exits_4(self, runner: CliRunner) -> None:
+        """A near miss prints the suggestions and the search view, exits 4."""
+        result = runner.invoke(app, ["help", "Cohor"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout.startswith(
+            "No help entry for 'Cohor'. Did you mean: Cohort, "
+        )
+        assert '# Search: "Cohor"' in result.stdout
+        assert any(
+            line.startswith("  [dataclass] Cohort")
+            for line in result.stdout.splitlines()
+        )
+
+    @pytest.mark.parametrize("fmt", HELP_FORMATS)
+    def test_miss_output_equals_python_help(self, runner: CliRunner, fmt: str) -> None:
+        """The CLI miss text is exactly what ``mp.help()`` prints for the query.
+
+        Args:
+            fmt: One of the help output formats.
+        """
+        result = runner.invoke(app, ["help", "Cohor", "-f", fmt])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        buffer = io.StringIO()
+        ref.help("Cohor", format=fmt, file=buffer)  # type: ignore[arg-type]
+        assert result.stdout == buffer.getvalue()
 
     def test_miss_json(self, runner: CliRunner) -> None:
         """A miss with ``-f json`` prints a JSON error object and exits 4."""
         result = runner.invoke(app, ["help", "nonesuch_thing", "-f", "json"])
         assert result.exit_code == ExitCode.NOT_FOUND
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload["query"] == "nonesuch_thing"
         assert "suggestions" in payload
         assert "hits" in payload
+
+    def test_miss_with_domain_takes_miss_path(self, runner: CliRunner) -> None:
+        """A name miss exits 4 with the normal miss text even with ``--domain``."""
+        result = runner.invoke(app, ["help", "Filtr", "--domain", "dashboards"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout.startswith("No help entry for 'Filtr'. Did you mean: ")
+        assert "Filter" in result.stdout
+        assert "Domains:" not in result.output
+        assert result.stderr == ""
 
     def test_jq_without_json_exits_3(self, runner: CliRunner) -> None:
         """``--jq`` requires ``-f json``."""
         result = runner.invoke(app, ["help", "Filter", "--jq", ".kind"])
         assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert "--jq requires --format json" in result.stderr
 
     def test_search_without_term_exits_3(self, runner: CliRunner) -> None:
-        """A bare ``search`` prints usage and exits 3."""
+        """A bare ``search`` prints one usage line on stderr and exits 3."""
         result = runner.invoke(app, ["help", "search"])
         assert result.exit_code == ExitCode.INVALID_ARGS
-        assert "search" in result.output
+        assert result.stdout == ""
+        assert result.stderr == (
+            "Error: search needs a term. Usage: mp help search <term>\n"
+        )
+
+    def test_search_without_hits_exits_4(self, runner: CliRunner) -> None:
+        """A search that matches nothing still prints its view, then exits 4."""
+        result = runner.invoke(app, ["help", "search", "zzzzqqqq"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout == 'No matches for "zzzzqqqq"\n'
+        assert result.stderr == ""
+
+    def test_search_without_hits_json_exits_4(self, runner: CliRunner) -> None:
+        """Under ``-f json`` an empty search prints the JSON object and exits 4."""
+        result = runner.invoke(app, ["help", "search", "zzzzqqqq", "-f", "json"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        payload = json.loads(result.stdout)
+        assert payload["term"] == "zzzzqqqq"
+        assert payload["hits"] == []
 
     def test_unknown_domain_exits_3(self, runner: CliRunner) -> None:
-        """An unknown ``--domain`` exits 3 and lists the titles."""
+        """An unknown ``--domain`` exits 3; stderr has the message and one list."""
         result = runner.invoke(app, ["help", "Workspace", "--domain", "nope"])
         assert result.exit_code == ExitCode.INVALID_ARGS
-        assert "dashboards" in result.output
+        assert result.stdout == ""
+        lines = result.stderr.splitlines()
+        assert lines == [
+            "Error: Unknown domain 'nope'.",
+            "Domains: " + ", ".join(DOMAIN_TITLES),
+        ]
+        assert result.stderr.count("dashboards") == 1
+
+    def test_ambiguous_domain_exits_3(self, runner: CliRunner) -> None:
+        """An ambiguous ``--domain`` prefix exits 3 and lists the candidates."""
+        result = runner.invoke(app, ["help", "Workspace", "--domain", "se"])
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert result.stderr.splitlines() == [
+            "Error: Ambiguous domain 'se': session and switching, session replay.",
+            "Domains: session and switching, session replay",
+        ]
 
     def test_domain_on_non_workspace_exits_3(self, runner: CliRunner) -> None:
-        """``--domain`` with a non-``Workspace`` query exits 3."""
+        """``--domain`` with a non-``Workspace`` query exits 3 and says why."""
         result = runner.invoke(app, ["help", "Filter", "--domain", "dashboards"])
         assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert result.stderr == (
+            "Error: --domain applies only to the Workspace listing; "
+            "'Filter' is not the Workspace class.\n"
+        )
+        assert "No help entry" not in result.output
+
+    def test_domain_error_keeps_json_stdout_clean(self, runner: CliRunner) -> None:
+        """Under ``-f json`` a domain error writes nothing to stdout."""
+        result = runner.invoke(
+            app, ["help", "Workspace", "--domain", "nope", "-f", "json"]
+        )
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert "Unknown domain 'nope'." in result.stderr
+
+    def test_handle_errors_maps_help_domain_error_to_4_as_safety_net(self) -> None:
+        """``handle_errors`` still maps an escaped ``HelpDomainError`` to exit 4."""
+
+        @handle_errors
+        def _escaped() -> None:
+            """Raise a domain error that bypassed the command's own handler."""
+            raise HelpDomainError("Workspace", domain="nope", domains=("a",))
+
+        with pytest.raises(click.exceptions.Exit) as exc:
+            _escaped()
+        assert exc.value.exit_code == ExitCode.NOT_FOUND
 
     def test_handle_errors_maps_help_lookup_error_to_4(self) -> None:
         """``handle_errors`` maps ``HelpLookupError`` to exit code 4."""
@@ -220,9 +341,20 @@ class TestFlags:
         assert payload["hits"]
 
     def test_invalid_format_rejected(self, runner: CliRunner) -> None:
-        """An unsupported format is rejected by the option parser."""
+        """An unsupported format is rejected by the option parser (exit 2)."""
         result = runner.invoke(app, ["help", "Filter", "-f", "table"])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
+        assert "table" in result.stderr
+
+    def test_format_choices_come_from_help_formats(self) -> None:
+        """The ``--format`` choices are exactly the library's ``HELP_FORMATS``."""
+        command = typer.main.get_command(app)
+        assert isinstance(command, click.Group)
+        help_cmd = command.get_command(click.Context(command), "help")
+        assert help_cmd is not None
+        option = next(p for p in help_cmd.params if "--format" in p.opts)
+        assert isinstance(option.type, click.Choice)
+        assert list(option.type.choices) == list(HELP_FORMATS)
 
     def test_command_help(self, runner: CliRunner) -> None:
         """``mp help --help`` documents the flags."""

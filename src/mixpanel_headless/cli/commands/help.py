@@ -11,10 +11,19 @@ because the command is documentation, not data. The command never calls
 flags, and touches no file.
 
 Exit codes:
-    0: entry found and printed.
-    3: ``--jq`` without ``-f json``, ``search`` with no term, or an unknown or
-       ambiguous ``--domain``.
-    4: the query names nothing (suggestions are printed on stdout).
+    0: entry found and printed, or a search with at least one hit.
+    2: an option value the parser rejects (``-f table``); Click prints the
+       usage error.
+    3: flag misuse, reported on stderr with nothing on stdout: ``--jq``
+       without ``-f json``, ``search`` with no term, or a ``--domain`` that is
+       unknown, ambiguous, or paired with a query other than ``Workspace``
+       (``HelpDomainError``; the valid titles follow on one ``Domains:``
+       line).
+    4: not found. A describe miss prints the message and suggestions on
+       stdout (a JSON error object under ``-f json``); a search with no
+       hits prints its normal view first (``{"term": ..., "hits": []}``
+       under ``-f json``). A name miss exits 4 even when ``--domain`` was
+       passed.
 """
 
 from __future__ import annotations
@@ -25,9 +34,16 @@ from typing import Annotated, cast
 import click
 import typer
 
+from mixpanel_headless._internal.help.models import HELP_FORMATS
 from mixpanel_headless.cli.utils import ExitCode, _apply_jq_filter, handle_errors
-from mixpanel_headless.exceptions import HelpLookupError
-from mixpanel_headless.reference import HelpFormat, describe, render, search
+from mixpanel_headless.exceptions import HelpDomainError, HelpLookupError
+from mixpanel_headless.reference import (
+    HelpFormat,
+    describe,
+    render,
+    render_miss,
+    search,
+)
 
 HelpFormatOption = Annotated[
     str,
@@ -35,13 +51,13 @@ HelpFormatOption = Annotated[
         "--format",
         "-f",
         help="Output format (default text).",
-        click_type=click.Choice(["text", "markdown", "json"]),
+        click_type=click.Choice(list(HELP_FORMATS)),
     ),
 ]
-"""``-f/--format`` restricted to the three help formats."""
+"""``-f/--format`` restricted to the library's help formats."""
 
-_SEARCH_USAGE = "Usage: mp help search <term>"
-"""Line printed for a bare ``search`` query."""
+_SEARCH_USAGE = "search needs a term. Usage: mp help search <term>"
+"""Error line for a bare ``search`` query (printed on stderr by ``_fail``)."""
 
 
 def _emit(text: str) -> None:
@@ -67,39 +83,19 @@ def _fail(message: str, code: ExitCode) -> None:
     raise typer.Exit(code)
 
 
-def _miss_text(exc: HelpLookupError, fmt: HelpFormat) -> str:
-    """Render a lookup miss for stdout in the requested format.
+def _domain_error_text(exc: HelpDomainError) -> str:
+    """Build the stderr text for a rejected ``--domain``.
 
     Args:
-        exc: The error raised by :func:`describe`, with suggestions and hits.
-        fmt: ``text``, ``markdown``, or ``json``.
+        exc: The domain error raised by :func:`describe`.
 
     Returns:
-        A JSON error object for ``json``; otherwise the message, the
-        ``Did you mean?`` block, and the first search hits.
+        The error message, followed by one ``Domains: ...`` line when the
+        error carries titles to offer (unknown or ambiguous domain).
     """
-    from mixpanel_headless._internal.help.models import SearchResult
-
-    message = f"No help entry for '{exc.query}'."
-    hits = exc.hits[:5]
-    if fmt == "json":
-        return json.dumps(
-            {
-                "error": message,
-                "query": exc.query,
-                "suggestions": list(exc.suggestions),
-                "hits": [hit.to_dict() for hit in hits],
-            },
-            indent=2,
-        )
-    blocks = [message]
-    if exc.suggestions:
-        blocks.append(
-            "\n".join(["Did you mean?", *(f"  {s}" for s in exc.suggestions)])
-        )
-    if hits:
-        blocks.append(render(SearchResult(term=exc.query, hits=hits), fmt))
-    return "\n\n".join(blocks)
+    if not exc.domains:
+        return exc.message
+    return f"{exc.message}\nDomains: {', '.join(exc.domains)}"
 
 
 def _apply_jq(text: str, expr: str) -> str:
@@ -161,8 +157,9 @@ def help_command(
         no_hints: When set, omit the ``Tip:`` block.
 
     Raises:
-        typer.Exit: Exit 3 for flag misuse or an unknown domain, exit 4 for
-            a lookup miss.
+        typer.Exit: Exit 3 for flag misuse (``--jq`` without ``-f json``, a
+            bare ``search``, a rejected ``--domain``); exit 4 for a lookup
+            miss or a search with no hits.
 
     Example:
         ```bash
@@ -183,26 +180,29 @@ def help_command(
     text = " ".join(query or ())
     mode, payload = parse_query(text)
 
+    exit_code = 0
     if mode == "search":
         if not payload:
-            _emit(_SEARCH_USAGE)
-            raise typer.Exit(ExitCode.INVALID_ARGS)
-        rendered = render(search(payload), fmt)
+            _fail(_SEARCH_USAGE, ExitCode.INVALID_ARGS)
+        result = search(payload)
+        rendered = render(result, fmt)
+        if not result.hits:
+            exit_code = ExitCode.NOT_FOUND
     else:
         target = None if mode == "overview" else payload
         try:
             entry = describe(target, hints=not no_hints, domain=domain)
+        except HelpDomainError as exc:
+            # The query resolved; the flag is wrong. Caught before the
+            # plain miss because it is a subclass of HelpLookupError.
+            _fail(_domain_error_text(exc), ExitCode.INVALID_ARGS)
         except HelpLookupError as exc:
-            if domain is not None:
-                # ``describe`` raises for an unknown / ambiguous domain and for
-                # ``domain=`` on a non-Workspace query; both are flag misuse.
-                titles = ", ".join(exc.suggestions)
-                _emit(exc.message + (f"\nDomains: {titles}" if titles else ""))
-                raise typer.Exit(ExitCode.INVALID_ARGS) from None
-            _emit(_miss_text(exc, fmt))
+            _emit(render_miss(exc, fmt))
             raise typer.Exit(ExitCode.NOT_FOUND) from None
         rendered = render(entry, fmt)
 
     if jq is not None:
         rendered = _apply_jq(rendered, jq)
     _emit(rendered)
+    if exit_code:
+        raise typer.Exit(exit_code)

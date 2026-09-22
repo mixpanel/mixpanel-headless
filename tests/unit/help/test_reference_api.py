@@ -37,6 +37,7 @@ from mixpanel_headless._internal.help.models import HELP_FORMATS
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless._internal.help.relations import exception_tree, raised_by
 from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless.exceptions import HelpDomainError
 from mixpanel_headless.workspace import Workspace
 
 DOMAIN_TITLES = tuple(title for title, _ in WORKSPACE_DOMAINS)
@@ -255,26 +256,56 @@ class TestWorkspaceListing:
         assert _group_titles(entry) == ["funnel query"]
 
     def test_unknown_domain_raises_with_titles(self) -> None:
-        """An unknown domain raises and suggests the registered titles."""
-        with pytest.raises(HelpLookupError) as info:
+        """An unknown domain raises ``HelpDomainError`` carrying every title."""
+        with pytest.raises(HelpDomainError) as info:
             ref.describe("Workspace", domain="nonesuch")
-        assert info.value.suggestions
-        assert set(info.value.suggestions) <= set(DOMAIN_TITLES)
+        error = info.value
+        assert error.reason == "unknown"
+        assert error.query == "Workspace"
+        assert error.domain == "nonesuch"
+        assert error.domains == DOMAIN_TITLES
+        assert str(error) == "Unknown domain 'nonesuch'."
 
     def test_ambiguous_domain_raises_with_candidates(self) -> None:
-        """A prefix shared by several domains raises and lists them."""
-        with pytest.raises(HelpLookupError) as info:
+        """A prefix shared by several domains raises and lists only them."""
+        with pytest.raises(HelpDomainError) as info:
             ref.describe("Workspace", domain="s")
-        assert len(info.value.suggestions) > 1
-        assert all(title.startswith("s") for title in info.value.suggestions)
+        error = info.value
+        assert error.reason == "ambiguous"
+        assert error.domain == "s"
+        assert len(error.domains) > 1
+        assert error.domains == tuple(t for t in DOMAIN_TITLES if t.startswith("s"))
+        assert str(error).startswith("Ambiguous domain 's': ")
 
     def test_domain_on_non_workspace_raises(self) -> None:
-        """``domain=`` with any other query is a lookup error."""
-        with pytest.raises(HelpLookupError) as info:
+        """``domain=`` with any other query is a domain error naming the query."""
+        with pytest.raises(HelpDomainError) as info:
             ref.describe("Filter", domain="funnel query")
-        assert info.value.query == "Filter"
-        with pytest.raises(HelpLookupError):
+        error = info.value
+        assert error.reason == "not_workspace"
+        assert error.query == "Filter"
+        assert error.domain == "funnel query"
+        assert error.domains == ()
+        assert str(error) == (
+            "--domain applies only to the Workspace listing; "
+            "'Filter' is not the Workspace class."
+        )
+        with pytest.raises(HelpDomainError):
             ref.describe("Workspace.query", domain="insights query")
+
+    def test_domain_on_non_workspace_object_uses_qualname(self) -> None:
+        """An object query reports its canonical name as ``query``."""
+        with pytest.raises(HelpDomainError) as info:
+            ref.describe(mp.Filter, domain="dashboards")
+        assert info.value.query == "Filter"
+
+    def test_miss_with_domain_is_a_plain_lookup_error(self) -> None:
+        """A name miss stays a miss even when ``domain=`` is set."""
+        with pytest.raises(HelpLookupError) as info:
+            ref.describe("Filtr", domain="dashboards")
+        assert not isinstance(info.value, HelpDomainError)
+        assert info.value.query == "Filtr"
+        assert "Filter" in info.value.suggestions
 
 
 class TestMethod:
@@ -597,6 +628,40 @@ class TestDescribeMiss:
         with pytest.raises(HelpLookupError):
             ref.describe(json)
 
+    def test_parameter_missing_from_signature_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A parameter the signature builder does not report is a miss.
+
+        The resolver and ``signature_doc`` normally agree; when they do not,
+        the entry is not fabricated from an empty ``ParamDoc``.
+
+        Args:
+            monkeypatch: Pytest monkeypatch fixture.
+        """
+        real = introspect_module.signature_doc
+
+        def _without_events(obj: object, *, name: str) -> ref.SignatureDoc:
+            """Return the real signature minus the ``events`` parameter.
+
+            Args:
+                obj: The callable.
+                name: Display name forwarded to the real builder.
+
+            Returns:
+                A copy of the real ``SignatureDoc`` without ``events``.
+            """
+            doc = real(obj, name=name)
+            params = tuple(p for p in doc.params if p.name != "events")
+            return ref.SignatureDoc(name=doc.name, params=params, returns=doc.returns)
+
+        monkeypatch.setattr(introspect_module, "signature_doc", _without_events)
+        with pytest.raises(HelpLookupError) as info:
+            ref.describe("Workspace.query.events")
+        assert not isinstance(info.value, HelpDomainError)
+        assert info.value.query == "Workspace.query.events"
+        assert info.value.suggestions == ("Workspace.query",)
+
 
 # =============================================================================
 # help(): printing wrapper
@@ -659,27 +724,47 @@ class TestHelpPrinting:
         assert "usage" in payload
 
     def test_miss_prints_did_you_mean(self) -> None:
-        """A miss prints the message, suggestions, and hits; it does not raise."""
+        """A miss prints the error message, then the hits; it does not raise."""
         text = _capture("Cohor")
-        assert text.startswith("No help entry for 'Cohor'.")
-        assert "Did you mean?" in text
-        assert "  Cohort" in text
-        assert '# Search: "Cohor"' in text or "[" in text
+        with pytest.raises(HelpLookupError) as info:
+            ref.describe("Cohor")
+        first_line, _, rest = text.partition("\n")
+        assert first_line == info.value.message
+        assert first_line.startswith(
+            "No help entry for 'Cohor'. Did you mean: Cohort, "
+        )
+        assert '# Search: "Cohor"' in rest
+        assert text.count("Did you mean") == 1
 
     def test_total_miss_prints_message_only(self) -> None:
         """A miss without suggestions or hits prints only the message."""
         text = _capture("zzqqxxyy")
-        assert text.startswith("No help entry for 'zzqqxxyy'.")
-        assert "Did you mean?" not in text
+        assert text == "No help entry for 'zzqqxxyy'.\n"
 
     def test_miss_json(self) -> None:
         """A miss with ``format="json"`` prints an error object."""
         payload = json.loads(_capture("Cohor", format="json"))
+        with pytest.raises(HelpLookupError) as info:
+            ref.describe("Cohor")
         assert set(payload) == {"error", "query", "suggestions", "hits"}
+        assert payload["error"] == info.value.message
         assert payload["query"] == "Cohor"
         assert "Cohort" in payload["suggestions"]
-        assert payload["hits"]
+        assert payload["hits"] == [hit.to_dict() for hit in info.value.hits[:5]]
         assert payload["hits"][0]["name"]
+
+    def test_miss_with_domain_prints_instead_of_raising(self) -> None:
+        """A name miss prints the miss even when ``domain=`` is set."""
+        text = _capture("Filtr", domain="dashboards")
+        assert text.startswith("No help entry for 'Filtr'.")
+
+    def test_unknown_domain_raises(self) -> None:
+        """An unknown ``domain=`` raises ``HelpDomainError`` and prints nothing."""
+        buffer = io.StringIO()
+        with pytest.raises(HelpDomainError) as info:
+            ref.help("Workspace", domain="nope", file=buffer)
+        assert buffer.getvalue() == ""
+        assert info.value.domains == DOMAIN_TITLES
 
     def test_hit_json(self) -> None:
         """A hit with ``format="json"`` prints ``to_dict()``."""
@@ -711,9 +796,10 @@ class TestHelpPrinting:
         assert "properties (" not in text
 
     def test_domain_on_non_workspace_raises(self) -> None:
-        """``domain=`` with another query raises ``HelpLookupError``."""
-        with pytest.raises(HelpLookupError):
+        """``domain=`` with another query raises ``HelpDomainError``."""
+        with pytest.raises(HelpDomainError) as info:
             ref.help("Filter", domain="funnel query", file=io.StringIO())
+        assert info.value.reason == "not_workspace"
 
     def test_no_rich_markup(self) -> None:
         """Listing output keeps the literal ``[property]`` tag."""

@@ -49,7 +49,7 @@ from mixpanel_headless._internal.help.models import (
     SignatureDoc,
     UsageDoc,
 )
-from mixpanel_headless.exceptions import HelpLookupError
+from mixpanel_headless.exceptions import HelpDomainError, HelpLookupError
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.help.resolve import Target
@@ -155,16 +155,17 @@ def help(
         file: Destination stream; defaults to ``sys.stdout``.
         hints: Print the hosted-documentation ``Tip:`` block when one applies.
         domain: Restrict the ``Workspace`` listing to one domain title. Any
-            other query with ``domain`` set raises ``HelpLookupError``.
+            other query with ``domain`` set raises ``HelpDomainError``.
 
     Returns:
         ``None``. The rendered text is written to ``file``.
 
     Raises:
         ValueError: When ``format`` is not ``text``, ``markdown``, or ``json``.
-        HelpLookupError: When ``domain`` is given for a query other than
-            ``Workspace``, or names no domain. A plain lookup miss does
-            **not** raise; it prints suggestions instead.
+        HelpDomainError: When ``domain`` names no registered domain, several
+            domains (ambiguous prefix), or is given for a query other than
+            ``Workspace``. A plain lookup miss does **not** raise; it prints
+            the message and suggestions instead, even when ``domain`` is set.
 
     Example:
         ```python
@@ -195,10 +196,10 @@ def help(
         query = None if mode == "overview" else payload
     try:
         entry = describe(query, hints=hints, domain=domain)
+    except HelpDomainError:
+        raise
     except HelpLookupError as exc:
-        if domain is not None:
-            raise
-        print(_render_miss(exc, format), file=out)
+        print(render_miss(exc, format), file=out)
         return
     print(render(entry, format), file=out)
 
@@ -228,11 +229,14 @@ def describe(
         The assembled entry.
 
     Raises:
-        HelpLookupError: When the query matches nothing (the error carries
-            ``suggestions`` and the first five search ``hits``), when
-            ``domain`` is given for a query other than ``Workspace``, or when
-            ``domain`` names no registered domain (the error suggests the
-            domain titles).
+        HelpLookupError: When the query matches nothing. The error carries
+            ``suggestions`` and the first five search ``hits``. Raised for
+            a name miss even when ``domain`` is set.
+        HelpDomainError: When the query resolved but ``domain`` was rejected:
+            it is given for a query other than ``Workspace`` (``reason``
+            ``not_workspace``), names no registered domain (``unknown``; the
+            error carries every title in ``domains``), or matches several
+            titles (``ambiguous``; the candidates are in ``domains``).
 
     Example:
         ```python
@@ -249,9 +253,10 @@ def describe(
     except HelpLookupError as exc:
         raise _with_hits(exc) from None
     if domain is not None and not _is_workspace_class(target):
-        raise HelpLookupError(
+        raise HelpDomainError(
             query_text if query_text is not None else target.qualname,
-            suggestions=(_WORKSPACE,),
+            domain=domain,
+            reason="not_workspace",
         )
     entry = _assemble(target, domain=domain)
     return entry if hints else _without_hints(entry)
@@ -315,9 +320,6 @@ def clear_cache() -> None:
     Clears the inventory, resolved type hints, relations (used by, raised
     by, exception map), and the search index. The next call rebuilds them
     from the live package.
-
-    Returns:
-        ``None``.
     """
     from mixpanel_headless._internal.help import (
         introspect,
@@ -354,33 +356,46 @@ def _search_usage(format: HelpFormat) -> str:
     return _SEARCH_USAGE
 
 
-def _render_miss(exc: HelpLookupError, format: HelpFormat) -> str:
-    """Render a lookup miss: message, ``Did you mean?``, first search hits.
+def render_miss(exc: HelpLookupError, format: HelpFormat) -> str:
+    """Render a lookup miss: the error message, then the first search hits.
+
+    Shared by :func:`help` and the ``mp help`` command so both print the
+    same text for the same miss. Not part of ``__all__``; the public entry
+    points are :func:`help` (prints it) and :func:`describe` (raises the
+    error it renders).
 
     Args:
-        exc: The lookup error raised by :func:`describe`.
+        exc: The lookup error raised by :func:`describe`. ``exc.message``
+            already carries the ``Did you mean: a, b?`` tail when there
+            are suggestions.
         format: The requested output format.
 
     Returns:
-        For ``json`` an object with ``error``, ``query``, ``suggestions``,
-        and ``hits``; otherwise the message, the suggestions block when
-        there are any, and the search view of the hits when there are any.
+        For ``json`` an object with ``error`` (the message), ``query``,
+        ``suggestions``, and ``hits``; otherwise the message followed, when
+        there are hits, by the search view of the first five.
+
+    Example:
+        ```python
+        from mixpanel_headless import HelpLookupError, reference
+
+        try:
+            reference.describe("zzqq")
+        except HelpLookupError as exc:
+            print(reference.render_miss(exc, "text"))
+            # No help entry for 'zzqq'.
+        ```
     """
     hits = exc.hits[:_MISS_HITS]
-    message = f"No help entry for '{exc.query}'."
     if format == "json":
         payload = {
-            "error": message,
+            "error": exc.message,
             "query": exc.query,
             "suggestions": list(exc.suggestions),
             "hits": [hit.to_dict() for hit in hits],
         }
         return json.dumps(payload, indent=2)
-    blocks: list[str] = [message]
-    if exc.suggestions:
-        blocks.append(
-            "\n".join(["Did you mean?", *(f"  {s}" for s in exc.suggestions)])
-        )
+    blocks: list[str] = [exc.message]
     if hits:
         blocks.append(render(SearchResult(term=exc.query, hits=hits), format))
     return "\n\n".join(blocks)
@@ -390,16 +405,16 @@ def _with_hits(exc: HelpLookupError) -> HelpLookupError:
     """Attach the first search hits for the missed query to a resolver error.
 
     Args:
-        exc: The error raised by the resolver (``hits`` is always empty there).
+        exc: The error raised by the resolver (``hits`` is always empty
+            there, and ``query`` is never blank because blank text resolves
+            to the overview).
 
     Returns:
         A new error with the same ``query`` and ``suggestions`` plus up to
-        five search hits; the original error when the query is blank.
+        five search hits.
     """
     from mixpanel_headless._internal.help.search import search as _search
 
-    if not exc.query.strip():
-        return exc
     hits = _search(exc.query, limit=_MISS_HITS).hits
     return HelpLookupError(exc.query, suggestions=exc.suggestions, hits=hits)
 
@@ -449,7 +464,9 @@ def _assemble(target: Target, *, domain: str | None) -> HelpEntry:
         The entry for the target's kind.
 
     Raises:
-        HelpLookupError: When ``domain`` names no registered domain.
+        HelpDomainError: When ``domain`` names no registered domain.
+        HelpLookupError: When a ``parameter`` target is absent from its
+            owner's rendered signature.
     """
     if target.kind == "overview":
         return _overview_entry()
@@ -712,7 +729,7 @@ def _workspace_listing(domain: str | None) -> HelpEntry:
         The ``listing`` entry.
 
     Raises:
-        HelpLookupError: When ``domain`` matches no title or several titles.
+        HelpDomainError: When ``domain`` matches no title or several titles.
     """
     from mixpanel_headless._internal.help.inventory import workspace_members
     from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
@@ -753,6 +770,9 @@ def _workspace_listing(domain: str | None) -> HelpEntry:
 def _match_domain(domain: str) -> str:
     """Match a user-typed domain against the registry titles.
 
+    Only the ``Workspace`` listing accepts a domain, so the error's
+    ``query`` is always ``"Workspace"``.
+
     Args:
         domain: Domain text; case-insensitive; a unique prefix is accepted.
 
@@ -760,9 +780,9 @@ def _match_domain(domain: str) -> str:
         The registered title.
 
     Raises:
-        HelpLookupError: With every title as suggestions when nothing
-            matches, or with the ambiguous titles when several share the
-            prefix.
+        HelpDomainError: ``reason="ambiguous"`` with the candidate titles in
+            ``domains`` when several share the prefix; ``reason="unknown"``
+            with every title in ``domains`` when nothing matches.
     """
     from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 
@@ -775,7 +795,11 @@ def _match_domain(domain: str) -> str:
     )
     if len(prefixed) == 1:
         return prefixed[0]
-    raise HelpLookupError(domain, suggestions=prefixed or titles)
+    if prefixed:
+        raise HelpDomainError(
+            _WORKSPACE, domain=domain, domains=prefixed, reason="ambiguous"
+        )
+    raise HelpDomainError(_WORKSPACE, domain=domain, domains=titles, reason="unknown")
 
 
 # -----------------------------------------------------------------------------
@@ -856,6 +880,11 @@ def _parameter_entry(target: Target) -> HelpEntry:
 
     Returns:
         The entry; ``signature.params`` holds exactly the one ``ParamDoc``.
+
+    Raises:
+        HelpLookupError: When the owner's rendered signature has no
+            parameter of that name (the resolver and the signature builder
+            disagree). The owner is the only suggestion.
     """
     from mixpanel_headless._internal.help.introspect import signature_doc
 
@@ -863,10 +892,11 @@ def _parameter_entry(target: Target) -> HelpEntry:
     method = owner_name.rsplit(".", 1)[-1]
     full = signature_doc(target.owner, name=method)
     wanted = target.member or ""
-    param = next(
-        (p for p in full.params if p.name.lstrip("*") == wanted),
-        ParamDoc(name=wanted, annotation=""),
-    )
+    param = next((p for p in full.params if p.name.lstrip("*") == wanted), None)
+    if param is None:
+        raise HelpLookupError(
+            target.qualname, suggestions=(owner_name,) if owner_name else ()
+        )
     return HelpEntry(
         kind="parameter",
         name=target.qualname,
