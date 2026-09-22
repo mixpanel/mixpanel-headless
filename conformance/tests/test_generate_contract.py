@@ -79,10 +79,11 @@ class TestErrorCodesArtifact:
     """Shape and content locks for ``error-codes.json`` (design C3)."""
 
     def test_exception_class_census(self, error_codes: dict[str, Any]) -> None:
-        """All 35 exported exception classes appear, with one root.
+        """All 36 exported exception classes appear, with one root.
 
         28 from the E2 coding pass, the six 045-report-links classes, and
-        ``HelpLookupError`` from the built-in help feature.
+        ``HelpLookupError`` plus ``HelpDomainError`` from the built-in help
+        feature.
 
         Args:
             error_codes: The artifact body.
@@ -91,7 +92,7 @@ class TestErrorCodesArtifact:
             AssertionError: If the census or parent edges are wrong.
         """
         classes = error_codes["exception_classes"]
-        assert len(classes) == 35
+        assert len(classes) == 36
         roots = [name for name, parent in classes.items() if parent is None]
         assert roots == ["MixpanelHeadlessError"]
         for name, parent in classes.items():
@@ -192,9 +193,10 @@ class TestLiteralAliasesArtifact:
     """Shape and content locks for ``literal-aliases.json`` (design C2)."""
 
     def test_alias_and_enum_census(self, literal_aliases: dict[str, Any]) -> None:
-        """38 distinct Literal aliases and 8 Enum classes are captured.
+        """39 distinct Literal aliases and 8 Enum classes are captured.
 
-        37 at the TS-port pin plus ``ReportLinkType`` (045-report-links).
+        37 at the TS-port pin, plus ``ReportLinkType`` (045-report-links) and
+        ``HelpDomainReason`` from the built-in help feature.
 
         Args:
             literal_aliases: The artifact body.
@@ -202,7 +204,7 @@ class TestLiteralAliasesArtifact:
         Raises:
             AssertionError: If the census drifts.
         """
-        assert len(literal_aliases["literal_aliases"]) == 38
+        assert len(literal_aliases["literal_aliases"]) == 39
         assert len(literal_aliases["enums"]) == 8
 
     def test_alias_members_spot_checks(self, literal_aliases: dict[str, Any]) -> None:
