@@ -206,6 +206,46 @@ class TestExitCodes:
         assert "suggestions" in payload
         assert "hits" in payload
 
+    def test_miss_json_with_jq_filters_the_error_object(
+        self, runner: CliRunner
+    ) -> None:
+        """``--jq`` applies to the JSON miss object; the exit code stays 4."""
+        plain = runner.invoke(app, ["help", "Nope", "-f", "json"])
+        assert plain.exit_code == ExitCode.NOT_FOUND
+        expected = json.loads(plain.stdout)["error"]
+        result = runner.invoke(app, ["help", "Nope", "-f", "json", "--jq", ".error"])
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout == json.dumps(expected) + "\n"
+        assert expected.startswith("No help entry for 'Nope'.")
+        assert result.stderr == ""
+
+    def test_miss_json_with_invalid_jq_exits_3(self, runner: CliRunner) -> None:
+        """A jq compile error on a miss is flag misuse: exit 3, stderr only."""
+        result = runner.invoke(app, ["help", "Nope", "-f", "json", "--jq", ".x[["])
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert "jq filter error" in result.stderr.lower()
+
+    def test_search_miss_json_with_jq_filters_the_view(self, runner: CliRunner) -> None:
+        """``--jq`` applies to the empty search object; the exit code stays 4."""
+        result = runner.invoke(
+            app, ["help", "search", "zzzzqqqq", "-f", "json", "--jq", ".term"]
+        )
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout == '"zzzzqqqq"\n'
+        assert result.stderr == ""
+
+    def test_domain_error_skips_jq(self, runner: CliRunner) -> None:
+        """A rejected ``--domain`` exits 3 before ``--jq`` runs, even if it is bad."""
+        result = runner.invoke(
+            app,
+            ["help", "Filter", "--domain", "dashboards", "-f", "json", "--jq", ".x[["],
+        )
+        assert result.exit_code == ExitCode.INVALID_ARGS
+        assert result.stdout == ""
+        assert "--domain applies only to the Workspace listing" in result.stderr
+        assert "jq" not in result.stderr.lower()
+
     def test_miss_with_domain_takes_miss_path(self, runner: CliRunner) -> None:
         """A name miss exits 4 with the normal miss text even with ``--domain``."""
         result = runner.invoke(app, ["help", "Filtr", "--domain", "dashboards"])

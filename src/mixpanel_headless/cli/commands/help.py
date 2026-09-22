@@ -23,14 +23,15 @@ Exit codes:
     4: not found. A describe miss prints the message and suggestions on
        stdout (a JSON error object under ``-f json``); a search with no
        hits prints its normal view first (``{"term": ..., "hits": []}``
-       under ``-f json``). A name miss exits 4 even when ``--domain`` was
+       under ``-f json``). ``--jq`` filters both objects the same way it
+       filters a hit. A name miss exits 4 even when ``--domain`` was
        passed.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Annotated, cast
+from typing import Annotated, NoReturn, cast
 
 import click
 import typer
@@ -70,12 +71,16 @@ def _emit(text: str) -> None:
     typer.echo(text)
 
 
-def _fail(message: str, code: ExitCode) -> None:
+def _fail(message: str, code: ExitCode) -> NoReturn:
     """Print ``message`` to stderr and exit with ``code``.
 
     Args:
         message: Human-readable error line.
         code: Exit code to raise.
+
+    Returns:
+        Never; the ``NoReturn`` annotation lets the caller's later branches
+        rely on the exit.
 
     Raises:
         typer.Exit: Always, with ``code``.
@@ -207,9 +212,12 @@ def help_command(
             # plain miss because it is a subclass of HelpLookupError.
             _fail(_domain_error_text(exc), ExitCode.INVALID_ARGS)
         except HelpLookupError as exc:
-            _emit(render_miss(exc, fmt))
-            raise typer.Exit(ExitCode.NOT_FOUND) from None
-        rendered = render(entry, fmt)
+            # The miss takes the same --jq and stdout path as a hit, so a
+            # JSON consumer can filter the error object.
+            rendered = render_miss(exc, fmt)
+            exit_code = ExitCode.NOT_FOUND
+        else:
+            rendered = render(entry, fmt)
 
     if jq is not None:
         rendered = _apply_jq(rendered, jq)
