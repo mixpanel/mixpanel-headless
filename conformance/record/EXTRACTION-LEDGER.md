@@ -7,6 +7,122 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 
+
+## 2026-09-22 re-pin: stamp `0dde506` → `6b23b75` (PR #241 built-in API reference + PR #244 mobile session replays)
+
+Step 2 of the two-step protocol (README, "Which SHA to stamp") for two
+library PRs squash-merged to `main` on 2026-09-22:
+
+- PR #241 `feat(help): built-in API reference — mp.help(), mp.reference,
+  and mp help (0.3.0)` → `7363c27c321ab12be481eca03bdd17b47c151251`
+- PR #244 `feat(replays): mobile and screenshot session replays — iOS,
+  Android, React Native, Flutter` → `6b23b75adcff90c04886be3b3e5f5155f2afe1e9`
+
+One re-pin covers both PRs: `main` did not move after #244 merged, so
+`6b23b75` is the exact `src/` + `tests/` this corpus was extracted from,
+and `git log 0dde506..6b23b75 -- src tests conformance` is exactly #237
+(the previous re-pin, `conformance/` only), #232 (0.2.3 version bump),
+#241, and #244.
+
+This re-pin also ships the authored bundle PR #244 asked for, in its own
+commit: `conformance/vectors/authored/replays/rrweb-mobile.jsonl` (23
+vectors for `Replay.capture`, `Replay.has_wireframes`,
+`Replay.screen_path()`, `ReplayBundle.rage_taps()`), written by
+`conformance.record.gen_replay_mobile_vectors --commit 6b23b75…`. An
+authored bundle is exempt from rule 2 but not from rule 1, so it carries
+the same reachable stamp.
+
+### Why `6b23b75` is the honest stamp
+
+Both PRs landed `src/` + `tests/` and left `conformance/vectors/` and
+`conformance/contract/` untouched, so each went red on the drift step as
+flagged in its body. #241 recorded no new vectors (the help system is
+offline and its 1,634 tests hit no seam: `no_seam_hit` grows by 1,616 and
+`cli` by 46 below); its whole footprint is the contract census (two new
+exception classes, one new Literal alias) and the manifest exclusion
+counts. #244's footprint is 4 new `replays` wire vectors, one renamed
+vector, and one `api-index` field. The re-extraction below reproduces
+both PRs' drift findings exactly; nothing else moved.
+
+### Invocation
+
+```bash
+uv run python -m conformance.record.gen_replay_mobile_vectors \
+  --commit 6b23b75adcff90c04886be3b3e5f5155f2afe1e9
+just conformance-record \
+  --mp-record-date=2026-09-22 \
+  --mp-record-commit=6b23b75adcff90c04886be3b3e5f5155f2afe1e9
+uv run python -m conformance.contract.generate_contract \
+  --generated-from 6b23b75adcff90c04886be3b3e5f5155f2afe1e9
+```
+
+Interpreter and `tool_versions` unchanged from the committed manifest
+(Python 3.14.6, httpx 0.28.1, hypothesis 6.151.13, pydantic 2.13.3).
+Record run: **9,853 passed, 1 skipped, 563 deselected, 0 failed**
+(7,939 → 9,853: the help suites under `tests/unit/help/` and
+`tests/unit/cli/test_help_cli.py` from #241, and the mobile replay tests
+from #244). The recorder wrote 3,237 vectors in 171 bundles; no stale
+bundle file was left behind (171 extracted bundles before and after).
+
+### Headline counts (manifest `counts`)
+
+| Field | `0dde506` | `6b23b75` | Δ |
+|---|---:|---:|---:|
+| `total` | 3,233 | 3,237 | +4 |
+| `by_kind.builder` | 1,894 | 1,894 | 0 |
+| `by_kind.wire` | 1,274 | 1,278 | +4 |
+| `by_kind.validation-error` | 65 | 65 | 0 |
+| `by_capability.replays` | 103 | 107 | +4 |
+| `with_setup` | 121 | 121 | 0 |
+| bundles (extracted) | 171 | 171 | 0 |
+| bundles (authored) | 8 | 9 | +1 |
+
+Exclusions moved: `cli` 595 → 641, `hypothesis` 563 → 591,
+`no_seam_hit` 2,406 → 4,022, `wire_call_no_transport` 784 → 787. Every
+other bucket is unchanged (`env_base_url_override` 31, `uncoded_raise` 50).
+
+### What changed
+
+- **`replays/test_replays_service.jsonl`** (8 → 12 vectors). Four new
+  `replays.fetch_files` wire vectors from #244's `TestDamagedFiles` (1) and
+  `TestFormatCheckOnFirstDict` (3). One vector renamed because #244 renamed
+  its test class: `…-testmobilereplaydetection-test_non_rrweb_first_event_raises_unsupported_format`
+  → `…-testnonrrwebdetection-test_non_rrweb_first_event_raises_unsupported_format`;
+  its body is unchanged. This is the `vector_only_in_candidate` +
+  `vector_only_in_committed` pair #244's drift run reported.
+- **`api-index.json`**: one key changed, `types.ReplayBundle`, whose
+  `kwonly` list gains `_screens_df_cache` (#244's `screens_df` cache
+  field). Key count 406 → 406; no key added or removed.
+- **Contract**: `error-codes.json` `exception_classes` and `default_codes`
+  34 → 36 (`HelpLookupError` with code `HELP_NOT_FOUND`, `HelpDomainError`
+  with code `HELP_BAD_DOMAIN`); `literal-aliases.json` `literal_aliases`
+  38 → 39 (`HelpDomainReason`). `coded_guard_registry` (126),
+  `coded_guard_twin_codes` (9), `enums` (8), `newtypes` (4),
+  `model-coverage.json`, and `tag-universe.json` change `generated_from`
+  only. The census pins in `conformance/tests/test_generate_contract.py`
+  were already moved to 36 / 39 in #241, so the committed artifacts now
+  agree with the pins.
+- **Every other file** under `conformance/vectors/` changes only its
+  `source_commit` / `extraction_date` stamp (170 bundle headers plus the
+  manifest).
+
+### Verification
+
+- `uv run pytest conformance/tests -o addopts="" -q` → 573 passed.
+- `uv run pytest conformance/runner -o addopts="" -q` → 3,480 passed
+  (3,453 + 23 authored + 4 extracted).
+- `just conformance-stamps` → `stamp check: CLEAN (all stamps reachable
+  from main; stamp moved with content)`.
+- CI drift command (re-extract to `/tmp/re-extract` with the committed
+  stamps, then `conformance.record.diff`) → record run `9,853 passed, 1 skipped, 563 deselected`; `drift check: CLEAN (byte-identical within D8 scope)`.
+- `just conformance-smoke` → `smoke result: PASS` (14 sabotage patches, all caught).
+- `just check` → exit 0; `9,826 passed, 1 skipped, 563 deselected`; coverage 93.70%; `573 passed`; `3,480 passed`; stamp check CLEAN; build ok.
+
+After this PR merges, the TypeScript port sets
+`conformance-runner/corpus.config.json` `sourceCommit` to
+`6b23b75adcff90c04886be3b3e5f5155f2afe1e9` and runs `npm run sync:corpus`
+(TS twins: AIE-1029 for #241, and the #244 twin).
+
 ## 2026-09-11 re-pin: stamp `b61b94c` → `0dde506` (PR #235 `MP_API_BASE_URL` + PR #236 `Filter` operator validation)
 
 Step 2 of the two-step protocol (README, "Which SHA to stamp") for two
