@@ -22,6 +22,7 @@ import dataclasses
 import enum
 import inspect
 import logging
+import types
 import typing
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -468,6 +469,18 @@ def test_resolved_hints_shadows_base_annotations_like_get_type_hints() -> None:
 
     hints = resolved_hints(Derived)
     assert hints == {"shared": str, "own": Mode}
+
+
+def test_resolved_hints_resolves_module_annotations_per_name() -> None:
+    """A module with one bad annotation keeps its string, object, and ``None`` hints."""
+    module = types.ModuleType("help_fixture_module")
+    module.__annotations__ = {
+        "good": "int",
+        "bad": "NoSuchName",
+        "raw": str,
+        "none": None,
+    }
+    assert resolved_hints(module) == {"good": int, "raw": str, "none": type(None)}
 
 
 def test_resolved_hints_logs_unresolved_names_at_debug(
