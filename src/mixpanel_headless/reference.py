@@ -282,7 +282,8 @@ def search(term: str, *, limit: int | None = None) -> SearchResult:
 
     Example:
         ```python
-        search("retention").hits[0].name     # "RetentionAlignment"
+        search("retention").hits[0].name     # "RetentionCohortData"
+        search("Filtr").suggestions          # ("Filter", ...)
         ```
     """
     from mixpanel_headless._internal.help.search import search as _search

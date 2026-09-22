@@ -153,18 +153,64 @@ class TestOrdering:
             ]
             assert keys == sorted(keys)
 
-    def test_retention_first_hit_is_the_first_name_hit_by_category(self) -> None:
-        """``search("retention")`` starts with the ``class`` row ``RetentionCohortData``.
+    def test_first_hit_is_the_smallest_name_tier_key(self) -> None:
+        """``search("retention")`` starts with the name hit whose ``(category, name)`` is smallest.
 
-        ``RetentionAlignment`` also matches by name; on the real inventory the
-        ``(category, name)`` sort puts the ``class`` row ahead of the ``literal``
-        row.
+        ``RetentionAlignment`` matches by name too, but as a ``literal`` it
+        sorts behind any ``class`` or ``dataclass`` name hit. The assertion is
+        on the ordering rule, not on a particular first name, so a new export
+        cannot break it.
         """
         result = search("retention")
         first = result.hits[0]
         assert first.matched_on == "name"
-        assert (first.category, first.name) == ("class", "RetentionCohortData")
-        assert _by_name(result, "RetentionAlignment").category == "literal"
+        name_keys = [
+            (h.category, h.name) for h in result.hits if h.matched_on == "name"
+        ]
+        assert (first.category, first.name) == min(name_keys)
+        alignment = _by_name(result, "RetentionAlignment")
+        assert alignment.category == "literal"
+        assert alignment.matched_on == "name"
+        assert result.hits.index(alignment) > 0
+
+    def test_doc_tier_beats_member_tier(self) -> None:
+        """An entry that matches in both the doc and member tiers reports ``doc``.
+
+        The synthetic entry pins the tier order independently of the
+        inventory; the real-inventory check finds every indexed row whose
+        summary and members both contain ``day`` while its name does not
+        (``FlowConversionWindowUnit`` today) and expects the same answer.
+        """
+        entry = search_module._Entry(
+            "literal", "Sample", "Buckets per day.", ("value day",)
+        )
+        hit = entry.match("day")
+        assert hit is not None
+        assert hit.matched_on == "doc"
+        assert hit.summary == "Buckets per day."
+        both = [
+            row
+            for row in search_module._index()
+            if "day" not in row.name.lower()
+            and "day" in row.summary.lower()
+            and any("day" in text.lower() for text in row.members)
+        ]
+        assert both
+        result = search("day")
+        for row in both:
+            live = _by_name(result, row.name)
+            assert live.matched_on == "doc"
+            assert live.summary == row.summary
+
+    def test_name_tier_beats_doc_and_member_tiers(self) -> None:
+        """An entry that matches in every tier reports ``name`` with its summary."""
+        entry = search_module._Entry(
+            "literal", "DayUnit", "Buckets per day.", ("value day",)
+        )
+        hit = entry.match("day")
+        assert hit is not None
+        assert hit.matched_on == "name"
+        assert hit.summary == "Buckets per day."
 
     def test_name_hits_contain_the_needle_in_their_name(self) -> None:
         """Every name-tier hit has the needle in its name."""

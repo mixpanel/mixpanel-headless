@@ -7,7 +7,7 @@ This module answers "what else is connected to this name?":
 - :func:`referenced_types` — the exported types named in a callable's
   parameter and return annotations (the "Referenced types" section).
 - :func:`see_also` — the other methods in the same ``WORKSPACE_DOMAINS``
-  domain (this replaces the older entity-noun heuristic).
+  domain.
 - :func:`exception_tree`, :func:`subclasses_of`, :func:`raised_by` — the
   exported exception hierarchy and the ``Workspace`` methods whose
   ``Raises:`` section names an exception.
@@ -259,7 +259,9 @@ def _summary(row: Export) -> str:
 
     Literal and Union aliases have no docstring of their own — their
     ``__doc__`` is the generic ``typing`` class text — so their line comes
-    from ``ALIAS_DOCS``.
+    from ``ALIAS_DOCS``. Every other kind is read with ``inspect.getdoc``,
+    the same call the rest of the help system uses, so inherited and
+    indented docstrings give the same first line everywhere.
 
     Args:
         row: The inventory row.
@@ -271,7 +273,7 @@ def _summary(row: Export) -> str:
         from mixpanel_headless._literal_types import ALIAS_DOCS
 
         return ALIAS_DOCS.get(row.name, "")
-    return first_line(getattr(row.obj, "__doc__", None))
+    return first_line(inspect.getdoc(row.obj))
 
 
 def referenced_types(func: object) -> tuple[tuple[str, str], ...]:

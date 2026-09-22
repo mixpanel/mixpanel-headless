@@ -17,8 +17,9 @@ Each entry matches in one of three tiers, and the highest tier wins:
 
 1. ``name`` — the needle is in the display name;
 2. ``doc`` — the needle is in the first docstring line;
-3. ``member`` — the needle is in an enum member (``member NAME = value``)
-   or a Literal value (``value text``).
+3. ``member`` — the needle is in an enum member, indexed as
+   ``member NAME = repr(value)`` (for example ``member ENABLED = 'enabled'``),
+   or in a Literal value, indexed as ``value text``.
 
 Hits are ordered by tier, then by ``(category, name)``. The index is keyed
 on ``(category, name)``, so no pair repeats. A miss returns
@@ -257,7 +258,9 @@ def search(term: str, *, limit: int | None = None) -> SearchResult:
         ```python
         result = search("cohort", limit=3)
         [(h.category, h.name, h.matched_on) for h in result.hits]
-        # [("dataclass", "CohortBreakdown", "name"), ...]
+        # [("class", "RetentionCohortData", "name"),
+        #  ("dataclass", "CohortBreakdown", "name"),
+        #  ("dataclass", "CohortCriteria", "name")]
         search("Filtr").suggestions
         # ("Filter", ...)
         ```

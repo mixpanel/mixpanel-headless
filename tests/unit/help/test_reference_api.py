@@ -215,17 +215,20 @@ class TestWorkspaceListing:
     """``Workspace`` → ``listing`` grouped by domain, properties first."""
 
     def test_groups_and_counts(self) -> None:
-        """Properties come first, then the 32 domains; 214 members in total."""
+        """Properties come first, then every domain; one item per ``Workspace`` member."""
+        members = inventory_module.workspace_members()
         entry = ref.describe("Workspace")
         assert entry.kind == "listing"
         assert entry.name == "Workspace"
         titles = _group_titles(entry)
         assert titles[0] == "properties"
         assert tuple(titles[1:]) == DOMAIN_TITLES
-        assert len(titles) == 33
-        assert sum(len(group.items) for group in entry.groups) == 214
+        assert len(titles) == len(DOMAIN_TITLES) + 1
+        assert sum(len(group.items) for group in entry.groups) == len(members)
         assert all(item.kind == "property" for item in entry.groups[0].items)
-        assert len(entry.groups[0].items) == 5
+        assert [item.name for item in entry.groups[0].items] == [
+            name for name, kind in members if kind == "property"
+        ]
         methods = [item for group in entry.groups[1:] for item in group.items]
         assert all(item.kind == "method" for item in methods)
         assert all(item.signature is not None for item in methods)
@@ -544,12 +547,12 @@ class TestListings:
         assert ref.describe("types", hints=True).hints == ()
 
     def test_exceptions_listing(self) -> None:
-        """``exceptions`` lists 35 names as an indented tree with no hints."""
+        """``exceptions`` lists every exported exception as an indented tree with no hints."""
         entry = ref.describe("exceptions")
         assert entry.kind == "listing"
         assert _group_titles(entry) == ["Exceptions"]
         items = entry.groups[0].items
-        assert len(items) == 35
+        assert len(items) == len(exception_tree())
         assert items[0].name == "MixpanelHeadlessError"
         assert items[1].name == "  APIError"
         assert any(item.name.startswith("    ") for item in items)
@@ -870,7 +873,9 @@ class TestGuard:
     def test_every_export_and_member_renders(self) -> None:
         """No inventory name or ``Workspace`` member raises in any format."""
         queries = [*inventory_module.inventory_names(), *_workspace_queries()]
-        assert len(queries) == len(inventory_module.inventory()) + 214
+        assert len(queries) == len(inventory_module.inventory()) + len(
+            inventory_module.workspace_members()
+        )
         failures: list[str] = []
         for query in queries:
             try:

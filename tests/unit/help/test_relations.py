@@ -37,6 +37,7 @@ from mixpanel_headless._internal.help import relations
 from mixpanel_headless._internal.help.docstrings import first_line, parse_docstring
 from mixpanel_headless._internal.help.introspect import resolved_hints
 from mixpanel_headless._internal.help.inventory import (
+    Export,
     export,
     exports_of_kind,
     workspace_members,
@@ -200,14 +201,65 @@ class TestUsedBy:
     def test_string_fallback_uses_word_boundaries(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The fallback does not let ``Cohort`` match ``CohortMetric``."""
+        """The fallback does not let ``Cohort`` match ``CohortMetric`` or ``UpdateCohortParams``.
+
+        ``Cohort`` appears as a substring in several parameter annotations
+        but never as a whole word, so the word-boundary fallback yields
+        nothing for it while still finding ``Filter`` (the positive control).
+        """
         monkeypatch.setattr(relations, "resolved_hints", lambda _obj: {})
         clear_cache()
-        for usage in used_by("Cohort"):
-            signature = inspect.signature(getattr(Workspace, usage.method))
-            for param in usage.params:
-                annotation = str(signature.parameters[param].annotation)
-                assert re.search(r"\bCohort\b", annotation)
+        texts = [
+            text
+            for _method, annotations in relations._method_annotations()
+            for name, _nodes, text in annotations
+            if name != "return"
+        ]
+        assert any("Cohort" in text for text in texts)
+        assert not any(re.search(r"\bCohort\b", text) for text in texts)
+        assert used_by("Cohort") == ()
+        assert UsageDoc("query", ("where",)) in used_by("Filter")
+
+
+class TestSummary:
+    """``_summary`` reads docstrings the way ``inspect.getdoc`` does."""
+
+    def test_inherited_docstring_is_used(self) -> None:
+        """A class without its own docstring inherits its base's first line.
+
+        ``inspect.getdoc`` walks the MRO while ``__doc__`` does not; the
+        summary must agree with the rest of the help system, which uses
+        ``inspect.getdoc`` everywhere else.
+        """
+
+        class Documented:
+            """Base summary line.
+
+            More text that must not appear.
+            """
+
+        undocumented = type("Undocumented", (Documented,), {})
+        assert undocumented.__doc__ is None
+        row = Export("Undocumented", "class", undocumented)
+        assert relations._summary(row) == "Base summary line."
+
+    def test_indented_docstring_is_cleaned(self) -> None:
+        """Leading indentation and blank lines do not leak into the summary."""
+
+        class Indented:
+            """
+
+            Summary after a blank line.
+            """
+
+        row = Export("Indented", "class", Indented)
+        assert relations._summary(row) == "Summary after a blank line."
+
+    def test_alias_reads_alias_docs(self) -> None:
+        """A Literal alias row takes its line from ``ALIAS_DOCS``."""
+        row = export("MathType")
+        assert row is not None
+        assert relations._summary(row) == ALIAS_DOCS["MathType"]
 
 
 class TestReferencedTypes:
