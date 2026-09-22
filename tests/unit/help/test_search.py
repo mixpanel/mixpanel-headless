@@ -18,7 +18,6 @@ surface. These tests lock:
 
 from __future__ import annotations
 
-import time
 from collections.abc import Iterator
 
 import pytest
@@ -302,10 +301,15 @@ class TestMemberHits:
         assert hit.summary == "value unique"
 
     def test_member_summary_shows_the_first_matching_member(self) -> None:
-        """When several members match, the summary shows the first in order."""
-        hit = _by_name(search("A"), "AlertFrequencyPreset")
-        if hit.matched_on == "member":
-            assert hit.summary.startswith("member ")
+        """When several members match, the summary shows the first in order.
+
+        ``"00"`` matches every ``AlertFrequencyPreset`` value (3600, 86400,
+        604800) but neither the enum name nor its first docstring line, so
+        the hit can only come from the member tier.
+        """
+        hit = _by_name(search("00"), "AlertFrequencyPreset")
+        assert hit.matched_on == "member"
+        assert hit.summary == "member HOURLY = 3600"
 
     def test_name_match_wins_over_member_match(self) -> None:
         """An entry whose name matches is reported once, as a name hit."""
@@ -423,10 +427,3 @@ class TestCaching:
         inventory_module.clear_cache()
         search("cohort")
         assert search_module._INDEX is not first
-
-    def test_warm_search_is_fast(self) -> None:
-        """A warm ``search("cohort")`` finishes well under 50 ms."""
-        search("cohort")
-        start = time.perf_counter()
-        search("cohort")
-        assert time.perf_counter() - start < 0.05

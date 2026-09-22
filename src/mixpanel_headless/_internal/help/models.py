@@ -306,7 +306,9 @@ class HelpEntry:
     Attributes:
         kind: What the query resolved to.
         name: Display name, for example ``"Workspace.query"`` or ``"Filter"``.
-        qualname: Fully qualified import path.
+        qualname: Canonical help query for this entry, for example
+            ``"Workspace.query"`` or ``"Filter"``; passing it back to
+            ``describe()`` returns the same entry. Not an import path.
         summary: First docstring line (or generated summary for aliases).
         doc: Parsed docstring sections.
         signature: Signature for callables, else ``None``.

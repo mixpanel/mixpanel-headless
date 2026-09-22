@@ -191,7 +191,7 @@ Most entries end with one or more hint blocks that point at a page on this site.
 | --- | --- | --- |
 | `kind` | `str` | One of the result kinds from the grammar table. |
 | `name` | `str` | Display name, for example `Workspace.query` or `Filter`. |
-| `qualname` | `str` | Fully qualified import path. |
+| `qualname` | `str` | Canonical help query for the entry, for example `Workspace.query` or `Filter`. Pass it back to `describe()` to get the same entry. Not an import path. |
 | `summary` | `str` | First docstring line. |
 | `doc` | object | `summary`, `body`, `args` (pairs), `returns`, `raises` (pairs), `example`, `notes`. |
 | `signature` | object or `null` | `name`, `params` (each: `name`, `annotation`, `default`, `description`, `values`), `returns`. |
