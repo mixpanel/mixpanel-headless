@@ -18,7 +18,7 @@ import pytest
 
 from mixpanel_headless._internal.help.hints import hints_for, tokens
 from mixpanel_headless._internal.help.inventory import inventory
-from mixpanel_headless._internal.help.models import Hint
+from mixpanel_headless._internal.help.models import HelpKind, Hint
 from mixpanel_headless._internal.help.registry import (
     DOCS_BASE,
     REFERENCE_HINTS,
@@ -162,6 +162,37 @@ class TestHintsFor:
         """
         (hint,) = hints_for((export,), kind="model")
         assert hint.url == hint_url("guide/entity-management.md")
+
+    @pytest.mark.parametrize(
+        ("query", "kind"),
+        [
+            ("HelpEntry", "dataclass"),
+            ("SearchResult", "dataclass"),
+            ("SearchHit", "dataclass"),
+            ("ParamDoc", "dataclass"),
+            ("SignatureDoc", "dataclass"),
+            ("FieldDoc", "dataclass"),
+            ("MemberDoc", "dataclass"),
+            ("Group", "dataclass"),
+            ("DocSections", "dataclass"),
+            ("UsageDoc", "dataclass"),
+            ("Hint", "dataclass"),
+            ("help", "function"),
+            ("reference", "module"),
+            ("reference.describe", "function"),
+        ],
+    )
+    def test_help_surface_picks_the_help_api_page(
+        self, query: str, kind: HelpKind
+    ) -> None:
+        """The help result types and entry points point at the help API page.
+
+        Args:
+            query: A help query naming part of the help surface.
+            kind: Its resolved kind.
+        """
+        (hint,) = hints_for(tokens(query), kind=kind)
+        assert hint.url == hint_url("api/help.md")
 
     def test_every_domain_yields_a_hint(self) -> None:
         """Every registered ``Workspace`` domain has at least one hinted method."""

@@ -51,6 +51,21 @@ DOMAIN_TITLES = tuple(title for title, _ in WORKSPACE_DOMAINS)
 TYPE_KINDS = frozenset({"model", "dataclass", "enum", "literal", "alias", "class"})
 """Inventory kinds that the ``types`` listing shows."""
 
+RESULT_TYPES = (
+    "HelpEntry",
+    "SearchResult",
+    "SearchHit",
+    "ParamDoc",
+    "SignatureDoc",
+    "FieldDoc",
+    "MemberDoc",
+    "Group",
+    "DocSections",
+    "UsageDoc",
+    "Hint",
+)
+"""The help result types exported from the package root as well as ``reference``."""
+
 
 # =============================================================================
 # Fixtures and helpers
@@ -171,6 +186,29 @@ class TestModuleSurface:
         """``reference.search`` returns the same result as the internal search."""
         assert ref.search("cohort").hits == search_module.search("cohort").hits
         assert len(ref.search("cohort", limit=2).hits) == 2
+
+    @pytest.mark.parametrize("name", RESULT_TYPES)
+    def test_result_types_are_exported_from_the_package_root(self, name: str) -> None:
+        """Each result type is the same object at ``mp.<name>`` and ``reference.<name>``.
+
+        Args:
+            name: A help result type name.
+        """
+        assert getattr(mp, name) is getattr(ref, name)
+        assert name in mp.__all__
+
+    @pytest.mark.parametrize("name", RESULT_TYPES)
+    def test_result_types_describe_themselves(self, name: str) -> None:
+        """The help system can describe its own result types.
+
+        Args:
+            name: A help result type name.
+        """
+        entry = ref.describe(name)
+        assert entry.kind == "dataclass"
+        assert entry.name == name
+        assert entry.summary
+        assert entry.hints
 
     def test_assembler_covers_every_help_kind(self) -> None:
         """Every ``HelpKind`` is a synthetic kind or has a builder in the assembler table."""

@@ -130,6 +130,20 @@ class TestDocumentedExamples:
         assert result.exit_code == 0, result.output
         assert "CohortAggregationType" in result.output
 
+    def test_help_entry_describes_itself(self, runner: CliRunner) -> None:
+        """``mp help HelpEntry`` renders the help system's own result type."""
+        result = runner.invoke(app, ["help", "HelpEntry"])
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith("class HelpEntry\n")
+        assert "Fields (public):" in result.output
+        assert "  kind: " in result.output
+
+    def test_search_finds_help_entry(self, runner: CliRunner) -> None:
+        """``mp help search HelpEntry`` lists the root export as a dataclass hit."""
+        result = runner.invoke(app, ["help", "search", "HelpEntry"])
+        assert result.exit_code == 0, result.output
+        assert "[dataclass] HelpEntry " in result.output
+
     def test_exceptions_no_hints(self, runner: CliRunner) -> None:
         """``mp help exceptions --no-hints`` prints the tree without a tip."""
         result = runner.invoke(app, ["help", "exceptions", "--no-hints"])

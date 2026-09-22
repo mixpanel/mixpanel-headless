@@ -1072,6 +1072,28 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
     # --- cross-cutting: core exceptions and pagination ---------------------
     (
         (
+            "help",
+            "reference",
+            "describe",
+            "HelpEntry",
+            "SearchResult",
+            "SearchHit",
+            "ParamDoc",
+            "SignatureDoc",
+            "FieldDoc",
+            "MemberDoc",
+            "Group",
+            "DocSections",
+            "UsageDoc",
+            "Hint",
+            "HelpKind",
+            "HelpFormat",
+        ),
+        "built-in help \u2014 help(), reference.describe() / search(), and the result types",
+        "api/help.md",
+    ),
+    (
+        (
             "MixpanelHeadlessError",
             "APIError",
             "QueryError",

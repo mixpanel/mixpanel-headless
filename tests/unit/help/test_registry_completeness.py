@@ -421,6 +421,8 @@ class TestReferenceHints:
             "guide/query-retention.md",
             "guide/query-flows.md",
             "guide/query-users.md",
+            "api/help.md",
+            "api/exceptions.md",
         ],
     )
     def test_required_pages_are_hinted(self, needle: str) -> None:

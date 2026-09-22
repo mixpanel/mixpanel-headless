@@ -93,7 +93,20 @@ from mixpanel_headless.exceptions import (
     ValidationError,
     WorkspaceScopeError,
 )
-from mixpanel_headless.reference import help
+from mixpanel_headless.reference import (
+    DocSections,
+    FieldDoc,
+    Group,
+    HelpEntry,
+    Hint,
+    MemberDoc,
+    ParamDoc,
+    SearchHit,
+    SearchResult,
+    SignatureDoc,
+    UsageDoc,
+    help,
+)
 from mixpanel_headless.replay_labels import (
     default_label_fn,
     selector_label_fn,
@@ -414,6 +427,17 @@ __all__ = [
     "HelpDomainReason",
     "help",
     "reference",
+    "HelpEntry",
+    "SearchResult",
+    "SearchHit",
+    "ParamDoc",
+    "SignatureDoc",
+    "FieldDoc",
+    "MemberDoc",
+    "Group",
+    "DocSections",
+    "UsageDoc",
+    "Hint",
     # Session-replay exceptions (044)
     "SessionReplayError",
     "SessionReplayAccessError",
