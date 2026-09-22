@@ -40,6 +40,7 @@ from mixpanel_headless._internal.help.docstrings import first_line, parse_docstr
 from mixpanel_headless._internal.help.introspect import format_type
 from mixpanel_headless._internal.help.models import (
     HELP_KINDS,
+    PARAM_KINDS,
     DocSections,
     FieldDoc,
     Group,
@@ -52,6 +53,7 @@ from mixpanel_headless._internal.help.models import (
     SignatureDoc,
     UsageDoc,
 )
+from mixpanel_headless._internal.help.render import _signature_block
 from mixpanel_headless._internal.help.resolve import parse_query, resolve
 from mixpanel_headless._internal.help.search import search
 
@@ -303,6 +305,7 @@ _PARAM_DOCS = st.builds(
     default=_OPT_STR,
     description=_STR,
     values=_STRS,
+    kind=st.sampled_from(PARAM_KINDS),
 )
 _SIGNATURES = st.builds(
     SignatureDoc,
@@ -406,6 +409,59 @@ def test_search_result_to_dict_is_json_serializable(result: SearchResult) -> Non
     assert json.loads(json.dumps(payload)) == payload
     assert len(payload["hits"]) == len(result.hits)  # type: ignore[arg-type]
     assert isinstance(hash(result), int)
+
+
+# =============================================================================
+# Signature separators
+# =============================================================================
+
+_SIG_PARAM_DOCS = st.builds(
+    ParamDoc,
+    name=_IDENT,
+    annotation=_WORD,
+    default=st.one_of(st.none(), _WORD),
+    kind=st.sampled_from(PARAM_KINDS),
+)
+_IDENT_SIGNATURES = st.builds(
+    SignatureDoc,
+    name=_IDENT,
+    params=st.lists(_SIG_PARAM_DOCS, min_size=1, max_size=6).map(tuple),
+    returns=st.one_of(st.none(), _WORD),
+)
+
+
+@given(sig=_IDENT_SIGNATURES)
+def test_signature_block_separator_invariants(sig: SignatureDoc) -> None:
+    """The ``*`` and ``/`` markers follow the parameter kinds exactly.
+
+    A bare ``*`` appears at most once, only before a keyword-only parameter,
+    and never when a ``*args`` parameter precedes the keyword-only section. A
+    ``/`` appears only directly after a positional-only parameter, and every
+    positional-only run is closed by exactly one ``/``.
+
+    Args:
+        sig: A random signature with identifier names and mixed kinds.
+    """
+    lines = _signature_block(sig.name, sig)
+    items = [line.strip().rstrip(",") for line in lines[1:-1]]
+    kinds = [p.kind for p in sig.params]
+    star_lines = [i for i, item in enumerate(items) if item == "*"]
+    slash_lines = [i for i, item in enumerate(items) if item == "/"]
+    assert len(items) == len(sig.params) + len(star_lines) + len(slash_lines)
+    assert len(star_lines) <= 1
+    first_kw = next((i for i, k in enumerate(kinds) if k == "keyword_only"), None)
+    star_before_kw = first_kw is not None and "var_positional" in kinds[:first_kw]
+    assert bool(star_lines) == (first_kw is not None and not star_before_kw)
+    positional_only_count = kinds.count("positional_only")
+    if positional_only_count:
+        assert slash_lines
+        for index in slash_lines:
+            assert items[index - 1].split(":")[0].split(" =")[0] in {
+                p.name for p in sig.params if p.kind == "positional_only"
+            }
+    else:
+        assert not slash_lines
+    assert not lines[-2].endswith(",")
 
 
 # =============================================================================

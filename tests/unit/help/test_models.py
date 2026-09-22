@@ -20,6 +20,7 @@ import pytest
 from mixpanel_headless._internal.help.models import (
     HELP_FORMATS,
     HELP_KINDS,
+    PARAM_KINDS,
     DocSections,
     FieldDoc,
     Group,
@@ -29,6 +30,7 @@ from mixpanel_headless._internal.help.models import (
     Hint,
     MemberDoc,
     ParamDoc,
+    ParamKind,
     SearchHit,
     SearchResult,
     SignatureDoc,
@@ -180,6 +182,18 @@ def test_help_formats_matches_literal() -> None:
     assert HELP_FORMATS == ("text", "markdown", "json")
 
 
+def test_param_kinds_matches_literal() -> None:
+    """``PARAM_KINDS`` holds the five ``inspect.Parameter`` kinds in declaration order."""
+    assert get_args(ParamKind) == PARAM_KINDS
+    assert PARAM_KINDS == (
+        "positional_only",
+        "positional_or_keyword",
+        "var_positional",
+        "keyword_only",
+        "var_keyword",
+    )
+
+
 # =============================================================================
 # to_dict() — leaf models
 # =============================================================================
@@ -192,14 +206,22 @@ def test_hint_to_dict() -> None:
 
 
 def test_param_doc_to_dict(param: ParamDoc) -> None:
-    """``ParamDoc.to_dict()`` turns ``values`` into a list and keeps ``None``."""
+    """``ParamDoc.to_dict()`` turns ``values`` into a list, keeps ``None``, and emits ``kind``."""
     assert param.to_dict() == {
         "name": "events",
         "annotation": "str | Metric",
         "default": None,
         "description": "Event name(s) to query.",
         "values": ["total", "unique"],
+        "kind": "positional_or_keyword",
     }
+
+
+def test_param_doc_to_dict_keyword_only_kind() -> None:
+    """A keyword-only ``ParamDoc`` reports ``kind == "keyword_only"`` in ``to_dict()``."""
+    param = ParamDoc(name="from_date", annotation="str", kind="keyword_only")
+    assert param.kind == "keyword_only"
+    assert param.to_dict()["kind"] == "keyword_only"
 
 
 def test_signature_doc_to_dict(signature: SignatureDoc, param: ParamDoc) -> None:
@@ -401,11 +423,12 @@ def test_help_entry_requires_core_fields() -> None:
 
 
 def test_param_doc_defaults() -> None:
-    """``ParamDoc`` needs only ``name`` and ``annotation``."""
+    """``ParamDoc`` needs only ``name`` and ``annotation``; ``kind`` defaults to plain."""
     param = ParamDoc(name="x", annotation="int")
     assert param.default is None
     assert param.description == ""
     assert param.values == ()
+    assert param.kind == "positional_or_keyword"
 
 
 def test_signature_doc_defaults() -> None:

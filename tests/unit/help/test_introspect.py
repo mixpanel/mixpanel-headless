@@ -41,7 +41,6 @@ from mixpanel_headless._internal.help.introspect import (
     bases_doc,
     class_sections,
     clear_cache,
-    compact_signature,
     dataclass_fields_doc,
     enum_members,
     enum_values,
@@ -505,21 +504,23 @@ def test_signature_doc_every_param_has_a_description_on_workspace_query() -> Non
 
 
 def test_signature_doc_local_function() -> None:
-    """Defaults use ``repr``; keyword-only Literal values are filled."""
+    """Defaults use ``repr``; keyword-only Literal values and kinds are filled."""
     doc = signature_doc(_plain_function)
     assert doc == SignatureDoc(
         name="_plain_function",
         params=(
             ParamDoc("name", "str", None, "A name.", ()),
             ParamDoc("count", "int", "1", "Repeat count.", ()),
-            ParamDoc("mode", "Mode", "'fast'", "Speed.", ("fast", "slow")),
+            ParamDoc(
+                "mode", "Mode", "'fast'", "Speed.", ("fast", "slow"), "keyword_only"
+            ),
         ),
         returns="str",
     )
 
 
 def test_signature_doc_var_args_and_kwargs() -> None:
-    """``*args`` and ``**kwargs`` keep their prefixes; ``self`` is dropped."""
+    """``*args`` and ``**kwargs`` keep their prefixes and kinds; ``self`` is dropped."""
     doc = signature_doc(Plain.add)
     assert [param.name for param in doc.params] == [
         "other",
@@ -527,11 +528,54 @@ def test_signature_doc_var_args_and_kwargs() -> None:
         "scale",
         "**extra",
     ]
+    assert [param.kind for param in doc.params] == [
+        "positional_or_keyword",
+        "var_positional",
+        "keyword_only",
+        "var_keyword",
+    ]
     by_name = {param.name: param for param in doc.params}
     assert by_name["*rest"].description == "More addends."
     assert by_name["**extra"].description == "Ignored."
     assert by_name["scale"].default == "1.0"
     assert doc.returns == "int"
+
+
+def test_signature_doc_positional_only_kind() -> None:
+    """Parameters before ``/`` are recorded as ``positional_only``."""
+
+    def divide(numerator: int, denominator: int, /, precision: int = 2) -> float:
+        """Fixture with two positional-only parameters.
+
+        Args:
+            numerator: Top.
+            denominator: Bottom.
+            precision: Rounding digits.
+
+        Returns:
+            The rounded quotient.
+        """
+        return round(numerator / denominator, precision)
+
+    doc = signature_doc(divide)
+    assert [(param.name, param.kind) for param in doc.params] == [
+        ("numerator", "positional_only"),
+        ("denominator", "positional_only"),
+        ("precision", "positional_or_keyword"),
+    ]
+
+
+def test_signature_doc_workspace_segmentation_records_keyword_only() -> None:
+    """``Workspace.segmentation`` keeps ``event`` positional and the rest keyword-only."""
+    doc = signature_doc(Workspace.segmentation)
+    assert doc.params[0].name == "event"
+    assert doc.params[0].kind == "positional_or_keyword"
+    assert doc.params[1].name == "from_date"
+    assert doc.params[1].kind == "keyword_only"
+    assert all(param.kind == "keyword_only" for param in doc.params[1:])
+    payload = doc.to_dict()
+    assert isinstance(payload["params"], list)
+    assert payload["params"][1]["kind"] == "keyword_only"
 
 
 def test_signature_doc_bound_classmethod_drops_cls() -> None:
@@ -589,7 +633,6 @@ def test_signature_doc_when_signature_unavailable() -> None:
     """When ``inspect.signature`` raises, the result has no params and no return."""
     doc = signature_doc(NoSignature(), name="mystery")
     assert doc == SignatureDoc(name="mystery", params=(), returns=None)
-    assert compact_signature(doc) == "mystery()"
 
 
 def test_signature_doc_on_a_class_uses_init_params() -> None:
@@ -601,29 +644,6 @@ def test_signature_doc_on_a_class_uses_init_params() -> None:
     by_name = {param.name: param for param in doc.params}
     assert by_name["x"].description == "Horizontal coordinate."
     assert by_name["mode"].values == ("fast", "slow")
-
-
-# =============================================================================
-# compact_signature
-# =============================================================================
-
-
-def test_compact_signature_names_and_defaults_only() -> None:
-    """The compact form lists names and defaults, no annotations or return."""
-    assert compact_signature(signature_doc(_plain_function)) == (
-        "_plain_function(name, count=1, mode='fast')"
-    )
-    assert compact_signature(signature_doc(Plain.add)) == (
-        "add(other, *rest, scale=1.0, **extra)"
-    )
-    assert compact_signature(SignatureDoc("noop")) == "noop()"
-
-
-def test_compact_signature_filter_equals() -> None:
-    """``Filter.equals`` compacts to the one-line form used in listings."""
-    assert compact_signature(signature_doc(Filter.equals)) == (
-        "equals(property, value, resource_type='events')"
-    )
 
 
 # =============================================================================
@@ -853,7 +873,12 @@ def test_class_sections_plain_class() -> None:
     assert properties[0].summary == "Twice the value."
     add = methods[0]
     assert add.signature is not None
-    assert compact_signature(add.signature) == "add(other, *rest, scale=1.0, **extra)"
+    assert [(p.name, p.default) for p in add.signature.params] == [
+        ("other", None),
+        ("*rest", None),
+        ("scale", "1.0"),
+        ("**extra", None),
+    ]
     assert add.summary == "Add numbers."
 
 

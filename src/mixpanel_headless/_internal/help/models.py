@@ -47,6 +47,18 @@ HELP_FORMATS: tuple[HelpFormat, ...] = get_args(HelpFormat)
 MatchedOn = Literal["name", "doc", "member"]
 """Where a search hit matched: the name, the docstring summary, or an enum member."""
 
+ParamKind = Literal[
+    "positional_only",
+    "positional_or_keyword",
+    "var_positional",
+    "keyword_only",
+    "var_keyword",
+]
+"""How a parameter may be passed; the lower-cased ``inspect.Parameter.kind`` names."""
+
+PARAM_KINDS: tuple[ParamKind, ...] = get_args(ParamKind)
+"""Runtime tuple of every ``ParamKind`` value, in ``inspect`` declaration order."""
+
 
 def _pairs_to_lists(pairs: tuple[tuple[str, str], ...]) -> list[list[str]]:
     """Convert a tuple of two-string pairs into a list of two-item lists.
@@ -86,11 +98,16 @@ class ParamDoc:
     """One parameter of a callable signature.
 
     Attributes:
-        name: Parameter name without ``self``.
+        name: Parameter name without ``self``; ``*args`` and ``**kwargs`` keep
+            their prefixes.
         annotation: Display form of the annotation (already cleaned).
         default: ``repr`` of the default, or ``None`` when the parameter is required.
         description: Description from the ``Args:`` docstring section, or ``""``.
         values: Literal or enum member values accepted by the parameter, if any.
+        kind: How the parameter may be passed. Renderers print a bare ``*``
+            before the first ``keyword_only`` parameter (unless a
+            ``var_positional`` one precedes it) and a ``/`` after the last
+            ``positional_only`` parameter.
     """
 
     name: str
@@ -98,6 +115,7 @@ class ParamDoc:
     default: str | None = None
     description: str = ""
     values: tuple[str, ...] = ()
+    kind: ParamKind = "positional_or_keyword"
 
     def to_dict(self) -> dict[str, object]:
         """Convert to a JSON-serializable dict.
@@ -111,6 +129,7 @@ class ParamDoc:
             "default": self.default,
             "description": self.description,
             "values": list(self.values),
+            "kind": self.kind,
         }
 
 
@@ -437,6 +456,7 @@ class SearchResult:
 __all__ = [
     "HELP_FORMATS",
     "HELP_KINDS",
+    "PARAM_KINDS",
     "DocSections",
     "FieldDoc",
     "Group",
@@ -447,6 +467,7 @@ __all__ = [
     "MatchedOn",
     "MemberDoc",
     "ParamDoc",
+    "ParamKind",
     "SearchHit",
     "SearchResult",
     "SignatureDoc",

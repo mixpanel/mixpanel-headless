@@ -525,6 +525,100 @@ def test_signature_block_multiple_params_and_defaults() -> None:
     )
 
 
+def _entry_for(sig: SignatureDoc) -> HelpEntry:
+    """Wrap a signature in a minimal ``function`` entry for signature-block tests.
+
+    Args:
+        sig: The signature to render.
+
+    Returns:
+        A ``function`` entry named after ``sig`` with a one-line docstring.
+    """
+    return HelpEntry(
+        kind="function",
+        name=sig.name,
+        qualname=f"m.{sig.name}",
+        summary="S.",
+        doc=DocSections(summary="S.", body="S."),
+        signature=sig,
+    )
+
+
+def test_signature_block_bare_star_before_first_keyword_only() -> None:
+    """A bare ``*,`` line precedes the first keyword-only parameter."""
+    sig = SignatureDoc(
+        name="fn",
+        params=(
+            ParamDoc(name="a", annotation="int"),
+            ParamDoc(name="b", annotation="str", kind="keyword_only"),
+            ParamDoc(name="c", annotation="int", default="1", kind="keyword_only"),
+        ),
+        returns="None",
+    )
+    assert render_text(_entry_for(sig)) == (
+        "fn(\n    a: int,\n    *,\n    b: str,\n    c: int = 1\n) -> None\n\nS."
+    )
+    assert "    *,\n" in render_markdown(_entry_for(sig))
+
+
+def test_signature_block_slash_after_last_positional_only() -> None:
+    """A bare ``/`` line follows the last positional-only parameter."""
+    sig = SignatureDoc(
+        name="fn",
+        params=(
+            ParamDoc(name="a", annotation="int", kind="positional_only"),
+            ParamDoc(name="b", annotation="int", kind="positional_only"),
+            ParamDoc(name="c", annotation="int", default="2"),
+        ),
+    )
+    assert render_text(_entry_for(sig)) == (
+        "fn(\n    a: int,\n    b: int,\n    /,\n    c: int = 2\n)\n\nS."
+    )
+
+
+def test_signature_block_star_args_opens_keyword_only_section() -> None:
+    """No bare ``*`` is printed when ``*args`` already precedes keyword-only params."""
+    sig = SignatureDoc(
+        name="fn",
+        params=(
+            ParamDoc(name="a", annotation="int"),
+            ParamDoc(name="*rest", annotation="int", kind="var_positional"),
+            ParamDoc(
+                name="scale", annotation="float", default="1.0", kind="keyword_only"
+            ),
+            ParamDoc(name="**extra", annotation="int", kind="var_keyword"),
+        ),
+    )
+    assert render_text(_entry_for(sig)) == (
+        "fn(\n    a: int,\n    *rest: int,\n    scale: float = 1.0,\n    **extra: int\n)\n\nS."
+    )
+
+
+def test_signature_block_only_keyword_only_and_only_positional_only() -> None:
+    """Edge shapes: all keyword-only starts with ``*,``; all positional-only ends with ``/``."""
+    kw_only = SignatureDoc(
+        name="fn", params=(ParamDoc(name="a", annotation="int", kind="keyword_only"),)
+    )
+    assert render_text(_entry_for(kw_only)).startswith("fn(\n    *,\n    a: int\n)")
+    pos_only = SignatureDoc(
+        name="fn",
+        params=(ParamDoc(name="a", annotation="int", kind="positional_only"),),
+    )
+    assert render_text(_entry_for(pos_only)).startswith("fn(\n    a: int,\n    /\n)")
+
+
+def test_workspace_segmentation_text_has_bare_star_line() -> None:
+    """The real ``Workspace.segmentation`` signature shows ``*,`` after ``event``."""
+    from mixpanel_headless.reference import describe
+
+    lines = render_text(describe("Workspace.segmentation")).splitlines()
+    assert lines[0] == "Workspace.segmentation("
+    assert lines[1] == "    event: str,"
+    assert lines[2] == "    *,"
+    assert lines[3] == "    from_date: str,"
+    assert lines.count("    *,") == 1
+
+
 def test_signature_block_no_params_no_returns_prints_ellipsis() -> None:
     """A signature with no parameters and no return prints ``Name(...)``."""
     entry = HelpEntry(
@@ -1342,6 +1436,29 @@ def test_compact_signature_forms() -> None:
         == "Filter.equals(property, value=None)"
     )
     assert _compact_signature(SignatureDoc(name="f")) == "f()"
+
+
+def test_compact_signature_markers() -> None:
+    """The compact form emits ``/`` and a bare ``*`` where the signature needs them."""
+    mixed = SignatureDoc(
+        name="f",
+        params=(
+            ParamDoc(name="a", annotation="int", kind="positional_only"),
+            ParamDoc(name="b", annotation="int"),
+            ParamDoc(name="c", annotation="int", default="1", kind="keyword_only"),
+        ),
+    )
+    assert _compact_signature(mixed) == "f(a, /, b, *, c=1)"
+    star_args = SignatureDoc(
+        name="g",
+        params=(
+            ParamDoc(name="a", annotation="int"),
+            ParamDoc(name="*rest", annotation="int", kind="var_positional"),
+            ParamDoc(name="c", annotation="int", default="1", kind="keyword_only"),
+            ParamDoc(name="**kw", annotation="int", kind="var_keyword"),
+        ),
+    )
+    assert _compact_signature(star_args) == "g(a, *rest, c=1, **kw)"
 
 
 def test_markdown_field_without_default_has_empty_default_cell() -> None:

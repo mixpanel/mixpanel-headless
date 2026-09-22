@@ -86,6 +86,7 @@ from .models import (
     HelpFormat,
     HelpKind,
     MemberDoc,
+    ParamDoc,
     SearchResult,
     SignatureDoc,
     UsageDoc,
@@ -343,6 +344,73 @@ def _wrap_values(
     return lines
 
 
+def _signature_items(
+    sig: SignatureDoc, render_param: Callable[[ParamDoc], str]
+) -> list[str]:
+    """Return the comma-separated items of a signature, markers included.
+
+    Each parameter is passed through ``render_param``. A bare ``/`` follows
+    the last ``positional_only`` parameter of each run, and a bare ``*``
+    precedes the first ``keyword_only`` parameter unless a ``var_positional``
+    parameter (``*args``) already opened the keyword-only section.
+
+    Args:
+        sig: The signature.
+        render_param: Formats one parameter (compact or annotated form).
+
+    Returns:
+        The items in call order; ``[]`` when there are no parameters.
+
+    Example:
+        ```python
+        _signature_items(sig, lambda p: p.name)   # ["a", "/", "b", "*", "c"]
+        ```
+    """
+    items: list[str] = []
+    keyword_section_open = False
+    params = sig.params
+    for index, param in enumerate(params):
+        if param.kind == "var_positional":
+            keyword_section_open = True
+        elif param.kind == "keyword_only" and not keyword_section_open:
+            items.append("*")
+            keyword_section_open = True
+        items.append(render_param(param))
+        ends_positional_only_run = param.kind == "positional_only" and (
+            index + 1 == len(params) or params[index + 1].kind != "positional_only"
+        )
+        if ends_positional_only_run:
+            items.append("/")
+    return items
+
+
+def _compact_param(param: ParamDoc) -> str:
+    """Format one parameter as ``name`` or ``name=default``.
+
+    Args:
+        param: The parameter.
+
+    Returns:
+        The compact form without an annotation.
+    """
+    return param.name if param.default is None else f"{param.name}={param.default}"
+
+
+def _annotated_param(param: ParamDoc) -> str:
+    """Format one parameter as ``name: annotation = default``.
+
+    Args:
+        param: The parameter.
+
+    Returns:
+        The form used by the multi-line signature block; the annotation and
+        default parts are omitted when absent.
+    """
+    annotation = f": {param.annotation}" if param.annotation else ""
+    default = "" if param.default is None else f" = {param.default}"
+    return f"{param.name}{annotation}{default}"
+
+
 def _compact_signature(sig: SignatureDoc, prefix: str = "") -> str:
     """Format a one-line signature with parameter names and defaults only.
 
@@ -351,11 +419,16 @@ def _compact_signature(sig: SignatureDoc, prefix: str = "") -> str:
         prefix: Text placed before the name, for example ``"Filter."``.
 
     Returns:
-        ``prefix + name(p1, p2=default)``; ``name()`` when there are no params.
+        ``prefix + name(p1, p2=default)`` with ``/`` and ``*`` markers where
+        the parameter kinds require them; ``name()`` when there are no params.
+
+    Example:
+        ```python
+        _compact_signature(signature_doc(Workspace.segmentation))
+        # "segmentation(event, *, from_date, to_date, on=None, unit='day', where=None)"
+        ```
     """
-    params = ", ".join(
-        p.name if p.default is None else f"{p.name}={p.default}" for p in sig.params
-    )
+    params = ", ".join(_signature_items(sig, _compact_param))
     return f"{prefix}{sig.name}({params})"
 
 
@@ -369,17 +442,17 @@ def _signature_block(name: str, sig: SignatureDoc) -> Block:
     Returns:
         ``Name(...)`` when there are no params and no return; ``Name() -> R``
         when only a return exists; otherwise one indented ``p: ann = default``
-        line per parameter, then ``) -> R`` or ``)``.
+        line per parameter (plus a bare ``*,`` or ``/,`` line where the
+        parameter kinds require one), then ``) -> R`` or ``)``.
     """
     returns = f" -> {sig.returns}" if sig.returns else ""
     if not sig.params:
         return [f"{name}(...)"] if not returns else [f"{name}(){returns}"]
+    items = _signature_items(sig, _annotated_param)
     lines = [f"{name}("]
-    for index, param in enumerate(sig.params):
-        annotation = f": {param.annotation}" if param.annotation else ""
-        default = "" if param.default is None else f" = {param.default}"
-        comma = "," if index < len(sig.params) - 1 else ""
-        lines.append(f"    {param.name}{annotation}{default}{comma}")
+    for index, item in enumerate(items):
+        comma = "," if index < len(items) - 1 else ""
+        lines.append(f"    {item}{comma}")
     lines.append(f"){returns}")
     return lines
 

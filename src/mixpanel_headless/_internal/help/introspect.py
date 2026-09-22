@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from .docstrings import first_line, parse_docstring
-from .models import FieldDoc, MemberDoc, ParamDoc, SignatureDoc
+from .models import FieldDoc, MemberDoc, ParamDoc, ParamKind, SignatureDoc
 
 _PREFIX_RE = re.compile(
     r"\b(?:typing_extensions|typing|collections\.abc|builtins|"
@@ -82,6 +82,15 @@ _HINTS_CACHE: dict[int, tuple[object, dict[str, object]]] = {}
 The object is stored with its hints so its ``id`` cannot be recycled while the
 entry is alive.
 """
+
+_PARAM_KIND_NAMES: dict[inspect._ParameterKind, ParamKind] = {
+    inspect.Parameter.POSITIONAL_ONLY: "positional_only",
+    inspect.Parameter.POSITIONAL_OR_KEYWORD: "positional_or_keyword",
+    inspect.Parameter.VAR_POSITIONAL: "var_positional",
+    inspect.Parameter.KEYWORD_ONLY: "keyword_only",
+    inspect.Parameter.VAR_KEYWORD: "var_keyword",
+}
+"""``inspect.Parameter.kind`` to the ``ParamDoc.kind`` literal it is recorded as."""
 
 _Sections = tuple[tuple[MemberDoc, ...], tuple[MemberDoc, ...], tuple[MemberDoc, ...]]
 """Return type of ``class_sections``: ``(construction, properties, methods)``."""
@@ -436,7 +445,9 @@ def _param_doc(
             ``*`` / ``**`` prefixes).
 
     Returns:
-        The parameter documentation.
+        The parameter documentation, with ``kind`` taken from ``param.kind``
+        (``keyword_only`` for parameters after a bare ``*`` or ``*args``,
+        ``positional_only`` for parameters before ``/``).
     """
     if param.kind is inspect.Parameter.VAR_POSITIONAL:
         display = f"*{pname}"
@@ -458,29 +469,8 @@ def _param_doc(
         default=default,
         description=description,
         values=values,
+        kind=_PARAM_KIND_NAMES[param.kind],
     )
-
-
-def compact_signature(sig: SignatureDoc) -> str:
-    """Render a one-line ``name(a, b=1)`` form: names and defaults only.
-
-    Args:
-        sig: A signature produced by ``signature_doc``.
-
-    Returns:
-        The compact string without annotations or return type.
-
-    Example:
-        ```python
-        compact_signature(signature_doc(Filter.equals))
-        # "equals(property, value, resource_type='events')"
-        ```
-    """
-    parts = [
-        param.name if param.default is None else f"{param.name}={param.default}"
-        for param in sig.params
-    ]
-    return f"{sig.name}({', '.join(parts)})"
 
 
 # =============================================================================
@@ -1034,7 +1024,6 @@ __all__ = [
     "bases_doc",
     "class_sections",
     "clear_cache",
-    "compact_signature",
     "dataclass_fields_doc",
     "enum_members",
     "enum_values",
