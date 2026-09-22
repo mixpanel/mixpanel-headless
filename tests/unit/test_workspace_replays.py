@@ -767,6 +767,24 @@ class TestFetchReplayBadTimestamps:
         assert replay.start_time == 1716810000000
         assert replay.end_time == 1716810015000
 
+    def test_huge_timestamp_with_mixpanel_events_does_not_raise(self) -> None:
+        """A timestamp past year 9999 is not a replay bound, so the date window works."""
+        ws = _make_workspace()
+        svc = _install_mock_replays_service(ws)
+        svc.sign.return_value = [_signed()]
+        svc.fetch_files.return_value = [
+            {"type": 4, "data": {}, "timestamp": 1716810000000},
+            {"type": 3, "data": {}, "timestamp": 1e30},
+            {"type": 3, "data": {}, "timestamp": 1716810005000},
+        ]
+        svc.events_for.return_value = {"r-1": []}
+
+        replay = ws.fetch_replay("r-1", retention_days=30, include_mixpanel_events=True)
+
+        assert (replay.start_time, replay.end_time) == (1716810000000, 1716810005000)
+        _args, kwargs = svc.events_for.call_args
+        assert kwargs["from_date"] == kwargs["to_date"] == "2024-05-27"
+
     def test_no_usable_timestamp_is_not_found(self) -> None:
         """A stream with no usable timestamp raises ReplayNotFoundError."""
         ws = _make_workspace()

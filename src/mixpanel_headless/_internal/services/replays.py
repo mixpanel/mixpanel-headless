@@ -375,9 +375,17 @@ class ReplaysService:
                     status, events = results[i]
                     if status != 200 or not events:
                         continue
+                    # A damaged file can hold entries that are not dicts, or
+                    # unusable timestamps: skip the former, sort the latter
+                    # as 0, so the walk itself never raises.
+                    dict_events = [ev for ev in events if isinstance(ev, dict)]
                     if not format_checked:
+                        # The format check reads the first DICT entry of the
+                        # first non-empty file, so one damaged leading entry
+                        # does not abort a replay whose events are valid. A
+                        # file with no dict entry at all is not rrweb.
                         format_checked = True
-                        if not _looks_like_rrweb(events[0]):
+                        if not dict_events or not _looks_like_rrweb(dict_events[0]):
                             raise UnsupportedReplayFormatError(
                                 f"Replay {signed.replay_id} is not in rrweb "
                                 f"format: its first event lacks the rrweb "
@@ -388,10 +396,6 @@ class ReplaysService:
                                     "format": "non-rrweb",
                                 },
                             )
-                    # A damaged file can hold entries that are not dicts, or
-                    # unusable timestamps: skip the former, sort the latter
-                    # as 0, so the walk itself never raises.
-                    dict_events = [ev for ev in events if isinstance(ev, dict)]
                     for ev in sorted(dict_events, key=_event_timestamp):
                         yield ev
 

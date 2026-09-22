@@ -3000,7 +3000,6 @@ class TestInvalidTimestampsNeverRaise:
         """Finite ints and floats become ints; a missing key or non-dict gives 0."""
         assert _event_timestamp({"timestamp": 1500}) == 1500
         assert _event_timestamp({"timestamp": 1500.9}) == 1500
-        assert _event_timestamp({"timestamp": 1e30}) == int(1e30)
         assert _event_timestamp({}) == 0
         assert _event_timestamp("junk") == 0
 
@@ -3019,10 +3018,33 @@ class TestInvalidTimestampsNeverRaise:
         result = RrwebAnalyzer().analyze(events)
         assert result.markdown_summary == "1: Navigated to /x\n2: Navigated to /y"
 
-    def test_analyze_keeps_a_huge_timestamp(self) -> None:
-        """A finite but huge timestamp is still a timestamp."""
-        result = RrwebAnalyzer().analyze([_meta(1e30, "/x")])  # type: ignore[arg-type]
-        assert result.actions[0].timestamp == int(1e30)
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (253402300799999, 253402300799999),
+            (253402300799999.0, 253402300799999),
+            (253402300799999.5, 0),
+            (253402300800000, 0),
+            (1e30, 0),
+            (0, 0),
+            (-5, 0),
+        ],
+    )
+    def test_event_timestamp_range(self, value: float, expected: int) -> None:
+        """Only timestamps up to 9999-12-31T23:59:59.999Z (in ms) are usable.
+
+        Args:
+            value: The raw timestamp value.
+            expected: The helper's result.
+        """
+        assert _event_timestamp({"timestamp": value}) == expected
+
+    def test_analyze_drops_a_timestamp_past_year_9999(self) -> None:
+        """A finite but huge timestamp is unusable, so its action is dropped."""
+        result = RrwebAnalyzer().analyze(
+            [_meta(1000, "/x"), _meta(1e30, "/huge")]  # type: ignore[arg-type]
+        )
+        assert result.markdown_summary == "1: Navigated to /x"
 
     def test_analyze_skips_non_dict_events(self) -> None:
         """Entries that are not dicts are skipped."""

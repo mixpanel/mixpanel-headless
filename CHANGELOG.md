@@ -87,12 +87,17 @@ set. Web replays give the same output as before.
   raising `ParamValidationError`, so one bad event no longer fails a whole
   `fetch_replay`. Malformed wireframe input (wrong types, non-finite
   numbers) degrades instead of raising.
-- An unusable rrweb timestamp (a string, None, a bool, NaN, or infinity)
-  reads as 0 everywhere, instead of raising: in the analyzer (the action is
-  dropped), `Replay.events_df` (`t` is 0), `Replay.to_rrweb_player_json()`
-  (it sorts first), the CDN walk, and `fetch_replay` (the window uses the
-  usable timestamps; with none, it raises `ReplayNotFoundError`). The CDN
-  walk and the analyzer also skip entries that are not dicts.
+- An unusable rrweb timestamp reads as 0 everywhere, instead of raising.
+  A usable timestamp is a finite number above 0 and no later than
+  9999-12-31T23:59:59.999Z (253402300799999 ms); a string, None, a bool,
+  NaN, infinity, or a larger number such as `1e30` is unusable. This
+  applies in the analyzer (the action is dropped), `Replay.events_df`
+  (`t` is 0), `Replay.to_rrweb_player_json()` (it sorts first), the CDN
+  walk, and `fetch_replay` (the window uses the usable timestamps; with
+  none, it raises `ReplayNotFoundError`). The CDN
+  walk and the analyzer also skip entries that are not dicts, and the
+  walk's format check reads the first dict entry, so one damaged leading
+  entry no longer aborts a replay.
 - `UnsupportedReplayFormatError` no longer says that mobile replays are
   unsupported. It now means the bytes are not rrweb-shaped (an unknown or
   damaged format). The CLI message changes to match.

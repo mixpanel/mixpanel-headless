@@ -287,10 +287,10 @@ class TestInvalidRrwebTimestamps:
     def test_events_df_uses_zero_for_bad_timestamps(self) -> None:
         """``events_df`` gives ``t = 0`` for every unusable timestamp."""
         df = self._replay().events_df
-        assert list(df["t"]) == [1716810000000, 0, 0, 0, 0, 0, int(1e30)]
+        assert list(df["t"]) == [1716810000000, 0, 0, 0, 0, 0, 0]
 
     def test_player_json_sorts_bad_timestamps_first(self) -> None:
         """``to_rrweb_player_json`` sorts unusable timestamps as 0."""
         stamps = [e["timestamp"] for e in self._replay().to_rrweb_player_json()]
-        assert stamps[-2:] == [1716810000000, 1e30]
+        assert stamps[-1] == 1716810000000
         assert len(stamps) == 7

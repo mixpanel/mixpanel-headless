@@ -1044,14 +1044,24 @@ def _fingerprint(description: str) -> str:
     return digest.hexdigest()[:FINGERPRINT_LENGTH]
 
 
+MAX_EVENT_TIMESTAMP_MS = 253_402_300_799_999
+"""Largest usable rrweb timestamp: 9999-12-31T23:59:59.999Z in Unix ms.
+
+``datetime`` cannot represent a later instant, so a larger value (for
+example ``1e30``) would raise wherever a replay bound becomes a date.
+"""
+
+
 def _event_timestamp(event: Any) -> int:
     """Return an event's timestamp as an int, or 0 when it is unusable.
 
     Shared by every reader of raw rrweb timestamps (the analyzer, the
     ``Replay`` projections, the CDN walker, and ``fetch_replay``), so a
-    damaged event cannot raise. A finite int or float is truncated to an
-    int. A string, None, a bool, NaN, infinity, a missing key, or an event
-    that is not a dict gives 0; actions at timestamp 0 are dropped.
+    damaged event cannot raise. A usable timestamp is a finite int or float
+    in the range ``0 < t <= MAX_EVENT_TIMESTAMP_MS``; it is truncated to an
+    int. Anything else (a string, None, a bool, NaN, infinity, zero, a
+    negative or too-large number, a missing key, or an event that is not a
+    dict) gives 0; actions at timestamp 0 are dropped.
 
     Args:
         event: A raw rrweb event, normally a dict.
@@ -1062,7 +1072,9 @@ def _event_timestamp(event: Any) -> int:
     if not isinstance(event, dict):
         return 0
     number = _finite_number(event.get("timestamp"))
-    return int(number) if number is not None else 0
+    if number is None or not 0 < number <= MAX_EVENT_TIMESTAMP_MS:
+        return 0
+    return int(number)
 
 
 @dataclass(frozen=True)
