@@ -1,0 +1,332 @@
+{
+  "actions": [
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1700100000050,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (100, 200)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 100,
+        "y": 200
+      },
+      "target_desc": "(100, 200)",
+      "target_node_id": 5,
+      "timestamp": 1700100002080,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Inbox [33,101,201,55] | Alerts / Mentions [33,301,401,51] | image [961,101,81,81] | button:Compose [101,1901,877,121] | No bounds here | element:Role missing",
+      "metadata": {
+        "element_count": 6,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              50,
+              100,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Inbox"
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              150,
+              200,
+              26
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Alerts | Mentions"
+          },
+          {
+            "background": false,
+            "bounds": [
+              480,
+              50,
+              40,
+              40
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              50,
+              950,
+              438,
+              60
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Compose"
+          },
+          {
+            "background": false,
+            "bounds": null,
+            "offscreen": false,
+            "role": "text",
+            "text": "No bounds here"
+          },
+          {
+            "background": false,
+            "bounds": null,
+            "offscreen": false,
+            "role": "element",
+            "text": "Role missing"
+          }
+        ],
+        "fingerprint": "8d738beaab2b",
+        "scale": 0.5,
+        "viewport": [
+          1080,
+          2400
+        ]
+      },
+      "target_desc": "Inbox",
+      "target_node_id": null,
+      "timestamp": 1700100003000,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1700100005200,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Inbox [33,101,201,55] | Older messages [33,301,401,51] | button:Compose [101,1901,877,121]",
+      "metadata": {
+        "element_count": 3,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              50,
+              100,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Inbox"
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              150,
+              200,
+              26
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Older messages"
+          },
+          {
+            "background": false,
+            "bounds": [
+              50,
+              950,
+              438,
+              60
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Compose"
+          }
+        ],
+        "fingerprint": "ae19e8e17a7c",
+        "scale": 0.5,
+        "viewport": [
+          1080,
+          2400
+        ]
+      },
+      "target_desc": "Inbox",
+      "target_node_id": null,
+      "timestamp": 1700100005300,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Discard draft? [201,901,677,81] | button:Discard [201,1101,301,101] | button:Keep [577,1101,301,101]",
+      "metadata": {
+        "element_count": 3,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              100,
+              450,
+              338,
+              40
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Discard draft?"
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              550,
+              150,
+              50
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Discard"
+          },
+          {
+            "background": false,
+            "bounds": [
+              288,
+              550,
+              150,
+              50
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Keep"
+          }
+        ],
+        "fingerprint": "74e532882f54",
+        "scale": 0.5,
+        "viewport": [
+          1080,
+          2400
+        ]
+      },
+      "target_desc": "Discard draft?",
+      "target_node_id": null,
+      "timestamp": 1700100007100,
+      "url": null
+    },
+    {
+      "action": "click",
+      "description": "Clicked at (300, 560)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            288,
+            550,
+            150,
+            50
+          ],
+          "role": "button",
+          "text": "Keep"
+        },
+        "interaction": "clicked",
+        "x": 300,
+        "y": 560
+      },
+      "target_desc": "button:Keep",
+      "target_node_id": 5,
+      "timestamp": 1700100009000,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Inbox [33,101,201,55] | Older messages [33,301,401,51] | button:Compose [101,1901,877,121]",
+      "metadata": {
+        "element_count": 3,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              50,
+              100,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Inbox"
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              150,
+              200,
+              26
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Older messages"
+          },
+          {
+            "background": false,
+            "bounds": [
+              50,
+              950,
+              438,
+              60
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Compose"
+          }
+        ],
+        "fingerprint": "ae19e8e17a7c",
+        "scale": 0.5,
+        "viewport": [
+          1080,
+          2400
+        ]
+      },
+      "target_desc": "Inbox",
+      "target_node_id": null,
+      "timestamp": 1700100009100,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (60, 960)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            50,
+            950,
+            438,
+            60
+          ],
+          "role": "button",
+          "text": "Compose"
+        },
+        "interaction": "tapped",
+        "x": 60,
+        "y": 960
+      },
+      "target_desc": "button:Compose",
+      "target_node_id": 5,
+      "timestamp": 1700100011000,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1700100000: Scrolled\n1700100002: Tapped at (100, 200)\n1700100003: Wireframe: Inbox [33,101,201,55] | Alerts / Mentions [33,301,401,51] | image [961,101,81,81] | button:Compose [101,1901,877,121] | No bounds here | element:Role missing\n1700100005: Scrolled\n1700100005: Wireframe: Inbox [33,101,201,55] | Older messages [33,301,401,51] | button:Compose [101,1901,877,121]\n1700100007: Wireframe: Discard draft? [201,901,677,81] | button:Discard [201,1101,301,101] | button:Keep [577,1101,301,101]\n1700100009: Clicked at (300, 560)\n1700100009: Wireframe: Inbox [33,101,201,55] | Older messages [33,301,401,51] | button:Compose [101,1901,877,121]\n1700100011: Tapped at (60, 960)",
+  "page_visits": []
+}

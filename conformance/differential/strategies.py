@@ -7567,6 +7567,7 @@ _B5_ACTION_LITERALS = (
     "viewport_resize",
     "touch_start",
     "media_interaction",
+    "screen",
 )
 _B5_TARGET_DESCS = (
     "button",
@@ -7794,6 +7795,68 @@ an explicit JSON ``null`` reaches ``int(None)`` and raises
 it to ``0``)."""
 
 
+_B5_RRWEB_META_WIDTHS: tuple[Any, ...] = (540, 411, 1080, 0, -1, "411", 18.5, True)
+"""Meta ``width`` values. 540 against a 1080 viewport gives a 0.5 scale, so
+scaled odd bounds end in .5 and test the round-half-to-even rule. Zero,
+negative, string, and bool widths are not usable and leave the width unset."""
+
+_B5_RRWEB_VIEWPORTS: tuple[Any, ...] = (
+    [1080, 2400],
+    [540, 1200],
+    [411, 914],
+    [0, 0],
+    [1080],
+    "1080x2400",
+    None,
+)
+"""Wireframe payload ``viewport`` values, valid and malformed."""
+
+_B5_RRWEB_WIREFRAME_ROLES: tuple[Any, ...] = ("text", "button", "image", "", None, 3)
+"""Wireframe element roles. Blank and non-string roles render as ``element``."""
+
+_B5_RRWEB_WIREFRAME_TEXTS: tuple[Any, ...] = (
+    "Sign in",
+    "",
+    "  ",
+    "a | b",
+    "\U0001d4b3 label",
+    "x" * 51,
+    None,
+    7,
+)
+"""Wireframe element labels: a pipe, a non-BMP character, one label over the
+50-character cap, and non-string values."""
+
+_B5_RRWEB_WIREFRAME_BOUNDS: tuple[Any, ...] = (
+    [101, 201, 301, 51],
+    [0, 0, 100, 50],
+    [0, 0, 0, 0],
+    [18.9, 0, 101, 51],
+    [-200, 0, 100, 50],
+    [2000, 0, 100, 50],
+    [1, 2, 3],
+    [True, 0, 10, 10],
+    None,
+)
+"""Wireframe element rects. Odd values scale to .5 at a 0.5 scale. The set
+also holds an all-zero rect, a float, offscreen rects, and malformed rects."""
+
+_B5_RRWEB_TOUCH_COORDS: tuple[Any, ...] = (
+    0,
+    10,
+    60,
+    105,
+    150,
+    400,
+    18.9,
+    -3,
+    None,
+    "5",
+)
+"""Touch and drag coordinates. Floats truncate toward zero; None and strings
+are not usable."""
+
+
 def _b5_rrweb_node(draw: st.DrawFn, node_id: int, depth: int) -> dict[str, Any]:
     """Draw one rrweb DOM node (element or text), possibly with children.
 
@@ -7853,15 +7916,73 @@ def _b5_rrweb_event(draw: st.DrawFn, node_ids: list[int]) -> dict[str, Any]:
                 "input",
                 "selection",
                 "plugin",
+                "wireframe",
+                "touch",
+                "touch_move",
                 "unknown",
             )
         )
     )
     target = draw(st.sampled_from((*node_ids, 9999, None, 0)))
     if kind == "meta":
+        # A stream whose Meta events all have an empty href is a screenshot
+        # recording, so the "" member also reaches the gesture rules.
+        meta: dict[str, Any] = {
+            "href": draw(st.sampled_from(("", "/x", "https://x.test/u/1")))
+        }
+        if draw(st.booleans()):
+            meta["width"] = draw(st.sampled_from(_B5_RRWEB_META_WIDTHS))
+        return {"type": 4, "data": meta, "timestamp": ts}
+    if kind == "wireframe":
+        # A Custom event. The mp_wireframe tag makes the whole stream a
+        # screenshot recording; another tag is ignored.
+        elements = [
+            {
+                "role": draw(st.sampled_from(_B5_RRWEB_WIREFRAME_ROLES)),
+                "text": draw(st.sampled_from(_B5_RRWEB_WIREFRAME_TEXTS)),
+                "bounds": draw(st.sampled_from(_B5_RRWEB_WIREFRAME_BOUNDS)),
+            }
+            for _ in range(draw(st.integers(min_value=0, max_value=4)))
+        ]
+        payload: Any = {
+            "viewport": draw(st.sampled_from(_B5_RRWEB_VIEWPORTS)),
+            "elements": draw(st.sampled_from((elements, elements, None, "x"))),
+        }
         return {
-            "type": 4,
-            "data": {"href": draw(st.sampled_from(("", "/x", "https://x.test/u/1")))},
+            "type": 5,
+            "data": {
+                "tag": draw(st.sampled_from(("mp_wireframe", "mp_wireframe", "other"))),
+                "payload": draw(st.sampled_from((payload, payload, None))),
+            },
+            "timestamp": ts,
+        }
+    if kind == "touch":
+        # Finger down (7), lift-off (9), cancel (10), and click (2), with
+        # coordinates for the tap point, the travel, and the hit test.
+        return {
+            "type": 3,
+            "data": {
+                "source": 2,
+                "type": draw(st.sampled_from((7, 7, 9, 9, 10, 2))),
+                "id": target,
+                "x": draw(st.sampled_from(_B5_RRWEB_TOUCH_COORDS)),
+                "y": draw(st.sampled_from(_B5_RRWEB_TOUCH_COORDS)),
+            },
+            "timestamp": ts,
+        }
+    if kind == "touch_move":
+        positions: list[Any] = [
+            {
+                "x": draw(st.sampled_from(_B5_RRWEB_TOUCH_COORDS)),
+                "y": draw(st.sampled_from(_B5_RRWEB_TOUCH_COORDS)),
+            }
+            for _ in range(draw(st.integers(min_value=0, max_value=3)))
+        ]
+        if draw(st.integers(min_value=0, max_value=5)) == 0:
+            positions.append("not a sample")
+        return {
+            "type": 3,
+            "data": {"source": 6, "positions": positions},
             "timestamp": ts,
         }
     if kind == "full":
@@ -7984,7 +8105,48 @@ def _b5_rrweb_analyze_calls(draw: st.DrawFn) -> FuzzCall:
         _b5_rrweb_event(draw, node_ids)
         for _ in range(draw(st.integers(min_value=1, max_value=12)))
     ]
+    if draw(st.integers(min_value=0, max_value=3)) == 0:
+        events = _b5_rrweb_screen_preamble(draw) + events
     return ("rrweb_analyzer.analyze", {"events": events})
+
+
+def _b5_rrweb_screen_preamble(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """Draw a screenshot-recording start: an empty-href Meta and one screen.
+
+    A random stream seldom holds a usable wireframe before a touch, so the
+    tap hit test and the bounds scaling are seldom reached. This preamble
+    fixes that. Its timestamp (1) sorts before every positive drawn
+    timestamp, and its rects contain several of the drawn touch points.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        Two events: the Meta event and the ``mp_wireframe`` Custom event.
+    """
+    meta: dict[str, Any] = {"href": ""}
+    width = draw(st.sampled_from((540, 1080, None)))
+    if width is not None:
+        meta["width"] = width
+    elements = [
+        {
+            "role": draw(st.sampled_from(("button", "text", "image"))),
+            "text": draw(st.sampled_from(("Go", "", "a | b"))),
+            "bounds": draw(st.sampled_from(_B5_RRWEB_WIREFRAME_BOUNDS[:4])),
+        }
+        for _ in range(draw(st.integers(min_value=1, max_value=3)))
+    ]
+    return [
+        {"type": 4, "data": meta, "timestamp": 1},
+        {
+            "type": 5,
+            "data": {
+                "tag": "mp_wireframe",
+                "payload": {"viewport": [1080, 2400], "elements": elements},
+            },
+            "timestamp": 1,
+        },
+    ]
 
 
 _RRWEB_ANALYZE_FAMILY = FuzzTarget(
@@ -8029,6 +8191,58 @@ _RRWEB_ANALYZE_FAMILY = FuzzTarget(
                         "data": {"source": 5, "id": None, "text": ""},
                         "timestamp": -1.9,
                     }
+                ]
+            },
+        ),
+        # A screenshot recording: an empty-href Meta at width 540, a
+        # wireframe at a 0.5 scale (odd bounds round half to even), a drag
+        # scroll, and a tap still open at the end that hits the button.
+        (
+            "rrweb_analyzer.analyze",
+            {
+                "events": [
+                    {
+                        "type": 4,
+                        "data": {"href": "", "width": 540},
+                        "timestamp": 1000,
+                    },
+                    {
+                        "type": 5,
+                        "data": {
+                            "tag": "mp_wireframe",
+                            "payload": {
+                                "viewport": [1080, 2400],
+                                "elements": [
+                                    {
+                                        "role": "button",
+                                        "text": "Go",
+                                        "bounds": [101, 201, 301, 51],
+                                    }
+                                ],
+                            },
+                        },
+                        "timestamp": 2000,
+                    },
+                    {
+                        "type": 3,
+                        "data": {"source": 2, "type": 7, "id": 1, "x": 60, "y": 105},
+                        "timestamp": 3000,
+                    },
+                    {
+                        "type": 3,
+                        "data": {"source": 6, "positions": [{"x": 60, "y": 400}]},
+                        "timestamp": 3050,
+                    },
+                    {
+                        "type": 3,
+                        "data": {"source": 2, "type": 9, "id": 1, "x": 60, "y": 110},
+                        "timestamp": 3100,
+                    },
+                    {
+                        "type": 3,
+                        "data": {"source": 2, "type": 7, "id": 1, "x": 60, "y": 105},
+                        "timestamp": 5000,
+                    },
                 ]
             },
         ),

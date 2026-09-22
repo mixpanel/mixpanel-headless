@@ -350,6 +350,33 @@ def _module_builder_entries() -> tuple[RegistryEntry, ...]:
             kind=KIND_BUILDER,
             capability="replays",
         ),
+        # Mobile replay members on the result objects. Each adapter takes
+        # the raw events and builds the object as Workspace.fetch_replay
+        # does; the authored mobile replay vectors call these.
+        RegistryEntry(
+            api="replay.capture",
+            target=f"{_ADAPTERS_MODULE}:replay_capture",
+            kind=KIND_BUILDER,
+            capability="replays",
+        ),
+        RegistryEntry(
+            api="replay.has_wireframes",
+            target=f"{_ADAPTERS_MODULE}:replay_has_wireframes",
+            kind=KIND_BUILDER,
+            capability="replays",
+        ),
+        RegistryEntry(
+            api="replay.screen_path",
+            target=f"{_ADAPTERS_MODULE}:replay_screen_path",
+            kind=KIND_BUILDER,
+            capability="replays",
+        ),
+        RegistryEntry(
+            api="replay_bundle.rage_taps",
+            target=f"{_ADAPTERS_MODULE}:replay_bundle_rage_taps",
+            kind=KIND_BUILDER,
+            capability="replays",
+        ),
     )
 
 
