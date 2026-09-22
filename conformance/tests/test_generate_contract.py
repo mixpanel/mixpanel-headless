@@ -617,23 +617,70 @@ class TestHelpRegistryArtifact:
         assert sorted(help_registry) == [
             "alias_docs",
             "constants",
+            "docs_base",
             "export_kinds",
+            "exports",
             "generated_from",
             "help_formats",
             "help_kinds",
+            "hint_urls",
             "listings",
             "matched_on",
             "member_kinds",
+            "overview_entry_points",
             "overview_grammar",
             "param_kinds",
             "reference_hints",
+            "schema_version",
             "search_tiers",
             "search_usage",
             "types_listing_groups",
             "workspace_domains",
             "workspace_hint",
+            "workspace_members",
             "workspace_properties",
         ]
+        assert help_registry["schema_version"] == 1
+
+    def test_inventory_exports_and_members(self, help_registry: dict[str, Any]) -> None:
+        """The inventory and ``Workspace`` members carry their help kinds.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If the census or a known kind drifts.
+        """
+        exports = dict(help_registry["exports"])
+        assert [name for name, _kind in help_registry["exports"]] == sorted(exports)
+        assert exports["Filter"] == "dataclass"
+        assert exports["QueryMeta"] == "class"
+        assert exports["Account"] == "alias"
+        assert exports["accounts"] == "module"
+        members = dict(help_registry["workspace_members"])
+        assert sum(kind == "method" for kind in members.values()) == 209
+        assert (
+            sorted(n for n, k in members.items() if k == "property")
+            == (help_registry["workspace_properties"])
+        )
+
+    def test_hint_urls_worked_mapping(self, help_registry: dict[str, Any]) -> None:
+        """Every hint path has its hosted URL under ``docs_base``.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a path lacks a URL or the mapping drifts.
+        """
+        urls = dict(help_registry["hint_urls"])
+        paths = {help_registry["workspace_hint"]["path"]} | {
+            row["path"] for row in help_registry["reference_hints"]
+        }
+        assert set(urls) == paths
+        base = help_registry["docs_base"]
+        assert urls["guide/query.md"] == f"{base}guide/query/index.md"
+        assert all(url.startswith(base) for url in urls.values())
 
     def test_workspace_domains_census(self, help_registry: dict[str, Any]) -> None:
         """32 ordered domains list 209 methods, each exactly once.

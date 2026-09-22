@@ -626,6 +626,10 @@ def build_model_coverage(
 # ---------------------------------------------------------------------------
 
 
+HELP_REGISTRY_SCHEMA_VERSION = 1
+"""Version of the ``help-registry.json`` shape; bump on any key change."""
+
+
 def build_help_registry(generated_from: str) -> dict[str, Any]:
     """Build the ``help-registry.json`` artifact body.
 
@@ -636,27 +640,42 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
         generated_from: The externally-injected provenance SHA.
 
     Returns:
-        The artifact body: ``workspace_domains`` (ordered
+        The artifact body: ``schema_version``, ``exports`` (every
+        inventory export as ``[name, kind]``, sorted by name),
+        ``workspace_members`` (``[name, "method" | "property"]``, sorted),
+        ``workspace_domains`` (ordered
         ``[title, [method, ...]]`` pairs), ``workspace_properties`` (the
         properties group in listing order), ``workspace_hint`` and
         ``reference_hints`` (``{title, path}`` / ``{triggers, title,
-        path}``, table order, paths relative to ``docs/``), ``alias_docs``,
+        path}``, table order, paths relative to ``docs/``), ``docs_base`` and
+        ``hint_urls`` (``[path, url]`` for every hint path, the worked
+        ``hint_url`` mapping), ``alias_docs``,
         ``listings``, ``types_listing_groups``, ``search_usage``,
-        ``overview_grammar``, the kind vocabularies, and ``constants``.
+        ``overview_entry_points``, ``overview_grammar``, the kind
+        vocabularies, and ``constants``.
     """
     from mixpanel_headless import reference
     from mixpanel_headless._internal.help import models, render, resolve
     from mixpanel_headless._internal.help import search as help_search
-    from mixpanel_headless._internal.help.inventory import workspace_members
+    from mixpanel_headless._internal.help.inventory import (
+        inventory,
+        workspace_members,
+    )
     from mixpanel_headless._internal.help.registry import (
+        DOCS_BASE,
         REFERENCE_HINTS,
         WORKSPACE_DOMAINS,
         WORKSPACE_HINT,
+        hint_url,
     )
     from mixpanel_headless._literal_types import ALIAS_DOCS
 
+    hint_paths = [WORKSPACE_HINT[1], *(path for _t, _title, path in REFERENCE_HINTS)]
     return {
         "generated_from": generated_from,
+        "schema_version": HELP_REGISTRY_SCHEMA_VERSION,
+        "exports": sorted([row.name, row.kind] for row in inventory()),
+        "workspace_members": sorted([name, kind] for name, kind in workspace_members()),
         "workspace_domains": [
             [title, list(methods)] for title, methods in WORKSPACE_DOMAINS
         ],
@@ -668,12 +687,17 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
             {"triggers": list(triggers), "title": title, "path": path}
             for triggers, title, path in REFERENCE_HINTS
         ],
+        "docs_base": DOCS_BASE,
+        "hint_urls": [[path, hint_url(path)] for path in dict.fromkeys(hint_paths)],
         "alias_docs": dict(ALIAS_DOCS),
         "listings": sorted(resolve._LISTINGS),
         "types_listing_groups": [
             [title, kind] for title, kind in reference._TYPES_LISTING_GROUPS
         ],
         "search_usage": reference._SEARCH_USAGE,
+        "overview_entry_points": [
+            [name, text] for name, text in reference._OVERVIEW_ENTRY_POINTS
+        ],
         "overview_grammar": list(reference._OVERVIEW_GRAMMAR),
         "search_tiers": sorted(
             help_search._TIER_RANK, key=lambda tier: help_search._TIER_RANK[tier]
