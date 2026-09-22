@@ -13266,6 +13266,9 @@ def _rrweb_event_row(event: dict[str, Any]) -> dict[str, Any]:
         ``raw`` always points at the original
         event so callers can fall back to it for any analyzer-specific
         introspection.
+
+    Raises:
+        AttributeError: ``event`` is not a dict.
     """
     from mixpanel_headless._internal.replays.rrweb_analyzer import (
         _event_timestamp,
@@ -13547,6 +13550,11 @@ class Replay(ResultWithDataFrame):
 
         Returns:
             True when at least one action is a ``"screen"`` action.
+
+        Example:
+            ```python
+            replay.has_wireframes  # True for a replay with "screen" actions
+            ```
         """
         from mixpanel_headless._internal.replays.rrweb_analyzer import (
             actions_contain_wireframes,
@@ -13966,6 +13974,19 @@ class ReplayBundle(ResultWithDataFrame):
 
         Columns: ``replay_id``, ``t``, ``heading``, ``fingerprint``,
         ``element_count``, ``description``.
+
+        Example:
+            ```python
+            bundle.screens_df[["replay_id", "t", "heading", "element_count"]]
+            #   replay_id     t  heading  element_count
+            # 0       r-1  1000     Home              2
+            # 1       r-1  2700  Receipt              1
+
+            # Most-visited screens: count by fingerprint, label by heading.
+            bundle.screens_df.groupby("fingerprint").agg(
+                heading=("heading", "first"), visits=("replay_id", "size")
+            )
+            ```
         """
         if self._screens_df_cache is not None:
             return self._screens_df_cache

@@ -157,6 +157,13 @@ def _interval_has_change(screens: list[tuple[int, str]], lo: int, hi: int) -> bo
         True when a screen in the interval has a description that differs
         from the latest screen description at or before ``lo`` (or when
         there is no earlier screen).
+
+    Example:
+        ```python
+        screens = [(1000, "Wireframe: Home"), (2250, "Wireframe: Cart")]
+        _interval_has_change(screens, 2000, 2200)  # False
+        _interval_has_change(screens, 2200, 2400)  # True
+        ```
     """
     baseline: str | None = None
     for timestamp, description in screens:
@@ -217,6 +224,15 @@ def rage_taps(
         DataFrame with columns ``replay_id``, ``t_start``, ``t_end``,
         ``target_desc``, ``x``, ``y``, ``count``, ``kind`` — one row per
         reported burst, in replay order and then time order.
+
+    Example:
+        ```python
+        # Three taps on "Pay" at 2000, 2300, and 2600 ms with no screen change
+        # between them, then a "Receipt" screen at 2700 ms (in the grace window):
+        rage_taps(bundle)
+        #   replay_id  t_start  t_end target_desc    x    y  count  kind
+        # 0       r-1     2000   2600  button:Pay  100  100      3  rage
+        ```
     """
     rows: list[dict[str, object]] = []
     for replay in bundle.replays:

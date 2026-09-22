@@ -211,6 +211,15 @@ def _finite_number(value: Any) -> float | None:
 
     Returns:
         The float value, or None.
+
+    Example:
+        ```python
+        _finite_number(3)             # 3.0
+        _finite_number(True)          # None (a bool is not a number here)
+        _finite_number("3")           # None
+        _finite_number(float("nan"))  # None
+        _finite_number(10**400)       # None (too large for a float)
+        ```
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -231,6 +240,14 @@ def _node_id(value: Any) -> int | None:
 
     Returns:
         The integer node id, or None.
+
+    Example:
+        ```python
+        _node_id(28)    # 28
+        _node_id(28.0)  # 28
+        _node_id(True)  # None
+        _node_id(28.5)  # None
+        ```
     """
     if isinstance(value, bool):
         return None
@@ -269,6 +286,12 @@ def _coords(x: Any, y: Any) -> tuple[float, float] | None:
 
     Returns:
         The ``(x, y)`` float pair, or None when either value is unusable.
+
+    Example:
+        ```python
+        _coords(1, 2.5)   # (1.0, 2.5)
+        _coords(1, None)  # None
+        ```
     """
     fx = _finite_number(x)
     fy = _finite_number(y)
@@ -906,6 +929,22 @@ def screen_heading(elements: Sequence[dict[str, Any]]) -> str:
 
     Returns:
         The heading, or ``"(screen)"`` when no labeled text element exists.
+
+    Raises:
+        KeyError: An element dict lacks the ``role``, ``text``,
+            ``offscreen``, or ``bounds`` key. Dicts from
+            :func:`screen_structure` always have them.
+
+    Example:
+        ```python
+        screen_heading([
+            {"role": "text", "text": "Title", "bounds": [16, 38, 80, 20],
+             "offscreen": False, "background": False},
+            {"role": "text", "text": "Body", "bounds": [16, 200, 100, 20],
+             "offscreen": False, "background": False},
+        ])
+        # "Title"
+        ```
     """
     labeled = [
         e for e in elements if e["role"] == "text" and e["text"] and not e["offscreen"]
@@ -932,6 +971,9 @@ def _rect_distance(bounds: list[int], x: float, y: float) -> float:
 
     Returns:
         The Euclidean distance in px.
+
+    Raises:
+        ValueError: ``bounds`` does not hold exactly four values.
     """
     bx, by, bw, bh = bounds
     dx = max(bx - x, 0.0, x - (bx + bw))
@@ -960,6 +1002,20 @@ def hit_test(
 
     Returns:
         ``(element, attribution)``, or None when no element is near.
+
+    Raises:
+        KeyError: An element dict lacks the ``bounds``, ``offscreen``, or
+            ``role`` key. Dicts from :func:`screen_structure` always have
+            them.
+
+    Example:
+        ```python
+        save = {"role": "button", "text": "Save", "bounds": [10, 300, 100, 40],
+                "offscreen": False, "background": False}
+        hit_test([save], 50, 320)    # (save, "bounds")
+        hit_test([save], 50, 345)    # (save, "bounds_slop"): 5 px below the rect
+        hit_test([save], 400, 400)   # None
+        ```
     """
     scored: list[tuple[float, bool, int, int]] = []
     for index, e in enumerate(elements):
@@ -989,6 +1045,22 @@ def hit_target_desc(element: dict[str, Any]) -> str:
         The bare label for a labeled ``text`` element, ``role:label`` for
         another labeled role, and ``role [x,y,w,h]`` (touch-space bounds)
         for an element without a label, such as an icon.
+
+    Raises:
+        KeyError: The element lacks the ``role``, ``text``, or ``bounds``
+            key.
+        TypeError: The element has no label and its ``bounds`` is None
+            (:func:`hit_test` never returns such an element).
+
+    Example:
+        ```python
+        hit_target_desc({"role": "button", "text": "Save", "bounds": [10, 300, 100, 40]})
+        # "button:Save"
+        hit_target_desc({"role": "text", "text": "Cupcake", "bounds": [72, 104, 62, 21]})
+        # "Cupcake"
+        hit_target_desc({"role": "image", "text": None, "bounds": [363, 27, 48, 48]})
+        # "image [363,27,48,48]"
+        ```
     """
     role = str(element["role"])
     text = element["text"]
@@ -1068,6 +1140,14 @@ def _event_timestamp(event: Any) -> int:
 
     Returns:
         The integer timestamp, or 0.
+
+    Example:
+        ```python
+        _event_timestamp({"timestamp": 1716810000000.7})  # 1716810000000
+        _event_timestamp({"timestamp": "abc"})            # 0
+        _event_timestamp({"timestamp": 1e30})             # 0 (after year 9999)
+        _event_timestamp(None)                            # 0
+        ```
     """
     if not isinstance(event, dict):
         return 0
@@ -1111,6 +1191,22 @@ def finger_downs(events: Sequence[Any]) -> list[FingerDown]:
 
     Returns:
         The :class:`FingerDown` records, sorted by timestamp.
+
+    Example:
+        ```python
+        events = [
+            {"type": 4, "timestamp": 1, "data": {"width": 400}},
+            {"type": 5, "timestamp": 1000, "data": {"tag": "mp_wireframe", "payload": {
+                "elements": [{"role": "button", "text": "Add", "bounds": [50, 80, 100, 40]}]}}},
+            {"type": 3, "timestamp": 2000,
+             "data": {"source": 2, "type": 7, "id": 28, "x": 100, "y": 100}},
+            {"type": 3, "timestamp": 2100,
+             "data": {"source": 2, "type": 2, "id": 28, "x": 5, "y": 5}},
+        ]
+        finger_downs(events)
+        # [FingerDown(timestamp=2000, x=100, y=100, target_desc='button:Add'),
+        #  FingerDown(timestamp=2100, x=5, y=5, target_desc='(5, 5)')]
+        ```
     """
     if detect_capture(events) != "screenshot":
         return []
@@ -1548,6 +1644,14 @@ class EventAnalyzer:
 
         An entry that is not a dict is skipped. An unusable timestamp reads
         as 0 (see :func:`_event_timestamp`), so its action is dropped.
+
+        Args:
+            event: One raw rrweb event.
+
+        Raises:
+            AttributeError: A DOM recording carries a malformed DOM payload,
+                for example a mutation ``adds`` entry that is not a dict. The
+                screenshot path and the timestamp handling never raise.
         """
         if not isinstance(event, dict):
             return
@@ -1809,6 +1913,14 @@ class EventAnalyzer:
             node_id: The raw rrweb node id.
             x: The raw x coordinate.
             y: The raw y coordinate.
+
+        Example:
+            ```python
+            # A second finger-down before the first lift-off flushes the first
+            # gesture as a tap at its finger-down point.
+            # touch start (1, 1) at 2000, touch start (2, 2) at 3000, lift-off at 3050
+            # -> "Tapped at (1, 1)", "Tapped at (2, 2)"
+            ```
         """
         if self._active_touch is not None:
             self._flush_active_touch_as_tap()
@@ -1874,6 +1986,14 @@ class EventAnalyzer:
             node_id: The raw rrweb node id.
             x: The raw x coordinate.
             y: The raw y coordinate.
+
+        Example:
+            ```python
+            # touch start (4, 5), lift-off (50, None): the lift-off point is partial,
+            # so the finger-down point is used -> "Tapped at (4, 5)"
+            # touch start (200, 800), drag to (200, 500), lift-off (200, 480):
+            # travel 320 px > 10 px -> "Scrolled"
+            ```
         """
         gesture = self._active_touch
         self._active_touch = None
@@ -1953,6 +2073,13 @@ class EventAnalyzer:
         its finger-down point. Either way the "after" screens are armed, as
         at a lift-off, so screens that arrive between overlapping touches are
         sampled. Does nothing when no gesture is open.
+
+        Example:
+            ```python
+            # touch start (200, 800), drag to (200, 500), then a new touch start at
+            # (10, 10) before any lift-off: the first gesture dragged 300 px, so it
+            # is flushed as a scroll -> "Scrolled", then "Tapped at (10, 10)"
+            ```
         """
         gesture = self._active_touch
         self._active_touch = None
@@ -2207,6 +2334,13 @@ class RrwebAnalyzer:
             An :class:`AnalyzerResult` with the action list (sorted by
             timestamp), the markdown timeline rendered from that list, page
             visits, and console errors populated. Empty on empty input.
+
+        Raises:
+            AttributeError: A DOM recording carries a malformed DOM payload,
+                for example a mutation ``adds`` entry that is not a dict (see
+                :meth:`EventAnalyzer.process_event`). Unusable timestamps,
+                entries that are not dicts, and malformed wireframe or touch
+                input never raise.
         """
         if not events:
             return AnalyzerResult()
