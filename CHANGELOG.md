@@ -5,112 +5,16 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased
+## 0.3.0 — 2026-09-22
 
-### Added
-
-- **New action label `"screen"`.** A wireframe screen snapshot from a
-  mobile or other screenshot-based recording. `UserAction.action` is a
-  closed `Literal`, so an exhaustive `match` over it needs a new case.
-  - `description` is the screen as one line:
-    `Wireframe: <label> [x,y,w,h] | role:label [x,y,w,h] | …`.
-  - `target_desc` is an approximate heading: the label of the top-most
-    labeled text element (text clipped above the top edge is skipped), or
-    `"(screen)"` when there is none. The SDKs send no screen name, and the
-    heading can be a back-button label.
-  - `metadata` holds `elements` (role, text, bounds, and the offscreen and
-    background flags),
-    `viewport`, `scale`, `fingerprint` (identical screens share it), and
-    `element_count`. Some SDK builds send bounds in physical pixels; when
-    the payload viewport width differs from the Meta width by more than
-    5%, the structured bounds are scaled into the touch coordinate space.
-    The description keeps the raw bounds. A viewport or Meta width that
-    would give a zero division or an infinite value applies no scale.
-- **Screenshot recordings in the analyzer.** A replay with any
-  `mp_wireframe` event, or with Meta events that carry no page URL, is a
-  screenshot recording. In such a recording:
-  - Touches go through a gesture state machine. Finger travel of 10 px or
-    less is a tap (`Tapped at (x, y)`, action `touch_start`); more is a
-    scroll (`Scrolled`, action `scroll`). A cancelled touch emits nothing.
-    A gesture whose lift-off never arrives is a tap at its finger-down,
-    or a scroll when its drag already passed 10 px; like a lift-off, it
-    arms the "after" screens, so screens between overlapping touches are
-    sampled.
-  - A mouse click (Flutter web and desktop) is `Clicked at (x, y)`, action
-    `click`, so `rage_clicks()` and `top_clicks()` see it.
-  - Wireframe screens are sampled around each gesture (the screen before
-    it and up to two screens after it), so animation frames do not flood
-    the timeline. Consecutive identical screens appear once.
-  - Taps and clicks are hit tested against the screen that was current at
-    finger-down. `target_desc` names the element (`button:Save`, a bare
-    label for text, or `role [x,y,w,h]` for an unlabeled icon), and
-    `metadata` gains `hit` and `attribution` (`"bounds"`, or
-    `"bounds_slop"` for a near miss within 8 px). A background layer (a
-    rect that crosses both side edges, such as the blur behind a tab bar)
-    is never hit. Without a hit the target is `"(x, y)"`. The description
-    always shows the point only.
-- **`Replay.capture`** (`"dom"` or `"screenshot"`), **`Replay.has_wireframes`**,
-  and **`Replay.screen_path()`** (screen headings in order: the mobile form
-  of `page_path()`).
-- **`ReplayBundle.screens_df`** — one row per screen: `replay_id`, `t`,
-  `heading`, `fingerprint`, `element_count`, `description`.
-- **`ReplayBundle.rage_taps(threshold=3, window_ms=2000, radius_px=24,
-  grace_ms=1000)`** — bursts of finger-downs near one point in screenshot
-  recordings. Finger-downs are counted from `rrweb_events`, because a fast
-  burst with overlapping fingers produces far fewer classified taps.
-  Each burst is classified per interval: the gaps between consecutive
-  finger-downs, plus the `grace_ms` window after the last one. `kind` is
-  `"dead"` when no interval has a screen change. A burst where every gap
-  between finger-downs has a change (a quantity stepper) is intentional
-  and is not reported. Anything else is `"rage"`, for example a navigation
-  that arrives only after the burst. A screen that changes on its own (a
-  live clock) counts as a change. Columns: `replay_id`, `t_start`, `t_end`, `target_desc`,
-  `x`, `y`, `count`, `kind`.
-
-### Changed
-
-- **Well-formed web replays are unchanged.** A replay whose Meta events carry a page
-  URL, or that has no Meta event at all, is a DOM recording and gives the
-  same actions and markdown as 0.3.0. The committed web goldens are
-  byte-identical.
-- `UserAction.target_node_id` is always an int or None: a bool node id
-  gives None, and an integral float id (`28.0`) gives `28`.
-- The markdown timeline now renders from the structured action list,
-  sorted by timestamp. For web replays the text is the same.
-- The analyzer drops an action with a timestamp of zero or less instead of
-  raising `ParamValidationError`, so one bad event no longer fails a whole
-  `fetch_replay`. Malformed wireframe input (wrong types, non-finite
-  numbers) degrades instead of raising.
-- An unusable rrweb timestamp reads as 0 everywhere, instead of raising.
-  A usable timestamp is a finite number above 0 and no later than
-  9999-12-31T23:59:59.999Z (253402300799999 ms); a string, None, a bool,
-  NaN, infinity, or a larger number such as `1e30` is unusable. This
-  applies in the analyzer (the action is dropped), `Replay.events_df`
-  (`t` is 0), `Replay.to_rrweb_player_json()` (it sorts first), the CDN
-  walk, and `fetch_replay` (the window uses the usable timestamps; with
-  none, it raises `ReplayNotFoundError`). The CDN
-  walk and the analyzer also skip entries that are not dicts, and the
-  walk's format check reads the first dict entry, so one damaged leading
-  entry no longer aborts a replay.
-- `UnsupportedReplayFormatError` no longer says that mobile replays are
-  unsupported. It now means the bytes are not rrweb-shaped (an unknown or
-  damaged format). The CLI message changes to match.
-
-### Notes
-
-- Plugin: the `mixpanelyst` skill gains guidance for mobile and
-  screenshot replays (call `rage_taps()` first, use `screen_path()` and
-  `screens_df` for screen flow, read `metadata["hit"]` for tap targets)
-  and triggers on questions about rage taps on mobile. The skill still
-  uses its bundled help script.
-
-## 0.3.0 — 2026-09-21
-
-Minor release: built-in API help. A top-level `mp.help()` function,
-a structured `mp.reference` module, and an `mp help` CLI command provide
-offline API reference for the whole public surface. All three need no
-credentials and touch no config file. `__all__` loses ten duplicate
-entries.
+Minor release: built-in API help and mobile session replays. A
+top-level `mp.help()` function, a structured `mp.reference` module, and an
+`mp help` CLI command provide offline API reference for the whole public
+surface. All three need no credentials and touch no config file. The replay
+analyzer now reads mobile and other screenshot-based recordings (iOS,
+Android, React Native, Flutter): taps, scrolls, wireframe screens, and a new
+`rage_taps()` aggregator. `__all__` loses ten duplicate entries, and the
+plugin manifest moves to `0.3.0`.
 
 ### Added
 
@@ -197,6 +101,63 @@ entries.
   `Workspace.<method>` entry ends with a `Tip:` pointer.
 - Docs: new [Built-in Help guide](docs/guide/built-in-help.md) and
   [API page](docs/api/help.md); both are listed in `llms.txt`.
+- **New action label `"screen"`.** A wireframe screen snapshot from a
+  mobile or other screenshot-based recording. `UserAction.action` is a
+  closed `Literal`, so an exhaustive `match` over it needs a new case.
+  - `description` is the screen as one line:
+    `Wireframe: <label> [x,y,w,h] | role:label [x,y,w,h] | …`.
+  - `target_desc` is an approximate heading: the label of the top-most
+    labeled text element (text clipped above the top edge is skipped), or
+    `"(screen)"` when there is none. The SDKs send no screen name, and the
+    heading can be a back-button label.
+  - `metadata` holds `elements` (role, text, bounds, and the offscreen and
+    background flags),
+    `viewport`, `scale`, `fingerprint` (identical screens share it), and
+    `element_count`. Some SDK builds send bounds in physical pixels; when
+    the payload viewport width differs from the Meta width by more than
+    5%, the structured bounds are scaled into the touch coordinate space.
+    The description keeps the raw bounds. A viewport or Meta width that
+    would give a zero division or an infinite value applies no scale.
+- **Screenshot recordings in the analyzer.** A replay with any
+  `mp_wireframe` event, or with Meta events that carry no page URL, is a
+  screenshot recording. In such a recording:
+  - Touches go through a gesture state machine. Finger travel of 10 px or
+    less is a tap (`Tapped at (x, y)`, action `touch_start`); more is a
+    scroll (`Scrolled`, action `scroll`). A cancelled touch emits nothing.
+    A gesture whose lift-off never arrives is a tap at its finger-down,
+    or a scroll when its drag already passed 10 px; like a lift-off, it
+    arms the "after" screens, so screens between overlapping touches are
+    sampled.
+  - A mouse click (Flutter web and desktop) is `Clicked at (x, y)`, action
+    `click`, so `rage_clicks()` and `top_clicks()` see it.
+  - Wireframe screens are sampled around each gesture (the screen before
+    it and up to two screens after it), so animation frames do not flood
+    the timeline. Consecutive identical screens appear once.
+  - Taps and clicks are hit tested against the screen that was current at
+    finger-down. `target_desc` names the element (`button:Save`, a bare
+    label for text, or `role [x,y,w,h]` for an unlabeled icon), and
+    `metadata` gains `hit` and `attribution` (`"bounds"`, or
+    `"bounds_slop"` for a near miss within 8 px). A background layer (a
+    rect that crosses both side edges, such as the blur behind a tab bar)
+    is never hit. Without a hit the target is `"(x, y)"`. The description
+    always shows the point only.
+- **`Replay.capture`** (`"dom"` or `"screenshot"`), **`Replay.has_wireframes`**,
+  and **`Replay.screen_path()`** (screen headings in order: the mobile form
+  of `page_path()`).
+- **`ReplayBundle.screens_df`** — one row per screen: `replay_id`, `t`,
+  `heading`, `fingerprint`, `element_count`, `description`.
+- **`ReplayBundle.rage_taps(threshold=3, window_ms=2000, radius_px=24,
+  grace_ms=1000)`** — bursts of finger-downs near one point in screenshot
+  recordings. Finger-downs are counted from `rrweb_events`, because a fast
+  burst with overlapping fingers produces far fewer classified taps.
+  Each burst is classified per interval: the gaps between consecutive
+  finger-downs, plus the `grace_ms` window after the last one. `kind` is
+  `"dead"` when no interval has a screen change. A burst where every gap
+  between finger-downs has a change (a quantity stepper) is intentional
+  and is not reported. Anything else is `"rage"`, for example a navigation
+  that arrives only after the burst. A screen that changes on its own (a
+  live clock) counts as a change. Columns: `replay_id`, `t_start`, `t_end`, `target_desc`,
+  `x`, `y`, `count`, `kind`.
 
 ### Changed
 
@@ -206,13 +167,43 @@ entries.
   `FilterOperator`, `FilterPropertyType`, and `FilterDateUnit` were each
   listed twice. Every name is still exported once; there is no behavior
   change.
+- **Well-formed web replays are unchanged.** A replay whose Meta events carry a page
+  URL, or that has no Meta event at all, is a DOM recording and gives the
+  same actions and markdown as 0.2.3. The committed web goldens are
+  byte-identical.
+- `UserAction.target_node_id` is always an int or None: a bool node id
+  gives None, and an integral float id (`28.0`) gives `28`.
+- The markdown timeline now renders from the structured action list,
+  sorted by timestamp. For web replays the text is the same.
+- The analyzer drops an action with a timestamp of zero or less instead of
+  raising `ParamValidationError`, so one bad event no longer fails a whole
+  `fetch_replay`. Malformed wireframe input (wrong types, non-finite
+  numbers) degrades instead of raising.
+- An unusable rrweb timestamp reads as 0 everywhere, instead of raising.
+  A usable timestamp is a finite number above 0 and no later than
+  9999-12-31T23:59:59.999Z (253402300799999 ms); a string, None, a bool,
+  NaN, infinity, or a larger number such as `1e30` is unusable. This
+  applies in the analyzer (the action is dropped), `Replay.events_df`
+  (`t` is 0), `Replay.to_rrweb_player_json()` (it sorts first), the CDN
+  walk, and `fetch_replay` (the window uses the usable timestamps; with
+  none, it raises `ReplayNotFoundError`). The CDN
+  walk and the analyzer also skip entries that are not dicts, and the
+  walk's format check reads the first dict entry, so one damaged leading
+  entry no longer aborts a replay.
+- `UnsupportedReplayFormatError` no longer says that mobile replays are
+  unsupported. It now means the bytes are not rrweb-shaped (an unknown or
+  damaged format). The CLI message changes to match.
 
 ### Notes
 
-- Plugin: this release does not change the Claude Code plugin. The
-  `mixpanelyst` skill still uses its bundled help script; the next plugin
-  release switches it to `mp help` / `mp.help()` and requires
+- Plugin: the `mixpanelyst` skill gains guidance for mobile and
+  screenshot replays (call `rage_taps()` first, use `screen_path()` and
+  `screens_df` for screen flow, read `metadata["hit"]` for tap targets)
+  and triggers on questions about rage taps on mobile.
+- Plugin: the `mixpanelyst` skill still uses its bundled help script; the
+  next plugin release switches it to `mp help` / `mp.help()` and requires
   `mixpanel-headless>=0.3.0`.
+- Plugin: the manifest version is now `0.3.0`, in step with the library.
 
 ## 0.2.3 — 2026-09-14
 
