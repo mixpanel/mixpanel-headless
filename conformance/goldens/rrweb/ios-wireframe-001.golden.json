@@ -1,0 +1,5011 @@
+{
+  "actions": [
+    {
+      "action": "screen",
+      "description": "Wireframe: text [12,586,233,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [368,593,20,20] | text [61,725,281,16] | text [28,194,275,14] | text [28,327,244,14] | text [28,348,109,20] | text [28,374,130,20] | text [28,434,27,14] | text [28,455,85,20] | text [28,481,105,64] | text [28,585,59,14] | text [28,606,36,20] | text [25,629,42,28] | text [28,658,60,20] | text [28,719,133,14] | text [28,739,65,20] | text [28,765,76,20] | text [28,826,135,14] | image [30,847,19,18] | text [58,846,31,20] | text [28,873,131,20] | Hello world [28,214,85,20] | Welcome [28,241,71,20] | Continue [28,267,69,20] | image [-118,731,638,286] | SwiftUI Text [16,120,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]",
+      "metadata": {
+        "element_count": 49,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              12,
+              586,
+              233,
+              34
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              274,
+              593,
+              20,
+              19
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              306,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              337,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              368,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              61,
+              725,
+              281,
+              16
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              194,
+              275,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              327,
+              244,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              348,
+              109,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              374,
+              130,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              434,
+              27,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              455,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              481,
+              105,
+              64
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              585,
+              59,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              606,
+              36,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              25,
+              629,
+              42,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              658,
+              60,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              719,
+              133,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              739,
+              65,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              765,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              826,
+              135,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              30,
+              847,
+              19,
+              18
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              58,
+              846,
+              31,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              873,
+              131,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              214,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Hello world"
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              241,
+              71,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Welcome"
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              267,
+              69,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Continue"
+          },
+          {
+            "background": true,
+            "bounds": [
+              -118,
+              731,
+              638,
+              286
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              120,
+              190,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          }
+        ],
+        "fingerprint": "9d2296199903",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Text",
+      "target_node_id": null,
+      "timestamp": 1787564102614,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: text [28,194,275,14] | text [28,327,244,14] | text [28,348,109,20] | text [28,374,130,20] | text [28,434,27,14] | text [28,455,85,20] | text [28,481,105,64] | text [28,585,59,14] | text [28,606,36,20] | text [25,629,42,28] | text [28,658,60,20] | text [28,719,133,14] | text [28,739,65,20] | text [28,765,76,20] | text [28,826,135,14] | image [30,847,19,18] | text [58,846,31,20] | text [28,873,131,20] | Hello world [28,214,85,20] | Welcome [28,241,71,20] | Continue [28,267,69,20] | image [-118,731,638,286] | SwiftUI Text [16,120,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,82,14] | text [236,629,55,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,52,14] | text [236,651,55,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,60,14] | text [236,674,55,13] | text [299,674,95,13] | text [8,696,30,14] | text [60,696,89,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,89,14] | text [264,718,27,13] | text [299,718,95,13] | text [8,741,30,14] | text [60,741,104,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,37,14] | text [257,763,27,13] | text [292,763,102,13] | text [8,785,30,14] | text [60,785,37,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,22,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,830,30,14] | text [60,830,89,14] | text [264,830,27,13] | text [299,830,95,13] | text [8,852,30,14] | text [60,852,104,14] | text [257,852,27,13] | text [292,852,102,13]",
+      "metadata": {
+        "element_count": 92,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              28,
+              194,
+              275,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              327,
+              244,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              348,
+              109,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              374,
+              130,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              434,
+              27,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              455,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              481,
+              105,
+              64
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              585,
+              59,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              606,
+              36,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              25,
+              629,
+              42,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              658,
+              60,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              719,
+              133,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              739,
+              65,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              765,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              826,
+              135,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              30,
+              847,
+              19,
+              18
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              58,
+              846,
+              31,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              873,
+              131,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              214,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Hello world"
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              241,
+              71,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Welcome"
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              267,
+              69,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Continue"
+          },
+          {
+            "background": true,
+            "bounds": [
+              -118,
+              731,
+              638,
+              286
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              120,
+              190,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              12,
+              586,
+              236,
+              34
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              274,
+              593,
+              20,
+              19
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              306,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              337,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              369,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              629,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              629,
+              82,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              629,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              629,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              651,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              651,
+              52,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              651,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              651,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              674,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              674,
+              60,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              674,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              674,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              696,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              696,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              696,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              696,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              718,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              718,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              718,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              718,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              741,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              741,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              741,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              741,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              763,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              763,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              763,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              763,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              785,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              785,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              785,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              785,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              808,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              808,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              808,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              808,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              830,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              830,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              830,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              830,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              852,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              852,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              852,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              852,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "ffc0080d4d64",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Text",
+      "target_node_id": null,
+      "timestamp": 1787564109731,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1787564109840,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,82,14] | text [236,629,55,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,52,14] | text [236,651,55,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,60,14] | text [236,674,55,13] | text [299,674,95,13] | text [8,696,30,14] | text [60,696,89,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,89,14] | text [264,718,27,13] | text [299,718,95,13] | text [8,741,30,14] | text [60,741,104,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,37,14] | text [257,763,27,13] | text [292,763,102,13] | text [8,785,30,14] | text [60,785,37,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,22,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,830,30,14] | text [60,830,89,14] | text [264,830,27,13] | text [299,830,95,13] | text [8,852,30,14] | text [60,852,104,14] | text [257,852,27,13] | text [292,852,102,13]",
+      "metadata": {
+        "element_count": 91,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              28,
+              16,
+              244,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              36,
+              109,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              63,
+              130,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              123,
+              27,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              143,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              170,
+              105,
+              64
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              274,
+              59,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              294,
+              36,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              25,
+              318,
+              42,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              347,
+              60,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              407,
+              133,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              428,
+              65,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              454,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              514,
+              135,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              30,
+              536,
+              19,
+              18
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              58,
+              535,
+              31,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              561,
+              131,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              622,
+              129,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              642,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              702,
+              93,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              723,
+              346,
+              42
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              68,
+              190,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              12,
+              586,
+              236,
+              34
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              274,
+              593,
+              20,
+              19
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              306,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              337,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              369,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              629,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              629,
+              82,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              629,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              629,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              651,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              651,
+              52,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              651,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              651,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              674,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              674,
+              60,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              236,
+              674,
+              55,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              674,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              696,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              696,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              696,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              696,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              718,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              718,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              718,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              718,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              741,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              741,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              741,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              741,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              763,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              763,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              763,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              763,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              785,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              785,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              785,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              785,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              808,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              808,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              808,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              808,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              830,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              830,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              830,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              830,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              852,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              852,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              852,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              852,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "6f17539f58c4",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Text",
+      "target_node_id": null,
+      "timestamp": 1787564111182,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1787564111323,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,89,14] | text [264,629,27,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,89,14] | text [264,651,27,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,104,14] | text [257,674,27,13] | text [292,674,102,13] | text [8,696,30,14] | text [60,696,37,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,37,14] | text [257,718,27,13] | text [292,718,102,13] | text [8,741,30,14] | text [60,741,22,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,89,14] | text [264,763,27,13] | text [299,763,95,13] | text [8,785,30,14] | text [60,785,104,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,37,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,852,30,14] | text [60,852,22,14] | text [257,852,27,13] | text [292,852,102,13]",
+      "metadata": {
+        "element_count": 87,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              28,
+              16,
+              244,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              36,
+              109,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              63,
+              130,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              123,
+              27,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              143,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              170,
+              105,
+              64
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              274,
+              59,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              294,
+              36,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              25,
+              318,
+              42,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              347,
+              60,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              407,
+              133,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              428,
+              65,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              454,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              514,
+              135,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              30,
+              536,
+              19,
+              18
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              58,
+              535,
+              31,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              561,
+              131,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              622,
+              129,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              642,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              702,
+              93,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              723,
+              346,
+              42
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              68,
+              190,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              12,
+              586,
+              236,
+              34
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              274,
+              593,
+              20,
+              19
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              306,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              337,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              369,
+              593,
+              20,
+              20
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              629,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              629,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              629,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              629,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              651,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              651,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              651,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              651,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              674,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              674,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              674,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              674,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              696,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              696,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              696,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              696,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              718,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              718,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              718,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              718,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              741,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              741,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              741,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              741,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              763,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              763,
+              89,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              264,
+              763,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              299,
+              763,
+              95,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              785,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              785,
+              104,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              785,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              785,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              808,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              808,
+              37,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              808,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              808,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              852,
+              30,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              852,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              257,
+              852,
+              27,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              292,
+              852,
+              102,
+              13
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "155fa0220671",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Text",
+      "target_node_id": null,
+      "timestamp": 1787564113035,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (372, 605)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            369,
+            593,
+            20,
+            20
+          ],
+          "role": "image",
+          "text": null
+        },
+        "interaction": "tapped",
+        "x": 372,
+        "y": 605
+      },
+      "target_desc": "image [369,593,20,20]",
+      "target_node_id": 28,
+      "timestamp": 1787564113040,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: image [354,754,20,15] | text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]",
+      "metadata": {
+        "element_count": 43,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              354,
+              754,
+              20,
+              15
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              16,
+              244,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              36,
+              109,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              63,
+              130,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              123,
+              27,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              143,
+              85,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              170,
+              105,
+              64
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              274,
+              59,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              294,
+              36,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              25,
+              318,
+              42,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              347,
+              60,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              407,
+              133,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              428,
+              65,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              454,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              514,
+              135,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              30,
+              536,
+              19,
+              18
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              58,
+              535,
+              31,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              561,
+              131,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              622,
+              129,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              642,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              702,
+              93,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              28,
+              723,
+              346,
+              42
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              68,
+              190,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          }
+        ],
+        "fingerprint": "73e13ae4194b",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Text",
+      "target_node_id": null,
+      "timestamp": 1787564114509,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (147, 815)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            138,
+            799,
+            28,
+            28
+          ],
+          "role": "image",
+          "text": null
+        },
+        "interaction": "tapped",
+        "x": 147,
+        "y": 815
+      },
+      "target_desc": "image [138,799,28,28]",
+      "target_node_id": 28,
+      "timestamp": 1787564114539,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: image [354,754,20,15] | text [32,224,112,20] | image [33,278,17,17] | text [60,276,142,20] | text [32,328,88,20] | input [32,437,338,22] | input [32,490,338,20] | text [32,600,149,20] | text [32,652,81,20] | image [293,661,13,2] | image [340,655,13,13] | text [32,762,127,20] | image [361,766,7,12] | text [32,814,147,20] | text [32,178,63,20] | text [32,392,82,20] | text [32,554,146,20] | text [32,716,138,20] | SwiftUI Inputs [16,120,224,41] | image [-120,731,642,286] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]",
+      "metadata": {
+        "element_count": 40,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              354,
+              754,
+              20,
+              15
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              224,
+              112,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              33,
+              278,
+              17,
+              17
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              60,
+              276,
+              142,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              328,
+              88,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              437,
+              338,
+              22
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              490,
+              338,
+              20
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              600,
+              149,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              652,
+              81,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              293,
+              661,
+              13,
+              2
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              340,
+              655,
+              13,
+              13
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              762,
+              127,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              361,
+              766,
+              7,
+              12
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              814,
+              147,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              178,
+              63,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              392,
+              82,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              554,
+              146,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              32,
+              716,
+              138,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              120,
+              224,
+              41
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": true,
+            "bounds": [
+              -120,
+              731,
+              642,
+              286
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              830,
+              61,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              116,
+              830,
+              71,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              25,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              19,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          },
+          {
+            "background": false,
+            "bounds": [
+              54,
+              804,
+              33,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              41,
+              830,
+              60,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              799,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              117,
+              830,
+              70,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "SwiftUI Inputs"
+          },
+          {
+            "background": false,
+            "bounds": [
+              210,
+              798,
+              29,
+              32
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              212,
+              830,
+              24,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "UIKit"
+          },
+          {
+            "background": false,
+            "bounds": [
+              265,
+              801,
+              34,
+              29
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              267,
+              830,
+              30,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixed"
+          },
+          {
+            "background": false,
+            "bounds": [
+              327,
+              801,
+              26,
+              28
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              331,
+              830,
+              18,
+              12
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Lab"
+          }
+        ],
+        "fingerprint": "5c74919620d4",
+        "scale": 1.0,
+        "viewport": [
+          402,
+          874
+        ]
+      },
+      "target_desc": "SwiftUI Inputs",
+      "target_node_id": null,
+      "timestamp": 1787564115818,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1787564102: Wireframe: text [12,586,233,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [368,593,20,20] | text [61,725,281,16] | text [28,194,275,14] | text [28,327,244,14] | text [28,348,109,20] | text [28,374,130,20] | text [28,434,27,14] | text [28,455,85,20] | text [28,481,105,64] | text [28,585,59,14] | text [28,606,36,20] | text [25,629,42,28] | text [28,658,60,20] | text [28,719,133,14] | text [28,739,65,20] | text [28,765,76,20] | text [28,826,135,14] | image [30,847,19,18] | text [58,846,31,20] | text [28,873,131,20] | Hello world [28,214,85,20] | Welcome [28,241,71,20] | Continue [28,267,69,20] | image [-118,731,638,286] | SwiftUI Text [16,120,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]\n1787564109: Wireframe: text [28,194,275,14] | text [28,327,244,14] | text [28,348,109,20] | text [28,374,130,20] | text [28,434,27,14] | text [28,455,85,20] | text [28,481,105,64] | text [28,585,59,14] | text [28,606,36,20] | text [25,629,42,28] | text [28,658,60,20] | text [28,719,133,14] | text [28,739,65,20] | text [28,765,76,20] | text [28,826,135,14] | image [30,847,19,18] | text [58,846,31,20] | text [28,873,131,20] | Hello world [28,214,85,20] | Welcome [28,241,71,20] | Continue [28,267,69,20] | image [-118,731,638,286] | SwiftUI Text [16,120,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,82,14] | text [236,629,55,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,52,14] | text [236,651,55,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,60,14] | text [236,674,55,13] | text [299,674,95,13] | text [8,696,30,14] | text [60,696,89,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,89,14] | text [264,718,27,13] | text [299,718,95,13] | text [8,741,30,14] | text [60,741,104,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,37,14] | text [257,763,27,13] | text [292,763,102,13] | text [8,785,30,14] | text [60,785,37,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,22,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,830,30,14] | text [60,830,89,14] | text [264,830,27,13] | text [299,830,95,13] | text [8,852,30,14] | text [60,852,104,14] | text [257,852,27,13] | text [292,852,102,13]\n1787564109: Scrolled\n1787564111: Wireframe: text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,82,14] | text [236,629,55,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,52,14] | text [236,651,55,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,60,14] | text [236,674,55,13] | text [299,674,95,13] | text [8,696,30,14] | text [60,696,89,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,89,14] | text [264,718,27,13] | text [299,718,95,13] | text [8,741,30,14] | text [60,741,104,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,37,14] | text [257,763,27,13] | text [292,763,102,13] | text [8,785,30,14] | text [60,785,37,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,22,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,830,30,14] | text [60,830,89,14] | text [264,830,27,13] | text [299,830,95,13] | text [8,852,30,14] | text [60,852,104,14] | text [257,852,27,13] | text [292,852,102,13]\n1787564111: Scrolled\n1787564113: Wireframe: text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12] | text [12,586,236,34] | image [274,593,20,19] | image [306,593,20,20] | image [337,593,20,20] | image [369,593,20,20] | text [8,629,30,14] | text [60,629,89,14] | text [264,629,27,13] | text [299,629,95,13] | text [8,651,30,14] | text [60,651,89,14] | text [264,651,27,13] | text [299,651,95,13] | text [8,674,30,14] | text [60,674,104,14] | text [257,674,27,13] | text [292,674,102,13] | text [8,696,30,14] | text [60,696,37,14] | text [257,696,27,13] | text [292,696,102,13] | text [8,718,30,14] | text [60,718,37,14] | text [257,718,27,13] | text [292,718,102,13] | text [8,741,30,14] | text [60,741,22,14] | text [257,741,27,13] | text [292,741,102,13] | text [8,763,30,14] | text [60,763,89,14] | text [264,763,27,13] | text [299,763,95,13] | text [8,785,30,14] | text [60,785,104,14] | text [257,785,27,13] | text [292,785,102,13] | text [8,808,30,14] | text [60,808,37,14] | text [257,808,27,13] | text [292,808,102,13] | text [8,852,30,14] | text [60,852,22,14] | text [257,852,27,13] | text [292,852,102,13]\n1787564113: Tapped at (372, 605)\n1787564114: Wireframe: image [354,754,20,15] | text [28,16,244,14] | text [28,36,109,20] | text [28,63,130,20] | text [28,123,27,14] | text [28,143,85,20] | text [28,170,105,64] | text [28,274,59,14] | text [28,294,36,20] | text [25,318,42,28] | text [28,347,60,20] | text [28,407,133,14] | text [28,428,65,20] | text [28,454,76,20] | text [28,514,135,14] | image [30,536,19,18] | text [58,535,31,20] | text [28,561,131,20] | text [28,622,129,14] | text [28,642,108,20] | text [28,702,93,14] | text [28,723,346,42] | SwiftUI Text [16,68,190,41] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]\n1787564114: Tapped at (147, 815)\n1787564115: Wireframe: image [354,754,20,15] | text [32,224,112,20] | image [33,278,17,17] | text [60,276,142,20] | text [32,328,88,20] | input [32,437,338,22] | input [32,490,338,20] | text [32,600,149,20] | text [32,652,81,20] | image [293,661,13,2] | image [340,655,13,13] | text [32,762,127,20] | image [361,766,7,12] | text [32,814,147,20] | text [32,178,63,20] | text [32,392,82,20] | text [32,554,146,20] | text [32,716,138,20] | SwiftUI Inputs [16,120,224,41] | image [-120,731,642,286] | image [54,804,33,21] | SwiftUI Text [40,830,61,12] | image [138,799,28,28] | SwiftUI Inputs [116,830,71,12] | image [210,798,29,32] | UIKit [212,830,25,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,19,12] | image [54,804,33,21] | SwiftUI Text [41,830,60,12] | image [138,799,28,28] | SwiftUI Inputs [117,830,70,12] | image [210,798,29,32] | UIKit [212,830,24,12] | image [265,801,34,29] | Mixed [267,830,30,12] | image [327,801,26,28] | Lab [331,830,18,12]",
+  "page_visits": []
+}

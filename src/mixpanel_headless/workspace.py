@@ -11259,7 +11259,8 @@ class Workspace:
             A :class:`Replay` with ``rrweb_events`` populated.
 
         Raises:
-            ReplayNotFoundError: First CDN file returned 404.
+            ReplayNotFoundError: First CDN file returned 404, or no event
+                carries a usable timestamp.
             SessionReplayAccessError: Sensitive-data flag set.
             SignedURLExpiredError: Signed URL expired during fetch (rare;
                 fetch signs and fetches immediately).
@@ -11284,7 +11285,21 @@ class Workspace:
         # Derive the window from min/max rather than first/last: walk_cdn_async
         # yields in (file-number, in-file timestamp) order with no global merge,
         # so indexing [0]/[-1] would drift if CDN files ever overlap in time.
-        event_timestamps = [int(ev["timestamp"]) for ev in rrweb_events]
+        # Unusable timestamps (a string, None, NaN, ...) read as 0 and are
+        # left out, so a damaged event cannot raise here.
+        from mixpanel_headless._internal.replays.rrweb_analyzer import (
+            _event_timestamp,
+        )
+
+        event_timestamps = [
+            t for t in (_event_timestamp(ev) for ev in rrweb_events) if t > 0
+        ]
+        if not event_timestamps:
+            raise replay_not_found_error(
+                replay_id,
+                retention_days=resolved_retention,
+                cdn_url_prefix=signed.url,
+            )
         start_time = min(event_timestamps)
         end_time = max(event_timestamps)
 

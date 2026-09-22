@@ -52,7 +52,9 @@ def _synthetic_streams() -> dict[str, list[dict[str, Any]]]:
     add the branches a real recording rarely contains in one stream:
     console-plugin errors, text selection, mutation adds / removes /
     text / attribute changes, the ancestor-description fallback, and the
-    duplicate-run collapse in the markdown reporter.
+    duplicate-run collapse in the markdown reporter. The mobile stream
+    (:func:`_mobile_gesture_stream`) covers the touch gesture rules of a
+    screenshot recording.
 
     Returns:
         A ``{fixture_name: events}`` mapping. Each value is a raw rrweb
@@ -122,6 +124,7 @@ def _synthetic_streams() -> dict[str, list[dict[str, Any]]]:
         ],
     }
     return {
+        "synthetic-mobile-gestures-001": _mobile_gesture_stream(),
         "synthetic-mixed-001": [
             {
                 "type": 4,
@@ -234,6 +237,163 @@ def _synthetic_streams() -> dict[str, list[dict[str, Any]]]:
             },
         ],
     }
+
+
+def _mobile_gesture_stream() -> list[dict[str, Any]]:
+    """Build a screenshot recording that covers the touch gesture edge cases.
+
+    The real mobile fixtures contain few scrolls and no cancelled touch.
+    This stream holds each gesture rule once, in time order:
+
+    1. A Meta event with an empty ``href``. This makes the stream a
+       screenshot recording, and the width (540) sets the touch space.
+    2. A finger drag with no open gesture: the session started mid-drag,
+       so the drag is a scroll.
+    3. A tap before the first wireframe. It has no screen to hit test, so
+       the target is the point.
+    4. The first wireframe. Its viewport (1080) is twice the Meta width,
+       so every rect is scaled by 0.5. Several rects have odd values, so
+       the scaled value ends in .5. Python rounds half to even (50.5 gives
+       50), and a port must round the same way. The screen also holds a
+       label with a ``|``, an unlabeled image, an element without bounds,
+       and an element without a role.
+    5. A scroll by drag travel: the lift-off point is near the finger-down
+       point, but the drag samples travel far.
+    6. A lift-off with no open gesture, which does nothing.
+    7. A cancelled touch: no action, but the next screen is kept.
+    8. A Flutter-style mouse click, which is a one-event gesture.
+    9. A finger-down with no lift-off before the end of the stream. The
+       analyzer reports it as a tap at its finger-down time.
+
+    Returns:
+        The raw rrweb event list.
+    """
+    base = 1_700_100_000_000
+
+    def touch(offset_ms: int, kind: int, x: int, y: int) -> dict[str, Any]:
+        """Build one MouseInteraction event on the screenshot image node.
+
+        Args:
+            offset_ms: Milliseconds after the stream start.
+            kind: The MouseInteraction type (2 click, 7 touch start,
+                9 touch end, 10 touch cancel).
+            x: The x coordinate in the touch space.
+            y: The y coordinate in the touch space.
+
+        Returns:
+            The rrweb IncrementalSnapshot event.
+        """
+        return {
+            "type": 3,
+            "data": {"source": 2, "type": kind, "id": 5, "x": x, "y": y},
+            "timestamp": base + offset_ms,
+        }
+
+    def drag(offset_ms: int, points: list[tuple[int, int]]) -> dict[str, Any]:
+        """Build one finger-drag (TouchMove) event.
+
+        Args:
+            offset_ms: Milliseconds after the stream start.
+            points: The ``(x, y)`` drag samples.
+
+        Returns:
+            The rrweb IncrementalSnapshot event.
+        """
+        return {
+            "type": 3,
+            "data": {
+                "source": 6,
+                "positions": [
+                    {"x": x, "y": y, "id": 5, "timeOffset": 0} for x, y in points
+                ],
+            },
+            "timestamp": base + offset_ms,
+        }
+
+    def wireframe(offset_ms: int, elements: list[dict[str, Any]]) -> dict[str, Any]:
+        """Build one ``mp_wireframe`` Custom event with a 1080 x 2400 viewport.
+
+        Args:
+            offset_ms: Milliseconds after the stream start.
+            elements: The raw wireframe element list.
+
+        Returns:
+            The rrweb Custom event.
+        """
+        return {
+            "type": 5,
+            "data": {
+                "tag": "mp_wireframe",
+                "payload": {"viewport": [1080, 2400], "elements": elements},
+            },
+            "timestamp": base + offset_ms,
+        }
+
+    inbox: list[dict[str, Any]] = [
+        {"role": "text", "text": "Inbox", "bounds": [33, 101, 201, 55]},
+        {"role": "text", "text": "Alerts | Mentions", "bounds": [33, 301, 401, 51]},
+        {"role": "image", "text": "", "bounds": [961, 101, 81, 81]},
+        {"role": "button", "text": "Compose", "bounds": [101, 1901, 877, 121]},
+        {"role": "text", "text": "No bounds here"},
+        {"text": "Role missing", "bounds": [0, 0, 0, 0]},
+    ]
+    inbox_scrolled: list[dict[str, Any]] = [
+        {"role": "text", "text": "Inbox", "bounds": [33, 101, 201, 55]},
+        {"role": "text", "text": "Older messages", "bounds": [33, 301, 401, 51]},
+        {"role": "button", "text": "Compose", "bounds": [101, 1901, 877, 121]},
+    ]
+    dialog: list[dict[str, Any]] = [
+        {"role": "text", "text": "Discard draft?", "bounds": [201, 901, 677, 81]},
+        {"role": "button", "text": "Discard", "bounds": [201, 1101, 301, 101]},
+        {"role": "button", "text": "Keep", "bounds": [577, 1101, 301, 101]},
+    ]
+    return [
+        {
+            "type": 4,
+            "data": {"href": "", "width": 540, "height": 1200},
+            "timestamp": base,
+        },
+        {
+            "type": 2,
+            "data": {
+                "node": {
+                    "id": 1,
+                    "type": 0,
+                    "childNodes": [
+                        {
+                            "id": 5,
+                            "type": 2,
+                            "tagName": "img",
+                            "attributes": {"src": "data:image/webp;base64,AAAA"},
+                            "childNodes": [],
+                        }
+                    ],
+                },
+                "initialOffset": {"left": 0, "top": 0},
+            },
+            "timestamp": base + 10,
+        },
+        drag(50, [(100, 900), (100, 700)]),
+        touch(2_000, 7, 100, 200),
+        touch(2_080, 9, 100, 200),
+        wireframe(3_000, inbox),
+        # Scroll by drag travel: the lift-off is 4 px from the start.
+        touch(5_000, 7, 270, 700),
+        drag(5_050, [(270, 650), (270, 500)]),
+        touch(5_200, 9, 272, 703),
+        wireframe(5_300, inbox_scrolled),
+        # A lift-off with no open gesture.
+        touch(6_000, 9, 10, 10),
+        # A cancelled touch, then the screen it leaves.
+        touch(7_000, 7, 300, 400),
+        touch(7_050, 10, 300, 400),
+        wireframe(7_100, dialog),
+        # A Flutter-style click inside "Keep" (scaled to [288,550,150,50]).
+        touch(9_000, 2, 300, 560),
+        wireframe(9_100, inbox_scrolled),
+        # A finger-down that never lifts.
+        touch(11_000, 7, 60, 960),
+    ]
 
 
 def _freeze(events: list[dict[str, Any]]) -> dict[str, Any]:

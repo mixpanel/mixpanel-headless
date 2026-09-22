@@ -256,3 +256,41 @@ class TestCodedReplayCodes:
         with pytest.raises(ParamValidationError) as excinfo:
             Replay(**_build_kwargs(**overrides))  # type: ignore[arg-type]
         assert excinfo.value.code == code
+
+
+class TestInvalidRrwebTimestamps:
+    """Bad rrweb timestamps never raise in the Replay projections."""
+
+    _BAD: list[object] = ["abc", None, float("nan"), float("inf"), True]
+
+    def _replay(self) -> Replay:
+        """Build a Replay whose raw events carry bad timestamps.
+
+        Returns:
+            A Replay with one good event and one event per bad timestamp.
+        """
+        events: list[dict[str, object]] = [
+            {"type": 3, "data": {}, "timestamp": 1716810000000}
+        ]
+        events.extend({"type": 3, "data": {}, "timestamp": t} for t in self._BAD)
+        events.append({"type": 3, "data": {}, "timestamp": 1e30})
+        return Replay(
+            replay_id="r-1",
+            distinct_id=None,
+            project_id=1,
+            start_time=1716810000000,
+            end_time=1716810000000,
+            retention_days=30,
+            rrweb_events=events,
+        )
+
+    def test_events_df_uses_zero_for_bad_timestamps(self) -> None:
+        """``events_df`` gives ``t = 0`` for every unusable timestamp."""
+        df = self._replay().events_df
+        assert list(df["t"]) == [1716810000000, 0, 0, 0, 0, 0, 0]
+
+    def test_player_json_sorts_bad_timestamps_first(self) -> None:
+        """``to_rrweb_player_json`` sorts unusable timestamps as 0."""
+        stamps = [e["timestamp"] for e in self._replay().to_rrweb_player_json()]
+        assert stamps[-1] == 1716810000000
+        assert len(stamps) == 7

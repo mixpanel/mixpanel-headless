@@ -1,0 +1,2678 @@
+{
+  "actions": [
+    {
+      "action": "screen",
+      "description": "Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]",
+      "metadata": {
+        "element_count": 47,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              72,
+              1168,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              145,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              136,
+              105,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              163,
+              339,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              147,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              241,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              232,
+              106,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              259,
+              346,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              243,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              337,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              328,
+              84,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              355,
+              300,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              339,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              433,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              424,
+              141,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              451,
+              247,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              435,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              529,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              520,
+              124,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              547,
+              223,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              531,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              625,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              616,
+              101,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              643,
+              251,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              627,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              721,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              712,
+              157,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              739,
+              312,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              723,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              817,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              808,
+              198,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              835,
+              243,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              819,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              913,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              904,
+              128,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              931,
+              254,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              915,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              1009,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1000,
+              82,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1027,
+              200,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              1011,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              14,
+              286,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1080,
+              8,
+              120,
+              40
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              288,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              282,
+              1186,
+              35,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              888,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              877,
+              1189,
+              45,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "298336b3ae1d",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747580487,
+      "url": null
+    },
+    {
+      "action": "click",
+      "description": "Clicked at (594, 833)",
+      "metadata": {
+        "interaction": "clicked",
+        "x": 594,
+        "y": 833
+      },
+      "target_desc": "(594, 833)",
+      "target_node_id": 28,
+      "timestamp": 1789747584922,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: button [16,56,1160,64] | button [16,120,1160,64] | button [16,184,1160,64] | button [16,248,1160,64] | button [16,312,1160,64] | button [16,376,1160,64] | button [16,440,1160,64] | button [16,504,1160,64] | button [16,568,1160,64] | button [16,632,1160,64] | button [16,696,1160,64] | button [16,760,1160,64] | button [16,824,1160,64] | button [16,888,1160,64] | button [16,952,1160,64] | button [16,1016,1160,64] | button [16,1080,1160,64] | button [16,1144,1160,64] | button [16,1208,1160,5] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]",
+      "metadata": {
+        "element_count": 22,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              56,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              120,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              184,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              248,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              312,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              376,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              440,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              504,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              568,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              632,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              696,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              760,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              824,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              888,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              952,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1016,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1080,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1144,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1208,
+              1160,
+              5
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              0,
+              56,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              445,
+              14,
+              310,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1045,
+              1141,
+              139,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          }
+        ],
+        "fingerprint": "8f79f91b749d",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747585543,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: button [16,56,1160,40] | button [16,96,1160,64] | button [16,160,1160,64] | button [16,224,1160,64] | button [16,288,1160,64] | button [16,352,1160,64] | button [16,416,1160,64] | button [16,480,1160,64] | button [16,544,1160,64] | button [16,608,1160,64] | button [16,672,1160,64] | button [16,736,1160,64] | button [16,800,1160,64] | button [16,864,1160,64] | button [16,928,1160,64] | button [16,992,1160,64] | button [16,1056,1160,64] | button [16,1120,1160,64] | button [16,1184,1160,29] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]",
+      "metadata": {
+        "element_count": 22,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              56,
+              1160,
+              40
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              96,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              160,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              224,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              288,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              352,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              416,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              480,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              544,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              608,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              672,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              736,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              800,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              864,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              928,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              992,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1056,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1120,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1184,
+              1160,
+              29
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              0,
+              56,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              445,
+              14,
+              310,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1045,
+              1141,
+              139,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          }
+        ],
+        "fingerprint": "40fc2d0dc1f9",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747587808,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: button [16,56,1160,51] | button [16,107,1160,64] | button [16,171,1160,64] | button [16,235,1160,64] | button [16,299,1160,64] | button [16,363,1160,64] | button [16,427,1160,64] | button [16,491,1160,64] | button [16,555,1160,64] | button [16,619,1160,64] | button [16,683,1160,64] | button [16,747,1160,64] | button [16,811,1160,64] | button [16,875,1160,64] | button [16,939,1160,64] | button [16,1003,1160,64] | button [16,1067,1160,64] | button [16,1131,1160,64] | button [16,1195,1160,18] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]",
+      "metadata": {
+        "element_count": 22,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              56,
+              1160,
+              51
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              107,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              171,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              235,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              299,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              363,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              427,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              491,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              555,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              619,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              683,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              747,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              811,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              875,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              939,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1003,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1067,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1131,
+              1160,
+              64
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              1195,
+              1160,
+              18
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              0,
+              56,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              445,
+              14,
+              310,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1045,
+              1141,
+              139,
+              56
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          }
+        ],
+        "fingerprint": "13603b210c09",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747591792,
+      "url": null
+    },
+    {
+      "action": "click",
+      "description": "Clicked at (27, 27)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            0,
+            0,
+            56,
+            56
+          ],
+          "role": "button",
+          "text": null
+        },
+        "interaction": "clicked",
+        "x": 27,
+        "y": 27
+      },
+      "target_desc": "button [0,0,56,56]",
+      "target_node_id": 28,
+      "timestamp": 1789747601416,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]",
+      "metadata": {
+        "element_count": 47,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              72,
+              1168,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              145,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              136,
+              105,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              163,
+              339,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              147,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              241,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              232,
+              106,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              259,
+              346,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              243,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              337,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              328,
+              84,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              355,
+              300,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              339,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              433,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              424,
+              141,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              451,
+              247,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              435,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              529,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              520,
+              124,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              547,
+              223,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              531,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              625,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              616,
+              101,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              643,
+              251,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              627,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              721,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              712,
+              157,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              739,
+              312,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              723,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              817,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              808,
+              198,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              835,
+              243,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              819,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              913,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              904,
+              128,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              931,
+              254,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              915,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              1009,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1000,
+              82,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1027,
+              200,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              1011,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              14,
+              286,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1080,
+              8,
+              120,
+              40
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              288,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              282,
+              1186,
+              35,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              888,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              877,
+              1189,
+              45,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "298336b3ae1d",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747602020,
+      "url": null
+    },
+    {
+      "action": "click",
+      "description": "Clicked at (1100, 24)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            1080,
+            8,
+            120,
+            40
+          ],
+          "role": "button",
+          "text": null
+        },
+        "interaction": "clicked",
+        "x": 1100,
+        "y": 24
+      },
+      "target_desc": "button [1080,8,120,40]",
+      "target_node_id": 28,
+      "timestamp": 1789747604666,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [24,1121,1152,20] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]",
+      "metadata": {
+        "element_count": 48,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              72,
+              1168,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              145,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              136,
+              105,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              163,
+              339,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              147,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              241,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              232,
+              106,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              259,
+              346,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              243,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              337,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              328,
+              84,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              355,
+              300,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              339,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              433,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              424,
+              141,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              451,
+              247,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              435,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              529,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              520,
+              124,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              547,
+              223,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              531,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              625,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              616,
+              101,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              643,
+              251,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              627,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              721,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              712,
+              157,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              739,
+              312,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              723,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              817,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              808,
+              198,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              835,
+              243,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              819,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              913,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              904,
+              128,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              931,
+              254,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              915,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              1009,
+              28,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1000,
+              82,
+              23
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              1027,
+              200,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1144,
+              1011,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              14,
+              286,
+              28
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              1080,
+              8,
+              120,
+              40
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              24,
+              1121,
+              1152,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              288,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              282,
+              1186,
+              35,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              888,
+              1162,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              877,
+              1189,
+              45,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "e01135c7ea72",
+        "scale": 1.0,
+        "viewport": [
+          1200,
+          1213
+        ]
+      },
+      "target_desc": "(screen)",
+      "target_node_id": null,
+      "timestamp": 1789747605540,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1789747580: Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]\n1789747584: Clicked at (594, 833)\n1789747585: Wireframe: button [16,56,1160,64] | button [16,120,1160,64] | button [16,184,1160,64] | button [16,248,1160,64] | button [16,312,1160,64] | button [16,376,1160,64] | button [16,440,1160,64] | button [16,504,1160,64] | button [16,568,1160,64] | button [16,632,1160,64] | button [16,696,1160,64] | button [16,760,1160,64] | button [16,824,1160,64] | button [16,888,1160,64] | button [16,952,1160,64] | button [16,1016,1160,64] | button [16,1080,1160,64] | button [16,1144,1160,64] | button [16,1208,1160,5] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]\n1789747587: Wireframe: button [16,56,1160,40] | button [16,96,1160,64] | button [16,160,1160,64] | button [16,224,1160,64] | button [16,288,1160,64] | button [16,352,1160,64] | button [16,416,1160,64] | button [16,480,1160,64] | button [16,544,1160,64] | button [16,608,1160,64] | button [16,672,1160,64] | button [16,736,1160,64] | button [16,800,1160,64] | button [16,864,1160,64] | button [16,928,1160,64] | button [16,992,1160,64] | button [16,1056,1160,64] | button [16,1120,1160,64] | button [16,1184,1160,29] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]\n1789747591: Wireframe: button [16,56,1160,51] | button [16,107,1160,64] | button [16,171,1160,64] | button [16,235,1160,64] | button [16,299,1160,64] | button [16,363,1160,64] | button [16,427,1160,64] | button [16,491,1160,64] | button [16,555,1160,64] | button [16,619,1160,64] | button [16,683,1160,64] | button [16,747,1160,64] | button [16,811,1160,64] | button [16,875,1160,64] | button [16,939,1160,64] | button [16,1003,1160,64] | button [16,1067,1160,64] | button [16,1131,1160,64] | button [16,1195,1160,18] | button [0,0,56,56] | text [445,14,310,28] | button [1045,1141,139,56]\n1789747601: Clicked at (27, 27)\n1789747602: Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]\n1789747604: Clicked at (1100, 24)\n1789747605: Wireframe: text [16,72,1168,29] | text [44,145,28,28] | text [100,136,105,23] | text [100,163,339,19] | text [1144,147,24,24] | text [44,241,28,28] | text [100,232,106,23] | text [100,259,346,19] | text [1144,243,24,24] | text [44,337,28,28] | text [100,328,84,23] | text [100,355,300,19] | text [1144,339,24,24] | text [44,433,28,28] | text [100,424,141,23] | text [100,451,247,19] | text [1144,435,24,24] | text [44,529,28,28] | text [100,520,124,23] | text [100,547,223,19] | text [1144,531,24,24] | text [44,625,28,28] | text [100,616,101,23] | text [100,643,251,19] | text [1144,627,24,24] | text [44,721,28,28] | text [100,712,157,23] | text [100,739,312,19] | text [1144,723,24,24] | text [44,817,28,28] | text [100,808,198,23] | text [100,835,243,19] | text [1144,819,24,24] | text [44,913,28,28] | text [100,904,128,23] | text [100,931,254,19] | text [1144,915,24,24] | text [44,1009,28,28] | text [100,1000,82,23] | text [100,1027,200,19] | text [1144,1011,24,24] | text [16,14,286,28] | button [1080,8,120,40] | text [24,1121,1152,20] | text [288,1162,24,24] | text [282,1186,35,20] | text [888,1162,24,24] | text [877,1189,45,17]",
+  "page_visits": []
+}

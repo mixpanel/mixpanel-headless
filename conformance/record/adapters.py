@@ -16,6 +16,14 @@ right shape, so the registry targets these thin adapters instead:
   D3.1 item-3 rrweb seed golden freezes its output over
   ``tests/fixtures/rrweb/sample-replay-001.json``. :func:`analyze_rrweb`
   flattens construction + call into one registrable function.
+- ``Replay.capture``, ``Replay.has_wireframes``, ``Replay.screen_path``,
+  and ``ReplayBundle.rage_taps`` are members of result objects that
+  :meth:`Workspace.fetch_replay` builds from a raw event stream.
+  :func:`replay_capture`, :func:`replay_has_wireframes`,
+  :func:`replay_screen_path`, and :func:`replay_bundle_rage_taps` take the
+  raw events, build the object the same way (the analyzer fills
+  ``actions``), and return the member's value. ``rage_taps`` returns a
+  DataFrame, so its adapter returns the rows as a list of dicts.
 - ``bookmark_schema.validate_with_pydantic`` takes a pydantic model
   CLASS — not JSON-transportable. :func:`validate_with_pydantic`
   resolves a model NAME over a fixed five-entry map and forwards with
@@ -39,6 +47,7 @@ from mixpanel_headless.types import UserAction
 
 if TYPE_CHECKING:
     from mixpanel_headless.exceptions import ValidationError
+    from mixpanel_headless.types import Replay
 
 
 class _ChunkStream(httpx.SyncByteStream):
@@ -148,6 +157,133 @@ def analyze_rrweb(events: list[dict[str, Any]]) -> AnalyzerResult:
     from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
 
     return RrwebAnalyzer().analyze(events)
+
+
+def _replay_from_events(events: list[dict[str, Any]]) -> Replay:
+    """Build a ``Replay`` from raw events, as ``Workspace.fetch_replay`` does.
+
+    The analyzer runs over ``events`` and fills ``actions``. The identity
+    and time fields are fixed placeholders, because no adapted member
+    reads them except ``replay_id``, which ``rage_taps`` copies into each
+    row.
+
+    Args:
+        events: Raw rrweb event dicts.
+
+    Returns:
+        The replay, with ``replay_id="r1"``.
+    """
+    from mixpanel_headless._internal.replays.rrweb_analyzer import RrwebAnalyzer
+    from mixpanel_headless.types import Replay
+
+    return Replay(
+        replay_id="r1",
+        distinct_id=None,
+        project_id=1,
+        start_time=1,
+        end_time=1,
+        retention_days=30,
+        rrweb_events=events,
+        actions=list(RrwebAnalyzer().analyze(events).actions),
+    )
+
+
+def replay_capture(events: list[dict[str, Any]]) -> str:
+    """Return ``Replay.capture`` for a raw event stream.
+
+    Args:
+        events: Raw rrweb event dicts.
+
+    Returns:
+        ``"dom"`` or ``"screenshot"``.
+
+    Example:
+        ```python
+        replay_capture([{"type": 4, "data": {"href": ""}, "timestamp": 1}])
+        # 'screenshot'
+        ```
+    """
+    return _replay_from_events(events).capture
+
+
+def replay_has_wireframes(events: list[dict[str, Any]]) -> bool:
+    """Return ``Replay.has_wireframes`` for a raw event stream.
+
+    Args:
+        events: Raw rrweb event dicts.
+
+    Returns:
+        True when the analyzer emits at least one ``"screen"`` action.
+    """
+    return _replay_from_events(events).has_wireframes
+
+
+def replay_screen_path(events: list[dict[str, Any]]) -> list[str]:
+    """Return ``Replay.screen_path()`` for a raw event stream.
+
+    Args:
+        events: Raw rrweb event dicts.
+
+    Returns:
+        The screen headings in timestamp order.
+    """
+    return _replay_from_events(events).screen_path()
+
+
+def replay_bundle_rage_taps(
+    events: list[dict[str, Any]],
+    threshold: int = 3,
+    window_ms: int = 2000,
+    radius_px: float = 24,
+    grace_ms: int = 1000,
+) -> list[dict[str, Any]]:
+    """Return ``ReplayBundle.rage_taps()`` rows for a one-replay bundle.
+
+    The DataFrame is not a vector value, so the rows come back as plain
+    dicts with the DataFrame's column names as keys, in row order.
+
+    Args:
+        events: Raw rrweb event dicts of the only replay in the bundle.
+        threshold: Forwarded to ``rage_taps``.
+        window_ms: Forwarded to ``rage_taps``.
+        radius_px: Forwarded to ``rage_taps``.
+        grace_ms: Forwarded to ``rage_taps``.
+
+    Returns:
+        One dict per reported burst: ``replay_id``, ``t_start``, ``t_end``,
+        ``target_desc``, ``x``, ``y``, ``count``, and ``kind``.
+
+    Example:
+        ```python
+        replay_bundle_rage_taps(events)
+        # [{'replay_id': 'r1', 'count': 4, 'kind': 'dead', ...}]
+        ```
+    """
+    from mixpanel_headless.types import ReplayBundle
+
+    bundle = ReplayBundle(
+        replays=[_replay_from_events(events)], computed_at="", project_id=1
+    )
+    frame = bundle.rage_taps(
+        threshold=threshold,
+        window_ms=window_ms,
+        radius_px=radius_px,
+        grace_ms=grace_ms,
+    )
+    rows: list[dict[str, Any]] = [
+        {
+            "replay_id": str(row["replay_id"]),
+            "t_start": int(row["t_start"]),
+            "t_end": int(row["t_end"]),
+            "target_desc": str(row["target_desc"]),
+            "x": int(row["x"]),
+            "y": int(row["y"]),
+            "count": int(row["count"]),
+            "kind": str(row["kind"]),
+        }
+        for row in frame.to_dict(orient="records")
+    ]
+    return rows
 
 
 def validate_with_pydantic(

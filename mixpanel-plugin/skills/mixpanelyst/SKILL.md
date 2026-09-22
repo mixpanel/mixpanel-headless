@@ -1,6 +1,6 @@
 ---
 name: mixpanelyst
-description: This skill should be used when the user asks about Mixpanel product analytics, event data, funnel analysis, retention curves, cohort analysis, segmentation queries, user behavior, conversion rates, churn, DAU/MAU, ARPU, revenue metrics, feature adoption, A/B test results, user paths, flow analysis, session replay or session recordings (what a specific user did on screen, click-by-click — rage clicks, dead clicks, error sessions, action timelines), or any request to query, explore, visualize, or analyze Mixpanel data using Python. Also use when the user asks to read, write, or manage Mixpanel "business context" — the markdown documentation that grounds AI assistants in an organization's structure and goals.
+description: This skill should be used when the user asks about Mixpanel product analytics, event data, funnel analysis, retention curves, cohort analysis, segmentation queries, user behavior, conversion rates, churn, DAU/MAU, ARPU, revenue metrics, feature adoption, A/B test results, user paths, flow analysis, session replay or session recordings (what a specific user did on screen, click-by-click — rage clicks, dead clicks, rage taps on mobile, error sessions, action timelines), or any request to query, explore, visualize, or analyze Mixpanel data using Python. Also use when the user asks to read, write, or manage Mixpanel "business context" — the markdown documentation that grounds AI assistants in an organization's structure and goals.
 allowed-tools: Bash Read Write WebFetch
 ---
 
@@ -1064,6 +1064,31 @@ replay.to_rrweb_player_json()          # timestamp-sorted rrweb events
 ```
 
 **Signed CDN URLs are bearer credentials** — `SignedReplay` masks them and the library never logs them. A `SESSION_RECORDING_SENSITIVE_DATA` 403 raises `SessionReplayAccessError`.
+
+### Mobile and screenshot replays
+
+iOS, Android, React Native, and Flutter (mobile, web, and desktop) record screenshots, not a DOM. `replay.capture == "screenshot"` for these; `replay.has_wireframes` says whether screen element lists exist (the SDK can turn them off). There are no URLs: `page_path()` is empty, so use `screen_path()`.
+
+```python
+bundle.rage_taps()        # FIRST: replay_id, t_start, t_end, target_desc, x, y, count, kind ("rage" | "dead")
+replay.screen_path()      # screen headings in order: ["Home", "Settings"]
+bundle.screens_df         # replay_id, t, heading, fingerprint, element_count, description
+bundle.screens_df.groupby("fingerprint").size()   # most-visited screen: count by fingerprint, label by heading
+taps = bundle.actions_df.query("action == 'touch_start'")   # mobile taps; top_clicks() counts clicks only
+```
+
+Read `rage_taps()` first, then the timeline. It counts real finger-downs with real timestamps; the timeline does not. Timeline lines:
+
+- `Wireframe: Home [16,38,54,27] | button:Save [98,155,215,48] | text [363,27,48,48] | …` — one screen. A bare label is text; `role:label` is any other role (`button`, `input`, `image`, `switch`); a role with no label is unlabeled (often an icon, or masked text). `[x,y,w,h]` is the rect in logical px from the top-left.
+- Screens are **keyframes** sampled around gestures (the screen before, up to two after), not a continuous record. Diff consecutive screens: a mostly new element set = navigation; new items under an input = search; one label changing = a toggle.
+- `Tapped at (x, y)` = a tap (action `touch_start`). `Scrolled` = a swipe or scroll, not a tap. `Clicked at (x, y)` = a mouse click in Flutter web or desktop (action `click`).
+- `Tapped at (257, 638) (×7)` = seven consecutive identical lines, collapsed. The line shows the first timestamp only, so it hides the span of the burst — take timing from `rage_taps()` or `actions_df`.
+
+What a tap hit: read the action's `target_desc` (`button:Save`, a bare label, or `role [x,y,w,h]` for an icon) and `metadata["hit"]` (`role`, `text`, `bounds`). `metadata["attribution"]` is `"bounds"` (inside the rect) or `"bounds_slop"` (within 8 px). Rects overlap, so a hit is an inference. A target of `"(x, y)"` means no element was near. A tap on a translucent tab bar or toolbar can resolve to the content that scrolls below it.
+
+Screens have no names. The heading (`target_desc` of a `screen` action) is the top-most text label: approximate, and `"(screen)"` when masked. It can be a back-button label or scrolled content. Identify a screen by `metadata["fingerprint"]`, name it only with text that appears on it, and never invent a screen name.
+
+Each burst is judged per interval (the gaps between finger-downs, plus a grace window after the last one). `kind="dead"`: no interval has a screen change. A burst where every gap has a change (a quantity stepper, a carousel) is intentional and is not reported. `kind="rage"`: anything else, for example a navigation that arrives only after the burst. A live clock or animation counts as a change, so it can hide a dead control. Report each burst with its control, tap count, and time span. **A clean, successful flow is a valid finding — do not invent friction.**
 
 Look up the surface: `help.py Workspace.replays_for_user`, `help.py ReplayBundle`, `help.py Replay`.
 User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/session-replay/index.md")`

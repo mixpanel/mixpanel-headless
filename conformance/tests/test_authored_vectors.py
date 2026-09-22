@@ -266,3 +266,113 @@ def test_enums_snapshot_serializes_frozensets_sorted() -> None:
     for name, value in constants.items():
         if isinstance(value, list):
             assert value == sorted(value), f"{name} not sorted"
+
+
+def _mobile_replay_vectors() -> list[dict[str, Any]]:
+    """Build the authored mobile replay vectors in memory.
+
+    Returns:
+        The vector objects that ``gen_replay_mobile_vectors`` writes.
+    """
+    from conformance.record.gen_replay_mobile_vectors import build_vectors
+
+    return build_vectors()
+
+
+def test_mobile_replay_vectors_are_schema_valid_and_authored() -> None:
+    """Every generated mobile replay vector passes the authored-vector rules.
+
+    The bundle is written only after the library change is on main (its
+    stamp must be a main SHA), so this test checks the vectors before
+    they are committed.
+
+    Raises:
+        AssertionError: On a schema, origin, id, or capability violation.
+    """
+    validator = _schema_validator()
+    bad: list[str] = []
+    ids: set[str] = set()
+    for body in _mobile_replay_vectors():
+        vector_id = str(body["id"])
+        bad.extend(f"{vector_id}: {e.message}" for e in validator.iter_errors(body))
+        if body["origin"] != "authored" or body["capability"] != "replays":
+            bad.append(f"{vector_id}: wrong origin or capability")
+        if not vector_id.startswith("replays/"):
+            bad.append(f"{vector_id}: id not prefixed by capability")
+        if vector_id in ids:
+            bad.append(f"{vector_id}: duplicate id")
+        ids.add(vector_id)
+    assert bad == [], "\n".join(bad)
+
+
+def test_mobile_replay_vectors_cover_every_member() -> None:
+    """The generated vectors cover all four mobile replay members.
+
+    Raises:
+        AssertionError: If an api has no vector, or ``rage_taps`` lacks a
+            ``dead`` row, a ``rage`` row, or an empty result.
+    """
+    by_api: dict[str, list[Any]] = {}
+    for body in _mobile_replay_vectors():
+        by_api.setdefault(body["call"]["api"], []).append(body["expect"]["output"])
+    assert set(by_api) == {
+        "replay.capture",
+        "replay.has_wireframes",
+        "replay.screen_path",
+        "replay_bundle.rage_taps",
+    }
+    kinds = {row["kind"] for rows in by_api["replay_bundle.rage_taps"] for row in rows}
+    assert kinds == {"dead", "rage"}
+    assert [] in by_api["replay_bundle.rage_taps"]
+    assert set(by_api["replay.capture"]) == {"dom", "screenshot"}
+
+
+def test_mobile_replay_vectors_replay_clean_through_the_runner() -> None:
+    """Each generated vector passes the corpus runner against the registry.
+
+    Raises:
+        AssertionError: With the failure reasons of any vector that fails.
+    """
+    from conformance.record.clock import RecordClock
+    from conformance.runner.execute import run_vector
+    from conformance.runner.loading import LoadedVector
+
+    failures: list[str] = []
+    clock = RecordClock()
+    clock.start()
+    try:
+        for body in _mobile_replay_vectors():
+            clock.reset_test_state()
+            outcome = run_vector(
+                LoadedVector(
+                    id=str(body["id"]),
+                    kind=str(body["kind"]),
+                    body=body,
+                    bundle=Path("authored/replays/rrweb-mobile.jsonl"),
+                )
+            )
+            if not outcome.passed:
+                failures.extend([str(body["id"]), *outcome.reasons])
+    finally:
+        clock.stop()
+    assert failures == [], "\n".join(failures)
+
+
+def test_mobile_replay_bundle_matches_generator_when_present() -> None:
+    """A committed mobile replay bundle equals a fresh generator run.
+
+    The bundle does not exist until the library change is on main. After
+    that, a change in analyzer behavior without a regenerated bundle fails
+    here.
+
+    Raises:
+        AssertionError: If the committed bundle differs from the generator
+            output under its own stamp.
+    """
+    from conformance.record.gen_replay_mobile_vectors import OUT_PATH, render_bundle
+
+    if not OUT_PATH.exists():
+        pytest.skip("mobile replay bundle is written after the merge to main")
+    text = OUT_PATH.read_text(encoding="utf-8")
+    header = json.loads(text.splitlines()[0])["$bundle"]
+    assert text == render_bundle(str(header["source_commit"]))

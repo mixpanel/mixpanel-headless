@@ -176,15 +176,15 @@ class TestReplayNotFoundError:
 
 
 class TestUnsupportedReplayFormatError:
-    """Non-rrweb (mobile) replay bytes (error-messages.md §9)."""
+    """Replay bytes that are not rrweb-shaped."""
 
     def _build(self) -> UnsupportedReplayFormatError:
         """Construct an instance with the canonical message + details."""
         replay_id = "r-19221"
         message = (
-            f"Replay {replay_id} appears to be a mobile session (non-rrweb "
-            f"format). Mobile session replays are not yet supported by "
-            f"mixpanel-headless. Track upstream at SR-230."
+            f"Replay {replay_id} is not in rrweb format: its first event lacks "
+            f"the rrweb type, data, and timestamp keys, so mixpanel-headless "
+            f"cannot read it."
         )
         return UnsupportedReplayFormatError(
             message,
@@ -192,11 +192,12 @@ class TestUnsupportedReplayFormatError:
         )
 
     def test_canonical_message_verbatim(self) -> None:
-        """Message matches the catalog in error-messages.md §9 verbatim."""
+        """The message names the format problem and makes no mobile claim."""
         exc = self._build()
-        assert "appears to be a mobile session (non-rrweb format)" in str(exc)
-        assert "not yet supported by mixpanel-headless" in str(exc)
-        assert "SR-230" in str(exc)
+        assert "is not in rrweb format" in str(exc)
+        assert "mixpanel-headless cannot read it" in str(exc)
+        assert "mobile" not in str(exc).lower()
+        assert "SR-230" not in str(exc)
 
     def test_status_code_defaults_to_501(self) -> None:
         """status_code defaults to 501 (Not Implemented) — no HTTP failure occurred."""

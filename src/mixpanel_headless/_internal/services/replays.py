@@ -8,7 +8,7 @@ The service stays pure-bytes:
   ``signed_at`` timestamp, hydrates :class:`SignedReplay` instances.
 - ``fetch_files`` / ``walk_cdn_async`` — parallel CDN walker with batched
   ``httpx.AsyncClient`` GETs, 404-as-end-sentinel, 403-as-expiry retry,
-  mobile-replay detection, ``max_files`` upper bound.
+  non-rrweb format detection, ``max_files`` upper bound.
 - ``discover`` / ``events_for`` — Insights-API discovery for
   ``$mp_session_record`` events (delegates to a caller-supplied ``query_fn``
   to avoid a circular dependency on :class:`Workspace`).
@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
+from mixpanel_headless._internal.replays.rrweb_analyzer import _event_timestamp
 from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     ReplayNotFoundError,
@@ -68,12 +69,13 @@ _CDN_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=30.0)
 
 
 def _looks_like_rrweb(event: object) -> bool:
-    """Heuristic: does this look like an rrweb web-recording event?
+    """Heuristic: does this look like an rrweb event?
 
-    rrweb event shape always includes at minimum ``type`` (int discriminator),
-    ``data`` (dict), and ``timestamp`` (int ms). Mobile session replays use a
-    different recording format that lacks these keys; we treat absence as
-    "not rrweb" and surface a forward-compat
+    The check is shallow: the event must be a dict with the ``type``,
+    ``data``, and ``timestamp`` keys. It does not check the value types.
+    Every current Mixpanel SDK (web, iOS, Android, React Native, and
+    Flutter) sends rrweb-shaped events, so a failed check means an unknown
+    or damaged format, which the walker reports as
     :class:`UnsupportedReplayFormatError`.
 
     Args:
@@ -255,7 +257,7 @@ class ReplaysService:
             SignedURLExpiredError: Re-sign retry also returned 403, or
                 ``re_sign_on_expiry=False``.
             UnsupportedReplayFormatError: First event in the walk doesn't look
-                like rrweb (mobile replay or unknown format).
+                like rrweb (an unknown recording format).
             MixpanelHeadlessError: Network errors during CDN fetch.
         """
 
@@ -325,7 +327,7 @@ class ReplaysService:
         """
         current_signed = signed
         file_num = 0
-        mobile_checked = False
+        format_checked = False
         re_signed_once = False
 
         async with httpx.AsyncClient(
@@ -373,20 +375,28 @@ class ReplaysService:
                     status, events = results[i]
                     if status != 200 or not events:
                         continue
-                    if not mobile_checked:
-                        mobile_checked = True
-                        if not _looks_like_rrweb(events[0]):
+                    # A damaged file can hold entries that are not dicts, or
+                    # unusable timestamps: skip the former, sort the latter
+                    # as 0, so the walk itself never raises.
+                    dict_events = [ev for ev in events if isinstance(ev, dict)]
+                    if not format_checked:
+                        # The format check reads the first DICT entry of the
+                        # first non-empty file, so one damaged leading entry
+                        # does not abort a replay whose events are valid. A
+                        # file with no dict entry at all is not rrweb.
+                        format_checked = True
+                        if not dict_events or not _looks_like_rrweb(dict_events[0]):
                             raise UnsupportedReplayFormatError(
-                                f"Replay {signed.replay_id} appears to be a "
-                                f"mobile session (non-rrweb format). Mobile "
-                                f"session replays are not yet supported by "
-                                f"mixpanel-headless. Track upstream at SR-230.",
+                                f"Replay {signed.replay_id} is not in rrweb "
+                                f"format: its first event lacks the rrweb "
+                                f"type, data, and timestamp keys, so "
+                                f"mixpanel-headless cannot read it.",
                                 details={
                                     "replay_id": signed.replay_id,
                                     "format": "non-rrweb",
                                 },
                             )
-                    for ev in sorted(events, key=lambda e: int(e.get("timestamp", 0))):
+                    for ev in sorted(dict_events, key=_event_timestamp):
                         yield ev
 
                 if terminate_at < len(results):

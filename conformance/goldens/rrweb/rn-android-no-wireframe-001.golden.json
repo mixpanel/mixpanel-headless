@@ -1,0 +1,46 @@
+{
+  "actions": [
+    {
+      "action": "touch_start",
+      "description": "Tapped at (364, 516)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 364,
+        "y": 516
+      },
+      "target_desc": "(364, 516)",
+      "target_node_id": 28,
+      "timestamp": 1789671576759,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (364, 617)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 364,
+        "y": 617
+      },
+      "target_desc": "(364, 617)",
+      "target_node_id": 28,
+      "timestamp": 1789671577807,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (340, 507)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 340,
+        "y": 507
+      },
+      "target_desc": "(340, 507)",
+      "target_node_id": 28,
+      "timestamp": 1789671595678,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1789671576: Tapped at (364, 516)\n1789671577: Tapped at (364, 617)\n1789671595: Tapped at (340, 507)",
+  "page_visits": []
+}

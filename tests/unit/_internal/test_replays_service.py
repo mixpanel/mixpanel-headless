@@ -363,11 +363,16 @@ class TestFetchFilesCredentialRedaction:
 # =============================================================================
 
 
-class TestMobileReplayDetection:
-    """First event missing rrweb keys → UnsupportedReplayFormatError per §9."""
+class TestNonRrwebDetection:
+    """First event missing rrweb keys → UnsupportedReplayFormatError."""
 
     def test_non_rrweb_first_event_raises_unsupported_format(self) -> None:
-        """Mobile replays use a different recording format; fail with a typed error."""
+        """Bytes that are not rrweb-shaped fail with a typed error.
+
+        The message must not claim that mobile replays are unsupported:
+        current mobile SDKs send rrweb-shaped recordings, which the
+        analyzer reads.
+        """
         # First file's first event lacks 'type', 'data', and 'timestamp'.
         file_contents: dict[int, list[dict[str, Any]] | None] = {
             0: [{"mobile_event": "tap", "ts": 1716810000}],
@@ -377,7 +382,9 @@ class TestMobileReplayDetection:
         transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
         service = ReplaysService(api, _async_transport=transport)
 
-        with pytest.raises(UnsupportedReplayFormatError, match="mobile session") as ei:
+        with pytest.raises(
+            UnsupportedReplayFormatError, match="is not in rrweb format"
+        ) as ei:
             service.fetch_files(
                 _signed(),
                 retention_days=30,
@@ -387,6 +394,8 @@ class TestMobileReplayDetection:
         # Typed so the CLI maps it to a clean exit code, and callers can branch.
         assert ei.value.details["replay_id"] == _signed().replay_id
         assert ei.value.details["format"] == "non-rrweb"
+        assert "mobile" not in str(ei.value).lower()
+        assert "SR-230" not in str(ei.value)
 
 
 # =============================================================================
@@ -712,3 +721,67 @@ class TestEventsForParsing:
 
 # Ensure the module is importable as a package for pytest collection.
 _ = json
+
+
+class TestDamagedFiles:
+    """A damaged CDN file cannot raise in the walker's sort or yield."""
+
+    def test_non_dict_entries_and_bad_timestamps_do_not_raise(self) -> None:
+        """Entries that are not dicts are skipped; bad timestamps sort as 0."""
+        file_contents: dict[int, Any] = {
+            0: [
+                _rrweb_event(20),
+                "junk",
+                {"type": 3, "data": {}, "timestamp": "abc"},
+                None,
+                _rrweb_event(10),
+                7,
+                {"type": 3, "data": {}},
+            ],
+            1: None,
+        }
+        api = _mock_api_client()
+        transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
+        service = ReplaysService(api, _async_transport=transport)
+
+        events = service.fetch_files(
+            _signed(), retention_days=30, max_files=500, concurrency=50
+        )
+
+        assert all(isinstance(e, dict) for e in events)
+        assert [e.get("timestamp") for e in events] == ["abc", None, 10, 20]
+
+
+class TestFormatCheckOnFirstDict:
+    """The format check reads the first dict entry of the first non-empty file."""
+
+    def _fetch(self, first_file: list[Any]) -> list[dict[str, Any]]:
+        """Walk a replay whose first file holds ``first_file``.
+
+        Args:
+            first_file: The entries of CDN file 0.
+
+        Returns:
+            The walked events.
+        """
+        file_contents: dict[int, Any] = {0: first_file, 1: None}
+        transport = httpx.MockTransport(_make_cdn_handler(file_contents=file_contents))
+        service = ReplaysService(_mock_api_client(), _async_transport=transport)
+        return service.fetch_files(
+            _signed(), retention_days=30, max_files=500, concurrency=50
+        )
+
+    def test_damaged_first_entry_before_valid_events(self) -> None:
+        """A non-dict first entry is skipped; the valid events still come back."""
+        events = self._fetch([42, _rrweb_event(20), _rrweb_event(10)])
+        assert [e["timestamp"] for e in events] == [10, 20]
+
+    def test_file_without_any_dict_raises(self) -> None:
+        """A first file with no dict entry at all is not rrweb."""
+        with pytest.raises(UnsupportedReplayFormatError):
+            self._fetch(["x", 7])
+
+    def test_first_dict_not_rrweb_shaped_raises(self) -> None:
+        """The first dict decides: a dict without the rrweb keys raises."""
+        with pytest.raises(UnsupportedReplayFormatError):
+            self._fetch([{"foo": 1}, _rrweb_event(10)])

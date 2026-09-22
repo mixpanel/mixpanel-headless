@@ -388,7 +388,9 @@ def replays_analyze(
 
     Default output is the markdown timeline (suitable for stdout or LLM
     consumption). With ``--format json`` the command emits the normalized
-    action list as a JSON array.
+    action list as a JSON array. Mobile and other screenshot replays
+    (iOS, Android, React Native, and Flutter) work too: they give screen,
+    tap, scroll, and click lines.
 
     Args:
         ctx: Typer context.

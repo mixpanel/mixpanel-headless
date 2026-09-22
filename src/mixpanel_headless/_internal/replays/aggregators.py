@@ -15,9 +15,12 @@ Conventions:
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import pandas as pd
+
+from mixpanel_headless._internal.replays.rrweb_analyzer import finger_downs
 
 if TYPE_CHECKING:
     from mixpanel_headless.types import ReplayBundle
@@ -127,6 +130,160 @@ def rage_clicks(
             else:
                 i += 1
     return pd.DataFrame(rows, columns=["replay_id", "t_start", "target_desc", "count"])
+
+
+_RAGE_TAP_COLUMNS = [
+    "replay_id",
+    "t_start",
+    "t_end",
+    "target_desc",
+    "x",
+    "y",
+    "count",
+    "kind",
+]
+
+
+def _interval_has_change(screens: list[tuple[int, str]], lo: int, hi: int) -> bool:
+    """Whether a screen changes in the interval ``(lo, hi]``.
+
+    Args:
+        screens: ``(timestamp, description)`` of the replay's screen
+            actions, in timestamp order.
+        lo: The interval start (excluded).
+        hi: The interval end (included).
+
+    Returns:
+        True when a screen in the interval has a description that differs
+        from the latest screen description at or before ``lo`` (or when
+        there is no earlier screen).
+
+    Example:
+        ```python
+        screens = [(1000, "Wireframe: Home"), (2250, "Wireframe: Cart")]
+        _interval_has_change(screens, 2000, 2200)  # False
+        _interval_has_change(screens, 2200, 2400)  # True
+        ```
+    """
+    baseline: str | None = None
+    for timestamp, description in screens:
+        if timestamp <= lo:
+            baseline = description
+        elif timestamp <= hi:
+            if description != baseline:
+                return True
+        else:
+            break
+    return False
+
+
+def rage_taps(
+    bundle: ReplayBundle,
+    threshold: int = 3,
+    window_ms: int = 2000,
+    radius_px: float = 24,
+    grace_ms: int = 1000,
+) -> pd.DataFrame:
+    """Rage and dead tap bursts in the bundle's screenshot recordings.
+
+    Finger-downs come from each replay's ``rrweb_events`` (see
+    :func:`finger_downs`); DOM recordings give none. Bursts form greedily
+    in time order: an unused finger-down opens a burst, and every later
+    unused finger-down within ``window_ms`` of it and within
+    ``radius_px`` of its point joins. A finger-down at another point does
+    not break the burst.
+
+    A burst with at least ``threshold`` members is classified per
+    interval. The intervals are the ``count - 1`` gaps between consecutive
+    finger-downs, ``(t_k, t_k+1]``, plus the grace window after the last
+    one, ``(t_end, t_end + grace_ms]``. An interval has a change when it
+    holds a ``"screen"`` action whose description differs from the latest
+    screen description at or before the interval's start. Then:
+
+    - no interval has a change: ``"dead"``;
+    - otherwise, every gap between finger-downs has a change: an
+      intentional run (a quantity stepper, a carousel), which is skipped
+      (a one-tap burst has no gaps, so a change skips it);
+    - otherwise: ``"rage"``.
+
+    Known limit: a screen that changes on its own (a live clock, a timer,
+    an animation) counts as a change, so a dead control on such a screen
+    can read as ``"rage"`` or be skipped as intentional.
+
+    Args:
+        bundle: The bundle to scan.
+        threshold: Minimum finger-downs per burst. Default 3.
+        window_ms: Maximum burst span from the first finger-down, in
+            milliseconds. Default 2000.
+        radius_px: Maximum distance from the first finger-down, in
+            touch-space pixels. Default 24.
+        grace_ms: Time after the last finger-down in which a screen change
+            still counts, in milliseconds. Default 1000.
+
+    Returns:
+        DataFrame with columns ``replay_id``, ``t_start``, ``t_end``,
+        ``target_desc``, ``x``, ``y``, ``count``, ``kind`` — one row per
+        reported burst, in replay order and then time order.
+
+    Example:
+        ```python
+        # Three taps on "Pay" at 2000, 2300, and 2600 ms with no screen change
+        # between them, then a "Receipt" screen at 2700 ms (in the grace window):
+        rage_taps(bundle)
+        #   replay_id  t_start  t_end target_desc    x    y  count  kind
+        # 0       r-1     2000   2600  button:Pay  100  100      3  rage
+        ```
+    """
+    rows: list[dict[str, object]] = []
+    for replay in bundle.replays:
+        downs = finger_downs(replay.rrweb_events)
+        if len(downs) < threshold:
+            continue
+        screens = [
+            (a.timestamp, a.description) for a in replay.actions if a.action == "screen"
+        ]
+        used = [False] * len(downs)
+        for i, first in enumerate(downs):
+            if used[i]:
+                continue
+            members = [i]
+            for j in range(i + 1, len(downs)):
+                candidate = downs[j]
+                if candidate.timestamp - first.timestamp > window_ms:
+                    break
+                if not used[j] and (
+                    math.hypot(candidate.x - first.x, candidate.y - first.y)
+                    <= radius_px
+                ):
+                    members.append(j)
+            if len(members) < threshold:
+                continue
+            for j in members:
+                used[j] = True
+            times = [downs[j].timestamp for j in members]
+            t_start = times[0]
+            t_end = times[-1]
+            gaps = [
+                _interval_has_change(screens, lo, hi)
+                for lo, hi in zip(times, times[1:], strict=False)
+            ]
+            grace = _interval_has_change(screens, t_end, t_end + grace_ms)
+            changed = grace or any(gaps)
+            if changed and all(gaps):
+                continue
+            rows.append(
+                {
+                    "replay_id": replay.replay_id,
+                    "t_start": t_start,
+                    "t_end": t_end,
+                    "target_desc": first.target_desc,
+                    "x": first.x,
+                    "y": first.y,
+                    "count": len(members),
+                    "kind": "rage" if changed else "dead",
+                }
+            )
+    return pd.DataFrame(rows, columns=_RAGE_TAP_COLUMNS)
 
 
 def long_pauses(bundle: ReplayBundle, threshold_s: float = 10) -> pd.DataFrame:

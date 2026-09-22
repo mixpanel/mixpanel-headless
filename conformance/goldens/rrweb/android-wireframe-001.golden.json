@@ -1,0 +1,369 @@
+{
+  "actions": [
+    {
+      "action": "screen",
+      "description": "Wireframe: Home [16,38,54,27] | text [363,27,48,48] | This is home Fragment [8,88,395,27] | button:View Jokes (Compose) [98,155,215,48] | button:Safe Container Tests [98,219,215,48] | button:Image Heuristic Test [100,283,210,48] | button:Masking Standard (XML) [86,347,238,48] | button:Masking Standard (Compose) [65,411,281,48] | button:Show Dialog (Centered) [88,475,235,48] | button:Show Bottom Sheet [105,539,200,48] | button:Show Dialog (Top) [113,603,185,48] | Home [51,867,34,14] | Dashboard [174,867,62,14] | Notifications [305,867,74,14] | image [56,842,24,24] | image [193,842,24,24] | image [330,842,24,24]",
+      "metadata": {
+        "element_count": 17,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              16,
+              38,
+              54,
+              27
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Home"
+          },
+          {
+            "background": false,
+            "bounds": [
+              363,
+              27,
+              48,
+              48
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              88,
+              395,
+              27
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "This is home Fragment"
+          },
+          {
+            "background": false,
+            "bounds": [
+              98,
+              155,
+              215,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "View Jokes (Compose)"
+          },
+          {
+            "background": false,
+            "bounds": [
+              98,
+              219,
+              215,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Safe Container Tests"
+          },
+          {
+            "background": false,
+            "bounds": [
+              100,
+              283,
+              210,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Image Heuristic Test"
+          },
+          {
+            "background": false,
+            "bounds": [
+              86,
+              347,
+              238,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Masking Standard (XML)"
+          },
+          {
+            "background": false,
+            "bounds": [
+              65,
+              411,
+              281,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Masking Standard (Compose)"
+          },
+          {
+            "background": false,
+            "bounds": [
+              88,
+              475,
+              235,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Show Dialog (Centered)"
+          },
+          {
+            "background": false,
+            "bounds": [
+              105,
+              539,
+              200,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Show Bottom Sheet"
+          },
+          {
+            "background": false,
+            "bounds": [
+              113,
+              603,
+              185,
+              48
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Show Dialog (Top)"
+          },
+          {
+            "background": false,
+            "bounds": [
+              51,
+              867,
+              34,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Home"
+          },
+          {
+            "background": false,
+            "bounds": [
+              174,
+              867,
+              62,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Dashboard"
+          },
+          {
+            "background": false,
+            "bounds": [
+              305,
+              867,
+              74,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Notifications"
+          },
+          {
+            "background": false,
+            "bounds": [
+              56,
+              842,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              193,
+              842,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              330,
+              842,
+              24,
+              24
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          }
+        ],
+        "fingerprint": "c77613764c30",
+        "scale": 1.0,
+        "viewport": [
+          411,
+          914
+        ]
+      },
+      "target_desc": "Home",
+      "target_node_id": null,
+      "timestamp": 1789482332980,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (383, 51)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            363,
+            27,
+            48,
+            48
+          ],
+          "role": "text",
+          "text": null
+        },
+        "interaction": "tapped",
+        "x": 383,
+        "y": 51
+      },
+      "target_desc": "text [363,27,48,48]",
+      "target_node_id": 28,
+      "timestamp": 1789482352631,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Settings [72,38,76,27] | image [0,24,56,56] | button:Re-initialize Session Replay [16,100,379,40] | Current Status: [16,168,94,20] | Initialized \u2713 [16,192,76,20] | text [363,27,48,48]",
+      "metadata": {
+        "element_count": 6,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              72,
+              38,
+              76,
+              27
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Settings"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              24,
+              56,
+              56
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              100,
+              379,
+              40
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": "Re-initialize Session Replay"
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              168,
+              94,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Current Status:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              16,
+              192,
+              76,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Initialized \u2713"
+          },
+          {
+            "background": false,
+            "bounds": [
+              363,
+              27,
+              48,
+              48
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "91fafea4fe45",
+        "scale": 1.0,
+        "viewport": [
+          411,
+          914
+        ]
+      },
+      "target_desc": "Settings",
+      "target_node_id": null,
+      "timestamp": 1789482353114,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (182, 142)",
+      "metadata": {
+        "attribution": "bounds_slop",
+        "hit": {
+          "bounds": [
+            16,
+            100,
+            379,
+            40
+          ],
+          "role": "button",
+          "text": "Re-initialize Session Replay"
+        },
+        "interaction": "tapped",
+        "x": 182,
+        "y": 142
+      },
+      "target_desc": "button:Re-initialize Session Replay",
+      "target_node_id": 28,
+      "timestamp": 1789482354012,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1789482332: Wireframe: Home [16,38,54,27] | text [363,27,48,48] | This is home Fragment [8,88,395,27] | button:View Jokes (Compose) [98,155,215,48] | button:Safe Container Tests [98,219,215,48] | button:Image Heuristic Test [100,283,210,48] | button:Masking Standard (XML) [86,347,238,48] | button:Masking Standard (Compose) [65,411,281,48] | button:Show Dialog (Centered) [88,475,235,48] | button:Show Bottom Sheet [105,539,200,48] | button:Show Dialog (Top) [113,603,185,48] | Home [51,867,34,14] | Dashboard [174,867,62,14] | Notifications [305,867,74,14] | image [56,842,24,24] | image [193,842,24,24] | image [330,842,24,24]\n1789482352: Tapped at (383, 51)\n1789482353: Wireframe: Settings [72,38,76,27] | image [0,24,56,56] | button:Re-initialize Session Replay [16,100,379,40] | Current Status: [16,168,94,20] | Initialized \u2713 [16,192,76,20] | text [363,27,48,48]\n1789482354: Tapped at (182, 142)",
+  "page_visits": []
+}

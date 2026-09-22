@@ -1,0 +1,2510 @@
+{
+  "actions": [
+    {
+      "action": "screen",
+      "description": "Wireframe: Success [76,378,238,20] | Mixpanel Session Replay initialized successfully! [76,402,238,32] | OK [183,467,24,20]",
+      "metadata": {
+        "element_count": 3,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              76,
+              378,
+              238,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Success"
+          },
+          {
+            "background": false,
+            "bounds": [
+              76,
+              402,
+              238,
+              32
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixpanel Session Replay initialized successfully!"
+          },
+          {
+            "background": false,
+            "bounds": [
+              183,
+              467,
+              24,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "OK"
+          }
+        ],
+        "fingerprint": "0d9ffc4c17b2",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Success",
+      "target_node_id": null,
+      "timestamp": 1789674112483,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (228, 453)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 228,
+        "y": 453
+      },
+      "target_desc": "(228, 453)",
+      "target_node_id": 28,
+      "timestamp": 1789674113077,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (215, 493)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 215,
+        "y": 493
+      },
+      "target_desc": "(215, 493)",
+      "target_node_id": 28,
+      "timestamp": 1789674113799,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Mixpanel Session Replay Demo [20,260,350,29] | Status: \ud83d\udd34 Recording [106,335,178,22] | User: Rn-5 [160,365,70,17] | Start Recording [135,440,119,19] | Stop Recording [137,503,117,19] | Flush Events [147,566,96,19] | Go to Test Screen [128,642,134,19] | Session Replay Demo [108,59,175,20]",
+      "metadata": {
+        "element_count": 8,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              20,
+              260,
+              350,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixpanel Session Replay Demo"
+          },
+          {
+            "background": false,
+            "bounds": [
+              106,
+              335,
+              178,
+              22
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Status: \ud83d\udd34 Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              160,
+              365,
+              70,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "User: Rn-5"
+          },
+          {
+            "background": false,
+            "bounds": [
+              135,
+              440,
+              119,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Start Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              137,
+              503,
+              117,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Stop Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              147,
+              566,
+              96,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Flush Events"
+          },
+          {
+            "background": false,
+            "bounds": [
+              128,
+              642,
+              134,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Go to Test Screen"
+          },
+          {
+            "background": false,
+            "bounds": [
+              108,
+              59,
+              175,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Session Replay Demo"
+          }
+        ],
+        "fingerprint": "7476a3d4a512",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Session Replay Demo",
+      "target_node_id": null,
+      "timestamp": 1789674114430,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (178, 648)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 178,
+        "y": 648
+      },
+      "target_desc": "(178, 648)",
+      "target_node_id": 28,
+      "timestamp": 1789674114566,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Mixpanel Session Replay Demo [-96,260,350,29] | Status: \ud83d\udd34 Recording [-10,335,178,22] | User: Rn-5 [44,365,70,17] | Start Recording [19,440,119,19] | Stop Recording [21,503,117,19] | Flush Events [31,566,96,19] | text [12,642,134,19] | \u2190 Back [31,119,56,19] | Masking Test Screen [107,117,266,24] | Text Elements [39,182,318,31] | Main Heading Text [39,225,318,29] | Subheading Text Example [39,262,318,22] | This is a sample paragraph text that demonstrates\u2026 [39,291,318,100] | Label Text Example [39,399,318,19] | Caption text in smaller font [39,423,318,14] | Wireframe Text [39,485,318,31] | Turn on the Wireframes toggle on the previous scr\u2026 [39,528,318,29] | Monthly spend chart [39,556,318,84] | Card number [39,640,318,45] | input [40,641,316,43] | text [39,686,318,20] | Receipt sent to [EMAIL] [39,714,318,20] | Input Controls [39,790,318,31] | Session Replay Demo [108,59,175,20] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]",
+      "metadata": {
+        "element_count": 28,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              -96,
+              260,
+              350,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Mixpanel Session Replay Demo"
+          },
+          {
+            "background": false,
+            "bounds": [
+              -10,
+              335,
+              178,
+              22
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Status: \ud83d\udd34 Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              44,
+              365,
+              70,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "User: Rn-5"
+          },
+          {
+            "background": false,
+            "bounds": [
+              19,
+              440,
+              119,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Start Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              21,
+              503,
+              117,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Stop Recording"
+          },
+          {
+            "background": false,
+            "bounds": [
+              31,
+              566,
+              96,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Flush Events"
+          },
+          {
+            "background": false,
+            "bounds": [
+              12,
+              642,
+              134,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              31,
+              119,
+              56,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "\u2190 Back"
+          },
+          {
+            "background": false,
+            "bounds": [
+              107,
+              117,
+              266,
+              24
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Masking Test Screen"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              182,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Text Elements"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              225,
+              318,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Main Heading Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              262,
+              318,
+              22
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Subheading Text Example"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              291,
+              318,
+              100
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "This is a sample paragraph text that demonstrates\u2026"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              399,
+              318,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Label Text Example"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              423,
+              318,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Caption text in smaller font"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              485,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Wireframe Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              528,
+              318,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Turn on the Wireframes toggle on the previous scr\u2026"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              556,
+              318,
+              84
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Monthly spend chart"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              640,
+              318,
+              45
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Card number"
+          },
+          {
+            "background": false,
+            "bounds": [
+              40,
+              641,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              686,
+              318,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              714,
+              318,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Receipt sent to [EMAIL]"
+          },
+          {
+            "background": false,
+            "bounds": [
+              39,
+              790,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Input Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              108,
+              59,
+              175,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Session Replay Demo"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Back"
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Masking Test"
+          }
+        ],
+        "fingerprint": "fbc0a288efd8",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Back",
+      "target_node_id": null,
+      "timestamp": 1789674115105,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1789674115915,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Wireframe Text [36,-17,318,31] | Turn on the Wireframes toggle on the previous scr\u2026 [36,25,318,29] | Monthly spend chart [36,54,318,84] | Card number [36,138,318,45] | input [37,139,316,43] | text [36,183,318,20] | Receipt sent to [EMAIL] [36,211,318,20] | Input Controls [36,287,318,31] | Regular Text Input: [36,342,318,17] | input [37,366,316,43] | Email Input: [36,422,318,17] | input [37,446,316,43] | \ud83d\udd12 Masked Password Input: [36,503,318,17] | input [37,527,316,43] | Phone Number: [36,583,318,17] | input [37,607,316,43] | Multiline Text: [36,663,318,17] | input [37,687,316,78] | Search Input (should be masked): [36,778,318,17] | input [37,802,316,43] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]",
+      "metadata": {
+        "element_count": 24,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              36,
+              -17,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Wireframe Text"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              25,
+              318,
+              29
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Turn on the Wireframes toggle on the previous scr\u2026"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              54,
+              318,
+              84
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Monthly spend chart"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              138,
+              318,
+              45
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Card number"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              139,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              183,
+              318,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              211,
+              318,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Receipt sent to [EMAIL]"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              287,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Input Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              342,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Regular Text Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              366,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              422,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Email Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              446,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              503,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "\ud83d\udd12 Masked Password Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              527,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              583,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Phone Number:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              607,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              663,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Multiline Text:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              687,
+              316,
+              78
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              778,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              802,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Back"
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Masking Test"
+          }
+        ],
+        "fingerprint": "54538f948df9",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Turn on the Wireframes toggle on the previous scr\u2026",
+      "target_node_id": null,
+      "timestamp": 1789674115924,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Regular Text Input: [36,15,318,17] | input [37,39,316,43] | Email Input: [36,95,318,17] | input [37,119,316,43] | \ud83d\udd12 Masked Password Input: [36,175,318,17] | input [37,199,316,43] | Phone Number: [36,256,318,17] | input [37,280,316,43] | Multiline Text: [36,336,318,17] | input [37,360,316,78] | Search Input (should be masked): [36,451,318,17] | input [37,475,316,43] | Numeric Input: [36,531,318,17] | input [37,555,316,43] | Auto-Complete Input: [36,611,318,17] | input [37,635,316,43] | Interactive Controls [36,728,318,31] | Toggle Switch: [36,791,99,17] | switch [303,781,51,31] | image [297,778,43,43] | Custom Range Control: [36,834,318,17] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]",
+      "metadata": {
+        "element_count": 25,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              36,
+              15,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Regular Text Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              39,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              95,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Email Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              119,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              175,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "\ud83d\udd12 Masked Password Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              199,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              256,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Phone Number:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              280,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              336,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Multiline Text:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              360,
+              316,
+              78
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              451,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              475,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              531,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Numeric Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              555,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              611,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Auto-Complete Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              635,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              728,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Interactive Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              791,
+              99,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Toggle Switch:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              303,
+              781,
+              51,
+              31
+            ],
+            "offscreen": false,
+            "role": "switch",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              297,
+              778,
+              43,
+              43
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              834,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Custom Range Control:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "6ad839b1b615",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Regular Text Input:",
+      "target_node_id": null,
+      "timestamp": 1789674116831,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Multiline Text: [36,2,318,17] | input [37,26,316,78] | Search Input (should be masked): [36,117,318,17] | input [37,141,316,43] | Numeric Input: [36,197,318,17] | input [37,221,316,43] | Auto-Complete Input: [36,277,318,17] | input [37,301,316,43] | Interactive Controls [36,394,318,31] | Toggle Switch: [36,457,99,17] | switch [303,447,51,31] | image [297,444,43,43] | Custom Range Control: [36,500,318,17] | Min [48,537,22,14] | Max [317,537,25,14] | Value: 50 [36,569,318,17] | Buttons [36,634,318,31] | Primary Button [138,689,114,19] | Secondary Button [127,740,136,19] | Outline Button [140,793,109,19] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]",
+      "metadata": {
+        "element_count": 24,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              36,
+              2,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Multiline Text:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              26,
+              316,
+              78
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              117,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              141,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              197,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Numeric Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              221,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              277,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Auto-Complete Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              301,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              394,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Interactive Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              457,
+              99,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Toggle Switch:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              303,
+              447,
+              51,
+              31
+            ],
+            "offscreen": false,
+            "role": "switch",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              297,
+              444,
+              43,
+              43
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              500,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Custom Range Control:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              48,
+              537,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Min"
+          },
+          {
+            "background": false,
+            "bounds": [
+              317,
+              537,
+              25,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Max"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              569,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Value: 50"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              634,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Buttons"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              689,
+              114,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Primary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              127,
+              740,
+              136,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Secondary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              140,
+              793,
+              109,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Outline Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "f2a5365c869c",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Multiline Text:",
+      "target_node_id": null,
+      "timestamp": 1789674117712,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (195, 696)",
+      "metadata": {
+        "attribution": "bounds",
+        "hit": {
+          "bounds": [
+            138,
+            689,
+            114,
+            19
+          ],
+          "role": "text",
+          "text": "Primary Button"
+        },
+        "interaction": "tapped",
+        "x": 195,
+        "y": 696
+      },
+      "target_desc": "Primary Button",
+      "target_node_id": 28,
+      "timestamp": 1789674131963,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1789674133814,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: input [37,-20,316,78] | Search Input (should be masked): [36,71,318,17] | input [37,95,316,43] | Numeric Input: [36,152,318,17] | input [37,176,316,43] | Auto-Complete Input: [36,232,318,17] | input [37,256,316,43] | Interactive Controls [36,348,318,31] | Toggle Switch: [36,411,99,17] | switch [303,401,51,31] | image [297,398,43,43] | Custom Range Control: [36,454,318,17] | Min [48,491,22,14] | Max [317,491,25,14] | Value: 50 [36,523,318,17] | Buttons [36,588,318,31] | Primary Button [138,643,114,19] | Secondary Button [127,694,136,19] | Outline Button [140,748,109,19] | Danger Button [140,801,110,19] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]",
+      "metadata": {
+        "element_count": 24,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              37,
+              -20,
+              316,
+              78
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              71,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              95,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              152,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Numeric Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              176,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              232,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Auto-Complete Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              256,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              348,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Interactive Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              411,
+              99,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Toggle Switch:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              303,
+              401,
+              51,
+              31
+            ],
+            "offscreen": false,
+            "role": "switch",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              297,
+              398,
+              43,
+              43
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              454,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Custom Range Control:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              48,
+              491,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Min"
+          },
+          {
+            "background": false,
+            "bounds": [
+              317,
+              491,
+              25,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Max"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              523,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Value: 50"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              588,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Buttons"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              643,
+              114,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Primary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              127,
+              694,
+              136,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Secondary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              140,
+              748,
+              109,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Outline Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              140,
+              801,
+              110,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Danger Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Back"
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Masking Test"
+          }
+        ],
+        "fingerprint": "bb81917661ef",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Back",
+      "target_node_id": null,
+      "timestamp": 1789674135385,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1789674135781,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Phone Number: [36,1,318,17] | input [37,25,316,43] | Multiline Text: [36,82,318,17] | input [37,106,316,78] | Search Input (should be masked): [36,197,318,17] | input [37,221,316,43] | Numeric Input: [36,277,318,17] | input [37,301,316,43] | Auto-Complete Input: [36,357,318,17] | input [37,381,316,43] | Interactive Controls [36,474,318,31] | Toggle Switch: [36,536,99,17] | switch [303,526,51,31] | image [297,523,43,43] | Custom Range Control: [36,579,318,17] | Min [48,616,22,14] | Max [317,616,25,14] | Value: 50 [36,649,318,17] | Buttons [36,714,318,31] | Primary Button [138,768,114,19] | Secondary Button [127,820,136,19] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]",
+      "metadata": {
+        "element_count": 25,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              36,
+              1,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Phone Number:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              25,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              82,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Multiline Text:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              106,
+              316,
+              78
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              197,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              221,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              277,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Numeric Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              301,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              357,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Auto-Complete Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              381,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              474,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Interactive Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              536,
+              99,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Toggle Switch:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              303,
+              526,
+              51,
+              31
+            ],
+            "offscreen": false,
+            "role": "switch",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              297,
+              523,
+              43,
+              43
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              579,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Custom Range Control:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              48,
+              616,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Min"
+          },
+          {
+            "background": false,
+            "bounds": [
+              317,
+              616,
+              25,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Max"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              649,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Value: 50"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              714,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Buttons"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              768,
+              114,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Primary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              127,
+              820,
+              136,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Secondary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "950208b0cb2a",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Phone Number:",
+      "target_node_id": null,
+      "timestamp": 1789674136369,
+      "url": null
+    },
+    {
+      "action": "scroll",
+      "description": "Scrolled",
+      "metadata": {},
+      "target_desc": "(viewport)",
+      "target_node_id": null,
+      "timestamp": 1789674137334,
+      "url": null
+    },
+    {
+      "action": "screen",
+      "description": "Wireframe: Search Input (should be masked): [36,-6,318,17] | input [37,18,316,43] | Numeric Input: [36,75,318,17] | input [37,99,316,43] | Auto-Complete Input: [36,155,318,17] | input [37,179,316,43] | Interactive Controls [36,271,318,31] | Toggle Switch: [36,334,99,17] | switch [303,324,51,31] | image [297,321,43,43] | Custom Range Control: [36,377,318,17] | Min [48,414,22,14] | Max [317,414,25,14] | Value: 50 [36,446,318,17] | Buttons [36,511,318,31] | Primary Button [138,566,114,19] | Secondary Button [127,617,136,19] | Outline Button [140,671,109,19] | Danger Button [140,724,110,19] | Images & Media [36,811,318,31] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]",
+      "metadata": {
+        "element_count": 24,
+        "elements": [
+          {
+            "background": false,
+            "bounds": [
+              36,
+              -6,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Search Input (should be masked):"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              18,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              75,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Numeric Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              99,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              155,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Auto-Complete Input:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              37,
+              179,
+              316,
+              43
+            ],
+            "offscreen": false,
+            "role": "input",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              271,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Interactive Controls"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              334,
+              99,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Toggle Switch:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              303,
+              324,
+              51,
+              31
+            ],
+            "offscreen": false,
+            "role": "switch",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              297,
+              321,
+              43,
+              43
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              377,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Custom Range Control:"
+          },
+          {
+            "background": false,
+            "bounds": [
+              48,
+              414,
+              22,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Min"
+          },
+          {
+            "background": false,
+            "bounds": [
+              317,
+              414,
+              25,
+              14
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Max"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              446,
+              318,
+              17
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Value: 50"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              511,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Buttons"
+          },
+          {
+            "background": false,
+            "bounds": [
+              138,
+              566,
+              114,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Primary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              127,
+              617,
+              136,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Secondary Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              140,
+              671,
+              109,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Outline Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              140,
+              724,
+              110,
+              19
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Danger Button"
+          },
+          {
+            "background": false,
+            "bounds": [
+              36,
+              811,
+              318,
+              31
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": "Images & Media"
+          },
+          {
+            "background": false,
+            "bounds": [
+              0,
+              51,
+              74,
+              37
+            ],
+            "offscreen": false,
+            "role": "button",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              8,
+              59,
+              13,
+              21
+            ],
+            "offscreen": false,
+            "role": "image",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              27,
+              59,
+              39,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          },
+          {
+            "background": false,
+            "bounds": [
+              141,
+              59,
+              108,
+              20
+            ],
+            "offscreen": false,
+            "role": "text",
+            "text": null
+          }
+        ],
+        "fingerprint": "52b01b046e04",
+        "scale": 1.0,
+        "viewport": [
+          390,
+          844
+        ]
+      },
+      "target_desc": "Numeric Input:",
+      "target_node_id": null,
+      "timestamp": 1789674137349,
+      "url": null
+    },
+    {
+      "action": "touch_start",
+      "description": "Tapped at (40, 558)",
+      "metadata": {
+        "interaction": "tapped",
+        "x": 40,
+        "y": 558
+      },
+      "target_desc": "(40, 558)",
+      "target_node_id": 28,
+      "timestamp": 1789674146720,
+      "url": null
+    }
+  ],
+  "console_errors": [],
+  "markdown": "1789674112: Wireframe: Success [76,378,238,20] | Mixpanel Session Replay initialized successfully! [76,402,238,32] | OK [183,467,24,20]\n1789674113: Tapped at (228, 453)\n1789674113: Tapped at (215, 493)\n1789674114: Wireframe: Mixpanel Session Replay Demo [20,260,350,29] | Status: \ud83d\udd34 Recording [106,335,178,22] | User: Rn-5 [160,365,70,17] | Start Recording [135,440,119,19] | Stop Recording [137,503,117,19] | Flush Events [147,566,96,19] | Go to Test Screen [128,642,134,19] | Session Replay Demo [108,59,175,20]\n1789674114: Tapped at (178, 648)\n1789674115: Wireframe: Mixpanel Session Replay Demo [-96,260,350,29] | Status: \ud83d\udd34 Recording [-10,335,178,22] | User: Rn-5 [44,365,70,17] | Start Recording [19,440,119,19] | Stop Recording [21,503,117,19] | Flush Events [31,566,96,19] | text [12,642,134,19] | \u2190 Back [31,119,56,19] | Masking Test Screen [107,117,266,24] | Text Elements [39,182,318,31] | Main Heading Text [39,225,318,29] | Subheading Text Example [39,262,318,22] | This is a sample paragraph text that demonstrates\u2026 [39,291,318,100] | Label Text Example [39,399,318,19] | Caption text in smaller font [39,423,318,14] | Wireframe Text [39,485,318,31] | Turn on the Wireframes toggle on the previous scr\u2026 [39,528,318,29] | Monthly spend chart [39,556,318,84] | Card number [39,640,318,45] | input [40,641,316,43] | text [39,686,318,20] | Receipt sent to [EMAIL] [39,714,318,20] | Input Controls [39,790,318,31] | Session Replay Demo [108,59,175,20] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]\n1789674115: Scrolled\n1789674115: Wireframe: Wireframe Text [36,-17,318,31] | Turn on the Wireframes toggle on the previous scr\u2026 [36,25,318,29] | Monthly spend chart [36,54,318,84] | Card number [36,138,318,45] | input [37,139,316,43] | text [36,183,318,20] | Receipt sent to [EMAIL] [36,211,318,20] | Input Controls [36,287,318,31] | Regular Text Input: [36,342,318,17] | input [37,366,316,43] | Email Input: [36,422,318,17] | input [37,446,316,43] | \ud83d\udd12 Masked Password Input: [36,503,318,17] | input [37,527,316,43] | Phone Number: [36,583,318,17] | input [37,607,316,43] | Multiline Text: [36,663,318,17] | input [37,687,316,78] | Search Input (should be masked): [36,778,318,17] | input [37,802,316,43] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]\n1789674116: Wireframe: Regular Text Input: [36,15,318,17] | input [37,39,316,43] | Email Input: [36,95,318,17] | input [37,119,316,43] | \ud83d\udd12 Masked Password Input: [36,175,318,17] | input [37,199,316,43] | Phone Number: [36,256,318,17] | input [37,280,316,43] | Multiline Text: [36,336,318,17] | input [37,360,316,78] | Search Input (should be masked): [36,451,318,17] | input [37,475,316,43] | Numeric Input: [36,531,318,17] | input [37,555,316,43] | Auto-Complete Input: [36,611,318,17] | input [37,635,316,43] | Interactive Controls [36,728,318,31] | Toggle Switch: [36,791,99,17] | switch [303,781,51,31] | image [297,778,43,43] | Custom Range Control: [36,834,318,17] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]\n1789674117: Wireframe: Multiline Text: [36,2,318,17] | input [37,26,316,78] | Search Input (should be masked): [36,117,318,17] | input [37,141,316,43] | Numeric Input: [36,197,318,17] | input [37,221,316,43] | Auto-Complete Input: [36,277,318,17] | input [37,301,316,43] | Interactive Controls [36,394,318,31] | Toggle Switch: [36,457,99,17] | switch [303,447,51,31] | image [297,444,43,43] | Custom Range Control: [36,500,318,17] | Min [48,537,22,14] | Max [317,537,25,14] | Value: 50 [36,569,318,17] | Buttons [36,634,318,31] | Primary Button [138,689,114,19] | Secondary Button [127,740,136,19] | Outline Button [140,793,109,19] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]\n1789674131: Tapped at (195, 696)\n1789674133: Scrolled\n1789674135: Wireframe: input [37,-20,316,78] | Search Input (should be masked): [36,71,318,17] | input [37,95,316,43] | Numeric Input: [36,152,318,17] | input [37,176,316,43] | Auto-Complete Input: [36,232,318,17] | input [37,256,316,43] | Interactive Controls [36,348,318,31] | Toggle Switch: [36,411,99,17] | switch [303,401,51,31] | image [297,398,43,43] | Custom Range Control: [36,454,318,17] | Min [48,491,22,14] | Max [317,491,25,14] | Value: 50 [36,523,318,17] | Buttons [36,588,318,31] | Primary Button [138,643,114,19] | Secondary Button [127,694,136,19] | Outline Button [140,748,109,19] | Danger Button [140,801,110,19] | button [0,51,74,37] | image [8,59,13,21] | Back [27,59,39,20] | Masking Test [141,59,108,20]\n1789674135: Scrolled\n1789674136: Wireframe: Phone Number: [36,1,318,17] | input [37,25,316,43] | Multiline Text: [36,82,318,17] | input [37,106,316,78] | Search Input (should be masked): [36,197,318,17] | input [37,221,316,43] | Numeric Input: [36,277,318,17] | input [37,301,316,43] | Auto-Complete Input: [36,357,318,17] | input [37,381,316,43] | Interactive Controls [36,474,318,31] | Toggle Switch: [36,536,99,17] | switch [303,526,51,31] | image [297,523,43,43] | Custom Range Control: [36,579,318,17] | Min [48,616,22,14] | Max [317,616,25,14] | Value: 50 [36,649,318,17] | Buttons [36,714,318,31] | Primary Button [138,768,114,19] | Secondary Button [127,820,136,19] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]\n1789674137: Scrolled\n1789674137: Wireframe: Search Input (should be masked): [36,-6,318,17] | input [37,18,316,43] | Numeric Input: [36,75,318,17] | input [37,99,316,43] | Auto-Complete Input: [36,155,318,17] | input [37,179,316,43] | Interactive Controls [36,271,318,31] | Toggle Switch: [36,334,99,17] | switch [303,324,51,31] | image [297,321,43,43] | Custom Range Control: [36,377,318,17] | Min [48,414,22,14] | Max [317,414,25,14] | Value: 50 [36,446,318,17] | Buttons [36,511,318,31] | Primary Button [138,566,114,19] | Secondary Button [127,617,136,19] | Outline Button [140,671,109,19] | Danger Button [140,724,110,19] | Images & Media [36,811,318,31] | button [0,51,74,37] | image [8,59,13,21] | text [27,59,39,20] | text [141,59,108,20]\n1789674146: Tapped at (40, 558)",
+  "page_visits": []
+}
