@@ -854,3 +854,28 @@ class TestPaginateAllRetryAfter:
 
         assert isinstance(raised[0], RateLimitError)
         assert raised[0].retry_after == 45
+
+    @pytest.mark.parametrize(
+        "retry_after",
+        ["999999", "1e9", "86400"],
+        ids=["huge-int", "exponent", "one-day"],
+    )
+    def test_oversized_retry_after_capped_on_error(
+        self, oauth_credentials: Session, retry_after: str
+    ) -> None:
+        """An exhausted run reports at most one hour as ``retry_after``.
+
+        The documented caller pattern is ``time.sleep(e.retry_after or 60)``.
+        Mixpanel's rate-limit window is one rolling hour, so echoing a
+        server-chosen day would only park user code.
+
+        Args:
+            oauth_credentials: Session fixture.
+            retry_after: Oversized header value under test.
+        """
+        _, raised = run_rate_limited_pagination(
+            oauth_credentials, retry_after, always_429=True
+        )
+
+        assert isinstance(raised[0], RateLimitError)
+        assert raised[0].retry_after == 3600
