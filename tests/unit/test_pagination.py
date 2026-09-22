@@ -863,11 +863,11 @@ class TestPaginateAllRetryAfter:
     def test_oversized_retry_after_capped_on_error(
         self, oauth_credentials: Session, retry_after: str
     ) -> None:
-        """An exhausted run reports at most the backoff cap as ``retry_after``.
+        """An exhausted run reports at most one hour as ``retry_after``.
 
-        The documented caller pattern is ``time.sleep(e.retry_after or 60)``,
-        so echoing a server-chosen day would relocate the hang the paginator
-        avoids into user code.
+        The documented caller pattern is ``time.sleep(e.retry_after or 60)``.
+        Mixpanel's rate-limit window is one rolling hour, so echoing a
+        server-chosen day would only park user code.
 
         Args:
             oauth_credentials: Session fixture.
@@ -878,4 +878,4 @@ class TestPaginateAllRetryAfter:
         )
 
         assert isinstance(raised[0], RateLimitError)
-        assert raised[0].retry_after == int(_BACKOFF_MAX)
+        assert raised[0].retry_after == 3600

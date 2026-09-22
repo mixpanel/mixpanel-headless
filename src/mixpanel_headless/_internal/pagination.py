@@ -43,6 +43,10 @@ _BACKOFF_BASE: float = 1.0
 #: Maximum backoff delay in seconds.
 _BACKOFF_MAX: float = 60.0
 
+#: Maximum ``retry_after`` reported once retries run out. Mixpanel rate limits
+#: over a rolling one-hour window, so a legitimate wait is never longer.
+_RETRY_AFTER_MAX: float = 3600.0
+
 
 def _parse_retry_after(raw: str | None) -> float | None:
     """Parse a ``Retry-After`` header value into a safe number of seconds.
@@ -62,8 +66,9 @@ def _parse_retry_after(raw: str | None) -> float | None:
     Returns:
         The advertised delay in seconds, or ``None`` when the header is
         absent, empty, unparseable, negative, NaN, or infinite. The value is
-        not capped — apply ``_BACKOFF_MAX`` both at the point of sleeping and
-        before surfacing it as ``RateLimitError.retry_after``.
+        not capped — apply ``_BACKOFF_MAX`` at the point of sleeping and
+        ``_RETRY_AFTER_MAX`` before surfacing it as
+        ``RateLimitError.retry_after``.
 
     Example:
         ```python
@@ -186,12 +191,12 @@ def paginate_all(
             if response.status_code == 429:
                 advertised = _parse_retry_after(response.headers.get("Retry-After"))
                 if attempt >= MAX_RATE_LIMIT_RETRIES:
-                    # Report no more than the sleep cap: callers are documented
-                    # to ``time.sleep(e.retry_after or 60)`` on this value.
+                    # Report at most one hour (the rate-limit window): callers
+                    # are documented to ``time.sleep(e.retry_after or 60)``.
                     retry_after = (
                         None
                         if advertised is None
-                        else int(min(advertised, _BACKOFF_MAX))
+                        else int(min(advertised, _RETRY_AFTER_MAX))
                     )
                     raise RateLimitError(
                         "Rate limit exceeded after max retries during pagination",

@@ -78,10 +78,18 @@ logger = logging.getLogger(__name__)
 _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 
 # Exponential-backoff bounds shared by _calculate_backoff() and the
-# Retry-After clamp. A server-supplied Retry-After is honored up to
-# _BACKOFF_MAX_SECONDS; anything larger would park the process for hours.
+# Retry-After sleep clamp. The client itself never sleeps longer than
+# _BACKOFF_MAX_SECONDS between attempts; anything larger would park the
+# process inside a single call.
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 60.0
+
+# Ceiling for a parsed Retry-After, which is also what RateLimitError reports
+# once retries run out. Mixpanel rate limits over a rolling one-hour window
+# (for example 60 queries per hour on the Query API), so a legitimate wait
+# is never longer than an hour. Larger values are clamped so callers that
+# sleep on RateLimitError.retry_after are not parked for days.
+_RETRY_AFTER_MAX_SECONDS = 3600
 
 # 045-report-links: the shortlink view returns 200 HTML instead of a 3xx when
 # the target URL is longer than ~2048 chars. The body then carries the target
@@ -1013,9 +1021,9 @@ class MixpanelAPIClient:
 
         ``Retry-After`` is server-controlled and therefore untrusted input.
         ``_parse_retry_after`` already rejects unparseable and negative
-        values and clamps oversized ones; this method re-applies the same
-        ceiling the exponential backoff uses as defense in depth, so a
-        single header can never park the process for hours.
+        values and clamps anything beyond one hour; this method further caps
+        the sleep at the ceiling the exponential backoff uses, so a single
+        header can never park the process inside one call.
 
         Args:
             retry_after: Validated Retry-After value in seconds, or None when
@@ -1498,20 +1506,21 @@ class MixpanelAPIClient:
         ``time.sleep(exc.retry_after or 60)``. HTTP-date form is not
         supported and also reads as absent.
 
-        An oversized value is clamped to ``_BACKOFF_MAX_SECONDS`` here,
-        not only at the point of sleeping: the parsed value is also what
-        every retry loop reports as ``RateLimitError.retry_after`` once
-        retries are exhausted, so callers following the documented pattern
-        can never be told to wait longer than the client itself would. The
-        clamp also keeps a many-digit header from overflowing the float
-        conversion in ``_retry_wait_seconds``.
+        A value beyond ``_RETRY_AFTER_MAX_SECONDS`` (one hour, Mixpanel's
+        rate-limit window) is clamped here. The parsed value is what every
+        retry loop reports as ``RateLimitError.retry_after`` once retries
+        are exhausted, so callers following the documented pattern wait for
+        the real window but are never parked for days. The clamp also keeps
+        a many-digit header from overflowing the float conversion in
+        ``_retry_wait_seconds``, which separately caps the client's own sleep
+        at ``_BACKOFF_MAX_SECONDS``.
 
         Args:
             response: HTTP response.
 
         Returns:
             Seconds to wait as a non-negative int no greater than
-            ``_BACKOFF_MAX_SECONDS``, or None when the header is missing,
+            ``_RETRY_AFTER_MAX_SECONDS``, or None when the header is missing,
             unparseable, or negative.
 
         Example:
@@ -1521,7 +1530,7 @@ class MixpanelAPIClient:
             client._parse_retry_after(
                 httpx.Response(429, headers={"Retry-After": "86400"})
             )
-            # 60
+            # 3600
             ```
         """
         retry_after = response.headers.get("Retry-After")
@@ -1531,7 +1540,7 @@ class MixpanelAPIClient:
             except ValueError:
                 return None
             if parsed >= 0:
-                return min(parsed, int(_BACKOFF_MAX_SECONDS))
+                return min(parsed, _RETRY_AFTER_MAX_SECONDS)
         return None
 
     # =========================================================================
