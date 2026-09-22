@@ -12835,8 +12835,12 @@ _REPLAY_ACTION_LITERAL = Literal[
     "viewport_resize",
     "touch_start",
     "media_interaction",
+    "screen",
 ]
 """Closed set of normalized action labels emitted by the rrweb analyzer.
+
+``"screen"`` is a wireframe screen snapshot from a mobile or other
+screenshot-based recording.
 
 Locked here so callers can write exhaustive ``match`` statements and so
 mypy --strict catches typos in label-fn implementations. New action types
@@ -13088,7 +13092,9 @@ class UserAction:
         timestamp: Unix ms timestamp of the action.
         action: One of the closed-set action labels (``click``, ``input``,
             ``scroll``, ``navigate``, ``select``, ``console_error``,
-            ``viewport_resize``, ``touch_start``, ``media_interaction``).
+            ``viewport_resize``, ``touch_start``, ``media_interaction``,
+            ``screen``). ``screen`` is a wireframe screen snapshot from a
+            mobile or other screenshot-based recording.
         target_node_id: rrweb DOM node ID of the action target, if any.
         target_desc: Human-readable target description (e.g.
             ``'button "Sign in"'``); non-empty.

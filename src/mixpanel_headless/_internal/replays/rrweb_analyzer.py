@@ -1,12 +1,38 @@
 """rrweb event-stream analyzer (044-session-replay).
 
-Walks the raw rrweb event stream, maintains DOM state, and emits two
-parallel outputs from a single pass:
+Walks the raw rrweb event stream, maintains DOM state, and produces two
+outputs from a single pass:
 
-- a list of :class:`mixpanel_headless.types.UserAction` records (the
-  structured surface that :class:`ReplayBundle` aggregations consume), and
+- a list of :class:`mixpanel_headless.types.UserAction` records in
+  timestamp order (the structured surface that :class:`ReplayBundle`
+  aggregations consume), and
 - a plain-text markdown timeline (``{timestamp_seconds}: {description}``
-  per line) for stdout / LLM consumption.
+  per line) for stdout / LLM consumption, rendered from that sorted
+  action list.
+
+Two recording types exist, and :func:`detect_capture` picks one before
+the walk:
+
+- A **DOM recording** comes from the Mixpanel JavaScript SDK. Its Meta
+  events carry ``href``, and a full snapshot holds the real page DOM.
+- A **screenshot recording** comes from the iOS, Android, React Native,
+  and Flutter SDKs. The DOM is one screenshot image, and the Meta events
+  carry no ``href``. When wireframes are on, the SDK also sends each
+  screen as an ``mp_wireframe`` Custom event (a flat element list with
+  role, label, and bounds). A stream that has any ``mp_wireframe`` event,
+  or that has Meta events and none of them carries an ``href``, is a
+  screenshot recording. A stream with no Meta event at all stays a DOM
+  recording.
+
+In a screenshot recording, touches go through a gesture state machine
+(finger down, drag, lift-off): little finger travel is a tap, more is a
+scroll. A mouse click is a one-event gesture. Wireframe screens are
+sampled around each gesture only, so animation frames do not flood the
+timeline. The screenshot image never names the element, so taps and
+clicks report their coordinates instead. The wireframe rendering and the
+gesture rules follow the upstream analyzer's mobile support; the
+recording-type decision, the click rule, and the input type guards are
+local changes.
 
 This module is a fork. The initial cut took its DOM tracker, debouncing
 thresholds, mouse-interaction naming, and console-plugin event detection
@@ -24,7 +50,14 @@ The structured-action mapping from internal interactions to public
 - ``Clicked {desc}`` / ``Double-clicked`` / ``Right-clicked`` → ``click``
 - ``Focused {desc}`` → ``click`` (with ``metadata["interaction"]="focus"``)
 - ``Tapped {desc}`` → ``touch_start``
-- ``Scrolled`` → ``scroll``
+- ``Wireframe: {elements}`` (screenshot recordings) → ``screen``
+- ``Tapped at ({x}, {y})`` / ``Tapped`` (screenshot recordings) →
+  ``touch_start`` (with ``metadata["interaction"]="tapped"`` and the
+  ``x`` / ``y`` coordinates when known)
+- ``Clicked at ({x}, {y})`` / ``Clicked`` (screenshot recordings) →
+  ``click`` (with ``metadata["interaction"]="clicked"`` and the
+  coordinates when known)
+- ``Scrolled`` (scroll events, and touch gestures that travel) → ``scroll``
 - ``Set {desc} to {state}`` / ``Entered ... in {desc}`` / ``Modified
   {desc}`` → ``input``
 - ``Selected '{text}'`` / ``Selected text`` → ``select``
@@ -34,9 +67,12 @@ The structured-action mapping from internal interactions to public
 from __future__ import annotations
 
 import logging
+import math
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from mixpanel_headless.types import UserAction
@@ -55,6 +91,8 @@ class EventType(IntEnum):
     FULL_SNAPSHOT = 2
     INCREMENTAL_SNAPSHOT = 3
     META = 4
+    # Custom events; the mobile SDKs send wireframe screens as these.
+    CUSTOM = 5
     PLUGIN = 6
 
 
@@ -65,6 +103,9 @@ class IncrementalSource(IntEnum):
     MOUSE_INTERACTION = 2
     SCROLL = 3
     INPUT = 5
+    # Finger-drag samples during a touch gesture (a ``positions`` list); the
+    # travel across them separates a scroll from a tap.
+    TOUCH_MOVE = 6
     SELECTION = 14
 
 
@@ -76,6 +117,8 @@ class MouseInteractionType(IntEnum):
     DBL_CLICK = 4
     FOCUS = 5
     TOUCH_START = 7
+    TOUCH_END = 9
+    TOUCH_CANCEL = 10
 
 
 class NodeType(IntEnum):
@@ -83,6 +126,138 @@ class NodeType(IntEnum):
 
     ELEMENT = 2
     TEXT = 3
+
+
+# =============================================================================
+# Recording-type detection
+# =============================================================================
+
+
+CaptureKind = Literal["dom", "screenshot"]
+"""The two recording types the analyzer knows.
+
+``"dom"`` is a recording of a real page DOM (the Mixpanel JavaScript SDK).
+``"screenshot"`` is a recording whose DOM is one screenshot image per
+screen (the iOS, Android, React Native, and Flutter SDKs).
+"""
+
+WIREFRAME_TAG = "mp_wireframe"
+"""The Custom event (type 5) tag that the mobile SDKs use for screens."""
+
+WIREFRAME_SCREEN_PREFIX = "Wireframe: "
+"""The description prefix of every rendered wireframe screen."""
+
+# A rendered timeline line whose description is a wireframe screen. Anchored
+# to the description position so the marker inside other content (a clicked
+# control named "Wireframe: …") does not match.
+_WIREFRAME_LINE_RE = re.compile(
+    rf"^\d+: {re.escape(WIREFRAME_SCREEN_PREFIX)}", re.MULTILINE
+)
+
+
+def detect_capture(events: Sequence[Any]) -> CaptureKind:
+    """Decide the recording type of an rrweb stream before the walk.
+
+    The stream is a screenshot recording when any Custom event carries the
+    ``mp_wireframe`` tag, or when the stream has Meta events and none of
+    them carries a non-empty ``href``. The mobile SDKs and Flutter (on
+    mobile, web, and desktop) send no ``href``; the Mixpanel JavaScript SDK
+    always sends one. A stream with no Meta event at all stays a DOM
+    recording, so partial web streams keep the web behavior.
+
+    The decision covers the whole stream. A touch that arrives before the
+    first wireframe still goes through the gesture rules. The upstream
+    analyzer decides per event (after the first wireframe only), which
+    misreads early iOS touches.
+
+    Args:
+        events: Raw rrweb event dicts, in any order. Entries that are not
+            dicts are skipped.
+
+    Returns:
+        ``"screenshot"`` or ``"dom"``.
+
+    Example:
+        ```python
+        detect_capture([{"type": 4, "timestamp": 1, "data": {"width": 411}}])
+        # "screenshot"
+        detect_capture([{"type": 4, "timestamp": 1, "data": {"href": "/"}}])
+        # "dom"
+        ```
+    """
+    saw_meta = False
+    saw_href = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        raw_data = event.get("data")
+        data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+        event_type = event.get("type")
+        if event_type == EventType.CUSTOM and data.get("tag") == WIREFRAME_TAG:
+            return "screenshot"
+        if event_type == EventType.META:
+            saw_meta = True
+            if data.get("href"):
+                saw_href = True
+    return "screenshot" if saw_meta and not saw_href else "dom"
+
+
+def _finite_number(value: Any) -> float | None:
+    """Return ``value`` as a finite float, or None when it is not a usable number.
+
+    A bool is not a number here (``True`` is an ``int`` in Python). Strings,
+    NaN, infinities, and integers too large for a float are rejected, so
+    no later ``int()`` or arithmetic call can raise.
+
+    Args:
+        value: A raw JSON value from an rrweb event.
+
+    Returns:
+        The float value, or None.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _point(x: Any, y: Any) -> tuple[int, int] | None:
+    """Return integer ``(x, y)`` coordinates, or None when either is unusable.
+
+    Floats truncate toward zero, as ``int()`` does in the upstream analyzer.
+
+    Args:
+        x: The raw x value.
+        y: The raw y value.
+
+    Returns:
+        The ``(x, y)`` integer pair, or None.
+    """
+    fx = _finite_number(x)
+    fy = _finite_number(y)
+    if fx is None or fy is None:
+        return None
+    return int(fx), int(fy)
+
+
+def _coords(x: Any, y: Any) -> tuple[float, float] | None:
+    """Return float ``(x, y)`` coordinates for travel math, or None.
+
+    Args:
+        x: The raw x value.
+        y: The raw y value.
+
+    Returns:
+        The ``(x, y)`` float pair, or None when either value is unusable.
+    """
+    fx = _finite_number(x)
+    fy = _finite_number(y)
+    if fx is None or fy is None:
+        return None
+    return fx, fy
 
 
 # =============================================================================
@@ -490,7 +665,244 @@ class DOMTracker:
 
 
 # =============================================================================
-# EventAnalyzer — emits structured public UserAction + description lines
+# MobileWireframeTracker — gesture-gated sampler for wireframe screens
+# =============================================================================
+
+
+_SCREEN_TARGET = "(screen)"
+"""Placeholder ``target_desc`` for a screen action."""
+
+
+class MobileWireframeTracker:
+    """Gesture-gated sampler for wireframe screens (rrweb Custom events).
+
+    Screenshot recordings have no DOM. When wireframes are on, the SDK
+    sends the screen as an ``mp_wireframe`` Custom event (a flat element
+    list) on every visual change. Emitting all of them floods the
+    timeline, because anything that animates sends a stream of screens.
+    So a gesture is the activity gate:
+
+    - At gesture start, the tracker emits the screen the user rested on
+      (the "before" screen), through :meth:`on_gesture_start`.
+    - At gesture end (a tap, a scroll, a cancel, or a screenshot click),
+      it arms capture of the next :attr:`MAX_AFTER_FRAMES` screens (the
+      "after" screens), through :meth:`on_gesture_end`.
+    - A session with no gesture keeps its first screen, and every session
+      keeps its last buffered screen (:meth:`finalize`).
+
+    Consecutive identical screens collapse, so a gesture that changes
+    nothing costs nothing. The rendering and the sampling follow the
+    upstream analyzer; the input type guards and the timestamp guard are
+    local changes.
+    """
+
+    WIREFRAME_TAG = WIREFRAME_TAG
+    MAX_ELEMENT_TEXT = 50  # cap for one element label, before the ellipsis
+    MAX_AFTER_FRAMES = 2  # screens to keep after each gesture
+    MAX_WIREFRAMES = 1000  # cap on emitted screens per session
+    # Separator between rendered elements. Labels carry no quotes, so a
+    # ``|`` inside a label becomes ``/`` before the join.
+    ELEMENT_SEPARATOR = " | "
+
+    def __init__(self) -> None:
+        """Initialize an empty tracker with no buffered screen."""
+        self.actions: list[UserAction] = []
+        self._pending: UserAction | None = None
+        self._first: UserAction | None = None
+        self._after_frames_remaining = 0
+        self._last_desc: str | None = None
+        self._cap_logged = False
+
+    def process_wireframe(
+        self, timestamp: int, data: dict[str, Any], url: str | None
+    ) -> None:
+        """Buffer one Custom event; emit it at once when it is an "after" screen.
+
+        Custom events with another tag are ignored. A wireframe with a
+        timestamp of zero or less is skipped, because ``UserAction``
+        rejects such a timestamp and one bad event must not fail the whole
+        analysis. A payload or an ``elements`` value of the wrong type
+        gives an empty screen.
+
+        Args:
+            timestamp: Unix ms timestamp of the event.
+            data: The event ``data`` dict.
+            url: The current page URL, if a Meta event set one.
+        """
+        if data.get("tag") != self.WIREFRAME_TAG or timestamp <= 0:
+            return
+        payload = data.get("payload")
+        elements = payload.get("elements") if isinstance(payload, dict) else None
+        action = UserAction(
+            timestamp=timestamp,
+            action="screen",
+            target_node_id=None,
+            target_desc=_SCREEN_TARGET,
+            url=url,
+            metadata={},
+            description=(
+                f"{WIREFRAME_SCREEN_PREFIX}"
+                f"{self._render_elements(elements if isinstance(elements, list) else [])}"
+            ),
+        )
+        if self._first is None:
+            self._first = action
+        # Right after a gesture, the next new screens are its result.
+        if self._after_frames_remaining > 0 and self._emit(action):
+            self._after_frames_remaining -= 1
+        self._pending = action
+
+    def on_gesture_start(self) -> None:
+        """Emit the resting screen as the "before" screen of a new gesture.
+
+        The screen a scroll settles on is captured as that scroll's result
+        and again as the "before" of the next gesture. The consecutive
+        duplicate collapses, so the overlap costs nothing.
+        """
+        if self._pending is not None:
+            self._emit(self._pending)
+
+    def on_gesture_end(self) -> None:
+        """Arm capture of the next screens a finished gesture produces.
+
+        A tap navigates or opens something, and a scroll reveals new
+        content, so both arm the "after" screens. This gates the screen
+        sampling only; the analyzer reports the gesture action itself.
+        """
+        self._after_frames_remaining = self.MAX_AFTER_FRAMES
+
+    def finalize(self) -> None:
+        """Flush the buffered screens after the last event.
+
+        A session with no gesture emits its first screen as a keyframe.
+        Every session also emits its last buffered screen, so the final
+        state survives. The duplicate check drops a screen that is
+        already the last one emitted.
+        """
+        if not self.actions and self._first is not None:
+            self._emit(self._first)
+        if self._pending is not None:
+            self._emit(self._pending)
+
+    def _emit(self, action: UserAction) -> bool:
+        """Record a screen, collapse a consecutive duplicate, and apply the cap.
+
+        Args:
+            action: The screen action to record.
+
+        Returns:
+            True when the screen was recorded; False when it duplicates the
+            last recorded screen or the cap is reached.
+        """
+        if action.description == self._last_desc:
+            return False
+        if len(self.actions) >= self.MAX_WIREFRAMES:
+            if not self._cap_logged:
+                log.debug(
+                    "Wireframe cap (%d) reached; dropping further screens",
+                    self.MAX_WIREFRAMES,
+                )
+                self._cap_logged = True
+            return False
+        self.actions.append(action)
+        self._last_desc = action.description
+        return True
+
+    @staticmethod
+    def _format_bounds(bounds: Any) -> str:
+        """Render an element's ``[x, y, w, h]`` rect, or ``""``.
+
+        The rect lets a reader reason about layout and check whether a
+        ``Tapped at (x, y)`` point falls inside an element. A missing,
+        malformed, or all-zero rect carries no geometry, so it is omitted.
+        Only finite numbers count; a bool or a string makes the rect
+        malformed. Floats truncate toward zero.
+
+        Args:
+            bounds: The raw ``bounds`` value of one element.
+
+        Returns:
+            ``"[x,y,w,h]"``, or ``""`` when the rect is omitted.
+        """
+        if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
+            return ""
+        values: list[int] = []
+        for value in bounds:
+            number = _finite_number(value)
+            if number is None:
+                return ""
+            values.append(int(number))
+        if not any(values):
+            return ""
+        x, y, w, h = values
+        return f"[{x},{y},{w},{h}]"
+
+    @classmethod
+    def _render_elements(cls, elements: list[Any]) -> str:
+        """Render a screen's element list as one compact string.
+
+        Each element renders as ``label [x,y,w,h]`` for role ``text``,
+        ``role:label [x,y,w,h]`` for other roles, and the bare role when the
+        label is empty. Elements keep the order the client sent them. An
+        element that is not a dict is skipped. A role that is not a
+        non-blank string renders as ``element``. A label is stripped, its
+        ``|`` characters become ``/``, and it is cut at
+        :attr:`MAX_ELEMENT_TEXT` characters with an ellipsis.
+
+        Args:
+            elements: The raw ``elements`` list of the payload.
+
+        Returns:
+            The elements joined with :attr:`ELEMENT_SEPARATOR`, or
+            ``"(empty screen)"`` when no element renders.
+        """
+        parts: list[str] = []
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            raw_role = el.get("role")
+            role = raw_role.strip() if isinstance(raw_role, str) else ""
+            role = role or "element"
+            raw_text = el.get("text")
+            text = raw_text.strip() if isinstance(raw_text, str) else ""
+            text = text.replace("|", "/")
+            if len(text) > cls.MAX_ELEMENT_TEXT:
+                text = text[: cls.MAX_ELEMENT_TEXT] + "…"
+            if not text:
+                core = role
+            elif role == "text":
+                core = text
+            else:
+                core = f"{role}:{text}"
+            bounds = cls._format_bounds(el.get("bounds"))
+            parts.append(f"{core} {bounds}" if bounds else core)
+        return cls.ELEMENT_SEPARATOR.join(parts) if parts else "(empty screen)"
+
+
+@dataclass
+class _Gesture:
+    """An open touch gesture: the finger is down and has not lifted.
+
+    Attributes:
+        timestamp: Unix ms timestamp of the finger-down event.
+        start: The finger-down point as floats, or None without usable
+            coordinates (travel is then not tracked).
+        node_id: The raw rrweb node id of the finger-down event.
+        x: The raw finger-down x value.
+        y: The raw finger-down y value.
+        travel: The largest distance from ``start`` seen so far, in px.
+    """
+
+    timestamp: int
+    start: tuple[float, float] | None
+    node_id: Any
+    x: Any
+    y: Any
+    travel: float = 0.0
+
+
+# =============================================================================
+# EventAnalyzer — emits structured public UserAction records
 # =============================================================================
 
 
@@ -517,33 +929,57 @@ _INTERACTION_TO_ACTION: dict[str, str] = {
 
 
 class EventAnalyzer:
-    """Single-pass rrweb event walker emitting structured + textual actions.
+    """Single-pass rrweb event walker emitting structured actions.
 
     Applies per-source debouncing (scroll / input / selection at 1s each)
     and plugin-event filtering for ``rrweb/console@*`` console errors.
     Emits the public :class:`mixpanel_headless.types.UserAction` so
     downstream aggregations keep their schema-stable action literals.
+
+    The ``capture`` argument selects the recording type (see
+    :func:`detect_capture`). A DOM analyzer names the DOM element of each
+    interaction. A screenshot analyzer runs the touch gesture state
+    machine, treats a mouse click as a one-event gesture, reports
+    coordinates instead of the screenshot image, and samples wireframe
+    screens through :class:`MobileWireframeTracker`. Call :meth:`finalize`
+    after the last event: it flushes the deferred state and sorts
+    :attr:`user_actions` by timestamp.
     """
 
     SCROLL_DEBOUNCE_MS = 1000
     SELECTION_DEBOUNCE_MS = 1000
     INPUT_DEBOUNCE_MS = 1000
 
-    def __init__(self, dom_tracker: DOMTracker | None = None) -> None:
-        """Initialize the analyzer with an optional pre-seeded DOM tracker."""
+    # A touch whose finger travels no more than this far (px, from the
+    # finger-down point) is a tap; more is a scroll or a swipe.
+    TAP_MAX_TRAVEL_PX = 10.0
+
+    def __init__(
+        self,
+        dom_tracker: DOMTracker | None = None,
+        *,
+        capture: CaptureKind = "dom",
+    ) -> None:
+        """Initialize the analyzer.
+
+        Args:
+            dom_tracker: Optional pre-seeded DOM tracker.
+            capture: The recording type, from :func:`detect_capture`.
+                Defaults to ``"dom"``.
+        """
         self.dom_tracker = dom_tracker or DOMTracker()
+        self.capture: CaptureKind = capture
+        self.wireframe_tracker = MobileWireframeTracker()
         self.user_actions: list[UserAction] = []
-        # Parallel list of (timestamp_ms, description) pairs for the markdown
-        # reporter — kept distinct from user_actions so we render the
-        # `{ts}: {desc}` line format directly instead of reverse-engineering
-        # it from the structured UserAction objects.
-        self.descriptions: list[tuple[int, str]] = []
         self.pages: list[PageVisit] = []
         self.errors: list[ConsoleError] = []
         self.current_url: str | None = None
         self.last_scroll_time = 0
         self.last_selection_time = 0
         self.last_input_time: dict[int, int] = {}
+        # The open touch gesture (finger down, not yet up), or None.
+        self._active_touch: _Gesture | None = None
+        self._finalized = False
 
     def _emit(
         self,
@@ -556,19 +992,26 @@ class EventAnalyzer:
         url: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Append both a structured UserAction and a (timestamp, description) line.
+        """Append a structured UserAction.
+
+        An action with a timestamp of zero or less is dropped, not raised.
+        ``UserAction`` rejects such a timestamp, and one bad event must not
+        fail the whole analysis. The debounce state and the current URL
+        still update, as for any other event.
 
         Args:
             timestamp: Unix ms.
             action: One of the public ``UserAction.action`` literal values.
-            description: Human-readable description text for the markdown line.
+            description: Human-readable description text for the markdown
+                line.
             target_node_id: rrweb node id, if applicable.
             target_desc: Human-readable element label (defaults to the
                 description when not provided).
             url: Active page URL.
             metadata: Action-specific extras.
         """
-        self.descriptions.append((timestamp, description))
+        if timestamp <= 0:
+            return
         self.user_actions.append(
             UserAction(
                 timestamp=timestamp,
@@ -596,6 +1039,8 @@ class EventAnalyzer:
             self._process_incremental_snapshot(timestamp, data)
         elif event_type == EventType.PLUGIN:
             self._process_plugin_event(timestamp, data)
+        elif event_type == EventType.CUSTOM:
+            self.wireframe_tracker.process_wireframe(timestamp, data, self.current_url)
 
     def _process_meta(self, timestamp: int, data: dict[str, Any]) -> None:
         """Handle navigations (Meta events): update current URL + emit action."""
@@ -629,6 +1074,8 @@ class EventAnalyzer:
             self._process_mouse_interaction(timestamp, data)
         elif source == IncrementalSource.SCROLL:
             self._process_scroll(timestamp, data)
+        elif source == IncrementalSource.TOUCH_MOVE:
+            self._process_touch_move(timestamp, data)
         elif source == IncrementalSource.INPUT:
             self._process_input(timestamp, data)
         elif source == IncrementalSource.SELECTION:
@@ -658,7 +1105,17 @@ class EventAnalyzer:
                 self.dom_tracker.update_attributes(node_id, attributes)
 
     def _process_mouse_interaction(self, timestamp: int, data: dict[str, Any]) -> None:
-        """Emit click-family / focus / touch-start actions for interactions."""
+        """Emit click-family / focus / touch-start actions for interactions.
+
+        A screenshot recording routes to
+        :meth:`_process_screenshot_interaction`. A DOM recording names the
+        DOM element; its touch end, touch cancel, mouse down, and mouse up
+        events emit nothing.
+        """
+        if self.capture == "screenshot":
+            self._process_screenshot_interaction(timestamp, data)
+            return
+
         interaction_type = data.get("type")
         node_id = data.get("id")
 
@@ -691,9 +1148,258 @@ class EventAnalyzer:
             metadata=metadata,
         )
 
+    def _process_screenshot_interaction(
+        self, timestamp: int, data: dict[str, Any]
+    ) -> None:
+        """Handle a mouse or touch interaction in a screenshot recording.
+
+        Touches go through the gesture state machine: TOUCH_START opens a
+        gesture, TOUCH_END closes and classifies it, and TOUCH_CANCEL closes
+        it with no action. A CLICK is a one-event gesture. Every other
+        interaction (mouse down, mouse up, double-click, right-click, focus)
+        is ignored: its only target is the screenshot image, which names
+        nothing.
+
+        Args:
+            timestamp: Unix ms timestamp of the event.
+            data: The event ``data`` dict.
+        """
+        interaction_type = data.get("type")
+        node_id = data.get("id")
+        x = data.get("x")
+        y = data.get("y")
+        if interaction_type == MouseInteractionType.TOUCH_START:
+            self._begin_touch(timestamp, node_id, x, y)
+        elif interaction_type == MouseInteractionType.TOUCH_END:
+            self._end_touch(timestamp, node_id, x, y)
+        elif interaction_type == MouseInteractionType.TOUCH_CANCEL:
+            self._cancel_touch()
+        elif interaction_type == MouseInteractionType.CLICK:
+            self._screenshot_click(timestamp, node_id, x, y)
+
+    def _screenshot_click(self, timestamp: int, node_id: Any, x: Any, y: Any) -> None:
+        """Handle a mouse click in a screenshot recording as a one-event gesture.
+
+        Flutter web and Flutter desktop send clicks instead of touches. The
+        click emits the "before" screen, the ``Clicked at (x, y)`` action,
+        and then arms the "after" screens, as a tap does.
+
+        Args:
+            timestamp: Unix ms timestamp of the click.
+            node_id: The raw rrweb node id of the click target.
+            x: The raw x coordinate.
+            y: The raw y coordinate.
+        """
+        self.wireframe_tracker.on_gesture_start()
+        self._emit_point_action(
+            timestamp,
+            "click",
+            verb="Clicked",
+            interaction="clicked",
+            fallback_target="(click)",
+            node_id=node_id,
+            x=x,
+            y=y,
+        )
+        self.wireframe_tracker.on_gesture_end()
+
+    def _emit_point_action(
+        self,
+        timestamp: int,
+        action: str,
+        *,
+        verb: str,
+        interaction: str,
+        fallback_target: str,
+        node_id: Any,
+        x: Any,
+        y: Any,
+    ) -> None:
+        """Emit a tap or a click that reports its point, not an element.
+
+        With usable coordinates the description is ``{verb} at (x, y)``, the
+        target is ``(x, y)``, and the metadata carries integer ``x`` and
+        ``y``. Without them the description is the bare verb and the target
+        is ``fallback_target``.
+
+        Args:
+            timestamp: Unix ms timestamp of the action.
+            action: The public ``UserAction.action`` literal.
+            verb: The description verb (``Tapped`` or ``Clicked``).
+            interaction: The ``metadata["interaction"]`` value.
+            fallback_target: The ``target_desc`` without coordinates.
+            node_id: The raw rrweb node id.
+            x: The raw x coordinate.
+            y: The raw y coordinate.
+        """
+        metadata: dict[str, Any] = {"interaction": interaction}
+        point = _point(x, y)
+        if point is None:
+            description = verb
+            target_desc = fallback_target
+        else:
+            px, py = point
+            description = f"{verb} at ({px}, {py})"
+            target_desc = f"({px}, {py})"
+            metadata["x"] = px
+            metadata["y"] = py
+        self._emit(
+            timestamp,
+            action,
+            description,
+            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_desc=target_desc,
+            metadata=metadata,
+        )
+
+    def _begin_touch(self, timestamp: int, node_id: Any, x: Any, y: Any) -> None:
+        """Open a touch gesture and emit the resting screen as its "before".
+
+        A gesture that is still open (its TOUCH_END was dropped) is flushed
+        as a tap first: a new finger-down means the previous touch ended,
+        and a tap is the safe reading when no travel was seen.
+
+        Args:
+            timestamp: Unix ms timestamp of the finger-down event.
+            node_id: The raw rrweb node id.
+            x: The raw x coordinate.
+            y: The raw y coordinate.
+        """
+        if self._active_touch is not None:
+            self._flush_active_touch_as_tap()
+        self.wireframe_tracker.on_gesture_start()
+        self._active_touch = _Gesture(
+            timestamp=timestamp, start=_coords(x, y), node_id=node_id, x=x, y=y
+        )
+
+    def _process_touch_move(self, timestamp: int, data: dict[str, Any]) -> None:
+        """Add finger-drag travel to the open gesture (screenshot recordings only).
+
+        A drag with no open gesture (the session started mid-drag) is a
+        scroll. A DOM recording reports scrolling through scroll events, so
+        its touch moves are ignored. Samples that are not dicts or that
+        lack finite coordinates add no travel.
+
+        Args:
+            timestamp: Unix ms timestamp of the event.
+            data: The event ``data`` dict (``positions`` list).
+        """
+        if self.capture != "screenshot":
+            return
+        raw_positions = data.get("positions")
+        positions = raw_positions if isinstance(raw_positions, list) else []
+        gesture = self._active_touch
+        if gesture is None:
+            if positions:
+                self._record_scroll(timestamp)
+            return
+        if gesture.start is None:
+            return
+        sx, sy = gesture.start
+        for pos in positions:
+            if not isinstance(pos, dict):
+                continue
+            point = _coords(pos.get("x"), pos.get("y"))
+            if point is None:
+                continue
+            gesture.travel = max(
+                gesture.travel, math.hypot(point[0] - sx, point[1] - sy)
+            )
+
+    def _end_touch(self, timestamp: int, node_id: Any, x: Any, y: Any) -> None:
+        """Close the open gesture and classify it as a tap or a scroll.
+
+        Travel above :attr:`TAP_MAX_TRAVEL_PX` is a scroll; other travel is
+        a tap at the lift-off point (the finger-down point when the lift-off
+        has no coordinates). Both arm the "after" screens. A TOUCH_END with
+        no open gesture is ignored.
+
+        Args:
+            timestamp: Unix ms timestamp of the lift-off event.
+            node_id: The raw rrweb node id.
+            x: The raw x coordinate.
+            y: The raw y coordinate.
+        """
+        gesture = self._active_touch
+        self._active_touch = None
+        if gesture is None:
+            return
+        travel = gesture.travel
+        end = _coords(x, y)
+        if end is not None and gesture.start is not None:
+            travel = max(
+                travel,
+                math.hypot(end[0] - gesture.start[0], end[1] - gesture.start[1]),
+            )
+        self.wireframe_tracker.on_gesture_end()
+        if travel > self.TAP_MAX_TRAVEL_PX:
+            self._record_scroll(timestamp)
+            return
+        self._emit_tap(
+            timestamp,
+            node_id if node_id is not None else gesture.node_id,
+            x if x is not None else gesture.x,
+            y if y is not None else gesture.y,
+        )
+
+    def _cancel_touch(self) -> None:
+        """Close the open gesture with no action (the system took the touch).
+
+        A cancelled touch is neither a tap nor a scroll. It still arms the
+        "after" screens, because a cancel often comes with a screen change.
+        A cancel with no open gesture is ignored.
+        """
+        gesture = self._active_touch
+        self._active_touch = None
+        if gesture is None:
+            return
+        self.wireframe_tracker.on_gesture_end()
+
+    def _emit_tap(self, timestamp: int, node_id: Any, x: Any, y: Any) -> None:
+        """Emit a confirmed tap in a screenshot recording.
+
+        Args:
+            timestamp: Unix ms timestamp of the tap.
+            node_id: The raw rrweb node id.
+            x: The raw x coordinate.
+            y: The raw y coordinate.
+        """
+        self._emit_point_action(
+            timestamp,
+            "touch_start",
+            verb="Tapped",
+            interaction="tapped",
+            fallback_target="(tap)",
+            node_id=node_id,
+            x=x,
+            y=y,
+        )
+
+    def _flush_active_touch_as_tap(self) -> None:
+        """Emit the open gesture as a tap at its finger-down time and point.
+
+        Used when a TOUCH_END never arrives (a dropped event, or the session
+        ends mid-touch). Does nothing when no gesture is open.
+        """
+        gesture = self._active_touch
+        self._active_touch = None
+        if gesture is None:
+            return
+        self._emit_tap(gesture.timestamp, gesture.node_id, gesture.x, gesture.y)
+
     def _process_scroll(self, timestamp: int, data: dict[str, Any]) -> None:
-        """Emit a debounced scroll action (one per :data:`SCROLL_DEBOUNCE_MS`)."""
+        """Emit a debounced scroll action for a scroll event."""
         _ = data
+        self._record_scroll(timestamp)
+
+    def _record_scroll(self, timestamp: int) -> None:
+        """Emit a debounced scroll action (one per :data:`SCROLL_DEBOUNCE_MS`).
+
+        Scroll events and touch gestures that travel share this debounce.
+
+        Args:
+            timestamp: Unix ms timestamp of the scroll.
+        """
         if timestamp - self.last_scroll_time > self.SCROLL_DEBOUNCE_MS:
             self._emit(timestamp, "scroll", "Scrolled", target_desc="(viewport)")
         self.last_scroll_time = timestamp
@@ -811,6 +1517,25 @@ class EventAnalyzer:
             metadata={"message": message},
         )
 
+    def finalize(self) -> None:
+        """Flush the deferred state and sort the action list by timestamp.
+
+        A gesture still open at the end is flushed as a tap. The wireframe
+        tracker flushes its buffered screens, which merge into
+        :attr:`user_actions`. The stable sort then puts every action in
+        timestamp order; the tracker emits screens after their arrival, so
+        the merge alone is out of order. Actions with equal timestamps keep
+        their emission order, with screens after the other actions. A
+        second call does nothing.
+        """
+        if self._finalized:
+            return
+        self._finalized = True
+        self._flush_active_touch_as_tap()
+        self.wireframe_tracker.finalize()
+        self.user_actions.extend(self.wireframe_tracker.actions)
+        self.user_actions.sort(key=lambda a: a.timestamp)
+
 
 # =============================================================================
 # Markdown reporter
@@ -850,7 +1575,7 @@ class MarkdownReporter:
     """Render ``{ts_seconds}: {description}`` lines from a description list."""
 
     def __init__(self, descriptions: list[tuple[int, str]]) -> None:
-        """Initialize with parallel (timestamp_ms, description) pairs."""
+        """Initialize with (timestamp_ms, description) pairs in timeline order."""
         self.descriptions = descriptions
 
     def generate(self) -> str:
@@ -876,7 +1601,9 @@ class RrwebAnalyzer:
 
     Stateless across calls: each :meth:`analyze` invocation constructs its
     own :class:`DOMTracker` + :class:`EventAnalyzer`. Inputs are not
-    mutated; events are sorted by timestamp before processing.
+    mutated; events are sorted by timestamp before processing, and the
+    recording type (:func:`detect_capture`) is decided one time, before
+    the walk.
 
     Example:
         ```python
@@ -897,9 +1624,9 @@ class RrwebAnalyzer:
                 walking.
 
         Returns:
-            An :class:`AnalyzerResult` with the action list, markdown
-            timeline, page visits, and console errors populated. Empty
-            on empty input.
+            An :class:`AnalyzerResult` with the action list (sorted by
+            timestamp), the markdown timeline rendered from that list, page
+            visits, and console errors populated. Empty on empty input.
         """
         if not events:
             return AnalyzerResult()
@@ -907,14 +1634,20 @@ class RrwebAnalyzer:
         sorted_events = sorted(events, key=lambda e: int(e.get("timestamp", 0)))
 
         dom_tracker = DOMTracker()
-        event_analyzer = EventAnalyzer(dom_tracker)
+        event_analyzer = EventAnalyzer(
+            dom_tracker, capture=detect_capture(sorted_events)
+        )
         for event in sorted_events:
             event_analyzer.process_event(event)
+        event_analyzer.finalize()
 
-        markdown = MarkdownReporter(event_analyzer.descriptions).generate()
-        log.info("Generated %d user actions", len(event_analyzer.user_actions))
+        actions = event_analyzer.user_actions
+        markdown = MarkdownReporter(
+            [(a.timestamp, a.description) for a in actions]
+        ).generate()
+        log.info("Generated %d user actions", len(actions))
         return AnalyzerResult(
-            actions=event_analyzer.user_actions,
+            actions=actions,
             markdown_summary=markdown,
             pages=event_analyzer.pages,
             errors=event_analyzer.errors,
@@ -943,6 +1676,47 @@ def analyze_events(rrweb_events: list[dict[str, Any]]) -> str:
 
     log.info("Analyzing %d rrweb events", len(rrweb_events))
     return RrwebAnalyzer().analyze(rrweb_events).markdown_summary
+
+
+def timeline_contains_wireframes(timeline: str) -> bool:
+    """Whether a rendered timeline holds wireframe screen lines.
+
+    The check is anchored to the description position of a line
+    (``{seconds}: Wireframe: …``), so the marker inside other content (a
+    clicked control named ``Wireframe: …``) does not count.
+
+    Args:
+        timeline: A markdown timeline, as in
+            :attr:`AnalyzerResult.markdown_summary`.
+
+    Returns:
+        True when at least one line is a wireframe screen.
+
+    Example:
+        ```python
+        timeline_contains_wireframes("1: Wireframe: Home")
+        # True
+        timeline_contains_wireframes("1: Clicked 'Wireframe: settings'")
+        # False
+        ```
+    """
+    return _WIREFRAME_LINE_RE.search(timeline) is not None
+
+
+def actions_contain_wireframes(actions: Sequence[UserAction]) -> bool:
+    """Whether a structured action list holds wireframe screens.
+
+    Unlike :func:`timeline_contains_wireframes`, this does not depend on
+    the rendered line format. It reads the ``"screen"`` action label, so a
+    description that only looks like a screen does not count.
+
+    Args:
+        actions: Structured actions, as in :attr:`AnalyzerResult.actions`.
+
+    Returns:
+        True when at least one action is a ``"screen"`` action.
+    """
+    return any(a.action == "screen" for a in actions)
 
 
 # Used by Replay.summary_markdown to render a timeline from the structured

@@ -1,0 +1,598 @@
+[
+ {
+  "timestamp": 1790066936646,
+  "type": 4,
+  "data": {
+   "width": 402,
+   "height": 874
+  }
+ },
+ {
+  "timestamp": 1790066938699,
+  "type": 3,
+  "data": {
+   "type": 7,
+   "x": 176,
+   "id": 28,
+   "y": 873,
+   "source": 2
+  }
+ },
+ {
+  "timestamp": 1790066938744,
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "elements": [
+     {
+      "bounds": [
+       12,
+       586,
+       233,
+       34
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       274,
+       593,
+       20,
+       19
+      ],
+      "role": "image"
+     },
+     {
+      "bounds": [
+       306,
+       593,
+       20,
+       20
+      ],
+      "role": "image"
+     },
+     {
+      "bounds": [
+       337,
+       593,
+       20,
+       20
+      ],
+      "role": "image"
+     },
+     {
+      "bounds": [
+       368,
+       593,
+       20,
+       20
+      ],
+      "role": "image"
+     },
+     {
+      "bounds": [
+       61,
+       725,
+       281,
+       16
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       194,
+       275,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       327,
+       244,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       348,
+       109,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       374,
+       130,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       434,
+       27,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       455,
+       85,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       481,
+       105,
+       64
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       585,
+       59,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       606,
+       36,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       25,
+       629,
+       42,
+       28
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       658,
+       60,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       28,
+       719,
+       133,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       28,
+       739,
+       65,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       28,
+       765,
+       76,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       28,
+       826,
+       135,
+       14
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       30,
+       847,
+       19,
+       18
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       58,
+       846,
+       31,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       28,
+       873,
+       131,
+       20
+      ]
+     },
+     {
+      "text": "Hello world",
+      "role": "text",
+      "bounds": [
+       28,
+       214,
+       85,
+       20
+      ]
+     },
+     {
+      "text": "Welcome",
+      "role": "text",
+      "bounds": [
+       28,
+       241,
+       71,
+       20
+      ]
+     },
+     {
+      "text": "Continue",
+      "role": "text",
+      "bounds": [
+       28,
+       267,
+       69,
+       20
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       -118,
+       731,
+       638,
+       286
+      ]
+     },
+     {
+      "text": "SwiftUI Text",
+      "role": "text",
+      "bounds": [
+       16,
+       120,
+       190,
+       41
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       54,
+       804,
+       33,
+       21
+      ]
+     },
+     {
+      "text": "SwiftUI Text",
+      "role": "text",
+      "bounds": [
+       40,
+       830,
+       61,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       138,
+       799,
+       28,
+       28
+      ]
+     },
+     {
+      "text": "SwiftUI Inputs",
+      "role": "text",
+      "bounds": [
+       116,
+       830,
+       71,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       210,
+       798,
+       29,
+       32
+      ]
+     },
+     {
+      "text": "UIKit",
+      "role": "text",
+      "bounds": [
+       212,
+       830,
+       25,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       265,
+       801,
+       34,
+       29
+      ]
+     },
+     {
+      "text": "Mixed",
+      "role": "text",
+      "bounds": [
+       267,
+       830,
+       30,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       327,
+       801,
+       26,
+       28
+      ]
+     },
+     {
+      "text": "Lab",
+      "role": "text",
+      "bounds": [
+       331,
+       830,
+       19,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       54,
+       804,
+       33,
+       21
+      ]
+     },
+     {
+      "text": "SwiftUI Text",
+      "role": "text",
+      "bounds": [
+       41,
+       830,
+       60,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       138,
+       799,
+       28,
+       28
+      ]
+     },
+     {
+      "text": "SwiftUI Inputs",
+      "role": "text",
+      "bounds": [
+       117,
+       830,
+       70,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       210,
+       798,
+       29,
+       32
+      ]
+     },
+     {
+      "text": "UIKit",
+      "role": "text",
+      "bounds": [
+       212,
+       830,
+       24,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       265,
+       801,
+       34,
+       29
+      ]
+     },
+     {
+      "text": "Mixed",
+      "role": "text",
+      "bounds": [
+       267,
+       830,
+       30,
+       12
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       327,
+       801,
+       26,
+       28
+      ]
+     },
+     {
+      "text": "Lab",
+      "role": "text",
+      "bounds": [
+       331,
+       830,
+       18,
+       12
+      ]
+     }
+    ],
+    "viewport": [
+     402,
+     874
+    ]
+   }
+  }
+ },
+ {
+  "data": {
+   "node": {
+    "childNodes": [
+     {
+      "publicId": "",
+      "systemId": "",
+      "id": 2,
+      "type": 1,
+      "name": "html"
+     },
+     {
+      "childNodes": [
+       {
+        "tagName": "head",
+        "type": 2,
+        "id": 4,
+        "attributes": {},
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3,
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "type": 2,
+          "id": 17,
+          "attributes": {},
+          "tagName": "style"
+         }
+        ]
+       },
+       {
+        "tagName": "body",
+        "type": 2,
+        "id": 25,
+        "attributes": {},
+        "childNodes": [
+         {
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "childNodes": [],
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "type": 2,
+            "id": 28
+           }
+          ],
+          "tagName": "div",
+          "id": 29,
+          "type": 2
+         }
+        ]
+       }
+      ],
+      "tagName": "html",
+      "type": 2,
+      "id": 3
+     }
+    ],
+    "id": 1,
+    "type": 0
+   }
+  },
+  "timestamp": 1790066938744,
+  "type": 2
+ },
+ {
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "id": 28,
+     "x": 176.33333333333331,
+     "y": 874,
+     "timeOffset": -58
+    },
+    {
+     "id": 28,
+     "x": 180.33333333333331,
+     "y": 782.3333333333333,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1790066938834,
+  "type": 3
+ },
+ {
+  "data": {
+   "source": 2,
+   "type": 10,
+   "id": 28,
+   "x": 180,
+   "y": 782
+  },
+  "timestamp": 1790066938850,
+  "type": 3
+ }
+]

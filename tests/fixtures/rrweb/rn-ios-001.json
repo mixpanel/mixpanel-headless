@@ -1,0 +1,3403 @@
+[
+ {
+  "data": {
+   "height": 844,
+   "width": 390
+  },
+  "type": 4,
+  "timestamp": 1789674112024
+ },
+ {
+  "timestamp": 1789674112483,
+  "data": {
+   "payload": {
+    "viewport": [
+     390,
+     844
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Success",
+      "bounds": [
+       76,
+       378,
+       238,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       76,
+       402,
+       238,
+       32
+      ],
+      "text": "Mixpanel Session Replay initialized successfully!"
+     },
+     {
+      "bounds": [
+       183,
+       467,
+       24,
+       20
+      ],
+      "role": "text",
+      "text": "OK"
+     }
+    ]
+   },
+   "tag": "mp_wireframe"
+  },
+  "type": 5
+ },
+ {
+  "type": 2,
+  "timestamp": 1789674112483,
+  "data": {
+   "node": {
+    "childNodes": [
+     {
+      "publicId": "",
+      "type": 1,
+      "systemId": "",
+      "id": 2,
+      "name": "html"
+     },
+     {
+      "tagName": "html",
+      "childNodes": [
+       {
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "childNodes": [
+           {
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3,
+            "id": 18,
+            "isStyle": true
+           }
+          ],
+          "attributes": {},
+          "tagName": "style",
+          "id": 17
+         }
+        ],
+        "id": 4,
+        "type": 2
+       },
+       {
+        "id": 25,
+        "attributes": {},
+        "type": 2,
+        "childNodes": [
+         {
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "type": 2,
+            "childNodes": [],
+            "tagName": "img",
+            "id": 28
+           }
+          ],
+          "tagName": "div",
+          "id": 29,
+          "type": 2
+         }
+        ],
+        "tagName": "body"
+       }
+      ],
+      "id": 3,
+      "type": 2
+     }
+    ],
+    "id": 1,
+    "type": 0
+   }
+  }
+ },
+ {
+  "data": {
+   "x": 228,
+   "y": 453,
+   "source": 2,
+   "type": 7,
+   "id": 28
+  },
+  "type": 3,
+  "timestamp": 1789674113007
+ },
+ {
+  "timestamp": 1789674113077,
+  "type": 3,
+  "data": {
+   "x": 228,
+   "id": 28,
+   "type": 9,
+   "y": 453,
+   "source": 2
+  }
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "y": 493,
+   "x": 215,
+   "id": 28,
+   "type": 7
+  },
+  "timestamp": 1789674113669
+ },
+ {
+  "data": {
+   "node": {
+    "type": 0,
+    "id": 1,
+    "childNodes": [
+     {
+      "systemId": "",
+      "publicId": "",
+      "id": 2,
+      "type": 1,
+      "name": "html"
+     },
+     {
+      "tagName": "html",
+      "id": 3,
+      "type": 2,
+      "childNodes": [
+       {
+        "attributes": {},
+        "childNodes": [
+         {
+          "tagName": "style",
+          "childNodes": [
+           {
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18,
+            "type": 3
+           }
+          ],
+          "attributes": {},
+          "id": 17,
+          "type": 2
+         }
+        ],
+        "type": 2,
+        "id": 4,
+        "tagName": "head"
+       },
+       {
+        "tagName": "body",
+        "attributes": {},
+        "id": 25,
+        "type": 2,
+        "childNodes": [
+         {
+          "tagName": "div",
+          "id": 29,
+          "type": 2,
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "id": 28,
+            "tagName": "img",
+            "type": 2,
+            "childNodes": []
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "type": 2,
+  "timestamp": 1789674113691
+ },
+ {
+  "data": {
+   "source": 2,
+   "x": 215,
+   "y": 493,
+   "type": 9,
+   "id": 28
+  },
+  "type": 3,
+  "timestamp": 1789674113799
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674114419,
+  "data": {
+   "type": 7,
+   "id": 28,
+   "x": 178,
+   "source": 2,
+   "y": 648
+  }
+ },
+ {
+  "type": 5,
+  "timestamp": 1789674114430,
+  "data": {
+   "payload": {
+    "viewport": [
+     390,
+     844
+    ],
+    "elements": [
+     {
+      "bounds": [
+       20,
+       260,
+       350,
+       29
+      ],
+      "role": "text",
+      "text": "Mixpanel Session Replay Demo"
+     },
+     {
+      "role": "text",
+      "text": "Status: 🔴 Recording",
+      "bounds": [
+       106,
+       335,
+       178,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       160,
+       365,
+       70,
+       17
+      ],
+      "text": "User: Rn-5"
+     },
+     {
+      "text": "Start Recording",
+      "bounds": [
+       135,
+       440,
+       119,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "text": "Stop Recording",
+      "bounds": [
+       137,
+       503,
+       117,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       147,
+       566,
+       96,
+       19
+      ],
+      "text": "Flush Events"
+     },
+     {
+      "text": "Go to Test Screen",
+      "role": "text",
+      "bounds": [
+       128,
+       642,
+       134,
+       19
+      ]
+     },
+     {
+      "text": "Session Replay Demo",
+      "bounds": [
+       108,
+       59,
+       175,
+       20
+      ],
+      "role": "text"
+     }
+    ]
+   },
+   "tag": "mp_wireframe"
+  }
+ },
+ {
+  "data": {
+   "node": {
+    "id": 1,
+    "childNodes": [
+     {
+      "id": 2,
+      "publicId": "",
+      "name": "html",
+      "type": 1,
+      "systemId": ""
+     },
+     {
+      "tagName": "html",
+      "childNodes": [
+       {
+        "attributes": {},
+        "type": 2,
+        "tagName": "head",
+        "childNodes": [
+         {
+          "tagName": "style",
+          "id": 17,
+          "childNodes": [
+           {
+            "isStyle": true,
+            "id": 18,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3
+           }
+          ],
+          "type": 2,
+          "attributes": {}
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "tagName": "div",
+          "childNodes": [
+           {
+            "childNodes": [],
+            "id": 28,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "type": 2
+           }
+          ],
+          "type": 2,
+          "id": 29,
+          "attributes": {
+           "class": "screen"
+          }
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3,
+      "type": 2
+     }
+    ],
+    "type": 0
+   }
+  },
+  "timestamp": 1789674114430,
+  "type": 2
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674114566,
+  "data": {
+   "type": 9,
+   "id": 28,
+   "y": 648,
+   "source": 2,
+   "x": 178
+  }
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     390,
+     844
+    ],
+    "elements": [
+     {
+      "bounds": [
+       -96,
+       260,
+       350,
+       29
+      ],
+      "role": "text",
+      "text": "Mixpanel Session Replay Demo"
+     },
+     {
+      "text": "Status: 🔴 Recording",
+      "role": "text",
+      "bounds": [
+       -10,
+       335,
+       178,
+       22
+      ]
+     },
+     {
+      "bounds": [
+       44,
+       365,
+       70,
+       17
+      ],
+      "text": "User: Rn-5",
+      "role": "text"
+     },
+     {
+      "text": "Start Recording",
+      "bounds": [
+       19,
+       440,
+       119,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       21,
+       503,
+       117,
+       19
+      ],
+      "text": "Stop Recording",
+      "role": "text"
+     },
+     {
+      "text": "Flush Events",
+      "role": "text",
+      "bounds": [
+       31,
+       566,
+       96,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       12,
+       642,
+       134,
+       19
+      ]
+     },
+     {
+      "bounds": [
+       31,
+       119,
+       56,
+       19
+      ],
+      "role": "text",
+      "text": "← Back"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       107,
+       117,
+       266,
+       24
+      ],
+      "text": "Masking Test Screen"
+     },
+     {
+      "text": "Text Elements",
+      "role": "text",
+      "bounds": [
+       39,
+       182,
+       318,
+       31
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Main Heading Text",
+      "bounds": [
+       39,
+       225,
+       318,
+       29
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       39,
+       262,
+       318,
+       22
+      ],
+      "text": "Subheading Text Example"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       39,
+       291,
+       318,
+       100
+      ],
+      "text": "This is a sample paragraph text that demonstrates…"
+     },
+     {
+      "text": "Label Text Example",
+      "role": "text",
+      "bounds": [
+       39,
+       399,
+       318,
+       19
+      ]
+     },
+     {
+      "text": "Caption text in smaller font",
+      "bounds": [
+       39,
+       423,
+       318,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "text": "Wireframe Text",
+      "bounds": [
+       39,
+       485,
+       318,
+       31
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Turn on the Wireframes toggle on the previous scr…",
+      "bounds": [
+       39,
+       528,
+       318,
+       29
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Monthly spend chart",
+      "bounds": [
+       39,
+       556,
+       318,
+       84
+      ]
+     },
+     {
+      "text": "Card number",
+      "bounds": [
+       39,
+       640,
+       318,
+       45
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       40,
+       641,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "bounds": [
+       39,
+       686,
+       318,
+       20
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       39,
+       714,
+       318,
+       20
+      ],
+      "text": "Receipt sent to [EMAIL]"
+     },
+     {
+      "text": "Input Controls",
+      "bounds": [
+       39,
+       790,
+       318,
+       31
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       108,
+       59,
+       175,
+       20
+      ],
+      "text": "Session Replay Demo",
+      "role": "text"
+     },
+     {
+      "role": "button",
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Back",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "text": "Masking Test",
+      "role": "text"
+     }
+    ]
+   }
+  },
+  "timestamp": 1789674115105
+ },
+ {
+  "data": {
+   "node": {
+    "childNodes": [
+     {
+      "name": "html",
+      "type": 1,
+      "systemId": "",
+      "publicId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "childNodes": [
+         {
+          "attributes": {},
+          "id": 17,
+          "tagName": "style",
+          "type": 2,
+          "childNodes": [
+           {
+            "isStyle": true,
+            "id": 18,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3
+           }
+          ]
+         }
+        ],
+        "attributes": {},
+        "id": 4
+       },
+       {
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "id": 28,
+            "childNodes": [],
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "tagName": "img",
+            "type": 2
+           }
+          ],
+          "id": 29,
+          "type": 2,
+          "attributes": {
+           "class": "screen"
+          },
+          "tagName": "div"
+         }
+        ],
+        "id": 25,
+        "type": 2,
+        "attributes": {},
+        "tagName": "body"
+       }
+      ],
+      "id": 3,
+      "tagName": "html"
+     }
+    ],
+    "type": 0,
+    "id": 1
+   }
+  },
+  "type": 2,
+  "timestamp": 1789674115105
+ },
+ {
+  "timestamp": 1789674115467,
+  "type": 3,
+  "data": {
+   "y": 711,
+   "source": 2,
+   "id": 28,
+   "type": 7,
+   "x": 181
+  }
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674115733,
+  "data": {
+   "positions": [
+    {
+     "x": 181.66665649414062,
+     "timeOffset": -201,
+     "y": 685.6666564941406,
+     "id": 28
+    },
+    {
+     "timeOffset": -151,
+     "y": 605.6666564941406,
+     "id": 28,
+     "x": 181.66665649414062
+    },
+    {
+     "timeOffset": -100,
+     "id": 28,
+     "x": 208.66665649414062,
+     "y": 313
+    },
+    {
+     "x": 227.3333282470703,
+     "y": 221.3333282470703,
+     "timeOffset": -50,
+     "id": 28
+    },
+    {
+     "id": 28,
+     "timeOffset": 0,
+     "x": 235.3333282470703,
+     "y": 184.3333282470703
+    }
+   ],
+   "source": 6
+  }
+ },
+ {
+  "timestamp": 1789674115915,
+  "type": 3,
+  "data": {
+   "source": 2,
+   "id": 28,
+   "type": 9,
+   "y": 183,
+   "x": 235
+  }
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "elements": [
+     {
+      "text": "Wireframe Text",
+      "role": "text",
+      "bounds": [
+       36,
+       -17,
+       318,
+       31
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       25,
+       318,
+       29
+      ],
+      "text": "Turn on the Wireframes toggle on the previous scr…"
+     },
+     {
+      "text": "Monthly spend chart",
+      "role": "text",
+      "bounds": [
+       36,
+       54,
+       318,
+       84
+      ]
+     },
+     {
+      "text": "Card number",
+      "role": "text",
+      "bounds": [
+       36,
+       138,
+       318,
+       45
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       139,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       183,
+       318,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Receipt sent to [EMAIL]",
+      "bounds": [
+       36,
+       211,
+       318,
+       20
+      ]
+     },
+     {
+      "text": "Input Controls",
+      "bounds": [
+       36,
+       287,
+       318,
+       31
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "text": "Regular Text Input:",
+      "bounds": [
+       36,
+       342,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       366,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Email Input:",
+      "bounds": [
+       36,
+       422,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       446,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "bounds": [
+       36,
+       503,
+       318,
+       17
+      ],
+      "text": "🔒 Masked Password Input:",
+      "role": "text"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       527,
+       316,
+       43
+      ]
+     },
+     {
+      "bounds": [
+       36,
+       583,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Phone Number:"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       607,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Multiline Text:",
+      "bounds": [
+       36,
+       663,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       687,
+       316,
+       78
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Search Input (should be masked):",
+      "bounds": [
+       36,
+       778,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       802,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "button",
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ]
+     },
+     {
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ],
+      "role": "image"
+     },
+     {
+      "text": "Back",
+      "role": "text",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "role": "text",
+      "text": "Masking Test"
+     }
+    ],
+    "viewport": [
+     390,
+     844
+    ]
+   }
+  },
+  "timestamp": 1789674115924
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "id": 1,
+    "childNodes": [
+     {
+      "publicId": "",
+      "systemId": "",
+      "id": 2,
+      "type": 1,
+      "name": "html"
+     },
+     {
+      "id": 3,
+      "type": 2,
+      "childNodes": [
+       {
+        "childNodes": [
+         {
+          "attributes": {},
+          "childNodes": [
+           {
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18,
+            "type": 3
+           }
+          ],
+          "id": 17,
+          "type": 2,
+          "tagName": "style"
+         }
+        ],
+        "id": 4,
+        "tagName": "head",
+        "attributes": {},
+        "type": 2
+       },
+       {
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "childNodes": [],
+            "id": 28,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            }
+           }
+          ],
+          "type": 2,
+          "id": 29,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          }
+         }
+        ],
+        "tagName": "body",
+        "attributes": {},
+        "type": 2,
+        "id": 25
+       }
+      ],
+      "tagName": "html"
+     }
+    ],
+    "type": 0
+   }
+  },
+  "timestamp": 1789674115924
+ },
+ {
+  "type": 3,
+  "data": {
+   "x": 217,
+   "id": 28,
+   "type": 7,
+   "y": 671,
+   "source": 2
+  },
+  "timestamp": 1789674116302
+ },
+ {
+  "type": 3,
+  "data": {
+   "positions": [
+    {
+     "x": 217.66665649414062,
+     "timeOffset": -368,
+     "id": 28,
+     "y": 619.3333282470703
+    },
+    {
+     "timeOffset": -318,
+     "y": 483,
+     "id": 28,
+     "x": 217
+    },
+    {
+     "y": 363,
+     "x": 212,
+     "timeOffset": -267,
+     "id": 28
+    },
+    {
+     "y": 333,
+     "timeOffset": -217,
+     "x": 212,
+     "id": 28
+    },
+    {
+     "id": 28,
+     "x": 212,
+     "timeOffset": -167,
+     "y": 325
+    },
+    {
+     "id": 28,
+     "y": 323.3333282470703,
+     "x": 212,
+     "timeOffset": -101
+    },
+    {
+     "id": 28,
+     "y": 323.3333282470703,
+     "timeOffset": -51,
+     "x": 211.3333282470703
+    },
+    {
+     "id": 28,
+     "y": 323.3333282470703,
+     "x": 211,
+     "timeOffset": 0
+    }
+   ],
+   "source": 6
+  },
+  "timestamp": 1789674116750
+ },
+ {
+  "timestamp": 1789674116817,
+  "data": {
+   "x": 210,
+   "y": 323,
+   "source": 2,
+   "type": 9,
+   "id": 28
+  },
+  "type": 3
+ },
+ {
+  "timestamp": 1789674116831,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "name": "html",
+      "id": 2,
+      "type": 1,
+      "publicId": "",
+      "systemId": ""
+     },
+     {
+      "id": 3,
+      "type": 2,
+      "childNodes": [
+       {
+        "tagName": "head",
+        "childNodes": [
+         {
+          "id": 17,
+          "attributes": {},
+          "type": 2,
+          "childNodes": [
+           {
+            "id": 18,
+            "type": 3,
+            "isStyle": true,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }"
+           }
+          ],
+          "tagName": "style"
+         }
+        ],
+        "attributes": {},
+        "type": 2,
+        "id": 4
+       },
+       {
+        "type": 2,
+        "id": 25,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "type": 2,
+          "childNodes": [
+           {
+            "tagName": "img",
+            "id": 28,
+            "type": 2,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": []
+           }
+          ],
+          "id": 29
+         }
+        ]
+       }
+      ],
+      "tagName": "html"
+     }
+    ],
+    "id": 1
+   }
+  },
+  "type": 2
+ },
+ {
+  "timestamp": 1789674116831,
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     390,
+     844
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Regular Text Input:",
+      "bounds": [
+       36,
+       15,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       39,
+       316,
+       43
+      ]
+     },
+     {
+      "text": "Email Input:",
+      "bounds": [
+       36,
+       95,
+       318,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       119,
+       316,
+       43
+      ]
+     },
+     {
+      "text": "🔒 Masked Password Input:",
+      "role": "text",
+      "bounds": [
+       36,
+       175,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       199,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "bounds": [
+       36,
+       256,
+       318,
+       17
+      ],
+      "text": "Phone Number:",
+      "role": "text"
+     },
+     {
+      "bounds": [
+       37,
+       280,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "text": "Multiline Text:",
+      "bounds": [
+       36,
+       336,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       360,
+       316,
+       78
+      ]
+     },
+     {
+      "text": "Search Input (should be masked):",
+      "bounds": [
+       36,
+       451,
+       318,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       475,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Numeric Input:",
+      "bounds": [
+       36,
+       531,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       555,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "bounds": [
+       36,
+       611,
+       318,
+       17
+      ],
+      "text": "Auto-Complete Input:",
+      "role": "text"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       635,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Interactive Controls",
+      "bounds": [
+       36,
+       728,
+       318,
+       31
+      ]
+     },
+     {
+      "bounds": [
+       36,
+       791,
+       99,
+       17
+      ],
+      "role": "text",
+      "text": "Toggle Switch:"
+     },
+     {
+      "role": "switch",
+      "bounds": [
+       303,
+       781,
+       51,
+       31
+      ]
+     },
+     {
+      "bounds": [
+       297,
+       778,
+       43,
+       43
+      ],
+      "role": "image"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       834,
+       318,
+       17
+      ],
+      "text": "Custom Range Control:"
+     },
+     {
+      "role": "button",
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ]
+     },
+     {
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ],
+      "role": "image"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "role": "text"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 210,
+   "y": 670
+  },
+  "timestamp": 1789674117146
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674117448,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 210.3333282470703,
+     "y": 666,
+     "timeOffset": -250,
+     "id": 28
+    },
+    {
+     "y": 638.6666564941406,
+     "timeOffset": -200,
+     "id": 28,
+     "x": 210.3333282470703
+    },
+    {
+     "id": 28,
+     "x": 210.3333282470703,
+     "y": 523,
+     "timeOffset": -150
+    },
+    {
+     "x": 210.3333282470703,
+     "y": 372.3333282470703,
+     "timeOffset": -100,
+     "id": 28
+    },
+    {
+     "id": 28,
+     "x": 210.3333282470703,
+     "y": 331,
+     "timeOffset": -50
+    },
+    {
+     "timeOffset": 0,
+     "id": 28,
+     "x": 210.3333282470703,
+     "y": 325
+    }
+   ]
+  }
+ },
+ {
+  "data": {
+   "y": 324,
+   "source": 2,
+   "type": 9,
+   "x": 210,
+   "id": 28
+  },
+  "type": 3,
+  "timestamp": 1789674117698
+ },
+ {
+  "timestamp": 1789674117712,
+  "data": {
+   "payload": {
+    "elements": [
+     {
+      "bounds": [
+       36,
+       2,
+       318,
+       17
+      ],
+      "text": "Multiline Text:",
+      "role": "text"
+     },
+     {
+      "bounds": [
+       37,
+       26,
+       316,
+       78
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       117,
+       318,
+       17
+      ],
+      "text": "Search Input (should be masked):"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       141,
+       316,
+       43
+      ]
+     },
+     {
+      "text": "Numeric Input:",
+      "bounds": [
+       36,
+       197,
+       318,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       37,
+       221,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       277,
+       318,
+       17
+      ],
+      "text": "Auto-Complete Input:"
+     },
+     {
+      "bounds": [
+       37,
+       301,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "text": "Interactive Controls",
+      "bounds": [
+       36,
+       394,
+       318,
+       31
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       36,
+       457,
+       99,
+       17
+      ],
+      "role": "text",
+      "text": "Toggle Switch:"
+     },
+     {
+      "role": "switch",
+      "bounds": [
+       303,
+       447,
+       51,
+       31
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       297,
+       444,
+       43,
+       43
+      ]
+     },
+     {
+      "bounds": [
+       36,
+       500,
+       318,
+       17
+      ],
+      "text": "Custom Range Control:",
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       48,
+       537,
+       22,
+       14
+      ],
+      "text": "Min"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       317,
+       537,
+       25,
+       14
+      ],
+      "text": "Max"
+     },
+     {
+      "bounds": [
+       36,
+       569,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Value: 50"
+     },
+     {
+      "role": "text",
+      "text": "Buttons",
+      "bounds": [
+       36,
+       634,
+       318,
+       31
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       138,
+       689,
+       114,
+       19
+      ],
+      "text": "Primary Button"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       127,
+       740,
+       136,
+       19
+      ],
+      "text": "Secondary Button"
+     },
+     {
+      "bounds": [
+       140,
+       793,
+       109,
+       19
+      ],
+      "text": "Outline Button",
+      "role": "text"
+     },
+     {
+      "role": "button",
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ]
+     },
+     {
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ],
+      "role": "image"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ]
+     }
+    ],
+    "viewport": [
+     390,
+     844
+    ]
+   },
+   "tag": "mp_wireframe"
+  },
+  "type": 5
+ },
+ {
+  "data": {
+   "node": {
+    "childNodes": [
+     {
+      "id": 2,
+      "type": 1,
+      "systemId": "",
+      "publicId": "",
+      "name": "html"
+     },
+     {
+      "childNodes": [
+       {
+        "id": 4,
+        "attributes": {},
+        "tagName": "head",
+        "type": 2,
+        "childNodes": [
+         {
+          "tagName": "style",
+          "type": 2,
+          "attributes": {},
+          "childNodes": [
+           {
+            "isStyle": true,
+            "id": 18,
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }"
+           }
+          ],
+          "id": 17
+         }
+        ]
+       },
+       {
+        "childNodes": [
+         {
+          "id": 29,
+          "attributes": {
+           "class": "screen"
+          },
+          "tagName": "div",
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "childNodes": [],
+            "id": 28,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            }
+           }
+          ],
+          "type": 2
+         }
+        ],
+        "attributes": {},
+        "type": 2,
+        "tagName": "body",
+        "id": 25
+       }
+      ],
+      "id": 3,
+      "tagName": "html",
+      "type": 2
+     }
+    ],
+    "type": 0,
+    "id": 1
+   }
+  },
+  "type": 2,
+  "timestamp": 1789674117712
+ },
+ {
+  "timestamp": 1789674131830,
+  "type": 4,
+  "data": {
+   "height": 844,
+   "width": 390
+  }
+ },
+ {
+  "data": {
+   "id": 28,
+   "source": 2,
+   "x": 195,
+   "y": 696,
+   "type": 7
+  },
+  "timestamp": 1789674131830,
+  "type": 3
+ },
+ {
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "publicId": "",
+      "type": 1,
+      "id": 2,
+      "systemId": "",
+      "name": "html"
+     },
+     {
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "isStyle": true,
+            "id": 18,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3
+           }
+          ],
+          "type": 2,
+          "id": 17,
+          "tagName": "style",
+          "attributes": {}
+         }
+        ],
+        "tagName": "head",
+        "id": 4,
+        "attributes": {}
+       },
+       {
+        "tagName": "body",
+        "attributes": {},
+        "type": 2,
+        "id": 25,
+        "childNodes": [
+         {
+          "type": 2,
+          "attributes": {
+           "class": "screen"
+          },
+          "tagName": "div",
+          "id": 29,
+          "childNodes": [
+           {
+            "tagName": "img",
+            "childNodes": [],
+            "type": 2,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "id": 28
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "id": 3,
+      "type": 2
+     }
+    ],
+    "id": 1
+   }
+  },
+  "type": 2,
+  "timestamp": 1789674131853
+ },
+ {
+  "data": {
+   "id": 28,
+   "x": 195,
+   "y": 696,
+   "type": 9,
+   "source": 2
+  },
+  "timestamp": 1789674131963,
+  "type": 3
+ },
+ {
+  "data": {
+   "width": 390,
+   "height": 844
+  },
+  "timestamp": 1789674133437,
+  "type": 4
+ },
+ {
+  "type": 3,
+  "data": {
+   "y": 646,
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 197
+  },
+  "timestamp": 1789674133437
+ },
+ {
+  "data": {
+   "node": {
+    "id": 1,
+    "type": 0,
+    "childNodes": [
+     {
+      "publicId": "",
+      "type": 1,
+      "systemId": "",
+      "name": "html",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "childNodes": [
+       {
+        "id": 4,
+        "childNodes": [
+         {
+          "tagName": "style",
+          "childNodes": [
+           {
+            "id": 18,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "type": 3
+           }
+          ],
+          "type": 2,
+          "id": 17,
+          "attributes": {}
+         }
+        ],
+        "attributes": {},
+        "type": 2,
+        "tagName": "head"
+       },
+       {
+        "type": 2,
+        "attributes": {},
+        "childNodes": [
+         {
+          "id": 29,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "type": 2,
+          "childNodes": [
+           {
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "type": 2,
+            "id": 28,
+            "childNodes": []
+           }
+          ]
+         }
+        ],
+        "id": 25,
+        "tagName": "body"
+       }
+      ],
+      "tagName": "html",
+      "id": 3
+     }
+    ]
+   }
+  },
+  "type": 2,
+  "timestamp": 1789674133457
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674133748,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "timeOffset": -250,
+     "id": 28,
+     "y": 644.6666564941406,
+     "x": 197.66665649414062
+    },
+    {
+     "y": 631,
+     "id": 28,
+     "x": 197.66665649414062,
+     "timeOffset": -200
+    },
+    {
+     "id": 28,
+     "y": 599.3333282470703,
+     "timeOffset": -150,
+     "x": 197.66665649414062
+    },
+    {
+     "timeOffset": -100,
+     "x": 197.66665649414062,
+     "y": 591,
+     "id": 28
+    },
+    {
+     "x": 197.66665649414062,
+     "y": 590.6666564941406,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  }
+ },
+ {
+  "timestamp": 1789674133814,
+  "type": 3,
+  "data": {
+   "source": 2,
+   "id": 28,
+   "y": 591,
+   "x": 197,
+   "type": 9
+  }
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674135371,
+  "data": {
+   "y": 528,
+   "id": 28,
+   "source": 2,
+   "x": 197,
+   "type": 7
+  }
+ },
+ {
+  "timestamp": 1789674135385,
+  "data": {
+   "node": {
+    "id": 1,
+    "type": 0,
+    "childNodes": [
+     {
+      "publicId": "",
+      "type": 1,
+      "systemId": "",
+      "name": "html",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "childNodes": [
+         {
+          "tagName": "style",
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17,
+          "attributes": {},
+          "type": 2
+         }
+        ],
+        "tagName": "head",
+        "attributes": {},
+        "id": 4,
+        "type": 2
+       },
+       {
+        "childNodes": [
+         {
+          "id": 29,
+          "type": 2,
+          "attributes": {
+           "class": "screen"
+          },
+          "tagName": "div",
+          "childNodes": [
+           {
+            "type": 2,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "id": 28,
+            "tagName": "img",
+            "childNodes": []
+           }
+          ]
+         }
+        ],
+        "id": 25,
+        "tagName": "body",
+        "type": 2,
+        "attributes": {}
+       }
+      ],
+      "id": 3
+     }
+    ]
+   }
+  },
+  "type": 2
+ },
+ {
+  "timestamp": 1789674135385,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     390,
+     844
+    ],
+    "elements": [
+     {
+      "bounds": [
+       37,
+       -20,
+       316,
+       78
+      ],
+      "role": "input"
+     },
+     {
+      "text": "Search Input (should be masked):",
+      "role": "text",
+      "bounds": [
+       36,
+       71,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       95,
+       316,
+       43
+      ]
+     },
+     {
+      "bounds": [
+       36,
+       152,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Numeric Input:"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       176,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Complete Input:",
+      "bounds": [
+       36,
+       232,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       256,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "text": "Interactive Controls",
+      "bounds": [
+       36,
+       348,
+       318,
+       31
+      ]
+     },
+     {
+      "text": "Toggle Switch:",
+      "bounds": [
+       36,
+       411,
+       99,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "role": "switch",
+      "bounds": [
+       303,
+       401,
+       51,
+       31
+      ]
+     },
+     {
+      "bounds": [
+       297,
+       398,
+       43,
+       43
+      ],
+      "role": "image"
+     },
+     {
+      "text": "Custom Range Control:",
+      "role": "text",
+      "bounds": [
+       36,
+       454,
+       318,
+       17
+      ]
+     },
+     {
+      "text": "Min",
+      "bounds": [
+       48,
+       491,
+       22,
+       14
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       317,
+       491,
+       25,
+       14
+      ],
+      "text": "Max",
+      "role": "text"
+     },
+     {
+      "bounds": [
+       36,
+       523,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Value: 50"
+     },
+     {
+      "bounds": [
+       36,
+       588,
+       318,
+       31
+      ],
+      "role": "text",
+      "text": "Buttons"
+     },
+     {
+      "text": "Primary Button",
+      "bounds": [
+       138,
+       643,
+       114,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "text": "Secondary Button",
+      "bounds": [
+       127,
+       694,
+       136,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Outline Button",
+      "bounds": [
+       140,
+       748,
+       109,
+       19
+      ]
+     },
+     {
+      "bounds": [
+       140,
+       801,
+       110,
+       19
+      ],
+      "text": "Danger Button",
+      "role": "text"
+     },
+     {
+      "role": "button",
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ]
+     },
+     {
+      "role": "image",
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ]
+     },
+     {
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ],
+      "role": "text",
+      "text": "Back"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "text": "Masking Test"
+     }
+    ]
+   }
+  },
+  "type": 5
+ },
+ {
+  "timestamp": 1789674135765,
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 197,
+     "id": 28,
+     "y": 615.6666564941406,
+     "timeOffset": -319
+    },
+    {
+     "id": 28,
+     "timeOffset": -267,
+     "y": 699.6666564941406,
+     "x": 197
+    },
+    {
+     "id": 28,
+     "y": 704.6666564941406,
+     "timeOffset": -51,
+     "x": 197
+    },
+    {
+     "y": 703,
+     "id": 28,
+     "x": 197,
+     "timeOffset": 0
+    }
+   ]
+  }
+ },
+ {
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 197,
+   "y": 703
+  },
+  "type": 3,
+  "timestamp": 1789674135781
+ },
+ {
+  "data": {
+   "type": 7,
+   "id": 28,
+   "x": 197,
+   "source": 2,
+   "y": 689
+  },
+  "timestamp": 1789674136364,
+  "type": 3
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "elements": [
+     {
+      "bounds": [
+       36,
+       1,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Phone Number:"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       25,
+       316,
+       43
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Multiline Text:",
+      "bounds": [
+       36,
+       82,
+       318,
+       17
+      ]
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       106,
+       316,
+       78
+      ]
+     },
+     {
+      "text": "Search Input (should be masked):",
+      "bounds": [
+       36,
+       197,
+       318,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       37,
+       221,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "text": "Numeric Input:",
+      "bounds": [
+       36,
+       277,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       301,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       357,
+       318,
+       17
+      ],
+      "text": "Auto-Complete Input:"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       381,
+       316,
+       43
+      ]
+     },
+     {
+      "text": "Interactive Controls",
+      "bounds": [
+       36,
+       474,
+       318,
+       31
+      ],
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "text": "Toggle Switch:",
+      "bounds": [
+       36,
+       536,
+       99,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       303,
+       526,
+       51,
+       31
+      ],
+      "role": "switch"
+     },
+     {
+      "bounds": [
+       297,
+       523,
+       43,
+       43
+      ],
+      "role": "image"
+     },
+     {
+      "text": "Custom Range Control:",
+      "role": "text",
+      "bounds": [
+       36,
+       579,
+       318,
+       17
+      ]
+     },
+     {
+      "text": "Min",
+      "role": "text",
+      "bounds": [
+       48,
+       616,
+       22,
+       14
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Max",
+      "bounds": [
+       317,
+       616,
+       25,
+       14
+      ]
+     },
+     {
+      "bounds": [
+       36,
+       649,
+       318,
+       17
+      ],
+      "role": "text",
+      "text": "Value: 50"
+     },
+     {
+      "bounds": [
+       36,
+       714,
+       318,
+       31
+      ],
+      "role": "text",
+      "text": "Buttons"
+     },
+     {
+      "text": "Primary Button",
+      "bounds": [
+       138,
+       768,
+       114,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "text": "Secondary Button",
+      "bounds": [
+       127,
+       820,
+       136,
+       19
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ],
+      "role": "button"
+     },
+     {
+      "role": "image",
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "role": "text"
+     }
+    ],
+    "viewport": [
+     390,
+     844
+    ]
+   }
+  },
+  "timestamp": 1789674136369
+ },
+ {
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "name": "html",
+      "id": 2,
+      "publicId": "",
+      "systemId": "",
+      "type": 1
+     },
+     {
+      "type": 2,
+      "id": 3,
+      "childNodes": [
+       {
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "id": 18,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3,
+            "isStyle": true
+           }
+          ],
+          "id": 17,
+          "attributes": {},
+          "tagName": "style",
+          "type": 2
+         }
+        ],
+        "attributes": {},
+        "tagName": "head",
+        "id": 4,
+        "type": 2
+       },
+       {
+        "id": 25,
+        "tagName": "body",
+        "attributes": {},
+        "type": 2,
+        "childNodes": [
+         {
+          "id": 29,
+          "attributes": {
+           "class": "screen"
+          },
+          "tagName": "div",
+          "type": 2,
+          "childNodes": [
+           {
+            "id": 28,
+            "tagName": "img",
+            "type": 2,
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": []
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "tagName": "html"
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789674136369,
+  "type": 2
+ },
+ {
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "y": 685,
+     "timeOffset": -519,
+     "x": 197.66665649414062,
+     "id": 28
+    },
+    {
+     "y": 676.3333282470703,
+     "timeOffset": -469,
+     "x": 197.66665649414062,
+     "id": 28
+    },
+    {
+     "y": 648.3333282470703,
+     "x": 197.66665649414062,
+     "id": 28,
+     "timeOffset": -419
+    },
+    {
+     "timeOffset": -369,
+     "x": 198.3333282470703,
+     "y": 601,
+     "id": 28
+    },
+    {
+     "timeOffset": -319,
+     "x": 202.3333282470703,
+     "y": 565.6666564941406,
+     "id": 28
+    },
+    {
+     "timeOffset": -269,
+     "y": 536.3333282470703,
+     "id": 28,
+     "x": 208
+    },
+    {
+     "y": 515.3333282470703,
+     "timeOffset": -219,
+     "id": 28,
+     "x": 213.3333282470703
+    },
+    {
+     "y": 497.3333282470703,
+     "id": 28,
+     "timeOffset": -167,
+     "x": 217.66665649414062
+    },
+    {
+     "x": 218.3333282470703,
+     "id": 28,
+     "y": 486.6666564941406,
+     "timeOffset": -117
+    },
+    {
+     "timeOffset": -50,
+     "x": 218.66665649414062,
+     "y": 482,
+     "id": 28
+    },
+    {
+     "x": 218.66665649414062,
+     "y": 479.3333282470703,
+     "timeOffset": 0,
+     "id": 28
+    }
+   ]
+  },
+  "type": 3,
+  "timestamp": 1789674136948
+ },
+ {
+  "type": 3,
+  "timestamp": 1789674137264,
+  "data": {
+   "positions": [
+    {
+     "x": 218.66665649414062,
+     "y": 477.3333282470703,
+     "timeOffset": -250,
+     "id": 28
+    },
+    {
+     "id": 28,
+     "y": 477,
+     "x": 218.66665649414062,
+     "timeOffset": 0
+    }
+   ],
+   "source": 6
+  }
+ },
+ {
+  "timestamp": 1789674137334,
+  "data": {
+   "id": 28,
+   "type": 9,
+   "x": 218,
+   "source": 2,
+   "y": 476
+  },
+  "type": 3
+ },
+ {
+  "type": 5,
+  "timestamp": 1789674137349,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "elements": [
+     {
+      "text": "Search Input (should be masked):",
+      "role": "text",
+      "bounds": [
+       36,
+       -6,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       18,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       75,
+       318,
+       17
+      ],
+      "text": "Numeric Input:"
+     },
+     {
+      "role": "input",
+      "bounds": [
+       37,
+       99,
+       316,
+       43
+      ]
+     },
+     {
+      "text": "Auto-Complete Input:",
+      "role": "text",
+      "bounds": [
+       36,
+       155,
+       318,
+       17
+      ]
+     },
+     {
+      "bounds": [
+       37,
+       179,
+       316,
+       43
+      ],
+      "role": "input"
+     },
+     {
+      "text": "Interactive Controls",
+      "role": "text",
+      "bounds": [
+       36,
+       271,
+       318,
+       31
+      ]
+     },
+     {
+      "text": "Toggle Switch:",
+      "bounds": [
+       36,
+       334,
+       99,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       303,
+       324,
+       51,
+       31
+      ],
+      "role": "switch"
+     },
+     {
+      "bounds": [
+       297,
+       321,
+       43,
+       43
+      ],
+      "role": "image"
+     },
+     {
+      "text": "Custom Range Control:",
+      "bounds": [
+       36,
+       377,
+       318,
+       17
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       48,
+       414,
+       22,
+       14
+      ],
+      "role": "text",
+      "text": "Min"
+     },
+     {
+      "text": "Max",
+      "role": "text",
+      "bounds": [
+       317,
+       414,
+       25,
+       14
+      ]
+     },
+     {
+      "role": "text",
+      "bounds": [
+       36,
+       446,
+       318,
+       17
+      ],
+      "text": "Value: 50"
+     },
+     {
+      "text": "Buttons",
+      "role": "text",
+      "bounds": [
+       36,
+       511,
+       318,
+       31
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Primary Button",
+      "bounds": [
+       138,
+       566,
+       114,
+       19
+      ]
+     },
+     {
+      "bounds": [
+       127,
+       617,
+       136,
+       19
+      ],
+      "role": "text",
+      "text": "Secondary Button"
+     },
+     {
+      "bounds": [
+       140,
+       671,
+       109,
+       19
+      ],
+      "text": "Outline Button",
+      "role": "text"
+     },
+     {
+      "role": "text",
+      "text": "Danger Button",
+      "bounds": [
+       140,
+       724,
+       110,
+       19
+      ]
+     },
+     {
+      "text": "Images & Media",
+      "bounds": [
+       36,
+       811,
+       318,
+       31
+      ],
+      "role": "text"
+     },
+     {
+      "bounds": [
+       0,
+       51,
+       74,
+       37
+      ],
+      "role": "button"
+     },
+     {
+      "bounds": [
+       8,
+       59,
+       13,
+       21
+      ],
+      "role": "image"
+     },
+     {
+      "role": "text",
+      "bounds": [
+       27,
+       59,
+       39,
+       20
+      ]
+     },
+     {
+      "bounds": [
+       141,
+       59,
+       108,
+       20
+      ],
+      "role": "text"
+     }
+    ],
+    "viewport": [
+     390,
+     844
+    ]
+   }
+  }
+ },
+ {
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "publicId": "",
+      "type": 1,
+      "name": "html",
+      "id": 2,
+      "systemId": ""
+     },
+     {
+      "id": 3,
+      "tagName": "html",
+      "type": 2,
+      "childNodes": [
+       {
+        "tagName": "head",
+        "childNodes": [
+         {
+          "type": 2,
+          "childNodes": [
+           {
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "type": 3,
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "tagName": "style",
+          "id": 17,
+          "attributes": {}
+         }
+        ],
+        "type": 2,
+        "attributes": {},
+        "id": 4
+       },
+       {
+        "id": 25,
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "childNodes": [
+           {
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "id": 28,
+            "tagName": "img",
+            "childNodes": [],
+            "type": 2
+           }
+          ],
+          "type": 2,
+          "id": 29,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789674137349,
+  "type": 2
+ },
+ {
+  "timestamp": 1789674146585,
+  "type": 4,
+  "data": {
+   "width": 390,
+   "height": 844
+  }
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "id": 28,
+   "x": 40,
+   "type": 7,
+   "y": 558
+  },
+  "timestamp": 1789674146585
+ },
+ {
+  "type": 3,
+  "data": {
+   "y": 558,
+   "id": 28,
+   "type": 9,
+   "x": 40,
+   "source": 2
+  },
+  "timestamp": 1789674146720
+ }
+]

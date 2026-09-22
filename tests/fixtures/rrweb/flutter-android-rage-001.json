@@ -1,0 +1,11944 @@
+[
+ {
+  "type": 4,
+  "data": {
+   "discriminator": "dimension",
+   "width": 412,
+   "height": 915
+  },
+  "timestamp": 1789663314066
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663314066
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Test Scenarios",
+      "bounds": [
+       16,
+       96,
+       379,
+       29
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       176,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Event Triggers",
+      "bounds": [
+       100,
+       157,
+       107,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Fire test events with bool / int / string / mixed…",
+      "bounds": [
+       100,
+       184,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       178,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       285,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Mixed Content",
+      "bounds": [
+       100,
+       266,
+       108,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "JSON-driven test with text, images, and nested co…",
+      "bounds": [
+       100,
+       293,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       287,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       394,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Animations",
+      "bounds": [
+       100,
+       375,
+       84,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Various animation types (fade, scale, rotate, sli…",
+      "bounds": [
+       100,
+       402,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       396,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       496,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Visibility Variations",
+      "bounds": [
+       100,
+       487,
+       145,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Test different visibility states and opacity",
+      "bounds": [
+       100,
+       514,
+       247,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       498,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       592,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Text Input Forms",
+      "bounds": [
+       100,
+       583,
+       126,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Various TextField types with masking",
+      "bounds": [
+       100,
+       610,
+       223,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       594,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       695,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Image Gallery",
+      "bounds": [
+       100,
+       676,
+       103,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Colored container images to test masking",
+      "bounds": [
+       100,
+       703,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       697,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       804,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Security Enforcement",
+      "bounds": [
+       100,
+       785,
+       161,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "TextField always masked (even in MixpanelUnmask)",
+      "bounds": [
+       100,
+       812,
+       247,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       806,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       85,
+       863,
+       35,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       286,
+       866,
+       46,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663314066
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316578
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 695,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663316639
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316640
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 695
+  },
+  "timestamp": 1789663316644
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 708
+  },
+  "timestamp": 1789663316674
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316685
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316707
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 721
+  },
+  "timestamp": 1789663316717
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316737
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 715
+  },
+  "timestamp": 1789663316741
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 705
+  },
+  "timestamp": 1789663316753
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316753
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316786
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 695
+  },
+  "timestamp": 1789663316787
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316835
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 713
+  },
+  "timestamp": 1789663316836
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 718,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663316885
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 750
+  },
+  "timestamp": 1789663316918
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663316921
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 654,
+     "id": 28,
+     "timeOffset": -58
+    },
+    {
+     "x": 257,
+     "y": 601,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663317037
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317070
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 567
+  },
+  "timestamp": 1789663317071
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 575,
+     "id": 28,
+     "timeOffset": -120
+    },
+    {
+     "x": 257,
+     "y": 523,
+     "id": 28,
+     "timeOffset": -59
+    },
+    {
+     "x": 257,
+     "y": 484,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663317247
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 478
+  },
+  "timestamp": 1789663317270
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317272
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 542,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663317325
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 542
+  },
+  "timestamp": 1789663317339
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317339
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 519
+  },
+  "timestamp": 1789663317355
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317357
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317366
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 574
+  },
+  "timestamp": 1789663317374
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 572
+  },
+  "timestamp": 1789663317383
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317387
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 574
+  },
+  "timestamp": 1789663317403
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317405
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317420
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 572
+  },
+  "timestamp": 1789663317422
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 575
+  },
+  "timestamp": 1789663317437
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317437
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317469
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 526
+  },
+  "timestamp": 1789663317470
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 257,
+     "y": 427,
+     "id": 28,
+     "timeOffset": -238
+    },
+    {
+     "x": 257,
+     "y": 299,
+     "id": 28,
+     "timeOffset": -179
+    },
+    {
+     "x": 257,
+     "y": 208,
+     "id": 28,
+     "timeOffset": -119
+    },
+    {
+     "x": 257,
+     "y": 153,
+     "id": 28,
+     "timeOffset": -59
+    },
+    {
+     "x": 257,
+     "y": 135,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663317770
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 135
+  },
+  "timestamp": 1789663317770
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663317798
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 257,
+   "y": 638
+  },
+  "timestamp": 1789663318100
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663318741
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Current Platform: Android",
+      "bounds": [
+       16,
+       96,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Buttons",
+      "bounds": [
+       32,
+       159,
+       58,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material",
+      "bounds": [
+       105,
+       200,
+       46,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Material",
+      "bounds": [
+       78,
+       225,
+       100,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupertino",
+      "bounds": [
+       251,
+       198,
+       54,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Cupertino",
+      "bounds": [
+       224,
+       223,
+       110,
+       52
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Switches",
+      "bounds": [
+       32,
+       323,
+       67,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material",
+      "bounds": [
+       115,
+       362,
+       46,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupertino",
+      "bounds": [
+       247,
+       367,
+       54,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Sliders",
+      "bounds": [
+       32,
+       483,
+       52,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material",
+      "bounds": [
+       183,
+       522,
+       46,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupertino",
+      "bounds": [
+       178,
+       603,
+       54,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Activity Indicators",
+      "bounds": [
+       32,
+       712,
+       135,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material",
+      "bounds": [
+       114,
+       751,
+       46,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupertino",
+      "bounds": [
+       243,
+       759,
+       54,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Date/Time Pickers",
+      "bounds": [
+       32,
+       860,
+       138,
+       23
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Material Date Picker",
+      "bounds": [
+       41,
+       899,
+       177,
+       15
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       4,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Platform Widgets Test",
+      "bounds": [
+       72,
+       38,
+       218,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663318741
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663319392
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 20,
+   "y": 48
+  },
+  "timestamp": 1789663319869
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663320015
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 20,
+   "y": 48
+  },
+  "timestamp": 1789663320019
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663320655
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       133,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Visibility Variations",
+      "bounds": [
+       100,
+       124,
+       145,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Test different visibility states and opacity",
+      "bounds": [
+       100,
+       151,
+       247,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       135,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       229,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Text Input Forms",
+      "bounds": [
+       100,
+       220,
+       126,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Various TextField types with masking",
+      "bounds": [
+       100,
+       247,
+       223,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       231,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       332,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Image Gallery",
+      "bounds": [
+       100,
+       313,
+       103,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Colored container images to test masking",
+      "bounds": [
+       100,
+       340,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       334,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       441,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Security Enforcement",
+      "bounds": [
+       100,
+       422,
+       161,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "TextField always masked (even in MixpanelUnmask)",
+      "bounds": [
+       100,
+       449,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       443,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       543,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Rapid Scroll / Performance",
+      "bounds": [
+       100,
+       534,
+       201,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1000+ items list for performance testing",
+      "bounds": [
+       100,
+       561,
+       243,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       545,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       646,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Platform Widgets",
+      "bounds": [
+       100,
+       627,
+       130,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material vs Cupertino widgets side-by-side",
+      "bounds": [
+       100,
+       654,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       648,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       748,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Dialog Test",
+      "bounds": [
+       100,
+       739,
+       83,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Open a dialog with mixed content",
+      "bounds": [
+       100,
+       766,
+       200,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       750,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       85,
+       863,
+       35,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       286,
+       866,
+       46,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663320655
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 188,
+   "y": 468
+  },
+  "timestamp": 1789663324154
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 188,
+   "y": 468
+  },
+  "timestamp": 1789663324230
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663324859
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "🔒 SECURITY: TextField in Safe Container",
+      "bounds": [
+       34,
+       114,
+       310,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "TextField is ALWAYS masked, even in MixpanelUnmask",
+      "bounds": [
+       34,
+       141,
+       296,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "This text is unmasked (safe container)",
+      "bounds": [
+       82,
+       170,
+       248,
+       20
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       50,
+       218,
+       311,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Password (ALWAYS MASKED)",
+      "bounds": [
+       50,
+       197,
+       169,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "⚠️ TextField is masked despite parent MixpanelUnm…",
+      "bounds": [
+       48,
+       266,
+       315,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "🔒 SECURITY: Multiple Input Fields",
+      "bounds": [
+       34,
+       335,
+       262,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "All input fields masked in safe container",
+      "bounds": [
+       34,
+       362,
+       217,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Login Form (in MixpanelUnmask)",
+      "bounds": [
+       34,
+       391,
+       246,
+       23
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       50,
+       442,
+       311,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Email (MASKED)",
+      "bounds": [
+       50,
+       421,
+       94,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       50,
+       510,
+       311,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Password (MASKED)",
+      "bounds": [
+       50,
+       489,
+       118,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "✓ Both fields are masked for security",
+      "bounds": [
+       34,
+       558,
+       205,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "🔒 SECURITY: Nested Safe Containers",
+      "bounds": [
+       34,
+       627,
+       286,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "TextField masked even in deeply nested MixpanelUn…",
+      "bounds": [
+       34,
+       654,
+       311,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Nested safe container level 1",
+      "bounds": [
+       112,
+       695,
+       187,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Nested safe container level 2",
+      "bounds": [
+       112,
+       735,
+       187,
+       20
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       74,
+       779,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Deep nested TextField (MASKED)",
+      "bounds": [
+       74,
+       758,
+       188,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "🔒 SECURITY: TextFormField",
+      "bounds": [
+       34,
+       895,
+       216,
+       19
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       4,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Security Enforcement Tests",
+      "bounds": [
+       72,
+       38,
+       268,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663324859
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 19,
+   "y": 52
+  },
+  "timestamp": 1789663329953
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663330071
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 19,
+   "y": 52
+  },
+  "timestamp": 1789663330114
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663330687
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       133,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Visibility Variations",
+      "bounds": [
+       100,
+       124,
+       145,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Test different visibility states and opacity",
+      "bounds": [
+       100,
+       151,
+       247,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       135,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       229,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Text Input Forms",
+      "bounds": [
+       100,
+       220,
+       126,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Various TextField types with masking",
+      "bounds": [
+       100,
+       247,
+       223,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       231,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       332,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Image Gallery",
+      "bounds": [
+       100,
+       313,
+       103,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Colored container images to test masking",
+      "bounds": [
+       100,
+       340,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       334,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       441,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Security Enforcement",
+      "bounds": [
+       100,
+       422,
+       161,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "TextField always masked (even in MixpanelUnmask)",
+      "bounds": [
+       100,
+       449,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       443,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       543,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Rapid Scroll / Performance",
+      "bounds": [
+       100,
+       534,
+       201,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1000+ items list for performance testing",
+      "bounds": [
+       100,
+       561,
+       243,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       545,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       646,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Platform Widgets",
+      "bounds": [
+       100,
+       627,
+       130,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Material vs Cupertino widgets side-by-side",
+      "bounds": [
+       100,
+       654,
+       247,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       648,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       44,
+       748,
+       28,
+       28
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Dialog Test",
+      "bounds": [
+       100,
+       739,
+       83,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Open a dialog with mixed content",
+      "bounds": [
+       100,
+       766,
+       200,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       355,
+       750,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       85,
+       863,
+       35,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       286,
+       866,
+       46,
+       17
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663330687
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 331,
+   "y": 873
+  },
+  "timestamp": 1789663333256
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663333264
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 331,
+   "y": 873
+  },
+  "timestamp": 1789663333372
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663333986
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "SDK Status",
+      "bounds": [
+       16,
+       96,
+       379,
+       29
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current Status",
+      "bounds": [
+       36,
+       161,
+       108,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "SDK Initialized",
+      "bounds": [
+       36,
+       202,
+       93,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "YES",
+      "bounds": [
+       350,
+       202,
+       26,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording State",
+      "bounds": [
+       36,
+       234,
+       103,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "RECORDING",
+      "bounds": [
+       296,
+       234,
+       79,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording Controls",
+      "bounds": [
+       16,
+       304,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Start Recording",
+      "bounds": [
+       16,
+       342,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Stop Recording",
+      "bounds": [
+       212,
+       342,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Identity Management",
+      "bounds": [
+       16,
+       414,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       468,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       472,
+       116,
+       16
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       468,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Update Distinct ID",
+      "bounds": [
+       16,
+       520,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Animation Speed",
+      "bounds": [
+       16,
+       624,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1x",
+      "bounds": [
+       16,
+       676,
+       15,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "20x",
+      "bounds": [
+       372,
+       676,
+       23,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current: 1x slower",
+      "bounds": [
+       16,
+       710,
+       379,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Advanced",
+      "bounds": [
+       16,
+       786,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Re-initialize SDK",
+      "bounds": [
+       16,
+       824,
+       379,
+       8
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       88,
+       866,
+       30,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       282,
+       863,
+       53,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663333986
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335106
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 275,
+     "y": 348,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663335167
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663335177
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "SDK Status",
+      "bounds": [
+       16,
+       88,
+       379,
+       29
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current Status",
+      "bounds": [
+       36,
+       153,
+       108,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "SDK Initialized",
+      "bounds": [
+       36,
+       194,
+       93,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "YES",
+      "bounds": [
+       350,
+       194,
+       26,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording State",
+      "bounds": [
+       36,
+       226,
+       103,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "RECORDING",
+      "bounds": [
+       296,
+       226,
+       79,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording Controls",
+      "bounds": [
+       16,
+       296,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Start Recording",
+      "bounds": [
+       16,
+       334,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Stop Recording",
+      "bounds": [
+       212,
+       334,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Identity Management",
+      "bounds": [
+       16,
+       406,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       460,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       464,
+       116,
+       16
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       460,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Update Distinct ID",
+      "bounds": [
+       16,
+       512,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Animation Speed",
+      "bounds": [
+       16,
+       616,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1x",
+      "bounds": [
+       16,
+       668,
+       15,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "20x",
+      "bounds": [
+       372,
+       668,
+       23,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current: 1x slower",
+      "bounds": [
+       16,
+       702,
+       379,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Advanced",
+      "bounds": [
+       16,
+       778,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Re-initialize SDK",
+      "bounds": [
+       16,
+       816,
+       379,
+       16
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       88,
+       866,
+       30,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       282,
+       863,
+       53,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663335177
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 302
+  },
+  "timestamp": 1789663335222
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335222
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335271
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 275,
+     "y": 270,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663335272
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 270
+  },
+  "timestamp": 1789663335272
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 307
+  },
+  "timestamp": 1789663335304
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335309
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335341
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 292
+  },
+  "timestamp": 1789663335343
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 276
+  },
+  "timestamp": 1789663335374
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335379
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335404
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 267
+  },
+  "timestamp": 1789663335412
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 265
+  },
+  "timestamp": 1789663335421
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335422
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335451
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 267
+  },
+  "timestamp": 1789663335455
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 304
+  },
+  "timestamp": 1789663335471
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335474
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 303
+  },
+  "timestamp": 1789663335492
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335493
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 301
+  },
+  "timestamp": 1789663335509
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335512
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335528
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 300
+  },
+  "timestamp": 1789663335529
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335544
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 236
+  },
+  "timestamp": 1789663335545
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335559
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 307
+  },
+  "timestamp": 1789663335561
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 307
+  },
+  "timestamp": 1789663335575
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335575
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335589
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 305
+  },
+  "timestamp": 1789663335591
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 305
+  },
+  "timestamp": 1789663335607
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335610
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335624
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 305
+  },
+  "timestamp": 1789663335626
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335639
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 307
+  },
+  "timestamp": 1789663335641
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 307
+  },
+  "timestamp": 1789663335655
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335657
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 308
+  },
+  "timestamp": 1789663335674
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335674
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335689
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 255
+  },
+  "timestamp": 1789663335691
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 267
+  },
+  "timestamp": 1789663335722
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335727
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335759
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 272
+  },
+  "timestamp": 1789663335760
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335791
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 280
+  },
+  "timestamp": 1789663335793
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 286
+  },
+  "timestamp": 1789663335824
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335825
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335840
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 292
+  },
+  "timestamp": 1789663335842
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 300
+  },
+  "timestamp": 1789663335873
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335873
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 304
+  },
+  "timestamp": 1789663335906
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335910
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335957
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 285
+  },
+  "timestamp": 1789663335960
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663335989
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 297
+  },
+  "timestamp": 1789663335991
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 275,
+   "y": 368
+  },
+  "timestamp": 1789663336038
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 310
+  },
+  "timestamp": 1789663336039
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 275,
+     "y": 303,
+     "id": 28,
+     "timeOffset": -240
+    },
+    {
+     "x": 275,
+     "y": 251,
+     "id": 28,
+     "timeOffset": -180
+    },
+    {
+     "x": 275,
+     "y": 211,
+     "id": 28,
+     "timeOffset": -120
+    },
+    {
+     "x": 275,
+     "y": 183,
+     "id": 28,
+     "timeOffset": -60
+    },
+    {
+     "x": 275,
+     "y": 168,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663336332
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 275,
+   "y": 165
+  },
+  "timestamp": 1789663336377
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 241,
+   "y": 807
+  },
+  "timestamp": 1789663337053
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663337085
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Current Status",
+      "bounds": [
+       36,
+       105,
+       108,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "SDK Initialized",
+      "bounds": [
+       36,
+       146,
+       93,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "YES",
+      "bounds": [
+       350,
+       146,
+       26,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording State",
+      "bounds": [
+       36,
+       178,
+       103,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "RECORDING",
+      "bounds": [
+       296,
+       178,
+       79,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording Controls",
+      "bounds": [
+       16,
+       248,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Start Recording",
+      "bounds": [
+       16,
+       286,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Stop Recording",
+      "bounds": [
+       212,
+       286,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Identity Management",
+      "bounds": [
+       16,
+       358,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       412,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       416,
+       116,
+       16
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       412,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Update Distinct ID",
+      "bounds": [
+       16,
+       464,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Animation Speed",
+      "bounds": [
+       16,
+       568,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1x",
+      "bounds": [
+       16,
+       620,
+       15,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "20x",
+      "bounds": [
+       372,
+       620,
+       23,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current: 1x slower",
+      "bounds": [
+       16,
+       654,
+       379,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Advanced",
+      "bounds": [
+       16,
+       730,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Re-initialize SDK",
+      "bounds": [
+       16,
+       768,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       88,
+       866,
+       30,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       282,
+       863,
+       53,
+       20
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663337085
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 241,
+   "y": 807
+  },
+  "timestamp": 1789663337158
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663337634
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Current Status",
+      "bounds": [
+       36,
+       105,
+       108,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "SDK Initialized",
+      "bounds": [
+       36,
+       146,
+       93,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "YES",
+      "bounds": [
+       350,
+       146,
+       26,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording State",
+      "bounds": [
+       36,
+       178,
+       103,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "RECORDING",
+      "bounds": [
+       296,
+       178,
+       79,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Recording Controls",
+      "bounds": [
+       16,
+       248,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Start Recording",
+      "bounds": [
+       16,
+       286,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Stop Recording",
+      "bounds": [
+       212,
+       286,
+       184,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Identity Management",
+      "bounds": [
+       16,
+       358,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       412,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       416,
+       116,
+       16
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       32,
+       412,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Update Distinct ID",
+      "bounds": [
+       16,
+       464,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Animation Speed",
+      "bounds": [
+       16,
+       568,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1x",
+      "bounds": [
+       16,
+       620,
+       15,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "20x",
+      "bounds": [
+       372,
+       620,
+       23,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Current: 1x slower",
+      "bounds": [
+       16,
+       654,
+       379,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Advanced",
+      "bounds": [
+       16,
+       730,
+       379,
+       26
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Re-initialize SDK",
+      "bounds": [
+       16,
+       768,
+       379,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay Test Platform",
+      "bounds": [
+       16,
+       38,
+       235,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       267,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       315,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       363,
+       28,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       91,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Tests",
+      "bounds": [
+       88,
+       866,
+       30,
+       17
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       297,
+       839,
+       24,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Settings",
+      "bounds": [
+       282,
+       863,
+       53,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Re-initialize SDK?",
+      "bounds": [
+       64,
+       377,
+       283,
+       32
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       64,
+       425,
+       283,
+       40
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Cancel",
+      "bounds": [
+       173,
+       489,
+       67,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Re-initialize",
+      "bounds": [
+       249,
+       489,
+       99,
+       48
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663337634
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663338272
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 308,
+   "y": 510
+  },
+  "timestamp": 1789663340280
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663340336
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 308,
+   "y": 510
+  },
+  "timestamp": 1789663340354
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663341040
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663341040
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345601
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663345623
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 244,
+     "y": 676,
+     "id": 28,
+     "timeOffset": -120
+    },
+    {
+     "x": 244,
+     "y": 655,
+     "id": 28,
+     "timeOffset": -59
+    },
+    {
+     "x": 244,
+     "y": 601,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663345781
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 601
+  },
+  "timestamp": 1789663345782
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345793
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 244,
+     "y": 593,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663345853
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345857
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 593
+  },
+  "timestamp": 1789663345859
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345885
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 603
+  },
+  "timestamp": 1789663345891
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 574
+  },
+  "timestamp": 1789663345918
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345919
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 550
+  },
+  "timestamp": 1789663345936
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345936
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 601
+  },
+  "timestamp": 1789663345958
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345961
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345976
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 595
+  },
+  "timestamp": 1789663345978
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663345990
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 590
+  },
+  "timestamp": 1789663345992
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 587
+  },
+  "timestamp": 1789663346007
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346008
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 582
+  },
+  "timestamp": 1789663346025
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346028
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 487
+  },
+  "timestamp": 1789663346044
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346044
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 587
+  },
+  "timestamp": 1789663346061
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346062
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346075
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 585
+  },
+  "timestamp": 1789663346078
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346091
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 583
+  },
+  "timestamp": 1789663346092
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346107
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 583
+  },
+  "timestamp": 1789663346108
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 583
+  },
+  "timestamp": 1789663346123
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346156
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 585
+  },
+  "timestamp": 1789663346173
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346182
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 587
+  },
+  "timestamp": 1789663346199
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346200
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346210
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 588
+  },
+  "timestamp": 1789663346217
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 508
+  },
+  "timestamp": 1789663346226
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346239
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346246
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 601
+  },
+  "timestamp": 1789663346255
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346255
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 603
+  },
+  "timestamp": 1789663346264
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346265
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 606
+  },
+  "timestamp": 1789663346271
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346273
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 606
+  },
+  "timestamp": 1789663346282
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346289
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 609
+  },
+  "timestamp": 1789663346290
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346299
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 612
+  },
+  "timestamp": 1789663346305
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346309
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 614
+  },
+  "timestamp": 1789663346317
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 617
+  },
+  "timestamp": 1789663346324
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346325
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346340
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 563
+  },
+  "timestamp": 1789663346343
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 579
+  },
+  "timestamp": 1789663346373
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346375
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346407
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 587
+  },
+  "timestamp": 1789663346408
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 593
+  },
+  "timestamp": 1789663346441
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346441
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 599
+  },
+  "timestamp": 1789663346474
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346476
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346490
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 607
+  },
+  "timestamp": 1789663346492
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 619
+  },
+  "timestamp": 1789663346524
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346525
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 601
+  },
+  "timestamp": 1789663346574
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346574
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346622
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 611
+  },
+  "timestamp": 1789663346624
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 606
+  },
+  "timestamp": 1789663346672
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 244,
+   "y": 678
+  },
+  "timestamp": 1789663346674
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 244,
+     "y": 622,
+     "id": 28,
+     "timeOffset": -239
+    },
+    {
+     "x": 244,
+     "y": 579,
+     "id": 28,
+     "timeOffset": -179
+    },
+    {
+     "x": 244,
+     "y": 548,
+     "id": 28,
+     "timeOffset": -119
+    },
+    {
+     "x": 244,
+     "y": 531,
+     "id": 28,
+     "timeOffset": -59
+    },
+    {
+     "x": 244,
+     "y": 523,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663346970
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 244,
+   "y": 523
+  },
+  "timestamp": 1789663346970
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663347843
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       80,
+       263,
+       8
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       116,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       140,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       182,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       223,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       295,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       383,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Show Debug Mask Overlay",
+      "bounds": [
+       32,
+       455,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Enable Wireframes",
+      "bounds": [
+       32,
+       519,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Emit structured element frames alongside screensh…",
+      "bounds": [
+       32,
+       543,
+       263,
+       40
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Wireframe Debug Emitter",
+      "bounds": [
+       32,
+       599,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Mirror each captured frame to the on-device Wiref…",
+      "bounds": [
+       32,
+       623,
+       263,
+       80
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Accessibility Label Fallback",
+      "bounds": [
+       32,
+       719,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Use a semantics label when a widget has no visibl…",
+      "bounds": [
+       32,
+       743,
+       263,
+       60
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663347843
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 252,
+   "y": 681
+  },
+  "timestamp": 1789663405342
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 247,
+     "y": 652,
+     "id": 28,
+     "timeOffset": -150
+    },
+    {
+     "x": 239,
+     "y": 590,
+     "id": 28,
+     "timeOffset": -100
+    },
+    {
+     "x": 239,
+     "y": 540,
+     "id": 28,
+     "timeOffset": -50
+    },
+    {
+     "x": 241,
+     "y": 515,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663405547
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 241,
+   "y": 515
+  },
+  "timestamp": 1789663405672
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663406403
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 236,
+   "y": 459
+  },
+  "timestamp": 1789663406628
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663406958
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       110,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       89,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       174,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       219,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       243,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       291,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       315,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       357,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       398,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       470,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       558,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Show Debug Mask Overlay",
+      "bounds": [
+       32,
+       630,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Enable Wireframes",
+      "bounds": [
+       32,
+       694,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Emit structured element frames alongside screensh…",
+      "bounds": [
+       32,
+       718,
+       263,
+       40
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Wireframe Debug Emitter",
+      "bounds": [
+       32,
+       774,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Mirror each captured frame to the on-device Wiref…",
+      "bounds": [
+       32,
+       798,
+       263,
+       29
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663406958
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 236,
+     "y": 460,
+     "id": 28,
+     "timeOffset": -500
+    },
+    {
+     "x": 236,
+     "y": 478,
+     "id": 28,
+     "timeOffset": -450
+    },
+    {
+     "x": 239,
+     "y": 575,
+     "id": 28,
+     "timeOffset": -400
+    },
+    {
+     "x": 246,
+     "y": 630,
+     "id": 28,
+     "timeOffset": -350
+    },
+    {
+     "x": 247,
+     "y": 647,
+     "id": 28,
+     "timeOffset": -300
+    },
+    {
+     "x": 247,
+     "y": 654,
+     "id": 28,
+     "timeOffset": -250
+    },
+    {
+     "x": 249,
+     "y": 667,
+     "id": 28,
+     "timeOffset": -200
+    },
+    {
+     "x": 255,
+     "y": 695,
+     "id": 28,
+     "timeOffset": -150
+    },
+    {
+     "x": 263,
+     "y": 730,
+     "id": 28,
+     "timeOffset": -100
+    },
+    {
+     "x": 276,
+     "y": 788,
+     "id": 28,
+     "timeOffset": -50
+    },
+    {
+     "x": 291,
+     "y": 836,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663407211
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 299,
+     "y": 860,
+     "id": 28,
+     "timeOffset": -50
+    },
+    {
+     "x": 302,
+     "y": 870,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663407311
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 302,
+   "y": 871
+  },
+  "timestamp": 1789663407350
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663407607
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       91,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       163,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       235,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       307,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       392,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       437,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       461,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       575,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       616,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       776,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663407607
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 294,
+   "y": 481
+  },
+  "timestamp": 1789663408373
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663408477
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 291,
+     "y": 491,
+     "id": 28,
+     "timeOffset": -300
+    },
+    {
+     "x": 282,
+     "y": 566,
+     "id": 28,
+     "timeOffset": -250
+    },
+    {
+     "x": 282,
+     "y": 644,
+     "id": 28,
+     "timeOffset": -200
+    },
+    {
+     "x": 282,
+     "y": 683,
+     "id": 28,
+     "timeOffset": -150
+    },
+    {
+     "x": 282,
+     "y": 702,
+     "id": 28,
+     "timeOffset": -100
+    },
+    {
+     "x": 282,
+     "y": 719,
+     "id": 28,
+     "timeOffset": -50
+    },
+    {
+     "x": 282,
+     "y": 729,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663408766
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 282,
+   "y": 730
+  },
+  "timestamp": 1789663408808
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 281,
+   "y": 726
+  },
+  "timestamp": 1789663409570
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663409640
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663409640
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 281,
+   "y": 726
+  },
+  "timestamp": 1789663410036
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663410734
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": "NONE",
+      "bounds": [
+       0,
+       500,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "ERROR",
+      "bounds": [
+       0,
+       548,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "WARNING",
+      "bounds": [
+       0,
+       596,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "INFO",
+      "bounds": [
+       0,
+       644,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG",
+      "bounds": [
+       0,
+       692,
+       411,
+       48
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663410734
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 169,
+   "y": 537
+  },
+  "timestamp": 1789663413920
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663414040
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 169,
+   "y": 537
+  },
+  "timestamp": 1789663414085
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663414829
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "NONE Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663414829
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 270,
+   "y": 713
+  },
+  "timestamp": 1789663416799
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 270,
+   "y": 711
+  },
+  "timestamp": 1789663416904
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663417453
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "NONE Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     },
+     {
+      "role": "button",
+      "text": "NONE",
+      "bounds": [
+       0,
+       618,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "ERROR",
+      "bounds": [
+       0,
+       666,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "WARNING",
+      "bounds": [
+       0,
+       714,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "INFO",
+      "bounds": [
+       0,
+       762,
+       411,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG",
+      "bounds": [
+       0,
+       810,
+       411,
+       48
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663417453
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 153,
+   "y": 817
+  },
+  "timestamp": 1789663418089
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663418211
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 153,
+   "y": 817
+  },
+  "timestamp": 1789663418298
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663418789
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       112,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Token",
+      "bounds": [
+       32,
+       91,
+       34,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       184,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       163,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       256,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       235,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       328,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       307,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       400,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       379,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       464,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       509,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       533,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       581,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       605,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       647,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       688,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       760,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663418789
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 241,
+   "y": 198
+  },
+  "timestamp": 1789663425326
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 241,
+   "y": 198
+  },
+  "timestamp": 1789663425459
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663425515
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663426255
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663426812
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663427354
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663427919
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 298,
+   "y": 641
+  },
+  "timestamp": 1789663428108
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663428455
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       107,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Distinct ID",
+      "bounds": [
+       32,
+       86,
+       59,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       179,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Flush Interval (seconds, 0 = disabled)",
+      "bounds": [
+       32,
+       157,
+       212,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       251,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       229,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       323,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       301,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       387,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       432,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       456,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       504,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       528,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       570,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       611,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       683,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       771,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663428455
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 298,
+     "y": 638,
+     "id": 28,
+     "timeOffset": -500
+    },
+    {
+     "x": 298,
+     "y": 609,
+     "id": 28,
+     "timeOffset": -450
+    },
+    {
+     "x": 300,
+     "y": 577,
+     "id": 28,
+     "timeOffset": -400
+    },
+    {
+     "x": 303,
+     "y": 566,
+     "id": 28,
+     "timeOffset": -350
+    },
+    {
+     "x": 303,
+     "y": 561,
+     "id": 28,
+     "timeOffset": -300
+    },
+    {
+     "x": 305,
+     "y": 558,
+     "id": 28,
+     "timeOffset": -250
+    },
+    {
+     "x": 305,
+     "y": 555,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663428761
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663429021
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       80,
+       347,
+       3
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       131,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       109,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       203,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       181,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       267,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       312,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       336,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       384,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       408,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       450,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       491,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       563,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       651,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Show Debug Mask Overlay",
+      "bounds": [
+       32,
+       723,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Enable Wireframes",
+      "bounds": [
+       32,
+       787,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Emit structured element frames alongside screensh…",
+      "bounds": [
+       32,
+       811,
+       263,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663429021
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 308,
+     "y": 537,
+     "id": 28,
+     "timeOffset": -350
+    },
+    {
+     "x": 313,
+     "y": 515,
+     "id": 28,
+     "timeOffset": -300
+    },
+    {
+     "x": 321,
+     "y": 481,
+     "id": 28,
+     "timeOffset": -250
+    },
+    {
+     "x": 327,
+     "y": 452,
+     "id": 28,
+     "timeOffset": -200
+    },
+    {
+     "x": 327,
+     "y": 443,
+     "id": 28,
+     "timeOffset": -150
+    },
+    {
+     "x": 329,
+     "y": 443,
+     "id": 28,
+     "timeOffset": -100
+    },
+    {
+     "x": 329,
+     "y": 443,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663429161
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 327,
+   "y": 446
+  },
+  "timestamp": 1789663429203
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663429580
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       80,
+       347,
+       5
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       133,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto Record Sessions %",
+      "bounds": [
+       32,
+       111,
+       137,
+       12
+      ]
+     },
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       205,
+       347,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Storage Quota (MB)",
+      "bounds": [
+       32,
+       183,
+       112,
+       12
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       269,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       314,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       338,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       386,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       410,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       452,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       493,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       565,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       653,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Show Debug Mask Overlay",
+      "bounds": [
+       32,
+       725,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Enable Wireframes",
+      "bounds": [
+       32,
+       789,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Emit structured element frames alongside screensh…",
+      "bounds": [
+       32,
+       813,
+       263,
+       14
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663429580
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 334,
+   "y": 342
+  },
+  "timestamp": 1789663430650
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663430778
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 334,
+   "y": 342
+  },
+  "timestamp": 1789663430800
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663431420
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 260,
+   "y": 735
+  },
+  "timestamp": 1789663433604
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663433723
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 6,
+   "positions": [
+    {
+     "x": 260,
+     "y": 734,
+     "id": 28,
+     "timeOffset": -150
+    },
+    {
+     "x": 260,
+     "y": 705,
+     "id": 28,
+     "timeOffset": -100
+    },
+    {
+     "x": 265,
+     "y": 639,
+     "id": 28,
+     "timeOffset": -50
+    },
+    {
+     "x": 271,
+     "y": 603,
+     "id": 28,
+     "timeOffset": 0
+    }
+   ]
+  },
+  "timestamp": 1789663433833
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663434308
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "input",
+      "text": null,
+      "bounds": [
+       32,
+       80,
+       347,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Masking",
+      "bounds": [
+       16,
+       143,
+       379,
+       23
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Text",
+      "bounds": [
+       32,
+       188,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all text widgets",
+      "bounds": [
+       32,
+       212,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Auto-Mask Images",
+      "bounds": [
+       32,
+       260,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Automatically mask all image widgets",
+      "bounds": [
+       32,
+       284,
+       263,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Note: TextField is always masked for security",
+      "bounds": [
+       16,
+       326,
+       379,
+       17
+      ]
+     },
+     {
+      "role": "button",
+      "text": "DEBUG Log Level",
+      "bounds": [
+       16,
+       367,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Disabled Remote Settings Mode",
+      "bounds": [
+       16,
+       439,
+       379,
+       56
+      ]
+     },
+     {
+      "role": "text",
+      "text": "WiFi Only (Mobile)",
+      "bounds": [
+       32,
+       527,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Show Debug Mask Overlay",
+      "bounds": [
+       32,
+       599,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Enable Wireframes",
+      "bounds": [
+       32,
+       663,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Emit structured element frames alongside screensh…",
+      "bounds": [
+       32,
+       687,
+       263,
+       40
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Wireframe Debug Emitter",
+      "bounds": [
+       32,
+       743,
+       263,
+       24
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Mirror each captured frame to the on-device Wiref…",
+      "bounds": [
+       32,
+       767,
+       263,
+       60
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Initialize SDK",
+      "bounds": [
+       16,
+       843,
+       379,
+       55
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Session Replay SDK Configuration",
+      "bounds": [
+       16,
+       38,
+       332,
+       28
+      ]
+     }
+    ]
+   }
+  },
+  "timestamp": 1789663434308
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 271,
+   "y": 595
+  },
+  "timestamp": 1789663434548
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663434892
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 332,
+   "y": 609
+  },
+  "timestamp": 1789663437779
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663437906
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 332,
+   "y": 609
+  },
+  "timestamp": 1789663437911
+ },
+ {
+  "type": 2,
+  "data": {
+   "discriminator": "node",
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "attributes": {},
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   }
+  },
+  "timestamp": 1789663438521
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 251,
+   "y": 854
+  },
+  "timestamp": 1789663438667
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 251,
+   "y": 854
+  },
+  "timestamp": 1789663438833
+ }
+]

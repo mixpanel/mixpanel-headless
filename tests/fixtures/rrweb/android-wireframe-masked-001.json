@@ -1,0 +1,273 @@
+[
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 866,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1789481858526
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     1080,
+     2400
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       42,
+       101,
+       146,
+       71
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       953,
+       73,
+       127,
+       126
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       21,
+       231,
+       1038,
+       71
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       258,
+       407,
+       564,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       261,
+       575,
+       559,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       268,
+       743,
+       544,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       230,
+       911,
+       621,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       174,
+       1079,
+       733,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       235,
+       1247,
+       611,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       280,
+       1415,
+       520,
+       126
+      ]
+     },
+     {
+      "role": "button",
+      "text": null,
+      "bounds": [
+       297,
+       1583,
+       486,
+       126
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       135,
+       2214,
+       90,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       458,
+       2214,
+       164,
+       38
+      ]
+     },
+     {
+      "role": "text",
+      "text": null,
+      "bounds": [
+       801,
+       2214,
+       196,
+       38
+      ]
+     },
+     {
+      "role": "image",
+      "text": null,
+      "bounds": [
+       148,
+       2148,
+       63,
+       63
+      ]
+     },
+     {
+      "role": "image",
+      "text": null,
+      "bounds": [
+       508,
+       2148,
+       63,
+       63
+      ]
+     },
+     {
+      "role": "image",
+      "text": null,
+      "bounds": [
+       868,
+       2148,
+       63,
+       63
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1789481858526
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1789481858550
+ }
+]

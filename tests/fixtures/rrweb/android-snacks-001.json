@@ -1,0 +1,10455 @@
+[
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575092193
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       824,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       824,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Marshmallow",
+      "bounds": [
+       72,
+       827,
+       97,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       849,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575092193
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575092193
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575092739
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 168,
+   "y": 617,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575093328
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575093355
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 167,
+   "y": 617,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575093504
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575093876
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575107428
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 353,
+   "y": 553,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575107428
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575107455
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 353,
+   "y": 553,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575107634
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 1 item(s) · $12.99",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575107976
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575107976
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 1 item(s) · $12.99",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575108490
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575108490
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575200667
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 148,
+   "y": 483,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575200667
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575200691
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 148,
+   "y": 483,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575200787
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 374,
+   "y": 489,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575202273
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575202300
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 372,
+   "y": 489,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575202408
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 2 item(s) · $15.98",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575202821
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575202821
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575203023
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 372,
+   "y": 489,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575203023
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 372,
+   "y": 489,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575203128
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 3 item(s) · $18.97",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575203338
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575203338
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 3 item(s) · $18.97",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575203856
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575203856
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 238,
+   "y": 500,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575203878
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 238,
+   "y": 499,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575204062
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575204379
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575230939
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 345,
+   "y": 344,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575230939
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575230970
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 345,
+   "y": 344,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575231163
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 4 item(s) · $21.96",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575231483
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575231483
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 364,
+   "y": 337,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575231778
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 364,
+   "y": 337,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575231839
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 5 item(s) · $24.95",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575231999
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575231999
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 364,
+   "y": 337,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575232243
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 364,
+   "y": 337,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575232334
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 6 item(s) · $27.94",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575232510
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575232510
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 6 item(s) · $27.94",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575233034
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575233034
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 171,
+   "y": 270,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575233203
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 171,
+   "y": 270,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575233293
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575233554
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 361,
+   "y": 265,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575233849
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 361,
+   "y": 265,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575233922
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 7 item(s) · $30.93",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575234068
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575234068
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 7 item(s) · $30.93",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575234593
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575234593
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 366,
+   "y": 271,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575235064
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575235112
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 366,
+   "y": 271,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575235229
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 8 item(s) · $33.92",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575235628
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575235628
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575238302
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 376,
+   "y": 171,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575238302
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575238325
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 376,
+   "y": 171,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575238411
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 371,
+   "y": 187,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575239129
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575239157
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 370,
+   "y": 187,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575239203
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 9 item(s) · $36.91",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       185,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575239672
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575239672
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 372,
+   "y": 105,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575240418
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575240438
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 372,
+   "y": 105,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575240497
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 10 item(s) · $39.90",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       113,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       185,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575240954
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575240954
+ },
+ {
+  "type": 4,
+  "data": {
+   "width": 411,
+   "height": 914,
+   "discriminator": "dimension"
+  },
+  "timestamp": 1787575249165
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 7,
+   "id": 28,
+   "x": 366,
+   "y": 134,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575249165
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575249193
+ },
+ {
+  "type": 3,
+  "data": {
+   "source": 2,
+   "type": 9,
+   "id": 28,
+   "x": 367,
+   "y": 134,
+   "discriminator": "detailed"
+  },
+  "timestamp": 1787575249362
+ },
+ {
+  "type": 5,
+  "data": {
+   "tag": "mp_wireframe",
+   "payload": {
+    "viewport": [
+     411,
+     914
+    ],
+    "elements": [
+     {
+      "role": "text",
+      "text": "Snacks",
+      "bounds": [
+       0,
+       24,
+       411,
+       64
+      ]
+     },
+     {
+      "role": "button",
+      "text": "Checkout 11 item(s) · $42.89",
+      "bounds": [
+       12,
+       830,
+       387,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       100,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       113,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       100,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       172,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       185,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       172,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       245,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       258,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       245,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       317,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "3",
+      "bounds": [
+       326,
+       330,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       317,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       390,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       390,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       462,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "2",
+      "bounds": [
+       326,
+       475,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       462,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       534,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "1",
+      "bounds": [
+       326,
+       547,
+       9,
+       22
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       534,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       607,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       607,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       679,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       679,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "image",
+      "text": "Snack photo",
+      "bounds": [
+       12,
+       752,
+       48,
+       48
+      ]
+     },
+     {
+      "role": "button",
+      "text": "+",
+      "bounds": [
+       343,
+       752,
+       56,
+       48
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Cupcake",
+      "bounds": [
+       72,
+       104,
+       62,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       125,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Donut",
+      "bounds": [
+       72,
+       176,
+       43,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       198,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Eclair",
+      "bounds": [
+       72,
+       248,
+       39,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       270,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Froyo",
+      "bounds": [
+       72,
+       321,
+       40,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       342,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Gingerbread",
+      "bounds": [
+       72,
+       393,
+       87,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$4.99",
+      "bounds": [
+       72,
+       415,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Honeycomb",
+      "bounds": [
+       72,
+       465,
+       86,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       487,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Ice Cream Sandwich",
+      "bounds": [
+       72,
+       538,
+       145,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$12.99",
+      "bounds": [
+       72,
+       560,
+       44,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Jellybean",
+      "bounds": [
+       72,
+       610,
+       67,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       632,
+       36,
+       19
+      ]
+     },
+     {
+      "role": "text",
+      "text": "KitKat",
+      "bounds": [
+       72,
+       683,
+       43,
+       21
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$5.49",
+      "bounds": [
+       72,
+       704,
+       36,
+       20
+      ]
+     },
+     {
+      "role": "text",
+      "text": "Lollipop",
+      "bounds": [
+       72,
+       755,
+       57,
+       22
+      ]
+     },
+     {
+      "role": "text",
+      "text": "$2.99",
+      "bounds": [
+       72,
+       777,
+       36,
+       19
+      ]
+     }
+    ]
+   },
+   "discriminator": "custom"
+  },
+  "timestamp": 1787575249709
+ },
+ {
+  "type": 2,
+  "data": {
+   "node": {
+    "type": 0,
+    "childNodes": [
+     {
+      "type": 1,
+      "name": "html",
+      "publicId": "",
+      "systemId": "",
+      "id": 2
+     },
+     {
+      "type": 2,
+      "tagName": "html",
+      "childNodes": [
+       {
+        "type": 2,
+        "tagName": "head",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "style",
+          "attributes": {},
+          "childNodes": [
+           {
+            "type": 3,
+            "textContent": "body { margin: 0px; padding: 0px; }.screen img { width: 100%; height: auto; display: block; }",
+            "isStyle": true,
+            "id": 18
+           }
+          ],
+          "id": 17
+         }
+        ],
+        "id": 4
+       },
+       {
+        "type": 2,
+        "tagName": "body",
+        "attributes": {},
+        "childNodes": [
+         {
+          "type": 2,
+          "tagName": "div",
+          "attributes": {
+           "class": "screen"
+          },
+          "childNodes": [
+           {
+            "type": 2,
+            "tagName": "img",
+            "attributes": {
+             "src": "data:image/jpeg;base64,REDACTED"
+            },
+            "childNodes": [],
+            "id": 28
+           }
+          ],
+          "id": 29
+         }
+        ],
+        "id": 25
+       }
+      ],
+      "id": 3
+     }
+    ],
+    "id": 1
+   },
+   "discriminator": "node"
+  },
+  "timestamp": 1787575249709
+ }
+]
