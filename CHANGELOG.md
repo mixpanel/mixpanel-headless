@@ -38,6 +38,8 @@ set. Web replays give the same output as before.
   - Touches go through a gesture state machine. Finger travel of 10 px or
     less is a tap (`Tapped at (x, y)`, action `touch_start`); more is a
     scroll (`Scrolled`, action `scroll`). A cancelled touch emits nothing.
+    A gesture whose lift-off never arrives is a tap at its finger-down,
+    or a scroll when its drag already passed 10 px.
   - A mouse click (Flutter web and desktop) is `Clicked at (x, y)`, action
     `click`, so `rage_clicks()` and `top_clicks()` see it.
   - Wireframe screens are sampled around each gesture (the screen before
@@ -60,15 +62,18 @@ set. Web replays give the same output as before.
   grace_ms=1000)`** — bursts of finger-downs near one point in screenshot
   recordings. Finger-downs are counted from `rrweb_events`, because a fast
   burst with overlapping fingers produces far fewer classified taps.
-  `kind` is `"dead"` when the screen never changes up to `grace_ms` after
-  the burst and `"rage"` when it changes only once or a few times. A burst
-  where each tap changes the screen (a quantity stepper) is intentional and
-  is not reported. Columns: `replay_id`, `t_start`, `t_end`, `target_desc`,
+  Each burst is classified per interval: the gaps between consecutive
+  finger-downs, plus the `grace_ms` window after the last one. `kind` is
+  `"dead"` when no interval has a screen change. A burst where every gap
+  between finger-downs has a change (a quantity stepper) is intentional
+  and is not reported. Anything else is `"rage"`, for example a navigation
+  that arrives only after the burst. A screen that changes on its own (a
+  live clock) counts as a change. Columns: `replay_id`, `t_start`, `t_end`, `target_desc`,
   `x`, `y`, `count`, `kind`.
 
 ### Changed
 
-- **Web replays are unchanged.** A replay whose Meta events carry a page
+- **Well-formed web replays are unchanged.** A replay whose Meta events carry a page
   URL, or that has no Meta event at all, is a DOM recording and gives the
   same actions and markdown as 0.3.0. The committed web goldens are
   byte-identical.

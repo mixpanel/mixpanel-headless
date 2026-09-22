@@ -419,6 +419,73 @@ class TestRageTaps:
             events.extend([_down(ts), _up(ts + 10), _screen(ts + 50, f"Qty {i + 1}")])
         assert _bundle(_replay(events)).rage_taps().empty
 
+    def test_navigation_after_a_burst_is_rage(self) -> None:
+        """Taps with no change between them, then a navigation, are rage.
+
+        The navigation brings two screens in the grace window. Counting
+        screens in total would call this burst intentional; the gaps
+        between the taps show that the first taps did nothing.
+        """
+        events = [
+            _meta(1),
+            _screen(1000, "Checkout"),
+            *_taps(2000, 3, step=300),
+            _screen(2700, "Receipt"),
+            _screen(2800, "Receipt loaded"),
+        ]
+        df = _bundle(_replay(events)).rage_taps()
+        assert list(df["kind"]) == ["rage"]
+        assert list(df["count"]) == [3]
+
+    def test_changes_in_some_gaps_is_rage(self) -> None:
+        """A 4-tap burst with a change in 2 of its 3 gaps is rage."""
+        events: list[dict[str, Any]] = [_meta(1), _screen(1000, "Home")]
+        for i in range(4):
+            ts = 2000 + i * 200
+            events.extend([_down(ts), _up(ts + 10)])
+            if i < 2:
+                events.append(_screen(ts + 50, f"Step {i + 1}"))
+        df = _bundle(_replay(events)).rage_taps()
+        assert list(df["kind"]) == ["rage"]
+        assert list(df["count"]) == [4]
+
+    def test_live_clock_hides_a_dead_button(self) -> None:
+        """A screen that changes on its own counts as a change (known limit).
+
+        A clock label that updates every 100 ms changes the screen in every
+        gap, so a dead button on that screen reads as an intentional run
+        and is not reported. This test locks that behavior.
+        """
+        events: list[dict[str, Any]] = [_meta(1)]
+        for i in range(30):
+            events.append(_screen(1000 + i * 100, f"12:00:{i:02d}"))
+        events.extend(_taps(2000, 3, step=300))
+        assert _bundle(_replay(events)).rage_taps().empty
+
+    def test_screen_at_the_first_finger_down_does_not_count(self) -> None:
+        """A screen at exactly ``t_start`` is not a change of the burst."""
+        events = [
+            _meta(1),
+            _screen(1000, "Home"),
+            _screen(2000, "Other"),
+            *_taps(2000, 3),
+        ]
+        replay = _replay(events)
+        assert 2000 in [a.timestamp for a in replay.actions if a.action == "screen"]
+        assert list(_bundle(replay).rage_taps()["kind"]) == ["dead"]
+
+    def test_screen_at_the_end_of_the_grace_window_counts(self) -> None:
+        """A screen at exactly ``t_end + grace_ms`` is a change; one ms later is not."""
+        on_edge = [
+            _meta(1),
+            _screen(1000, "Home"),
+            *_taps(2000, 3),
+            _screen(3200, "Cart"),
+        ]
+        late = [_meta(1), _screen(1000, "Home"), *_taps(2000, 3), _screen(3201, "Cart")]
+        assert list(_bundle(_replay(on_edge)).rage_taps()["kind"]) == ["rage"]
+        assert list(_bundle(_replay(late)).rage_taps()["kind"]) == ["dead"]
+
     def test_threshold(self) -> None:
         """Fewer finger-downs than the threshold is not a burst."""
         events = [_meta(1), _screen(1000, "Home"), *_taps(2000, 3)]

@@ -36,7 +36,6 @@ from mixpanel_headless._internal.replays.rrweb_analyzer import (
     analyze_events,
     detect_capture,
     hit_test,
-    timeline_contains_wireframes,
 )
 from mixpanel_headless.types import UserAction
 
@@ -1372,24 +1371,6 @@ class TestUpstreamMobileCases:
         assert "ignored" not in result
         assert result == "2: Wireframe: Home"
 
-    def test_timeline_contains_wireframes_true_for_rendered_screen(self) -> None:
-        """The rendered timeline of a wireframe session is detected."""
-        timeline = analyze_events([_wireframe(1000, _el("text", "Home"))])
-        assert timeline_contains_wireframes(timeline)
-
-    def test_timeline_contains_wireframes_false_for_web_only_timeline(self) -> None:
-        """A web-only timeline has no screens."""
-        assert not timeline_contains_wireframes(
-            "1: Clicked button 'Sign up'\n2: Scrolled"
-        )
-        assert not timeline_contains_wireframes("")
-
-    def test_timeline_contains_wireframes_ignores_marker_inside_content(self) -> None:
-        """The marker counts only at the description position of a line."""
-        assert not timeline_contains_wireframes("1: Clicked 'Wireframe: settings'")
-        assert not timeline_contains_wireframes("2: Event: Wireframe: opened")
-        assert timeline_contains_wireframes("1: Clicked button\n2: Wireframe: Home")
-
 
 # =============================================================================
 # Recording-type detection (screenshot recording against DOM recording)
@@ -2030,7 +2011,6 @@ class TestRealMobileFixtures:
             "android-snacks-001",
             "android-wireframe-001",
             "android-wireframe-masked-001",
-            "flutter-android-rage-001",
             "ios-wireframe-001",
             "rn-ios-001",
         ],
@@ -2059,7 +2039,29 @@ class TestRealMobileFixtures:
 
     def test_flutter_rage_burst_collapses(self) -> None:
         """The Flutter rage burst shows as one collapsed tap line."""
-        assert "Tapped at (257, 638) (×7)" in _ours("flutter-android-rage-001")
+        assert "Tapped at (257, 638) (×6)" in _ours("flutter-android-rage-001")
+
+    def test_flutter_flushed_drags_are_scrolls(self) -> None:
+        """Two overlapping-finger gestures that dragged are scrolls, not taps.
+
+        Intentional difference from the upstream analyzer: when a new
+        finger-down arrives before the lift-off, upstream flushes the open
+        gesture as a tap even after a long drag. Our analyzer flushes a
+        gesture whose travel passed the tap threshold as a scroll; the
+        scroll debounce then hides it next to the burst's other scroll. So
+        our timeline has two fewer tap lines, and every other line is equal.
+        """
+        upstream = _collapse_upstream(_upstream_markdown("flutter-android-rage-001"))
+        expected = upstream.replace(
+            "1789663316: Tapped at (257, 638)\n1789663316: Scrolled\n"
+            "1789663316: Tapped at (257, 638) (×7)",
+            "1789663316: Scrolled\n1789663316: Tapped at (257, 638) (×6)",
+        ).replace(
+            "1789663345: Tapped at (244, 678) (×9)",
+            "1789663345: Tapped at (244, 678) (×8)",
+        )
+        assert expected != upstream
+        assert _ours("flutter-android-rage-001") == expected
 
     def test_ios_early_touch_drops_the_stray_lines(self) -> None:
         """The early cancelled iOS swipe emits no action.
@@ -2916,3 +2918,64 @@ class TestClippedHeading:
             ]
         )
         assert screen.target_desc == "Back"
+
+
+class TestFlushedGestureWithTravel:
+    """An open gesture flushed without a lift-off keeps its travel reading."""
+
+    def test_new_finger_down_flushes_a_travelled_gesture_as_scroll(self) -> None:
+        """A dropped lift-off after a long drag records a scroll, not a tap."""
+        events = [
+            _meta_no_href(1),
+            _touch_start(2000, x=200, y=800),
+            _touch_move(2050, [(200, 500)]),
+            *_touch(4000, x=10, y=10),
+        ]
+        result = RrwebAnalyzer().analyze(events)
+        assert result.markdown_summary == "2: Scrolled\n4: Tapped at (10, 10)"
+        scroll = result.actions[0]
+        assert (scroll.action, scroll.timestamp) == ("scroll", 2000)
+
+    def test_finalize_flushes_a_travelled_gesture_as_scroll(self) -> None:
+        """A drag still open at the end of the session records a scroll."""
+        events = [
+            _meta_no_href(1),
+            _touch_start(2000, x=200, y=800),
+            _touch_move(2050, [(200, 500)]),
+        ]
+        result = RrwebAnalyzer().analyze(events)
+        assert [(a.action, a.timestamp) for a in result.actions] == [("scroll", 2000)]
+
+
+class TestLiftOffPointFallback:
+    """The lift-off point replaces the finger-down point only as a whole."""
+
+    @pytest.mark.parametrize(
+        ("x", "y"), [(50, None), (None, 60), ("50", 60), (50, float("nan"))]
+    )
+    def test_partial_lift_off_point_uses_the_finger_down_point(
+        self, x: Any, y: Any
+    ) -> None:
+        """A lift-off with only one usable coordinate taps at the finger-down point.
+
+        Args:
+            x: The lift-off x value.
+            y: The lift-off y value.
+        """
+        events = [
+            _meta_no_href(1),
+            _touch_start(2000, x=4, y=5),
+            _touch_end(2100, x=x, y=y),
+        ]
+        (tap,) = RrwebAnalyzer().analyze(events).actions
+        assert tap.description == "Tapped at (4, 5)"
+
+    def test_full_lift_off_point_wins(self) -> None:
+        """A lift-off with both coordinates usable taps at the lift-off point."""
+        events = [
+            _meta_no_href(1),
+            _touch_start(2000, x=4, y=5),
+            _touch_end(2100, x=7, y=9),
+        ]
+        (tap,) = RrwebAnalyzer().analyze(events).actions
+        assert tap.description == "Tapped at (7, 9)"

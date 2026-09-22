@@ -13543,7 +13543,11 @@ class Replay(ResultWithDataFrame):
         Returns:
             True when at least one action is a ``"screen"`` action.
         """
-        return any(a.action == "screen" for a in self.actions)
+        from mixpanel_headless._internal.replays.rrweb_analyzer import (
+            actions_contain_wireframes,
+        )
+
+        return actions_contain_wireframes(self.actions)
 
     def screen_path(self) -> list[str]:
         """Screen sequence of the replay: the mobile form of :meth:`page_path`.
@@ -14068,15 +14072,20 @@ class ReplayBundle(ResultWithDataFrame):
         classified taps. Only screenshot recordings count; web replays use
         :meth:`rage_clicks`.
 
-        Each burst is classified by the screen changes (``"screen"``
-        actions) after its first finger-down and up to ``grace_ms`` after
-        its last one:
+        Each burst is classified per interval: the gaps between
+        consecutive finger-downs, plus the ``grace_ms`` window after the last
+        one. An interval has a change when a ``"screen"`` action in it
+        differs from the screen shown when the interval began.
 
-        - no change: ``kind="dead"``, the control did nothing;
-        - at least one change for each tap but one: intentional (a quantity
-          stepper or a carousel), so the burst is not reported;
-        - otherwise: ``kind="rage"``, the screen changed only once or a few
-          times while the user kept tapping.
+        - no interval has a change: ``kind="dead"``, the control did nothing;
+        - every gap between finger-downs has a change: intentional (a
+          quantity stepper or a carousel), so the burst is not reported;
+        - otherwise: ``kind="rage"``, some taps changed nothing, for example
+          a navigation that arrives only after the burst.
+
+        A screen that changes on its own (a live clock, a timer) counts as a
+        change, so a dead control on such a screen can read as ``"rage"`` or
+        be skipped.
 
         Args:
             threshold: Minimum finger-downs for a burst. Default 3.

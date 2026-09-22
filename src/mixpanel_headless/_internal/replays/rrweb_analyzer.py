@@ -73,7 +73,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -151,13 +150,6 @@ WIREFRAME_TAG = "mp_wireframe"
 
 WIREFRAME_SCREEN_PREFIX = "Wireframe: "
 """The description prefix of every rendered wireframe screen."""
-
-# A rendered timeline line whose description is a wireframe screen. Anchored
-# to the description position so the marker inside other content (a clicked
-# control named "Wireframe: …") does not match.
-_WIREFRAME_LINE_RE = re.compile(
-    rf"^\d+: {re.escape(WIREFRAME_SCREEN_PREFIX)}", re.MULTILINE
-)
 
 
 def detect_capture(events: Sequence[Any]) -> CaptureKind:
@@ -1838,8 +1830,9 @@ class EventAnalyzer:
         """Close the open gesture and classify it as a tap or a scroll.
 
         Travel above :attr:`TAP_MAX_TRAVEL_PX` is a scroll; other travel is
-        a tap at the lift-off point (the finger-down point when the lift-off
-        has no coordinates). Both arm the "after" screens. A TOUCH_END with
+        a tap at the lift-off point when both lift-off coordinates are
+        usable numbers, and at the finger-down point otherwise. The node id
+        falls back to the finger-down one when the lift-off has none. Both arm the "after" screens. A TOUCH_END with
         no open gesture is ignored.
 
         Args:
@@ -1863,11 +1856,14 @@ class EventAnalyzer:
         if travel > self.TAP_MAX_TRAVEL_PX:
             self._record_scroll(timestamp)
             return
+        # The lift-off point replaces the finger-down point only as a whole:
+        # a lift-off with one unusable coordinate keeps both finger-down ones.
+        tap_x, tap_y = (x, y) if end is not None else (gesture.x, gesture.y)
         self._emit_tap(
             timestamp,
             node_id if node_id is not None else gesture.node_id,
-            x if x is not None else gesture.x,
-            y if y is not None else gesture.y,
+            tap_x,
+            tap_y,
             gesture.screen,
         )
 
@@ -1915,14 +1911,19 @@ class EventAnalyzer:
         )
 
     def _flush_active_touch_as_tap(self) -> None:
-        """Emit the open gesture as a tap at its finger-down time and point.
+        """Emit the open gesture at its finger-down time, with no lift-off.
 
         Used when a TOUCH_END never arrives (a dropped event, or the session
-        ends mid-touch). Does nothing when no gesture is open.
+        ends mid-touch). A gesture whose drag travel already passed
+        :attr:`TAP_MAX_TRAVEL_PX` is a scroll; any other gesture is a tap at
+        its finger-down point. Does nothing when no gesture is open.
         """
         gesture = self._active_touch
         self._active_touch = None
         if gesture is None:
+            return
+        if gesture.travel > self.TAP_MAX_TRAVEL_PX:
+            self._record_scroll(gesture.timestamp)
             return
         self._emit_tap(
             gesture.timestamp, gesture.node_id, gesture.x, gesture.y, gesture.screen
@@ -2220,37 +2221,11 @@ def analyze_events(rrweb_events: list[dict[str, Any]]) -> str:
     return RrwebAnalyzer().analyze(rrweb_events).markdown_summary
 
 
-def timeline_contains_wireframes(timeline: str) -> bool:
-    """Whether a rendered timeline holds wireframe screen lines.
-
-    The check is anchored to the description position of a line
-    (``{seconds}: Wireframe: …``), so the marker inside other content (a
-    clicked control named ``Wireframe: …``) does not count.
-
-    Args:
-        timeline: A markdown timeline, as in
-            :attr:`AnalyzerResult.markdown_summary`.
-
-    Returns:
-        True when at least one line is a wireframe screen.
-
-    Example:
-        ```python
-        timeline_contains_wireframes("1: Wireframe: Home")
-        # True
-        timeline_contains_wireframes("1: Clicked 'Wireframe: settings'")
-        # False
-        ```
-    """
-    return _WIREFRAME_LINE_RE.search(timeline) is not None
-
-
 def actions_contain_wireframes(actions: Sequence[UserAction]) -> bool:
     """Whether a structured action list holds wireframe screens.
 
-    Unlike :func:`timeline_contains_wireframes`, this does not depend on
-    the rendered line format. It reads the ``"screen"`` action label, so a
-    description that only looks like a screen does not count.
+    It reads the ``"screen"`` action label, not the rendered line format,
+    so a description that only looks like a screen does not count.
 
     Args:
         actions: Structured actions, as in :attr:`AnalyzerResult.actions`.

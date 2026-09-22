@@ -259,13 +259,13 @@ print(bundle.rage_taps())   # threshold=3, window_ms=2000, radius_px=24, grace_m
 # 2  81cf456f…  1789663345601  1789663346674  ...  678     39  dead
 ```
 
-A burst is `threshold` or more finger-downs within `window_ms` of the first one and within `radius_px` of its point. The method counts finger-downs from `rrweb_events` (touch starts, plus clicks in Flutter web and desktop), not the `Tapped` lines. When fingers overlap in a fast burst, many finger-downs produce only a few classified taps. In the example above, 20 finger-downs produce only 8 `Tapped` lines.
+A burst is `threshold` or more finger-downs within `window_ms` of the first one and within `radius_px` of its point. The method counts finger-downs from `rrweb_events` (touch starts, plus clicks in Flutter web and desktop), not the `Tapped` lines. When fingers overlap in a fast burst, many finger-downs produce only a few classified taps. In the example above, 20 finger-downs produce only 6 `Tapped` lines.
 
-Each burst is classified by the screen changes from its first finger-down to `grace_ms` after its last one:
+Each burst is classified per interval. The intervals are the gaps between consecutive finger-downs, plus the `grace_ms` window after the last one. An interval has a change when a screen in it differs from the screen shown when the interval began.
 
-- **`"dead"`** — the screen never changed. The control did nothing.
-- **`"rage"`** — the screen changed once or a few times while the user kept tapping.
-- **Intentional, not reported** — the screen changed for each tap, or for all taps but one. A quantity stepper or a carousel works this way.
+- **`"dead"`** — no interval has a change. The control did nothing.
+- **Intentional, not reported** — every gap between finger-downs has a change. A quantity stepper or a carousel works this way.
+- **`"rage"`** — anything else: some taps changed nothing. For example, a navigation arrives only after the burst.
 
 The columns are `replay_id`, `t_start`, `t_end` (Unix ms), `target_desc` (the hit-test target at the first finger-down), `x` and `y` (the first finger-down point), `count`, and `kind`. Web replays give no rows: use `rage_clicks()` for them.
 
@@ -275,6 +275,7 @@ The columns are `replay_id`, `t_start`, `t_end` (Unix ms), `target_desc` (the hi
 - **Taps under translucent bars.** A tap on a translucent tab bar or toolbar can resolve to the content that scrolls below it.
 - **Masked text is gone.** A masked label is not in the recording, so a masked screen has only roles and rects, and its heading is `"(screen)"`.
 - **Some screens are mid-animation.** An "after" screen can be a frame from the middle of a transition. Its elements can have negative `x` or sit past the right edge.
+- **Screens that change on their own.** A live clock, a timer, or an animation counts as a screen change, so a dead control on such a screen can read as `"rage"` or be skipped as intentional.
 - **`(×N)` hides the time span.** A collapsed line shows the first timestamp only. Use `rage_taps()` or `actions_df` for real timing.
 - **No URLs.** `url` is `None`, `page_path()` is empty, and `where(contains_url=...)` matches nothing. Use `screen_path()` instead.
 

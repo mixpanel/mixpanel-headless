@@ -144,6 +144,32 @@ _RAGE_TAP_COLUMNS = [
 ]
 
 
+def _interval_has_change(screens: list[tuple[int, str]], lo: int, hi: int) -> bool:
+    """Whether a screen changes in the interval ``(lo, hi]``.
+
+    Args:
+        screens: ``(timestamp, description)`` of the replay's screen
+            actions, in timestamp order.
+        lo: The interval start (excluded).
+        hi: The interval end (included).
+
+    Returns:
+        True when a screen in the interval has a description that differs
+        from the latest screen description at or before ``lo`` (or when
+        there is no earlier screen).
+    """
+    baseline: str | None = None
+    for timestamp, description in screens:
+        if timestamp <= lo:
+            baseline = description
+        elif timestamp <= hi:
+            if description != baseline:
+                return True
+        else:
+            break
+    return False
+
+
 def rage_taps(
     bundle: ReplayBundle,
     threshold: int = 3,
@@ -158,11 +184,24 @@ def rage_taps(
     in time order: an unused finger-down opens a burst, and every later
     unused finger-down within ``window_ms`` of it and within
     ``radius_px`` of its point joins. A finger-down at another point does
-    not break the burst. A burst with at least ``threshold`` members is
-    classified by the ``"screen"`` actions with a timestamp after the first
-    finger-down and no later than ``grace_ms`` after the last one: none
-    is ``"dead"``; at least ``max(1, count - 1)`` is an intentional run of
-    taps and is skipped; anything between is ``"rage"``.
+    not break the burst.
+
+    A burst with at least ``threshold`` members is classified per
+    interval. The intervals are the ``count - 1`` gaps between consecutive
+    finger-downs, ``(t_k, t_k+1]``, plus the grace window after the last
+    one, ``(t_end, t_end + grace_ms]``. An interval has a change when it
+    holds a ``"screen"`` action whose description differs from the latest
+    screen description at or before the interval's start. Then:
+
+    - no interval has a change: ``"dead"``;
+    - otherwise, every gap between finger-downs has a change: an
+      intentional run (a quantity stepper, a carousel), which is skipped
+      (a one-tap burst has no gaps, so a change skips it);
+    - otherwise: ``"rage"``.
+
+    Known limit: a screen that changes on its own (a live clock, a timer,
+    an animation) counts as a change, so a dead control on such a screen
+    can read as ``"rage"`` or be skipped as intentional.
 
     Args:
         bundle: The bundle to scan.
@@ -184,7 +223,9 @@ def rage_taps(
         downs = finger_downs(replay.rrweb_events)
         if len(downs) < threshold:
             continue
-        screen_times = [a.timestamp for a in replay.actions if a.action == "screen"]
+        screens = [
+            (a.timestamp, a.description) for a in replay.actions if a.action == "screen"
+        ]
         used = [False] * len(downs)
         for i, first in enumerate(downs):
             if used[i]:
@@ -203,10 +244,16 @@ def rage_taps(
                 continue
             for j in members:
                 used[j] = True
-            t_start = first.timestamp
-            t_end = downs[members[-1]].timestamp
-            changes = sum(1 for t in screen_times if t_start < t <= t_end + grace_ms)
-            if changes >= max(1, len(members) - 1):
+            times = [downs[j].timestamp for j in members]
+            t_start = times[0]
+            t_end = times[-1]
+            gaps = [
+                _interval_has_change(screens, lo, hi)
+                for lo, hi in zip(times, times[1:], strict=False)
+            ]
+            grace = _interval_has_change(screens, t_end, t_end + grace_ms)
+            changed = grace or any(gaps)
+            if changed and all(gaps):
                 continue
             rows.append(
                 {
@@ -217,7 +264,7 @@ def rage_taps(
                     "x": first.x,
                     "y": first.y,
                     "count": len(members),
-                    "kind": "dead" if changes == 0 else "rage",
+                    "kind": "rage" if changed else "dead",
                 }
             )
     return pd.DataFrame(rows, columns=_RAGE_TAP_COLUMNS)

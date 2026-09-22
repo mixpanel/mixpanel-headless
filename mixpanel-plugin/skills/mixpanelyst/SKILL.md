@@ -1088,7 +1088,7 @@ What a tap hit: read the action's `target_desc` (`button:Save`, a bare label, or
 
 Screens have no names. The heading (`target_desc` of a `screen` action) is the top-most text label: approximate, and `"(screen)"` when masked. It can be a back-button label or scrolled content. Identify a screen by `metadata["fingerprint"]`, name it only with text that appears on it, and never invent a screen name.
 
-`kind="dead"`: the screen never changed. `kind="rage"`: it changed once or a few times while the user kept tapping. A burst where each tap changes the screen (a quantity stepper, a carousel) is intentional and is not reported. Report each burst with its control, tap count, and time span. **A clean, successful flow is a valid finding — do not invent friction.**
+Each burst is judged per interval (the gaps between finger-downs, plus a grace window after the last one). `kind="dead"`: no interval has a screen change. A burst where every gap has a change (a quantity stepper, a carousel) is intentional and is not reported. `kind="rage"`: anything else, for example a navigation that arrives only after the burst. A live clock or animation counts as a change, so it can hide a dead control. Report each burst with its control, tap count, and time span. **A clean, successful flow is a valid finding — do not invent friction.**
 
 Look up the surface: `help.py Workspace.replays_for_user`, `help.py ReplayBundle`, `help.py Replay`.
 User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/session-replay/index.md")`
