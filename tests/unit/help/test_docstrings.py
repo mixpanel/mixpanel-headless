@@ -451,6 +451,32 @@ def test_real_filter_class_docstring() -> None:
     assert result.args == ()
 
 
+def test_every_workspace_parameter_has_a_description() -> None:
+    """Every ``Workspace`` method parameter has a non-empty ``Args:`` description.
+
+    ``_parse_items`` drops ``Args:`` lines that do not look like ``name: desc``,
+    so a malformed entry would surface here as a missing description.
+    """
+    checked = 0
+    for name, value in vars(mp.Workspace).items():
+        if name.startswith("_") or not inspect.isfunction(value):
+            continue
+        described = dict(parse_docstring(inspect.getdoc(value)).args)
+        for pname, param in inspect.signature(value).parameters.items():
+            if pname == "self":
+                continue
+            prefix = {
+                inspect.Parameter.VAR_POSITIONAL: "*",
+                inspect.Parameter.VAR_KEYWORD: "**",
+            }.get(param.kind, "")
+            description = described.get(f"{prefix}{pname}") or described.get(pname)
+            assert description, (
+                f"Workspace.{name}: parameter {pname!r} has no description"
+            )
+            checked += 1
+    assert checked >= 500
+
+
 def test_every_public_export_docstring_parses() -> None:
     """``parse_docstring`` never raises on any public export or ``Workspace`` member."""
     objects: list[object] = [getattr(mp, name) for name in sorted(set(mp.__all__))]

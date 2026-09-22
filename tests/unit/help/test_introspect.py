@@ -986,9 +986,18 @@ def test_pydantic_fields_doc_real_model_has_no_private_names() -> None:
     from mixpanel_headless import CreateCohortParams
 
     docs = pydantic_fields_doc(CreateCohortParams)
-    assert docs
-    assert not any(doc.name.startswith("_") for doc in docs)
-    assert all(doc.annotation for doc in docs)
+    assert [(doc.name, doc.required, doc.alias) for doc in docs] == [
+        ("definition", False, None),
+        ("name", True, None),
+        ("description", False, None),
+        ("data_group_id", False, None),
+        ("is_locked", False, None),
+        ("is_visible", False, None),
+        ("deleted", False, None),
+    ]
+    by_name = {doc.name: doc for doc in docs}
+    assert by_name["name"].annotation == "str"
+    assert by_name["description"].annotation == "str | None"
 
 
 def test_pydantic_fields_doc_non_model_is_empty() -> None:
@@ -1043,9 +1052,8 @@ def test_enum_values_real_enum() -> None:
     """A real library enum yields every member name once."""
     from mixpanel_headless import FeatureFlagStatus
 
-    values = enum_values(FeatureFlagStatus)
-    assert values == tuple(member.name for member in FeatureFlagStatus)
-    assert len(values) == len(set(values))
+    assert enum_values(FeatureFlagStatus) == ("ENABLED", "DISABLED", "ARCHIVED")
+    assert enum_members(FeatureFlagStatus)[0] == ("ENABLED", "'enabled'")
 
 
 # =============================================================================
@@ -1073,8 +1081,7 @@ def test_class_sections_query_result_has_df_property() -> None:
     """``QueryResult`` exposes ``df`` as a property with a summary."""
     _construction, properties, _methods = class_sections(QueryResult)
     df = next(member for member in properties if member.name == "df")
-    assert df == MemberDoc("df", "property", df.summary, None)
-    assert df.summary
+    assert df == MemberDoc("df", "property", "Convert to DataFrame.", None)
 
 
 def test_class_sections_plain_class() -> None:
@@ -1201,11 +1208,37 @@ def test_pydantic_annotation_falls_back_when_source_is_annotated() -> None:
     assert doc.required is True
 
 
-def test_pydantic_alias_helpers_tolerate_bad_generators() -> None:
-    """A raising or non-callable alias generator yields no alias."""
+def test_pydantic_alias_helpers_tolerate_rejecting_generators() -> None:
+    """A generator that rejects the name or its arity yields no alias; others propagate."""
 
-    def boom(name: str) -> str:
-        """Always raise.
+    def rejects(name: str) -> str:
+        """Reject every name.
+
+        Args:
+            name: The rejected name.
+
+        Returns:
+            Never returns.
+
+        Raises:
+            ValueError: Always.
+        """
+        raise ValueError(name)
+
+    def two_args(name: str, extra: str) -> str:
+        """Expect two arguments, so a one-argument call raises ``TypeError``.
+
+        Args:
+            name: Field name.
+            extra: Never supplied.
+
+        Returns:
+            The joined names.
+        """
+        return name + extra
+
+    def crashes(name: str) -> str:
+        """Fail with an unrelated error that must surface.
 
         Args:
             name: Ignored.
@@ -1219,7 +1252,10 @@ def test_pydantic_alias_helpers_tolerate_bad_generators() -> None:
         raise RuntimeError(name)
 
     info = Person.model_fields["age"]
-    assert introspect._pydantic_alias("age", info, boom) is None
+    assert introspect._pydantic_alias("age", info, rejects) is None
+    assert introspect._pydantic_alias("age", info, two_args) is None  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError):
+        introspect._pydantic_alias("age", info, crashes)
     assert introspect._pydantic_alias("age", info, lambda name: name.upper()) == "AGE"
     assert introspect._alias_callable(42) is None
     assert introspect._alias_callable(None) is None

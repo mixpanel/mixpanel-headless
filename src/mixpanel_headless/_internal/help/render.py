@@ -36,12 +36,13 @@ The model has no kind-specific fields, so a few kinds reuse generic slots:
 - ``parameter``: ``signature.params`` holds exactly one ``ParamDoc`` (the
   parameter) and ``signature.name`` is the parent method. Allowed values come
   from ``entry.values``, falling back to ``ParamDoc.values``. The description
-  comes from ``doc.body`` / ``doc.summary``, falling back to
-  ``ParamDoc.description``.
+  comes from ``doc.body``, then ``doc.summary``, then ``entry.summary``,
+  falling back to ``ParamDoc.description``.
 - ``class`` / ``model`` / ``dataclass``: ``bases``, ``config``,
   ``construction``, ``fields``, ``properties``, ``methods``, ``used_by`` map
   one-to-one to sections. Construction rows print as
-  ``<ClassName>.<classmethod>(params)``.
+  ``<ClassName>.<factory>(params)`` under ``Construction (N):``; the
+  factories are classmethods or staticmethods.
 - ``enum``: each member is a ``FieldDoc(name=MEMBER, annotation=<value type>,
   default=repr(value))`` in ``fields``; ``values`` holds the member names.
   When ``fields`` is empty the table falls back to ``values`` (names only).
@@ -52,17 +53,18 @@ The model has no kind-specific fields, so a few kinds reuse generic slots:
 - ``exception``: ``bases[0]`` is the direct base shown in the header
   (``Exception`` when ``bases`` is empty). The subclass tree is one ``Group``
   titled ``"Subclasses"`` whose item names may carry leading spaces for
-  nesting; names print verbatim. ``used_by`` rows print under
-  ``Raised by Workspace (N methods):`` and omit ``()`` when ``params`` is
-  empty.
+  nesting; the text format prints them verbatim, the markdown table strips
+  them. ``used_by`` rows print under ``Raised by Workspace (N methods):``
+  and omit ``()`` when ``params`` is empty.
 - ``module``: members come from ``groups`` when non-empty (one
   ``Title (N):`` block each), else from ``methods`` under ``Members (N):``.
 - ``constant``: ``bases[0]`` is the type name and ``values[0]`` is the value
   display string; either may be absent.
 - ``listing``: ``groups`` render as ``Title (N):`` blocks. Rows tag the
   summary with ``[property]`` or ``[method]`` when the member kind is one of
-  those; other kinds print name and summary only. Item names print verbatim,
-  so an indented exception tree is expressed with leading spaces.
+  those; other kinds print name and summary only. Item names may carry
+  leading spaces to nest an exception tree: the text format prints them
+  verbatim, the markdown table strips them.
 - ``overview``: ``summary`` is the version string printed after the name;
   ``doc.body`` is the grammar text; ``groups`` render as tables whose rows
   show the compact signature when a member has one.
@@ -182,8 +184,14 @@ def render_text(entry: HelpEntry) -> str:
 
     Returns:
         The text rendering without a trailing newline.
+
+    Raises:
+        ValueError: When ``entry.kind`` has no text renderer (``search`` is
+            the kind of a ``SearchResult`` and never reaches here).
     """
-    renderer = _TEXT_RENDERERS.get(entry.kind, _text_generic)
+    renderer = _TEXT_RENDERERS.get(entry.kind)
+    if renderer is None:
+        raise ValueError(f"No text renderer for help kind {entry.kind!r}")
     return _join_blocks(renderer(entry) + _text_tail(entry))
 
 
@@ -195,8 +203,13 @@ def render_markdown(entry: HelpEntry) -> str:
 
     Returns:
         The markdown rendering without a trailing newline.
+
+    Raises:
+        ValueError: When ``entry.kind`` has no markdown renderer.
     """
-    renderer = _MD_RENDERERS.get(entry.kind, _md_generic)
+    renderer = _MD_RENDERERS.get(entry.kind)
+    if renderer is None:
+        raise ValueError(f"No markdown renderer for help kind {entry.kind!r}")
     return _join_blocks(renderer(entry) + _md_tail(entry))
 
 
@@ -758,7 +771,9 @@ def _text_class(entry: HelpEntry) -> list[Block]:
         entry: The entry.
 
     Returns:
-        Header, docstring, Construction, Fields, Properties, and Methods blocks.
+        Header, docstring, Construction, Fields, Properties, and Methods
+        blocks. The ``Construction (N):`` count covers classmethods and
+        staticmethods alike; the model does not tell them apart.
     """
     bases = ", ".join(entry.bases) if entry.bases else "(none)"
     header = [f"class {entry.name}", f"  Inherits: {bases}"]
@@ -773,9 +788,7 @@ def _text_class(entry: HelpEntry) -> list[Block]:
     return [
         header,
         *_text_doc(entry, placeholder=True),
-        _section(
-            f"Construction ({len(entry.construction)} classmethods):", construction
-        ),
+        _section(f"Construction ({len(entry.construction)}):", construction),
         _section("Fields (public):", fields),
         _section("Properties:", properties),
         _section("Methods:", methods),
@@ -911,22 +924,6 @@ def _text_overview(entry: HelpEntry) -> list[Block]:
     return [[head], body, *_text_groups(entry.groups, signatures=True)]
 
 
-def _text_generic(entry: HelpEntry) -> list[Block]:
-    """Render any kind without a dedicated view (``search`` as a ``HelpEntry``).
-
-    Args:
-        entry: The entry.
-
-    Returns:
-        Name header, docstring blocks, and any groups.
-    """
-    return [
-        [entry.name],
-        *_text_doc(entry, placeholder=False),
-        *_text_groups(entry.groups, signatures=True),
-    ]
-
-
 _TEXT_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "overview": _text_overview,
     "class": _text_class,
@@ -944,7 +941,7 @@ _TEXT_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "constant": _text_constant,
     "listing": _text_listing,
 }
-"""Text renderer per kind; kinds absent here use ``_text_generic``."""
+"""Text renderer per kind; every kind a ``HelpEntry`` can carry has one."""
 
 
 # =============================================================================
@@ -1349,22 +1346,6 @@ def _md_overview(entry: HelpEntry) -> list[Block]:
     return [[head], body, *_md_groups(entry.groups, signatures=True)]
 
 
-def _md_generic(entry: HelpEntry) -> list[Block]:
-    """Render any kind without a dedicated markdown view.
-
-    Args:
-        entry: The entry.
-
-    Returns:
-        Title, docstring sections, and any group tables.
-    """
-    return [
-        [f"# {entry.name}"],
-        *_md_doc(entry),
-        *_md_groups(entry.groups, signatures=True),
-    ]
-
-
 _MD_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "overview": _md_overview,
     "class": _md_class,
@@ -1382,7 +1363,7 @@ _MD_RENDERERS: dict[HelpKind, Callable[[HelpEntry], list[Block]]] = {
     "constant": _md_constant,
     "listing": _md_listing,
 }
-"""Markdown renderer per kind; kinds absent here use ``_md_generic``."""
+"""Markdown renderer per kind; every kind a ``HelpEntry`` can carry has one."""
 
 
 __all__ = [

@@ -3,10 +3,13 @@
 The renderers are pure functions from ``HelpEntry`` / ``SearchResult`` to a
 string. These tests lock:
 
-- every ``HelpKind`` renders in every ``HelpFormat`` without raising;
-- exact text layout for small hand-made fixtures (signature block, column
-  widths, ``Referenced types (N):``, ``See also``, hint block, ``Literal[N
-  values]`` header, search columns, ``No matches for "x"``);
+- every kind a ``HelpEntry`` can carry has a text and a markdown renderer,
+  starts its output with the kind-specific head line, and round-trips
+  through JSON; a kind without a renderer raises ``ValueError``;
+- exact text layout for small hand-made fixtures (signature block with
+  ``*`` / ``/`` markers, column widths, ``Referenced types (N):``,
+  ``See also``, hint block, ``Literal[N values]`` header, search columns,
+  ``No matches for "x"``);
 - markdown output uses ``##`` headings, fenced blocks, and link hints;
 - JSON output parses back into ``to_dict()``;
 - the literal ``[property]`` / ``[method]`` tags survive and no Rich
@@ -22,13 +25,11 @@ import json
 import pytest
 
 from mixpanel_headless._internal.help.models import (
-    HELP_FORMATS,
     HELP_KINDS,
     DocSections,
     FieldDoc,
     Group,
     HelpEntry,
-    HelpFormat,
     HelpKind,
     Hint,
     MemberDoc,
@@ -39,6 +40,8 @@ from mixpanel_headless._internal.help.models import (
     UsageDoc,
 )
 from mixpanel_headless._internal.help.render import (
+    _MD_RENDERERS,
+    _TEXT_RENDERERS,
     NAME_WIDTH,
     _compact_signature,
     _wrap_values,
@@ -196,7 +199,7 @@ def search_result() -> SearchResult:
 
 
 def make_entries() -> dict[HelpKind, HelpEntry]:
-    """Build one small ``HelpEntry`` for every ``HelpKind``.
+    """Build one small ``HelpEntry`` for every kind an entry can carry.
 
     Returns:
         A mapping from kind to a representative entry that exercises the
@@ -369,19 +372,44 @@ def make_entries() -> dict[HelpKind, HelpEntry]:
                 Group(title="Insights query", items=(meth,)),
             ),
         ),
-        "search": HelpEntry(
-            kind="search",
-            name="search",
-            qualname="mixpanel_headless.reference.search",
-            summary="Summary line.",
-            doc=doc,
-        ),
     }
     return entries
 
 
 ENTRIES = make_entries()
-"""One representative entry per ``HelpKind``."""
+"""One representative entry per renderable ``HelpKind``."""
+
+RENDERED_KINDS: tuple[HelpKind, ...] = tuple(k for k in HELP_KINDS if k != "search")
+"""Every ``HelpKind`` a ``HelpEntry`` can carry into ``render``.
+
+``search`` is the kind of a ``SearchResult``, which has its own renderers;
+no ``HelpEntry`` is ever built with it.
+"""
+
+EXPECTED_HEADS: dict[HelpKind, tuple[str, str]] = {
+    "overview": ("mixpanel_headless 0.3.0", "# mixpanel_headless 0.3.0"),
+    "class": ("class Thing", "# Thing"),
+    "model": ("class Params", "# Params"),
+    "dataclass": ("class Row", "# Row"),
+    "enum": ("enum Status", "# enum Status"),
+    "literal": ("Mode = Literal[2 values]", "# Mode"),
+    "alias": ("Account = ServiceAccount | OAuthTokenAccount", "# Account"),
+    "exception": (
+        "exception APIError(MixpanelHeadlessError)",
+        "# exception APIError(MixpanelHeadlessError)",
+    ),
+    "function": ("login_unified(", "# login_unified"),
+    "method": ("Workspace.query(", "# Workspace.query"),
+    "property": ("Workspace.name -> str", "# Workspace.name"),
+    "parameter": ("Workspace.query.math: MathType = 'total'", "# Workspace.query.math"),
+    "module": ("module accounts", "# module accounts"),
+    "constant": (
+        "BUSINESS_CONTEXT_MAX_CHARS: int = 65536",
+        "# BUSINESS_CONTEXT_MAX_CHARS",
+    ),
+    "listing": ("Workspace: Primary facade.", "# Workspace"),
+}
+"""First output line per kind in the text and markdown formats."""
 
 
 # =============================================================================
@@ -390,23 +418,52 @@ ENTRIES = make_entries()
 
 
 def test_make_entries_covers_every_kind() -> None:
-    """The fixture table has exactly one entry per ``HelpKind``."""
-    assert set(ENTRIES) == set(HELP_KINDS)
+    """The fixture and head tables have exactly one entry per renderable kind."""
+    assert set(ENTRIES) == set(RENDERED_KINDS)
+    assert set(EXPECTED_HEADS) == set(RENDERED_KINDS)
 
 
-@pytest.mark.parametrize("kind", HELP_KINDS)
-@pytest.mark.parametrize("fmt", HELP_FORMATS)
-def test_every_kind_renders_in_every_format(kind: HelpKind, fmt: HelpFormat) -> None:
-    """Each kind renders to a non-empty string in each format.
+@pytest.mark.parametrize("kind", RENDERED_KINDS)
+def test_every_kind_renders_its_head_line_in_text_and_markdown(kind: HelpKind) -> None:
+    """Each kind's text and markdown output starts with the kind-specific head line.
 
     Args:
         kind: The ``HelpKind`` under test.
-        fmt: The ``HelpFormat`` under test.
     """
-    out = render(ENTRIES[kind], fmt)
-    assert isinstance(out, str)
-    assert out.strip()
-    assert ENTRIES[kind].name in out
+    text_head, md_head = EXPECTED_HEADS[kind]
+    assert render(ENTRIES[kind], "text").splitlines()[0] == text_head
+    assert render(ENTRIES[kind], "markdown").splitlines()[0] == md_head
+
+
+@pytest.mark.parametrize("kind", RENDERED_KINDS)
+def test_every_kind_renders_json_as_its_dict(kind: HelpKind) -> None:
+    """Each kind's JSON output parses back to ``entry.to_dict()``.
+
+    Args:
+        kind: The ``HelpKind`` under test.
+    """
+    assert json.loads(render(ENTRIES[kind], "json")) == ENTRIES[kind].to_dict()
+
+
+def test_every_rendered_kind_has_a_text_and_markdown_renderer() -> None:
+    """Both renderer tables list exactly the kinds a ``HelpEntry`` can carry."""
+    assert set(_TEXT_RENDERERS) == set(RENDERED_KINDS)
+    assert set(_MD_RENDERERS) == set(RENDERED_KINDS)
+
+
+def test_kind_without_renderer_raises() -> None:
+    """A ``HelpEntry`` whose kind has no renderer raises instead of printing generically."""
+    entry = HelpEntry(
+        kind="search",
+        name="search",
+        qualname="mixpanel_headless.reference.search",
+        summary="Summary line.",
+        doc=DocSections(),
+    )
+    with pytest.raises(ValueError, match="No text renderer for help kind 'search'"):
+        render_text(entry)
+    with pytest.raises(ValueError, match="No markdown renderer for help kind 'search'"):
+        render_markdown(entry)
 
 
 def test_render_defaults_to_text(method_entry: HelpEntry) -> None:
@@ -444,7 +501,7 @@ def test_json_round_trips_search(search_result: SearchResult) -> None:
     assert json.loads(render_search_json(search_result)) == search_result.to_dict()
 
 
-@pytest.mark.parametrize("kind", HELP_KINDS)
+@pytest.mark.parametrize("kind", RENDERED_KINDS)
 def test_text_has_no_rich_markup_and_no_trailing_newline(kind: HelpKind) -> None:
     """Text output carries no Rich markup close tags and no trailing newline.
 
@@ -824,7 +881,7 @@ def test_class_text_exact(class_entry: HelpEntry) -> None:
             "",
             "A property filter.",
             "",
-            "Construction (1 classmethods):",
+            "Construction (1):",
             "  Filter.equals(property, value, property_type='string')",
             "",
             "Fields (public):",
@@ -1406,13 +1463,93 @@ def test_markdown_escapes_pipes_in_cells() -> None:
     assert "| `T` | a \\| b |" in render_markdown(entry)
 
 
-def test_markdown_has_no_trailing_newline_and_no_rich_markup(
-    method_entry: HelpEntry,
-) -> None:
-    """Markdown output ends without a newline and contains no Rich close tags."""
-    out = render_markdown(method_entry)
+@pytest.mark.parametrize("kind", RENDERED_KINDS)
+def test_markdown_has_no_trailing_newline_and_no_rich_markup(kind: HelpKind) -> None:
+    """Markdown output ends without a newline and contains no Rich close tags.
+
+    Args:
+        kind: The ``HelpKind`` under test.
+    """
+    out = render_markdown(ENTRIES[kind])
     assert not out.endswith("\n")
     assert "[/" not in out
+
+
+def test_markdown_parameter_without_values_or_description_has_no_empty_lines() -> None:
+    """A bare parameter prints only its title and fence: no empty ``Allowed values`` line."""
+    entry = HelpEntry(
+        kind="parameter",
+        name="Workspace.query.x",
+        qualname="m.Workspace.query.x",
+        summary="",
+        doc=DocSections(),
+        signature=SignatureDoc(
+            name="query", params=(ParamDoc(name="x", annotation="int"),)
+        ),
+    )
+    out = render_markdown(entry)
+    assert out == "# Workspace.query.x\n\n```python\nWorkspace.query.x: int\n```"
+    assert "Allowed values" not in out
+
+
+def test_search_markdown_no_hits_no_suggestions() -> None:
+    """A markdown miss without suggestions is exactly the ``No matches`` line."""
+    assert render_search_markdown(SearchResult(term="zzz")) == 'No matches for "zzz"'
+
+
+def test_markdown_listing_strips_nesting_indent_from_names() -> None:
+    """Listing rows whose names carry leading spaces print the bare name in markdown."""
+    entry = HelpEntry(
+        kind="listing",
+        name="Exceptions",
+        qualname="mixpanel_headless.exceptions",
+        summary="",
+        doc=DocSections(),
+        groups=(
+            Group(
+                title="Tree",
+                items=(
+                    MemberDoc(name="APIError", kind="exception", summary="Base."),
+                    MemberDoc(
+                        name="  RateLimitError", kind="exception", summary="429."
+                    ),
+                ),
+            ),
+        ),
+    )
+    out = render_markdown(entry)
+    assert "| `RateLimitError` | 429. |" in out
+    assert "`  RateLimitError`" not in out
+    text = render_text(entry)
+    assert "\n    RateLimitError" in text
+
+
+def test_markdown_exception_strips_nesting_indent_from_subclass_names() -> None:
+    """Exception subclass rows print the bare name in markdown; text keeps the indent."""
+    entry = HelpEntry(
+        kind="exception",
+        name="APIError",
+        qualname="mixpanel_headless.exceptions.APIError",
+        summary="S.",
+        doc=DocSections(summary="S.", body="S."),
+        bases=("MixpanelHeadlessError",),
+        groups=(
+            Group(
+                title="Subclasses",
+                items=(
+                    MemberDoc(name="QueryError", kind="exception", summary="400."),
+                    MemberDoc(
+                        name="  BadFilterError", kind="exception", summary="Bad."
+                    ),
+                ),
+            ),
+        ),
+    )
+    out = render_markdown(entry)
+    assert "## Subclasses\n\n| Name | Summary |\n| --- | --- |" in out
+    assert "| `BadFilterError` | Bad. |" in out
+    assert "`  BadFilterError`" not in out
+    assert "\n    BadFilterError" in render_text(entry)
 
 
 # =============================================================================

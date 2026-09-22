@@ -757,15 +757,14 @@ def _source_annotations(cls: type) -> dict[str, object]:
 
     Returns:
         ``name -> annotation`` as written (strings under ``from __future__
-        import annotations``). Classes whose annotations cannot be read
-        contribute nothing.
+        import annotations``). ``inspect.get_annotations`` is called with its
+        default ``eval_str=False``, so nothing is evaluated and nothing can
+        fail: every model in this package is a class in a module that stores
+        its annotations as strings.
     """
     merged: dict[str, object] = {}
     for klass in reversed(cls.__mro__):
-        try:
-            merged.update(inspect.get_annotations(klass))
-        except Exception:  # noqa: BLE001 - lazy annotations may fail to evaluate
-            continue
+        merged.update(inspect.get_annotations(klass))
     return merged
 
 
@@ -796,9 +795,10 @@ def _pydantic_default(info: FieldInfo) -> tuple[str | None, bool]:
         info: The field's ``FieldInfo``.
 
     Returns:
-        ``(None, True)`` when required; ``("<factory>", False)`` for a
-        factory; ``(None, False)`` for a literal ``None`` default; otherwise
-        ``(repr(default), False)``.
+        ``(None, True)`` when required; ``("<list>", False)``, ``("<dict>",
+        False)``, and so on (the factory's name in angle brackets, from
+        ``_factory_display``) for a ``default_factory``; ``(None, False)``
+        for a literal ``None`` default; otherwise ``(repr(default), False)``.
     """
     if info.is_required():
         return None, True
@@ -856,13 +856,20 @@ def _pydantic_alias(
         generator: Callable from ``_alias_callable`` (may be ``None``).
 
     Returns:
-        The alias string, or ``None`` when there is none or it equals ``fname``.
+        The alias string, or ``None`` when there is none, when it equals
+        ``fname``, or when the generator rejects the name.
+
+    Raises:
+        Exception: Whatever else the generator raises. Only ``TypeError``
+            (a generator that expects different arguments) and ``ValueError``
+            (a generator that rejects this name) mean "no alias"; any other
+            error is a bug in the model and must surface.
     """
     alias: object = info.alias
     if alias is None and generator is not None:
         try:
             alias = generator(fname)
-        except Exception:  # noqa: BLE001 - a broken generator must not break help
+        except (TypeError, ValueError):
             alias = None
     if isinstance(alias, str) and alias != fname:
         return alias
@@ -886,8 +893,8 @@ def model_config_doc(cls: type[BaseModel]) -> tuple[tuple[str, str], ...]:
 
     Example:
         ```python
-        model_config_doc(CamelModel)
-        # (("frozen", "True"), ("extra", "forbid"), ("populate_by_name", "True"),
+        model_config_doc(AuditViolation)
+        # (("frozen", "True"), ("extra", "allow"), ("populate_by_name", "True"),
         #  ("alias_generator", "to_camel"))
         ```
     """
