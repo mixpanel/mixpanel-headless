@@ -83,6 +83,9 @@ ParamKind = Literal[
 PARAM_KINDS: tuple[ParamKind, ...] = get_args(ParamKind)
 """Runtime tuple of every ``ParamKind`` value, in ``inspect`` declaration order."""
 
+_CALLABLE_MEMBER_KINDS: frozenset[str] = frozenset({"method", "function"})
+"""The member kinds that carry a signature; every other kind must not."""
+
 
 def _pairs_to_lists(pairs: tuple[tuple[str, str], ...]) -> list[list[str]]:
     """Convert a tuple of two-string pairs into a list of two-item lists.
@@ -208,6 +211,18 @@ class FieldDoc:
     values: tuple[str, ...] = ()
     description: str = ""
 
+    def __post_init__(self) -> None:
+        """Reject a required field that also carries a default.
+
+        Raises:
+            ValueError: When ``required`` is ``True`` and ``default`` is not
+                ``None``; a field with a default is by definition optional.
+        """
+        if self.required and self.default is not None:
+            raise ValueError(
+                f"FieldDoc {self.name!r} is required but has default {self.default!r}"
+            )
+
     def to_dict(self) -> dict[str, object]:
         """Convert to a JSON-serializable dict.
 
@@ -232,15 +247,40 @@ class MemberDoc:
 
     Attributes:
         name: Member name.
-        kind: Member classification.
+        kind: Member classification, one of ``MEMBER_KINDS``.
         summary: First docstring line, or ``""``.
-        signature: Signature for callables, ``None`` for properties and non-callables.
+        signature: Signature for ``method`` / ``function`` members (always
+            present for those kinds), ``None`` for every other kind.
     """
 
     name: str
     kind: MemberKind
     summary: str = ""
     signature: SignatureDoc | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the kind and its agreement with ``signature``.
+
+        Raises:
+            ValueError: When ``kind`` is not one of ``MEMBER_KINDS``, when a
+                ``method`` / ``function`` member has no signature, or when
+                any other kind carries one.
+        """
+        if self.kind not in MEMBER_KINDS:
+            allowed = ", ".join(MEMBER_KINDS)
+            raise ValueError(
+                f"Unknown member kind {self.kind!r}; expected one of: {allowed}"
+            )
+        callable_kind = self.kind in _CALLABLE_MEMBER_KINDS
+        if callable_kind and self.signature is None:
+            raise ValueError(
+                f"MemberDoc {self.name!r} of kind {self.kind!r} requires a signature"
+            )
+        if not callable_kind and self.signature is not None:
+            raise ValueError(
+                f"MemberDoc {self.name!r} of kind {self.kind!r} "
+                "must not carry a signature"
+            )
 
     def to_dict(self) -> dict[str, object]:
         """Convert to a JSON-serializable dict.

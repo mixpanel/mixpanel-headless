@@ -6,6 +6,9 @@ The models are frozen ``slots=True`` dataclasses. These tests lock:
   models convert recursively, output is JSON-serializable);
 - immutability (assignment raises ``FrozenInstanceError``) and hashability;
 - the defaults that let callers build partial ``HelpEntry`` values;
+- the construction invariants: ``MemberDoc`` rejects unknown kinds and a
+  kind / signature mismatch, ``FieldDoc`` rejects a required field with a
+  default;
 - the ``EXPORT_KINDS`` / ``MEMBER_KINDS`` / ``HELP_KINDS`` / ``HELP_FORMATS``
   runtime constants and how each kind tuple extends the previous one.
 """
@@ -14,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import typing
 from typing import get_args
 
 import pytest
@@ -493,6 +497,73 @@ def test_search_result_defaults() -> None:
 
 
 # =============================================================================
+# Construction invariants
+# =============================================================================
+
+CALLABLE_MEMBER_KINDS: tuple[MemberKind, ...] = ("method", "function")
+"""The member kinds that must carry a signature."""
+
+
+def test_member_doc_rejects_unknown_kind() -> None:
+    """A runtime kind outside ``MEMBER_KINDS`` raises ``ValueError``."""
+    with pytest.raises(ValueError, match="Unknown member kind 'nonesuch'"):
+        MemberDoc(name="x", kind=typing.cast("MemberKind", "nonesuch"))
+
+
+@pytest.mark.parametrize("kind", CALLABLE_MEMBER_KINDS)
+def test_member_doc_callable_kind_requires_signature(kind: MemberKind) -> None:
+    """A ``method`` or ``function`` member without a signature raises ``ValueError``.
+
+    Args:
+        kind: One of the two callable member kinds.
+    """
+    with pytest.raises(ValueError, match=f"kind {kind!r} requires a signature"):
+        MemberDoc(name="x", kind=kind)
+
+
+@pytest.mark.parametrize(
+    "kind", [k for k in MEMBER_KINDS if k not in CALLABLE_MEMBER_KINDS]
+)
+def test_member_doc_non_callable_kind_rejects_signature(kind: MemberKind) -> None:
+    """Any other member kind with a signature raises ``ValueError``.
+
+    Args:
+        kind: A non-callable member kind.
+    """
+    with pytest.raises(ValueError, match=f"kind {kind!r} must not carry a signature"):
+        MemberDoc(name="x", kind=kind, signature=SignatureDoc(name="x"))
+
+
+@pytest.mark.parametrize("kind", MEMBER_KINDS)
+def test_member_doc_accepts_every_kind_with_the_matching_signature(
+    kind: MemberKind,
+) -> None:
+    """Every ``MemberKind`` constructs when the signature matches the kind.
+
+    Args:
+        kind: The member kind under test.
+    """
+    callable_kind = kind in CALLABLE_MEMBER_KINDS
+    signature = SignatureDoc(name="x") if callable_kind else None
+    member = MemberDoc(name="x", kind=kind, signature=signature)
+    assert member.kind == kind
+    assert (member.signature is not None) is callable_kind
+
+
+def test_field_doc_rejects_required_with_default() -> None:
+    """A required field that also has a default raises ``ValueError``."""
+    with pytest.raises(ValueError, match="'x' is required but has default '1'"):
+        FieldDoc(name="x", annotation="int", required=True, default="1")
+
+
+def test_field_doc_accepts_consistent_required_and_default() -> None:
+    """Required without a default, optional with one, and optional without one all construct."""
+    assert FieldDoc(name="x", annotation="int", required=True).default is None
+    assert FieldDoc(name="x", annotation="int", default="1").required is False
+    assert FieldDoc(name="x", annotation="int").required is False
+
+
+# =============================================================================
 # Frozen and hashable
 # =============================================================================
 
@@ -504,7 +575,7 @@ def test_search_result_defaults() -> None:
         (ParamDoc(name="p", annotation="int"), "name"),
         (SignatureDoc(name="f"), "name"),
         (FieldDoc(name="f", annotation="int"), "name"),
-        (MemberDoc(name="m", kind="method"), "name"),
+        (MemberDoc(name="m", kind="method", signature=SignatureDoc(name="m")), "name"),
         (Group(title="g", items=()), "title"),
         (UsageDoc(method="m", params=()), "method"),
         (DocSections(), "summary"),

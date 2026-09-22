@@ -315,24 +315,52 @@ _SIGNATURES = st.builds(
     params=st.lists(_PARAM_DOCS, max_size=3).map(tuple),
     returns=_OPT_STR,
 )
-_FIELD_DOCS = st.builds(
-    FieldDoc,
-    name=_STR,
-    annotation=_STR,
-    default=_OPT_STR,
-    required=st.booleans(),
-    constraints=_STRS,
-    alias=_OPT_STR,
-    values=_STRS,
-    description=_STR,
-)
-_MEMBER_DOCS = st.builds(
-    MemberDoc,
-    name=_STR,
-    kind=_MEMBER_KIND,
-    summary=_STR,
-    signature=st.one_of(st.none(), _SIGNATURES),
-)
+_CALLABLE_MEMBER_KINDS = frozenset({"method", "function"})
+
+
+@st.composite
+def _field_docs(draw: st.DrawFn) -> FieldDoc:
+    """Draw a ``FieldDoc`` whose ``required`` flag agrees with its default.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A ``FieldDoc``; required fields never carry a default.
+    """
+    required = draw(st.booleans())
+    default = None if required else draw(_OPT_STR)
+    return FieldDoc(
+        name=draw(_STR),
+        annotation=draw(_STR),
+        default=default,
+        required=required,
+        constraints=draw(_STRS),
+        alias=draw(_OPT_STR),
+        values=draw(_STRS),
+        description=draw(_STR),
+    )
+
+
+@st.composite
+def _member_docs(draw: st.DrawFn) -> MemberDoc:
+    """Draw a ``MemberDoc`` whose signature agrees with its kind.
+
+    Args:
+        draw: Hypothesis draw function.
+
+    Returns:
+        A ``MemberDoc``; only ``method`` / ``function`` members carry a signature.
+    """
+    kind = draw(_MEMBER_KIND)
+    signature = draw(_SIGNATURES) if kind in _CALLABLE_MEMBER_KINDS else None
+    return MemberDoc(
+        name=draw(_STR), kind=kind, summary=draw(_STR), signature=signature
+    )
+
+
+_FIELD_DOCS = _field_docs()
+_MEMBER_DOCS = _member_docs()
 _MEMBERS = st.lists(_MEMBER_DOCS, max_size=3).map(tuple)
 _DOC_SECTIONS = st.builds(
     DocSections,

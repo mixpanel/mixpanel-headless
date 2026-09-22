@@ -215,7 +215,12 @@ def make_entries() -> dict[HelpKind, HelpEntry]:
     )
     member = MemberDoc(name="fn", kind="function", summary="Do it.", signature=sig)
     prop = MemberDoc(name="name", kind="property", summary="The name.")
-    meth = MemberDoc(name="query", kind="method", summary="Run a query.")
+    meth = MemberDoc(
+        name="query",
+        kind="method",
+        summary="Run a query.",
+        signature=SignatureDoc(name="query"),
+    )
     usage = (UsageDoc(method="query", params=("math",)),)
     entries: dict[HelpKind, HelpEntry] = {
         "overview": HelpEntry(
@@ -1166,11 +1171,18 @@ def test_module_with_groups_renders_group_titles() -> None:
         groups=(
             Group(
                 title="Functions",
-                items=(MemberDoc(name="use", kind="function", summary="Use."),),
+                items=(
+                    MemberDoc(
+                        name="use",
+                        kind="function",
+                        summary="Use.",
+                        signature=SignatureDoc(name="use"),
+                    ),
+                ),
             ),
         ),
     )
-    assert render_text(entry).endswith("Functions (1):\n  use" + " " * 40 + "Use.")
+    assert render_text(entry).endswith("Functions (1):\n  use()" + " " * 38 + "Use.")
 
 
 def test_constant_text_exact() -> None:
@@ -1637,12 +1649,20 @@ def test_markdown_module_with_groups_renders_group_tables() -> None:
         groups=(
             Group(
                 title="Functions",
-                items=(MemberDoc(name="use", kind="function", summary="Use."),),
+                items=(
+                    MemberDoc(
+                        name="use",
+                        kind="function",
+                        summary="Use.",
+                        signature=SignatureDoc(name="use"),
+                    ),
+                ),
             ),
         ),
     )
     out = render_markdown(entry)
     assert (
-        "## Functions (1)\n\n| Name | Summary |\n| --- | --- |\n| `use` | Use. |" in out
+        "## Functions (1)\n\n| Name | Summary |\n| --- | --- |\n| `use()` | Use. |"
+        in out
     )
     assert "## Members" not in out
