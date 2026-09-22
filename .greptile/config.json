@@ -16,7 +16,7 @@
     "collapsible": false,
     "defaultOpen": true
   },
-  "instructions": "mixpanel_headless is a Python 3.10+ library and CLI (`mp`) for Mixpanel: schema discovery, live queries, streaming, entity CRUD through the App API, and session replay. Layers: CLI (Typer) -> public API (Workspace, mp.accounts, mp.session, mp.targets, mp.reference) -> services -> infrastructure (ConfigManager, MixpanelAPIClient). Project tooling (the pre-commit hook, `just check`, and CI) already enforces ruff format, ruff check, mypy --strict, interrogate docstring coverage, and 90% test coverage. Do not comment on anything those tools already catch. Focus on behavior: wrong results, missed edge cases, scope and auth mistakes, error handling, security, and missing tests for changed behavior. Prefer one precise comment over several speculative ones. If a PR is clean, say so.",
+  "instructions": "mixpanel_headless is a Python 3.10+ library and CLI (`mp`) for Mixpanel: schema discovery, live queries, streaming, entity CRUD through the App API, and session replay. Layers: CLI (Typer) -> public API (Workspace, mp.accounts, mp.session, mp.targets, mp.reference) -> services -> infrastructure (ConfigManager, MixpanelAPIClient). CI enforces ruff check, mypy --strict, interrogate docstring presence (every definition in src/ and conformance/), and 90% test coverage; the pre-commit hook and `just check` also enforce ruff format. Do not comment on anything those tools already catch. Focus on behavior: wrong results, missed edge cases, scope and auth mistakes, error handling, security, and missing tests for changed behavior. Prefer one precise comment over several speculative ones. If a PR is clean, say so.",
   "rules": [
     {
       "id": "workspace-scope-enforced",
@@ -78,7 +78,7 @@
     },
     {
       "id": "docstring-accuracy",
-      "rule": "interrogate enforces docstring presence, so do not flag a missing docstring or a missing section by itself. The Example section is required only where behavior is not obvious. A Returns section is not required for functions that return None. Flag a docstring only when it is wrong: it describes behavior the code does not have, omits an exception the code raises, or uses doctest `>>>` examples instead of fenced code blocks.",
+      "rule": "interrogate in CI requires a docstring on every definition in src/ and conformance/, so do not flag a missing docstring there, and do not flag a missing section by itself. The Example section is required only where behavior is not obvious. A Returns section is not required for functions that return None. Flag a docstring only when it is wrong: it describes behavior the code does not have, omits an exception the code raises, or uses doctest `>>>` examples instead of fenced code blocks.",
       "scope": ["src/**", "conformance/**"],
       "severity": "low"
     },

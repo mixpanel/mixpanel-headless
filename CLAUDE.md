@@ -97,7 +97,7 @@ Code must pass `ruff format` and `ruff check`. Run `just check` before committin
 
 ### Documentation (STRICT)
 
-**Every class, method, and function has a docstring — no exceptions.** This covers public API, private/internal helpers (prefixed with `_`), module-level functions, nested functions, test fixtures, and test methods. Presence is enforced by [interrogate](https://interrogate.readthedocs.io/) in `just check` and the pre-commit hook: `src/` must stay at 99% or higher (`[tool.interrogate]` in `pyproject.toml`), `tests/` and `conformance/` at 95% or higher (`justfile`).
+**Every class, method, and function has a docstring — no exceptions.** This covers public API, private/internal helpers (prefixed with `_`), module-level functions, nested functions, test fixtures, and test methods. Presence is enforced by [interrogate](https://interrogate.readthedocs.io/) in CI, `just check`, and the pre-commit hook: every definition in `src/` and `conformance/` (100%; `[tool.interrogate]` in `pyproject.toml` and the `justfile`), and 95% of `tests/`. Reviewers flag a new test or fixture that has no docstring, because the `tests/` gate is an aggregate.
 
 Which sections a docstring needs depends on what the function does (Google style):
 - **Summary**: Always. One line saying what it does.

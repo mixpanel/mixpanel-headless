@@ -54,6 +54,6 @@ library.
 
 - Formatting, import order, and lint issues (ruff enforces them).
 - Type annotation completeness (mypy --strict enforces it).
-- Docstring presence (interrogate enforces it).
+- Docstring presence in src/ and conformance/ (interrogate requires 100% in CI).
 - Recorded conformance artifacts. The ignore patterns exclude them, and a
   script regenerates them.

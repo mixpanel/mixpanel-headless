@@ -179,7 +179,7 @@ typecheck:
 docstring-cov:
     uv run interrogate src/
     uv run interrogate tests/ --fail-under=95
-    uv run interrogate conformance/ --fail-under=95
+    uv run interrogate conformance/ --fail-under=100
 
 # Sync dependencies
 sync:

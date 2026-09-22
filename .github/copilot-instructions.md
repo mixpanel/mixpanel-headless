@@ -82,7 +82,7 @@ CLI (Typer) → Public API (Workspace) → Services → Infrastructure (Config, 
 - Use `Literal` for constrained strings
 
 ### Docstrings (REQUIRED)
-Every class, method, and function has a docstring, including private helpers and tests (checked by interrogate). Sections depend on the function (Google style):
+Every class, method, and function has a docstring, including private helpers and tests (checked by interrogate in CI: every definition in `src/` and `conformance/`, 95% of `tests/`). Sections depend on the function (Google style):
 - Summary: always
 - Args: when it takes parameters (no types — those are in the annotations)
 - Returns: when it returns a non-`None` value
