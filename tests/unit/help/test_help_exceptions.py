@@ -194,6 +194,21 @@ class TestDomainErrorHierarchy:
         with pytest.raises(TypeError):
             HelpDomainError("Workspace", "nope")  # type: ignore[misc]
 
+    def test_exported_from_package(self) -> None:
+        """The class and its reason alias are reachable from the package root."""
+        assert mp.HelpDomainError is HelpDomainError
+        assert mp.HelpDomainReason is HelpDomainReason
+        assert "HelpDomainError" in mp.__all__
+        assert "HelpDomainReason" in mp.__all__
+
+    def test_listed_under_help_lookup_error_in_the_exception_tree(self) -> None:
+        """``mp.help("exceptions")`` places ``HelpDomainError`` one level below its parent."""
+        from mixpanel_headless._internal.help.relations import exception_tree
+
+        rows = exception_tree()
+        parent = rows.index(("HelpLookupError", 1))
+        assert rows[parent + 1] == ("HelpDomainError", 2)
+
 
 class TestDomainErrorAttributes:
     """``query``, ``domain``, ``domains``, ``suggestions``, and ``hits``."""

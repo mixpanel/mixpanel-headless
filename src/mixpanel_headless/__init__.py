@@ -64,6 +64,8 @@ from mixpanel_headless.exceptions import (
     ConfigError,
     DateRangeTooLargeError,
     EventNotFoundError,
+    HelpDomainError,
+    HelpDomainReason,
     HelpLookupError,
     InvalidArgumentError,
     MixpanelHeadlessError,
@@ -408,6 +410,8 @@ __all__ = [
     "BusinessContextValidationError",
     # Built-in help
     "HelpLookupError",
+    "HelpDomainError",
+    "HelpDomainReason",
     "help",
     "reference",
     # Session-replay exceptions (044)

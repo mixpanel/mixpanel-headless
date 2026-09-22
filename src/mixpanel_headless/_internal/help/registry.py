@@ -1082,6 +1082,8 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "ParamValidationError",
             "ResponseValidationError",
             "HelpLookupError",
+            "HelpDomainError",
+            "HelpDomainReason",
         ),
         "exception hierarchy — base classes, API errors, validation errors",
         "api/exceptions.md",

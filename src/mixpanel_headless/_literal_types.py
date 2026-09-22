@@ -833,6 +833,10 @@ ALIAS_DOCS: dict[str, str] = {
         "follows the link's report type, so narrow with isinstance or "
         "ResolvedReport.report_type."
     ),
+    "HelpDomainReason": (
+        "Why HelpDomainError rejected the domain filter of a help query "
+        "(HelpDomainError.reason); each reason selects a different message."
+    ),
     "BUSINESS_CONTEXT_MAX_CHARS": (
         "Maximum length of a business-context document in characters; the "
         "server rejects longer content and set_business_context checks it "
