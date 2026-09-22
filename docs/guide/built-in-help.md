@@ -16,7 +16,7 @@ mp.help()                          # overview: version, entry points, domains, g
 mp.help("Workspace.query")         # signature, docstring, referenced types, see also, hint
 mp.help("Filter")                  # construction, fields, properties, methods, used by
 mp.help("MathType")                # allowed values, description, used by
-mp.help("search cohort")           # search names, docstrings, enum members
+mp.help("search cohort")           # search names, docstrings, enum members, Literal values
 mp.help(mp.Filter)                 # object form — same entry as the string form
 ```
 
@@ -55,7 +55,7 @@ entry.signature.params[0].name                  # "steps"
 entry.to_dict()                                 # JSON-ready dict
 
 hits = ref.search("retention")                  # SearchResult
-hits.hits[0].name                               # sorted by category, then name
+hits.hits[0].name                               # best match tier first, then category, then name
 
 ref.render(entry, "markdown")                   # str
 ref.clear_cache()                               # drop the per-process inventory cache
@@ -103,11 +103,11 @@ Object queries are accepted. `mp.help(mp.Filter)`, `mp.help(ws.query)`, `mp.help
 | `<function>` | `function` | `login_unified`, `validate_bookmark`, the replay label helpers. |
 | `accounts` / `session` / `targets` | `module` | `__all__` members with first doc lines and compact signatures. |
 | `<constant>` | `constant` | Value and type. |
-| `types` | `listing` | Public types grouped by kind: models, dataclasses, enums, literal aliases, other aliases, plain classes. No hints. |
+| `types` | `listing` | Public types grouped by kind: models, dataclasses, enums, literal aliases, other aliases, protocols and plain classes. Every row carries a one-line summary. No hints. |
 | `exceptions` | `listing` | Indented tree from `MixpanelHeadlessError`. No hints. |
-| `search <term>` | `search` | Case-insensitive substring match over names, docstring summaries, and enum members. |
+| `search <term>` | `SearchResult` | Case-insensitive substring match over names, docstring summaries, enum members, and Literal values. Hits sort by match tier (`name`, then `doc`, then `member`), then category, then name. |
 | `help` | `function` | The function documents itself. |
-| miss | raises `HelpLookupError` | "Did you mean?" suggestions plus the top search hits. |
+| miss | raises `HelpLookupError` | One line, `No help entry for 'X'. Did you mean: a, b?`, followed by the search view for the same term. |
 
 Resolution order for a name: exact match, then a unique case-insensitive match (`filter` → `Filter`), then a miss. An ambiguous case-insensitive match is a miss.
 
@@ -117,29 +117,47 @@ Three formats, selected with `format=` in Python or `-f/--format` in the CLI. Th
 
 **`text`** is a compact plain-text layout: a multi-line signature block, Google docstring sections, two-column rows, `Used by Workspace (N methods):` rows, a `See also` line, and one `---` / `Tip:` / `WebFetch(url=...)` block per hint. Output contains no Rich markup, so literal tags such as `[property]` survive.
 
-An illustrative `mp help Workspace.create_dashboard` (the exact docstring text comes from the installed version):
+`mp help Workspace.segmentation` (the docstring text comes from the installed version):
 
 ```
-Workspace.create_dashboard(
-    params: CreateDashboardParams
-) -> Dashboard
+Workspace.segmentation(
+    event: str,
+    *,
+    from_date: str,
+    to_date: str,
+    on: str | None = None,
+    unit: Literal['day', 'week', 'month'] = 'day',
+    where: str | None = None
+) -> SegmentationResult
 
-Create a new dashboard.
+Run a segmentation query against Mixpanel API.
 
 Args:
-    params: Dashboard creation parameters.
-...
+    event: Event name to query.
+    from_date: Start date (YYYY-MM-DD).
+    to_date: End date (YYYY-MM-DD).
+    on: Optional property to segment by.
+    unit: Time unit for aggregation.
+    where: Optional WHERE clause.
+
+Returns:
+    SegmentationResult with time-series data.
+
+Raises:
+    ConfigError: If API credentials not available.
 
 Referenced types (2):
-  CreateDashboardParams                      Parameters for creating a new dashboard.
-  Dashboard                                  A Mixpanel dashboard as returned by the App API.
+  SegmentationResult                         Result of a segmentation query.
+  TimeUnit                                   Bucket size for the legacy live queries segmentation, retention, event_counts, property_counts, and frequency, and the retention_unit of Workspace.query_retention / build_retention_params.
 
-See also (dashboards): add_report_to_dashboard, bulk_delete_dashboards, delete_dashboard, ...
+See also (legacy live queries): activity_feed, event_counts, frequency, funnel, property_counts, query_saved_flows, query_saved_report, retention, segmentation_average, segmentation_numeric, segmentation_sum
 
 ---
-Tip: For dashboards, reports, and cohorts (entity management),
-     WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/entity-management/index.md")
+Tip: For segmentation, funnels, retention (legacy live queries),
+     WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/live-analytics/index.md")
 ```
+
+Signatures follow `inspect.signature`: a bare `*,` line precedes the first keyword-only parameter when no `*args` does, and a `/` line follows the last positional-only parameter. In JSON the same fact is `ParamDoc.kind`, one of `positional_only`, `positional_or_keyword`, `var_positional`, `keyword_only`, `var_keyword`. On a class entry the factory classmethods and staticmethods print under `Construction (N):`.
 
 An illustrative `mp help MathType`:
 
@@ -154,6 +172,10 @@ Aggregation for a plain-string event in Workspace.query / build_params and for M
 Used by Workspace (2 methods):
   build_params(math)
   query(math)
+
+---
+Tip: For MathType, Filter, GroupBy, Formula, validation rules,
+     WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/query/index.md")
 ```
 
 **`markdown`** uses `#` for the entry title, `##` per section, fenced `python` blocks for signatures and examples, pipe tables where the text format has columns, and hints as links under `## Further reading`. Paste it into a notebook or a chat context as-is.
@@ -162,7 +184,7 @@ Used by Workspace (2 methods):
 
 ## The `--domain` filter
 
-`Workspace` has more than 200 public methods. `mp help Workspace` groups them into 32 domains, and `--domain NAME` (CLI) or `domain=NAME` (Python) shows one group. The match is case-insensitive and accepts a unique prefix, so `--domain funnel` selects `funnel query`. An unknown domain exits 3 in the CLI and raises `HelpLookupError` in Python. `domain=` with a query other than `Workspace` also raises `HelpLookupError`.
+`Workspace` has more than 200 public methods. `mp help Workspace` groups them into 32 domains, and `--domain NAME` (CLI) or `domain=NAME` (Python) shows one group. The match is case-insensitive and accepts a unique prefix, so `--domain funnel` selects `funnel query`. An unknown domain, an ambiguous prefix (`--domain s` matches five titles), or `domain=` with a query other than `Workspace` raises `HelpDomainError` in Python and exits 3 in the CLI, which prints the message and the candidate titles on one `Domains:` line to stderr. See [Exit codes and errors](#exit-codes-and-errors).
 
 The 32 domain titles, in display order:
 
@@ -181,7 +203,7 @@ The same registry drives the `See also (<domain>):` line on every `Workspace.<me
 
 ## Hints
 
-Most entries end with one or more hint blocks that point at a page on this site. The `text` format prints each hint as a `WebFetch(url=...)` line so an agent can fetch the page directly; `markdown` prints them as links under `## Further reading`; `json` lists them under `hints` with `title` and `url`. `types` and `exceptions` never carry hints. Pass `hints=False` in Python or `--no-hints` in the CLI to drop the section.
+Most entries end with one or more hint blocks that point at a page on this site. The `text` format prints each hint as a `WebFetch(url=...)` line so an agent can fetch the page directly; `markdown` prints them as links under `## Further reading`; `json` lists them under `hints` with `title` and `url`. Every `Workspace` domain has at least one hint rule, so every `Workspace.<method>` entry ends with a pointer. `types` and `exceptions` never carry hints. Pass `hints=False` in Python or `--no-hints` in the CLI to drop the section.
 
 ## JSON shape
 
@@ -189,64 +211,81 @@ Most entries end with one or more hint blocks that point at a page on this site.
 
 | Key | Type | Content |
 | --- | --- | --- |
-| `kind` | `str` | One of the result kinds from the grammar table. |
+| `kind` | `str` | One of the result kinds from the grammar table (`HelpKind`). |
 | `name` | `str` | Display name, for example `Workspace.query` or `Filter`. |
 | `qualname` | `str` | Canonical help query for the entry, for example `Workspace.query` or `Filter`. Pass it back to `describe()` to get the same entry. Not an import path. |
 | `summary` | `str` | First docstring line. |
 | `doc` | object | `summary`, `body`, `args` (pairs), `returns`, `raises` (pairs), `example`, `notes`. |
-| `signature` | object or `null` | `name`, `params` (each: `name`, `annotation`, `default`, `description`, `values`), `returns`. |
-| `bases` | `list[str]` | Public base class names. |
+| `signature` | object or `null` | `name`, `params`, `returns`. Each param: `name`, `annotation` (`null` when absent), `default`, `description`, `values`, `kind`. |
+| `bases` | `list[str]` | Public base class names; for a constant, the one type name of its value. |
 | `config` | pairs | Non-default Pydantic model config. |
-| `construction` | list | Factory classmethods (`name`, `kind`, `summary`, `signature`). |
-| `fields` | list | Public fields (`name`, `annotation`, `default`, `required`, `constraints`, `alias`, `values`, `description`). |
+| `construction` | list | Factory classmethods and staticmethods, each a member (`name`, `kind`, `summary`, `signature`, `depth`). |
+| `fields` | list | Public fields (`name`, `annotation`, `default`, `required`, `constraints`, `alias`, `values`, `description`). An enum reuses this shape for its members. |
 | `properties` | list | Public properties, same member shape as `construction`. |
 | `methods` | list | Public methods, same member shape. |
-| `values` | `list[str]` | Enum member names or literal values. |
-| `groups` | list | `title` plus `items` (members) — `Workspace` domains, listings, module sections. |
+| `values` | `list[str]` | Enum member names, Literal values, or union member names. `[]` for a constant. |
+| `value` | `str` or `null` | The `repr` of a constant's value (an enum member such as `FeatureFlagStatus.ENABLED` is a constant). `null` for every other kind. |
+| `groups` | list | `title` plus `items` (members). `Workspace` domains, listings, module sections, and exception subclass trees. `[]` for a method. |
 | `referenced_types` | pairs | `(type_name, summary)` for a callable. |
 | `used_by` | list | `Workspace` methods that accept this type (`method`, `params`). |
+| `domain` | `str` or `null` | Registry domain title of a `Workspace` method, for example `legacy live queries`. `null` for every other kind. |
 | `see_also` | `list[str]` | Sibling method names from the same domain. |
 | `hints` | list | Hosted-docs pointers (`title`, `url`). |
 
+A member (`construction`, `properties`, `methods`, and every `groups[].items[]` row) carries `name`, `kind`, `summary`, `signature`, and `depth`. Names never carry indentation; in the `exceptions` listing and in an `<Exception>` entry, `depth` is the nesting level of the subclass tree (`MixpanelHeadlessError` is depth `0` in the listing; a direct subclass is depth `0` in a single exception's `Subclasses` group). Which fields each kind fills is listed in the `HelpEntry` docstring; `mp help HelpEntry` prints it.
+
 A `search` query returns a `SearchResult` with `term`, `hits` (each: `category`, `name`, `summary`, `matched_on` ∈ `name` / `doc` / `member`), and `suggestions`.
+
+The result types are root exports, so the help system documents itself: `mp.HelpEntry`, `mp.SearchResult`, `mp.SearchHit`, `mp.ParamDoc`, `mp.SignatureDoc`, `mp.FieldDoc`, `mp.MemberDoc`, `mp.Group`, `mp.DocSections`, `mp.UsageDoc`, and `mp.Hint`. Three kind literals describe the surface: `ExportKind` (the ten kinds an export can have: `module`, `exception`, `enum`, `model`, `dataclass`, `class`, `literal`, `alias`, `function`, `constant`), `MemberKind` (`ExportKind` plus `method` and `property`; the type of `SearchHit.category` and `MemberDoc.kind`), and `HelpKind` (`MemberKind` plus `overview`, `listing`, `parameter`; the type of `HelpEntry.kind`).
 
 ## Tips for agents
 
 - Use `-f json --jq EXPR` to extract one fact instead of a page of text: `mp help Workspace.query -f json --jq '.signature.params[].name'`, `mp help FilterOperator -f json --jq '.values'`. `--jq` requires `-f json`; without it the command exits 3.
-- Use `mp help search TERM` before you guess a name. The hit list covers exports, `Workspace` members, and enum member values.
+- Use `mp help search TERM` before you guess a name. The hit list covers exports, `Workspace` members, `accounts` / `session` / `targets` members, enum member values, and Literal values.
 - Follow the hint at the bottom of an entry. Every hint URL ends in `index.md` and is safe to `WebFetch`. The site also publishes <a href="https://mixpanel.github.io/mixpanel-headless/llms.txt">`llms.txt`</a> (index) and <a href="https://mixpanel.github.io/mixpanel-headless/llms-full.txt">`llms-full.txt`</a> (everything in one file).
 - In a sandbox where `mp` is not on `PATH`, `python3 -m mixpanel_headless help ...` accepts the same arguments.
 - `mp help` ignores `-a / -p / -w / -t`. No account, project, or workspace is needed or consulted.
 
 ## Exit codes and errors
 
-CLI exit codes:
+CLI exit codes (this table is the reference; the CLI page and the changelog summarize it):
 
-| Code | Meaning |
-| --- | --- |
-| `0` | The query resolved. |
-| `4` | Miss. Suggestions and the first search hits print to stdout. |
-| `3` | `--jq` without `-f json`, or an unknown `--domain`. |
+| Code | When | Stream |
+| --- | --- | --- |
+| `0` | Entry found; search with one or more hits. | stdout |
+| `2` | An option value the parser rejects, for example `-f table`. Click prints the usage error. | stderr |
+| `3` | `--jq` without `-f json`; bare `search` with no term (`Error: search needs a term. Usage: mp help search <term>`); a `--domain` that is unknown or ambiguous, or given with a query other than `Workspace` (`HelpDomainError`: `Error: <message>` plus one `Domains: ...` line when titles apply). Nothing on stdout. | stderr |
+| `4` | Describe miss, also when `--domain` was passed; search with zero hits. The miss line and search view (or the JSON error object) print first. | stdout |
 
-In Python, `describe()` raises `HelpLookupError` on a miss. `help()` catches it and prints the suggestions instead. `search()` raises it for an empty term. The exception carries the structured recovery data:
+A miss prints one line, `No help entry for 'Cohor'. Did you mean: Cohort, Workspace.cohorts, CohortInfo, SavedCohort, CohortMetric?`, then the search view for the same term. Under `-f json` the miss is an object with `error`, `query`, `suggestions`, and `hits`.
+
+In Python, `describe()` raises `HelpLookupError` on a miss and `HelpDomainError` (a `HelpLookupError` subclass) when `domain=` is rejected. `help()` catches a plain miss and prints the same line and search view; it re-raises `HelpDomainError`. `search()` raises `HelpLookupError` for an empty term. Both exceptions carry structured recovery data, and `details` (so `to_dict()`) includes `hits` as dicts:
 
 ```python
 import mixpanel_headless as mp
 from mixpanel_headless import reference as ref
 
 try:
-    entry = ref.describe("Filtr")
+    entry = ref.describe("Cohor")
 except mp.HelpLookupError as exc:
-    print(exc.query)         # "Filtr"
-    print(exc.suggestions)   # close names, most similar first
+    print(exc.query)         # Cohor
+    print(exc.suggestions)   # ('Cohort', 'Workspace.cohorts', 'CohortInfo', 'SavedCohort', 'CohortMetric')
     for hit in exc.hits:     # SearchHit records for the same term
         print(hit.category, hit.name)
+    exc.details["hits"][0]   # {'category': 'class', 'name': 'RetentionCohortData', ...}
+
+try:
+    ref.describe("Workspace", domain="s")
+except mp.HelpDomainError as exc:
+    print(exc.reason)        # ambiguous  (one of: unknown, ambiguous, not_workspace)
+    print(exc.domain)        # s
+    print(exc.domains)       # ('session and switching', 'streaming', 'schema registry', 'schema enforcement', 'session replay')
 ```
 
-`HelpLookupError` subclasses `MixpanelHeadlessError` directly, not `APIError`, because the lookup never touches the network.
+`HelpLookupError` subclasses `MixpanelHeadlessError` directly, not `APIError`, because the lookup never touches the network. `HelpDomainError` has the error code `HELP_BAD_DOMAIN`; its `query` is the help query (`Workspace`), never the domain.
 
 ## Next Steps
 
 - [API Reference: Built-in help](../api/help.md) — `mixpanel_headless.reference` module docs
-- [Exceptions](../api/exceptions.md#help-lookup-exceptions) — `HelpLookupError`
+- [Exceptions](../api/exceptions.md#help-lookup-exceptions) — `HelpLookupError` and `HelpDomainError`
 - [CLI Commands](../cli/commands.md#built-in-help) — `mp help` options

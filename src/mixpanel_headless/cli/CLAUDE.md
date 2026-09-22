@@ -10,7 +10,7 @@ state-change verb.
 
 | Group | Purpose |
 |-------|---------|
-| `login` | Top-level command — `mp login` orchestrates region probe + project picker + name derivation in one call (043 / AIE-117) |
+| `login` | Top-level command — `mp login` orchestrates region probe + project picker + name derivation in one call |
 | `account` | Account CRUD + lifecycle (`list`, `add`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`, `export-bridge`, `remove-bridge`) |
 | `project` | Project axis (`list` from `/me`, `use ID`, `show`) |
 | `workspace` | Workspace axis (`list` from `/me`, `use ID`, `show`) |
@@ -23,7 +23,7 @@ state-change verb.
 | `cohorts` | Cohort CRUD (list, create, get, update, delete, bulk ops) |
 | `flags` / `experiments` / `alerts` / `annotations` / `webhooks` / `lexicon` / `drop-filters` / `custom-properties` / `custom-events` / `lookup-tables` / `schemas` | Entity CRUD + data governance for the matching App API surface |
 | `business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
-| `help` | Top-level command — `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` prints the offline API reference. Defaults to `text` output, unlike entity commands whose default is `json`; ignores `-a/-p/-w/-t` and never calls `get_workspace`. Exit 4 on a miss; 3 for `--jq` without `-f json` or an unknown `--domain` |
+| `help` | Top-level command — `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` prints the offline API reference. Defaults to `text` output, unlike entity commands whose default is `json`; ignores `-a/-p/-w/-t` and never calls `get_workspace`. Exit 4 (stdout) on a miss or a search with zero hits; 3 (stderr) for `--jq` without `-f json`, bare `search`, or a rejected `--domain`; 2 for a parser-rejected option value. Full table: `docs/guide/built-in-help.md` |
 
 ## Files
 
@@ -96,7 +96,7 @@ Errors go to stderr via `err_console`.
 | `ReportLinkParseError` / `UnsupportedReportLinkError` / `ReportLinkScopeMismatchError` | 3 (prints `hint:` when present) |
 | `BookmarkValidationError` | 3 (one line per validation error) |
 | `ShortLinkResolutionError` | 1 |
-| `HelpLookupError` | 4 (`mp help` miss; suggestions print to stdout) |
+| `HelpLookupError` | 4 — safety net only: `mp help` handles both errors itself before they reach the decorator (miss on stdout, exit 4; `HelpDomainError` on stderr, exit 3) |
 | `ConfigError` | 1 |
 | `MixpanelHeadlessError` | 1 |
 

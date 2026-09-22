@@ -159,7 +159,7 @@ plugins:
           - api/auth.md: "Authentication and credentials"
           - api/exceptions.md: "Exception hierarchy"
           - api/types.md: "Result types (SegmentationResult, etc.)"
-          - api/help.md: "Built-in help — mixpanel_headless.reference (describe, search, render, clear_cache) and HelpLookupError"
+          - api/help.md: "Built-in help — mixpanel_headless.reference (describe, search, render, clear_cache), the HelpEntry / SearchResult result types, HelpLookupError and HelpDomainError"
         CLI Reference:
           - cli/index.md: "CLI overview and output formats"
           - cli/commands.md: "Complete command reference"

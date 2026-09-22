@@ -22,9 +22,9 @@ entries.
   `"MathType"`, `"accounts"`, `"types"`, `"exceptions"`,
   `"search cohort"`) and object forms (`mp.help(mp.Filter)`,
   `mp.help(ws.query)`, `mp.help(mp)`). `domain=` filters the `Workspace`
-  listing to one of 32 domains. A miss prints "Did you mean?" suggestions
-  and the first search hits instead of raising. Import the package with an
-  alias (`import mixpanel_headless as mp`); `from mixpanel_headless import
+  listing to one of 32 domains. A miss prints one `No help entry for 'X'.
+  Did you mean: ...?` line and the first search hits instead of raising.
+  Import the package with an alias (`import mixpanel_headless as mp`); `from mixpanel_headless import
   help` shadows the Python builtin.
 - **`mixpanel_headless.reference`** — structured access behind `help()`:
   `describe(query, *, hints=, domain=) -> HelpEntry`,
@@ -33,7 +33,9 @@ entries.
   frozen `slots=True` dataclasses with `to_dict()`: `HelpEntry`,
   `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`,
   `Group`, `UsageDoc`, `Hint`, `SearchResult`, `SearchHit`, plus the
-  `HelpKind` and `HelpFormat` literals. Every export kind has a view:
+  `ExportKind`, `MemberKind`, `HelpKind`, and `HelpFormat` literals. All
+  eleven result types are also root exports (`mp.HelpEntry`, ...), so
+  `mp help HelpEntry` describes them. Every export kind has a view:
   Literal aliases show their allowed values and the `Workspace` methods
   that accept them; modules list their `__all__`; exceptions show their
   subclass tree; private fields are hidden and factory classmethods are
@@ -43,16 +45,48 @@ entries.
   [--no-hints]`.** No auth: the command ignores `-a / -p / -w / -t` and never
   builds a `Workspace`. The default format is `text` (unlike entity
   commands, whose default is `json`); `--jq` requires `-f json`. Exit codes:
-  0 found; 4 miss (suggestions on stdout); 3 for `--jq` without `-f json`
-  or an unknown `--domain`. `python3 -m mixpanel_headless help ...` runs
+  0 found, or a search with hits; 2 for an option value the parser rejects;
+  3 on stderr for `--jq` without `-f json`, a bare `search` with no term,
+  or a `--domain` that is unknown, ambiguous, or given with a query other
+  than `Workspace`; 4 for a miss or a search with zero hits, with the miss
+  line and search view on stdout. `python3 -m mixpanel_headless help ...` runs
   the same command where `mp` is not on `PATH`. Output goes through
   `typer.echo`, so literal `[property]` / `[method]` tags survive.
 - **`HelpLookupError`** (`MixpanelHeadlessError`, not `APIError`) — raised
   by `reference.describe()` on a miss and by `reference.search()` for an
-  empty term. Carries `query`, `suggestions`, and `hits`. The CLI maps it to
+  empty term. Carries `query`, `suggestions`, and `hits`; `details` and
+  `to_dict()` include the hits as dicts. The CLI maps it to
   `ExitCode.NOT_FOUND` (4).
-- Every exported Literal alias (`MathType`, `TimeUnit`, `Region`, ...) now
-  carries a one-line description, shown by `mp help <Alias>`.
+- **`HelpDomainError`** (`HelpLookupError` subclass, code `HELP_BAD_DOMAIN`)
+  — raised by `reference.describe()` when `domain=` names no registered
+  `Workspace` domain, matches several titles, or is given with a query other
+  than `Workspace`. Carries `query`, `domain`, `domains`, and `reason`
+  (`unknown`, `ambiguous`, `not_workspace`; the `HelpDomainReason` literal).
+  `help()` re-raises it instead of printing a miss; the CLI prints the
+  message and one `Domains:` line on stderr and exits 3.
+- Rendered signatures print the `*` and `/` markers of `inspect.signature`,
+  so keyword-only and positional-only parameters read as they are declared
+  (`mp help Workspace.segmentation` shows `*,` after `event`). `ParamDoc.kind`
+  carries the same fact in JSON: `positional_only`, `positional_or_keyword`,
+  `var_positional`, `keyword_only`, or `var_keyword`.
+- Type hints resolve one name at a time, so a single annotation that cannot
+  be evaluated (a `TYPE_CHECKING`-only import on a private field) no longer
+  blanks the allowed values of every other field on the class;
+  `FlowQueryResult.mode` lists its values.
+- `MemberDoc.depth` carries the nesting level of an exception subclass tree,
+  and names no longer carry leading spaces in JSON. `HelpEntry.domain` holds
+  the registry domain title of a `Workspace` method and `HelpEntry.value` the
+  `repr` of a constant, so JSON consumers no longer read those facts out of
+  `groups`, `bases`, or `values`. `ParamDoc.annotation` is `null` when the
+  source has none.
+- Every exported Literal, Union, and Annotated alias and every constant
+  without a docstring of its own (`MathType`, `TimeUnit`, `Region`, `Account`,
+  `PropertySpec`, `BUSINESS_CONTEXT_MAX_CHARS`, ...) carries a one-line
+  description, so `mp help <Alias>` and every row of `mp help types` show a
+  summary.
+- Every `Workspace` domain (feature flags, experiments, annotations,
+  webhooks, and alerts included) yields a hosted-docs hint, so every
+  `Workspace.<method>` entry ends with a `Tip:` pointer.
 - Docs: new [Built-in Help guide](docs/guide/built-in-help.md) and
   [API page](docs/api/help.md); both are listed in `llms.txt`.
 

@@ -29,7 +29,7 @@ Exit codes for the report-link errors: not found 4; parse, unsupported, and scop
 | `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` | Describe one name (`Workspace.query`, `Filter`, `MathType`, `exceptions`, `types`, `accounts`, …) or search (`mp help search cohort`). Tokens are joined with spaces. The default format is `text`; `--jq` requires `-f json`; `--domain` applies to `Workspace` only. |
 | `python3 -m mixpanel_headless help [QUERY...] [options]` | Same command through the module entry point, for environments where `mp` is not on `PATH`. |
 
-Exit codes: 0 found; 4 miss (suggestions and the first search hits print to stdout); 3 for `--jq` without `-f json` or an unknown `--domain`.
+Exit codes: 0 found, or a search with hits; 2 for an option value the parser rejects (`-f table`); 3 for `--jq` without `-f json`, a bare `search` with no term, or a `--domain` that is unknown, ambiguous, or given with a query other than `Workspace` (message on stderr, nothing on stdout); 4 for a miss or a search with zero hits (the miss line and search view print to stdout first). The full table is in the [guide](../guide/built-in-help.md#exit-codes-and-errors).
 
 ::: mkdocs-typer
     :module: mixpanel_headless.cli.main

@@ -21,8 +21,8 @@ Public API for the Mixpanel data library. Import from here, not from `_internal`
 | `targets.py` | Functional API for named targets (account+project+workspace bundles) |
 | `exceptions.py` | Exception hierarchy with structured error context |
 | `types.py` | Result dataclasses (SegmentationResult, FunnelResult, etc.) + AccountSummary |
-| `_literal_types.py` | Literal type aliases (TimeUnit, CountType, HourDayUnit) + `LITERAL_ALIAS_DOCS` (one description line per alias, shown by `mp help`) |
-| `reference.py` | Built-in API help: `help()` (re-exported as `mp.help`), `describe()`, `search()`, `render()`, `clear_cache()`, and the frozen result types (`HelpEntry`, `SearchResult`, …); offline, no config, no `Workspace` |
+| `_literal_types.py` | Literal type aliases (TimeUnit, CountType, HourDayUnit) + `ALIAS_DOCS` (one description line per export without a docstring of its own: Literal, Union, and Annotated aliases plus constants; shown by `mp help`) |
+| `reference.py` | Built-in API help: `help()` (re-exported as `mp.help`), `describe()`, `search()`, `render()`, `clear_cache()`, and the frozen result types (`HelpEntry`, `SearchResult`, `ParamDoc`, …, all re-exported from the package root); `render_miss()` is the shared miss renderer the CLI imports (not in `__all__`); offline, no config, no `Workspace` |
 | `_internal/` | Private implementation (do not import directly) |
 | `cli/` | Command-line interface |
 
@@ -89,7 +89,7 @@ with mp.Workspace() as ws:
 - `mp.accounts.list()` — `list[AccountSummary]`
 - `mp.accounts.use(name)` — set active account (clears workspace)
 - `mp.accounts.login(name)` — run PKCE flow for an oauth_browser account
-- `mp.accounts.login_unified(*, name=None, region=None, project=None, ...)` — orchestrator behind `mp login` (043 / AIE-117); composes region probe, project picker, name derivation, and re-login state machine
+- `mp.accounts.login_unified(*, name=None, region=None, project=None, ...)` — orchestrator behind `mp login`; composes region probe, project picker, name derivation, and re-login state machine
 - `mp.accounts.test(name)` — probe `/me` and return `AccountTestResult`
 - `mp.accounts.export_bridge(*, to, account=None)` — write a v2 Cowork bridge file
 - `mp.accounts.remove_bridge(*, at=None)` — idempotent bridge removal
@@ -102,7 +102,8 @@ with mp.Workspace() as ws:
 
 - `mp.help(query=None, *, format="text", file=None, hints=True, domain=None)` — print reference text for any public name (`"Workspace.query"`, `"Filter"`, `"MathType"`, `"search cohort"`, or an object such as `mp.Filter`); returns `None`
 - `mp.reference.describe(query) -> HelpEntry`, `mp.reference.search(term) -> SearchResult`, `mp.reference.render(entry, format)`, `mp.reference.clear_cache()` — structured access
-- CLI twin: `mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME] [--no-hints]`; exit 4 on a miss
+- CLI twin: `mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME] [--no-hints]`. Exit codes: 0 found or search with hits; 2 parser-rejected option value; 3 on stderr for `--jq` without `-f json`, bare `search`, or a rejected `--domain` (`HelpDomainError`); 4 on stdout for a miss or a search with zero hits. Full table: `docs/guide/built-in-help.md`
+- Errors: `describe()` raises `HelpLookupError` on a miss (`query`, `suggestions`, `hits`; `details` includes `hits`) and `HelpDomainError` (subclass; `query`, `domain`, `domains`, `reason`) when `domain=` is unknown, ambiguous, or paired with a non-`Workspace` query; `help()` prints a plain miss and re-raises only `HelpDomainError`
 - Offline by design: no network, no config read, never constructs a `Workspace`. Recommend `import mixpanel_headless as mp`; `from mixpanel_headless import help` shadows the builtin
 
 ## Workspace Methods
@@ -149,7 +150,7 @@ with mp.Workspace() as ws:
 
 **Business Context**: `get_business_context()`, `set_business_context()`, `clear_business_context()`, `get_business_context_chain()` — read/write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
 
-**Report Links** (045): `create_report_link()` (params or typed result → unsaved-report URL, one App API POST plus workspace auto-resolution when none is pinned), `resolve_report_link()` (URL / bare slug / shortlink → `ResolvedReport` with raw params; region check before any HTTP call, project and workspace checks before the record fetch), `query_report_link()` (run a link or `ResolvedReport` through the matching engine), `saved_report_link()` (saved-report URL, no network)
+**Report Links**: `create_report_link()` (params or typed result → unsaved-report URL, one App API POST plus workspace auto-resolution when none is pinned), `resolve_report_link()` (URL / bare slug / shortlink → `ResolvedReport` with raw params; region check before any HTTP call, project and workspace checks before the record fetch), `query_report_link()` (run a link or `ResolvedReport` through the matching engine), `saved_report_link()` (saved-report URL, no network)
 
 **Escape Hatches**: `api` (MixpanelAPIClient)
 
@@ -166,12 +167,13 @@ MixpanelHeadlessError
 │   ├── QueryError
 │   └── ServerError
 ├── OAuthError
-│   └── RegionProbeError    # 043 / AIE-114 — raised when no region accepts the credential
+│   └── RegionProbeError    # raised when no region accepts the credential
 ├── WorkspaceScopeError
-├── ReportLinkError         # 045 — ReportLinkParseError / UnsupportedReportLinkError /
-│                           #       ReportLinkNotFoundError / ReportLinkScopeMismatchError /
-│                           #       ShortLinkResolutionError
+├── ReportLinkError         # ReportLinkParseError / UnsupportedReportLinkError /
+│                           # ReportLinkNotFoundError / ReportLinkScopeMismatchError /
+│                           # ShortLinkResolutionError
 └── HelpLookupError         # reference.describe() miss; carries query / suggestions / hits; CLI exit 4
+    └── HelpDomainError     # rejected domain= filter; carries query / domain / domains / reason; CLI exit 3
 ```
 
 All exceptions provide `.to_dict()` for JSON serialization and structured `.details`.

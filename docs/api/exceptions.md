@@ -35,6 +35,7 @@ MixpanelHeadlessError
 │   ├── ReportLinkScopeMismatchError
 │   └── ShortLinkResolutionError
 └── HelpLookupError
+    └── HelpDomainError
 ```
 
 ## Catching Errors
@@ -294,13 +295,13 @@ Builder and input guards raise `ParamValidationError`, not a `ReportLinkError`, 
 
 ## Help Lookup Exceptions
 
-Raised by the built-in help surface (`mixpanel_headless.reference.describe()`, and `search()` for an empty term) when a query names no export, no `Workspace` member, and no parameter. The lookup is fully offline, so this is never an HTTP failure; the base is `MixpanelHeadlessError`, not `APIError`. `mixpanel_headless.help()` catches it and prints the suggestions instead of raising. The CLI maps it to exit code 4. See the [Built-in Help guide](../guide/built-in-help.md).
+`HelpLookupError` is raised by the built-in help surface (`mixpanel_headless.reference.describe()`, and `search()` for an empty term) when a query names no export, no `Workspace` member, and no parameter. The lookup is fully offline, so this is never an HTTP failure; the base is `MixpanelHeadlessError`, not `APIError`. `mixpanel_headless.help()` catches it and prints the suggestions and the first search hits instead of raising. The CLI prints the same text on stdout and exits 4. See the [Built-in Help guide](../guide/built-in-help.md#exit-codes-and-errors).
 
 | Attribute | Content |
 |-----------|---------|
 | `query` | The query string as the caller gave it. |
 | `suggestions` | Close names, most similar first; `()` when none. |
-| `hits` | `SearchHit` records for the same term; `()` when none. |
+| `hits` | `SearchHit` records for the same term; `()` when none. Also present in `details` (and `to_dict()`) as dicts. |
 
 ```python
 import mixpanel_headless as mp
@@ -313,6 +314,31 @@ except mp.HelpLookupError as exc:
 ```
 
 ::: mixpanel_headless.HelpLookupError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+`HelpDomainError` subclasses `HelpLookupError` and is raised by `describe()` when the `domain=` filter is rejected: the domain matches no registered `Workspace` domain title, matches several titles (an ambiguous prefix), or is given with a query other than `Workspace`. The query itself resolved, so `help()` re-raises it instead of printing a miss, and the CLI prints the message plus one `Domains:` line on stderr and exits 3.
+
+| Attribute | Content |
+|-----------|---------|
+| `query` | The help query text (`"Workspace"`, `"Filter"`), never the domain. |
+| `domain` | The `domain=` value as the caller gave it. |
+| `domains` | Every registered title for an unknown domain, the candidate titles for an ambiguous prefix, `()` for a non-`Workspace` query. Mirrored into `suggestions`. |
+| `reason` | `"unknown"`, `"ambiguous"`, or `"not_workspace"` (the `HelpDomainReason` literal). |
+
+```python
+import mixpanel_headless as mp
+from mixpanel_headless import reference as ref
+
+try:
+    ref.describe("Workspace", domain="s")
+except mp.HelpDomainError as exc:
+    print(exc.reason, exc.domains)
+    # ambiguous ('session and switching', 'streaming', 'schema registry', 'schema enforcement', 'session replay')
+```
+
+::: mixpanel_headless.HelpDomainError
     options:
       show_root_heading: true
       show_root_toc_entry: true
