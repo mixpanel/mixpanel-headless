@@ -64,8 +64,21 @@ if TYPE_CHECKING:
 class ResultWithTableAndDict(Protocol):
     """Protocol for result objects that support both table and dict output."""
 
-    def to_table_dict(self) -> list[dict[str, Any]]: ...
-    def to_dict(self) -> dict[str, Any]: ...
+    def to_table_dict(self) -> list[dict[str, Any]]:
+        """Return the result as rows for table output.
+
+        Returns:
+            One dict per table row.
+        """
+        ...
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the result as a JSON-serializable dict.
+
+        Returns:
+            The full result payload.
+        """
+        ...
 
 
 # Console instances for stdout/stderr separation
@@ -112,6 +125,18 @@ def handle_errors(func: F) -> F:
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        """Run the wrapped command and map library errors to exit codes.
+
+        Args:
+            *args: Positional arguments for the wrapped command.
+            **kwargs: Keyword arguments for the wrapped command.
+
+        Returns:
+            The wrapped command's return value.
+
+        Raises:
+            typer.Exit: With the mapped exit code when the command raises.
+        """
         try:
             return func(*args, **kwargs)
         except AuthenticationError as e:

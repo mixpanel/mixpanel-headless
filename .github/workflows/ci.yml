@@ -54,6 +54,14 @@ jobs:
       - name: Type check with mypy
         run: uv run mypy src/ tests/
 
+      - name: Docstring coverage with interrogate
+        # Same gates as `just docstring-cov`: every definition in src/ and
+        # conformance/ (100%), and 95% of tests/.
+        run: |
+          uv run interrogate src/
+          uv run interrogate tests/ --fail-under=95
+          uv run interrogate conformance/ --fail-under=100
+
       - name: Run tests with pytest
         if: matrix.python-version != '3.12'
         run: uv run pytest

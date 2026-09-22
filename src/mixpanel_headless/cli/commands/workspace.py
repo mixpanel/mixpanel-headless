@@ -62,9 +62,25 @@ def list_workspaces(
         workspaces = ws.workspaces(project_id=project, refresh=refresh)
 
     def _to_dict(w: _Any) -> dict[str, _Any]:
+        """Convert a workspace to a JSON record.
+
+        Args:
+            w: Workspace from ``Workspace.workspaces``.
+
+        Returns:
+            Record with ``id``, ``name``, and ``is_default``.
+        """
         return {"id": w.id, "name": w.name, "is_default": w.is_default}
 
     def _render_table(items: Sequence[_Any]) -> str:
+        """Render workspaces as a fixed-width table.
+
+        Args:
+            items: Workspaces to render.
+
+        Returns:
+            Table text; ``*`` marks the default workspace.
+        """
         if not items:
             return "(no workspaces accessible via /me)"
         lines = ["ID              NAME                              DEFAULT"]

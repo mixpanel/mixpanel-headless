@@ -2,13 +2,18 @@
 
 > Python library + CLI for Mixpanel analytics: discovery, live queries, streaming, and entity management.
 
+`CLAUDE.md` at the repo root is the source of truth for conventions, architecture, and environment variables. This file is a short summary; where they disagree, `CLAUDE.md` wins.
+
 ## Quick Reference (Start Here)
 
 ```bash
 # Setup (REQUIRED first)
 uv sync --all-extras
 
-# Verify changes (run ALL before committing)
+# Verify changes — `just check` runs everything below plus docstring coverage and the build
+just check
+
+# Or individually
 uv run ruff format src/ tests/                    # Format code
 uv run ruff check src/ tests/                     # Lint code
 uv run mypy src/ tests/                           # Type check
@@ -27,27 +32,35 @@ uv run pytest --cov=src/mixpanel_headless --cov-fail-under=90
 - **CLI**: Typer + Rich
 - **Validation**: Pydantic v2
 - **HTTP**: httpx
-- **Testing**: pytest, ruff, mypy
+- **Testing**: pytest, Hypothesis, mutmut, ruff, mypy, interrogate
 
 ## Project Structure
 
 ```
 src/mixpanel_headless/
-├── workspace.py        # Main facade (entry point for library)
-├── auth_types.py       # Public auth module
+├── workspace.py        # Workspace facade (entry point for library)
+├── auth_types.py       # Public auth surface (Account union, Session, Region, OAuthTokens, …)
+├── accounts.py         # mp.accounts — add/list/use/login/test/…
+├── session.py          # mp.session — show/use the persisted [active] block
+├── targets.py          # mp.targets — saved (account, project, workspace?) cursors
 ├── exceptions.py       # Exception hierarchy
 ├── types.py            # Result types (frozen dataclasses)
-├── _internal/          # PRIVATE: never import in public signatures
-│   ├── config.py       # ConfigManager, Credentials
+├── reference.py        # Built-in API help (mp.help)
+├── _internal/          # PRIVATE: never expose in public signatures
+│   ├── config.py       # ConfigManager (TOML-backed)
 │   ├── api_client.py   # MixpanelAPIClient
-│   └── services/       # Discovery, LiveQuery services
+│   ├── auth/           # Account types, session resolver, OAuth flow, bridge file
+│   ├── query/          # Query builders and validators
+│   ├── replays/        # Session-replay analyzer (vendored rrweb)
+│   └── services/       # Discovery, LiveQuery, Replays services
 └── cli/
-    ├── main.py         # Typer entry point
-    └── commands/       # auth, query, inspect commands
+    ├── main.py         # Typer entry point + global flags (-a / -p / -w / -t)
+    └── commands/       # account, project, workspace, target, session, query, inspect, entity CRUD, …
 
 tests/
 ├── unit/              # Isolated tests (mocked deps)
-└── integration/       # Component interaction tests
+├── integration/       # Component interaction tests
+└── pbt/               # Property-based tests (Hypothesis)
 ```
 
 ## Architecture
@@ -57,7 +70,7 @@ CLI (Typer) → Public API (Workspace) → Services → Infrastructure (Config, 
 ```
 
 **Layer rules:**
-- CLI calls Workspace only (never API client directly)
+- CLI never imports or constructs `MixpanelAPIClient`; API calls go through `Workspace`. CLI modules may use `_internal` config, auth, and helper modules (e.g., `ConfigManager`, the session resolver).
 - Services call infrastructure only (no horizontal service calls)
 
 ## Code Requirements
@@ -69,16 +82,21 @@ CLI (Typer) → Public API (Workspace) → Services → Infrastructure (Config, 
 - Use `Literal` for constrained strings
 
 ### Docstrings (REQUIRED)
-Every function/method/class needs:
-- One-line summary
-- Args with types
-- Returns description
-- Raises section
+Every class, method, and function has a docstring, including private helpers and tests (checked by interrogate in CI: every definition in `src/` and `conformance/`, 95% of `tests/`). Sections depend on the function (Google style):
+- Summary: always
+- Args: when it takes parameters (no types — those are in the annotations)
+- Returns: when it returns a non-`None` value
+- Raises: exceptions it raises deliberately
+- Example: where behavior isn't obvious; use fenced code blocks, not `>>>`
+- Tests and fixtures: a one-line summary of what the test proves, matching the file's convention
+
+See the "Documentation (STRICT)" section of `CLAUDE.md` for the full rule.
 
 ### Testing (TDD)
 - Write test FIRST, then implement
 - Unit tests: `tests/unit/`
 - Integration tests: `tests/integration/`
+- Property-based tests: `*_pbt.py`
 - Coverage minimum: 90%
 
 ### Patterns
@@ -86,52 +104,48 @@ Every function/method/class needs:
 - `model_config = ConfigDict(frozen=True)` on Pydantic models
 - Use `Iterator[T]` not `list[T]` for streaming data
 - Use `field(default_factory=list)` not `[]` for defaults
+
 ## Exceptions
 
-Use library hierarchy, never bare `Exception`:
+Use the library hierarchy in `exceptions.py`, never bare `Exception`. Common classes:
 
-**Valid classes:**
 - `MixpanelHeadlessError` (base)
-- `ConfigError`
-- `AccountNotFoundError`
-- `AccountExistsError`
-- `AuthenticationError`
-- `RateLimitError`
-- `QueryError`
-- `OAuthError`
-- `WorkspaceScopeError`
+- `ConfigError` → `AccountNotFoundError`, `AccountExistsError`, `AccountInUseError`, `ProjectNotFoundError`, `InvalidArgumentError`
+- `APIError` → `AuthenticationError`, `RateLimitError`, `QueryError`, `ServerError`, `SessionReplayError`
+- `OAuthError` → `RegionProbeError`
+- `WorkspaceScopeError`, `ParamValidationError`, `BookmarkValidationError`, `ReportLinkError`, `HelpLookupError`
 
 **Always chain:** `raise XError(...) from e`
 
 ## Security: Credentials
 
 **NEVER expose secrets:**
-- Use `secret.get_secret_value()` for SecretStr
+- Account secrets and tokens are `SecretStr`; call `.get_secret_value()` only where the raw value is sent
 - Don't interpolate secrets in f-strings
-- Don't log Credentials without using `__repr__`
+- Don't log accounts, sessions, or tokens in a way that bypasses their redacting `__repr__`
 
 ## Configuration
 
-- Config file (TOML): `~/.mp/config.toml`
-- Supports multiple named accounts with one marked as default
-- Environment variables override config file values:
-  - `MP_USERNAME`
-  - `MP_SECRET`
-  - `MP_PROJECT_ID`
-  - `MP_REGION`
-  - `MP_CONFIG_PATH`
+- Config file (TOML): `~/.mp/config.toml` (override with `MP_CONFIG_PATH`)
+- Multiple named accounts (`service_account`, `oauth_browser`, `oauth_token`) with an `[active]` session block
+- Environment variables override config (full table in `CLAUDE.md`):
+  - `MP_USERNAME` + `MP_SECRET` (service account) or `MP_OAUTH_TOKEN` (static bearer)
+  - `MP_PROJECT_ID`, `MP_REGION`, `MP_WORKSPACE_ID`
+  - `MP_AUTH_FILE`, `MP_CONFIG_PATH`
+  - `MP_API_BASE_URL`, `MP_APP_BASE_URL`
+
 ## Agent Task Guidelines
 
 ### Adding a Feature
 1. Check `context/` for design specs
 2. Write test in `tests/unit/` first
 3. Implement minimal code to pass
-4. Run all checks: `uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy src/ tests/ && uv run pytest`
+4. Run all checks: `just check`
 
-### Fixing a Bug  
+### Fixing a Bug
 1. Write failing test reproducing bug
 2. Fix implementation
-3. Run all checks: `uv run ruff format src/ tests/ && uv run ruff check src/ tests/ && uv run mypy src/ tests/ && uv run pytest`
+3. Run all checks: `just check`
 
 ### Adding CLI Command
 1. Add to `src/mixpanel_headless/cli/commands/`
@@ -145,7 +159,7 @@ Use library hierarchy, never bare `Exception`:
 
 ## DO NOT
 
-- Import from `_internal/` in public signatures
+- Expose `_internal` types in public signatures
 - Use `except Exception:` (use `MixpanelHeadlessError`)
 - Use mutable defaults (`list` → `field(default_factory=list)`)
 - Skip type annotations
