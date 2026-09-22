@@ -1,0 +1,35 @@
+{
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "description": "Project conventions: architecture, strict typing, docstring format, TDD, environment variables, and key design decisions"
+    },
+    {
+      "path": "docs/architecture/design.md",
+      "description": "Layered architecture and design reasons"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Contributor workflow and checks"
+    },
+    {
+      "path": "docs/guide/session-replay.md",
+      "description": "Session replay model: discovery, signed URLs, rrweb analysis, labels",
+      "scope": [
+        "src/mixpanel_headless/_internal/replays/**",
+        "src/mixpanel_headless/_internal/services/replays.py",
+        "src/mixpanel_headless/replay_labels.py"
+      ]
+    },
+    {
+      "path": "docs/guide/unified-query-system.md",
+      "description": "Query builder contracts shared by insights, funnels, retention, flows, and user queries",
+      "scope": ["src/mixpanel_headless/_internal/query/**"]
+    },
+    {
+      "path": "docs/guide/report-links.md",
+      "description": "Report link parse and build semantics",
+      "scope": ["src/mixpanel_headless/_internal/report_links.py"]
+    }
+  ]
+}

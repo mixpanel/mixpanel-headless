@@ -17,9 +17,13 @@ feedback on:
 - **Code quality**: clarity, naming, structure, idiomatic Python.
 - **Type safety**: full annotations, `mypy --strict` compliance, no `Any`
   without explicit justification, `Literal` types where applicable.
-- **Documentation**: every class, method, and function must have a complete
-  docstring (Summary / Args / Returns / Raises / Example as appropriate).
-  Examples must use Markdown fenced code blocks, not doctest `>>>` syntax.
+- **Documentation**: every class, method, and function has a docstring.
+  Required sections follow the "Documentation (STRICT)" rules in
+  `CLAUDE.md`: Summary always; Args when there are parameters; Returns only
+  for non-`None` returns; Raises for exceptions raised deliberately; Example
+  only where behavior isn't obvious. A one-line summary is enough for tests
+  and fixtures. Examples must use Markdown fenced code blocks, not doctest
+  `>>>` syntax.
 - **Architecture compliance**: respect layer boundaries (CLI → Public API →
   Services → Infrastructure). No `_internal` leakage in public surfaces.
 - **Error handling**: use the project's exception hierarchy. No broad
@@ -33,6 +37,10 @@ feedback on:
   test files.
 - **Security**: avoid command injection, secret leakage, unsafe
   deserialization, or unguarded subprocess calls.
+
+Do not flag what the tooling already enforces: formatting and lint (`ruff`),
+type errors (`mypy --strict`), or docstring presence (`interrogate`). Focus
+on what those tools can't see.
 
 ## How to respond
 

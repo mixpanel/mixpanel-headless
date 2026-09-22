@@ -1,0 +1,16 @@
+{
+  "disabledRules": ["docstring-accuracy", "behavior-change-needs-test"],
+  "instructions": "Test files follow the convention of the file they are in. One-line summary docstrings are acceptable when the neighboring tests use them. Review tests for what they prove: a test must fail when the behavior it covers breaks. Tests marked `@pytest.mark.live` (under tests/live/ and a few files in tests/integration/) call the real Mixpanel API on purpose; the default pytest options deselect them.",
+  "rules": [
+    {
+      "id": "test-isolation",
+      "rule": "Tests not marked live must not read or write the real ~/.mp directory, the real Cowork bridge file, or real MP_* environment variables. tests/conftest.py provides the isolation: the autouse `_clean_mp_env` fixture scrubs every variable in `_MP_ENV_VARS`, and the session-scoped `_no_test_writes_to_real_home_mp` fixture fails the run in CI if anything under the real ~/.mp changed. Tests point config and storage at tmp_path (for example MP_CONFIG_PATH or the `config_path` and `temp_dir` fixtures). Flag a new MP_* variable or alias that production code reads but `_MP_ENV_VARS` does not scrub, and flag a test that reaches a real home-directory path.",
+      "severity": "high"
+    },
+    {
+      "id": "no-live-network",
+      "rule": "Tests not marked live must not make real HTTP requests. Use `httpx.MockTransport`, for example through the `mock_client_factory` fixture in tests/conftest.py, or the mock pattern already used in the same test module.",
+      "severity": "medium"
+    }
+  ]
+}

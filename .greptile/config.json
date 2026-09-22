@@ -1,0 +1,93 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax", "style"],
+  "autoReview": ["open", "push"],
+  "excludeAuthors": ["dependabot[bot]"],
+  "ignorePatterns": "conformance/vectors/**\nconformance/goldens/**/*.json\nconformance/differential/*.json\nconformance/differential/oracle/*.json\nuv.lock\n.specify/**\n.claude/skills/speckit-*/**",
+  "statusCheck": true,
+  "fixWithAI": true,
+  "sequenceDiagramSection": {
+    "included": true,
+    "collapsible": true,
+    "defaultOpen": false
+  },
+  "confidenceScoreSection": {
+    "included": true,
+    "collapsible": false,
+    "defaultOpen": true
+  },
+  "instructions": "mixpanel_headless is a Python 3.10+ library and CLI (`mp`) for Mixpanel: schema discovery, live queries, streaming, entity CRUD through the App API, and session replay. Layers: CLI (Typer) -> public API (Workspace, mp.accounts, mp.session, mp.targets, mp.reference) -> services -> infrastructure (ConfigManager, MixpanelAPIClient). Project tooling (the pre-commit hook, `just check`, and CI) already enforces ruff format, ruff check, mypy --strict, interrogate docstring coverage, and 90% test coverage. Do not comment on anything those tools already catch. Focus on behavior: wrong results, missed edge cases, scope and auth mistakes, error handling, security, and missing tests for changed behavior. Prefer one precise comment over several speculative ones. If a PR is clean, say so.",
+  "rules": [
+    {
+      "id": "workspace-scope-enforced",
+      "rule": "Every code path in Workspace or a service that calls a workspace-scoped App API endpoint must resolve the workspace and apply the same scope checks as the neighboring methods. This includes paths that resolve a report from a URL, from a pinned target, or from a later change of project or workspace. Flag a new path that skips or drops the check.",
+      "scope": ["src/mixpanel_headless/workspace.py", "src/mixpanel_headless/_internal/services/**"],
+      "severity": "high"
+    },
+    {
+      "id": "reject-bool-as-int",
+      "rule": "In Python, bool is a subclass of int. Validation that requires an int (limits, counts, ids, timestamps) must reject bool explicitly, for example with `isinstance(value, bool)` before the int check. Flag validation that lets True or False through as a number.",
+      "scope": ["src/**"],
+      "severity": "high"
+    },
+    {
+      "id": "cli-no-api-client",
+      "rule": "CLI modules must not import or construct MixpanelAPIClient or an httpx client. They reach Mixpanel through Workspace, the public namespaces (mp.accounts, mp.session, mp.targets), or an existing internal helper that owns its own HTTP handling, such as the region probe used by the account commands.",
+      "scope": ["src/mixpanel_headless/cli/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "no-internal-in-public-signatures",
+      "rule": "A new or changed public signature or export must not force callers to import from mixpanel_headless._internal. When a public signature needs a type that is defined under _internal, re-export that type from a public module (auth_types.py, types.py, or reference.py already do this) and use the public name. Workspace.api, which returns the MixpanelAPIClient, is a deliberate escape hatch and is not a violation.",
+      "scope": [
+        "src/mixpanel_headless/__init__.py",
+        "src/mixpanel_headless/workspace.py",
+        "src/mixpanel_headless/types.py",
+        "src/mixpanel_headless/auth_types.py",
+        "src/mixpanel_headless/accounts.py",
+        "src/mixpanel_headless/session.py",
+        "src/mixpanel_headless/targets.py",
+        "src/mixpanel_headless/reference.py",
+        "src/mixpanel_headless/replay_labels.py"
+      ],
+      "severity": "medium"
+    },
+    {
+      "id": "exception-hierarchy",
+      "rule": "Errors that reach callers of Workspace, the public namespaces, the services, or the CLI use subclasses of MixpanelHeadlessError, chained with `raise NewError(...) from exc`. Pydantic validators and constructor checks on value types in types.py may raise ValueError or TypeError, which is the existing convention. Flag a new broad `except Exception` that swallows the error without re-raising, unless it records the failure in a result and carries a `# noqa: BLE001` comment that explains why (the existing per-item isolation pattern). Flag silent fallbacks for conditions that should not happen.",
+      "scope": ["src/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "secret-handling",
+      "rule": "Never log, print, repr, or interpolate a service-account secret, OAuth token, bearer header, or signed replay URL. Read SecretStr values only at the point of use. Write token, credential, and config files through `atomic_write_bytes` in `_internal/io_utils.py`, which writes a temporary file and renames it into place with 0o600 permissions, and create per-account directories through the helpers in `_internal/auth/storage.py` (mode 0o700).",
+      "scope": ["src/**"],
+      "severity": "high"
+    },
+    {
+      "id": "behavior-change-needs-test",
+      "rule": "A behavior change or bug fix under src/ must ship with a test under tests/ that would fail without the change. For invariants over many inputs, prefer a Hypothesis property test in a file with the _pbt suffix.",
+      "scope": ["src/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "public-surface-sync",
+      "rule": "When a PR adds or changes a public method, CLI command or flag, or MP_* environment variable, check that __init__.py exports, CHANGELOG.md, the relevant docs/guide page, and the environment variable table in CLAUDE.md match the change.",
+      "scope": ["src/mixpanel_headless/**"],
+      "severity": "low"
+    },
+    {
+      "id": "docstring-accuracy",
+      "rule": "interrogate enforces docstring presence, so do not flag a missing docstring or a missing section by itself. The Example section is required only where behavior is not obvious. A Returns section is not required for functions that return None. Flag a docstring only when it is wrong: it describes behavior the code does not have, omits an exception the code raises, or uses doctest `>>>` examples instead of fenced code blocks.",
+      "scope": ["src/**", "conformance/**"],
+      "severity": "low"
+    },
+    {
+      "id": "no-internal-planning-shorthand",
+      "rule": "Lines that a PR adds or changes in code comments, docstrings, user docs, README, CLAUDE.md, and CHANGELOG entries must not cite internal planning documents by number or by short code (plan numbers, phase or decision codes, requirement ids, section-sign references). Ask for a plain-language reason instead. Older references elsewhere in a file are known debt; do not flag lines the PR did not touch. This rule does not apply to specs/.",
+      "scope": ["src/**", "docs/**", "mixpanel-plugin/**", "CHANGELOG.md", "README.md", "CLAUDE.md"],
+      "severity": "low"
+    }
+  ],
+  "disabledRules": []
+}

@@ -97,21 +97,16 @@ Code must pass `ruff format` and `ruff check`. Run `just check` before committin
 
 ### Documentation (STRICT)
 
-**Every class, method, and function requires a complete docstring. No exceptions.**
+**Every class, method, and function has a docstring — no exceptions.** This covers public API, private/internal helpers (prefixed with `_`), module-level functions, nested functions, test fixtures, and test methods. Presence is enforced by [interrogate](https://interrogate.readthedocs.io/) in `just check` and the pre-commit hook: `src/` must stay at 99% or higher (`[tool.interrogate]` in `pyproject.toml`), `tests/` and `conformance/` at 95% or higher (`justfile`).
 
-This applies to:
-- Public API methods and classes
-- Private/internal methods (prefixed with `_`)
-- Module-level functions
-- Helper functions
-- Test fixtures and test methods
-
-Required docstring sections:
-- **Summary**: One-line description of what it does
-- **Args**: Every parameter with type and description
-- **Returns**: What the function returns and when
-- **Raises**: All exceptions that may be raised
-- **Example**: Usage example where behavior isn't immediately obvious
+Which sections a docstring needs depends on what the function does (Google style):
+- **Summary**: Always. One line saying what it does.
+- **Args**: When it takes parameters (other than `self` / `cls`). Describe each one; the type lives in the annotation, so don't repeat it.
+- **Returns**: When it returns a non-`None` value. No `Returns: None` section for functions annotated `-> None`.
+- **Raises**: Exceptions the function raises deliberately, including ones it lets propagate from a call as part of its contract. Not every exception that could conceivably occur.
+- **Example**: Where behavior isn't obvious from the signature and summary. Public API methods usually have one; simple helpers don't need one.
+- **Tests and fixtures**: A one-line summary is enough when it states what the test proves or what the fixture provides. Match the convention already used in the test file.
+- **Vendored code** (e.g., `_internal/replays/rrweb_analyzer.py`): Follow the module's existing conventions.
 
 **Example format**: Use markdown fenced code blocks with language hints, not doctest-style `>>>` operators:
 
@@ -133,7 +128,7 @@ Example:
 """
 ```
 
-Undocumented code will not pass code review.
+A missing docstring will not pass code review. A missing section the rules above don't call for is not a defect.
 
 ## Test-Driven Development (STRICT)
 
