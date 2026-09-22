@@ -328,6 +328,37 @@ class TestBackoffProperties:
             client.close()
 
 
+class TestRetryAfterProperties:
+    """Property-based tests for ``_parse_retry_after`` clamping."""
+
+    @given(seconds=st.integers(min_value=0, max_value=10**300))
+    @settings(max_examples=100)
+    def test_parsed_retry_after_never_exceeds_cap(self, seconds: int) -> None:
+        """Any non-negative integer header parses to ``min(seconds, 60)``.
+
+        The parsed value is surfaced as ``RateLimitError.retry_after`` when
+        retries run out, and callers are documented to sleep on it, so it
+        must never exceed the 60-second backoff ceiling.
+
+        Args:
+            seconds: Advertised Retry-After in seconds.
+        """
+        creds = make_session(
+            username="test",
+            secret="secret",
+            project_id="123",
+            region="us",
+        )
+        client = MixpanelAPIClient(session=creds)
+
+        try:
+            response = httpx.Response(429, headers={"Retry-After": str(seconds)})
+            parsed = client._parse_retry_after(response)
+            assert parsed == min(seconds, 60)
+        finally:
+            client.close()
+
+
 # =============================================================================
 # URL Path Normalization Property Tests
 # =============================================================================

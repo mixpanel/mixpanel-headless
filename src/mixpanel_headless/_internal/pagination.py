@@ -62,7 +62,8 @@ def _parse_retry_after(raw: str | None) -> float | None:
     Returns:
         The advertised delay in seconds, or ``None`` when the header is
         absent, empty, unparseable, negative, NaN, or infinite. The value is
-        not capped — apply ``_BACKOFF_MAX`` at the point of sleeping.
+        not capped — apply ``_BACKOFF_MAX`` both at the point of sleeping and
+        before surfacing it as ``RateLimitError.retry_after``.
 
     Example:
         ```python
@@ -185,7 +186,13 @@ def paginate_all(
             if response.status_code == 429:
                 advertised = _parse_retry_after(response.headers.get("Retry-After"))
                 if attempt >= MAX_RATE_LIMIT_RETRIES:
-                    retry_after = None if advertised is None else int(advertised)
+                    # Report no more than the sleep cap: callers are documented
+                    # to ``time.sleep(e.retry_after or 60)`` on this value.
+                    retry_after = (
+                        None
+                        if advertised is None
+                        else int(min(advertised, _BACKOFF_MAX))
+                    )
                     raise RateLimitError(
                         "Rate limit exceeded after max retries during pagination",
                         retry_after=retry_after,

@@ -3642,6 +3642,28 @@ class TestParseRetryAfter:
         response = httpx.Response(429, headers={"Retry-After": raw})
         assert client._parse_retry_after(response) is None
 
+    @pytest.mark.parametrize("raw", ["61", "3600", "86400", str(2**40), "9" * 400])
+    def test_huge_header_is_capped(self, test_credentials: Session, raw: str) -> None:
+        """An oversized Retry-After is clamped to the 60-second backoff ceiling.
+
+        The parsed value both drives the retry sleep and is surfaced as
+        ``RateLimitError.retry_after`` once retries are exhausted, so it must
+        already be bounded here rather than only at the point of sleeping.
+
+        Args:
+            test_credentials: Session fixture.
+            raw: A Retry-After value larger than the cap.
+        """
+        client = MixpanelAPIClient(session=test_credentials)
+        response = httpx.Response(429, headers={"Retry-After": raw})
+        assert client._parse_retry_after(response) == 60
+
+    def test_header_at_cap_is_preserved(self, test_credentials: Session) -> None:
+        """A Retry-After exactly at the ceiling is returned unchanged."""
+        client = MixpanelAPIClient(session=test_credentials)
+        response = httpx.Response(429, headers={"Retry-After": "60"})
+        assert client._parse_retry_after(response) == 60
+
 
 class TestRetryWaitSeconds:
     """Test ``_retry_wait_seconds`` clamping and backoff fallback."""
@@ -3826,13 +3848,34 @@ class TestRetryAfterHardening:
         assert exc_info.value.retry_after is None
         assert "Retry after" not in str(exc_info.value)
 
-    def test_huge_retry_after_reported_verbatim_on_error(
-        self, test_credentials: Session
+    @pytest.mark.parametrize(
+        "operation",
+        ["get_events", "app_request", "export_events", "resolve_short_link"],
+    )
+    def test_huge_retry_after_capped_on_error(
+        self,
+        test_credentials: Session,
+        recorded_sleeps: list[float],
+        operation: str,
     ) -> None:
-        """The cap applies to sleeping, not to what the server is reported to say."""
+        """An exhausted retry run never surfaces a Retry-After above the cap.
+
+        ``RateLimitError``'s documented recovery pattern is
+        ``time.sleep(e.retry_after or 60)``, so echoing a server-chosen hour
+        (or a many-digit value that overflows ``time.sleep``) would move the
+        hang or crash the retry loop already avoids into caller code. Every
+        retry loop's exhaustion branch must report the same 60-second ceiling
+        its own sleeps honor.
+
+        Args:
+            test_credentials: Session fixture.
+            recorded_sleeps: Captured sleep durations (guards against real
+                waits between attempts).
+            operation: Which client entry point to drive to exhaustion.
+        """
 
         def handler(_request: httpx.Request) -> httpx.Response:
-            """Always rate limit with a large Retry-After.
+            """Always rate limit with a very large Retry-After.
 
             Args:
                 _request: The outgoing request (unused).
@@ -3840,17 +3883,27 @@ class TestRetryAfterHardening:
             Returns:
                 A 429 response.
             """
-            return httpx.Response(429, headers={"Retry-After": "3600"})
+            return httpx.Response(429, headers={"Retry-After": "9" * 400})
 
         transport = httpx.MockTransport(handler)
         client = MixpanelAPIClient(
-            session=test_credentials, max_retries=0, _transport=transport
+            session=test_credentials, max_retries=1, _transport=transport
         )
 
         with client, pytest.raises(RateLimitError) as exc_info:
-            client.get_events()
+            if operation == "get_events":
+                client.get_events()
+            elif operation == "app_request":
+                client.app_request("GET", "/projects/12345/dashboards")
+            elif operation == "export_events":
+                list(client.export_events("2024-01-01", "2024-01-31"))
+            else:
+                client.resolve_short_link("abc123")
 
-        assert exc_info.value.retry_after == 3600
+        assert exc_info.value.retry_after == 60
+        assert exc_info.value.details["retry_after"] == 60
+        assert "Retry after 60 seconds" in str(exc_info.value)
+        assert recorded_sleeps == [60.0]
 
     def test_app_request_negative_retry_after_uses_backoff(
         self,

@@ -96,6 +96,19 @@ may include API changes.
   unsupported. It now means the bytes are not rrweb-shaped (an unknown or
   damaged format). The CLI message changes to match.
 
+### Fixed
+
+- **`RateLimitError.retry_after` is capped at 60 seconds.** When a request
+  still got HTTP 429 after its last retry, the error reported the server's
+  `Retry-After` value as sent. The client's own waits between retries were
+  already limited to 60 seconds, but the reported value was not. Code that
+  follows the documented `time.sleep(e.retry_after or 60)` pattern could be
+  told to wait for hours. A value with hundreds of digits also crashed the
+  retry loop with `OverflowError` before any retry ran. Every retry path
+  (queries, App API calls, event export, shortlink resolution, and App API
+  pagination) now reports at most 60, and the CLI hint ("Wait N seconds")
+  matches. Values of 60 or less are reported unchanged.
+
 ### Notes
 
 - Plugin: the `mixpanelyst` skill gains guidance for mobile and

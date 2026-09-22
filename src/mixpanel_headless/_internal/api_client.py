@@ -1013,9 +1013,9 @@ class MixpanelAPIClient:
 
         ``Retry-After`` is server-controlled and therefore untrusted input.
         ``_parse_retry_after`` already rejects unparseable and negative
-        values; this method additionally caps an implausibly large header
-        (``Retry-After: 86400``) at the same ceiling the exponential backoff
-        uses, so a single header can never park the process for hours.
+        values and clamps oversized ones; this method re-applies the same
+        ceiling the exponential backoff uses as defense in depth, so a
+        single header can never park the process for hours.
 
         Args:
             retry_after: Validated Retry-After value in seconds, or None when
@@ -1498,12 +1498,31 @@ class MixpanelAPIClient:
         ``time.sleep(exc.retry_after or 60)``. HTTP-date form is not
         supported and also reads as absent.
 
+        An oversized value is clamped to ``_BACKOFF_MAX_SECONDS`` here,
+        not only at the point of sleeping: the parsed value is also what
+        every retry loop reports as ``RateLimitError.retry_after`` once
+        retries are exhausted, so callers following the documented pattern
+        can never be told to wait longer than the client itself would. The
+        clamp also keeps a many-digit header from overflowing the float
+        conversion in ``_retry_wait_seconds``.
+
         Args:
             response: HTTP response.
 
         Returns:
-            Seconds to wait as a non-negative int, or None when the header is
-            missing, unparseable, or negative.
+            Seconds to wait as a non-negative int no greater than
+            ``_BACKOFF_MAX_SECONDS``, or None when the header is missing,
+            unparseable, or negative.
+
+        Example:
+            ```python
+            client._parse_retry_after(httpx.Response(429, headers={"Retry-After": "7"}))
+            # 7
+            client._parse_retry_after(
+                httpx.Response(429, headers={"Retry-After": "86400"})
+            )
+            # 60
+            ```
         """
         retry_after = response.headers.get("Retry-After")
         if retry_after is not None:
@@ -1512,7 +1531,7 @@ class MixpanelAPIClient:
             except ValueError:
                 return None
             if parsed >= 0:
-                return parsed
+                return min(parsed, int(_BACKOFF_MAX_SECONDS))
         return None
 
     # =========================================================================
