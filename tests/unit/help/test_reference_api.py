@@ -18,6 +18,7 @@ These tests lock, with real library objects:
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -331,7 +332,8 @@ class TestMethod:
         assert entry.signature is not None
         assert entry.signature.params[0].name == "events"
         assert entry.referenced_types
-        assert _group_titles(entry) == ["insights query"]
+        assert entry.domain == "insights query"
+        assert entry.groups == ()
         assert entry.see_also
         assert "query" not in entry.see_also
         assert len(entry.hints) == 1
@@ -346,6 +348,7 @@ class TestMethod:
         entry = ref.describe("Filter.equals")
         assert entry.kind == "method"
         assert entry.name == "Filter.equals"
+        assert entry.domain is None
         assert entry.groups == ()
         assert entry.see_also == ()
         assert entry.signature is not None
@@ -449,7 +452,8 @@ class TestEnumsAndLiterals:
         assert entry.kind == "constant"
         assert entry.name == "FeatureFlagStatus.ENABLED"
         assert entry.bases == ("FeatureFlagStatus",)
-        assert entry.values == ("'enabled'",)
+        assert entry.value == "'enabled'"
+        assert entry.values == ()
         assert entry.summary == ref.describe("FeatureFlagStatus").summary
 
     def test_enum_member_object_form(self) -> None:
@@ -520,7 +524,8 @@ class TestAliasExceptionModuleConstant:
         entry = ref.describe("BUSINESS_CONTEXT_MAX_CHARS")
         assert entry.kind == "constant"
         assert entry.bases == ("int",)
-        assert entry.values == (repr(mp.BUSINESS_CONTEXT_MAX_CHARS),)
+        assert entry.value == repr(mp.BUSINESS_CONTEXT_MAX_CHARS)
+        assert entry.values == ()
 
 
 class TestListings:
@@ -589,6 +594,208 @@ class TestListings:
                 if issubclass(base, mp.MixpanelHeadlessError)
             ]
             assert item["depth"] == len(lineage) - 1, name
+
+
+def _dig(payload: object, path: str) -> object:
+    """Follow a dotted path of dict keys and list indexes into a JSON payload.
+
+    Args:
+        payload: A ``to_dict()`` result or any nested part of one.
+        path: Dotted path such as ``"signature.params.0.name"``.
+
+    Returns:
+        The value at the path.
+
+    Raises:
+        TypeError: When the path descends into a scalar.
+    """
+    node: object = payload
+    for part in path.split("."):
+        if isinstance(node, list):
+            node = node[int(part)]
+        elif isinstance(node, dict):
+            node = node[part]
+        else:
+            raise TypeError(f"cannot descend into {node!r} at {part!r} of {path!r}")
+    return node
+
+
+_ALWAYS_POPULATED = frozenset({"kind", "name", "qualname", "summary"})
+"""Top-level keys every entry populates."""
+
+JSON_CONVENTIONS: dict[str, tuple[str | None, frozenset[str], dict[str, object]]] = {
+    "overview": (None, frozenset(), {"name": "mixpanel_headless", "groups": []}),
+    "listing": (
+        "exceptions",
+        frozenset({"groups"}),
+        {
+            "groups.0.title": "Exceptions",
+            "groups.0.items.0.name": "MixpanelHeadlessError",
+            "groups.0.items.0.depth": 0,
+            "groups.0.items.0.kind": "exception",
+            "groups.0.items.1.depth": 1,
+            "hints": [],
+        },
+    ),
+    "class": ("QueryMeta", frozenset({"bases", "hints"}), {"bases": ["dict"]}),
+    "model": (
+        "CreateDashboardParams",
+        frozenset({"fields", "used_by", "hints"}),
+        {
+            "fields.0.name": "title",
+            "fields.0.required": True,
+            "fields.0.default": None,
+            "used_by.0.method": "create_dashboard",
+            "used_by.0.params": ["params"],
+        },
+    ),
+    "dataclass": (
+        "Filter",
+        frozenset({"construction", "used_by", "hints"}),
+        {"construction.0.kind": "method", "fields": []},
+    ),
+    "enum": (
+        "FeatureFlagStatus",
+        frozenset({"bases", "fields", "values", "hints"}),
+        {
+            "bases": ["str", "Enum"],
+            "values": ["ENABLED", "DISABLED", "ARCHIVED"],
+            "fields.0.name": "ENABLED",
+            "fields.0.annotation": "str",
+            "fields.0.default": "'enabled'",
+            "fields.0.required": False,
+        },
+    ),
+    "literal": (
+        "Region",
+        frozenset({"values", "hints"}),
+        {"values": ["us", "eu", "in"]},
+    ),
+    "alias": (
+        "Account",
+        frozenset({"values", "referenced_types", "hints"}),
+        {
+            "values": ["ServiceAccount", "OAuthBrowserAccount", "OAuthTokenAccount"],
+            "referenced_types.0.0": "ServiceAccount",
+        },
+    ),
+    "exception": (
+        "AccountExistsError",
+        frozenset({"bases", "hints"}),
+        {"bases": ["ConfigError"], "groups": [], "used_by": []},
+    ),
+    "function": (
+        "accounts.add",
+        frozenset({"signature", "referenced_types", "hints"}),
+        {
+            "signature.name": "add",
+            "signature.params.0.name": "name",
+            "signature.returns": "AccountSummary",
+            "domain": None,
+            "see_also": [],
+        },
+    ),
+    "method": (
+        "Workspace.create_dashboard",
+        frozenset({"signature", "referenced_types", "see_also", "domain", "hints"}),
+        {
+            "signature.name": "create_dashboard",
+            "signature.params.0.name": "params",
+            "domain": "dashboards",
+            "groups": [],
+            "see_also.0": "add_report_to_dashboard",
+        },
+    ),
+    "property": (
+        "Workspace.account",
+        frozenset({"signature", "hints"}),
+        {"signature.name": "account", "signature.params": []},
+    ),
+    "parameter": (
+        "Workspace.query.math",
+        frozenset({"signature", "values", "hints"}),
+        {
+            "signature.name": "query",
+            "signature.params.0.name": "math",
+            "signature.params.0.default": "'total'",
+            "values.0": "total",
+        },
+    ),
+    "module": (
+        "session",
+        frozenset({"groups", "hints"}),
+        {"groups.0.title": "Members", "groups.0.items.0.kind": "function"},
+    ),
+    "constant": (
+        "FeatureFlagStatus.ENABLED",
+        frozenset({"bases", "value", "hints"}),
+        {"bases": ["FeatureFlagStatus"], "value": "'enabled'", "values": []},
+    ),
+}
+"""Per-kind JSON packing contract: ``(query, populated keys, dotted-path expectations)``.
+
+``populated keys`` are the top-level keys (besides the four every entry
+fills and ``doc``) that hold a non-empty value for the sample entry; the
+dotted paths pin where each kind stores its kind-specific data. A port
+that reads ``describe(...).to_dict()`` can rely on this table.
+"""
+
+
+class TestJsonConventions:
+    """One ``to_dict()`` golden per ``HelpKind`` pins the per-kind packing conventions."""
+
+    def test_table_covers_every_kind(self) -> None:
+        """The convention table names every ``HelpKind`` exactly once."""
+        assert set(JSON_CONVENTIONS) == set(HELP_KINDS)
+
+    @pytest.mark.parametrize("kind", sorted(JSON_CONVENTIONS))
+    def test_kind_packs_its_fields_as_documented(self, kind: str) -> None:
+        """The sample entry of each kind populates exactly the documented keys.
+
+        Args:
+            kind: The ``HelpKind`` under test.
+        """
+        query, populated, expectations = JSON_CONVENTIONS[kind]
+        payload = ref.describe(query).to_dict()
+        assert payload["kind"] == kind
+        assert list(payload) == [f.name for f in dataclasses.fields(ref.HelpEntry)]
+        actual = {
+            key
+            for key, value in payload.items()
+            if key != "doc" and value not in ([], None, "", {})
+        }
+        assert actual == _ALWAYS_POPULATED | populated
+        for path, expected in expectations.items():
+            assert _dig(payload, path) == expected, path
+
+    def test_overview_summary_is_the_package_version(self) -> None:
+        """The overview packs the installed version in ``summary``."""
+        assert ref.describe(None).to_dict()["summary"] == mp.__version__
+
+    def test_parameter_values_mirror_the_param_doc(self) -> None:
+        """A ``parameter`` entry repeats ``signature.params[0].values`` in ``values``."""
+        payload = ref.describe("Workspace.query.math").to_dict()
+        assert payload["values"] == _dig(payload, "signature.params.0.values")
+        assert len(payload["values"]) == 22  # type: ignore[arg-type]
+
+    def test_plain_constant_packs_type_and_repr(self) -> None:
+        """A module-level constant stores its type name in ``bases`` and ``repr`` in ``value``."""
+        payload = ref.describe("BUSINESS_CONTEXT_MAX_CHARS").to_dict()
+        assert payload["bases"] == ["int"]
+        assert payload["value"] == repr(mp.BUSINESS_CONTEXT_MAX_CHARS)
+        assert payload["values"] == []
+        assert payload["domain"] is None
+
+    def test_enum_members_are_field_docs(self) -> None:
+        """Enum members reuse ``FieldDoc``: name, value-type annotation, ``repr`` default."""
+        payload = ref.describe("FeatureFlagStatus").to_dict()
+        fields = payload["fields"]
+        assert isinstance(fields, list)
+        assert [f["name"] for f in fields] == payload["values"]
+        assert all(f["required"] is False for f in fields)
+        assert all(
+            f["default"] == repr(mp.FeatureFlagStatus[f["name"]].value) for f in fields
+        )
 
 
 class TestHelpFunctionEntry:

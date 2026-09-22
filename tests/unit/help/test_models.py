@@ -456,6 +456,37 @@ def test_help_entry_minimal_defaults() -> None:
     assert entry.used_by == ()
     assert entry.see_also == ()
     assert entry.hints == ()
+    assert entry.domain is None
+    assert entry.value is None
+
+
+def test_help_entry_domain_and_value_round_trip() -> None:
+    """``domain`` and ``value`` are stored as given and emitted by ``to_dict()``."""
+    method = HelpEntry(
+        kind="method",
+        name="Workspace.create_dashboard",
+        qualname="Workspace.create_dashboard",
+        summary="Create.",
+        doc=DocSections(),
+        signature=SignatureDoc(name="create_dashboard"),
+        domain="dashboards",
+    )
+    constant = HelpEntry(
+        kind="constant",
+        name="BUSINESS_CONTEXT_MAX_CHARS",
+        qualname="BUSINESS_CONTEXT_MAX_CHARS",
+        summary="Cap.",
+        doc=DocSections(),
+        bases=("int",),
+        value="50000",
+    )
+    assert method.domain == "dashboards"
+    assert method.to_dict()["domain"] == "dashboards"
+    assert method.to_dict()["value"] is None
+    assert constant.value == "50000"
+    assert constant.to_dict()["value"] == "50000"
+    assert constant.to_dict()["domain"] is None
+    assert constant.to_dict()["values"] == []
 
 
 def test_help_entry_requires_core_fields() -> None:

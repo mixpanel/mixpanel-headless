@@ -392,8 +392,52 @@ class HelpEntry:
     """Structured description of one resolved help query.
 
     ``kind``, ``name``, ``qualname``, ``summary``, and ``doc`` are required.
-    Every collection defaults to an empty tuple and ``signature`` to ``None``,
-    so builders can construct partial entries for kinds that lack a section.
+    Every collection defaults to an empty tuple and every scalar extra to
+    ``None``, so builders can construct partial entries for kinds that lack
+    a section. Which fields a kind populates is fixed by the conventions
+    below; ``reference.describe()`` follows them and the renderers rely on
+    them. A consumer of ``to_dict()`` can too.
+
+    Per-kind field conventions:
+
+    - ``method`` / ``function``: ``signature`` holds the callable and
+      ``name`` is the display name (``Workspace.query``, ``accounts.add``).
+      ``referenced_types`` lists the library types in the signature. For a
+      ``Workspace`` method, ``domain`` is the registry domain title and
+      ``see_also`` names the other ``Workspace`` methods of that domain;
+      both are empty for every other callable. ``groups`` is unused.
+    - ``property``: ``signature`` has no params; its ``returns`` is the
+      property type or ``None``.
+    - ``parameter``: ``signature.params`` holds exactly one ``ParamDoc`` and
+      ``signature.name`` is the owning callable's bare name; ``values``
+      repeats the parameter's allowed values; ``summary`` and ``doc`` carry
+      the parameter description.
+    - ``class`` / ``model`` / ``dataclass``: ``bases``, ``config`` (models
+      only), ``construction``, ``fields`` (models and dataclasses),
+      ``properties``, ``methods``, and ``used_by`` map one-to-one to the
+      rendered sections.
+    - ``enum``: ``values`` holds the member names in definition order and
+      ``fields`` reuses ``FieldDoc`` for the members: ``name`` is the member
+      name, ``annotation`` the type name of the member value, ``default``
+      its ``repr``, ``required`` always ``False``. ``bases`` lists the enum's
+      bases.
+    - ``literal``: ``values`` holds the allowed values in declaration order.
+    - ``alias``: ``values`` holds the member display names of the union and
+      ``referenced_types`` the ``(name, summary)`` rows for the members that
+      are library types.
+    - ``exception``: ``bases[0]`` is the direct base. ``groups`` is empty for
+      a leaf or one group titled ``Subclasses`` whose items carry their
+      nesting in ``MemberDoc.depth`` (a direct subclass is depth ``0``).
+      ``used_by`` lists the ``Workspace`` methods whose ``Raises:`` names it.
+    - ``module``: one group titled ``Members`` with every ``__all__`` name.
+    - ``constant``: ``value`` is the ``repr`` of the value and ``bases``
+      holds one name, the value's type (the enum class for an enum member
+      such as ``FeatureFlagStatus.ENABLED``). ``values`` is unused.
+    - ``listing``: ``groups`` carries the rows (``Workspace`` domains, the
+      ``types`` kinds, or the one ``Exceptions`` tree whose items carry
+      ``depth``). ``summary`` is a count line or the facade's summary.
+    - ``overview``: ``summary`` is the package version and ``doc.body`` the
+      query grammar; ``groups`` is empty.
 
     Attributes:
         kind: What the query resolved to.
@@ -404,17 +448,19 @@ class HelpEntry:
         summary: First docstring line (or generated summary for aliases).
         doc: Parsed docstring sections.
         signature: Signature for callables, else ``None``.
-        bases: Names of public base classes.
+        bases: Names of public base classes (the value's type for a constant).
         config: Non-default Pydantic model config as ``(key, value)`` pairs.
         construction: Public constructors and factory classmethods.
-        fields: Public dataclass or model fields.
+        fields: Public dataclass or model fields; enum members for an enum.
         properties: Public properties.
         methods: Public methods (instance, class, static).
-        values: Enum member names or literal values.
-        groups: Domain groups for ``Workspace`` listings.
+        values: Enum member names, literal values, or alias member names.
+        value: Display form of a constant's value (``repr``), else ``None``.
+        groups: Titled member groups for listings, modules, and exception trees.
         referenced_types: ``(type_name, summary)`` pairs referenced by a callable.
-        used_by: ``Workspace`` methods that accept this type.
-        see_also: Names of CRUD siblings for the same entity noun.
+        used_by: ``Workspace`` methods that accept (or raise) this type.
+        domain: Registry domain title of a ``Workspace`` method, else ``None``.
+        see_also: Other ``Workspace`` methods in the same registry domain.
         hints: Hosted-documentation pointers.
     """
 
@@ -431,9 +477,11 @@ class HelpEntry:
     properties: tuple[MemberDoc, ...] = ()
     methods: tuple[MemberDoc, ...] = ()
     values: tuple[str, ...] = ()
+    value: str | None = None
     groups: tuple[Group, ...] = ()
     referenced_types: tuple[tuple[str, str], ...] = ()
     used_by: tuple[UsageDoc, ...] = ()
+    domain: str | None = None
     see_also: tuple[str, ...] = ()
     hints: tuple[Hint, ...] = ()
 
@@ -460,9 +508,11 @@ class HelpEntry:
             "properties": [member.to_dict() for member in self.properties],
             "methods": [member.to_dict() for member in self.methods],
             "values": list(self.values),
+            "value": self.value,
             "groups": [group.to_dict() for group in self.groups],
             "referenced_types": _pairs_to_lists(self.referenced_types),
             "used_by": [usage.to_dict() for usage in self.used_by],
+            "domain": self.domain,
             "see_also": list(self.see_also),
             "hints": [hint.to_dict() for hint in self.hints],
         }

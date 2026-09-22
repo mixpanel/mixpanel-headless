@@ -805,8 +805,8 @@ def _callable_entry(target: Target) -> HelpEntry:
         target: A callable target.
 
     Returns:
-        The entry. ``see_also`` and the single domain ``Group`` are set only
-        for ``Workspace.<method>`` queries.
+        The entry. ``domain`` and ``see_also`` are set only for
+        ``Workspace.<method>`` queries; ``groups`` stays empty.
     """
     from mixpanel_headless._internal.help.introspect import signature_doc
     from mixpanel_headless._internal.help.relations import referenced_types, see_also
@@ -814,7 +814,6 @@ def _callable_entry(target: Target) -> HelpEntry:
     display = target.member or target.qualname
     owner = target.owner if isinstance(target.owner, type) else None
     domain_title, siblings = see_also(target.qualname)
-    groups = (Group(domain_title, ()),) if domain_title else ()
     return HelpEntry(
         kind=target.kind,
         name=target.qualname,
@@ -822,8 +821,8 @@ def _callable_entry(target: Target) -> HelpEntry:
         summary=_summary(target.obj),
         doc=_doc(target.obj),
         signature=signature_doc(target.obj, name=display, owner=owner),
-        groups=groups,
         referenced_types=referenced_types(target.obj),
+        domain=domain_title or None,
         see_also=siblings,
         hints=_hints(target.qualname, target.kind),
     )
@@ -1135,7 +1134,8 @@ def _constant_entry(target: Target) -> HelpEntry:
         target: A constant target.
 
     Returns:
-        The entry; ``bases[0]`` is the type name and ``values[0]`` the value.
+        The entry; ``bases`` holds the one type name and ``value`` the
+        ``repr`` of the value.
     """
     obj = target.obj
     if isinstance(obj, enum.Enum):
@@ -1153,7 +1153,7 @@ def _constant_entry(target: Target) -> HelpEntry:
         summary=summary,
         doc=DocSections(summary=summary, body=summary),
         bases=(type_name,),
-        values=(value,),
+        value=value,
         hints=_hints(target.qualname, "constant"),
     )
 

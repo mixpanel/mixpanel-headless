@@ -398,8 +398,10 @@ _HELP_ENTRIES = st.builds(
     used_by=st.lists(st.builds(UsageDoc, method=_STR, params=_STRS), max_size=3).map(
         tuple
     ),
+    domain=_OPT_STR,
     see_also=_STRS,
     hints=st.lists(st.builds(Hint, title=_STR, url=_STR), max_size=2).map(tuple),
+    value=_OPT_STR,
 )
 _SEARCH_RESULTS = st.builds(
     SearchResult,

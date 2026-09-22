@@ -20,59 +20,16 @@ Formats
   format has columns, and hints as links under ``## Further reading``.
 - ``json`` is ``json.dumps(entry.to_dict(), indent=2)``.
 
-Packing conventions the assembler must follow
-----------------------------------------------
+Packing conventions
+-------------------
 
-The model has no kind-specific fields, so a few kinds reuse generic slots:
-
-- ``method`` / ``function``: ``signature`` holds the callable; ``entry.name``
-  (the display name, e.g. ``Workspace.query``) is printed as the callable
-  name. The domain shown in ``See also (<domain>):`` is the title of
-  ``entry.groups[0]`` **when ``groups`` has exactly one group**; its items are
-  not rendered in this view and may be empty. With zero or several groups the
-  line is a plain ``See also: ...``.
-- ``property``: ``signature`` is a ``SignatureDoc`` with no params whose
-  ``returns`` is the property type; ``None`` prints the bare name.
-- ``parameter``: ``signature.params`` holds exactly one ``ParamDoc`` (the
-  parameter) and ``signature.name`` is the parent method. Allowed values come
-  from ``entry.values``, falling back to ``ParamDoc.values``. The description
-  comes from ``doc.body``, then ``doc.summary``, then ``entry.summary``,
-  falling back to ``ParamDoc.description``.
-- ``class`` / ``model`` / ``dataclass``: ``bases``, ``config``,
-  ``construction``, ``fields``, ``properties``, ``methods``, ``used_by`` map
-  one-to-one to sections. Construction rows print as
-  ``<ClassName>.<factory>(params)`` under ``Construction (N):``; the
-  factories are classmethods or staticmethods.
-- ``enum``: each member is a ``FieldDoc(name=MEMBER, annotation=<value type>,
-  default=repr(value))`` in ``fields``; ``values`` holds the member names.
-  When ``fields`` is empty the table falls back to ``values`` (names only).
-- ``literal``: ``values`` holds the allowed values in declaration order.
-- ``alias``: ``values`` holds the member display names for the
-  ``Name = A | B`` header; ``referenced_types`` holds ``(name, summary)``
-  rows for members that are library types.
-- ``exception``: ``bases[0]`` is the direct base shown in the header
-  (``Exception`` when ``bases`` is empty). The subclass tree is one ``Group``
-  titled ``"Subclasses"`` whose items carry their nesting in
-  ``MemberDoc.depth``; the text format indents two spaces per level, the
-  markdown table prints the bare name. ``used_by`` rows print under
-  ``Raised by Workspace (N methods):`` and omit ``()`` when ``params`` is
-  empty.
-- ``module``: members come from ``groups`` when non-empty (one
-  ``Title (N):`` block each), else from ``methods`` under ``Members (N):``.
-- ``constant``: ``bases[0]`` is the type name and ``values[0]`` is the value
-  display string; either may be absent.
-- ``listing``: ``groups`` render as ``Title (N):`` blocks. Rows tag the
-  summary with ``[property]`` or ``[method]`` when the member kind is one of
-  those; other kinds print name and summary only. ``MemberDoc.depth`` nests
-  an exception tree: the text format indents two spaces per level, the
-  markdown table prints the bare name.
-- ``overview``: ``summary`` is the version string printed after the name;
-  ``doc.body`` is the grammar text; ``groups`` render as tables whose rows
-  show the compact signature when a member has one.
-- a ``SearchResult`` (no kind; it is not a ``HelpEntry``): hits render in the order given with
-  ``[category ]`` padded to nine characters inside the brackets and a name
-  column sized to the longest hit. A miss prints ``No matches for "term"``
-  and then ``Did you mean?`` with ``suggestions`` when there are any.
+Which ``HelpEntry`` fields each kind populates is documented once, in the
+``HelpEntry`` docstring in :mod:`.models`; the renderers here read exactly
+those fields. A ``SearchResult`` is not a ``HelpEntry``: hits render in the
+order given with ``[category ]`` padded to nine characters inside the
+brackets and a name column sized to the longest hit; a miss prints
+``No matches for "term"`` and then ``Did you mean?`` with ``suggestions``
+when there are any.
 """
 
 from __future__ import annotations
@@ -578,16 +535,16 @@ def _used_by_title(entry: HelpEntry) -> str:
 
 
 def _see_also_domain(entry: HelpEntry) -> str | None:
-    """Return the domain title for the ``See also`` line, if unambiguous.
+    """Return the domain title for the ``See also`` line.
 
     Args:
         entry: The entry.
 
     Returns:
-        The title of the single group when ``groups`` has exactly one, else
-        ``None``.
+        ``entry.domain``: the registry domain of a ``Workspace`` method, or
+        ``None`` for every other callable (the line then has no title).
     """
-    return entry.groups[0].title if len(entry.groups) == 1 else None
+    return entry.domain
 
 
 def _description(entry: HelpEntry) -> str:
@@ -917,13 +874,15 @@ def _text_constant(entry: HelpEntry) -> list[Block]:
         entry: The entry.
 
     Returns:
-        Header block followed by the docstring blocks.
+        Header block followed by the docstring blocks. The type comes from
+        ``bases[0]`` and the value from ``value``; each part is omitted when
+        absent.
     """
     head = entry.name
     if entry.bases:
         head += f": {entry.bases[0]}"
-    if entry.values:
-        head += f" = {entry.values[0]}"
+    if entry.value is not None:
+        head += f" = {entry.value}"
     return [[head], *_text_doc(entry, placeholder=False)]
 
 

@@ -96,7 +96,7 @@ def method_entry() -> HelpEntry:
             params=(ParamDoc(name="params", annotation="CreateDashboardParams"),),
             returns="Dashboard",
         ),
-        groups=(Group(title="dashboards", items=()),),
+        domain="dashboards",
         referenced_types=(
             ("CreateDashboardParams", "Parameters for creating a new dashboard."),
             ("Dashboard", "A Mixpanel dashboard as returned by the App API."),
@@ -366,7 +366,7 @@ def make_entries() -> dict[HelpKind, HelpEntry]:
             summary="Summary line.",
             doc=doc,
             bases=("int",),
-            values=("65536",),
+            value="65536",
         ),
         "listing": HelpEntry(
             kind="listing",
@@ -757,14 +757,15 @@ def test_see_also_without_domain_group() -> None:
     assert "See also (" not in render_text(entry)
 
 
-def test_see_also_with_two_groups_has_no_domain(method_entry: HelpEntry) -> None:
-    """Two groups do not identify a domain, so no parenthesised title prints."""
+def test_see_also_without_domain_prints_no_title(method_entry: HelpEntry) -> None:
+    """With ``domain`` unset the line is plain, even when ``groups`` happen to exist."""
     entry = dataclasses.replace(
-        method_entry, groups=(Group(title="a", items=()), Group(title="b", items=()))
+        method_entry, domain=None, groups=(Group(title="dashboards", items=()),)
     )
     out = render_text(entry)
     assert "See also: add_report_to_dashboard, bulk_delete_dashboards" in out
     assert "See also (" not in out
+    assert "## See also\n" in render_markdown(entry)
 
 
 def test_multiple_hints_each_get_a_tip_block(method_entry: HelpEntry) -> None:
@@ -1214,7 +1215,7 @@ def test_listing_text_indents_two_spaces_per_depth_level() -> None:
 
 
 def test_constant_text_exact() -> None:
-    """A constant prints ``NAME: type = value`` from ``bases[0]`` / ``values[0]``."""
+    """A constant prints ``NAME: type = value`` from ``bases[0]`` and ``value``."""
     entry = HelpEntry(
         kind="constant",
         name="BUSINESS_CONTEXT_MAX_CHARS",
@@ -1222,7 +1223,7 @@ def test_constant_text_exact() -> None:
         summary="Max chars.",
         doc=DocSections(summary="Max chars.", body="Max chars."),
         bases=("int",),
-        values=("65536",),
+        value="65536",
     )
     assert render_text(entry) == "BUSINESS_CONTEXT_MAX_CHARS: int = 65536\n\nMax chars."
 
@@ -1239,9 +1240,11 @@ def test_constant_without_type_or_value() -> None:
         qualname="m.X",
         summary="",
         doc=DocSections(),
-        values=("1",),
+        value="1",
     )
     assert render_text(only_value) == "X = 1"
+    ignores_values = dataclasses.replace(only_value, value=None, values=("1",))
+    assert render_text(ignores_values) == "X"
 
 
 # =============================================================================
