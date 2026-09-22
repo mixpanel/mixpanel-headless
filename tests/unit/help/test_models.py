@@ -289,6 +289,7 @@ def test_member_doc_to_dict_with_signature(
         "kind": "method",
         "summary": "Run a query.",
         "signature": signature.to_dict(),
+        "depth": 0,
     }
 
 
@@ -298,6 +299,14 @@ def test_member_doc_to_dict_without_signature() -> None:
         name="events", kind="property", summary="Events.", signature=None
     )
     assert member.to_dict()["signature"] is None
+
+
+def test_member_doc_to_dict_emits_depth() -> None:
+    """``MemberDoc.to_dict()`` emits ``depth`` as given, with the name left bare."""
+    member = MemberDoc(name="RateLimitError", kind="exception", depth=2)
+    payload = member.to_dict()
+    assert payload["depth"] == 2
+    assert payload["name"] == "RateLimitError"
 
 
 def test_group_to_dict(member: MemberDoc) -> None:
@@ -487,6 +496,7 @@ def test_member_doc_defaults() -> None:
     member = MemberDoc(name="x", kind="property")
     assert member.summary == ""
     assert member.signature is None
+    assert member.depth == 0
 
 
 def test_search_result_defaults() -> None:
@@ -548,6 +558,12 @@ def test_member_doc_accepts_every_kind_with_the_matching_signature(
     member = MemberDoc(name="x", kind=kind, signature=signature)
     assert member.kind == kind
     assert (member.signature is not None) is callable_kind
+
+
+def test_member_doc_rejects_negative_depth() -> None:
+    """A negative nesting depth raises ``ValueError``."""
+    with pytest.raises(ValueError, match="depth must be >= 0, got -1"):
+        MemberDoc(name="x", kind="exception", depth=-1)
 
 
 def test_field_doc_rejects_required_with_default() -> None:

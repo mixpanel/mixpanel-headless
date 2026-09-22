@@ -52,19 +52,20 @@ The model has no kind-specific fields, so a few kinds reuse generic slots:
   rows for members that are library types.
 - ``exception``: ``bases[0]`` is the direct base shown in the header
   (``Exception`` when ``bases`` is empty). The subclass tree is one ``Group``
-  titled ``"Subclasses"`` whose item names may carry leading spaces for
-  nesting; the text format prints them verbatim, the markdown table strips
-  them. ``used_by`` rows print under ``Raised by Workspace (N methods):``
-  and omit ``()`` when ``params`` is empty.
+  titled ``"Subclasses"`` whose items carry their nesting in
+  ``MemberDoc.depth``; the text format indents two spaces per level, the
+  markdown table prints the bare name. ``used_by`` rows print under
+  ``Raised by Workspace (N methods):`` and omit ``()`` when ``params`` is
+  empty.
 - ``module``: members come from ``groups`` when non-empty (one
   ``Title (N):`` block each), else from ``methods`` under ``Members (N):``.
 - ``constant``: ``bases[0]`` is the type name and ``values[0]`` is the value
   display string; either may be absent.
 - ``listing``: ``groups`` render as ``Title (N):`` blocks. Rows tag the
   summary with ``[property]`` or ``[method]`` when the member kind is one of
-  those; other kinds print name and summary only. Item names may carry
-  leading spaces to nest an exception tree: the text format prints them
-  verbatim, the markdown table strips them.
+  those; other kinds print name and summary only. ``MemberDoc.depth`` nests
+  an exception tree: the text format indents two spaces per level, the
+  markdown table prints the bare name.
 - ``overview``: ``summary`` is the version string printed after the name;
   ``doc.body`` is the grammar text; ``groups`` render as tables whose rows
   show the compact signature when a member has one.
@@ -296,7 +297,8 @@ def _two_col(rows: Iterable[tuple[str, str]], indent: str = "  ") -> Block:
     """Format ``(name, summary)`` rows with the name padded to ``NAME_WIDTH``.
 
     Args:
-        rows: Pairs to format; names print verbatim (leading spaces kept).
+        rows: Pairs to format; names print verbatim, so callers pass any
+            nesting indent already applied (see ``_nested_label``).
         indent: Prefix for every row.
 
     Returns:
@@ -484,6 +486,26 @@ def _member_label(member: MemberDoc, prefix: str = "") -> str:
     if member.signature is None:
         return member.name
     return _compact_signature(member.signature, prefix=prefix)
+
+
+def _nested_label(member: MemberDoc, label: str | None = None) -> str:
+    """Indent a member's text label by two spaces per nesting level.
+
+    Args:
+        member: The member; ``member.depth`` selects the indent.
+        label: The text to indent; defaults to ``member.name``.
+
+    Returns:
+        ``"  " * depth`` followed by the label; a depth of ``0`` returns the
+        label unchanged.
+
+    Example:
+        ```python
+        _nested_label(MemberDoc("RateLimitError", "exception", depth=2))
+        # "    RateLimitError"
+        ```
+    """
+    return f"{'  ' * member.depth}{member.name if label is None else label}"
 
 
 def _tagged_summary(member: MemberDoc) -> str:
@@ -689,11 +711,15 @@ def _text_groups(groups: Iterable[Group], *, signatures: bool) -> list[Block]:
 
     Returns:
         One block per group; a group with no items still prints its title.
+        Each row's name is indented two spaces per ``MemberDoc.depth``.
     """
     blocks: list[Block] = []
     for group in groups:
         rows = [
-            (_member_label(m) if signatures else m.name, _tagged_summary(m))
+            (
+                _nested_label(m, _member_label(m) if signatures else None),
+                _tagged_summary(m),
+            )
             for m in group.items
         ]
         blocks.append([f"{group.title} ({len(group.items)}):", *_two_col(rows)])
@@ -853,12 +879,15 @@ def _text_exception(entry: HelpEntry) -> list[Block]:
         entry: The entry.
 
     Returns:
-        Header block, docstring blocks, then one block per group (``Subclasses``).
+        Header block, docstring blocks, then one block per group
+        (``Subclasses``); subclass names indent two spaces per ``depth``.
     """
     base = entry.bases[0] if entry.bases else "Exception"
     header = [f"exception {entry.name}({base})"]
     groups = [
-        _section(f"{g.title}:", _two_col((m.name, m.summary) for m in g.items))
+        _section(
+            f"{g.title}:", _two_col((_nested_label(m), m.summary) for m in g.items)
+        )
         for g in entry.groups
     ]
     return [header, *_text_doc(entry, placeholder=True), *groups]
@@ -1071,13 +1100,14 @@ def _md_groups(groups: Iterable[Group], *, signatures: bool) -> list[Block]:
         signatures: Show the compact signature instead of the bare name.
 
     Returns:
-        Heading and table blocks per group.
+        Heading and table blocks per group. Names print bare; nesting depth
+        is not shown in markdown.
     """
     blocks: list[Block] = []
     for group in groups:
         rows = [
             (
-                f"`{_member_label(m) if signatures else m.name.strip()}`",
+                f"`{_member_label(m) if signatures else m.name}`",
                 _tagged_summary(m),
             )
             for m in group.items
@@ -1278,12 +1308,13 @@ def _md_exception(entry: HelpEntry) -> list[Block]:
         entry: The entry.
 
     Returns:
-        Title, docstring sections, then one table per group (``Subclasses``).
+        Title, docstring sections, then one table per group (``Subclasses``);
+        names print bare, nesting depth is not shown in markdown.
     """
     base = entry.bases[0] if entry.bases else "Exception"
     blocks: list[Block] = [[f"# exception {entry.name}({base})"], *_md_doc(entry)]
     for group in entry.groups:
-        rows = [(f"`{m.name.strip()}`", m.summary) for m in group.items]
+        rows = [(f"`{m.name}`", m.summary) for m in group.items]
         blocks += _md_section(group.title, _md_table(("Name", "Summary"), rows))
     return blocks
 

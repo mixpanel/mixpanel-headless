@@ -671,15 +671,17 @@ def _types_listing() -> HelpEntry:
 
 
 def _exceptions_listing() -> HelpEntry:
-    """Build the ``exceptions`` listing as an indented tree.
+    """Build the ``exceptions`` listing as a tree.
 
     Returns:
         The ``listing`` entry with one ``Exceptions`` group and no hints.
+        Each item's ``depth`` is its distance below ``MixpanelHeadlessError``
+        (the root itself is depth ``0``); names carry no indentation.
     """
     from mixpanel_headless._internal.help.relations import exception_tree
 
     items = tuple(
-        MemberDoc(f"{'  ' * depth}{name}", "exception", _export_summary(name))
+        MemberDoc(name, "exception", _export_summary(name), depth=depth)
         for name, depth in exception_tree()
     )
     return HelpEntry(
@@ -1071,15 +1073,15 @@ def _exception_entry(target: Target) -> HelpEntry:
 
     Returns:
         The entry. The subclass tree is one ``Group`` titled ``Subclasses``
-        whose item names carry two leading spaces per nesting level; the
-        group is omitted for a leaf exception.
+        whose items carry their nesting in ``depth`` (a direct subclass is
+        depth ``0``); the group is omitted for a leaf exception.
     """
     from mixpanel_headless._internal.help.introspect import bases_doc
     from mixpanel_headless._internal.help.relations import exception_tree, raised_by
 
     cls = typing.cast("type[BaseException]", target.obj)
     items = tuple(
-        MemberDoc(f"{'  ' * (depth - 1)}{name}", "exception", _export_summary(name))
+        MemberDoc(name, "exception", _export_summary(name), depth=depth - 1)
         for name, depth in exception_tree(cls)[1:]
     )
     return HelpEntry(

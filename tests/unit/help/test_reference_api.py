@@ -33,7 +33,11 @@ from mixpanel_headless._internal.help import introspect as introspect_module
 from mixpanel_headless._internal.help import inventory as inventory_module
 from mixpanel_headless._internal.help import relations as relations_module
 from mixpanel_headless._internal.help import search as search_module
-from mixpanel_headless._internal.help.models import HELP_FORMATS, HELP_KINDS
+from mixpanel_headless._internal.help.models import (
+    HELP_FORMATS,
+    HELP_KINDS,
+    MemberDoc,
+)
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless._internal.help.relations import exception_tree, raised_by
 from mixpanel_headless._literal_types import ALIAS_DOCS
@@ -478,8 +482,11 @@ class TestAliasExceptionModuleConstant:
         assert _group_titles(entry) == ["Subclasses"]
         items = entry.groups[0].items
         assert items
-        assert len(items) == len(exception_tree(mp.APIError)) - 1
-        assert any(item.name.startswith("  ") for item in items)
+        assert [(item.name, item.depth) for item in items] == [
+            (name, depth - 1) for name, depth in exception_tree(mp.APIError)[1:]
+        ]
+        assert not any(item.name.startswith(" ") for item in items)
+        assert {item.depth for item in items} == {0, 1}
 
     def test_workspace_scope_error_raised_by(self) -> None:
         """``WorkspaceScopeError.used_by`` is the ``Raises:`` index."""
@@ -556,14 +563,32 @@ class TestListings:
         assert entry.kind == "listing"
         assert _group_titles(entry) == ["Exceptions"]
         items = entry.groups[0].items
-        assert len(items) == len(exception_tree())
-        assert items[0].name == "MixpanelHeadlessError"
-        assert items[1].name == "  APIError"
-        assert any(item.name.startswith("    ") for item in items)
-        assert {item.name.strip() for item in items} == {
-            name for name, _ in exception_tree()
-        }
+        assert [(item.name, item.depth) for item in items] == list(exception_tree())
+        assert items[0] == MemberDoc(
+            "MixpanelHeadlessError", "exception", items[0].summary, depth=0
+        )
+        assert items[1].name == "APIError"
+        assert items[1].depth == 1
+        assert max(item.depth for item in items) >= 3
         assert entry.hints == ()
+
+    def test_exceptions_listing_json_depth_matches_the_class_hierarchy(self) -> None:
+        """Every JSON item has a bare name and a ``depth`` equal to its distance from the root."""
+        payload = ref.describe("exceptions").to_dict()
+        groups = payload["groups"]
+        assert isinstance(groups, list)
+        items = groups[0]["items"]
+        assert items
+        for item in items:
+            name = item["name"]
+            assert name == name.strip()
+            cls = getattr(mp, name)
+            lineage = [
+                base
+                for base in cls.__mro__
+                if issubclass(base, mp.MixpanelHeadlessError)
+            ]
+            assert item["depth"] == len(lineage) - 1, name
 
 
 class TestHelpFunctionEntry:

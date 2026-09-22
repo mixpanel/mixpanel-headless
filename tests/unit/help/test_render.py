@@ -1080,9 +1080,10 @@ def test_exception_text_exact() -> None:
                         name="SessionReplayError", kind="exception", summary="Replay."
                     ),
                     MemberDoc(
-                        name="  SignedURLExpiredError",
+                        name="SignedURLExpiredError",
                         kind="exception",
                         summary="Expired.",
+                        depth=1,
                     ),
                 ),
             ),
@@ -1185,6 +1186,33 @@ def test_module_with_groups_renders_group_titles() -> None:
     assert render_text(entry).endswith("Functions (1):\n  use()" + " " * 38 + "Use.")
 
 
+def test_listing_text_indents_two_spaces_per_depth_level() -> None:
+    """Text listing rows indent ``"  " * depth`` before the name; depth 0 is flush."""
+    entry = HelpEntry(
+        kind="listing",
+        name="exceptions",
+        qualname="exceptions",
+        summary="",
+        doc=DocSections(),
+        groups=(
+            Group(
+                title="Exceptions",
+                items=(
+                    MemberDoc(name="Root", kind="exception", summary="R."),
+                    MemberDoc(name="Mid", kind="exception", summary="M.", depth=1),
+                    MemberDoc(name="Leaf", kind="exception", summary="L.", depth=2),
+                ),
+            ),
+        ),
+    )
+    assert render_text(entry).splitlines()[2:] == [
+        "Exceptions (3):",
+        "  Root" + " " * 39 + "R.",
+        "    Mid" + " " * 38 + "M.",
+        "      Leaf" + " " * 35 + "L.",
+    ]
+
+
 def test_constant_text_exact() -> None:
     """A constant prints ``NAME: type = value`` from ``bases[0]`` / ``values[0]``."""
     entry = HelpEntry(
@@ -1254,7 +1282,11 @@ def test_listing_rows_without_method_kind_have_no_tag() -> None:
             ),
             Group(
                 title="Tree",
-                items=(MemberDoc(name="  Child", kind="exception", summary="Nested."),),
+                items=(
+                    MemberDoc(
+                        name="Child", kind="exception", summary="Nested.", depth=1
+                    ),
+                ),
             ),
         ),
     )
@@ -1509,8 +1541,8 @@ def test_search_markdown_no_hits_no_suggestions() -> None:
     assert render_search_markdown(SearchResult(term="zzz")) == 'No matches for "zzz"'
 
 
-def test_markdown_listing_strips_nesting_indent_from_names() -> None:
-    """Listing rows whose names carry leading spaces print the bare name in markdown."""
+def test_markdown_listing_ignores_depth_and_text_indents_it() -> None:
+    """A nested listing row prints its bare name in markdown and two spaces per level in text."""
     entry = HelpEntry(
         kind="listing",
         name="Exceptions",
@@ -1523,7 +1555,7 @@ def test_markdown_listing_strips_nesting_indent_from_names() -> None:
                 items=(
                     MemberDoc(name="APIError", kind="exception", summary="Base."),
                     MemberDoc(
-                        name="  RateLimitError", kind="exception", summary="429."
+                        name="RateLimitError", kind="exception", summary="429.", depth=1
                     ),
                 ),
             ),
@@ -1536,8 +1568,8 @@ def test_markdown_listing_strips_nesting_indent_from_names() -> None:
     assert "\n    RateLimitError" in text
 
 
-def test_markdown_exception_strips_nesting_indent_from_subclass_names() -> None:
-    """Exception subclass rows print the bare name in markdown; text keeps the indent."""
+def test_markdown_exception_ignores_depth_and_text_indents_it() -> None:
+    """Nested subclass rows print the bare name in markdown and two spaces per level in text."""
     entry = HelpEntry(
         kind="exception",
         name="APIError",
@@ -1551,7 +1583,7 @@ def test_markdown_exception_strips_nesting_indent_from_subclass_names() -> None:
                 items=(
                     MemberDoc(name="QueryError", kind="exception", summary="400."),
                     MemberDoc(
-                        name="  BadFilterError", kind="exception", summary="Bad."
+                        name="BadFilterError", kind="exception", summary="Bad.", depth=1
                     ),
                 ),
             ),

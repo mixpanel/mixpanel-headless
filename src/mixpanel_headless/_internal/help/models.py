@@ -246,26 +246,33 @@ class MemberDoc:
     """One member in a listing (method, property, classmethod, module export).
 
     Attributes:
-        name: Member name.
+        name: Member name, never indented; nesting is carried by ``depth``.
         kind: Member classification, one of ``MEMBER_KINDS``.
         summary: First docstring line, or ``""``.
         signature: Signature for ``method`` / ``function`` members (always
             present for those kinds), ``None`` for every other kind.
+        depth: Nesting level inside a tree-shaped group, ``0`` for a flat
+            row. The exception tree uses it: each level is one subclass step
+            below the group's root. The text renderer indents two spaces per
+            level; markdown and JSON keep the bare name and expose ``depth``.
     """
 
     name: str
     kind: MemberKind
     summary: str = ""
     signature: SignatureDoc | None = None
+    depth: int = 0
 
     def __post_init__(self) -> None:
-        """Validate the kind and its agreement with ``signature``.
+        """Validate the kind, its agreement with ``signature``, and ``depth``.
 
         Raises:
             ValueError: When ``kind`` is not one of ``MEMBER_KINDS``, when a
-                ``method`` / ``function`` member has no signature, or when
-                any other kind carries one.
+                ``method`` / ``function`` member has no signature, when any
+                other kind carries one, or when ``depth`` is negative.
         """
+        if self.depth < 0:
+            raise ValueError(f"MemberDoc depth must be >= 0, got {self.depth}")
         if self.kind not in MEMBER_KINDS:
             allowed = ", ".join(MEMBER_KINDS)
             raise ValueError(
@@ -286,13 +293,15 @@ class MemberDoc:
         """Convert to a JSON-serializable dict.
 
         Returns:
-            A dict with ``signature`` converted recursively or ``None``.
+            A dict with ``signature`` converted recursively or ``None``, and
+            ``depth`` as an integer.
         """
         return {
             "name": self.name,
             "kind": self.kind,
             "summary": self.summary,
             "signature": None if self.signature is None else self.signature.to_dict(),
+            "depth": self.depth,
         }
 
 

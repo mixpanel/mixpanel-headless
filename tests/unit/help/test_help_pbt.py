@@ -355,7 +355,11 @@ def _member_docs(draw: st.DrawFn) -> MemberDoc:
     kind = draw(_MEMBER_KIND)
     signature = draw(_SIGNATURES) if kind in _CALLABLE_MEMBER_KINDS else None
     return MemberDoc(
-        name=draw(_STR), kind=kind, summary=draw(_STR), signature=signature
+        name=draw(_STR),
+        kind=kind,
+        summary=draw(_STR),
+        signature=signature,
+        depth=draw(st.integers(min_value=0, max_value=3)),
     )
 
 
