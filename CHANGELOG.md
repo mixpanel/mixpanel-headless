@@ -8,9 +8,9 @@ may include API changes.
 ## 0.3.0 — 2026-09-21
 
 Minor release: built-in API help. A top-level `mp.help()` function,
-a structured `mp.reference` module, and an `mp help` CLI command replace
-the plugin's standalone `help.py` script. All three work offline, need no
-credentials, and touch no config file. `__all__` loses ten duplicate
+a structured `mp.reference` module, and an `mp help` CLI command provide
+offline API reference for the whole public surface. All three need no
+credentials and touch no config file. `__all__` loses ten duplicate
 entries.
 
 ### Added
@@ -51,9 +51,8 @@ entries.
   by `reference.describe()` on a miss and by `reference.search()` for an
   empty term. Carries `query`, `suggestions`, and `hits`. The CLI maps it to
   `ExitCode.NOT_FOUND` (4).
-- **`LITERAL_ALIAS_DOCS`** in `_literal_types.py` — one description line
-  per exported Literal alias, shown by `mp help <Alias>`. A test asserts
-  that every exported alias has an entry.
+- Every exported Literal alias (`MathType`, `TimeUnit`, `Region`, ...) now
+  carries a one-line description, shown by `mp help <Alias>`.
 - Docs: new [Built-in Help guide](docs/guide/built-in-help.md) and
   [API page](docs/api/help.md); both are listed in `llms.txt`.
 
@@ -64,16 +63,14 @@ entries.
   `RetentionMode`, `RetentionMathType`, `CustomPropertyType`,
   `FilterOperator`, `FilterPropertyType`, and `FilterDateUnit` were each
   listed twice. Every name is still exported once; there is no behavior
-  change. A test now locks `len(__all__) == len(set(__all__))`.
+  change.
 
 ### Notes
 
-- Plugin: the `mixpanelyst` skill still calls
-  `scripts/help.py` in this release. The script removal and the switch to
-  `mp help` / `mp.help()` ship in a follow-up plugin PR after 0.3.0 is on
-  PyPI, so a plugin user cannot receive the new skill before the library
-  that backs it. Closes the deferred task T087 in
-  `specs/044-session-replay/tasks.md`.
+- Plugin: this release does not change the Claude Code plugin. The
+  `mixpanelyst` skill still uses its bundled help script; the next plugin
+  release switches it to `mp help` / `mp.help()` and requires
+  `mixpanel-headless>=0.3.0`.
 
 ## 0.2.3 — 2026-09-14
 

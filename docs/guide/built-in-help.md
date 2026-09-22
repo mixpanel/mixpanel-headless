@@ -24,10 +24,10 @@ From the CLI:
 
 ```bash
 mp help                                   # overview
-mp help Workspace                         # 209 methods grouped by domain
+mp help Workspace                         # methods grouped by domain
 mp help Workspace --domain "funnel query" # one domain only
 mp help Workspace.query
-mp help Filter -f json --jq '.fields[].name'
+mp help Filter -f json --jq '.construction[].name'
 mp help MathType -f markdown
 mp help search cohort
 mp help exceptions --no-hints
@@ -115,7 +115,7 @@ Resolution order for a name: exact match, then a unique case-insensitive match (
 
 Three formats, selected with `format=` in Python or `-f/--format` in the CLI. The CLI default is `text`.
 
-**`text`** keeps the shape of the plugin's earlier `help.py` script: a multi-line signature block, Google docstring sections, two-column rows, `Used by Workspace (N methods):` rows, a `See also` line, and one `---` / `Tip:` / `WebFetch(url=...)` block per hint. Output contains no Rich markup, so literal tags such as `[property]` survive.
+**`text`** is a compact plain-text layout: a multi-line signature block, Google docstring sections, two-column rows, `Used by Workspace (N methods):` rows, a `See also` line, and one `---` / `Tip:` / `WebFetch(url=...)` block per hint. Output contains no Rich markup, so literal tags such as `[property]` survive.
 
 An illustrative `mp help Workspace.create_dashboard` (the exact docstring text comes from the installed version):
 
@@ -145,11 +145,11 @@ An illustrative `mp help MathType`:
 
 ```
 MathType = Literal[22 values]
-  total | unique | dau | wau | mau | average | median | min | max | p25 | p75 | p90 | p99
-  | percentile | histogram | cumulative_unique | sessions | unique_values | most_frequent
-  | first_value | multi_attribution | numeric_summary
+  total | unique | dau | wau | mau | average | median | min | max | p25 | p75 | p90
+  | p99 | percentile | histogram | cumulative_unique | sessions | unique_values
+  | most_frequent | first_value | multi_attribution | numeric_summary
 
-Aggregation for a plain-string event in Workspace.query / build_params.
+Aggregation for a plain-string event in Workspace.query / build_params and for Metric.math.
 
 Used by Workspace (2 methods):
   build_params(math)
@@ -244,12 +244,6 @@ except mp.HelpLookupError as exc:
 ```
 
 `HelpLookupError` subclasses `MixpanelHeadlessError` directly, not `APIError`, because the lookup never touches the network.
-
-## Out of scope
-
-- Parameter-level search (`search --param where`) and example-only views.
-- A hint registration API for plugins.
-- Any change to the interactive Python builtin `help()`.
 
 ## Next Steps
 

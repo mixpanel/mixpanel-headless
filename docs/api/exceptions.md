@@ -299,7 +299,7 @@ Raised by the built-in help surface (`mixpanel_headless.reference.describe()`, a
 | Attribute | Content |
 |-----------|---------|
 | `query` | The query string as the caller gave it. |
-| `suggestions` | Close names in `difflib` order, most similar first; `()` when none. |
+| `suggestions` | Close names, most similar first; `()` when none. |
 | `hits` | `SearchHit` records for the same term; `()` when none. |
 
 ```python

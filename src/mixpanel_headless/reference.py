@@ -19,11 +19,8 @@ hits = mp.reference.search("cohort")        # structured SearchResult
 The CLI twin is ``mp help QUERY...`` (also ``python3 -m mixpanel_headless
 help QUERY...``).
 
-Import cost: only the result models, the exception type, and ``typing`` are
-imported at module level. The introspection modules (inventory, resolver,
-introspection, relations, search, hints, renderers) are imported lazily
-inside the functions that need them, so ``import mixpanel_headless`` pays
-nothing measurable for this module.
+Importing this module is cheap: the introspection machinery loads lazily on
+the first call, so ``import mixpanel_headless`` does not pay for it.
 """
 
 from __future__ import annotations
