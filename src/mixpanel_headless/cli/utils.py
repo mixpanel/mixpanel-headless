@@ -450,9 +450,12 @@ def handle_errors(func: F) -> F:
                     )
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except HelpLookupError as e:
-            # A reference lookup miss maps to NOT_FOUND (4), like the
-            # other "named thing does not exist" errors above. Catch BEFORE
-            # the generic MixpanelHeadlessError branch.
+            # Safety net only: ``mp help`` catches HelpLookupError (and its
+            # HelpDomainError subclass) itself, before the error reaches this
+            # decorator, and prints the suggestions on stdout. Should one
+            # escape from elsewhere, it maps to NOT_FOUND (4) like the other
+            # "named thing does not exist" errors above. Catch BEFORE the
+            # generic MixpanelHeadlessError branch.
             err_console.print(f"[red]No help entry:[/red] {rich_escape(e.message)}")
             raise typer.Exit(ExitCode.NOT_FOUND) from None
         except MixpanelHeadlessError as e:

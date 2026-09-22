@@ -19,7 +19,7 @@ String grammar: the first dotted segment must be an inventory
 name — an exact match, else a unique case-insensitive match. Later
 segments walk members: ``Workspace.query`` (method), ``Workspace.account``
 (property), ``Workspace.query.events`` (parameter), ``Filter.equals``
-(classmethod), ``FeatureFlagStatus.ACTIVE`` (enum member, ``constant``),
+(classmethod), ``FeatureFlagStatus.ENABLED`` (enum member, ``constant``),
 ``accounts.add`` (namespace-module function). ``types`` and ``exceptions``
 are ``listing`` targets; ``None`` or blank text is the ``overview``. Private
 names (leading underscore) never resolve.
@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import difflib
 import enum
-import importlib
 import inspect
 import types
 from collections.abc import Callable, Mapping, Sequence
@@ -211,7 +210,7 @@ def _overview() -> Target:
     """Build the overview target for the package itself.
 
     Returns:
-        ``Target(kind="overview", qualname="", obj=<mixpanel_headless>)``.
+        The ``overview`` target; ``obj`` is the package module.
     """
     import mixpanel_headless as package
 
@@ -253,8 +252,8 @@ def _root_target(head: str, query: str) -> Target:
         query: Full query text, for the error.
 
     Returns:
-        The export target, or the ``help`` function target when ``head`` is
-        ``help`` and the ``reference`` module is importable.
+        The export target (the package-level ``help`` function is an
+        ordinary export, so ``help`` resolves here too).
 
     Raises:
         HelpLookupError: When ``head`` is not an export (suggestions from
@@ -267,25 +266,7 @@ def _root_target(head: str, query: str) -> Target:
         raise HelpLookupError(query, suggestions=tuple(matches))
     if matches:
         return _export_target(rows[matches[0]])
-    if head == "help":
-        function = _help_function()
-        if function is not None:
-            return Target(kind="function", qualname="help", obj=function)
     raise HelpLookupError(query, suggestions=suggestions_for(head))
-
-
-def _help_function() -> object | None:
-    """Import the top-level ``help`` function lazily.
-
-    Returns:
-        ``mixpanel_headless.reference.help``, or ``None`` when the module is
-        not importable yet.
-    """
-    try:
-        reference = importlib.import_module(f"{_PACKAGE}.reference")
-    except ImportError:
-        return None
-    return getattr(reference, "help", None)
 
 
 def _export_target(row: Export) -> Target:
@@ -295,7 +276,7 @@ def _export_target(row: Export) -> Target:
         row: The inventory row.
 
     Returns:
-        ``Target(kind=row.kind, qualname=row.name, obj=row.obj)``.
+        A root target with the row's kind, name, and object.
     """
     return Target(kind=row.kind, qualname=row.name, obj=row.obj)
 

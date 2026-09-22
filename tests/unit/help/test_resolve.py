@@ -430,15 +430,15 @@ class TestCaseInsensitive:
 
 
 class TestHelpQuery:
-    """``help`` resolves to the top-level ``help`` function once it exists."""
+    """``help`` resolves through the inventory like any other export."""
 
     def test_help_function(self) -> None:
-        """``help`` resolves to ``mixpanel_headless.reference.help``."""
-        reference = pytest.importorskip("mixpanel_headless.reference")
+        """``help`` resolves to the package-level ``help`` function."""
         target = resolve("help")
         assert target.kind == "function"
         assert target.qualname == "help"
-        assert target.obj is reference.help
+        assert target.obj is mp.help
+        assert target.obj is mp.reference.help
 
 
 class TestPrivateAndMalformed:
