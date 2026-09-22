@@ -648,6 +648,185 @@ FiltersCombinator = Literal["all", "any"]
 +-------+----------------------------------------------+
 """
 
+# =============================================================================
+# One-line descriptions for the built-in help (Plan 047, D4)
+# =============================================================================
+
+LITERAL_ALIAS_DOCS: dict[str, str] = {
+    # Time units
+    "TimeUnit": (
+        "Bucket size for the legacy live queries segmentation, retention, "
+        "event_counts, property_counts, and frequency, and the retention_unit "
+        "of Workspace.query_retention / build_retention_params."
+    ),
+    "HourDayUnit": (
+        "Bucket size for the numeric live queries segmentation_numeric, "
+        "segmentation_sum, and segmentation_average, and the addiction_unit "
+        "of frequency."
+    ),
+    "QueryTimeUnit": (
+        "Time bucket for the unit parameter of Workspace.query, query_funnel, "
+        "query_retention, and their build_* helpers."
+    ),
+    # Count types
+    "CountType": (
+        "Counting method for the type parameter of the legacy "
+        "segmentation_numeric live query: general, unique, or average."
+    ),
+    "FlowCountType": (
+        "Counting method for Workspace.query_flow / build_flow_params "
+        "(count_type): unique users, total events, or sessions."
+    ),
+    # Insights math
+    "MathType": (
+        "Aggregation for a plain-string event in Workspace.query / "
+        "build_params and for Metric.math."
+    ),
+    "PerUserAggregation": (
+        "Per-user pre-aggregation applied before math in Workspace.query / "
+        "build_params and Metric.per_user; requires math_property."
+    ),
+    # Funnel types
+    "FunnelMathType": (
+        "Aggregation for Workspace.query_funnel / build_funnel_params (math), "
+        "including the conversion_rate_* variants."
+    ),
+    "ConversionWindowUnit": (
+        "Unit of the funnel conversion window (conversion_window_unit) in "
+        "Workspace.query_funnel / build_funnel_params."
+    ),
+    "FunnelOrder": (
+        "Step ordering for FunnelStep.order: loose (in order, other events "
+        "allowed between steps) or any."
+    ),
+    "FunnelMode": (
+        "Display mode for Workspace.query_funnel / build_funnel_params (mode): "
+        "steps, trends, or table."
+    ),
+    # Retention types
+    "RetentionAlignment": (
+        "Cohort alignment for Workspace.query_retention / "
+        "build_retention_params (alignment): birth or interval_start."
+    ),
+    "RetentionMode": (
+        "Display mode for Workspace.query_retention / build_retention_params "
+        "(mode): curve, trends, or table."
+    ),
+    "RetentionMathType": (
+        "Measurement math for Workspace.query_retention / "
+        "build_retention_params (math); retention_rate is the default."
+    ),
+    # Advanced query types
+    "SegmentMethod": (
+        "How Metric.segment_method counts qualifying events per user: all "
+        "events or the first one only."
+    ),
+    "FunnelReentryMode": (
+        "Re-entry handling for Workspace.query_funnel / build_funnel_params "
+        "(reentry_mode) when a user restarts the funnel."
+    ),
+    "RetentionUnboundedMode": (
+        "Unbounded retention handling for Workspace.query_retention / "
+        "build_retention_params (unbounded_mode)."
+    ),
+    "TimeComparisonType": (
+        "Kind of period-over-period comparison in TimeComparison.type: "
+        "relative, absolute-start, or absolute-end."
+    ),
+    "TimeComparisonUnit": (
+        "Offset unit for TimeComparison.relative / TimeComparison.unit in "
+        "period-over-period comparisons."
+    ),
+    "CohortAggregationType": (
+        "Aggregation over a numeric property in CohortCriteria.did_event"
+        "(aggregation) cohort behavior criteria."
+    ),
+    "FlowSessionEvent": (
+        "Session anchor for FlowStep.session_event: the start or the end of a session."
+    ),
+    "FrequencyFilterOperator": (
+        "Comparison operator for FrequencyFilter.operator; single-value "
+        "operators only, no between."
+    ),
+    # Flow types
+    "FlowChartType": (
+        "Visualization mode for Workspace.query_flow / build_flow_params "
+        "(mode): sankey, paths, or tree."
+    ),
+    "FlowConversionWindowUnit": (
+        "Unit of the flow conversion window (conversion_window_unit) in "
+        "Workspace.query_flow / build_flow_params; no sub-day units."
+    ),
+    "FlowNodeType": (
+        "Node kind in a flow tree result (FlowTreeNode.type / "
+        "FlowStepNode.type), such as ANCHOR or DROPOFF."
+    ),
+    "FlowAnchorType": (
+        "Anchor kind in a flow tree result (FlowTreeNode.anchor_type / "
+        "FlowStepNode.anchorType)."
+    ),
+    # Insights mode
+    "InsightsMode": (
+        "Display mode for Workspace.query / build_params (mode): timeseries, "
+        "total, or table."
+    ),
+    # Filter types
+    "CustomPropertyType": (
+        "Output type of a custom property (CreateCustomPropertyParams."
+        "property_type, GroupBy.property_type, SubPropertyInfo.type)."
+    ),
+    "FilterOperator": (
+        "Canonical wire spelling of a Filter operator as stored in bookmark JSON."
+    ),
+    "FilterPropertyType": (
+        "Property data type of a Filter condition (property_type), including "
+        "list and object for nested data."
+    ),
+    "FilterDateUnit": (
+        "Unit of the relative window in Filter.in_the_last, in_the_next, and "
+        "not_in_the_last (date_unit)."
+    ),
+    "FiltersCombinator": (
+        "How the filters on a Metric, FunnelStep, RetentionEvent, or FlowStep "
+        "combine: all (AND) or any (OR)."
+    ),
+    # Aliases defined in types.py / auth_types.py
+    "AccountType": (
+        "Discriminator of the Account union and AccountSummary.type: "
+        "service_account, oauth_browser, or oauth_token."
+    ),
+    "Region": (
+        "Mixpanel data residency region (us, eu, in) used by accounts, "
+        "sessions, and report links."
+    ),
+    "BookmarkType": (
+        "Saved report type from the Bookmarks API (BookmarkInfo.type, "
+        "list_bookmarks, list_bookmarks_v2, saved_report_link)."
+    ),
+    "SavedReportType": (
+        "Report type detected from a saved report result "
+        "(SavedReportResult.report_type); note funnel, not funnels."
+    ),
+    "EntityType": (
+        "Lexicon entity kind (event or profile) for Workspace.lexicon_schemas "
+        "/ lexicon_schema (entity_type)."
+    ),
+    "ReportLinkType": (
+        "Report type for Workspace.create_report_link (report_type) and "
+        "ReportLink.report_type; excludes launch-analysis."
+    ),
+}
+"""One-line description per exported ``Literal`` alias, keyed by export name.
+
+Read by the built-in help (``mp.help("MathType")``) so a ``Literal`` alias
+renders a sentence instead of a bogus ``Name(args, kwargs)`` signature. Six
+keys (``AccountType``, ``Region``, ``BookmarkType``, ``SavedReportType``,
+``EntityType``, ``ReportLinkType``) describe aliases defined in
+``types.py`` / ``auth_types.py``; they live here so one dict covers every
+exported alias. ``tests/unit/help/test_registry_completeness.py`` asserts
+the key set equals the set of exported ``Literal`` aliases.
+"""
+
 __all__ = [
     # Time units
     "TimeUnit",
@@ -690,4 +869,6 @@ __all__ = [
     "FilterPropertyType",
     "FilterDateUnit",
     "FiltersCombinator",
+    # Built-in help (047)
+    "LITERAL_ALIAS_DOCS",
 ]

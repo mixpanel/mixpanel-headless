@@ -20,6 +20,17 @@ Two `mp reports` verbs and an opt-in flag on four `mp query` commands turn queri
 
 Exit codes for the report-link errors: not found 4; parse, unsupported, and scope mismatch 3 (with a `hint:` line); auth 2; shortlink extraction 1.
 
+## Built-in help
+
+`mp help` prints an offline API reference from the installed package. It needs no credentials, ignores `-a / -p / -w / -t`, and never contacts Mixpanel. Full walkthrough: [Built-in Help guide](../guide/built-in-help.md).
+
+| Command | Purpose |
+|---------|---------|
+| `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` | Describe one name (`Workspace.query`, `Filter`, `MathType`, `exceptions`, `types`, `accounts`, …) or search (`mp help search cohort`). Tokens are joined with spaces. The default format is `text`; `--jq` requires `-f json`; `--domain` applies to `Workspace` only. |
+| `python3 -m mixpanel_headless help [QUERY...] [options]` | Same command through the module entry point, for environments where `mp` is not on `PATH`. |
+
+Exit codes: 0 found; 4 miss (suggestions and the first search hits print to stdout); 3 for `--jq` without `-f json` or an unknown `--domain`.
+
 ::: mkdocs-typer
     :module: mixpanel_headless.cli.main
     :command: app

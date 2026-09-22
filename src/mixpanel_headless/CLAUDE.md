@@ -21,7 +21,8 @@ Public API for the Mixpanel data library. Import from here, not from `_internal`
 | `targets.py` | Functional API for named targets (account+project+workspace bundles) |
 | `exceptions.py` | Exception hierarchy with structured error context |
 | `types.py` | Result dataclasses (SegmentationResult, FunnelResult, etc.) + AccountSummary |
-| `_literal_types.py` | Literal type aliases (TimeUnit, CountType, HourDayUnit) |
+| `_literal_types.py` | Literal type aliases (TimeUnit, CountType, HourDayUnit) + `LITERAL_ALIAS_DOCS` (one description line per alias, shown by `mp help`) |
+| `reference.py` | Built-in API help (047): `help()` (re-exported as `mp.help`), `describe()`, `search()`, `render()`, `clear_cache()`, and the frozen result types (`HelpEntry`, `SearchResult`, …); offline, no config, no `Workspace` |
 | `_internal/` | Private implementation (do not import directly) |
 | `cli/` | Command-line interface |
 
@@ -97,6 +98,13 @@ with mp.Workspace() as ws:
 - `mp.session.show()` — read the persisted `[active]` block as `ActiveSession`
 - `mp.session.use(account=, project=, workspace=, target=)` — write to `[active]`
 
+## Built-in Help (047)
+
+- `mp.help(query=None, *, format="text", file=None, hints=True, domain=None)` — print reference text for any public name (`"Workspace.query"`, `"Filter"`, `"MathType"`, `"search cohort"`, or an object such as `mp.Filter`); returns `None`
+- `mp.reference.describe(query) -> HelpEntry`, `mp.reference.search(term) -> SearchResult`, `mp.reference.render(entry, format)`, `mp.reference.clear_cache()` — structured access
+- CLI twin: `mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME] [--no-hints]`; exit 4 on a miss
+- Offline by design: no network, no config read, never constructs a `Workspace`. Recommend `import mixpanel_headless as mp`; `from mixpanel_headless import help` shadows the builtin
+
 ## Workspace Methods
 
 **Discovery** (self-documenting API): `events()`, `properties()`, `property_values()`, `funnels()`, `cohorts()`, `list_bookmarks()`, `top_events()`, `lexicon_schemas()`, `lexicon_schema()`, `schema_graph()`, `clear_discovery_cache()`
@@ -160,9 +168,10 @@ MixpanelHeadlessError
 ├── OAuthError
 │   └── RegionProbeError    # 043 / AIE-114 — raised when no region accepts the credential
 ├── WorkspaceScopeError
-└── ReportLinkError         # 045 — ReportLinkParseError / UnsupportedReportLinkError /
-                            #       ReportLinkNotFoundError / ReportLinkScopeMismatchError /
-                            #       ShortLinkResolutionError
+├── ReportLinkError         # 045 — ReportLinkParseError / UnsupportedReportLinkError /
+│                           #       ReportLinkNotFoundError / ReportLinkScopeMismatchError /
+│                           #       ShortLinkResolutionError
+└── HelpLookupError         # 047 — reference.describe() miss; carries query / suggestions / hits; CLI exit 4
 ```
 
 All exceptions provide `.to_dict()` for JSON serialization and structured `.details`.

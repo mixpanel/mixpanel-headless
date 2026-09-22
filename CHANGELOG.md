@@ -5,6 +5,76 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## 0.3.0 — 2026-09-21
+
+Minor release: built-in API help (047). A top-level `mp.help()` function,
+a structured `mp.reference` module, and an `mp help` CLI command replace
+the plugin's standalone `help.py` script. All three work offline, need no
+credentials, and touch no config file. `__all__` loses ten duplicate
+entries.
+
+### Added
+
+- **`mixpanel_headless.help(query=None, *, format="text", file=None,
+  hints=True, domain=None)`.** Prints reference text for any public name
+  and returns `None`, like the builtin. Accepts the string grammar
+  (`"Workspace.query"`, `"Workspace.query.events"`, `"Filter"`,
+  `"MathType"`, `"accounts"`, `"types"`, `"exceptions"`,
+  `"search cohort"`) and object forms (`mp.help(mp.Filter)`,
+  `mp.help(ws.query)`, `mp.help(mp)`). `domain=` filters the `Workspace`
+  listing to one of 32 domains. A miss prints "Did you mean?" suggestions
+  and the first search hits instead of raising. Import the package with an
+  alias (`import mixpanel_headless as mp`); `from mixpanel_headless import
+  help` shadows the Python builtin.
+- **`mixpanel_headless.reference`** — structured access behind `help()`:
+  `describe(query, *, hints=, domain=) -> HelpEntry`,
+  `search(term, *, limit=) -> SearchResult`,
+  `render(entry, format) -> str`, and `clear_cache()`. Result types are
+  frozen `slots=True` dataclasses with `to_dict()`: `HelpEntry`,
+  `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`,
+  `Group`, `UsageDoc`, `Hint`, `SearchResult`, `SearchHit`, plus the
+  `HelpKind` and `HelpFormat` literals. Every export kind has a view:
+  Literal aliases show their allowed values and the `Workspace` methods
+  that accept them; modules list their `__all__`; exceptions show their
+  subclass tree; private fields are hidden and factory classmethods are
+  listed under Construction. The inventory comes from `__all__` and is
+  cached per process.
+- **`mp help [QUERY...] [-f text|markdown|json] [--jq EXPR] [--domain NAME]
+  [--no-hints]`.** No auth: the command ignores `-a / -p / -w / -t` and never
+  builds a `Workspace`. The default format is `text` (unlike entity
+  commands, whose default is `json`); `--jq` requires `-f json`. Exit codes:
+  0 found; 4 miss (suggestions on stdout); 3 for `--jq` without `-f json`
+  or an unknown `--domain`. `python3 -m mixpanel_headless help ...` runs
+  the same command where `mp` is not on `PATH`. Output goes through
+  `typer.echo`, so literal `[property]` / `[method]` tags survive.
+- **`HelpLookupError`** (`MixpanelHeadlessError`, not `APIError`) — raised
+  by `reference.describe()` on a miss and by `reference.search()` for an
+  empty term. Carries `query`, `suggestions`, and `hits`. The CLI maps it to
+  `ExitCode.NOT_FOUND` (4).
+- **`LITERAL_ALIAS_DOCS`** in `_literal_types.py` — one description line
+  per exported Literal alias, shown by `mp help <Alias>`. A test asserts
+  that every exported alias has an entry.
+- Docs: new [Built-in Help guide](docs/guide/built-in-help.md) and
+  [API page](docs/api/help.md); both are listed in `llms.txt`.
+
+### Changed
+
+- **Ten duplicate names removed from `__all__`.** `MathType`,
+  `PerUserAggregation`, `FunnelMathType`, `RetentionAlignment`,
+  `RetentionMode`, `RetentionMathType`, `CustomPropertyType`,
+  `FilterOperator`, `FilterPropertyType`, and `FilterDateUnit` were each
+  listed twice. Every name is still exported once; there is no behavior
+  change. A test now locks `len(__all__) == len(set(__all__))`.
+
+### Notes
+
+- Plugin: the `mixpanelyst` skill still calls
+  `scripts/help.py` in this release. The script removal and the switch to
+  `mp help` / `mp.help()` ship in a follow-up plugin PR after 0.3.0 is on
+  PyPI, so a plugin user cannot receive the new skill before the library
+  that backs it. Closes the deferred task T087 in
+  `specs/044-session-replay/tasks.md`.
+
 ## 0.2.3 — 2026-09-14
 
 Patch release: report links (create, resolve, and run a Mixpanel report

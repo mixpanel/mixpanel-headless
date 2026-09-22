@@ -296,6 +296,7 @@ This documentation is built with AI consumption in mind. In addition to the stan
 | <a href="llms.txt">`llms.txt`</a>           | ~3KB   | Structured index—discover what documentation exists            |
 | <a href="llms-full.txt">`llms-full.txt`</a> | ~400KB | Complete documentation in one file—comprehensive search        |
 | <a href="index.md">`index.md`</a> pages     | Varies | Each HTML page has a corresponding `index.md` at the same path |
+| `mp help` / `mp.help()`                     | Local  | Offline API reference from the installed package—signatures, fields, allowed values, `-f json --jq` for one fact; see the [Built-in Help guide](guide/built-in-help.md) |
 
 Every page also has a **Copy Markdown** button in the upper right corner—click it to copy the page content as markdown, ready to paste into your AI assistant's context.
 

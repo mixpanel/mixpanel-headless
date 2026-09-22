@@ -23,6 +23,7 @@ state-change verb.
 | `cohorts` | Cohort CRUD (list, create, get, update, delete, bulk ops) |
 | `flags` / `experiments` / `alerts` / `annotations` / `webhooks` / `lexicon` / `drop-filters` / `custom-properties` / `custom-events` / `lookup-tables` / `schemas` | Entity CRUD + data governance for the matching App API surface |
 | `business-context` | Read/write markdown business context at org or project scope (`get`, `set`, `clear`, `chain`) |
+| `help` | Top-level command — `mp help [QUERY...] [-f text\|markdown\|json] [--jq EXPR] [--domain NAME] [--no-hints]` prints the offline API reference (047). Defaults to `text` output, unlike entity commands whose default is `json`; ignores `-a/-p/-w/-t` and never calls `get_workspace`. Exit 4 on a miss; 3 for `--jq` without `-f json` or an unknown `--domain` |
 
 ## Files
 
@@ -75,6 +76,12 @@ mp command → main.py callback → command handler
 
 Errors go to stderr via `err_console`.
 
+`mp help` is the one exception to this flow: it defaults to `text` output
+(unlike entity commands whose default is `json`), writes through
+`typer.echo` rather than `console.print` so literal `[property]` /
+`[method]` tags survive, ignores `-a/-p/-w/-t`, and never calls
+`get_workspace`. Its `--jq` option is only valid with `-f json`.
+
 ## Error Handling
 
 `@handle_errors` decorator maps exceptions to exit codes:
@@ -89,6 +96,7 @@ Errors go to stderr via `err_console`.
 | `ReportLinkParseError` / `UnsupportedReportLinkError` / `ReportLinkScopeMismatchError` | 3 (prints `hint:` when present) |
 | `BookmarkValidationError` | 3 (one line per validation error) |
 | `ShortLinkResolutionError` | 1 |
+| `HelpLookupError` | 4 (`mp help` miss; suggestions print to stdout) |
 | `ConfigError` | 1 |
 | `MixpanelHeadlessError` | 1 |
 

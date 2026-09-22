@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.auth.account import Region
+    from mixpanel_headless._internal.help.models import SearchHit
 
 
 class MixpanelHeadlessError(Exception):
@@ -1708,6 +1709,68 @@ class ShortLinkResolutionError(ReportLinkError):
     """
 
     _DEFAULT_CODE = "SHORT_LINK_RESOLUTION_ERROR"
+
+
+# Built-in help (Plan 047)
+
+
+class HelpLookupError(MixpanelHeadlessError):
+    """A ``mixpanel_headless.help()`` / ``reference.describe()`` query matched nothing.
+
+    Raised by :func:`mixpanel_headless.reference.describe` (and re-raised by
+    :func:`mixpanel_headless.reference.search` for an empty term) when the
+    query names no export, no ``Workspace`` member, and no parameter. The
+    lookup is fully offline, so this is never an HTTP failure and the base is
+    :class:`MixpanelHeadlessError`, not :class:`APIError`. The CLI maps it to
+    ``ExitCode.NOT_FOUND`` (4).
+
+    The instance carries the structured recovery data the plain-text
+    ``help()`` wrapper prints: close-name suggestions (``difflib``) and the
+    first search hits for the same term.
+
+    Attributes:
+        query: The query string as the caller gave it.
+        suggestions: Close names in ``difflib`` order; ``()`` when none.
+        hits: Search hits (``SearchHit`` records) for the query; ``()`` when
+            none.
+
+    Example:
+        ```python
+        try:
+            entry = ref.describe("Filtr")
+        except HelpLookupError as exc:
+            print(exc.query, exc.suggestions)
+            # Filtr ('Filter', 'FilterOperator')
+        ```
+    """
+
+    def __init__(
+        self,
+        query: str,
+        *,
+        suggestions: Sequence[str] = (),
+        hits: Sequence[SearchHit] = (),
+    ) -> None:
+        """Initialize a help lookup miss.
+
+        Args:
+            query: The query string that matched nothing.
+            suggestions: Close names to offer, most similar first. Stored as
+                a tuple. Rendered as ``Did you mean: a, b, c?`` when non-empty.
+            hits: Search hits for the same term. Stored as a tuple and kept
+                out of the message; the ``help()`` wrapper prints them.
+        """
+        self.query: str = query
+        self.suggestions: tuple[str, ...] = tuple(suggestions)
+        self.hits: tuple[SearchHit, ...] = tuple(hits)
+        message = f"No help entry for '{query}'."
+        if self.suggestions:
+            message += f" Did you mean: {', '.join(self.suggestions)}?"
+        super().__init__(
+            message,
+            code="HELP_NOT_FOUND",
+            details={"query": query, "suggestions": list(self.suggestions)},
+        )
 
 
 # =============================================================================

@@ -28,12 +28,13 @@ MixpanelHeadlessError
 ├── WorkspaceScopeError
 ├── BusinessContextValidationError
 ├── SessionReplayError (APIError)
-└── ReportLinkError
-    ├── ReportLinkParseError
-    ├── UnsupportedReportLinkError
-    ├── ReportLinkNotFoundError
-    ├── ReportLinkScopeMismatchError
-    └── ShortLinkResolutionError
+├── ReportLinkError
+│   ├── ReportLinkParseError
+│   ├── UnsupportedReportLinkError
+│   ├── ReportLinkNotFoundError
+│   ├── ReportLinkScopeMismatchError
+│   └── ShortLinkResolutionError
+└── HelpLookupError
 ```
 
 ## Catching Errors
@@ -287,6 +288,31 @@ Builder and input guards raise `ParamValidationError`, not a `ReportLinkError`, 
       show_root_toc_entry: true
 
 ::: mixpanel_headless.ShortLinkResolutionError
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+## Help Lookup Exceptions
+
+Raised by the built-in help surface (`mixpanel_headless.reference.describe()`, and `search()` for an empty term) when a query names no export, no `Workspace` member, and no parameter. The lookup is fully offline, so this is never an HTTP failure; the base is `MixpanelHeadlessError`, not `APIError`. `mixpanel_headless.help()` catches it and prints the suggestions instead of raising. The CLI maps it to exit code 4. See the [Built-in Help guide](../guide/built-in-help.md).
+
+| Attribute | Content |
+|-----------|---------|
+| `query` | The query string as the caller gave it. |
+| `suggestions` | Close names in `difflib` order, most similar first; `()` when none. |
+| `hits` | `SearchHit` records for the same term; `()` when none. |
+
+```python
+import mixpanel_headless as mp
+from mixpanel_headless import reference as ref
+
+try:
+    entry = ref.describe("Filtr")
+except mp.HelpLookupError as exc:
+    print(exc.query, exc.suggestions)
+```
+
+::: mixpanel_headless.HelpLookupError
     options:
       show_root_heading: true
       show_root_toc_entry: true

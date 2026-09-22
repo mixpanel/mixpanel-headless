@@ -79,9 +79,10 @@ class TestErrorCodesArtifact:
     """Shape and content locks for ``error-codes.json`` (design C3)."""
 
     def test_exception_class_census(self, error_codes: dict[str, Any]) -> None:
-        """All 34 exported exception classes appear, with one root.
+        """All 35 exported exception classes appear, with one root.
 
-        28 from the E2 coding pass plus the six 045-report-links classes.
+        28 from the E2 coding pass, the six 045-report-links classes, and
+        ``HelpLookupError`` from 047 (built-in help).
 
         Args:
             error_codes: The artifact body.
@@ -90,7 +91,7 @@ class TestErrorCodesArtifact:
             AssertionError: If the census or parent edges are wrong.
         """
         classes = error_codes["exception_classes"]
-        assert len(classes) == 34
+        assert len(classes) == 35
         roots = [name for name, parent in classes.items() if parent is None]
         assert roots == ["MixpanelHeadlessError"]
         for name, parent in classes.items():

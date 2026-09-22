@@ -27,6 +27,17 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/bridge.py` | `BridgeFile` v2 schema + `load_bridge` / `export_bridge` / `remove_bridge` (Cowork credential courier) |
 | `query/` | Query engine builders and validators (`user_builders.py`, `user_validators.py`) |
 | `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention) |
+| `help/` | Built-in API reference (047) behind `mixpanel_headless.reference` and `mp help`; offline — no network, no config read, never constructs a `Workspace` |
+| `help/models.py` | Frozen `slots=True` result dataclasses with `to_dict()`: `HelpEntry`, `SearchResult`, `SearchHit`, `DocSections`, `SignatureDoc`, `ParamDoc`, `FieldDoc`, `MemberDoc`, `Group`, `UsageDoc`, `Hint`; `HelpKind` / `HelpFormat` literals |
+| `help/docstrings.py` | Google-style docstring parser (`parse_docstring` → `DocSections`) |
+| `help/inventory.py` | Public-surface inventory from the deduplicated `__all__` + `Workspace` members + namespace `__all__`s; classifies each name to one `HelpKind` |
+| `help/registry.py` | `WORKSPACE_DOMAINS` (32 ordered domains, every public `Workspace` method in exactly one), `REFERENCE_HINTS`, `WORKSPACE_HINT`, `DOCS_BASE`, `hint_url()`, `domain_of()`; a completeness test fails on any unregistered method |
+| `help/resolve.py` | Query-string and object resolution to inventory targets (exact → unique case-insensitive → `HelpLookupError` with suggestions) |
+| `help/introspect.py` | Signature, field, model-config, and class-section extraction; source annotations kept for display, resolved hints used for cross-references |
+| `help/relations.py` | `used_by`, `referenced_types`, `see_also` (domain-based), exception subclass tree |
+| `help/search.py` | Case-insensitive substring search over names, docstring summaries, and enum members; duplicates removed |
+| `help/hints.py` | Hosted-docs hint selection (first matching trigger set wins; none for `types` / `exceptions`) |
+| `help/render.py` | Pure renderers (`text`, `markdown`, `json`) — no Rich markup, no I/O; the module docstring documents the packing conventions per kind |
 
 ## Auth Resolution
 

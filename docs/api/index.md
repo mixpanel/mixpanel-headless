@@ -94,6 +94,31 @@ from mixpanel_headless import (
 )
 ```
 
+### Built-in help
+
+Offline reference for every public name. No network call, no config file, no `Workspace`. Full guide: [Built-in Help](../guide/built-in-help.md).
+
+```python
+import mixpanel_headless as mp
+
+mp.help("Workspace.query")          # prints reference text, returns None
+mp.help("Filter", format="json")    # machine-readable
+mp.help(mp.Filter)                  # object form
+
+# Structured access
+from mixpanel_headless import reference as ref
+
+entry = ref.describe("Workspace.query_funnel")   # HelpEntry (frozen dataclass)
+hits = ref.search("retention")                   # SearchResult
+text = ref.render(entry, "markdown")
+ref.clear_cache()
+
+# Miss handling
+from mixpanel_headless import HelpLookupError
+```
+
+Do not write `from mixpanel_headless import help`: it shadows the Python builtin in that namespace. Use the `mp.help(...)` alias form.
+
 ## Core Components
 
 ### Workspace
