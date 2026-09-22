@@ -376,3 +376,174 @@ def test_mobile_replay_bundle_matches_generator_when_present() -> None:
     text = OUT_PATH.read_text(encoding="utf-8")
     header = json.loads(text.splitlines()[0])["$bundle"]
     assert text == render_bundle(str(header["source_commit"]))
+
+
+def _help_vectors() -> list[dict[str, Any]]:
+    """Build the authored help vectors in memory.
+
+    Returns:
+        The vector objects that ``gen_help_vectors`` writes.
+    """
+    from conformance.record.gen_help_vectors import build_vectors
+
+    return build_vectors()
+
+
+def test_help_vectors_are_schema_valid_and_authored() -> None:
+    """Every generated help vector passes the authored-vector rules.
+
+    The bundle is written only after the library change is on main (its
+    stamp must be a main SHA), so this test checks the vectors before they
+    are committed.
+
+    Raises:
+        AssertionError: On a schema, origin, id, or capability violation.
+    """
+    validator = _schema_validator()
+    bad: list[str] = []
+    ids: set[str] = set()
+    for body in _help_vectors():
+        vector_id = str(body["id"])
+        bad.extend(f"{vector_id}: {e.message}" for e in validator.iter_errors(body))
+        if body["origin"] != "authored" or body["capability"] != "help":
+            bad.append(f"{vector_id}: wrong origin or capability")
+        if not vector_id.startswith("help/help."):
+            bad.append(f"{vector_id}: id not prefixed by capability and api")
+        if vector_id in ids:
+            bad.append(f"{vector_id}: duplicate id")
+        ids.add(vector_id)
+    assert bad == [], "\n".join(bad)
+
+
+def test_help_vectors_cover_every_api_kind_and_format() -> None:
+    """The help vectors call every ``help.*`` api and render every kind.
+
+    Raises:
+        AssertionError: If an api has no vector, a ``HelpKind`` (other than
+            ``listing`` twins) is never rendered in all three formats, or
+            the ``code_lang`` knob has no vector.
+    """
+    from conformance.record.registry import HELP_ADAPTER_APIS
+    from mixpanel_headless._internal.help.models import HELP_KINDS
+
+    vectors = _help_vectors()
+    apis = {body["call"]["api"] for body in vectors}
+    assert apis == {f"help.{name}" for name in HELP_ADAPTER_APIS}
+    rendered: dict[str, set[str]] = {}
+    for body in vectors:
+        call = body["call"]
+        if call["api"] == "help.render":
+            kind = call["input"]["entry"]["kind"]
+            rendered.setdefault(kind, set()).add(call["input"]["format"])
+    assert set(rendered) == set(HELP_KINDS)
+    assert all(formats == {"text", "markdown", "json"} for formats in rendered.values())
+    ts = [body for body in vectors if body["call"]["input"].get("code_lang") == "ts"]
+    assert len(ts) == 1
+    assert "```ts" in ts[0]["expect"]["output"]
+
+
+def test_help_entries_fixture_round_trips_and_is_current_shape() -> None:
+    """Every frozen render input rebuilds into an equal model.
+
+    ``help_entries.json`` holds real ``describe()`` / ``search()`` output;
+    if a model field is added or renamed, the rebuild or the equality
+    fails here and the fixture must be re-captured.
+
+    Raises:
+        AssertionError: If a frozen entry does not round-trip.
+    """
+    from conformance.record.gen_help_vectors import ENTRY_QUERIES, load_entries
+    from conformance.record.help_adapters import entry_from_dict, result_from_dict
+
+    frozen = load_entries()
+    assert [row["slug"] for row in frozen["entries"]] == [q[0] for q in ENTRY_QUERIES]
+    for row in frozen["entries"]:
+        assert entry_from_dict(row["entry"]).to_dict() == row["entry"], row["slug"]
+    for row in frozen["search_results"]:
+        assert result_from_dict(row["result"]).to_dict() == row["result"], row["slug"]
+
+
+def test_help_adapters_render_like_the_public_api() -> None:
+    """The render adapter equals ``reference.render`` on a live entry.
+
+    Raises:
+        AssertionError: If the dict rebuild changes the rendered output.
+    """
+    from conformance.record.help_adapters import render
+    from mixpanel_headless import reference
+
+    for query in ("Workspace.query", "Filter", "MathType", "exceptions"):
+        entry = reference.describe(query)
+        for fmt in ("text", "markdown", "json"):
+            assert render(entry.to_dict(), fmt) == reference.render(entry, fmt)
+
+
+def test_help_vectors_replay_clean_through_the_runner() -> None:
+    """Each generated help vector passes the corpus runner against the registry.
+
+    Raises:
+        AssertionError: With the failure reasons of any vector that fails.
+    """
+    from conformance.record.clock import RecordClock
+    from conformance.runner.execute import run_vector
+    from conformance.runner.loading import LoadedVector
+
+    failures: list[str] = []
+    clock = RecordClock()
+    clock.start()
+    try:
+        for body in _help_vectors():
+            clock.reset_test_state()
+            outcome = run_vector(
+                LoadedVector(
+                    id=str(body["id"]),
+                    kind=str(body["kind"]),
+                    body=body,
+                    bundle=Path("authored/help/reference.jsonl"),
+                )
+            )
+            if not outcome.passed:
+                failures.extend([str(body["id"]), *outcome.reasons])
+    finally:
+        clock.stop()
+    assert failures == [], "\n".join(failures)
+
+
+def test_help_bundle_matches_generator_when_present() -> None:
+    """A committed help bundle equals a fresh generator run.
+
+    The bundle does not exist until the library change is on main. After
+    that, a renderer or search change without a regenerated bundle fails
+    here.
+
+    Raises:
+        AssertionError: If the committed bundle differs from the generator
+            output under its own stamp.
+    """
+    from conformance.record.gen_help_vectors import OUT_PATH, render_bundle
+
+    if not OUT_PATH.exists():
+        pytest.skip("help bundle is written after the merge to main")
+    text = OUT_PATH.read_text(encoding="utf-8")
+    header = json.loads(text.splitlines()[0])["$bundle"]
+    assert text == render_bundle(str(header["source_commit"]))
+
+
+def test_gen_help_vectors_cli(tmp_path: Path) -> None:
+    """The CLI writes the bundle to ``--out`` and refuses a missing stamp.
+
+    Args:
+        tmp_path: pytest-provided scratch directory.
+
+    Raises:
+        AssertionError: If the written bundle differs from ``render_bundle``
+            or a missing ``--commit`` is accepted.
+    """
+    from conformance.record.gen_help_vectors import main, render_bundle
+
+    stamp = "0" * 40
+    out = tmp_path / "nested" / "reference.jsonl"
+    assert main(["--commit", stamp, "--out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == render_bundle(stamp)
+    with pytest.raises(SystemExit):
+        main(["--out", str(out)])

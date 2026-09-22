@@ -22,6 +22,7 @@ from conformance.contract.generate_contract import (
     BUILTIN_TAGS,
     DEFAULT_VECTORS_DIR,
     build_error_codes,
+    build_help_registry,
     build_literal_aliases,
     build_model_coverage,
     build_tag_universe,
@@ -591,6 +592,148 @@ class TestCoverageOverrides:
         assert row["authored_fixture"] is None
 
 
+@pytest.fixture(scope="module")
+def help_registry() -> dict[str, Any]:
+    """Build the help-registry artifact body once per module.
+
+    Returns:
+        The ``help-registry.json`` body.
+    """
+    return build_help_registry(_STAMP)
+
+
+class TestHelpRegistryArtifact:
+    """Shape and content locks for ``help-registry.json``."""
+
+    def test_top_level_keys(self, help_registry: dict[str, Any]) -> None:
+        """The artifact carries exactly the documented keys.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a key is added or dropped without a test update.
+        """
+        assert sorted(help_registry) == [
+            "alias_docs",
+            "constants",
+            "export_kinds",
+            "generated_from",
+            "help_formats",
+            "help_kinds",
+            "listings",
+            "matched_on",
+            "member_kinds",
+            "overview_grammar",
+            "param_kinds",
+            "reference_hints",
+            "search_tiers",
+            "search_usage",
+            "types_listing_groups",
+            "workspace_domains",
+            "workspace_hint",
+            "workspace_properties",
+        ]
+
+    def test_workspace_domains_census(self, help_registry: dict[str, Any]) -> None:
+        """32 ordered domains list 209 methods, each exactly once.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If the census or the order drifts from the table.
+        """
+        from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
+
+        domains = help_registry["workspace_domains"]
+        assert len(domains) == 32
+        methods = [name for _title, names in domains for name in names]
+        assert len(methods) == 209
+        assert len(set(methods)) == len(methods)
+        assert domains == [[title, list(names)] for title, names in WORKSPACE_DOMAINS]
+        assert domains[0][0] == "session and switching"
+
+    def test_workspace_properties(self, help_registry: dict[str, Any]) -> None:
+        """The properties group lists the five public ``Workspace`` properties.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If the property list drifts.
+        """
+        assert help_registry["workspace_properties"] == [
+            "account",
+            "api",
+            "project",
+            "session",
+            "workspace",
+        ]
+
+    def test_hints_carry_docs_paths_not_urls(
+        self, help_registry: dict[str, Any]
+    ) -> None:
+        """Every hint path is a docs source page that exists in the repository.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a hint carries a URL or names a missing page.
+        """
+        docs = Path(__file__).resolve().parents[2] / "docs"
+        hints = help_registry["reference_hints"]
+        assert len(hints) == 24
+        rows = [help_registry["workspace_hint"], *hints]
+        for row in rows:
+            assert not row["path"].startswith("http"), row
+            assert (docs / row["path"]).is_file(), row["path"]
+        for row in hints:
+            assert sorted(row) == ["path", "title", "triggers"]
+            assert row["triggers"], row["title"]
+
+    def test_alias_docs_and_vocabularies(self, help_registry: dict[str, Any]) -> None:
+        """``ALIAS_DOCS`` and the kind vocabularies match the live modules.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a table drifts from its source.
+        """
+        from mixpanel_headless._internal.help import models
+        from mixpanel_headless._literal_types import ALIAS_DOCS
+
+        assert help_registry["alias_docs"] == ALIAS_DOCS
+        assert help_registry["help_kinds"] == list(models.HELP_KINDS)
+        assert help_registry["help_formats"] == ["text", "markdown", "json"]
+        assert help_registry["matched_on"] == ["name", "doc", "member"]
+        assert help_registry["search_tiers"] == ["name", "doc", "member"]
+        assert help_registry["listings"] == ["exceptions", "types"]
+
+    def test_strings_and_constants(self, help_registry: dict[str, Any]) -> None:
+        """The usage text, grammar lines, and layout constants are carried.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a string or constant drifts.
+        """
+        assert help_registry["search_usage"].startswith("Usage: help('search <term>')")
+        assert help_registry["overview_grammar"][-1] == "search <term>"
+        assert help_registry["types_listing_groups"][0] == ["models", "model"]
+        assert help_registry["constants"] == {
+            "category_width": 9,
+            "line_width": 88,
+            "miss_hits": 5,
+            "name_width": 42,
+            "suggestion_cutoff": 0.5,
+            "suggestion_limit": 5,
+        }
+
+
 class TestDeterminismAndCli:
     """Byte-determinism and CLI behavior (P2-1 done-criterion)."""
 
@@ -626,7 +769,7 @@ class TestDeterminismAndCli:
     def test_main_writes_all_artifacts(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The CLI writes all four artifacts and reports each path.
+        """The CLI writes all five artifacts and reports each path.
 
         Args:
             tmp_path: pytest-provided scratch directory.

@@ -2,7 +2,7 @@
 
 Pure introspection over the live library plus a JSON-aware walk of the
 committed vector corpus — no source parsing, no hand transcription. Emits
-four artifacts under ``conformance/contract/``:
+five artifacts under ``conformance/contract/``:
 
 - ``error-codes.json`` (C3): the 28 exported exception classes with their
   parent edges, per-class default codes, and the full
@@ -19,6 +19,12 @@ four artifacts under ``conformance/contract/``:
   its corpus-tag occurrence count and the wire-vector ids whose
   ``expect.result`` payloads golden-lock it (via return-annotation
   mapping of the registered wire entry points).
+- ``help-registry.json``: the built-in help's static tables — the
+  ``Workspace`` domain grouping, the properties group, the documentation
+  hint rules (docs source PATHS, so each port applies its own site base),
+  ``ALIAS_DOCS``, the grammar and usage strings, the kind vocabularies, and
+  the layout constants. A port generates its reference data from this
+  file instead of transcribing the Python tables.
 
 Determinism: the ``generated_from`` stamp is injected externally (mirroring
 the D3 manifest discipline — never ``git rev-parse``); for a fixed stamp and
@@ -76,6 +82,7 @@ ARTIFACT_NAMES: tuple[str, ...] = (
     "literal-aliases.json",
     "tag-universe.json",
     "model-coverage.json",
+    "help-registry.json",
 )
 """The artifact file names, in emission order."""
 
@@ -615,6 +622,80 @@ def build_model_coverage(
 
 
 # ---------------------------------------------------------------------------
+# help-registry.json
+# ---------------------------------------------------------------------------
+
+
+def build_help_registry(generated_from: str) -> dict[str, Any]:
+    """Build the ``help-registry.json`` artifact body.
+
+    Every value is read from the live help modules; ordered tables stay
+    arrays because the canonical serializer sorts object keys.
+
+    Args:
+        generated_from: The externally-injected provenance SHA.
+
+    Returns:
+        The artifact body: ``workspace_domains`` (ordered
+        ``[title, [method, ...]]`` pairs), ``workspace_properties`` (the
+        properties group in listing order), ``workspace_hint`` and
+        ``reference_hints`` (``{title, path}`` / ``{triggers, title,
+        path}``, table order, paths relative to ``docs/``), ``alias_docs``,
+        ``listings``, ``types_listing_groups``, ``search_usage``,
+        ``overview_grammar``, the kind vocabularies, and ``constants``.
+    """
+    from mixpanel_headless import reference
+    from mixpanel_headless._internal.help import models, render, resolve
+    from mixpanel_headless._internal.help import search as help_search
+    from mixpanel_headless._internal.help.inventory import workspace_members
+    from mixpanel_headless._internal.help.registry import (
+        REFERENCE_HINTS,
+        WORKSPACE_DOMAINS,
+        WORKSPACE_HINT,
+    )
+    from mixpanel_headless._literal_types import ALIAS_DOCS
+
+    return {
+        "generated_from": generated_from,
+        "workspace_domains": [
+            [title, list(methods)] for title, methods in WORKSPACE_DOMAINS
+        ],
+        "workspace_properties": [
+            name for name, kind in workspace_members() if kind == "property"
+        ],
+        "workspace_hint": {"title": WORKSPACE_HINT[0], "path": WORKSPACE_HINT[1]},
+        "reference_hints": [
+            {"triggers": list(triggers), "title": title, "path": path}
+            for triggers, title, path in REFERENCE_HINTS
+        ],
+        "alias_docs": dict(ALIAS_DOCS),
+        "listings": sorted(resolve._LISTINGS),
+        "types_listing_groups": [
+            [title, kind] for title, kind in reference._TYPES_LISTING_GROUPS
+        ],
+        "search_usage": reference._SEARCH_USAGE,
+        "overview_grammar": list(reference._OVERVIEW_GRAMMAR),
+        "search_tiers": sorted(
+            help_search._TIER_RANK, key=lambda tier: help_search._TIER_RANK[tier]
+        ),
+        "export_kinds": list(models.EXPORT_KINDS),
+        "member_kinds": list(models.MEMBER_KINDS),
+        "help_kinds": list(models.HELP_KINDS),
+        "help_formats": list(models.HELP_FORMATS),
+        "param_kinds": list(models.PARAM_KINDS),
+        "matched_on": list(typing.get_args(models.MatchedOn)),
+        "constants": {
+            "name_width": render.NAME_WIDTH,
+            "line_width": render.LINE_WIDTH,
+            "category_width": render.CATEGORY_WIDTH,
+            "miss_hits": reference._MISS_HITS,
+            "suggestion_limit": resolve._SUGGESTION_LIMIT,
+            "suggestion_cutoff": resolve._SUGGESTION_CUTOFF,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Emission
 # ---------------------------------------------------------------------------
 
@@ -622,7 +703,7 @@ def build_model_coverage(
 def write_artifacts(
     out_dir: Path, vectors_dir: Path, generated_from: str
 ) -> dict[str, Path]:
-    """Generate and write all four artifacts (canonical JSON + newline).
+    """Generate and write all five artifacts (canonical JSON + newline).
 
     Args:
         out_dir: Destination directory (created if missing).
@@ -637,6 +718,7 @@ def write_artifacts(
         "literal-aliases.json": build_literal_aliases(generated_from),
         "tag-universe.json": build_tag_universe(vectors_dir, generated_from),
         "model-coverage.json": build_model_coverage(vectors_dir, generated_from),
+        "help-registry.json": build_help_registry(generated_from),
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
