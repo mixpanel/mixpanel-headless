@@ -52,7 +52,7 @@ from mixpanel_headless._internal.help.relations import (
     subclasses_of,
     used_by,
 )
-from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless._literal_types import ALIAS_DOCS
 
 
 @pytest.fixture(autouse=True)
@@ -240,9 +240,9 @@ class TestReferencedTypes:
         assert "Workspace" not in names
 
     def test_literal_alias_summary_comes_from_alias_docs(self) -> None:
-        """A Literal alias uses ``LITERAL_ALIAS_DOCS`` for its summary."""
+        """A Literal alias uses ``ALIAS_DOCS`` for its summary."""
         pairs = dict(referenced_types(Workspace.query))
-        assert pairs["MathType"] == LITERAL_ALIAS_DOCS["MathType"]
+        assert pairs["MathType"] == ALIAS_DOCS["MathType"]
 
     def test_string_fallback(self) -> None:
         """Unresolvable annotations still yield the names present as whole words."""

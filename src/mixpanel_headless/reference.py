@@ -536,17 +536,17 @@ def _summary(obj: object) -> str:
 
 
 def _alias_doc(name: str) -> str:
-    """Return the ``LITERAL_ALIAS_DOCS`` line for an export name.
+    """Return the ``ALIAS_DOCS`` line for an export name.
 
     Args:
-        name: Export name.
+        name: Export name of a Literal / Union alias or a module constant.
 
     Returns:
         The one-line description, or ``""`` when none is registered.
     """
-    from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+    from mixpanel_headless._literal_types import ALIAS_DOCS
 
-    return LITERAL_ALIAS_DOCS.get(name, "")
+    return ALIAS_DOCS.get(name, "")
 
 
 def _member_summary(obj: object, kind: HelpKind, name: str) -> str:
@@ -558,8 +558,8 @@ def _member_summary(obj: object, kind: HelpKind, name: str) -> str:
         name: Its export name (used for alias docs).
 
     Returns:
-        ``LITERAL_ALIAS_DOCS`` text for Literal / Union aliases and
-        constants, else the first docstring line.
+        ``ALIAS_DOCS`` text for Literal / Union aliases and constants,
+        else the first docstring line.
     """
     if kind in ("literal", "alias", "constant"):
         return _alias_doc(name)
@@ -1138,7 +1138,7 @@ def _constant_entry(target: Target) -> HelpEntry:
 
     An enum member (``FeatureFlagStatus.ENABLED``) is typed by its enum and
     summarised by the enum's docstring; a plain export is typed by its
-    Python type and summarised from ``LITERAL_ALIAS_DOCS``.
+    Python type and summarised from ``ALIAS_DOCS``.
 
     Args:
         target: A constant target.

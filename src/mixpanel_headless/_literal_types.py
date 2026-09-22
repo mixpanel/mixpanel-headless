@@ -1,7 +1,9 @@
 """Shared Literal type aliases for parameter validation.
 
 These types are exported from the public API and can be used by
-library consumers for their own type hints.
+library consumers for their own type hints. The module also holds
+:data:`ALIAS_DOCS`, the one-line descriptions the built-in help shows for
+every export that has no docstring of its own.
 
 Example:
     from mixpanel_headless import TimeUnit, Workspace
@@ -652,7 +654,7 @@ FiltersCombinator = Literal["all", "any"]
 # One-line descriptions for the built-in help
 # =============================================================================
 
-LITERAL_ALIAS_DOCS: dict[str, str] = {
+ALIAS_DOCS: dict[str, str] = {
     # Time units
     "TimeUnit": (
         "Bucket size for the legacy live queries segmentation, retention, "
@@ -670,8 +672,8 @@ LITERAL_ALIAS_DOCS: dict[str, str] = {
     ),
     # Count types
     "CountType": (
-        "Counting method for the type parameter of the legacy "
-        "segmentation_numeric live query: general, unique, or average."
+        "Counting method for the legacy live queries that take a type "
+        "parameter: total events, unique users, or the average per user."
     ),
     "FlowCountType": (
         "Counting method for Workspace.query_flow / build_flow_params "
@@ -738,7 +740,7 @@ LITERAL_ALIAS_DOCS: dict[str, str] = {
         "period-over-period comparisons."
     ),
     "CohortAggregationType": (
-        "Aggregation over a numeric property in CohortCriteria.did_event"
+        "Aggregation over a numeric property in CohortCriteria.did_event "
         "(aggregation) cohort behavior criteria."
     ),
     "FlowSessionEvent": (
@@ -750,8 +752,8 @@ LITERAL_ALIAS_DOCS: dict[str, str] = {
     ),
     # Flow types
     "FlowChartType": (
-        "Visualization mode for Workspace.query_flow / build_flow_params "
-        "(mode): sankey, paths, or tree."
+        "Visualization mode of a flow query result, passed as the mode "
+        "parameter of the flow engine methods and of flow report links."
     ),
     "FlowConversionWindowUnit": (
         "Unit of the flow conversion window (conversion_window_unit) in "
@@ -790,7 +792,7 @@ LITERAL_ALIAS_DOCS: dict[str, str] = {
         "How the filters on a Metric, FunnelStep, RetentionEvent, or FlowStep "
         "combine: all (AND) or any (OR)."
     ),
-    # Aliases defined in types.py / auth_types.py
+    # Aliases exported from other modules
     "AccountType": (
         "Discriminator of the Account union and AccountSummary.type: "
         "service_account, oauth_browser, or oauth_token."
@@ -812,19 +814,49 @@ LITERAL_ALIAS_DOCS: dict[str, str] = {
         "/ lexicon_schema (entity_type)."
     ),
     "ReportLinkType": (
-        "Report type for Workspace.create_report_link (report_type) and "
-        "ReportLink.report_type; excludes launch-analysis."
+        "Report type of a shareable report link: Workspace.create_report_link "
+        "(report_type), ReportLink.report_type, and the bookmark_type of "
+        "query_saved_report; excludes launch-analysis."
+    ),
+    # Union / Annotated aliases and constants exported from other modules
+    "Account": (
+        "Discriminated union over the three account variants, dispatched on "
+        "the type field; build one from a dict with pydantic.TypeAdapter(Account)."
+    ),
+    "PropertySpec": (
+        "Any way of naming a property in a query parameter: a plain property "
+        "name or a custom-property reference (Metric.property, "
+        "GroupBy.property, and the Filter class-method property arguments)."
+    ),
+    "ReportLinkQueryResult": (
+        "Typed result of Workspace.query_report_link; the concrete class "
+        "follows the link's report type, so narrow with isinstance or "
+        "ResolvedReport.report_type."
+    ),
+    "BUSINESS_CONTEXT_MAX_CHARS": (
+        "Maximum length of a business-context document in characters; the "
+        "server rejects longer content and set_business_context checks it "
+        "before sending."
     ),
 }
-"""One-line description per exported ``Literal`` alias, keyed by export name.
+"""One-line description per export that has no docstring of its own.
 
 Read by the built-in help (``mp.help("MathType")``) so a ``Literal`` alias
-renders a sentence instead of a bogus ``Name(args, kwargs)`` signature. Six
-keys (``AccountType``, ``Region``, ``BookmarkType``, ``SavedReportType``,
-``EntityType``, ``ReportLinkType``) describe aliases defined in
-``types.py`` / ``auth_types.py``; they live here so one dict covers every
-exported alias. ``tests/unit/help/test_registry_completeness.py`` asserts
-the key set equals the set of exported ``Literal`` aliases.
+renders a sentence instead of a bogus ``Name(args, kwargs)`` signature, and
+so a ``Union`` / ``Annotated`` alias or a module constant shows a summary
+instead of the ``typing`` or ``int`` docstring. Most keys are the ``Literal``
+aliases defined in this module; the rest describe exports that live
+elsewhere (``Region`` and ``AccountType`` are exported from
+``_internal/auth/account.py``, ``BookmarkType``, ``SavedReportType``,
+``EntityType``, ``ReportLinkType``, ``PropertySpec``,
+``ReportLinkQueryResult`` and ``BUSINESS_CONTEXT_MAX_CHARS`` from
+``types.py``, ``Account`` from ``auth_types.py``) so one dict covers every
+such export. ``tests/unit/help/test_registry_completeness.py`` asserts the
+key set equals the set of exports without a docstring of their own.
+
+Prefer sentences that explain the concept over ones that list member values
+or every accepting method: the rendered entry already prints the live
+``values`` and ``used_by`` blocks, and hard-coded lists drift.
 """
 
 __all__ = [
@@ -870,5 +902,5 @@ __all__ = [
     "FilterDateUnit",
     "FiltersCombinator",
     # Built-in help
-    "LITERAL_ALIAS_DOCS",
+    "ALIAS_DOCS",
 ]

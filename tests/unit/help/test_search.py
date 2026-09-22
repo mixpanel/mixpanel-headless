@@ -27,6 +27,7 @@ from mixpanel_headless._internal.help import inventory as inventory_module
 from mixpanel_headless._internal.help import search as search_module
 from mixpanel_headless._internal.help.models import SearchHit, SearchResult
 from mixpanel_headless._internal.help.search import clear_cache, search
+from mixpanel_headless._literal_types import ALIAS_DOCS
 
 # =============================================================================
 # Fixtures
@@ -243,13 +244,19 @@ class TestCategories:
         )
 
     def test_alias_and_constant_categories(self) -> None:
-        """Union aliases are ``alias``; module constants are ``constant``."""
-        assert _by_name(search("PropertySpec"), "PropertySpec").category == "alias"
+        """Union aliases are ``alias``; module constants are ``constant``.
+
+        Neither has a docstring of its own, so both read their summary from
+        ``ALIAS_DOCS`` instead of the ``typing`` / ``int`` docstring.
+        """
+        alias = _by_name(search("PropertySpec"), "PropertySpec")
+        assert alias.category == "alias"
+        assert alias.summary == ALIAS_DOCS["PropertySpec"]
         constant = _by_name(
             search("BUSINESS_CONTEXT_MAX_CHARS"), "BUSINESS_CONTEXT_MAX_CHARS"
         )
         assert constant.category == "constant"
-        assert constant.summary == ""
+        assert constant.summary == ALIAS_DOCS["BUSINESS_CONTEXT_MAX_CHARS"]
 
     def test_category_vocabulary_is_closed(self) -> None:
         """Every category across a broad search comes from the known set."""

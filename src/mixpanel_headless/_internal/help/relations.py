@@ -259,7 +259,7 @@ def _summary(row: Export) -> str:
 
     Literal and Union aliases have no docstring of their own — their
     ``__doc__`` is the generic ``typing`` class text — so their line comes
-    from ``LITERAL_ALIAS_DOCS``.
+    from ``ALIAS_DOCS``.
 
     Args:
         row: The inventory row.
@@ -268,9 +268,9 @@ def _summary(row: Export) -> str:
         The first docstring line, the alias description, or ``""``.
     """
     if row.kind in _VALUE_COMPARED_KINDS:
-        from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+        from mixpanel_headless._literal_types import ALIAS_DOCS
 
-        return LITERAL_ALIAS_DOCS.get(row.name, "")
+        return ALIAS_DOCS.get(row.name, "")
     return first_line(getattr(row.obj, "__doc__", None))
 
 

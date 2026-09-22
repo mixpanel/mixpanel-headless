@@ -36,7 +36,7 @@ from mixpanel_headless._internal.help import search as search_module
 from mixpanel_headless._internal.help.models import HELP_FORMATS
 from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 from mixpanel_headless._internal.help.relations import exception_tree, raised_by
-from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.exceptions import HelpDomainError
 from mixpanel_headless.workspace import Workspace
 
@@ -420,7 +420,7 @@ class TestEnumsAndLiterals:
         entry = ref.describe("MathType")
         assert entry.kind == "literal"
         assert len(entry.values) == 22
-        assert entry.summary == LITERAL_ALIAS_DOCS["MathType"]
+        assert entry.summary == ALIAS_DOCS["MathType"]
         assert [usage.method for usage in entry.used_by] == ["build_params", "query"]
 
     def test_feature_flag_status_enum(self) -> None:
@@ -534,11 +534,10 @@ class TestListings:
             item.name == "Workspace" for group in entry.groups for item in group.items
         )
         assert entry.hints == ()
-        literal_group = entry.groups[3]
-        assert all(
-            item.summary == LITERAL_ALIAS_DOCS[item.name]
-            for item in literal_group.items
-        )
+        assert all(item.summary for group in entry.groups for item in group.items)
+        for group in (entry.groups[3], entry.groups[4]):
+            assert group.items
+            assert all(item.summary == ALIAS_DOCS[item.name] for item in group.items)
 
     def test_types_listing_hints_stay_empty(self) -> None:
         """``hints=True`` still yields no hint for ``types``."""

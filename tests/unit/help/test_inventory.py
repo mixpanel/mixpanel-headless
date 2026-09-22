@@ -7,7 +7,7 @@ builds on:
   and never comes from ``dir()``;
 - every export classifies to exactly one ``HelpKind``, with the
   exported ``Literal`` aliases classified as ``literal`` and cross-checked
-  against ``LITERAL_ALIAS_DOCS``;
+  against ``ALIAS_DOCS``;
 - ``workspace_members()`` lists the public ``Workspace`` properties and
   methods;
 - ``module_members()`` follows a namespace module's ``__all__``;
@@ -39,7 +39,7 @@ from mixpanel_headless._internal.help.inventory import (
     workspace_members,
 )
 from mixpanel_headless._internal.help.models import HELP_KINDS, HelpKind
-from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.workspace import Workspace
 
 # =============================================================================
@@ -283,11 +283,11 @@ class TestInventory:
         assert row.name == name
 
     def test_literal_aliases_match_literal_docs(self) -> None:
-        """The ``literal`` rows are exactly the ``LITERAL_ALIAS_DOCS`` keys."""
+        """The ``literal`` rows are the ``typing.Literal`` exports, all in ``ALIAS_DOCS``."""
         literals = [row.name for row in exports_of_kind("literal")]
         assert literals == _exported_literal_aliases()
-        assert set(literals) == set(LITERAL_ALIAS_DOCS)
-        assert len(literals) == 38
+        assert literals
+        assert set(literals) <= set(ALIAS_DOCS)
 
     def test_exports_of_kind_fixed_groups(self) -> None:
         """The small kind groups hold exactly the expected names."""

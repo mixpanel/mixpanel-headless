@@ -3,8 +3,9 @@
 These tests lock four invariants that keep ``mp.help()`` output current:
 
 - ``mixpanel_headless.__all__`` has no duplicate names.
-- Every exported ``Literal`` alias has a one-line entry in
-  ``LITERAL_ALIAS_DOCS`` and every key in that dict is exported.
+- Every export that has no docstring of its own (``Literal``, ``Union``,
+  and ``Annotated`` aliases, module constants) has a one-line entry in
+  ``ALIAS_DOCS``, and every key in that dict names such an export.
 - Every public ``Workspace`` method appears in exactly one domain of
   ``WORKSPACE_DOMAINS`` and every registered name exists.
 - Every ``REFERENCE_HINTS`` source path exists under ``docs/``.
@@ -13,12 +14,19 @@ These tests lock four invariants that keep ``mp.help()`` output current:
 from __future__ import annotations
 
 import inspect
+import json
+import re
 import typing
 from pathlib import Path
 
 import pytest
 
 import mixpanel_headless as mp
+from mixpanel_headless._internal.help.inventory import (
+    exports_of_kind,
+    inventory,
+    workspace_members,
+)
 from mixpanel_headless._internal.help.registry import (
     DOCS_BASE,
     REFERENCE_HINTS,
@@ -27,7 +35,8 @@ from mixpanel_headless._internal.help.registry import (
     domain_of,
     hint_url,
 )
-from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless._internal.help.relations import referenced_types, used_by
+from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.workspace import Workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -45,6 +54,29 @@ def _exported_literal_aliases() -> list[str]:
         for name in set(mp.__all__)
         if typing.get_origin(getattr(mp, name)) is typing.Literal
     )
+
+
+def _exports_without_own_docstring() -> list[str]:
+    """Return every export whose runtime object carries no docstring of its own.
+
+    Classes, functions, and modules own their ``__doc__``. Any other export
+    (a ``Literal`` / ``Union`` / ``Annotated`` alias or a module constant)
+    either has ``__doc__ = None`` or inherits the docstring of its runtime
+    type (``typing`` internals, ``int``), which the help must not show.
+    Those exports read their summary from ``ALIAS_DOCS`` instead.
+
+    Returns:
+        Sorted list of export names.
+    """
+    names: list[str] = []
+    for row in inventory():
+        obj = row.obj
+        if isinstance(obj, type) or inspect.ismodule(obj) or inspect.isroutine(obj):
+            continue
+        doc = getattr(obj, "__doc__", None)
+        if doc is None or doc == type(obj).__doc__:
+            names.append(row.name)
+    return sorted(names)
 
 
 def _public_workspace_methods() -> list[str]:
@@ -95,41 +127,100 @@ class TestAllUniqueness:
         assert "HelpLookupError" in mp.__all__
 
 
-class TestLiteralAliasDocs:
-    """Every exported ``Literal`` alias is described in ``LITERAL_ALIAS_DOCS``."""
+class TestAliasDocs:
+    """``ALIAS_DOCS`` describes exactly the exports that have no docstring of their own."""
 
-    def test_probe_finds_the_expected_alias_count(self) -> None:
-        """The package exports exactly 38 ``Literal`` aliases."""
-        assert len(_exported_literal_aliases()) == 38
+    def test_literal_probe_agrees_with_the_inventory(self) -> None:
+        """The ``typing.Literal`` probe and the inventory's ``literal`` kind agree."""
+        assert set(_exported_literal_aliases()) == {
+            row.name for row in exports_of_kind("literal")
+        }
 
     def test_every_exported_literal_alias_has_an_entry(self) -> None:
-        """Each exported ``Literal`` alias has a key in ``LITERAL_ALIAS_DOCS``."""
-        missing = [
-            n for n in _exported_literal_aliases() if n not in LITERAL_ALIAS_DOCS
-        ]
+        """Each exported ``Literal`` alias has a key in ``ALIAS_DOCS``."""
+        missing = [n for n in _exported_literal_aliases() if n not in ALIAS_DOCS]
         assert missing == []
 
-    def test_every_key_is_an_exported_literal_alias(self) -> None:
-        """Each key in ``LITERAL_ALIAS_DOCS`` names an exported ``Literal`` alias."""
-        aliases = set(_exported_literal_aliases())
-        extra = sorted(k for k in LITERAL_ALIAS_DOCS if k not in aliases)
+    def test_every_export_without_a_docstring_has_an_entry(self) -> None:
+        """Each export whose member summary would otherwise be blank has a key."""
+        missing = [n for n in _exports_without_own_docstring() if n not in ALIAS_DOCS]
+        assert missing == []
+
+    def test_every_key_names_an_export_without_a_docstring(self) -> None:
+        """No key describes a name that is not exported or that documents itself."""
+        undocumented = set(_exports_without_own_docstring())
+        extra = sorted(k for k in ALIAS_DOCS if k not in undocumented)
         assert extra == []
 
-    @pytest.mark.parametrize("name", sorted(LITERAL_ALIAS_DOCS))
+    @pytest.mark.parametrize("name", sorted(ALIAS_DOCS))
     def test_description_is_one_plain_sentence(self, name: str) -> None:
-        """Each description is a single non-empty line that ends with a period."""
-        text = LITERAL_ALIAS_DOCS[name]
+        """Each description is a single non-empty ASCII line that ends with a period."""
+        text = ALIAS_DOCS[name]
         assert text.strip() == text
         assert text
         assert "\n" not in text
         assert text.endswith(".")
+        assert text.isascii()
+
+    @pytest.mark.parametrize("name", sorted(ALIAS_DOCS))
+    def test_description_is_the_entry_summary(self, name: str) -> None:
+        """``describe(name)`` carries the table text and every format shows it."""
+        entry = mp.reference.describe(name, hints=False)
+        assert entry.summary == ALIAS_DOCS[name]
+        assert ALIAS_DOCS[name] in mp.reference.render(entry, "text")
+        assert ALIAS_DOCS[name] in mp.reference.render(entry, "markdown")
+        payload = json.loads(mp.reference.render(entry, "json"))
+        assert payload["summary"] == ALIAS_DOCS[name]
 
     def test_known_descriptions_name_their_call_sites(self) -> None:
-        """Spot-check that descriptions point at the methods that accept the alias."""
-        assert "Workspace.query" in LITERAL_ALIAS_DOCS["MathType"]
-        assert "build_params" in LITERAL_ALIAS_DOCS["MathType"]
-        assert "query_retention" in LITERAL_ALIAS_DOCS["RetentionAlignment"]
-        assert "create_report_link" in LITERAL_ALIAS_DOCS["ReportLinkType"]
+        """Spot-check that descriptions point at the places that accept the alias."""
+        assert "Workspace.query" in ALIAS_DOCS["MathType"]
+        assert "build_params" in ALIAS_DOCS["MathType"]
+        assert "query_retention" in ALIAS_DOCS["RetentionAlignment"]
+        assert "create_report_link" in ALIAS_DOCS["ReportLinkType"]
+        assert "query_saved_report" in ALIAS_DOCS["ReportLinkType"]
+        assert "did_event (aggregation)" in ALIAS_DOCS["CohortAggregationType"]
+        assert "TypeAdapter" in ALIAS_DOCS["Account"]
+        assert "query_report_link" in ALIAS_DOCS["ReportLinkQueryResult"]
+        assert "set_business_context" in ALIAS_DOCS["BUSINESS_CONTEXT_MAX_CHARS"]
+
+    def test_concept_texts_do_not_single_out_one_caller(self) -> None:
+        """Aliases accepted by several methods describe the concept, not one caller.
+
+        ``CountType`` and ``FlowChartType`` are each accepted by four
+        ``Workspace`` methods; the live ``used_by`` block already lists them,
+        so the sentence must not name a subset and go stale.
+        """
+        for name in ("CountType", "FlowChartType"):
+            accepted = {usage.method for usage in used_by(name)}
+            assert len(accepted) >= 4
+            named = {method for method in accepted if method in ALIAS_DOCS[name]}
+            assert named in (set(), accepted), (name, named)
+
+    def test_named_workspace_methods_still_reference_the_alias(self) -> None:
+        """Every ``snake_case`` ``Workspace`` method a type alias names still uses it.
+
+        This is the drift guard: when a method stops accepting or returning
+        an alias, the sentence that names it must change too. Constants are
+        skipped because signatures never reference them.
+        """
+        methods = [name for name, kind in workspace_members() if kind == "method"]
+        referencing = {
+            method: {
+                name for name, _summary in referenced_types(getattr(Workspace, method))
+            }
+            for method in methods
+        }
+        for kind in ("literal", "alias"):
+            for row in exports_of_kind(kind):
+                text = ALIAS_DOCS[row.name]
+                named = {
+                    token
+                    for token in re.findall(r"\b[a-z]+(?:_[a-z0-9]+)+\b", text)
+                    if token in referencing
+                }
+                stale = sorted(m for m in named if row.name not in referencing[m])
+                assert stale == [], (row.name, stale)
 
 
 class TestWorkspaceDomains:

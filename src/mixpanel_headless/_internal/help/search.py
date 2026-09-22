@@ -7,7 +7,7 @@ inventory. It indexes three views of the library:
   with its inventory kind as the category (``exception``, ``enum``, ``model``,
   ``dataclass``, ``class``, ``literal``, ``alias``, ``function``, ``module``,
   ``constant``); Literal aliases are ``literal``, not ``constant``, and
-  carry their ``LITERAL_ALIAS_DOCS`` summary;
+  Literal / Union aliases and constants carry their ``ALIAS_DOCS`` summary;
 - every public ``Workspace`` member, displayed as ``Workspace.<name>`` with
   category ``method`` or ``property``;
 - every ``__all__`` member of the namespace modules ``accounts``,
@@ -48,7 +48,7 @@ from mixpanel_headless._internal.help.inventory import (
 )
 from mixpanel_headless._internal.help.models import MatchedOn, SearchHit, SearchResult
 from mixpanel_headless._internal.help.resolve import suggestions_for
-from mixpanel_headless._literal_types import LITERAL_ALIAS_DOCS
+from mixpanel_headless._literal_types import ALIAS_DOCS
 from mixpanel_headless.exceptions import HelpLookupError
 
 __all__ = ["clear_cache", "search"]
@@ -59,7 +59,7 @@ _NO_DOC_KINDS: frozenset[str] = frozenset({"literal", "alias", "constant"})
 
 ``inspect.getdoc`` on a ``Literal`` / ``Union`` alias or an ``int`` returns
 the ``typing`` or builtin docstring, which is noise. These kinds read their
-summary from ``LITERAL_ALIAS_DOCS`` instead and fall back to ``""``.
+summary from ``ALIAS_DOCS`` instead and fall back to ``""``.
 """
 
 _TIER_RANK: dict[MatchedOn, int] = {"name": 0, "doc": 1, "member": 2}
@@ -73,7 +73,7 @@ class _Entry:
     Attributes:
         category: Display category (inventory kind, ``method``, or ``property``).
         name: Display name; qualified for ``Workspace`` and module members.
-        summary: First docstring line or ``LITERAL_ALIAS_DOCS`` text; ``""``
+        summary: First docstring line or ``ALIAS_DOCS`` text; ``""``
             when none exists.
         members: Searchable member texts for enums and Literal aliases, in
             definition order; empty for every other kind.
@@ -116,11 +116,11 @@ def _export_summary(row: Export) -> str:
         row: The inventory row.
 
     Returns:
-        ``LITERAL_ALIAS_DOCS[name]`` for Literal aliases, unions, and
-        constants (``""`` when absent); otherwise the first docstring line.
+        ``ALIAS_DOCS[name]`` for Literal aliases, unions, and constants
+        (``""`` when absent); otherwise the first docstring line.
     """
     if row.kind in _NO_DOC_KINDS:
-        return LITERAL_ALIAS_DOCS.get(row.name, "")
+        return ALIAS_DOCS.get(row.name, "")
     return first_line(inspect.getdoc(row.obj))
 
 
