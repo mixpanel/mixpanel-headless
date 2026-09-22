@@ -21,14 +21,17 @@ set. Web replays give the same output as before.
   - `description` is the screen as one line:
     `Wireframe: <label> [x,y,w,h] | role:label [x,y,w,h] | …`.
   - `target_desc` is an approximate heading: the label of the top-most
-    labeled text element, or `"(screen)"` when there is none. The SDKs
-    send no screen name.
-  - `metadata` holds `elements` (role, text, bounds, offscreen flag),
+    labeled text element (text clipped above the top edge is skipped), or
+    `"(screen)"` when there is none. The SDKs send no screen name, and the
+    heading can be a back-button label.
+  - `metadata` holds `elements` (role, text, bounds, and the offscreen and
+    background flags),
     `viewport`, `scale`, `fingerprint` (identical screens share it), and
     `element_count`. Some SDK builds send bounds in physical pixels; when
     the payload viewport width differs from the Meta width by more than
     5%, the structured bounds are scaled into the touch coordinate space.
-    The description keeps the raw bounds.
+    The description keeps the raw bounds. A viewport or Meta width that
+    would give a zero division or an infinite value applies no scale.
 - **Screenshot recordings in the analyzer.** A replay with any
   `mp_wireframe` event, or with Meta events that carry no page URL, is a
   screenshot recording. In such a recording:
@@ -44,8 +47,10 @@ set. Web replays give the same output as before.
     finger-down. `target_desc` names the element (`button:Save`, a bare
     label for text, or `role [x,y,w,h]` for an unlabeled icon), and
     `metadata` gains `hit` and `attribution` (`"bounds"`, or
-    `"bounds_slop"` for a near miss within 8 px). Without a hit the target
-    is `"(x, y)"`. The description always shows the point only.
+    `"bounds_slop"` for a near miss within 8 px). A background layer (a
+    rect that crosses both side edges, such as the blur behind a tab bar)
+    is never hit. Without a hit the target is `"(x, y)"`. The description
+    always shows the point only.
 - **`Replay.capture`** (`"dom"` or `"screenshot"`), **`Replay.has_wireframes`**,
   and **`Replay.screen_path()`** (screen headings in order: the mobile form
   of `page_path()`).
@@ -67,6 +72,8 @@ set. Web replays give the same output as before.
   URL, or that has no Meta event at all, is a DOM recording and gives the
   same actions and markdown as 0.3.0. The committed web goldens are
   byte-identical.
+- `UserAction.target_node_id` is always an int or None: a bool node id
+  gives None, and an integral float id (`28.0`) gives `28`.
 - The markdown timeline now renders from the structured action list,
   sorted by timestamp. For web replays the text is the same.
 - The analyzer drops an action with a timestamp of zero or less instead of

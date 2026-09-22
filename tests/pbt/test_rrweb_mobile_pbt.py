@@ -4,8 +4,10 @@ Random mixed streams (wireframe screens, touches, drags, cancels, mouse
 events, scroll events, Meta events, and console errors) check these
 invariants:
 
-- The analyzer never raises, also on malformed wireframe input and on
-  events with a timestamp of zero or less (such actions are dropped).
+- The analyzer never raises, also on malformed wireframe input, on
+  events with a timestamp of zero or less (such actions are dropped), on
+  sub-pixel or zero viewport widths, on huge Meta widths, and on labels
+  with lone surrogates.
 - Actions come out in timestamp order, and the markdown renders from them.
 - No two consecutive screen actions have the same description.
 - The screen count never exceeds the per-session cap.
@@ -64,8 +66,10 @@ _element = st.one_of(
                 st.none(),
             ),
             "text": st.one_of(
-                st.sampled_from(["Home", "Details", "A | B", "", "  "]),
+                st.sampled_from(["Home", "Details", "A | B", "", "  ", "bad \ud800"]),
                 st.text(max_size=60),
+                # Lone surrogates are valid JSON but cannot be UTF-8 encoded.
+                st.text(alphabet=st.characters(categories=["Cs", "Ll"]), max_size=5),
                 st.none(),
             ),
             "bounds": st.one_of(
@@ -82,8 +86,26 @@ _element = st.one_of(
 )
 """One wireframe element: mostly well-formed, sometimes malformed."""
 
+_viewport = st.one_of(
+    st.lists(
+        st.one_of(
+            st.integers(min_value=-5, max_value=3000),
+            st.floats(min_value=0.0, max_value=3.0),
+            st.floats(allow_nan=True, allow_infinity=True),
+        ),
+        min_size=2,
+        max_size=2,
+    ),
+    st.sampled_from([[0.5, 100], [1, 1], [1080, 2400], [411, 914]]),
+    st.none(),
+)
+"""A payload ``viewport``: real sizes, sub-pixel and zero widths, junk."""
+
 _payload = st.one_of(
     st.fixed_dictionaries({"elements": st.lists(_element, max_size=4)}),
+    st.fixed_dictionaries(
+        {"viewport": _viewport, "elements": st.lists(_element, max_size=4)}
+    ),
     st.fixed_dictionaries(
         {"elements": st.one_of(st.none(), st.text(max_size=3), st.integers())}
     ),
@@ -176,7 +198,15 @@ def _input_event(draw: st.DrawFn, *, dom_only: bool = False) -> dict[str, Any]:
             data = {"href": draw(st.sampled_from(["/a", "/b"])), "width": 1280}
         else:
             href = draw(st.sampled_from([None, "", "/a"]))
-            data = {"width": 411} if href is None else {"href": href, "width": 411}
+            # Huge widths overflow the scaled bounds unless the analyzer
+            # falls back to no scaling.
+            width = draw(
+                st.one_of(
+                    st.sampled_from([411, 402, 1e308, 0.5]),
+                    st.floats(allow_nan=True, allow_infinity=True),
+                )
+            )
+            data = {"width": width} if href is None else {"href": href, "width": width}
         return {"type": 4, "timestamp": ts, "data": data}
     elif kind == "other_custom":
         return {"type": 5, "timestamp": ts, "data": {"tag": "other", "payload": {}}}

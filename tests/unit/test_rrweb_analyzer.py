@@ -18,6 +18,7 @@ the upstream analyzer's output in ``tests/fixtures/rrweb/upstream/``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from mixpanel_headless._internal.replays.rrweb_analyzer import (
     actions_contain_wireframes,
     analyze_events,
     detect_capture,
+    hit_test,
     timeline_contains_wireframes,
 )
 from mixpanel_headless.types import UserAction
@@ -2305,13 +2307,21 @@ class TestScreenMetadata:
                 "text": "Copy | Paste",
                 "bounds": [1, 2, 30, 40],
                 "offscreen": False,
+                "background": False,
             },
-            {"role": "element", "text": None, "bounds": None, "offscreen": False},
+            {
+                "role": "element",
+                "text": None,
+                "bounds": None,
+                "offscreen": False,
+                "background": False,
+            },
             {
                 "role": "text",
                 "text": "y" * 50 + "…",
                 "bounds": [500, 10, 20, 20],
                 "offscreen": True,
+                "background": False,
             },
         ]
         assert screen.metadata["element_count"] == 3
@@ -2691,3 +2701,218 @@ class TestRealFixtureStructure:
             e["bounds"] is None or e["bounds"][0] + e["bounds"][2] <= 412
             for e in screen.metadata["elements"]
         )
+
+
+# =============================================================================
+# Crash inputs, node-id parity, background layers, clipped headings
+# =============================================================================
+
+
+class TestScaleCrashInputs:
+    """Scaling inputs that used to raise now fall back to no scaling."""
+
+    def test_sub_pixel_viewport_width_gives_no_scale(self) -> None:
+        """A viewport width that truncates to 0 applies no scale (no division by 0)."""
+        screen = _only_screen(
+            [
+                _meta_width(500, 411),
+                _wireframe_vp(
+                    1000, [0.5, 100], _el("button", "Go", bounds=(1, 2, 3, 4))
+                ),
+            ]
+        )
+        assert screen.metadata["scale"] == 1.0
+        assert screen.metadata["elements"][0]["bounds"] == [1, 2, 3, 4]
+
+    def test_sub_pixel_viewport_without_meta_width_flags_nothing_offscreen(
+        self,
+    ) -> None:
+        """A zero-width viewport does not make every element offscreen."""
+        screen = _only_screen(
+            [_wireframe_vp(1000, [0.5, 100], _el("button", "Go", bounds=(1, 2, 3, 4)))]
+        )
+        assert screen.metadata["elements"][0]["offscreen"] is False
+
+    def test_scaled_values_that_overflow_give_no_scale(self) -> None:
+        """A huge Meta width whose scaled bounds are not finite applies no scale."""
+        screen = _only_screen(
+            [
+                _meta_width(500, 1e308),
+                _wireframe_vp(1000, [1, 1], _el("button", "Go", bounds=(5, 6, 7, 8))),
+            ]
+        )
+        assert screen.metadata["scale"] == 1.0
+        assert screen.metadata["elements"][0]["bounds"] == [5, 6, 7, 8]
+
+    def test_lone_surrogate_label_does_not_raise(self) -> None:
+        """A label with a lone surrogate (valid JSON) still gets a fingerprint."""
+        screen = _only_screen([_wireframe(1000, _el("text", "bad \ud800 label"))])
+        fingerprint = screen.metadata["fingerprint"]
+        assert len(fingerprint) == 12
+        expected = hashlib.sha1(
+            screen.description.encode("utf-8", errors="replace"),
+            usedforsecurity=False,
+        ).hexdigest()[:12]
+        assert fingerprint == expected
+
+
+class TestNodeIdParity:
+    """``target_node_id`` is an int or None on every path."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"), [(28.0, 28), (True, None), (28.5, None), ("28", None)]
+    )
+    def test_screenshot_tap_node_id(self, raw: Any, expected: int | None) -> None:
+        """A screenshot tap normalizes its node id.
+
+        Args:
+            raw: The raw rrweb node id.
+            expected: The normalized ``target_node_id``.
+        """
+        events = [_meta_no_href(1), *_touch(2000, node_id=raw)]
+        (tap,) = RrwebAnalyzer().analyze(events).actions
+        assert tap.target_node_id == expected
+
+    @pytest.mark.parametrize(("raw", "expected"), [(40.0, 40), (True, None)])
+    def test_dom_click_node_id(self, raw: Any, expected: int | None) -> None:
+        """A DOM click normalizes its node id.
+
+        Args:
+            raw: The raw rrweb node id.
+            expected: The normalized ``target_node_id``.
+        """
+        root = _document_root(_element_node(40, "button", text="Go"))
+        events = [_meta(1000, "/x"), _full_snapshot(1500, root), _click(2000, raw)]
+        clicks = [
+            a for a in RrwebAnalyzer().analyze(events).actions if a.action == "click"
+        ]
+        assert [c.target_node_id for c in clicks] == [expected]
+
+    def test_dom_input_float_node_id(self) -> None:
+        """A DOM input with an integral float node id keeps it as an int."""
+        events = [_meta(1000, "/x"), _input(2000, 40.0, text="hi")]  # type: ignore[arg-type]
+        inputs = [
+            a for a in RrwebAnalyzer().analyze(events).actions if a.action == "input"
+        ]
+        assert inputs[0].target_node_id == 40
+        assert type(inputs[0].target_node_id) is int
+
+
+class TestBackgroundLayers:
+    """Elements that cross both side edges are background layers."""
+
+    def test_flag_is_set_only_when_both_edges_are_crossed(self) -> None:
+        """``background`` is True only for a rect wider than the screen on both sides."""
+        screen = _only_screen(
+            [
+                _meta_width(500, 402, 874),
+                _wireframe(
+                    1000,
+                    _el("image", None, bounds=(-120, 731, 642, 286)),
+                    _el("image", None, bounds=(-10, 0, 100, 10)),
+                    _el("image", None, bounds=(0, 0, 402, 874)),
+                ),
+            ]
+        )
+        assert [e["background"] for e in screen.metadata["elements"]] == [
+            True,
+            False,
+            False,
+        ]
+
+    def test_no_flag_without_a_screen_width(self) -> None:
+        """Without a Meta width or viewport, nothing is a background."""
+        screen = _only_screen(
+            [_wireframe(1000, _el("image", None, bounds=(-120, 731, 642, 286)))]
+        )
+        assert screen.metadata["elements"][0]["background"] is False
+
+    def test_ios_tab_bar_tap_hits_the_tab_icon(self) -> None:
+        """A tab-bar tap hits the near tab icon, not the blur layer that contains it.
+
+        The geometry comes from the iOS replay ``D4BE9CB5``: ``Tapped at
+        (134, 821)`` used to target ``image [-118,731,638,286]``.
+        """
+        events = [
+            _meta_width(500, 402, 874),
+            _wireframe(
+                1000,
+                _el("text", None, bounds=(28, 826, 135, 14)),
+                _el("image", None, bounds=(-118, 731, 638, 286)),
+                _el("image", None, bounds=(138, 799, 28, 28)),
+                _el("text", "SwiftUI Inputs", bounds=(116, 830, 71, 12)),
+            ),
+            *_touch(2000, x=134, y=821),
+        ]
+        tap = _only_action(events, "touch_start")
+        assert tap.target_desc == "image [138,799,28,28]"
+        assert tap.metadata["attribution"] == "bounds_slop"
+
+    def test_background_alone_is_no_hit(self) -> None:
+        """A tap on only a background layer has no hit."""
+        events = [
+            _meta_width(500, 402, 874),
+            _wireframe(1000, _el("image", None, bounds=(-118, 731, 638, 286))),
+            *_touch(2000, x=200, y=760),
+        ]
+        tap = _only_action(events, "touch_start")
+        assert tap.target_desc == "(200, 760)"
+        assert "hit" not in tap.metadata
+
+    def test_hit_test_skips_background_in_the_slop_too(self) -> None:
+        """A background layer near the point is not a slop candidate."""
+        elements = [
+            {
+                "role": "image",
+                "text": None,
+                "bounds": [-10, 100, 500, 50],
+                "offscreen": False,
+                "background": True,
+            }
+        ]
+        assert hit_test(elements, 50.0, 95.0) is None
+
+
+class TestClippedHeading:
+    """Text clipped above the top edge is not the heading."""
+
+    def test_text_with_negative_y_is_skipped(self) -> None:
+        """A label mostly scrolled above the top edge does not win (iOS ``B0BC49B1``)."""
+        screen = _only_screen(
+            [
+                _wireframe(
+                    1000,
+                    _el(
+                        "text",
+                        "Hello world - wireframe txt",
+                        bounds=(18, -109, 314, 113),
+                    ),
+                    _el("text", "SwiftUI Text", bounds=(16, 68, 190, 41)),
+                )
+            ]
+        )
+        assert screen.target_desc == "SwiftUI Text"
+
+    def test_only_clipped_text_falls_back(self) -> None:
+        """A screen whose only labeled text is clipped gets ``(screen)``."""
+        screen = _only_screen(
+            [_wireframe(1000, _el("text", "Gone", bounds=(0, -40, 100, 30)))]
+        )
+        assert screen.target_desc == "(screen)"
+
+    def test_back_label_heading_stays(self) -> None:
+        """A back-button label on the title row can still be the heading.
+
+        The heading is approximate: the rule has no centered tie-break
+        (React Native iOS ``9F276478``).
+        """
+        screen = _only_screen(
+            [
+                _wireframe(
+                    1000,
+                    _el("text", "Back", bounds=(27, 59, 39, 20)),
+                    _el("text", "Session Replay Demo", bounds=(108, 59, 175, 20)),
+                )
+            ]
+        )
+        assert screen.target_desc == "Back"

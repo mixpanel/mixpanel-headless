@@ -229,6 +229,26 @@ def _finite_number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _node_id(value: Any) -> int | None:
+    """Return an rrweb node id as an int, or None when it is not usable.
+
+    A bool is not an id. An integral float (``28.0``) becomes ``28``.
+
+    Args:
+        value: The raw ``id`` value of an event.
+
+    Returns:
+        The integer node id, or None.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    return None
+
+
 def _point(x: Any, y: Any) -> tuple[int, int] | None:
     """Return integer ``(x, y)`` coordinates, or None when either is unusable.
 
@@ -768,9 +788,10 @@ class ScreenStructure:
     Attributes:
         elements: One dict per element, in client order, with the keys
             ``role``, ``text`` (None when empty), ``bounds`` (``[x, y, w,
-            h]`` integers in the touch coordinate space, or None), and
+            h]`` integers in the touch coordinate space, or None),
             ``offscreen`` (True when the rect lies fully outside the screen
-            width).
+            width), and ``background`` (True when the rect crosses both side
+            edges of the screen, as a bar's blur layer does).
         viewport: The payload ``viewport`` as integer ``[w, h]``, or None.
         scale: The factor applied to convert the bounds into the touch
             space; ``1.0`` when the spaces match.
@@ -789,9 +810,16 @@ def screen_structure(payload: Any, meta_width: float | None) -> ScreenStructure:
     ``viewport`` then differs from the Meta width. When the ratio
     ``meta_width / viewport[0]`` differs from 1.0 by more than
     :data:`SCALE_TOLERANCE`, every rect is multiplied by it (and rounded).
-    An element whose scaled rect lies fully outside ``[0, screen width]``
-    is flagged ``offscreen``. The screen width is the Meta width, or the
-    scaled viewport width without a Meta width.
+    No scale applies when the truncated viewport width is not positive, or
+    when the ratio or any scaled value is not finite; the bounds then stay
+    raw and ``scale`` is ``1.0``.
+
+    An element whose rect lies fully outside ``[0, screen width]`` is
+    flagged ``offscreen``. An element whose rect crosses both side edges
+    (``x < 0`` and ``x + w > screen width``) is flagged ``background``: a
+    full-width layer such as the blur behind a tab bar. The screen width is
+    the Meta width, or the viewport width (when positive) without a Meta
+    width; without either, neither flag is set.
 
     Labels follow the rendered string's rules (stripped, cut at 50
     characters) but keep ``|`` characters, which only the rendered
@@ -829,33 +857,42 @@ def screen_structure(payload: Any, meta_width: float | None) -> ScreenStructure:
         if vw is not None and vh is not None:
             viewport = [int(vw), int(vh)]
 
+    viewport_width = viewport[0] if viewport is not None and viewport[0] > 0 else None
+
     scale = 1.0
-    if viewport is not None and meta_width is not None:
-        ratio = meta_width / viewport[0]
-        if abs(ratio - 1.0) > SCALE_TOLERANCE:
+    if viewport_width is not None and meta_width is not None:
+        ratio = meta_width / viewport_width
+        if math.isfinite(ratio) and abs(ratio - 1.0) > SCALE_TOLERANCE:
             scale = ratio
 
+    dict_elements = [el for el in elements_in if isinstance(el, dict)]
+    all_bounds = [_bounds_ints(el.get("bounds")) for el in dict_elements]
+    if scale != 1.0:
+        scaled = [None if b is None else [v * scale for v in b] for b in all_bounds]
+        if all(math.isfinite(v) for b in scaled if b is not None for v in b):
+            all_bounds = [None if b is None else [round(v) for v in b] for b in scaled]
+        else:
+            scale = 1.0
+
     screen_width: float | None = meta_width
-    if screen_width is None and viewport is not None:
-        screen_width = viewport[0] * scale
+    if screen_width is None and viewport_width is not None:
+        screen_width = float(viewport_width)
 
     elements: list[dict[str, Any]] = []
-    for el in elements_in:
-        if not isinstance(el, dict):
-            continue
-        bounds = _bounds_ints(el.get("bounds"))
-        if bounds is not None and scale != 1.0:
-            bounds = [round(v * scale) for v in bounds]
+    for el, bounds in zip(dict_elements, all_bounds, strict=True):
         offscreen = False
+        background = False
         if bounds is not None and screen_width is not None:
             x, _, w, _ = bounds
             offscreen = x + w <= 0 or x >= screen_width
+            background = x < 0 and x + w > screen_width
         elements.append(
             {
                 "role": _clean_role(el.get("role")),
                 "text": _clean_label(el.get("text")) or None,
                 "bounds": bounds,
                 "offscreen": offscreen,
+                "background": background,
             }
         )
     return ScreenStructure(elements=elements, viewport=viewport, scale=scale)
@@ -865,10 +902,12 @@ def screen_heading(elements: Sequence[dict[str, Any]]) -> str:
     """Pick an approximate heading for a screen.
 
     The heading is the label of the top-most on-screen ``text`` element
-    that has a label: the smallest ``y``, then the smallest ``x``. When no
-    such element has bounds, the first labeled ``text`` element in client
-    order wins. The heading is a heuristic, not a screen name: the SDKs
-    send no screen name.
+    that has a label: the smallest ``y``, then the smallest ``x``. Text
+    clipped above the top edge (``y < 0``, content scrolled away) is
+    skipped. When no labeled ``text`` element has bounds, the first one in
+    client order wins. The heading is a heuristic, not a screen name: the
+    SDKs send no screen name, and the heading can be a back-button label or
+    scrolled content on the title row.
 
     Args:
         elements: The ``elements`` of a :class:`ScreenStructure`.
@@ -881,7 +920,10 @@ def screen_heading(elements: Sequence[dict[str, Any]]) -> str:
     ]
     placed = [e for e in labeled if e["bounds"] is not None]
     if placed:
-        top = min(placed, key=lambda e: (e["bounds"][1], e["bounds"][0]))
+        visible = [e for e in placed if e["bounds"][1] >= 0]
+        if not visible:
+            return _SCREEN_TARGET
+        top = min(visible, key=lambda e: (e["bounds"][1], e["bounds"][0]))
         return str(top["text"])
     if labeled:
         return str(labeled[0]["text"])
@@ -910,7 +952,9 @@ def hit_test(
 ) -> tuple[dict[str, Any], str] | None:
     """Find the screen element under a touch or click point.
 
-    Only on-screen elements with bounds are candidates. When rects contain
+    Only on-screen elements with bounds are candidates; ``background``
+    layers (rects that cross both side edges of the screen) are never
+    candidates, because they contain every point of a bar. When rects contain
     the point (edges included), a non-text role beats a ``text`` role, and
     then the smallest area wins; the attribution is ``"bounds"``. With no
     containing rect, the nearest element within :data:`HIT_SLOP_PX` wins
@@ -928,7 +972,7 @@ def hit_test(
     scored: list[tuple[float, bool, int, int]] = []
     for index, e in enumerate(elements):
         bounds = e["bounds"]
-        if bounds is None or e["offscreen"]:
+        if bounds is None or e["offscreen"] or e.get("background"):
             continue
         distance = _rect_distance(bounds, x, y)
         if distance <= HIT_SLOP_PX:
@@ -999,8 +1043,12 @@ def _fingerprint(description: str) -> str:
 
     Returns:
         The first :data:`FINGERPRINT_LENGTH` hex characters of its SHA-1.
+        Characters that UTF-8 cannot encode (a lone surrogate, which JSON
+        allows) are replaced before hashing.
     """
-    digest = hashlib.sha1(description.encode("utf-8"), usedforsecurity=False)
+    digest = hashlib.sha1(
+        description.encode("utf-8", errors="replace"), usedforsecurity=False
+    )
     return digest.hexdigest()[:FINGERPRINT_LENGTH]
 
 
@@ -1600,15 +1648,16 @@ class EventAnalyzer:
 
         action_literal = _INTERACTION_TO_ACTION.get(verb, "click")
         metadata: dict[str, Any] = {"interaction": verb}
-        if isinstance(node_id, int):
+        target_node_id = _node_id(node_id)
+        if target_node_id is not None:
             # Surface the element's data-* selectors so selector_label_fn can
             # group by a stable test id instead of falling through to the URL.
-            metadata.update(self.dom_tracker.get_node_selectors(node_id))
+            metadata.update(self.dom_tracker.get_node_selectors(target_node_id))
         self._emit(
             timestamp,
             action_literal,
             f"{verb.capitalize()} {node_desc}",
-            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_node_id=target_node_id,
             target_desc=node_desc,
             metadata=metadata,
         )
@@ -1721,7 +1770,7 @@ class EventAnalyzer:
             timestamp,
             action,
             description,
-            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_node_id=_node_id(node_id),
             target_desc=target_desc,
             metadata=metadata,
         )
@@ -1926,13 +1975,14 @@ class EventAnalyzer:
             "text_length": len(text) if isinstance(text, str) else 0,
             "is_checked": is_checked,
         }
-        if isinstance(node_id, int):
-            metadata.update(self.dom_tracker.get_node_selectors(node_id))
+        target_node_id = _node_id(node_id)
+        if target_node_id is not None:
+            metadata.update(self.dom_tracker.get_node_selectors(target_node_id))
         self._emit(
             timestamp,
             "input",
             description,
-            target_node_id=node_id if isinstance(node_id, int) else None,
+            target_node_id=target_node_id,
             target_desc=node_desc,
             metadata=metadata,
         )

@@ -202,6 +202,8 @@ The description always shows the point. The structured action says which element
 2. With no containing rect, the nearest element within 8 px wins. Real taps often land just outside a button edge. `metadata["attribution"]` is `"bounds_slop"`.
 3. With no element near the point, `target_desc` is the point, `"(x, y)"`, and there is no `metadata["hit"]`.
 
+A background layer is never a candidate: an element whose rect crosses both side edges of the screen (for example, the blur behind a tab bar) gets `"background": True` in `metadata["elements"]`.
+
 `target_desc` names the hit element: the bare label for text, `role:label` for other roles, or `role [x,y,w,h]` for an element with no label. `metadata["hit"]` holds the element's `role`, `text`, and `bounds`.
 
 ```python
@@ -223,7 +225,7 @@ print(taps.groupby("target_desc").size().sort_values(ascending=False).head(10))
 
 ### Screen headings and fingerprints
 
-The SDKs send no screen name. For each `"screen"` action, `target_desc` is an **approximate heading**: the label of the top-most labeled text element on screen (smallest `y`, then smallest `x`). A screen with no labeled text, for example a fully masked one, gets `"(screen)"`. The heading can be a clock, a back button label, or the same title on several different screens. Treat it as a hint, not an identity.
+The SDKs send no screen name. For each `"screen"` action, `target_desc` is an **approximate heading**: the label of the top-most labeled text element on screen (smallest `y`, then smallest `x`; text clipped above the top edge is skipped). A screen with no labeled text, for example a fully masked one, gets `"(screen)"`. The heading can be a clock, a back button label, or the same title on several different screens. Treat it as a hint, not an identity.
 
 `metadata["fingerprint"]` is a short hash of the rendered `Wireframe:` line, so identical screens share it. Use the fingerprint to count screen visits, and the heading to label them. Screen metadata also holds `elements` (the parsed element list), `viewport`, `scale`, and `element_count`.
 
@@ -269,7 +271,8 @@ The columns are `replay_id`, `t_start`, `t_end` (Unix ms), `target_desc` (the hi
 
 ### Limits
 
-- **Headings are approximate.** Two different screens can share a heading, and one screen can get a different heading after a small change. Use the fingerprint for identity.
+- **Headings are approximate.** Two different screens can share a heading, and one screen can get a different heading after a small change. The heading can also be a back-button label or scrolled content on the title row. Use the fingerprint for identity.
+- **Taps under translucent bars.** A tap on a translucent tab bar or toolbar can resolve to the content that scrolls below it.
 - **Masked text is gone.** A masked label is not in the recording, so a masked screen has only roles and rects, and its heading is `"(screen)"`.
 - **Some screens are mid-animation.** An "after" screen can be a frame from the middle of a transition. Its elements can have negative `x` or sit past the right edge.
 - **`(×N)` hides the time span.** A collapsed line shows the first timestamp only. Use `rage_taps()` or `actions_df` for real timing.
