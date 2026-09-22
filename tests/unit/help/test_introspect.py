@@ -599,7 +599,8 @@ def test_resolved_hints_cache_keys_bound_methods_by_function() -> None:
     size = len(introspect._HINTS_CACHE)
     resolved_hints(second)
     assert len(introspect._HINTS_CACHE) == size
-    assert id(Filter.equals.__func__) in introspect._HINTS_CACHE
+    underlying = vars(Filter)["equals"].__func__
+    assert id(underlying) in introspect._HINTS_CACHE
 
 
 def test_class_sections_filter_does_not_grow_the_hints_cache() -> None:

@@ -457,6 +457,10 @@ def test_every_workspace_parameter_has_a_description() -> None:
     ``_parse_items`` drops ``Args:`` lines that do not look like ``name: desc``,
     so a malformed entry would surface here as a missing description.
     """
+    prefixes: dict[inspect._ParameterKind, str] = {
+        inspect.Parameter.VAR_POSITIONAL: "*",
+        inspect.Parameter.VAR_KEYWORD: "**",
+    }
     checked = 0
     for name, value in vars(mp.Workspace).items():
         if name.startswith("_") or not inspect.isfunction(value):
@@ -465,10 +469,7 @@ def test_every_workspace_parameter_has_a_description() -> None:
         for pname, param in inspect.signature(value).parameters.items():
             if pname == "self":
                 continue
-            prefix = {
-                inspect.Parameter.VAR_POSITIONAL: "*",
-                inspect.Parameter.VAR_KEYWORD: "**",
-            }.get(param.kind, "")
+            prefix = prefixes.get(param.kind, "")
             description = described.get(f"{prefix}{pname}") or described.get(pname)
             assert description, (
                 f"Workspace.{name}: parameter {pname!r} has no description"
