@@ -523,7 +523,7 @@ def signature_doc(
 
     One ``ParamDoc`` per parameter: a leading ``self`` / ``cls`` is dropped;
     ``*args`` and ``**kwargs`` keep their prefixes in ``name``; ``annotation``
-    is the source annotation through ``format_type`` (``""`` when absent);
+    is the source annotation through ``format_type`` (``None`` when absent);
     ``default`` is ``repr(default)`` or ``None``; ``values`` come from
     ``resolved_hints`` when available; ``description`` comes from the
     ``Args:`` section of the docstring.
@@ -609,7 +609,7 @@ def _param_doc(
         display = f"**{pname}"
     else:
         display = pname
-    annotation = ""
+    annotation: str | None = None
     if param.annotation is not inspect.Parameter.empty:
         annotation = format_type(param.annotation)
     default = None

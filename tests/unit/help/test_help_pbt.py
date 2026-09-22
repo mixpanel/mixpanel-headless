@@ -303,7 +303,7 @@ _PAIRS = st.lists(st.tuples(_STR, _STR), max_size=3).map(tuple)
 _PARAM_DOCS = st.builds(
     ParamDoc,
     name=_STR,
-    annotation=_STR,
+    annotation=_OPT_STR,
     default=_OPT_STR,
     description=_STR,
     values=_STRS,

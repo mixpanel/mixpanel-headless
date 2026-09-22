@@ -574,7 +574,7 @@ def test_signature_block_multiple_params_and_defaults() -> None:
             params=(
                 ParamDoc(name="a", annotation="int"),
                 ParamDoc(name="b", annotation="str | None", default="None"),
-                ParamDoc(name="c", annotation="", default="1"),
+                ParamDoc(name="c", annotation=None, default="1"),
             ),
             returns="None",
         ),
@@ -1212,6 +1212,22 @@ def test_listing_text_indents_two_spaces_per_depth_level() -> None:
         "    Mid" + " " * 38 + "M.",
         "      Leaf" + " " * 35 + "L.",
     ]
+
+
+def test_parameter_without_annotation_prints_name_and_default() -> None:
+    """A ``parameter`` entry whose ``ParamDoc.annotation`` is ``None`` omits the colon part."""
+    entry = HelpEntry(
+        kind="parameter",
+        name="Workspace.f.x",
+        qualname="Workspace.f.x",
+        summary="",
+        doc=DocSections(),
+        signature=SignatureDoc(
+            name="f", params=(ParamDoc(name="x", annotation=None, default="1"),)
+        ),
+    )
+    assert render_text(entry) == "Workspace.f.x = 1"
+    assert "```python\nWorkspace.f.x = 1\n```" in render_markdown(entry)
 
 
 def test_constant_text_exact() -> None:

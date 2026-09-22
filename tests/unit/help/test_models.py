@@ -496,7 +496,10 @@ def test_help_entry_requires_core_fields() -> None:
 
 
 def test_param_doc_defaults() -> None:
-    """``ParamDoc`` needs only ``name`` and ``annotation``; ``kind`` defaults to plain."""
+    """``ParamDoc`` needs only ``name``; ``annotation`` defaults to ``None`` like ``returns``."""
+    param = ParamDoc(name="x")
+    assert param.annotation is None
+    assert param.to_dict()["annotation"] is None
     param = ParamDoc(name="x", annotation="int")
     assert param.default is None
     assert param.description == ""

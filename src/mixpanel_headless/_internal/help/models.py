@@ -127,7 +127,8 @@ class ParamDoc:
     Attributes:
         name: Parameter name without ``self``; ``*args`` and ``**kwargs`` keep
             their prefixes.
-        annotation: Display form of the annotation (already cleaned).
+        annotation: Display form of the annotation (already cleaned), or
+            ``None`` when the parameter has none (as ``SignatureDoc.returns``).
         default: ``repr`` of the default, or ``None`` when the parameter is required.
         description: Description from the ``Args:`` docstring section, or ``""``.
         values: Literal or enum member values accepted by the parameter, if any.
@@ -138,7 +139,7 @@ class ParamDoc:
     """
 
     name: str
-    annotation: str
+    annotation: str | None = None
     default: str | None = None
     description: str = ""
     values: tuple[str, ...] = ()

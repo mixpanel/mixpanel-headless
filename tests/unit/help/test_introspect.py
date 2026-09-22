@@ -697,7 +697,9 @@ def test_signature_doc_workspace_query() -> None:
     assert by_name["last"].annotation == "int"
     assert by_name["cumulative"].default == "False"
     assert by_name["events"].default is None
-    assert by_name["events"].annotation.startswith("str | Metric | CohortMetric")
+    events_annotation = by_name["events"].annotation
+    assert events_annotation is not None
+    assert events_annotation.startswith("str | Metric | CohortMetric")
     assert by_name["events"].description.startswith("Event name(s) to query.")
     assert by_name["where"].values == ()
     assert doc.returns == "QueryResult"
@@ -812,7 +814,7 @@ def test_signature_doc_name_override() -> None:
 
 
 def test_signature_doc_without_annotations() -> None:
-    """A parameter with no annotation has ``annotation == ""`` and no return."""
+    """A parameter with no annotation has ``annotation is None`` and no return."""
 
     def bare(a, b=2):  # noqa: ANN001, ANN202
         """Fixture.
@@ -824,9 +826,10 @@ def test_signature_doc_without_annotations() -> None:
 
     doc = signature_doc(bare)
     assert doc.params == (
-        ParamDoc("a", "", None, "First.", ()),
-        ParamDoc("b", "", "2", "Second.", ()),
+        ParamDoc("a", None, None, "First.", ()),
+        ParamDoc("b", None, "2", "Second.", ()),
     )
+    assert doc.params[0].to_dict()["annotation"] is None
     assert doc.returns is None
 
 
