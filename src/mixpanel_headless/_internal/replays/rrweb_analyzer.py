@@ -21,8 +21,8 @@ the walk:
   screen as an ``mp_wireframe`` Custom event (a flat element list with
   role, label, and bounds). A stream that has any ``mp_wireframe`` event,
   or that has Meta events and none of them carries an ``href``, is a
-  screenshot recording. A stream with no Meta event at all stays a DOM
-  recording.
+  screenshot recording. A stream with neither a Meta event nor an
+  ``mp_wireframe`` event stays a DOM recording.
 
 In a screenshot recording, touches go through a gesture state machine
 (finger down, drag, lift-off): little finger travel is a tap, more is a
@@ -159,8 +159,8 @@ def detect_capture(events: Sequence[Any]) -> CaptureKind:
     ``mp_wireframe`` tag, or when the stream has Meta events and none of
     them carries a non-empty ``href``. The mobile SDKs and Flutter (on
     mobile, web, and desktop) send no ``href``; the Mixpanel JavaScript SDK
-    always sends one. A stream with no Meta event at all stays a DOM
-    recording, so partial web streams keep the web behavior.
+    always sends one. A stream with neither a Meta event nor a wireframe
+    stays a DOM recording, so partial web streams keep the web behavior.
 
     The decision covers the whole stream. A touch that arrives before the
     first wireframe still goes through the gesture rules. The upstream

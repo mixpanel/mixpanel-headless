@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "mixpanel-headless",
-      "description": "Turn Claude into a senior data analyst and Mixpanel product analytics expert. CodeMode-first: writes Python using mixpanel_headless + pandas.",
+      "description": "Analyze Mixpanel data with Python: queries, schema exploration, session replay, dashboards, and authentication, built on the mixpanel_headless library and its built-in reference (mp help).",
       "source": "./mixpanel-plugin",
       "author": {
         "name": "Jared McFarland",
@@ -22,10 +22,11 @@
       "keywords": [
         "mixpanel",
         "analytics",
-        "data-analysis",
         "product-analytics",
-        "codemode",
-        "pandas"
+        "python",
+        "pandas",
+        "session-replay",
+        "dashboards"
       ]
     }
   ]

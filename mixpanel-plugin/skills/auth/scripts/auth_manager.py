@@ -2,12 +2,11 @@
 """Plugin auth manager — JSON wrapper around the mixpanel_headless auth namespaces.
 
 Subcommands map 1:1 to ``mp account / project / workspace / target /
-session / bridge`` per
-``specs/042-auth-architecture-redesign/contracts/plugin-auth-manager.md``.
+session``. Each run prints exactly one JSON object to stdout.
 Every response carries ``schema_version: 1`` and a discriminated
 ``state`` (``ok`` | ``needs_account`` | ``needs_project`` | ``error``).
-Errors emit JSON to stdout (exit 0) so the slash command can ``json.loads``
-unconditionally.
+Errors also go to stdout as JSON with exit code 0, so the ``auth`` skill
+can ``json.loads`` the output unconditionally.
 """
 
 from __future__ import annotations
@@ -17,26 +16,27 @@ import json
 import os
 import sys
 from collections.abc import Callable
-from typing import Any
-
-from mixpanel_headless import Workspace, accounts, targets
-from mixpanel_headless import session as sess
-from mixpanel_headless._internal.auth.bridge import (
-    default_bridge_search_paths,
-    load_bridge,
-)
-from mixpanel_headless._internal.auth.resolver import (
-    resolve_account_axis,
-    resolve_session,
-)
-from mixpanel_headless._internal.config import ConfigManager
-from mixpanel_headless.exceptions import AccountNotFoundError, ConfigError
-
-# Error codes the user can act on (re-login, set env, run specific CLI cmd).
-# The slash command renders precise hints when ``actionable=True``.
-_ACTIONABLE_CODES = frozenset({"OAUTH_TOKEN_ERROR", "OAUTH_REFRESH_ERROR", "OAUTH_REFRESH_REVOKED", "NEEDS_ACCOUNT", "NEEDS_PROJECT"})  # noqa: E501  # fmt: skip
+from typing import Any, NoReturn
 
 SCHEMA_VERSION = 1
+
+try:
+    from mixpanel_headless import Workspace, accounts, targets
+    from mixpanel_headless import session as sess
+    from mixpanel_headless._internal.auth.resolver import (
+        format_no_account_error,
+        format_no_project_error,
+        resolve_session,
+    )
+    from mixpanel_headless._internal.config import ConfigManager
+    from mixpanel_headless.exceptions import AccountNotFoundError, ConfigError
+except ImportError as _exc:  # keep the one-JSON-object, exit-0 output rule
+    print(json.dumps({"schema_version": SCHEMA_VERSION, "state": "error", "error": {"code": "LIBRARY_NOT_INSTALLED", "message": f"mixpanel_headless could not be imported ({_exc}). Run /mixpanel-headless:setup to install or upgrade it.", "actionable": True}}, indent=2))  # noqa: E501  # fmt: skip
+    sys.exit(0)
+
+# Error codes the user can act on (re-login, set env, run specific CLI cmd).
+# The auth skill renders precise hints when ``actionable=True``.
+_ACTIONABLE_CODES = frozenset({"OAUTH_TOKEN_ERROR", "OAUTH_REFRESH_ERROR", "OAUTH_REFRESH_REVOKED", "NEEDS_ACCOUNT", "NEEDS_PROJECT"})  # noqa: E501  # fmt: skip
 
 # fmt: off
 _ONBOARDING = [
@@ -62,7 +62,7 @@ def _ok(**fields: Any) -> dict[str, Any]:
 
 
 def _err(exc: BaseException, *, actionable: bool | None = None) -> dict[str, Any]:
-    """Wrap ``exc`` as a contracted ``state="error"`` envelope (P3).
+    """Wrap ``exc`` as a ``state="error"`` envelope (code, message, actionable).
 
     Pulls structured context off ``MixpanelHeadlessError`` subclasses (``code``,
     ``details``) and preserves ``__cause__``. ``MP_VERBOSE=1`` adds a
@@ -83,7 +83,7 @@ def _err(exc: BaseException, *, actionable: bool | None = None) -> dict[str, Any
 
 
 def _account_record(account: Any) -> dict[str, Any]:
-    """Render an Account → contract record (P5 — name/type/region required)."""
+    """Render an Account as a record with the required name, type, and region."""
     return {"name": account.name, "type": account.type, "region": account.region}
 
 
@@ -95,7 +95,7 @@ def _has_env_auth() -> bool:
 
 
 def _active_block(project_override: str | None = None) -> dict[str, Any]:
-    """Read ``[active]`` and return the contract's ``active`` block (§ 4.3)."""
+    """Read ``[active]`` and return the ``active`` block."""
     cm = ConfigManager()
     active = cm.get_active()
     proj = project_override
@@ -110,7 +110,7 @@ def _active_block(project_override: str | None = None) -> dict[str, Any]:
 
 
 def _do(fn: Callable[..., Any], *args: Any, project_override: str | None = None, **kwargs: Any) -> dict[str, Any]:  # noqa: E501  # fmt: skip
-    """Run ``fn`` then emit the contract's ``active`` block per § 4.3."""
+    """Run ``fn`` then emit the ``active`` block."""
     fn(*args, **kwargs)
     return _ok(active=_active_block(project_override=project_override))
 
@@ -125,7 +125,7 @@ def _with_workspace(extractor: Callable[[Any], dict[str, Any]]) -> dict[str, Any
 
 
 def _cached_user(account_name: str) -> dict[str, Any] | None:
-    """Return ``{id,email}`` from MeCache without fetching (FR-046)."""
+    """Return ``{id,email}`` from MeCache without a network fetch."""
     from mixpanel_headless._internal.me import MeCache
 
     me = MeCache(account_name=account_name).get()
@@ -137,31 +137,37 @@ def _cached_user(account_name: str) -> dict[str, Any] | None:
 def cmd_session(_args: argparse.Namespace) -> dict[str, Any]:
     """Resolve the persisted session into a discriminated state response.
 
-    Delegates to ``resolve_session()`` so bridge-only and env-only auth
-    report ``state="ok"`` with the resolved axes (prior bug: bridge-only
-    returned ``needs_account``; env-only returned ok with all-null axes).
+    Delegates to ``resolve_session()`` so the report matches what the
+    library resolves from every source it consults (for example, env-only
+    auth reports ``state="ok"`` with the resolved axes). ``source`` names
+    ``env`` when an env var supplied the axis, else ``config``.
     """
     cm = ConfigManager()
-    bridge = load_bridge()
     try:
-        session = resolve_session(config=cm, bridge=bridge)
-    except ConfigError:
-        # Two-pass: account-axis only — distinguishes needs_account from needs_project.
-        account = resolve_account_axis(explicit=None, target_account_name=None, bridge=bridge, config=cm)  # noqa: E501  # fmt: skip
-        if account is None:
+        session = resolve_session(config=cm)
+    except ConfigError as exc:
+        # Only the resolver's own "no account" and "no project" errors mean
+        # onboarding. Any other config error (a malformed MP_PROJECT_ID, a bad
+        # region, a broken config file) is reported with its own message.
+        if str(exc) == format_no_account_error():
             return {"schema_version": SCHEMA_VERSION, "state": "needs_account", "next": _ONBOARDING}  # noqa: E501  # fmt: skip
-        return {"schema_version": SCHEMA_VERSION, "state": "needs_project", "account": _account_record(account), "next": _PROJECT_NEXT}  # noqa: E501  # fmt: skip
+        try:
+            # A placeholder project resolves the account axis only.
+            account = resolve_session(config=cm, project="0").account
+        except ConfigError:
+            return _err(exc, actionable=True)
+        if str(exc) == format_no_project_error(account):
+            return {"schema_version": SCHEMA_VERSION, "state": "needs_project", "account": _account_record(account), "next": _PROJECT_NEXT}  # noqa: E501  # fmt: skip
+        return _err(exc, actionable=True)
 
     ws_id = session.workspace.id if session.workspace is not None else None
     has_env_account = _has_env_auth()
-    src_account = "env" if has_env_account else ("bridge" if bridge is not None and bridge.account.name == session.account.name else "config")  # noqa: E501  # fmt: skip
-    src_project = "env" if os.environ.get("MP_PROJECT_ID") else ("bridge" if bridge is not None and bridge.project == session.project.id else "config")  # noqa: E501  # fmt: skip
+    src_account = "env" if has_env_account else "config"
+    src_project = "env" if os.environ.get("MP_PROJECT_ID") else "config"
     if ws_id is None:
         src_workspace = "unset"
     elif os.environ.get("MP_WORKSPACE_ID"):
         src_workspace = "env"
-    elif bridge is not None and bridge.workspace == ws_id:
-        src_workspace = "bridge"
     else:
         src_workspace = "config"
     return _ok(
@@ -186,17 +192,8 @@ def cmd_account_list(_args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
-def cmd_account_add(args: argparse.Namespace) -> dict[str, Any]:
-    """Add a new account from a JSON record on stdin (per § 4.1)."""
-    if not args.from_stdin:
-        raise SystemExit("auth_manager.py: account add requires --from-stdin (security: never pass secrets on the command line)")  # noqa: E501  # fmt: skip
-    r = json.loads(sys.stdin.read())
-    summary = accounts.add(r["name"], type=r["type"], region=r["region"], default_project=r.get("default_project"), username=r.get("username"), secret=r.get("secret"), token=r.get("token"), token_env=r.get("token_env"))  # noqa: E501  # fmt: skip
-    return _ok(added=summary.model_dump(mode="json"))
-
-
 def cmd_account_login(args: argparse.Namespace) -> dict[str, Any]:
-    """Run the OAuth PKCE flow for an oauth_browser account (per § 4.4)."""
+    """Run the OAuth PKCE flow for an oauth_browser account."""
     result = accounts.login(args.name)
     user = result.user.model_dump(mode="json") if result.user else None
     expires = result.expires_at.isoformat() if result.expires_at else None
@@ -235,16 +232,6 @@ def cmd_target_add(args: argparse.Namespace) -> dict[str, Any]:
     return _ok(added=target.model_dump(mode="json"))
 
 
-def cmd_bridge_status(_args: argparse.Namespace) -> dict[str, Any]:
-    """Report Cowork bridge file presence + parsed metadata (per § 5)."""
-    bridge = load_bridge()
-    if bridge is None:
-        return _ok(bridge=None)
-    candidates = ([os.environ["MP_AUTH_FILE"]] if os.environ.get("MP_AUTH_FILE") else []) + [str(p) for p in default_bridge_search_paths()]  # noqa: E501  # fmt: skip
-    path = next((p for p in candidates if os.path.exists(p)), None)
-    return _ok(bridge={"path": path, "version": bridge.version, "account": _account_record(bridge.account), "project": bridge.project, "workspace": bridge.workspace, "headers": dict(bridge.headers)})  # noqa: E501  # fmt: skip
-
-
 def _target_use(args: argparse.Namespace) -> dict[str, Any]:
     """Apply target then emit active block with the target's project pin."""
     target = targets.show(args.name)
@@ -255,7 +242,6 @@ _Handler = Callable[[argparse.Namespace], dict[str, Any]]
 _DISPATCH: dict[tuple[str, str | None], _Handler] = {
     ("session", None): cmd_session,
     ("account", "list"): cmd_account_list,
-    ("account", "add"): cmd_account_add,
     ("account", "use"): lambda a: _do(accounts.use, a.name),
     ("account", "login"): cmd_account_login,
     ("account", "test"): cmd_account_test,
@@ -270,18 +256,25 @@ _DISPATCH: dict[tuple[str, str | None], _Handler] = {
     ),  # noqa: E501  # fmt: skip
     ("target", "add"): cmd_target_add,
     ("target", "use"): _target_use,
-    ("bridge", "status"): cmd_bridge_status,
 }
+
+
+class _JsonArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose usage errors print the JSON error envelope."""
+
+    def error(self, message: str) -> NoReturn:
+        """Emit a ``state="error"`` envelope for a usage error, then exit 0."""
+        _emit({"schema_version": SCHEMA_VERSION, "state": "error", "error": {"code": "USAGE_ERROR", "message": f"{self.prog}: {message}", "actionable": False, "usage": self.format_usage().strip()}})  # noqa: E501  # fmt: skip
+        sys.exit(0)
 
 
 def _build_parser() -> argparse.ArgumentParser:
     """Construct the two-level argparse tree (group → action)."""
-    parser = argparse.ArgumentParser(prog="auth_manager.py")
+    parser = _JsonArgumentParser(prog="auth_manager.py")
     sub = parser.add_subparsers(dest="group", required=True)
     sub.add_parser("session")
     acct = sub.add_parser("account").add_subparsers(dest="action", required=True)
     acct.add_parser("list")
-    acct.add_parser("add").add_argument("--from-stdin", action="store_true")
     for verb in ("use", "login", "test"):
         acct.add_parser(verb).add_argument("name")
     proj = sub.add_parser("project").add_subparsers(dest="action", required=True)
@@ -298,7 +291,6 @@ def _build_parser() -> argparse.ArgumentParser:
     tgt_add.add_argument("--project", required=True)
     tgt_add.add_argument("--workspace")
     tgt.add_parser("use").add_argument("name")
-    sub.add_parser("bridge").add_subparsers(dest="action", required=True).add_parser("status")  # noqa: E501  # fmt: skip
     return parser
 
 
@@ -311,7 +303,7 @@ def main() -> None:
         return
     try:
         _emit(handler(args))
-    except Exception as exc:  # noqa: BLE001 — exit-0 contract
+    except Exception as exc:  # noqa: BLE001 — errors must stay JSON with exit 0
         _emit(_err(exc))
 
 

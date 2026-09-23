@@ -16,9 +16,12 @@ Formats
   ``See also`` line, and one ``---`` / ``Tip:`` / ``WebFetch(url=...)`` block
   per hint.
 - ``markdown`` uses ``#`` for the entry title, ``##`` per section, fenced
-  ``python`` blocks for signatures and examples, pipe tables where the text
+  ``python`` blocks (the ``code_lang`` of :func:`render_markdown`) for
+  signatures and examples, pipe tables where the text
   format has columns, and hints as links under ``## Further reading``.
-- ``json`` is ``json.dumps(entry.to_dict(), indent=2)``.
+- ``json`` is ``json.dumps(entry.to_dict(), indent=2)`` with the default
+  ``ensure_ascii=True``: every non-ASCII character is a ``\\uXXXX`` escape
+  (surrogate pairs above U+FFFF).
 
 Packing conventions
 -------------------
@@ -37,6 +40,7 @@ from __future__ import annotations
 import json
 import textwrap
 from collections.abc import Callable, Iterable, Sequence
+from contextvars import ContextVar
 
 from .models import (
     HELP_FORMATS,
@@ -67,18 +71,39 @@ _MEMBER_TAG_KINDS: frozenset[str] = frozenset({"property", "method"})
 Block = list[str]
 """A block of output lines; blocks are joined with one blank line between them."""
 
+DEFAULT_CODE_LANG = "python"
+"""Language tag of the markdown code fences this library renders."""
+
+_CODE_LANG: ContextVar[str] = ContextVar("_CODE_LANG", default=DEFAULT_CODE_LANG)
+"""Fence language for the markdown render in progress.
+
+Set only by :func:`render_markdown` for the duration of one call, so the
+per-kind renderers keep their one-argument shape. A port of these
+renderers to another language replays the conformance vectors with
+``"python"`` and ships its own tag.
+"""
+
 
 # =============================================================================
 # Public dispatch
 # =============================================================================
 
 
-def render(entry: HelpEntry | SearchResult, format: HelpFormat = "text") -> str:
+def render(
+    entry: HelpEntry | SearchResult,
+    format: HelpFormat = "text",
+    *,
+    code_lang: str = DEFAULT_CODE_LANG,
+) -> str:
     """Render an entry or search result in the requested format.
 
     Args:
         entry: The structured result to render.
         format: One of ``"text"``, ``"markdown"``, ``"json"``.
+        code_lang: Language tag of the markdown code fences. Only the
+            markdown rendering of a ``HelpEntry`` uses it; the public
+            :func:`mixpanel_headless.reference.render` always passes the
+            default.
 
     Returns:
         The rendered string without a trailing newline.
@@ -102,9 +127,10 @@ def render(entry: HelpEntry | SearchResult, format: HelpFormat = "text") -> str:
             "json": render_search_json,
         }
         return search_renderers[format](entry)
+    if format == "markdown":
+        return render_markdown(entry, code_lang=code_lang)
     entry_renderers: dict[HelpFormat, Callable[[HelpEntry], str]] = {
         "text": render_text,
-        "markdown": render_markdown,
         "json": render_json,
     }
     return entry_renderers[format](entry)
@@ -153,11 +179,14 @@ def render_text(entry: HelpEntry) -> str:
     return _join_blocks(renderer(entry) + _text_tail(entry))
 
 
-def render_markdown(entry: HelpEntry) -> str:
+def render_markdown(entry: HelpEntry, *, code_lang: str = DEFAULT_CODE_LANG) -> str:
     """Render an entry as markdown.
 
     Args:
         entry: The entry to render.
+        code_lang: Language tag of the code fences the renderer adds
+            (signatures, literal values, unfenced examples). Fences already
+            present in a docstring example are kept as written.
 
     Returns:
         The markdown rendering without a trailing newline.
@@ -165,11 +194,21 @@ def render_markdown(entry: HelpEntry) -> str:
     Raises:
         ValueError: When ``entry.kind`` is not a ``HelpKind`` at runtime;
             every ``HelpKind`` has a renderer.
+
+    Example:
+        ```python
+        render_markdown(entry).splitlines()[2]                  # "```python"
+        render_markdown(entry, code_lang="ts").splitlines()[2]  # "```ts"
+        ```
     """
     renderer = _MD_RENDERERS.get(entry.kind)
     if renderer is None:
         raise ValueError(f"No markdown renderer for help kind {entry.kind!r}")
-    return _join_blocks(renderer(entry) + _md_tail(entry))
+    token = _CODE_LANG.set(code_lang)
+    try:
+        return _join_blocks(renderer(entry) + _md_tail(entry))
+    finally:
+        _CODE_LANG.reset(token)
 
 
 def render_search_text(result: SearchResult) -> str:
@@ -969,15 +1008,16 @@ def _md_table(headers: Sequence[str], rows: Iterable[Sequence[str]]) -> Block:
 
 
 def _md_fence(lines: Sequence[str]) -> Block:
-    """Wrap lines in a ``python`` fence.
+    """Wrap lines in a code fence tagged with the current code language.
 
     Args:
         lines: Code lines.
 
     Returns:
-        The fenced block.
+        The fenced block; the tag is ``python`` unless
+        :func:`render_markdown` was given another ``code_lang``.
     """
-    return ["```python", *lines, "```"]
+    return [f"```{_CODE_LANG.get()}", *lines, "```"]
 
 
 def _md_section(title: str, body: Block) -> list[Block]:

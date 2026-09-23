@@ -2,7 +2,7 @@
 
 Pure introspection over the live library plus a JSON-aware walk of the
 committed vector corpus — no source parsing, no hand transcription. Emits
-four artifacts under ``conformance/contract/``:
+five artifacts under ``conformance/contract/``:
 
 - ``error-codes.json`` (C3): the 28 exported exception classes with their
   parent edges, per-class default codes, and the full
@@ -19,6 +19,12 @@ four artifacts under ``conformance/contract/``:
   its corpus-tag occurrence count and the wire-vector ids whose
   ``expect.result`` payloads golden-lock it (via return-annotation
   mapping of the registered wire entry points).
+- ``help-registry.json``: the built-in help's static tables — the
+  ``Workspace`` domain grouping, the properties group, the documentation
+  hint rules (docs source PATHS, so each port applies its own site base),
+  ``ALIAS_DOCS``, the grammar and usage strings, the kind vocabularies, and
+  the layout constants. A port generates its reference data from this
+  file instead of transcribing the Python tables.
 
 Determinism: the ``generated_from`` stamp is injected externally (mirroring
 the D3 manifest discipline — never ``git rev-parse``); for a fixed stamp and
@@ -76,6 +82,7 @@ ARTIFACT_NAMES: tuple[str, ...] = (
     "literal-aliases.json",
     "tag-universe.json",
     "model-coverage.json",
+    "help-registry.json",
 )
 """The artifact file names, in emission order."""
 
@@ -615,6 +622,232 @@ def build_model_coverage(
 
 
 # ---------------------------------------------------------------------------
+# help-registry.json
+# ---------------------------------------------------------------------------
+
+
+_HELP_CLASS_KINDS: frozenset[str] = frozenset(
+    {"class", "model", "dataclass", "enum", "exception"}
+)
+"""Inventory kinds whose exports are classes (constructor + methods)."""
+
+
+def _signature_row(obj: Any) -> dict[str, Any] | None:
+    """Split a callable's parameters by ``inspect`` kind.
+
+    Args:
+        obj: The callable (a class for its constructor).
+
+    Returns:
+        ``{"positional_only", "params", "kwonly", "var_positional",
+        "var_keyword"}`` with ``self`` / ``cls`` dropped and names in
+        declaration order, or ``None`` when no signature is inspectable.
+    """
+    from mixpanel_headless._internal.help import resolve
+
+    try:
+        inspect.signature(obj)
+    except (TypeError, ValueError):
+        return None
+    row: dict[str, Any] = {
+        "positional_only": [],
+        "params": [],
+        "kwonly": [],
+        "var_positional": None,
+        "var_keyword": None,
+    }
+    for name, param in resolve._parameters(obj).items():
+        if param.kind is inspect.Parameter.POSITIONAL_ONLY:
+            row["positional_only"].append(name)
+        elif param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            row["params"].append(name)
+        elif param.kind is inspect.Parameter.KEYWORD_ONLY:
+            row["kwonly"].append(name)
+        elif param.kind is inspect.Parameter.VAR_POSITIONAL:
+            row["var_positional"] = name
+        else:
+            row["var_keyword"] = name
+    return row
+
+
+def _is_own(obj: Any) -> bool:
+    """Tell whether a callable is defined inside ``mixpanel_headless``.
+
+    Args:
+        obj: A class member.
+
+    Returns:
+        True when its ``__module__`` is the package or a submodule, so
+        inherited framework methods (Pydantic's ``model_dump``, ``str``
+        methods on a ``str`` enum) are left out.
+    """
+    module = getattr(obj, "__module__", None) or ""
+    return module == "mixpanel_headless" or module.startswith("mixpanel_headless.")
+
+
+def build_help_signatures() -> dict[str, dict[str, Any]]:
+    """Collect the parameter tables of every public callable help can name.
+
+    Keys are help qualnames (the strings ``reference.describe`` takes):
+    ``Workspace.<method>``; every exported function; every class-like
+    export (its constructor) and ``<Class>.<method>`` for each public
+    method or classmethod defined in the package; ``<module>.<member>``
+    for the namespace modules' callables. Callables without an
+    inspectable signature are left out.
+
+    Returns:
+        Qualname -> :func:`_signature_row` output.
+    """
+    from mixpanel_headless._internal.help import resolve
+    from mixpanel_headless._internal.help.inventory import (
+        inventory,
+        module_members,
+        workspace_members,
+    )
+    from mixpanel_headless.workspace import Workspace
+
+    rows: dict[str, dict[str, Any] | None] = {}
+    for name, kind in workspace_members():
+        if kind == "method":
+            rows[f"Workspace.{name}"] = _signature_row(getattr(Workspace, name))
+    for export in inventory():
+        if export.kind == "function":
+            rows[export.name] = _signature_row(export.obj)
+        elif export.kind == "module" and inspect.ismodule(export.obj):
+            for member in module_members(export.obj):
+                obj = getattr(export.obj, member)
+                if callable(obj) and not isinstance(obj, type):
+                    rows[f"{export.name}.{member}"] = _signature_row(obj)
+        elif (
+            export.kind in _HELP_CLASS_KINDS
+            and export.name != "Workspace"
+            and isinstance(export.obj, type)
+        ):
+            cls = export.obj
+            rows[export.name] = _signature_row(cls)
+            members = getattr(cls, "__members__", {})
+            for member in resolve._class_member_names(cls):
+                static = inspect.getattr_static(cls, member)
+                if isinstance(static, property) or member in members:
+                    continue
+                obj = getattr(cls, member)
+                if _is_own(obj):
+                    rows[f"{export.name}.{member}"] = _signature_row(obj)
+    return {key: row for key, row in sorted(rows.items()) if row is not None}
+
+
+HELP_REGISTRY_SCHEMA_VERSION = 1
+"""Version of the ``help-registry.json`` shape.
+
+Bump on any key change once a version has been committed to the contract
+directory (the first committed shape is 1; keys added before that commit
+do not bump it).
+"""
+
+
+def build_help_registry(generated_from: str) -> dict[str, Any]:
+    """Build the ``help-registry.json`` artifact body.
+
+    Every value is read from the live help modules; ordered tables stay
+    arrays because the canonical serializer sorts object keys.
+
+    Args:
+        generated_from: The externally-injected provenance SHA.
+
+    Returns:
+        The artifact body: ``schema_version``, ``exports`` (every
+        inventory export as ``[name, kind]``, sorted by name),
+        ``workspace_members`` (``[name, "method" | "property"]``, sorted),
+        ``workspace_domains`` (ordered
+        ``[title, [method, ...]]`` pairs), ``workspace_properties`` (the
+        properties group in listing order), ``workspace_hint`` and
+        ``reference_hints`` (``{title, path}`` / ``{triggers, title,
+        path}``, table order, paths relative to ``docs/``), ``docs_base`` and
+        ``hint_urls`` (``[path, url]`` for every hint path, the worked
+        ``hint_url`` mapping), ``alias_docs``,
+        ``listings``, ``types_listing_groups``, ``search_usage``,
+        ``signatures`` (see :func:`build_help_signatures`),
+        ``overview_entry_points``, ``overview_grammar``, ``llms_url``,
+        ``search_index`` (the live-index rules: kinds whose summary comes
+        from ``alias_docs``, and the member-text formats — enum values are
+        Python ``repr`` strings, literal values print bare), the kind
+        vocabularies, and ``constants``.
+    """
+    from mixpanel_headless import reference
+    from mixpanel_headless._internal.help import models, render, resolve
+    from mixpanel_headless._internal.help import search as help_search
+    from mixpanel_headless._internal.help.inventory import (
+        inventory,
+        workspace_members,
+    )
+    from mixpanel_headless._internal.help.registry import (
+        DOCS_BASE,
+        REFERENCE_HINTS,
+        WORKSPACE_DOMAINS,
+        WORKSPACE_HINT,
+        hint_url,
+    )
+    from mixpanel_headless._literal_types import ALIAS_DOCS
+
+    hint_paths = [WORKSPACE_HINT[1], *(path for _t, _title, path in REFERENCE_HINTS)]
+    return {
+        "generated_from": generated_from,
+        "schema_version": HELP_REGISTRY_SCHEMA_VERSION,
+        "exports": sorted([row.name, row.kind] for row in inventory()),
+        "workspace_members": sorted([name, kind] for name, kind in workspace_members()),
+        "workspace_domains": [
+            [title, list(methods)] for title, methods in WORKSPACE_DOMAINS
+        ],
+        "workspace_properties": [
+            name for name, kind in workspace_members() if kind == "property"
+        ],
+        "workspace_hint": {"title": WORKSPACE_HINT[0], "path": WORKSPACE_HINT[1]},
+        "reference_hints": [
+            {"triggers": list(triggers), "title": title, "path": path}
+            for triggers, title, path in REFERENCE_HINTS
+        ],
+        "docs_base": DOCS_BASE,
+        "hint_urls": [[path, hint_url(path)] for path in dict.fromkeys(hint_paths)],
+        "alias_docs": dict(ALIAS_DOCS),
+        "listings": sorted(resolve._LISTINGS),
+        "types_listing_groups": [
+            [title, kind] for title, kind in reference._TYPES_LISTING_GROUPS
+        ],
+        "search_usage": reference._SEARCH_USAGE,
+        "overview_entry_points": [
+            [name, text] for name, text in reference._OVERVIEW_ENTRY_POINTS
+        ],
+        "overview_grammar": list(reference._OVERVIEW_GRAMMAR),
+        "llms_url": reference._LLMS_URL,
+        "search_index": {
+            "no_doc_kinds": sorted(help_search._NO_DOC_KINDS),
+            "member_text_formats": {
+                "enum": "member {name} = {python_repr(value)}",
+                "literal": "value {value}",
+            },
+        },
+        "signatures": build_help_signatures(),
+        "search_tiers": sorted(
+            help_search._TIER_RANK, key=lambda tier: help_search._TIER_RANK[tier]
+        ),
+        "export_kinds": list(models.EXPORT_KINDS),
+        "member_kinds": list(models.MEMBER_KINDS),
+        "help_kinds": list(models.HELP_KINDS),
+        "help_formats": list(models.HELP_FORMATS),
+        "param_kinds": list(models.PARAM_KINDS),
+        "matched_on": list(typing.get_args(models.MatchedOn)),
+        "constants": {
+            "name_width": render.NAME_WIDTH,
+            "line_width": render.LINE_WIDTH,
+            "category_width": render.CATEGORY_WIDTH,
+            "miss_hits": reference._MISS_HITS,
+            "suggestion_limit": resolve._SUGGESTION_LIMIT,
+            "suggestion_cutoff": resolve._SUGGESTION_CUTOFF,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Emission
 # ---------------------------------------------------------------------------
 
@@ -622,7 +855,7 @@ def build_model_coverage(
 def write_artifacts(
     out_dir: Path, vectors_dir: Path, generated_from: str
 ) -> dict[str, Path]:
-    """Generate and write all four artifacts (canonical JSON + newline).
+    """Generate and write all five artifacts (canonical JSON + newline).
 
     Args:
         out_dir: Destination directory (created if missing).
@@ -637,6 +870,7 @@ def write_artifacts(
         "literal-aliases.json": build_literal_aliases(generated_from),
         "tag-universe.json": build_tag_universe(vectors_dir, generated_from),
         "model-coverage.json": build_model_coverage(vectors_dir, generated_from),
+        "help-registry.json": build_help_registry(generated_from),
     }
     out_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
