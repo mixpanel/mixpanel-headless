@@ -13523,7 +13523,8 @@ class Replay(ResultWithDataFrame):
         including Flutter web and desktop. A stream is a screenshot
         recording when it has any ``mp_wireframe`` event, or when it has
         Meta events and none of them carries a page URL (``href``). A
-        replay with no events, or with no Meta event, is ``"dom"``.
+        replay with no events, or with neither a Meta event nor an
+        ``mp_wireframe`` event, is ``"dom"``.
 
         Returns:
             ``"dom"`` or ``"screenshot"``.
