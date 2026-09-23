@@ -627,7 +627,12 @@ def build_model_coverage(
 
 
 HELP_REGISTRY_SCHEMA_VERSION = 1
-"""Version of the ``help-registry.json`` shape; bump on any key change."""
+"""Version of the ``help-registry.json`` shape.
+
+Bump on any key change once a version has been committed to the contract
+directory (the first committed shape is 1; keys added before that commit
+do not bump it).
+"""
 
 
 def build_help_registry(generated_from: str) -> dict[str, Any]:

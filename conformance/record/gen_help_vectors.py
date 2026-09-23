@@ -14,6 +14,11 @@ ordinary docstring edit does not change the bundle; only a renderer change
 does. Refresh them deliberately with ``--refresh-entries`` (then regenerate
 the bundle in the same change).
 
+``help.render`` / ``help.render_search`` / ``help.render_miss`` outputs in
+the ``json`` format are ``json.dumps(..., indent=2)`` with the default
+``ensure_ascii=True``: every non-ASCII character is a ``\\uXXXX`` escape
+(a surrogate pair above U+FFFF). A port must escape the same way to match.
+
 Usage:
     ```bash
     uv run python -m conformance.record.gen_help_vectors \\
