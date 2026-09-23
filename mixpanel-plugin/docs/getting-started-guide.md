@@ -38,7 +38,7 @@ For service accounts, you'll also need your **Mixpanel Project ID**, which you c
 
 ## Part 1: Install the Package
 
-The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool. The Claude plugin needs version 0.3.0 or later, because the built-in reference (`mp help`) first shipped in 0.3.0. The `/mixpanel-headless:setup` skill installs or upgrades the package for you.
+The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool. The Claude plugin does not use this installation: its setup skill installs version 0.3.0 or later into a private environment of its own (see Part 6). Install the package here to use the library and CLI yourself.
 
 ### Option A: Install with pip
 
@@ -355,7 +355,7 @@ In your Claude Code session, run:
 
 ### Run the Setup Skill
 
-After installing, run the setup skill to install dependencies and verify authentication:
+After installing, run the setup skill to create the plugin's Python environment and verify authentication:
 
 ```
 /mixpanel-headless:setup
@@ -363,10 +363,13 @@ After installing, run the setup skill to install dependencies and verify authent
 
 This will:
 
-1. Check that Python 3.10+ is available
-2. Install the `mixpanel_headless` package and its dependencies (pandas, numpy, matplotlib, networkx, etc.)
-3. Verify that your Mixpanel credentials are configured
-4. Report the status of your connection
+1. Create a private environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`, or reuse it if it exists. Setup uses `uv venv` when uv is installed (uv can supply a Python 3.10+), and `python3 -m venv` with your Python 3.10+ otherwise
+2. Confirm that the environment runs Python 3.10 or later
+3. Install `mixpanel_headless` 0.3.0 or later and its dependencies (pandas, numpy, matplotlib, networkx, etc.) into that environment only, never into your system or user Python
+4. Verify that your Mixpanel credentials are configured
+5. Print the environment path and report the status of your connection
+
+The skills run that environment's `python` and `mp`. The environment survives plugin updates, and setup upgrades it when you run it again. To run your own scripts with the same library, use `<venv>/bin/python your_script.py`, where `<venv>` is the printed path, or install `mixpanel-headless` in your own project. If `mp` is not on your `PATH`, run the plugin's copy as `<venv>/bin/mp`.
 
 ### Configure Credentials (If Not Already Done)
 
@@ -376,7 +379,7 @@ If the setup skill reports that no credentials are found, use the `/mixpanel-hea
 /mixpanel-headless:auth account add my-project
 ```
 
-Claude will guide you through entering your service account username, project ID, and region. You'll be prompted to run a shell command that securely collects your secret. For OAuth, the simplest path is `! mp login` — it opens the browser, derives the account name, and pins a project. The browser path defaults to the `us` region; EU and India users should pass `--region eu` or `--region in`. Use `/mixpanel-headless:auth account add personal --type oauth_browser --region us` followed by `/mixpanel-headless:auth account login personal` if you need explicit control over the account name at registration time.
+Claude will guide you through entering your service account username, project ID, and region. You'll be prompted to run a shell command that securely collects your secret. For OAuth, the simplest path is `! <venv>/bin/mp login` (`<venv>` is the environment path that setup prints) — it opens the browser, derives the account name, and pins a project. The browser path defaults to the `us` region; EU and India users should pass `--region eu` or `--region in`. Use `/mixpanel-headless:auth account add personal --type oauth_browser --region us` followed by `/mixpanel-headless:auth account login personal` if you need explicit control over the account name at registration time.
 
 ### Ask Analytics Questions
 
@@ -406,7 +409,7 @@ The plugin ships five skills:
 | **session-replay** | Auto-loads on session replay questions | Finds, fetches, and analyzes session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines). |
 | **dashboard-expert** | Auto-loads on dashboard questions | Four-mode workflow (Analyze, Build, Modify, Explain) for Mixpanel dashboards, with 9 design templates, chart-type selection, and layout reference. |
 | **auth** | `/mixpanel-headless:auth` | Guided wrapper around `mp account / project / workspace / target / session` for managing credentials without leaving the conversation. |
-| **setup** | `/mixpanel-headless:setup` (manual only) | Installs or upgrades `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, verifies the installation, and checks for credentials. |
+| **setup** | `/mixpanel-headless:setup` (manual only) | Creates or upgrades the plugin's private Python environment with `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, verifies it, and checks for credentials. |
 
 The skills do not copy the API. Claude looks up each name with `mp help` (for example `mp help Workspace.query_funnel`), so the answer always matches the installed library.
 
@@ -537,7 +540,7 @@ mp login --name <name>            # or `mp account login <name>` (legacy)
 ### Plugin Not Working in Claude Code
 
 1. Make sure plugins are enabled in your Claude Code settings
-2. Run `/mixpanel-headless:setup` to install dependencies
+2. Run `/mixpanel-headless:setup` to create or repair the plugin's Python environment
 3. Check auth with `/mixpanel-headless:auth session`
 4. If the plugin doesn't appear, try restarting Claude Code
 

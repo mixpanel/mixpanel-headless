@@ -32,7 +32,11 @@ This installs the `mixpanel-headless` plugin, which teaches Claude how to be a M
 /mixpanel-headless:setup
 ```
 
-This installs the `mixpanel_headless` Python package (version 0.3.0 or later) and all analysis dependencies (pandas, matplotlib, networkx, etc.). If an older version is installed, setup upgrades it, because the skills use the built-in reference (`mp help`) that first shipped in 0.3.0. It takes about a minute.
+This creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` (with `uv` when available, else `python3 -m venv`). It installs the `mixpanel_headless` package (version 0.3.0 or later) and all analysis dependencies (pandas, matplotlib, networkx, etc.) into that environment only, never into your system or user Python. If the environment already exists, setup upgrades it, because the skills use the built-in reference (`mp help`) that first shipped in 0.3.0. The environment survives plugin updates. It takes about a minute.
+
+At the end, setup prints the environment path (`Plugin environment: ...`) and the command to run your own scripts with it. You can also install `mixpanel-headless` in your own project.
+
+In the commands below, `<venv>` means that printed path. The `mp` command is often not on your `PATH`, so the `!` commands use the full path `<venv>/bin/mp`.
 
 At the end, setup checks for Mixpanel credentials. If you see a warning about missing credentials, continue to Step 3.
 
@@ -67,7 +71,7 @@ Your secret is never visible in the conversation.
 The frictionless one-shot path:
 
 ```
-! mp login
+! <venv>/bin/mp login
 ```
 
 `mp login` opens a browser for the PKCE flow, derives the account name from your Mixpanel org, and pins a default project. The browser path defaults to the `us` region; EU and India users must pass `--region eu` or `--region in` (the SA / oauth_token paths probe `us → eu → in` automatically when env vars trigger them). If you have several accessible projects, you'll see a numbered picker. Override the derived name with `--name personal` or skip the picker with `--project 3018488`.
@@ -224,13 +228,13 @@ operations stay on the CLI. Run them in your terminal (or via the `!`
 shell prefix inside Claude Code):
 
 ```
-! mp account remove my-old-project
+! <venv>/bin/mp account remove my-old-project
 ```
 
 ### Revoke OAuth tokens
 
 ```
-! mp account logout my-account-name
+! <venv>/bin/mp account logout my-account-name
 ```
 
 ### Save a named target (account + project + optional workspace)
@@ -246,7 +250,7 @@ shell prefix inside Claude Code):
 
 ### "No credentials configured"
 
-Run `! mp login` for the one-shot frictionless path, or `/mixpanel-headless:auth account add my-project` and follow the prompts for the guided wizard.
+Run `! <venv>/bin/mp login` for the one-shot frictionless path, or `/mixpanel-headless:auth account add my-project` and follow the prompts for the guided wizard.
 
 ### "Authentication failed"
 
@@ -257,7 +261,7 @@ Run `! mp login` for the one-shot frictionless path, or `/mixpanel-headless:auth
 
 ### "OAuth token expired" or OAuth login stopped working
 
-Run `! mp login --name <name>` (or the legacy `/mixpanel-headless:auth account login <name>`) to refresh your tokens. If you switch to a service account instead, set `MP_USERNAME` + `MP_SECRET` and re-run `! mp login`, or use `/mixpanel-headless:auth account add <name> --type service_account ...` for explicit registration — service account credentials don't expire.
+Run `! <venv>/bin/mp login --name <name>` (or the legacy `/mixpanel-headless:auth account login <name>`) to refresh your tokens. If you switch to a service account instead, set `MP_USERNAME` + `MP_SECRET` and re-run `! <venv>/bin/mp login`, or use `/mixpanel-headless:auth account add <name> --type service_account ...` for explicit registration — service account credentials don't expire.
 
 ### Plugin not appearing
 
@@ -268,6 +272,8 @@ Run `! mp login --name <name>` (or the legacy `/mixpanel-headless:auth account l
 ### Setup fails to install packages
 
 If you're behind a corporate proxy or firewall, you may need to configure `pip` or `uv` with your proxy settings before running setup.
+
+If setup cannot create the environment (for example, on Debian or Ubuntu without the `python3-venv` package), install `uv` or `python3-venv`, then run setup again.
 
 ---
 

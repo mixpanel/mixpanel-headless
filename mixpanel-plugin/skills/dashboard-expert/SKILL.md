@@ -11,12 +11,14 @@ description: >-
   or wants to turn queries into reports placed on a dashboard. Do not use for
   general analytics questions or one-off queries (use mixpanelyst), or for
   what a specific user did in a session recording (use session-replay).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Dashboard Expert
 
 Analyze, build, modify, and explain Mixpanel dashboards with `mixpanel_headless`. A dashboard is a list of rows. Each row holds one to four cells on a 12-column grid. A cell is a report (owned by this dashboard), a report link (owned by another dashboard, read-only), or a text card (HTML).
+
+Run code with the plugin's Python environment: `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. Use that full path, because another Python on `PATH` may not have `mixpanel_headless`. If the path does not exist, the environment is not set up: tell the user to run `/mixpanel-headless:setup`. If the user's own project already has `mixpanel_headless` (for example a uv project), `uv run python` also works.
 
 ## Pick the mode
 
@@ -142,13 +144,15 @@ These 14 rules come from failures against the live Mixpanel API. The library doe
 
 ## Look up the API before you write code
 
+`mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path.
+
 The installed library documents itself, so do not guess a method name, a parameter, or a type field. Verify any signature with `mp help Workspace.<method>`, for example `mp help Workspace.update_dashboard`. Other useful look-ups:
 
 - `mp help Workspace --domain dashboards` lists every dashboard method.
 - `mp help Workspace --domain reports` lists the saved-report (bookmark) methods.
 - `mp help CreateDashboardParams` and `mp help DashboardRow` show the fields and a worked example.
 
-The full look-up loop is in the mixpanelyst skill. If `mp` is not on `PATH`, use `python3 -m mixpanel_headless help <query>`.
+The full look-up loop is in the mixpanelyst skill. The same text is available as `${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless help <query>`.
 
 ## Report links
 

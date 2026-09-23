@@ -399,7 +399,7 @@ The plugin is built around the 5-engine query taxonomy — `query()`, `query_fun
 
 **Installation:**
 
-Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. Run `/mixpanel-headless:setup` once; it installs or upgrades `mixpanel_headless` to 0.3.0 or later.
+Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. Run `/mixpanel-headless:setup` once; it creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` and installs `mixpanel_headless` 0.3.0 or later there (never into your system or user Python). The skills run that environment's `python` and `mp`, and the environment survives plugin updates.
 
 **What you get:**
 
@@ -408,7 +408,7 @@ Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. 
   - `session-replay` — Auto-triggered on session replay questions; finds, fetches, and analyzes web and mobile recordings (rage clicks, rage taps, dead clicks, errors, action timelines)
   - `dashboard-expert` — Auto-triggered on dashboard requests; full CRUD for Mixpanel dashboards with layout system, text cards, report arrangement, and 9 design templates
   - `auth` — `/mixpanel-headless:auth`; manage credentials, accounts, OAuth login, project discovery
-  - `setup` — `/mixpanel-headless:setup`; install dependencies, verify the installation, and check for credentials
+  - `setup` — `/mixpanel-headless:setup`; create or upgrade the plugin's Python environment, verify it, and check for credentials
 - **Live API reference**: the skills look up signatures, types, and allowed values with the library's built-in help instead of a copied reference — `mp help Workspace.query`, `mp help search cohort`, or `mp.help("Filter")` in Python
 - **Script**: `auth_manager.py` (programmatic credential management)
 - **Secure by design**: Credentials managed outside conversation context

@@ -1,19 +1,22 @@
 ---
 name: mixpanelyst
 description: Analyzes Mixpanel data with Python, the mixpanel_headless library, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's tracked event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, and other governance objects, or when code runs mixpanel_headless queries or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Mixpanel analysis with mixpanel_headless
 
 Answer questions about Mixpanel data. Write and run Python that uses the `mixpanel_headless` library and pandas. This skill teaches judgment: which query answers the question, which defaults mislead, and how to check a result. The library itself is the API reference.
 
-- Library that `python3` imports: !`python3 -m mixpanel_headless --version 2>/dev/null || echo "python3 cannot import mixpanel_headless; run /mixpanel-headless:setup"`
-- `mp` command: !`mp help 2>/dev/null | head -n 1 | grep . || echo "mp not on PATH; use python3 -m mixpanel_headless help for look-ups"`
+Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version 2>/dev/null || echo "plugin environment not set up; run /mixpanel-headless:setup"`
 
-!`mp help 2>/dev/null | grep -A 30 "^Workspace domains" || python3 -m mixpanel_headless help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
+!`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
 
-Your code runs through `python3`, so the first line is the one that matters. If it is older than 0.3.0, or `python3` cannot import the library, ask the user to run `/mixpanel-headless:setup`. In a project that uses uv, `uv run python` can see the library when plain `python3` does not. The look-up commands below need 0.3.0 or later.
+## Run code in the plugin environment
+
+The plugin keeps its own Python environment. Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. In this skill, `mp` means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
+
+If that interpreter does not exist, or the version above is older than 0.3.0, ask the user to run `/mixpanel-headless:setup`. When the user's project already has mixpanel_headless (for example, a uv project), `uv run python` also works.
 
 ## Mental model
 
@@ -33,7 +36,7 @@ Every result has `.df` (a pandas DataFrame) and `.params` (the report definition
 
 1. **Ground in the schema.** Confirm that each event carries each property that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. When the question names one or two known events, use `ws.properties("<event>")`. For an unfamiliar project, run `ws.schema_graph(include_density=True)` once, then `schema.properties_for_event("<event>")`. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
 2. **Look up the API.** Use the look-up loop below for each method or type that you did not look up in this session.
-3. **Write and run.** Use `python3 -c "..."` for one quick look. Write a `.py` file for multi-step work, so that you can edit and run it again.
+3. **Write and run.** Use `-c "..."` with the plugin interpreter for one quick look. Write a `.py` file for multi-step work and run it with the same interpreter, so that you can edit and run it again.
 4. **Check before you present.** Look at the row count and the date range. Treat an empty or all-zero result as a question, not an answer. Compare the magnitude with a simple total (`ws.query("<event>", mode="total")`). Look for gaps in a time series.
 5. **Share when asked.** When the user wants to share or open the result in Mixpanel, pass the result to `ws.create_report_link(result, name="...")` and give them `link.url`. Each call stores a new record on the server, so do not create links that nobody asked for.
 
@@ -42,16 +45,17 @@ Every result has `.df` (a pandas DataFrame) and `.params` (the report definition
 The installed library documents itself. Its answers match the installed version, so trust them over memory and over any example in this skill. Do not guess API names: a wrong parameter name costs a failed run, and a look-up costs one call of about one second, with no credentials and no network.
 
 1. Find the name: `mp help search <term>` (for example `mp help search retention`).
-2. Read the signature: `mp help Workspace.query_funnel`. For one parameter and its allowed values: `mp help Workspace.query_funnel.math`.
-3. Read a type before you build it. `mp help Filter` lists its constructors. `mp help MathType` lists its values.
-4. List a whole area: `mp help Workspace --domain "feature flags"`. `mp help` alone prints the domains.
-5. Write the code and run it. If it fails, read the error. The error text often names the fix.
+2. Read the signature: `mp help Workspace.query_funnel`.
+3. For the allowed values of a parameter, run `mp help Workspace.<method>.<param>` first, for example `mp help Workspace.query_funnel.math`. Do this before you read a reference file or fetch a guide, because it lists every value for the installed version.
+4. Read a type before you build it. `mp help Filter` lists its constructors. `mp help MathType` lists its values.
+5. List a whole area: `mp help Workspace --domain "feature flags"`. `mp help` alone prints the domains.
+6. Write the code and run it. If it fails, read the error. The error text often names the fix.
 
 Look up each name once per session and reuse the answer. Add `-f json` only when you want to extract fields, for example `mp help Filter -f json --jq '.construction[].name'`. Inside Python, `mp.help("Workspace.query")` prints the same text. `mp help types` and `mp help exceptions` list all public types and exceptions.
 
 A "Tip" line at the end of `mp help` output points to a hosted guide. Fetch it with WebFetch when you need a tutorial rather than a signature.
 
-If `mp` is not on `PATH`, use `python3 -m mixpanel_headless help <query>`. If `mp help` reports `No such command`, the installed library is older than 0.3.0, so ask the user to run `/mixpanel-headless:setup`.
+If `mp help` reports `No such command`, the library in the plugin environment is older than 0.3.0, so ask the user to run `/mixpanel-headless:setup`.
 
 ## Choose the parameters on purpose
 
@@ -84,7 +88,7 @@ Each of these returns a plausible but wrong answer, or fails in a way that looks
 - **A report link from another project or region raises `ReportLinkScopeMismatchError`.** The check runs before the record fetch. The message names the `ws.use(...)` call that fixes it.
 - **A shortlink (`/s/<code>`) can fail with `AuthenticationError`.** The shortlink can redirect to the login page, so the API cannot expand it. Ask the user for the full URL from the browser address bar.
 - **Demo and test projects can have old data.** When a result is empty, widen the date range with `from_date` before you conclude that nothing happened.
-- **`ws.schema_graph()` can take minutes on a very large project.** Its cache lasts only inside one Python process. Separate `python3 -c` runs fetch it again, so do multi-step work in one `.py` file, or save the schema to a file.
+- **`ws.schema_graph()` can take minutes on a very large project.** Its cache lasts only inside one Python process. Separate `-c` runs fetch it again, so do multi-step work in one `.py` file, or save the schema to a file.
 - **Sweeps multiply queries and can hit the rate limit.** Cap each loop at a few values, and run the queries one after another, not in parallel. On `RateLimitError`, wait `e.retry_after` seconds (when it is set) before you retry.
 
 ## Reading guide
@@ -106,7 +110,7 @@ Read a reference file only when its condition applies. Each file holds judgment 
 | The `session-replay` skill | When the user asks what a specific user did on screen, or about rage clicks, dead clicks, or recordings |
 | The `dashboard-expert` skill | When the user asks to build, change, or explain a dashboard |
 | The `auth` skill | When `mp.Workspace()` raises `ConfigError` or `AuthenticationError`, or reports no account or no project |
-| `/mixpanel-headless:setup` | When the import fails or `mp help` does not exist |
+| `/mixpanel-headless:setup` | When the plugin interpreter is missing, the import fails, or `mp help` does not exist |
 
 ## Output
 

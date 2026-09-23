@@ -157,7 +157,7 @@ def shipped_text_files() -> list[Path]:
 
 
 def _is_shipped_text(path: Path) -> bool:
-    """Tell whether a plugin file is text that G9 scans.
+    """Tell whether a plugin file is text that the forbidden-text guard scans.
 
     Args:
         path: A file under ``PLUGIN_ROOT``.
@@ -213,7 +213,7 @@ def report(title: str, violations: list[str]) -> str:
     """Format a guard's violations as one assertion message.
 
     Args:
-        title: The guard name, for example ``"G1 help queries resolve"``.
+        title: The guard name, for example ``"Help queries resolve"``.
         violations: Every ``"<path>:<line>: <reason>"`` string found.
 
     Returns:
@@ -304,7 +304,7 @@ def markdown_blocks(path: Path) -> list[CodeBlock]:
 
 
 # =============================================================================
-# G1: help queries
+# Help queries
 # =============================================================================
 
 _CLI_HELP = re.compile(
@@ -497,7 +497,7 @@ def check_help_query(query: str, domain: str | None) -> str | None:
 
 
 # =============================================================================
-# G2-G4: Python block scanners
+# Python block scanners
 # =============================================================================
 
 
@@ -534,7 +534,7 @@ def _parse(block: CodeBlock) -> ast.Module | None:
         block: A Python code block.
 
     Returns:
-        The module AST, or ``None`` (guard G5 reports the syntax error).
+        The module AST, or ``None`` (the parse guard reports the syntax error).
     """
     try:
         return ast.parse(block.text)
@@ -603,7 +603,7 @@ def workspace_call_violations(block: CodeBlock) -> tuple[list[str], list[str]]:
 
     Returns:
         ``(member_violations, keyword_violations)``: unknown ``Workspace``
-        attributes (guard G2) and unknown keyword arguments (guard G3). A
+        attributes and unknown keyword arguments. A
         block that does not parse yields two empty lists.
 
     Example:
@@ -680,7 +680,7 @@ def import_violations(block: CodeBlock) -> list[str]:
         block: A Python code block.
 
     Returns:
-        Guard G4 violations. A block that does not parse yields ``[]``.
+        Import violations. A block that does not parse yields ``[]``.
     """
     tree = _parse(block)
     if tree is None:
@@ -745,7 +745,7 @@ def import_violations(block: CodeBlock) -> list[str]:
 
 
 # =============================================================================
-# G6-G8: structure helpers
+# Structure helpers
 # =============================================================================
 
 _CONTENTS_HEADING = re.compile(
@@ -886,7 +886,7 @@ def parse_frontmatter(text: str) -> dict[str, str] | None:
 
 
 # =============================================================================
-# G9-G10: text helpers
+# Text helpers
 # =============================================================================
 
 _DECISION = r"D(?:1[0-4]|[1-9])"
@@ -899,7 +899,7 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("plan code FR-0NN", re.compile(r"\bFR-0\d+")),
     ("plan code 'Plan 0NN'", re.compile(r"\bPlan 0\d+")),
     ("section sign §", re.compile(r"§")),
-    ("guard code G1-G10", re.compile(r"\bG(?:10|[1-9])\b")),
+    ("guard code (G plus a number)", re.compile(r"\bG(?:10|[1-9])\b")),
     (
         "decision code D1-D14",
         re.compile(
@@ -980,3 +980,141 @@ def parse_version_floor(text: str) -> tuple[int, ...] | None:
         return None
     parts = tuple(int(p) for p in match.group("version").split("."))
     return parts + (0,) * (3 - len(parts))
+
+
+# =============================================================================
+# Plugin-owned Python environment
+# =============================================================================
+#
+# Skills run code with the plugin's own interpreter at
+# ${CLAUDE_PLUGIN_DATA}/venv/bin/python. Claude Code substitutes
+# ${CLAUDE_...} names in skill text before the permission check. A shell
+# variable such as $CLAUDE_PLUGIN_DATA expands to nothing, and the check
+# denies it. A denied ``!`command``` line aborts the whole skill.
+
+SYSTEM_GRANTS = frozenset({"Bash(python3 *)", "Bash(python *)", "Bash(mp *)"})
+"""``allowed-tools`` entries that grant the system Python or a bare ``mp``."""
+
+
+def _split_tools(value: str) -> list[str]:
+    """Split an ``allowed-tools`` value into entries.
+
+    Spaces inside parentheses belong to the entry, so
+    ``Bash(uv run *) Read`` yields ``["Bash(uv run *)", "Read"]``.
+
+    Args:
+        value: The ``allowed-tools`` frontmatter value.
+
+    Returns:
+        The entries in order.
+    """
+    entries: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in value:
+        if ch.isspace() and depth == 0:
+            if current:
+                entries.append("".join(current))
+                current = []
+            continue
+        depth += (ch == "(") - (ch == ")")
+        current.append(ch)
+    if current:
+        entries.append("".join(current))
+    return entries
+
+
+def allowed_tools_violations(path: Path, value: str) -> list[str]:
+    """Reject ``allowed-tools`` entries for the system Python or a bare ``mp``.
+
+    The legacy ``Bash(cmd:*)`` spelling counts as ``Bash(cmd *)``.
+
+    Args:
+        path: The ``SKILL.md`` file (for the message).
+        value: Its ``allowed-tools`` value.
+
+    Returns:
+        One violation per rejected entry.
+    """
+    found: list[str] = []
+    for entry in _split_tools(value):
+        normal = re.sub(r"\s+", " ", entry.replace(":*)", " *)"))
+        if normal in SYSTEM_GRANTS:
+            found.append(
+                f"{rel(path)}:1: allowed-tools grants {entry!r}; use the plugin "
+                "venv path (${CLAUDE_PLUGIN_DATA}/venv/bin/...)"
+            )
+    return found
+
+
+_SYSTEM_PYTHON = re.compile(
+    r"(?<![\w.-])python3\s+(?:-c\b|-m\s+mixpanel_headless\b|(?!-)\S+\.py\b)"
+)
+"""A run of ``python3 -c``, ``python3 -m mixpanel_headless``, or ``python3 x.py``.
+
+A path prefix is still a match (``.../venv/bin/python3 -c``), because the
+skills' permission pattern names ``python`` and denies ``python3``.
+"""
+
+
+def system_python_violations(path: Path, text: str) -> list[str]:
+    """Find runs of the system ``python3`` in skill markdown.
+
+    Args:
+        path: The markdown file.
+        text: Its content (prose and code blocks are both scanned).
+
+    Returns:
+        One violation per matching line.
+    """
+    return [
+        f"{rel(path)}:{number}: runs system python3; use "
+        f"${{CLAUDE_PLUGIN_DATA}}/venv/bin/python: {line.strip()[:120]}"
+        for number, line in enumerate(text.splitlines(), start=1)
+        if _SYSTEM_PYTHON.search(line)
+    ]
+
+
+_INJECTION = re.compile(r"(?:^|(?<=\s))!`(?P<cmd>[^`]+)`")
+"""A ``!`command``` shell injection at the start of a line or after a space."""
+
+_CLAUDE_SUBST = re.compile(r"\$\{CLAUDE_[A-Z0-9_]+\}")
+"""A ``${CLAUDE_...}`` name that Claude Code substitutes in skill text."""
+
+_BARE_COMMANDS = frozenset({"mp", "python", "python3"})
+"""Commands that no skill ``allowed-tools`` grants without the venv path."""
+
+
+def injection_violations(path: Path, text: str) -> list[str]:
+    """Check each ``!`command``` line in skill markdown.
+
+    A command may use ``${CLAUDE_...}`` substitutions but no other ``$``
+    (no shell variable and no ``$(...)``), and no pipeline segment may start
+    with a bare ``mp``, ``python``, or ``python3``, because the permission
+    check would deny it and abort the skill.
+
+    Args:
+        path: The markdown file.
+        text: Its content.
+
+    Returns:
+        One violation per failing command.
+    """
+    found: list[str] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        for match in _INJECTION.finditer(line):
+            command = match.group("cmd")
+            where = f"{rel(path)}:{number}"
+            if "$" in _CLAUDE_SUBST.sub("", command):
+                found.append(
+                    f"{where}: ! line uses a shell variable or $(...): {command[:120]}"
+                )
+            segments = re.split(r"\|\|?|&&|;", command)
+            heads = {seg.split()[0] for seg in segments if seg.split()}
+            bare = sorted(heads & _BARE_COMMANDS)
+            if bare:
+                found.append(
+                    f"{where}: ! line runs bare {', '.join(bare)} (not in "
+                    f"allowed-tools; use the venv path): {command[:120]}"
+                )
+    return found

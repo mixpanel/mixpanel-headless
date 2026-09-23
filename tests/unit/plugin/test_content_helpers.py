@@ -14,16 +14,19 @@ import pytest
 
 from tests.unit.plugin._content import (
     CodeBlock,
+    allowed_tools_violations,
     check_help_query,
     extract_help_queries,
     forbidden_text_violations,
     has_contents_list,
     import_violations,
+    injection_violations,
     iter_links,
     parse_frontmatter,
     parse_help_args,
     parse_version_floor,
     split_markdown,
+    system_python_violations,
     workspace_call_violations,
 )
 
@@ -77,7 +80,7 @@ class TestSplitMarkdown:
 
 
 # =============================================================================
-# G1 extraction and resolution
+# Help query extraction and resolution
 # =============================================================================
 
 
@@ -200,7 +203,7 @@ class TestCheckHelpQuery:
 
 
 # =============================================================================
-# G2-G4 AST scanners
+# Python AST scanners
 # =============================================================================
 
 
@@ -213,7 +216,7 @@ class TestWorkspaceCallViolations:
         assert workspace_call_violations(_block(src)) == ([], [])
 
     def test_unknown_method(self) -> None:
-        """An unknown method is a G2 violation with the file line."""
+        """An unknown method is a member violation with the file line."""
         members, keywords = workspace_call_violations(
             _block("x = 1\nws.not_a_method()\n", line=10)
         )
@@ -223,7 +226,7 @@ class TestWorkspaceCallViolations:
         assert keywords == []
 
     def test_unknown_keyword(self) -> None:
-        """An unknown keyword is a G3 violation naming the method."""
+        """An unknown keyword is a keyword violation naming the method."""
         _, keywords = workspace_call_violations(
             _block("ws.property_values(property='x')\n")
         )
@@ -273,7 +276,7 @@ class TestImportViolations:
 
 
 # =============================================================================
-# G6-G10 helpers
+# Structure and text helpers
 # =============================================================================
 
 
@@ -402,3 +405,114 @@ class TestParseVersionFloor:
         assert (
             parse_version_floor('MIXPANEL_HEADLESS_PKG="mixpanel-headless"\n') is None
         )
+
+
+# =============================================================================
+# Plugin-owned Python environment scanners
+# =============================================================================
+
+
+class TestAllowedToolsViolations:
+    """``allowed_tools_violations`` rejects system Python and bare ``mp`` grants."""
+
+    def test_venv_grants_pass(self) -> None:
+        """The plugin venv interpreter and CLI patterns are allowed."""
+        value = (
+            "Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) "
+            "Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit "
+            "WebFetch(domain:mixpanel.github.io)"
+        )
+        assert allowed_tools_violations(SAMPLE, value) == []
+
+    @pytest.mark.parametrize(
+        "entry",
+        ["Bash(python3 *)", "Bash(python *)", "Bash(mp *)", "Bash(python3:*)"],
+    )
+    def test_system_grants_flagged(self, entry: str) -> None:
+        """Each system Python or bare ``mp`` grant is reported.
+
+        Args:
+            entry: One ``allowed-tools`` entry.
+        """
+        found = allowed_tools_violations(SAMPLE, f"Read {entry} Write")
+        assert len(found) == 1
+        assert entry in found[0]
+
+
+class TestSystemPythonViolations:
+    """``system_python_violations`` finds system ``python3`` runs in skill text."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            'python3 -c "import mixpanel_headless"',
+            "Run `python3 -m mixpanel_headless help Filter`.",
+            "python3 analysis.py",
+            "python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py status",
+            "${CLAUDE_PLUGIN_DATA}/venv/bin/python3 -c 'x'",
+        ],
+    )
+    def test_flagged(self, line: str) -> None:
+        """Each system ``python3`` run is reported.
+
+        Args:
+            line: A line of skill markdown.
+        """
+        assert system_python_violations(SAMPLE, line)
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            '${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "import mixpanel_headless"',
+            "${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py",
+            "uv run python analysis.py",
+            "Python 3.10 or later is required; python3 must be on PATH.",
+            "python3 -m venv is the fallback that setup uses.",
+        ],
+    )
+    def test_not_flagged(self, line: str) -> None:
+        """Venv runs and plain mentions of Python are not reported.
+
+        Args:
+            line: A line of skill markdown.
+        """
+        assert system_python_violations(SAMPLE, line) == []
+
+
+class TestInjectionViolations:
+    """``injection_violations`` checks ``!`command``` lines in skill text."""
+
+    def test_clean_injection_passes(self) -> None:
+        """A venv command with only ``${CLAUDE_...}`` substitutions passes."""
+        text = (
+            "!`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version "
+            '2>/dev/null || echo "run setup"`\n'
+            "!`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "
+            '"^Workspace domains" || echo "none"`\n'
+        )
+        assert injection_violations(SAMPLE, text) == []
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "!`$CLAUDE_PLUGIN_DATA/venv/bin/python -V`",
+            "!`echo $HOME`",
+            "!`echo $(date)`",
+            "!`mp help 2>/dev/null | head -1`",
+            "!`python3 -m mixpanel_headless --version`",
+            "!`echo hi && python -V`",
+        ],
+    )
+    def test_flagged(self, line: str) -> None:
+        """A shell variable, a subshell, or a bare ``mp`` / ``python`` is reported.
+
+        Args:
+            line: A line of skill markdown with one injection.
+        """
+        found = injection_violations(SAMPLE, f"Intro.\n{line}\n")
+        assert found
+        assert found[0].startswith("sample.md:2:")
+
+    def test_plain_bang_text_is_ignored(self) -> None:
+        """An exclamation mark before ordinary code is not an injection."""
+        assert injection_violations(SAMPLE, "Done!`x` is fine?\n") == []

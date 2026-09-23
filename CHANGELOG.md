@@ -34,11 +34,23 @@ may include API changes.
 - Plugin: the `dashboard-expert` references are reorganized by topic
   (content and layout, text cards, report pipeline, chart types,
   templates).
-- Plugin: the setup skill requires `mixpanel-headless>=0.3.0`, upgrades
-  an older install, and checks that `mp help` works.
+- Plugin: the plugin now runs code in its own Python environment. The
+  setup skill creates it at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`
+  (with `uv` when available, otherwise `python3 -m venv`) and installs
+  `mixpanel-headless>=0.3.0` and the analysis packages there, never into
+  the system or user Python. Running setup again upgrades the
+  environment, and setup checks that `mp help` works. The skills run
+  that environment's `python` and `mp`, and the environment survives
+  plugin updates. To run your own scripts with it, use the `python` path
+  that setup prints, or install `mixpanel-headless` in your own project.
+  Setup ignores the uv settings of the project you run it from, so a
+  project's uv configuration does not change the plugin install.
+- Plugin: the analysis skills pre-approve only the plugin environment's
+  `python` and `mp`, `uv run`, file reads, writes, and edits, and fetches
+  from the documentation site. They no longer pre-approve any `python`,
+  `python3`, or `mp` on your `PATH`.
 - Plugin: skill descriptions say when to use each skill and when to use
-  another one, and the `mixpanelyst`, `session-replay`, and
-  `dashboard-expert` skills allow a narrower set of tools.
+  another one.
 - Plugin: the plugin no longer documents or checks the Cowork bridge.
   The setup skill no longer detects it, the auth skill no longer has a
   bridge status command, and the Cowork quick start guide is removed.

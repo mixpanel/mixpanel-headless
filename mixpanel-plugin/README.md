@@ -7,7 +7,7 @@ The plugin has five skills: analysis, session replay, dashboards, authentication
 ## Quick start
 
 ```text
-/mixpanel-headless:setup                 # install or upgrade the library, check credentials
+/mixpanel-headless:setup                 # create the plugin's Python environment, check credentials
 "How many signups last week?"            # insights query
 "Where do users drop off in checkout?"   # funnel
 "Do users come back after onboarding?"   # retention
@@ -24,7 +24,7 @@ The plugin has five skills: analysis, session replay, dashboards, authentication
 | `session-replay` | Automatic on session replay questions | Find, fetch, and analyze session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines) |
 | `dashboard-expert` | Automatic on dashboard requests | Read, explain, build, and change dashboards, text cards, and layouts |
 | `auth` | `/mixpanel-headless:auth` | Show the session; add, log in, and switch accounts, projects, workspaces, and targets |
-| `setup` | `/mixpanel-headless:setup` | Install or upgrade `mixpanel_headless` (0.3.0 or later), verify the installation, and check for credentials |
+| `setup` | `/mixpanel-headless:setup` | Create or upgrade the plugin's private Python environment with `mixpanel_headless` (0.3.0 or later), verify it, and check for credentials |
 
 `setup` runs only when you call it. The other skills also load when your request matches their description.
 
@@ -42,7 +42,7 @@ mp help Workspace --domain "feature flags"   # every method in one area
 mp help Filter -f json                   # machine-readable output
 ```
 
-In Python, `mp.help("Workspace.query")` prints the same text, and `mp.reference.search("cohort")` returns structured results. If `mp` is not on `PATH`, run `python3 -m mixpanel_headless help <query>`. The [hosted documentation](https://mixpanel.github.io/mixpanel-headless/) has guides and tutorials.
+The skills run these commands with the `mp` from the plugin's Python environment (see below). In Python, `mp.help("Workspace.query")` prints the same text, and `mp.reference.search("cohort")` returns structured results. The [hosted documentation](https://mixpanel.github.io/mixpanel-headless/) has guides and tutorials.
 
 ## Query engines
 
@@ -100,9 +100,19 @@ From GitHub:
 /plugin install mixpanel-headless@mixpanel-headless-marketplace
 ```
 
-Then run `/mixpanel-headless:setup`. The skills need `mixpanel_headless` 0.3.0 or later, because `mp help` first shipped in 0.3.0. Setup installs or upgrades the library as necessary.
+Then run `/mixpanel-headless:setup`. The skills need `mixpanel_headless` 0.3.0 or later, because `mp help` first shipped in 0.3.0.
 
-For local development:
+### The plugin's Python environment
+
+Setup creates a private Python environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`. It uses `uv venv` when uv is installed, and `python3 -m venv` otherwise. With uv, a Python 3.10 or later on your `PATH` is optional, because uv can supply one. Setup installs `mixpanel-headless` 0.3.0 or later and the analysis packages into that environment only. It never installs into your system or user Python. Run setup again at any time; it reuses the environment and upgrades the packages.
+
+- The skills run that environment's `python` and `mp`, not the ones on your `PATH`.
+- The environment survives plugin updates, because its folder name has no version.
+- To run your own scripts with it, run `<venv>/bin/python your_script.py`, where `<venv>` is the path setup prints at the end.
+- `mp` from this environment is often not on your `PATH`. Run it as `<venv>/bin/mp` (for example, `<venv>/bin/mp login`).
+- Alternatively, install `mixpanel-headless` in your own project (for example, `uv add mixpanel-headless`).
+
+### Local development
 
 ```bash
 claude --plugin-dir /path/to/mixpanel-headless/mixpanel-plugin
@@ -114,17 +124,18 @@ Run `/reload-plugins` to load changes without a restart.
 
 When `mixpanelyst`, `session-replay`, or `dashboard-expert` runs, Claude Code pre-approves these tools for that turn, so analysis code runs without a prompt for each command:
 
-- `mp`, `python3`, `python`, and `uv run` commands
+- The plugin environment's `python` and `mp` (full paths under `~/.claude/plugins/data/mixpanel-headless-<source>/venv/bin/`)
+- `uv run` commands
 - File reads, writes, and edits
 - Fetches from the documentation site (`mixpanel.github.io`)
 
-The pre-approval also covers `mp` commands and Python code that change or delete Mixpanel objects. The skills tell Claude to list the objects and get your confirmation before any delete. Your own permission rules take precedence over the pre-approval. To get a prompt for each command, add ask rules for these tools (for example, `Bash(mp *)`) to your Claude Code permission settings. To block a command, add a deny rule.
+The pre-approval also covers `mp` commands and Python code that change or delete Mixpanel objects. The skills tell Claude to list the objects and get your confirmation before any delete. Your own permission rules take precedence over the pre-approval. To get a prompt for each command, add ask rules for these tools (for example, a `Bash(...)` rule for the environment's `mp` path) to your Claude Code permission settings. To block a command, add a deny rule.
 
-`setup` and `auth` pre-approve only their own scripts.
+`setup` and `auth` pre-approve only their own scripts: `setup` runs its install script, and `auth` runs its script with the environment's `python`.
 
 ## Prerequisites
 
-- Python 3.10 or later
+- Python 3.10 or later, or `uv` (setup builds the plugin environment with one of them)
 - A Mixpanel account: a service account, a browser login, or an OAuth token
 - Claude Code with plugins enabled
 
@@ -149,7 +160,7 @@ mixpanel-plugin/
 │   │   └── scripts/auth_manager.py  # auth status and management (JSON output)
 │   └── setup/
 │       ├── SKILL.md                 # /mixpanel-headless:setup
-│       └── scripts/setup.sh         # installs or upgrades the library
+│       └── scripts/setup.sh         # creates the Python environment and installs the library
 ├── evals/                           # behavior evals (claude plugin eval)
 ├── docs/
 │   ├── quickstart-claude-code.md    # getting started in Claude Code

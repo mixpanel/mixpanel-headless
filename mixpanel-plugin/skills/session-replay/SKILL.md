@@ -1,12 +1,18 @@
 ---
 name: session-replay
 description: Reads Mixpanel session replay recordings with the mixpanel_headless library. It fetches a user's sessions, turns them into action timelines and pandas DataFrames, and explains what happened on screen. Use when the user asks what a specific user did on screen, in a recording, or click by click; asks about rage clicks, dead clicks, rage taps, dead taps, error sessions, long pauses, or action timelines; wants to correlate a tracked event with on-screen behavior; gives a distinct_id or a replay ID and asks what happened in the session; or asks about iOS, Android, React Native, or Flutter recordings, screens, or taps. Do not use for aggregate analytics questions such as trends, funnels, retention, or segment counts (use mixpanelyst), or for building or editing dashboards (use dashboard-expert).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Session replay
 
 Session replay answers "what did this user actually do?". It gives the click-by-click story behind an analytics number. The library fetches the rrweb recordings (rrweb is the open-source format that Mixpanel uses to record sessions), runs an analyzer on them, and gives you DataFrames plus a text timeline of actions.
+
+## Run code
+
+The plugin keeps its own Python environment. Run the Python examples with `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path.
+
+If that interpreter does not exist, the environment is not set up. Tell the user to run `/mixpanel-headless:setup`. When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` works too.
 
 ## Workflow
 

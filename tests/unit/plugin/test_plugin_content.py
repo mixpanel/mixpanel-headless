@@ -1,4 +1,4 @@
-"""Repository guards G1-G10 for the ``mixpanel-plugin/`` content.
+"""Repository guards for the ``mixpanel-plugin/`` content.
 
 The plugin's skills point at the library's built-in reference (``mp help``)
 instead of copying signatures. These guards keep the remaining text honest
@@ -8,16 +8,17 @@ reason) in one assertion message.
 
 | Guard | Fails when |
 | --- | --- |
-| G1 | A help query in plugin markdown does not resolve. |
-| G2 | A ``ws.<name>`` in a Python block is not a ``Workspace`` member. |
-| G3 | A keyword argument in a ``ws.<method>(...)`` call is not a parameter. |
-| G4 | A ``mixpanel_headless`` import or ``mp.X`` names a non-public object. |
-| G5 | A ```` ```python ```` block does not parse. |
-| G6 | A skill or reference file is over its size budget. |
-| G7 | A relative link is broken, crosses skills, or a reference is orphaned. |
-| G8 | Skill frontmatter breaks the name, length, or key rules. |
-| G9 | Shipped text carries removed names, Cowork, plan codes, or all-caps rules. |
-| G10 | ``setup.sh`` pins a floor below the version that added ``mp help``. |
+| Help queries | A help query in plugin markdown does not resolve. |
+| Workspace members | A ``ws.<name>`` in a Python block is not a ``Workspace`` member. |
+| Keyword arguments | A keyword argument in a ``ws.<method>(...)`` call is not a parameter. |
+| Public imports | A ``mixpanel_headless`` import or ``mp.X`` names a non-public object. |
+| Python parses | A ```` ```python ```` block does not parse. |
+| Size budgets | A skill or reference file is over its size budget. |
+| Links | A relative link is broken, crosses skills, or a reference is orphaned. |
+| Frontmatter | Skill frontmatter breaks the name, length, or key rules. |
+| Forbidden text | Shipped text carries removed names, Cowork, plan codes, or all-caps rules. |
+| Version floor | ``setup.sh`` pins a floor below the version that added ``mp help``. |
+| Plugin Python environment | A skill grants or runs the system Python or a bare ``mp``, or a ``!`` line uses a shell variable. |
 
 Scanners live in ``_content.py`` and have their own tests in
 ``test_content_helpers.py``.
@@ -32,11 +33,13 @@ from tests.unit.plugin._content import (
     PLUGIN_ROOT,
     PYTHON_LANGS,
     SKILLS_ROOT,
+    allowed_tools_violations,
     check_help_query,
     extract_help_queries,
     forbidden_text_violations,
     has_contents_list,
     import_violations,
+    injection_violations,
     is_external,
     iter_links,
     markdown_blocks,
@@ -49,6 +52,7 @@ from tests.unit.plugin._content import (
     report,
     shipped_text_files,
     skill_dirs,
+    system_python_violations,
     workspace_call_violations,
 )
 
@@ -101,8 +105,8 @@ def _python_blocks() -> list[tuple[Path, int, str]]:
     ]
 
 
-class TestG1HelpQueries:
-    """G1: every help query in plugin markdown resolves."""
+class TestHelpQueries:
+    """Every help query in plugin markdown resolves."""
 
     def test_help_queries_resolve(self) -> None:
         """Each ``mp help`` / ``mp.help()`` query resolves via the reference API.
@@ -119,11 +123,11 @@ class TestG1HelpQueries:
                     violations.append(
                         f"{rel(query.path)}:{query.line}: {reason} [{query.raw}]"
                     )
-        assert not violations, report("G1 help queries resolve", violations)
+        assert not violations, report("Help queries resolve", violations)
 
 
-class TestG2WorkspaceMembers:
-    """G2: every ``ws.<name>`` in a Python block exists on ``Workspace``."""
+class TestWorkspaceMembers:
+    """Every ``ws.<name>`` in a Python block exists on ``Workspace``."""
 
     def test_workspace_members_exist(self) -> None:
         """Each ``ws.<name>`` names a real ``Workspace`` method or property."""
@@ -132,11 +136,11 @@ class TestG2WorkspaceMembers:
             for block in markdown_blocks(path):
                 if block.lang in PYTHON_LANGS:
                     violations.extend(workspace_call_violations(block)[0])
-        assert not violations, report("G2 Workspace calls exist", violations)
+        assert not violations, report("Workspace calls exist", violations)
 
 
-class TestG3KeywordArguments:
-    """G3: every keyword in a ``ws.<method>(...)`` call is a real parameter."""
+class TestKeywordArguments:
+    """Every keyword in a ``ws.<method>(...)`` call is a real parameter."""
 
     def test_keyword_arguments_exist(self) -> None:
         """Each keyword is a parameter of the method (unless it takes ``**kwargs``)."""
@@ -145,11 +149,11 @@ class TestG3KeywordArguments:
             for block in markdown_blocks(path):
                 if block.lang in PYTHON_LANGS:
                     violations.extend(workspace_call_violations(block)[1])
-        assert not violations, report("G3 keyword arguments exist", violations)
+        assert not violations, report("Keyword arguments exist", violations)
 
 
-class TestG4PublicImports:
-    """G4: Python blocks use only public ``mixpanel_headless`` names."""
+class TestPublicImports:
+    """Python blocks use only public ``mixpanel_headless`` names."""
 
     def test_imports_are_public(self) -> None:
         """Each import and ``mp.X`` access names a public object."""
@@ -158,11 +162,11 @@ class TestG4PublicImports:
             for block in markdown_blocks(path):
                 if block.lang in PYTHON_LANGS:
                     violations.extend(import_violations(block))
-        assert not violations, report("G4 imports exist", violations)
+        assert not violations, report("Imports exist", violations)
 
 
-class TestG5PythonParses:
-    """G5: every Python block parses."""
+class TestPythonParses:
+    """Every Python block parses."""
 
     def test_python_blocks_parse(self) -> None:
         """Each ```` ```python ```` block parses with ``ast.parse``."""
@@ -176,11 +180,11 @@ class TestG5PythonParses:
                     f"{rel(path)}:{where}: does not parse ({exc.msg}); "
                     "use ```text for pseudo-code"
                 )
-        assert not violations, report("G5 Python blocks parse", violations)
+        assert not violations, report("Python blocks parse", violations)
 
 
-class TestG6SizeBudgets:
-    """G6: skill entry files and reference files stay inside their budgets."""
+class TestSizeBudgets:
+    """Skill entry files and reference files stay inside their budgets."""
 
     def test_skill_line_budgets(self) -> None:
         """Each ``SKILL.md`` fits the general and per-skill line budgets."""
@@ -193,7 +197,7 @@ class TestG6SizeBudgets:
             budget = min(ANY_SKILL_MAX_LINES, SKILL_MAX_LINES.get(skill.name, 10**9))
             if lines > budget:
                 violations.append(f"{rel(entry)}:1: {lines} lines > budget {budget}")
-        assert not violations, report("G6 skill size budgets", violations)
+        assert not violations, report("Skill size budgets", violations)
 
     def test_long_references_have_contents(self) -> None:
         """A reference file over 100 lines starts with a contents list."""
@@ -206,11 +210,11 @@ class TestG6SizeBudgets:
                     violations.append(
                         f"{rel(ref)}:1: {lines} lines and no contents list at the top"
                     )
-        assert not violations, report("G6 reference contents lists", violations)
+        assert not violations, report("Reference contents lists", violations)
 
 
-class TestG7Links:
-    """G7: links resolve, stay inside their skill, and references stay one deep."""
+class TestLinks:
+    """Links resolve, stay inside their skill, and references stay one deep."""
 
     def test_relative_links_resolve(self) -> None:
         """Each relative link resolves inside the plugin and inside its own skill."""
@@ -232,7 +236,7 @@ class TestG7Links:
                     violations.append(f"{where}: link leaves the plugin {target!r}")
                 elif skill is not None and _skill_of(resolved) not in {None, skill}:
                     violations.append(f"{where}: link into another skill {target!r}")
-        assert not violations, report("G7 relative links", violations)
+        assert not violations, report("Relative links", violations)
 
     def test_references_are_linked_from_skill(self) -> None:
         """Each reference file is named by its skill's ``SKILL.md``.
@@ -248,7 +252,7 @@ class TestG7Links:
                 name = ref.relative_to(skill).as_posix()
                 if name not in text:
                     violations.append(f"{rel(ref)}:1: not referenced from {rel(entry)}")
-        assert not violations, report("G7 orphan references", violations)
+        assert not violations, report("Orphan references", violations)
 
     def test_references_do_not_link_references(self) -> None:
         """A reference file does not link to or name another reference file."""
@@ -272,7 +276,7 @@ class TestG7Links:
                                 f"{rel(ref)}:{number}: names another reference "
                                 f"{mention!r}"
                             )
-        assert not violations, report("G7 one-level references", violations)
+        assert not violations, report("One-level references", violations)
 
 
 def _skill_of(path: Path) -> str | None:
@@ -292,8 +296,8 @@ def _skill_of(path: Path) -> str | None:
     return parts[0] if len(parts) > 1 else None
 
 
-class TestG8Frontmatter:
-    """G8: skill frontmatter follows the name, length, and key rules."""
+class TestFrontmatter:
+    """Skill frontmatter follows the name, length, and key rules."""
 
     def test_frontmatter(self) -> None:
         """Each skill has frontmatter with a matching name, a short description, allowed keys."""
@@ -323,11 +327,11 @@ class TestG8Frontmatter:
             allowed = PORTABLE_KEYS | EXTRA_KEYS.get(skill.name, frozenset())
             for key in sorted(set(meta) - allowed):
                 violations.append(f"{where}: key {key!r} is not allowed here")
-        assert not violations, report("G8 frontmatter", violations)
+        assert not violations, report("Frontmatter", violations)
 
 
-class TestG9ForbiddenText:
-    """G9: shipped text carries no removed names, plan codes, or shouting."""
+class TestForbiddenText:
+    """Shipped text carries no removed names, plan codes, or shouting."""
 
     def test_no_forbidden_text(self) -> None:
         """No ``help.py``, ``ai-plugins``, Cowork, plan codes, or all-caps rule words.
@@ -343,11 +347,11 @@ class TestG9ForbiddenText:
             violations.extend(
                 forbidden_text_violations(path, read(path), caps_allowed=caps_allowed)
             )
-        assert not violations, report("G9 forbidden text", violations)
+        assert not violations, report("Forbidden text", violations)
 
 
-class TestG10VersionFloor:
-    """G10: ``setup.sh`` installs a library that has ``mp help``."""
+class TestVersionFloor:
+    """``setup.sh`` installs a library that has ``mp help``."""
 
     def test_setup_floor(self) -> None:
         """The ``mixpanel-headless>=`` floor in ``setup.sh`` is at least 0.3.0."""
@@ -355,9 +359,58 @@ class TestG10VersionFloor:
         floor = parse_version_floor(read(script))
         expected = ".".join(map(str, HELP_FLOOR))
         assert floor is not None, (
-            f"G10 version floor: {rel(script)} does not pin mixpanel-headless>={expected}"
+            f"Version floor: {rel(script)} does not pin mixpanel-headless>={expected}"
         )
         assert floor >= HELP_FLOOR, (
-            f"G10 version floor: {rel(script)} pins "
+            f"Version floor: {rel(script)} pins "
             f">={'.'.join(map(str, floor))}, needs >={expected}"
         )
+
+
+def _skill_markdown() -> list[Path]:
+    """List every markdown file under ``mixpanel-plugin/skills/``.
+
+    Returns:
+        Sorted ``SKILL.md`` and reference paths. The README and ``docs/``
+        are out of scope for the plugin-environment checks.
+    """
+    return sorted(SKILLS_ROOT.rglob("*.md"))
+
+
+class TestPluginPythonEnvironment:
+    """Skills run code only through the plugin-owned venv.
+
+    The venv lives at ``${CLAUDE_PLUGIN_DATA}/venv``. A grant or a command for
+    the system Python or a bare ``mp`` either fails the permission check or
+    runs outside the environment that setup built.
+    """
+
+    def test_allowed_tools_do_not_grant_system_python(self) -> None:
+        """No ``allowed-tools`` grants ``Bash(python3 *)``, ``Bash(python *)``, or ``Bash(mp *)``."""
+        violations: list[str] = []
+        for skill in skill_dirs():
+            entry = skill / "SKILL.md"
+            meta = parse_frontmatter(read(entry)) if entry.is_file() else None
+            if meta and "allowed-tools" in meta:
+                violations.extend(
+                    allowed_tools_violations(entry, meta["allowed-tools"])
+                )
+        assert not violations, report("System Python grants", violations)
+
+    def test_skill_text_does_not_run_system_python(self) -> None:
+        """No skill markdown runs ``python3 -c``, ``python3 -m mixpanel_headless``, or ``python3 <file>.py``.
+
+        ``setup.sh`` is a script, not skill markdown, so it may bootstrap
+        the venv with the system ``python3``.
+        """
+        violations: list[str] = []
+        for path in _skill_markdown():
+            violations.extend(system_python_violations(path, read(path)))
+        assert not violations, report("System Python runs", violations)
+
+    def test_injection_lines_use_only_claude_substitutions(self) -> None:
+        """Each ``!`command``` line uses no ``$`` except ``${CLAUDE_...}`` and no bare ``mp`` / ``python``."""
+        violations: list[str] = []
+        for path in _skill_markdown():
+            violations.extend(injection_violations(path, read(path)))
+        assert not violations, report("Shell injection lines", violations)
