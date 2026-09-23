@@ -59,7 +59,7 @@ The installed library documents itself. Its answers match the installed version,
 5. List a whole area: `mp help Workspace --domain "feature flags"`. `mp help` alone prints the domains.
 6. Write the code and run it. If it fails, read the error. The error text often names the fix.
 
-Look up each name once per session and reuse the answer. Add `-f json` only when you want to extract fields, for example `mp help Filter -f json --jq '.construction[].name'`. Inside Python, `mp.help("Workspace.query")` prints the same text. `mp help types` and `mp help exceptions` list all public types and exceptions.
+Look up each name once per session and reuse the answer. Add `-f json` only when you want to extract fields, for example `mp help Filter -f json --jq '.construction[].name'`. Inside Python, `mp.help("Workspace.query")` prints the same text. When code must act on the reference, not for a quick look-up, `mp.reference.describe("Workspace.query")` returns the same entry as a structured object (for example `.signature.params`), and `mp.reference.search("cohort")` returns structured hits (`.hits`). `mp help types` and `mp help exceptions` list all public types and exceptions.
 
 A "Tip" line at the end of `mp help` output points to a hosted guide. Fetch it with WebFetch when you need a tutorial rather than a signature.
 
