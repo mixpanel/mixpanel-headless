@@ -626,6 +626,116 @@ def build_model_coverage(
 # ---------------------------------------------------------------------------
 
 
+_HELP_CLASS_KINDS: frozenset[str] = frozenset(
+    {"class", "model", "dataclass", "enum", "exception"}
+)
+"""Inventory kinds whose exports are classes (constructor + methods)."""
+
+
+def _signature_row(obj: Any) -> dict[str, Any] | None:
+    """Split a callable's parameters by ``inspect`` kind.
+
+    Args:
+        obj: The callable (a class for its constructor).
+
+    Returns:
+        ``{"positional_only", "params", "kwonly", "var_positional",
+        "var_keyword"}`` with ``self`` / ``cls`` dropped and names in
+        declaration order, or ``None`` when no signature is inspectable.
+    """
+    from mixpanel_headless._internal.help import resolve
+
+    try:
+        inspect.signature(obj)
+    except (TypeError, ValueError):
+        return None
+    row: dict[str, Any] = {
+        "positional_only": [],
+        "params": [],
+        "kwonly": [],
+        "var_positional": None,
+        "var_keyword": None,
+    }
+    for name, param in resolve._parameters(obj).items():
+        if param.kind is inspect.Parameter.POSITIONAL_ONLY:
+            row["positional_only"].append(name)
+        elif param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD:
+            row["params"].append(name)
+        elif param.kind is inspect.Parameter.KEYWORD_ONLY:
+            row["kwonly"].append(name)
+        elif param.kind is inspect.Parameter.VAR_POSITIONAL:
+            row["var_positional"] = name
+        else:
+            row["var_keyword"] = name
+    return row
+
+
+def _is_own(obj: Any) -> bool:
+    """Tell whether a callable is defined inside ``mixpanel_headless``.
+
+    Args:
+        obj: A class member.
+
+    Returns:
+        True when its ``__module__`` is the package or a submodule, so
+        inherited framework methods (Pydantic's ``model_dump``, ``str``
+        methods on a ``str`` enum) are left out.
+    """
+    module = getattr(obj, "__module__", None) or ""
+    return module == "mixpanel_headless" or module.startswith("mixpanel_headless.")
+
+
+def build_help_signatures() -> dict[str, dict[str, Any]]:
+    """Collect the parameter tables of every public callable help can name.
+
+    Keys are help qualnames (the strings ``reference.describe`` takes):
+    ``Workspace.<method>``; every exported function; every class-like
+    export (its constructor) and ``<Class>.<method>`` for each public
+    method or classmethod defined in the package; ``<module>.<member>``
+    for the namespace modules' callables. Callables without an
+    inspectable signature are left out.
+
+    Returns:
+        Qualname -> :func:`_signature_row` output.
+    """
+    from mixpanel_headless._internal.help import resolve
+    from mixpanel_headless._internal.help.inventory import (
+        inventory,
+        module_members,
+        workspace_members,
+    )
+    from mixpanel_headless.workspace import Workspace
+
+    rows: dict[str, dict[str, Any] | None] = {}
+    for name, kind in workspace_members():
+        if kind == "method":
+            rows[f"Workspace.{name}"] = _signature_row(getattr(Workspace, name))
+    for export in inventory():
+        if export.kind == "function":
+            rows[export.name] = _signature_row(export.obj)
+        elif export.kind == "module" and inspect.ismodule(export.obj):
+            for member in module_members(export.obj):
+                obj = getattr(export.obj, member)
+                if callable(obj) and not isinstance(obj, type):
+                    rows[f"{export.name}.{member}"] = _signature_row(obj)
+        elif (
+            export.kind in _HELP_CLASS_KINDS
+            and export.name != "Workspace"
+            and isinstance(export.obj, type)
+        ):
+            cls = export.obj
+            rows[export.name] = _signature_row(cls)
+            members = getattr(cls, "__members__", {})
+            for member in resolve._class_member_names(cls):
+                static = inspect.getattr_static(cls, member)
+                if isinstance(static, property) or member in members:
+                    continue
+                obj = getattr(cls, member)
+                if _is_own(obj):
+                    rows[f"{export.name}.{member}"] = _signature_row(obj)
+    return {key: row for key, row in sorted(rows.items()) if row is not None}
+
+
 HELP_REGISTRY_SCHEMA_VERSION = 1
 """Version of the ``help-registry.json`` shape.
 
@@ -656,6 +766,7 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
         ``hint_urls`` (``[path, url]`` for every hint path, the worked
         ``hint_url`` mapping), ``alias_docs``,
         ``listings``, ``types_listing_groups``, ``search_usage``,
+        ``signatures`` (see :func:`build_help_signatures`),
         ``overview_entry_points``, ``overview_grammar``, ``llms_url``,
         ``search_index`` (the live-index rules: kinds whose summary comes
         from ``alias_docs``, and the member-text formats — enum values are
@@ -715,6 +826,7 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
                 "literal": "value {value}",
             },
         },
+        "signatures": build_help_signatures(),
         "search_tiers": sorted(
             help_search._TIER_RANK, key=lambda tier: help_search._TIER_RANK[tier]
         ),

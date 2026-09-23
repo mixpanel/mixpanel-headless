@@ -636,6 +636,7 @@ class TestHelpRegistryArtifact:
             "search_index",
             "search_tiers",
             "search_usage",
+            "signatures",
             "types_listing_groups",
             "workspace_domains",
             "workspace_hint",
@@ -665,6 +666,41 @@ class TestHelpRegistryArtifact:
             sorted(n for n, k in members.items() if k == "property")
             == (help_registry["workspace_properties"])
         )
+
+    def test_signatures_cover_every_public_callable(
+        self, help_registry: dict[str, Any]
+    ) -> None:
+        """The signature table splits parameters by kind for every callable.
+
+        Args:
+            help_registry: The artifact body.
+
+        Raises:
+            AssertionError: If a Workspace method is missing, ``self`` leaks,
+                or a known signature is split wrongly.
+        """
+        signatures = help_registry["signatures"]
+        methods = [n for n, k in help_registry["workspace_members"] if k == "method"]
+        for name in methods:
+            assert f"Workspace.{name}" in signatures, name
+        for key, row in signatures.items():
+            assert sorted(row) == [
+                "kwonly",
+                "params",
+                "positional_only",
+                "var_keyword",
+                "var_positional",
+            ], key
+            assert "self" not in row["params"] and "cls" not in row["params"], key
+        query = signatures["Workspace.query"]
+        assert query["params"] == ["events"]
+        assert "from_date" in query["kwonly"]
+        assert "limit" in signatures["Workspace.query_funnel"]["kwonly"]
+        assert "accounts.add" in signatures
+        assert "login_unified" in signatures
+        assert "Filter.greater_than" in signatures
+        assert "Filter" in signatures
+        assert "Filter.model_dump" not in signatures
 
     def test_hint_urls_worked_mapping(self, help_registry: dict[str, Any]) -> None:
         """Every hint path has its hosted URL under ``docs_base``.
