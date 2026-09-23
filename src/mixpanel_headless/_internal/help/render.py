@@ -19,7 +19,9 @@ Formats
   ``python`` blocks (the ``code_lang`` of :func:`render_markdown`) for
   signatures and examples, pipe tables where the text
   format has columns, and hints as links under ``## Further reading``.
-- ``json`` is ``json.dumps(entry.to_dict(), indent=2)``.
+- ``json`` is ``json.dumps(entry.to_dict(), indent=2)`` with the default
+  ``ensure_ascii=True``: every non-ASCII character is a ``\\uXXXX`` escape
+  (surrogate pairs above U+FFFF).
 
 Packing conventions
 -------------------

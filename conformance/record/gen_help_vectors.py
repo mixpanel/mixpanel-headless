@@ -247,6 +247,65 @@ _SYNTHETIC_HITS: list[dict[str, Any]] = [
 ]
 
 
+_UNFENCED_EXAMPLE_ENTRY: dict[str, Any] = {
+    "kind": "function",
+    "name": "scale_bounds",
+    "qualname": "scale_bounds",
+    "summary": "Scale a rect by a factor \u2014 rounding half to even.",
+    "doc": {
+        "summary": "Scale a rect by a factor \u2014 rounding half to even.",
+        "body": "Scale a rect by a factor \u2014 rounding half to even.",
+        "args": [["bounds", "The rect."], ["factor", "The factor (\u2265 0)."]],
+        "returns": "The scaled rect.",
+        "raises": [],
+        "example": "scale_bounds([1, 2, 3, 4], 2.0)\n# [2, 4, 6, 8]",
+        "notes": "",
+    },
+    "signature": {
+        "name": "scale_bounds",
+        "params": [
+            {
+                "name": "bounds",
+                "annotation": "list[int]",
+                "default": None,
+                "description": "The rect.",
+                "values": [],
+                "kind": "positional_or_keyword",
+            },
+            {
+                "name": "factor",
+                "annotation": "float",
+                "default": "1.0",
+                "description": "The factor (\u2265 0).",
+                "values": [],
+                "kind": "keyword_only",
+            },
+        ],
+        "returns": "list[int]",
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": None,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": None,
+    "see_also": [],
+    "hints": [],
+}
+"""A synthetic entry whose example has no fence, so the renderer adds one.
+
+No frozen ``describe()`` output has an unfenced example (library
+docstrings always fence theirs). The non-ASCII summary also pins the
+``json`` format's ``ensure_ascii`` escapes.
+"""
+
+
 def _search_results(frozen: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """List the ``SearchResult`` render inputs.
 
@@ -357,6 +416,7 @@ def _cases() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         ("miss-without-candidates", {"term": "Filtr"}),
         ("blank-term", {"term": "   "}),
+        ("negative-limit", {"term": "cohort", "limit": -1}),
     ):
         cases.append(("help.search", slug, {"index": _INDEX, **extra}))
     for row in frozen["entries"]:
@@ -368,12 +428,37 @@ def _cases() -> list[tuple[str, str, dict[str, Any]]]:
                     {"entry": row["entry"], "format": fmt},
                 )
             )
-    method = frozen["entries"][0]["entry"]
+    for fmt in FORMATS:
+        cases.append(
+            (
+                "help.render",
+                f"synthetic-unfenced-example-{fmt}",
+                {"entry": _UNFENCED_EXAMPLE_ENTRY, "format": fmt},
+            )
+        )
+    by_slug = {row["slug"]: row["entry"] for row in frozen["entries"]}
+    for slug in (
+        "method-segmentation",
+        "literal-math-type",
+        "constant-int",
+        "dataclass-filter",
+    ):
+        cases.append(
+            (
+                "help.render",
+                f"{slug}-markdown-code-lang-ts",
+                {"entry": by_slug[slug], "format": "markdown", "code_lang": "ts"},
+            )
+        )
     cases.append(
         (
             "help.render",
-            "method-segmentation-markdown-code-lang-ts",
-            {"entry": method, "format": "markdown", "code_lang": "ts"},
+            "synthetic-unfenced-example-markdown-code-lang-ts",
+            {
+                "entry": _UNFENCED_EXAMPLE_ENTRY,
+                "format": "markdown",
+                "code_lang": "ts",
+            },
         )
     )
     for slug, result in _search_results(frozen):

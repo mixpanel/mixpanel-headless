@@ -399,7 +399,9 @@ def search(
             suggestions (see :func:`suggestions`); none when omitted.
 
     Returns:
-        ``SearchResult.to_dict()``, or ``{"error": {...}}`` for a blank term.
+        ``SearchResult.to_dict()``; ``{"error": {class, code, message,
+        details}}`` for a blank term; ``{"error": {"class": "ValueError",
+        "message"}}`` for a negative ``limit``.
     """
     rows = help_search.build_index(
         help_search.IndexEntry(
@@ -420,6 +422,8 @@ def search(
         )
     except HelpLookupError as exc:
         return {"error": _error_dict(exc)}
+    except ValueError as exc:
+        return {"error": {"class": "ValueError", "message": str(exc)}}
     return result.to_dict()
 
 

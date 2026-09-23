@@ -420,8 +420,9 @@ def test_help_vectors_cover_every_api_kind_and_format() -> None:
 
     Raises:
         AssertionError: If an api has no vector, a ``HelpKind`` (other than
-            ``listing`` twins) is never rendered in all three formats, or
-            the ``code_lang`` knob has no vector.
+            ``listing`` twins) is never rendered in all three formats, the
+            ``code_lang`` knob or the added Example fence has no vector,
+            or the ``json`` format stops escaping non-ASCII.
     """
     from conformance.record.registry import HELP_ADAPTER_APIS
     from mixpanel_headless._internal.help.models import HELP_KINDS
@@ -438,8 +439,18 @@ def test_help_vectors_cover_every_api_kind_and_format() -> None:
     assert set(rendered) == set(HELP_KINDS)
     assert all(formats == {"text", "markdown", "json"} for formats in rendered.values())
     ts = [body for body in vectors if body["call"]["input"].get("code_lang") == "ts"]
-    assert len(ts) == 1
-    assert "```ts" in ts[0]["expect"]["output"]
+    assert len(ts) == 5
+    for body in ts:
+        assert "```ts" in body["expect"]["output"], body["id"]
+    by_id = {str(body["id"]): body["expect"]["output"] for body in vectors}
+    unfenced = by_id["help/help.render/authored-synthetic-unfenced-example-markdown"]
+    assert "## Example\n\n```python\nscale_bounds(" in unfenced
+    ascii_json = by_id["help/help.render/authored-synthetic-unfenced-example-json"]
+    assert "\\u2014" in ascii_json
+    negative = by_id["help/help.search/authored-negative-limit"]
+    assert negative == {
+        "error": {"class": "ValueError", "message": "limit must be >= 0, got -1"}
+    }
 
 
 def test_help_entries_fixture_round_trips_and_is_current_shape() -> None:

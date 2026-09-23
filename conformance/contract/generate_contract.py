@@ -651,7 +651,10 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
         ``hint_urls`` (``[path, url]`` for every hint path, the worked
         ``hint_url`` mapping), ``alias_docs``,
         ``listings``, ``types_listing_groups``, ``search_usage``,
-        ``overview_entry_points``, ``overview_grammar``, the kind
+        ``overview_entry_points``, ``overview_grammar``, ``llms_url``,
+        ``search_index`` (the live-index rules: kinds whose summary comes
+        from ``alias_docs``, and the member-text formats — enum values are
+        Python ``repr`` strings, literal values print bare), the kind
         vocabularies, and ``constants``.
     """
     from mixpanel_headless import reference
@@ -699,6 +702,14 @@ def build_help_registry(generated_from: str) -> dict[str, Any]:
             [name, text] for name, text in reference._OVERVIEW_ENTRY_POINTS
         ],
         "overview_grammar": list(reference._OVERVIEW_GRAMMAR),
+        "llms_url": reference._LLMS_URL,
+        "search_index": {
+            "no_doc_kinds": sorted(help_search._NO_DOC_KINDS),
+            "member_text_formats": {
+                "enum": "member {name} = {python_repr(value)}",
+                "literal": "value {value}",
+            },
+        },
         "search_tiers": sorted(
             help_search._TIER_RANK, key=lambda tier: help_search._TIER_RANK[tier]
         ),

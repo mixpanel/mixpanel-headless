@@ -625,6 +625,7 @@ class TestHelpRegistryArtifact:
             "help_kinds",
             "hint_urls",
             "listings",
+            "llms_url",
             "matched_on",
             "member_kinds",
             "overview_entry_points",
@@ -632,6 +633,7 @@ class TestHelpRegistryArtifact:
             "param_kinds",
             "reference_hints",
             "schema_version",
+            "search_index",
             "search_tiers",
             "search_usage",
             "types_listing_groups",
@@ -770,6 +772,12 @@ class TestHelpRegistryArtifact:
         """
         assert help_registry["search_usage"].startswith("Usage: help('search <term>')")
         assert help_registry["overview_grammar"][-1] == "search <term>"
+        assert help_registry["llms_url"].endswith("/llms.txt")
+        assert help_registry["search_index"]["no_doc_kinds"] == [
+            "alias",
+            "constant",
+            "literal",
+        ]
         assert help_registry["types_listing_groups"][0] == ["models", "model"]
         assert help_registry["constants"] == {
             "category_width": 9,
