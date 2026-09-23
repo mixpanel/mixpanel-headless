@@ -1,8 +1,8 @@
 ---
 name: auth
-description: Manages Mixpanel credentials for the mixpanel_headless library and the mp CLI — checks the active session, lists, adds, and switches accounts, runs OAuth login (one-shot `mp login` or the two-step flow), switches projects and workspaces, and manages saved targets. Use when Mixpanel credentials are missing or failing, when code raises AuthenticationError or reports no account or no project, when the user wants to log in, switch account, project, or workspace, or save or use a target. With no arguments it prints a one-line session summary. Do not use for installing or upgrading the library (use setup) or for analytics questions once credentials work (use mixpanelyst).
+description: Manages Mixpanel credentials for the mixpanel_headless library and the mp CLI — checks the active session, lists, adds, and switches accounts, runs OAuth login (one-shot `mp login` or the two-step flow), switches projects and workspaces, and manages saved targets. Use when Mixpanel credentials are missing or failing, when code raises AuthenticationError or reports no account or no project, when the user wants to log in, switch account, project, or workspace, or save or use a target; on 401 or "unauthorized" errors; for "which project am I on?"; or for a login in the EU or India region. Do not use for installing or upgrading the library (use setup) or for analytics questions once credentials work (use mixpanelyst).
 allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py *)
-argument-hint: [session|login|account|project|workspace|target] [...]
+argument-hint: "[session|login|account|project|workspace|target] [...]"
 ---
 
 # Mixpanel authentication
@@ -22,7 +22,8 @@ with exit code 0, so you can parse the output without a try/except.
 
 - Do not ask for secrets (passwords, API secrets) in the conversation. They stay visible in the history.
 - Do not pass secrets as command-line arguments. They are visible in the process list.
-- For a service account, tell the user to run `! mp account add <name> --type service_account --username <username> --project <project_id> --region <region>` themselves. The command prompts for the secret with hidden input.
+- For a service account, tell the user to run `! mp account add <name> --type service_account --username <username> --project <project_id> --region <region>` themselves. The command prompts for the secret with hidden input when it has a terminal.
+- If that command fails with "Set MP_SECRET or use --secret-stdin", the `!` session has no terminal for the prompt. Tell the user to run the same command in their own terminal, outside Claude Code. Another option: export `MP_SECRET` in their shell first. Still do not ask for the secret in the chat.
 
 ## Routing
 
@@ -51,6 +52,10 @@ Optional flags:
 - `--token-env VAR` — force the static-bearer path (reads the token from `$VAR`)
 - `--no-browser` — print the authorization URL instead of opening a browser
 
+If `mp login` fails with "Multiple projects accessible to this account", the
+command had no terminal for its project picker. Show the listed projects, ask
+which one to use, and tell the user to run it again with `--project <id>`.
+
 After the user confirms, run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session` to get `account.name`. Then run
 `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test <account.name>`.
 
@@ -59,7 +64,7 @@ After the user confirms, run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/
 Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session`. Switch on `state`:
 - **`ok`** — show one line: "Active: `account.name` → project `project.id`". Add workspace `workspace.id` if it is not null. Mention `/mixpanel-headless:auth account list` and `/mixpanel-headless:auth project list` for a switch.
 - **`needs_account`** — no account is configured. Show `next[0].command` (the one-shot `mp login`) as the recommended step. List the alternatives: `next[1]` (explicit account add) and `next[2]` (the `MP_OAUTH_TOKEN` environment variables, best for CI and agents).
-- **`needs_project`** — an account exists but no project is pinned. Tell the user to run `mp project list`, then `mp project use <id>`.
+- **`needs_project`** — an account exists but no project is pinned. Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py project list`, show the table, and ask which project to use. Then run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py project use <id>`.
 - **`error`** — show `error.message`. If `error.actionable` is true, the message names the next command.
 
 ### "account list"
@@ -78,12 +83,19 @@ This is a guided wizard. Do not run any script that handles secrets.
 2. Ask for the **type**: `oauth_browser` (recommended for laptops), `service_account` (long-lived), or `oauth_token` (CI and agents).
 3. Ask for the **region**: us, eu, or in (default us).
 4. For `service_account`, ask for the username and the numeric project ID. For `oauth_token`, ask for the project ID and the name of the environment variable that holds the bearer token. For `oauth_browser`, the project ID is optional, because `mp account login` fills it in after the browser flow.
-5. Tell the user to run the matching command. For a service account:
+5. Tell the user to run the matching command. For a service account (if it fails with "Set MP_SECRET or use --secret-stdin", follow the security rules above):
 
 ```text
 Now run this command. It prompts for your service account secret with hidden input:
 
 ! mp account add <NAME> --type service_account --username <USERNAME> --project <PROJECT_ID> --region <REGION>
+```
+
+For an OAuth token, the named environment variable must hold the token in the
+shell where the command runs:
+
+```text
+! mp account add <NAME> --type oauth_token --token-env <VAR> --project <PROJECT_ID> --region <REGION>
 ```
 
 For OAuth browser, prefer the one-shot `mp login` (see "login" above):
@@ -165,11 +177,12 @@ from `project.name` (`project.id`).
 Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py workspace use <WORKSPACE_ID>`.
 
 On `state: ok`: "Pinned workspace `active.workspace`."
+On `state: error`: show `error.message`.
 
 ### "target list"
 
-Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target list`. A target is a saved (account, project, workspace?)
-triple, a named cursor position. Show a table: name, account, project,
+Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target list`. A target is a saved combination of an account, a project,
+and an optional workspace. Show a table: name, account, project,
 workspace.
 
 ### "target add"
@@ -180,8 +193,6 @@ project ID, and an optional workspace ID. Then run:
 ```text
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target add <NAME> --account <ACCT> --project <PROJ> [--workspace <WS>]
 ```
-
-Or tell the user to run `! mp target add <NAME> --account <ACCT> --project <PROJ> [--workspace <WS>]`.
 
 ### "target use <name>"
 
@@ -200,9 +211,9 @@ export MP_REGION=<us|eu|in>
 ```
 
 The library sends an `Authorization: Bearer <token>` header to every Mixpanel
-endpoint. The full service-account set (`MP_USERNAME` + `MP_SECRET` +
-`MP_PROJECT_ID` + `MP_REGION`) wins when both sets are complete. So it is safe
-to add these to a shell that already exports the service-account variables.
+endpoint. When the full service-account set (`MP_USERNAME` + `MP_SECRET` +
+`MP_PROJECT_ID` + `MP_REGION`) is also present, the library ignores
+`MP_OAUTH_TOKEN`. To use the token, unset `MP_USERNAME` and `MP_SECRET`.
 
 ## Presentation
 

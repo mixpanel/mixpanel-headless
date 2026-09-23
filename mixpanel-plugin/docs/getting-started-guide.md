@@ -406,7 +406,7 @@ The plugin ships five skills:
 | **session-replay** | Auto-loads on session replay questions | Finds, fetches, and analyzes session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines). |
 | **dashboard-expert** | Auto-loads on dashboard questions | Four-mode workflow (Analyze, Build, Modify, Explain) for Mixpanel dashboards, with 9 design templates, chart-type selection, and layout reference. |
 | **auth** | `/mixpanel-headless:auth` | Guided wrapper around `mp account / project / workspace / target / session` for managing credentials without leaving the conversation. |
-| **setup** | `/mixpanel-headless:setup` (manual only) | Installs or upgrades `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, then verifies the installation. |
+| **setup** | `/mixpanel-headless:setup` (manual only) | Installs or upgrades `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, verifies the installation, and checks for credentials. |
 
 The skills do not copy the API. Claude looks up each name with `mp help` (for example `mp help Workspace.query_funnel`), so the answer always matches the installed library.
 

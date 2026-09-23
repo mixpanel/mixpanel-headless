@@ -45,9 +45,7 @@ for agg in ["count", "extremes", "percentile", "numeric_summary"]:
 
 `result.value` is the scalar for an unsegmented aggregate that returns one number, such as `count`. It is `None` when `aggregate_data` is a dict, for example with `extremes` or with `segment_by`. Read `result.aggregate_data` in those cases.
 
-## Prefer medians to averages
-
-The same rule applies here as for insights and funnels. `aggregate="percentile", percentile=50` gives the median. `numeric_summary` gives the mean. If they are far apart, the distribution is skewed and the mean misleads.
+For the median, use `aggregate="percentile", percentile=50`, not the mean from `numeric_summary`.
 
 ## `as_of` shows the population at a past date
 

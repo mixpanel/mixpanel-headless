@@ -85,9 +85,9 @@ schema = ws.schema_graph()
 candidates = [p for p in schema.properties_for_event(event)
               if not p.endswith(("_id", "_uuid"))]
 
-for prop in candidates:
-    values = ws.property_values(prop, event=event, limit=10)
-    if len(set(values)) <= 10:   # low cardinality: worth a breakdown
+for prop in candidates[:15]:
+    values = ws.property_values(prop, event=event, limit=11)
+    if len(set(values)) <= 10:   # an 11th value means high cardinality: skip
         result = ws.query(event, math="average", math_property=numeric_prop,
                           group_by=prop, last=90, mode="total")
         print(f"\n{numeric_prop} by {prop}:")

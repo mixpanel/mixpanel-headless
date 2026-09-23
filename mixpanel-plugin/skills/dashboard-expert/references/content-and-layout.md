@@ -16,6 +16,7 @@ How to read a dashboard, change its cells and rows, and keep the layout valid. T
 
 ```python
 import copy
+import datetime
 import json
 import re
 
@@ -23,6 +24,8 @@ import mixpanel_headless as mp
 from mixpanel_headless.types import CreateDashboardParams, UpdateDashboardParams
 
 ws = mp.Workspace()
+end = datetime.date.today()
+start = end - datetime.timedelta(days=90)  # date range for saved funnels
 ```
 
 ---
@@ -109,7 +112,7 @@ for row in rows:
             result = ws.query_saved_flows(bid)
         elif btype == "funnels":
             result = ws.query_saved_report(
-                bid, bookmark_type="funnels", from_date="2026-06-01", to_date="2026-08-31"
+                bid, bookmark_type="funnels", from_date=start.isoformat(), to_date=end.isoformat()
             )
         else:
             result = ws.query_saved_report(bid, bookmark_type=btype)
@@ -253,7 +256,7 @@ ws.update_dashboard(dashboard_id, UpdateDashboardParams(
 ))
 
 ws.update_dashboard(dashboard_id, UpdateDashboardParams(
-    content={"action": "delete", "content_type": "report", "content_id": content_id}
+    content={"action": "delete", "content_type": "text", "content_id": text_card_id}
 ))
 ```
 
@@ -303,18 +306,7 @@ ws.update_dashboard(dashboard_id, UpdateDashboardParams(
 | Standard widths | 3 (quarter), 4 (third), 6 (half), 12 (full) |
 | Nested dashboards | 2 levels at most, and only where a feature flag enables them |
 
-Valid width sets: `3+3+3+3`, `4+4+4`, `6+6`, `12`, `8+4`, `6+3+3`.
-
-| Content | Width | Reason |
-|---|---|---|
-| Section header text card | 12 | Always full width |
-| KPI metric card | 3 or 4 | Three or four per row |
-| Line or bar chart, paired | 6 | Side-by-side comparison |
-| Line or bar chart, alone | 12 | Room for detail |
-| Table | 12 | Room for columns |
-| Funnel with 3 or more steps | 12 | Room for the steps |
-| Retention curve or table | 12 | Room for the cohort grid |
-| Flow (Sankey) | 12 | Always full width |
+Valid width sets: `3+3+3+3`, `4+4+4`, `6+6`, `12`, `8+4`, `6+3+3`. A section header text card is always full width (12).
 
 | Row | Height (px) |
 |---|---|

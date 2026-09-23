@@ -1,29 +1,30 @@
 ---
 name: session-replay
-description: Reads Mixpanel session replay recordings with the mixpanel_headless library. It fetches a user's sessions, turns them into action timelines and pandas DataFrames, and explains what happened on screen. Use when the user asks what a specific user did on screen or click by click; asks about rage clicks, dead clicks, rage taps, dead taps, error sessions, long pauses, or action timelines; wants to correlate a tracked event with on-screen behavior; gives a distinct_id or a replay ID and asks what happened in the session; or asks about iOS, Android, React Native, or Flutter recordings, screens, or taps. Do not use for aggregate analytics questions such as trends, funnels, retention, or segment counts (use mixpanelyst), or for building or editing dashboards (use dashboard-expert).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write WebFetch(domain:mixpanel.github.io)
+description: Reads Mixpanel session replay recordings with the mixpanel_headless library. It fetches a user's sessions, turns them into action timelines and pandas DataFrames, and explains what happened on screen. Use when the user asks what a specific user did on screen, in a recording, or click by click; asks about rage clicks, dead clicks, rage taps, dead taps, error sessions, long pauses, or action timelines; wants to correlate a tracked event with on-screen behavior; gives a distinct_id or a replay ID and asks what happened in the session; or asks about iOS, Android, React Native, or Flutter recordings, screens, or taps. Do not use for aggregate analytics questions such as trends, funnels, retention, or segment counts (use mixpanelyst), or for building or editing dashboards (use dashboard-expert).
+allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Session replay
 
 Session replay answers "what did this user actually do?". It gives the click-by-click story behind an analytics number. The library fetches the rrweb recordings (rrweb is the open-source format that Mixpanel uses to record sessions), runs an analyzer on them, and gives you DataFrames plus a text timeline of actions.
 
-Use it when:
-
-- the user names one user (`distinct_id`) or one replay ID and asks what happened;
-- the user asks about clicks, rage clicks, dead clicks, error sessions, or long pauses across a set of sessions;
-- the user wants to see the on-screen behavior around a tracked event;
-- the recording comes from a mobile or Flutter app (iOS, Android, React Native, Flutter).
-
-For counts, trends, funnels, and retention across many users, use the mixpanelyst skill. Replay explains individual sessions. It does not measure a population.
-
 ## Workflow
 
-1. Fetch the sessions for one user and a date window.
-2. Check the recording type of each replay: `replay.capture` is `"dom"` for a web recording and `"screenshot"` for a mobile or Flutter recording.
+1. Fetch the sessions.
+   - With a named user: call `ws.replays_for_user(distinct_id, from_date=..., to_date=...)`.
+   - With replay IDs (for example, from the Mixpanel UI): call `ws.fetch_replays(replay_ids, include_mixpanel_events=True)`.
+   - With neither: `ws.list_replays` needs a `distinct_id` or a list of `replay_ids`, and it refuses a date window alone. Find the candidate users first with the mixpanelyst skill (for example, the users who fired an error event). Then fetch each user's sessions.
+2. Check the recording type of each replay: `replay.capture` is `"dom"` for a web recording and `"screenshot"` for a mobile or Flutter recording. If `capture == "screenshot"`, read [references/mobile.md](references/mobile.md) now, before you read any timeline.
 3. Read the aggregates first (rage clicks or rage taps, errors, top targets). They count real events with real timestamps.
 4. Read the timeline of the sessions that the aggregates point to.
 5. Report what the user did, with timestamps and the names of the controls.
+
+## Gotchas
+
+- `t` in `mixpanel_df` is in Unix seconds. `t` in `actions_df` is in Unix milliseconds. Multiply the event time by 1,000 before you match events to actions.
+- A timeline line that ends in `(×N)` shows the first timestamp only, so it hides how long the burst lasted. Take timing from `actions_df`, `rage_clicks()`, or `rage_taps()`.
+- `rage_clicks()` counts clicks only. Mobile taps are not clicks, so it finds nothing in an iOS or Android recording. Use `rage_taps()` there.
+- `ws.fetch_replay` and `ws.fetch_replays` do not join tracked events unless you pass `include_mixpanel_events=True`. `replays_for_user` joins them by default.
 
 ## Fetch the sessions
 
@@ -72,8 +73,6 @@ The CLI has the same surface under `mp replays`. `mp replays analyze <replay_id>
 - `Console error: …` lines are JavaScript errors in the page. `error_sessions()` finds the replays that have them.
 - Element text comes from what rrweb captured on the page (visible text, `aria-label`, `title`, `alt`). A label can be vague ("div in li") when the page has no accessible name for the element.
 
-`rage_clicks()` counts clicks only. Mobile taps are not clicks, so it finds nothing in an iOS or Android recording. For a screenshot recording, use `rage_taps()` and read the mobile reference below.
-
 ## Correlate a tracked event with the screen
 
 `replays_for_user` joins the tracked Mixpanel events by default, so `bundle.mixpanel_df` shows the tracked events next to the on-screen actions. Pass `event_properties` (up to 5 property names) to bring event properties into the join. `ws.fetch_replay` and `ws.fetch_replays` do not join by default, so pass `include_mixpanel_events=True` to them. `bundle.join_mixpanel_events()` does not fetch anything: it only exposes events that the fetch already attached. For one replay that you already have, `ws.events_for_replay(replay_id)` returns its tracked events.
@@ -88,14 +87,14 @@ bundle = ws.replays_for_user(
 print(bundle.mixpanel_df)   # replay_id, t, event_name, properties
 ```
 
-Match a tracked event to the actions near its timestamp in `actions_df`. The units differ: `t` in `mixpanel_df` is in Unix seconds, and `t` in `actions_df` is in Unix milliseconds. Multiply the event time by 1,000 before you compare, or every event lands far from its actions.
+Match a tracked event to the actions near its timestamp in `actions_df`. Convert the units first (see Gotchas), or every event lands far from its actions.
 
 ## Report what you found
 
 - State the evidence for each finding: the session, the timestamp, the control, and the count.
 - Say when a finding is an inference. The analyzer infers some targets. It does not read them from the recording.
 - A clean, successful flow is a valid finding. Report it as clean. Do not invent friction to make the answer look more useful, because the user will act on what you report.
-- Replay shows what a few users did. Do not generalize from a handful of sessions to all users. For a rate across users, query the tracked events with the mixpanelyst skill.
+- Replay explains individual sessions. It does not measure a population, so do not generalize from a handful of sessions to all users. For counts, trends, funnels, retention, or a rate across users, use the mixpanelyst skill.
 
 ## Credentials and privacy
 
@@ -121,4 +120,4 @@ For a tutorial with worked examples, fetch the guide: `WebFetch(url="https://mix
 
 ## Mobile and screenshot recordings
 
-Read [references/mobile.md](references/mobile.md) when `replay.capture == "screenshot"`. This covers iOS, Android, React Native, and Flutter (mobile, web, and desktop). These recordings have no DOM and no URLs. The timeline shows wireframe screens, taps at points, and scrolls, and each of these needs different interpretation rules. Read it before you interpret any line of a screenshot timeline, because the web rules above give wrong answers there.
+Read [references/mobile.md](references/mobile.md) when `replay.capture == "screenshot"` (iOS, Android, React Native, and Flutter on mobile, web, and desktop). The web rules above give wrong answers for these recordings.

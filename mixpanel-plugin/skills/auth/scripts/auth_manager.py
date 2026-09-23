@@ -16,19 +16,23 @@ import json
 import os
 import sys
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NoReturn
 
-from mixpanel_headless import Workspace, accounts, targets
-from mixpanel_headless import session as sess
-from mixpanel_headless._internal.auth.resolver import resolve_session
-from mixpanel_headless._internal.config import ConfigManager
-from mixpanel_headless.exceptions import AccountNotFoundError, ConfigError
+SCHEMA_VERSION = 1
+
+try:
+    from mixpanel_headless import Workspace, accounts, targets
+    from mixpanel_headless import session as sess
+    from mixpanel_headless._internal.auth.resolver import resolve_session
+    from mixpanel_headless._internal.config import ConfigManager
+    from mixpanel_headless.exceptions import AccountNotFoundError, ConfigError
+except ImportError as _exc:  # keep the one-JSON-object, exit-0 output rule
+    print(json.dumps({"schema_version": SCHEMA_VERSION, "state": "error", "error": {"code": "LIBRARY_NOT_INSTALLED", "message": f"mixpanel_headless could not be imported ({_exc}). Run /mixpanel-headless:setup to install or upgrade it.", "actionable": True}}, indent=2))  # noqa: E501  # fmt: skip
+    sys.exit(0)
 
 # Error codes the user can act on (re-login, set env, run specific CLI cmd).
 # The auth skill renders precise hints when ``actionable=True``.
 _ACTIONABLE_CODES = frozenset({"OAUTH_TOKEN_ERROR", "OAUTH_REFRESH_ERROR", "OAUTH_REFRESH_REVOKED", "NEEDS_ACCOUNT", "NEEDS_PROJECT"})  # noqa: E501  # fmt: skip
-
-SCHEMA_VERSION = 1
 
 # fmt: off
 _ONBOARDING = [
@@ -54,7 +58,7 @@ def _ok(**fields: Any) -> dict[str, Any]:
 
 
 def _err(exc: BaseException, *, actionable: bool | None = None) -> dict[str, Any]:
-    """Wrap ``exc`` as a contracted ``state="error"`` envelope (P3).
+    """Wrap ``exc`` as a ``state="error"`` envelope (code, message, actionable).
 
     Pulls structured context off ``MixpanelHeadlessError`` subclasses (``code``,
     ``details``) and preserves ``__cause__``. ``MP_VERBOSE=1`` adds a
@@ -75,7 +79,7 @@ def _err(exc: BaseException, *, actionable: bool | None = None) -> dict[str, Any
 
 
 def _account_record(account: Any) -> dict[str, Any]:
-    """Render an Account → contract record (P5 — name/type/region required)."""
+    """Render an Account as a record with the required name, type, and region."""
     return {"name": account.name, "type": account.type, "region": account.region}
 
 
@@ -87,7 +91,7 @@ def _has_env_auth() -> bool:
 
 
 def _active_block(project_override: str | None = None) -> dict[str, Any]:
-    """Read ``[active]`` and return the contract's ``active`` block."""
+    """Read ``[active]`` and return the ``active`` block."""
     cm = ConfigManager()
     active = cm.get_active()
     proj = project_override
@@ -102,7 +106,7 @@ def _active_block(project_override: str | None = None) -> dict[str, Any]:
 
 
 def _do(fn: Callable[..., Any], *args: Any, project_override: str | None = None, **kwargs: Any) -> dict[str, Any]:  # noqa: E501  # fmt: skip
-    """Run ``fn`` then emit the contract's ``active`` block."""
+    """Run ``fn`` then emit the ``active`` block."""
     fn(*args, **kwargs)
     return _ok(active=_active_block(project_override=project_override))
 
@@ -178,15 +182,6 @@ def cmd_account_list(_args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
-def cmd_account_add(args: argparse.Namespace) -> dict[str, Any]:
-    """Add a new account from a JSON record on stdin."""
-    if not args.from_stdin:
-        raise SystemExit("auth_manager.py: account add requires --from-stdin (security: never pass secrets on the command line)")  # noqa: E501  # fmt: skip
-    r = json.loads(sys.stdin.read())
-    summary = accounts.add(r["name"], type=r["type"], region=r["region"], default_project=r.get("default_project"), username=r.get("username"), secret=r.get("secret"), token=r.get("token"), token_env=r.get("token_env"))  # noqa: E501  # fmt: skip
-    return _ok(added=summary.model_dump(mode="json"))
-
-
 def cmd_account_login(args: argparse.Namespace) -> dict[str, Any]:
     """Run the OAuth PKCE flow for an oauth_browser account."""
     result = accounts.login(args.name)
@@ -237,7 +232,6 @@ _Handler = Callable[[argparse.Namespace], dict[str, Any]]
 _DISPATCH: dict[tuple[str, str | None], _Handler] = {
     ("session", None): cmd_session,
     ("account", "list"): cmd_account_list,
-    ("account", "add"): cmd_account_add,
     ("account", "use"): lambda a: _do(accounts.use, a.name),
     ("account", "login"): cmd_account_login,
     ("account", "test"): cmd_account_test,
@@ -255,14 +249,22 @@ _DISPATCH: dict[tuple[str, str | None], _Handler] = {
 }
 
 
+class _JsonArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose usage errors print the JSON error envelope."""
+
+    def error(self, message: str) -> NoReturn:
+        """Emit a ``state="error"`` envelope for a usage error, then exit 0."""
+        _emit({"schema_version": SCHEMA_VERSION, "state": "error", "error": {"code": "USAGE_ERROR", "message": f"{self.prog}: {message}", "actionable": False, "usage": self.format_usage().strip()}})  # noqa: E501  # fmt: skip
+        sys.exit(0)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Construct the two-level argparse tree (group → action)."""
-    parser = argparse.ArgumentParser(prog="auth_manager.py")
+    parser = _JsonArgumentParser(prog="auth_manager.py")
     sub = parser.add_subparsers(dest="group", required=True)
     sub.add_parser("session")
     acct = sub.add_parser("account").add_subparsers(dest="action", required=True)
     acct.add_parser("list")
-    acct.add_parser("add").add_argument("--from-stdin", action="store_true")
     for verb in ("use", "login", "test"):
         acct.add_parser(verb).add_argument("name")
     proj = sub.add_parser("project").add_subparsers(dest="action", required=True)
@@ -291,7 +293,7 @@ def main() -> None:
         return
     try:
         _emit(handler(args))
-    except Exception as exc:  # noqa: BLE001 — exit-0 contract
+    except Exception as exc:  # noqa: BLE001 — errors must stay JSON with exit 0
         _emit(_err(exc))
 
 

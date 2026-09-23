@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Installs or upgrades mixpanel_headless (0.3.0 or newer) with pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy, and pyarrow on Python 3.11+, then verifies the imports, the built-in API reference (mp help), and the Mixpanel credentials. Use when setting up a new environment for Mixpanel analysis, when the library or a dependency is missing, when `mp help` does not exist because the installed library is older than 0.3.0, or when the user asks to check that the plugin works. Do not use for logging in, adding accounts, or switching projects (use auth), or for analytics questions (use mixpanelyst).
+description: Installs or upgrades mixpanel_headless (0.3.0 or newer) with pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy, and pyarrow (Python 3.11+ only) on Python 3.10+, then checks the imports, mp help, and the credentials. Use when setting up Mixpanel analysis, or when the library is missing or older than 0.3.0. Do not use for login or account changes (use auth).
 disable-model-invocation: true
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh) Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py *)
 ---
@@ -21,7 +21,8 @@ The script does these steps:
 2. Installs `mixpanel-headless>=0.3.0` and the analysis packages with `uv`, or with `pip` when `uv` is not available. The version floor upgrades an older install, because the skills depend on `mp help`, which first shipped in 0.3.0.
 3. Imports every package and prints its version.
 4. Runs `mp help` once, offline, to confirm that the built-in API reference works.
-5. Reports which credentials it finds.
+5. Checks that the `mp` command is on `PATH`.
+6. Reports which credentials it finds.
 
 The script is safe to run again. It does not prompt for input.
 
@@ -35,6 +36,8 @@ Read these lines in the output:
 | `✓ mixpanel-headless UPGRADED <old> → <new>` | An older library was present. The script upgraded it. |
 | `✓ mixpanel-headless OK <version>` | The library already met the 0.3.0 floor. |
 | `✓ built-in help (mp help)` | The API reference works. The skills can look up API names. |
+| `✓ mp on PATH` | The `mp` command runs directly. |
+| `⚠ mp not on PATH; ...` | Not an error. The skills fall back to `python3 -m mixpanel_headless`. To get `mp`, add the Python scripts directory to `PATH`. |
 | `✗ Python 3.10+ required` | Tell the user to install Python 3.10 or newer. |
 | `✗ No package manager found` | Tell the user to install `uv` (https://docs.astral.sh/uv/) or `pip`. |
 | `✗ Import verification failed` | Show the error. A partial install or a wrong interpreter is the usual cause. |

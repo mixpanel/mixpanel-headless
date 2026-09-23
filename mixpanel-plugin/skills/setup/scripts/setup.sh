@@ -53,12 +53,44 @@ old_version="$(installed_version)"
 
 echo ""
 echo "Installing mixpanel-headless (import name: mixpanel_headless) and dependencies..."
+
+# Keep a copy of the installer output, so a failure can be explained.
+install_log="$(mktemp)"
+trap 'rm -f "$install_log"' EXIT
+
+# Run an install command. Show its output and also save it to $install_log.
+run_install() {
+  "$@" 2>&1 | tee -a "$install_log"
+}
+
+# Explain an install failure, then stop. PEP 668 ("externally managed")
+# Pythons, such as Homebrew and most Linux system Pythons, refuse installs
+# from pip and uv. The raw error does not say what to do next.
+install_failed() {
+  echo ""
+  if grep -qiE 'externally[- ]managed' "$install_log"; then
+    echo "✗ Install refused: $python_cmd is an externally managed Python (PEP 668)."
+    echo "  Homebrew and system Pythons block package installs to protect the OS."
+    echo "  Fix: create and activate a virtual environment, then run setup again:"
+    echo "    uv venv ~/.venvs/mixpanel && source ~/.venvs/mixpanel/bin/activate"
+    echo "  Without uv:"
+    echo "    python3 -m venv ~/.venvs/mixpanel && source ~/.venvs/mixpanel/bin/activate"
+  else
+    echo "✗ Package install failed. Read the installer output above."
+  fi
+  exit 1
+}
+
 if command -v uv &>/dev/null; then
   echo "  (using uv)"
-  uv pip install --python "$python_cmd" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}" || { echo "  ⚠ Virtualenv install failed, trying system install..."; uv pip install --system --python "$python_cmd" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}"; }
+  if ! run_install uv pip install --python "$python_cmd" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}"; then
+    echo "  ⚠ Virtualenv install failed, trying system install..."
+    # Not logged: the first attempt's output names the real cause.
+    uv pip install --system --python "$python_cmd" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}" || install_failed
+  fi
 elif "$python_cmd" -m pip --version &>/dev/null; then
   echo "  (using pip via $python_cmd)"
-  "$python_cmd" -m pip install "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}"
+  run_install "$python_cmd" -m pip install "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}" || install_failed
 else
   echo "✗ No package manager found. Install pip or uv."
   echo "  Recommended: https://docs.astral.sh/uv/"
@@ -105,6 +137,13 @@ if "$python_cmd" -m mixpanel_headless help -f json Workspace.query >/dev/null; t
 else
   echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version may be older than 0.3.0"
   exit 1
+fi
+
+# The skills prefer the mp command, but can run the same CLI as a module.
+if command -v mp &>/dev/null; then
+  echo "✓ mp on PATH"
+else
+  echo "⚠ mp not on PATH; the skills fall back to python3 -m mixpanel_headless"
 fi
 
 # Check credentials

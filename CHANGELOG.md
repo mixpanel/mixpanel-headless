@@ -29,14 +29,16 @@ may include API changes.
   analysis for web and mobile (rage clicks, rage taps, dead clicks,
   errors, action timelines) from `mixpanelyst`.
 - Plugin: `/mixpanel-headless:auth` moves from a command to a skill, with
-  `auth_manager.py` beside it. The invocation does not change.
+  `auth_manager.py` beside it. The invocation does not change, and the
+  skill now also loads on its own when credentials are missing or failing.
 - Plugin: the `dashboard-expert` references are reorganized by topic
   (content and layout, text cards, report pipeline, chart types,
   templates).
 - Plugin: the setup skill requires `mixpanel-headless>=0.3.0`, upgrades
   an older install, and checks that `mp help` works.
 - Plugin: skill descriptions say when to use each skill and when to use
-  another one, and the analysis skills allow a narrower set of tools.
+  another one, and the `mixpanelyst`, `session-replay`, and
+  `dashboard-expert` skills allow a narrower set of tools.
 - Plugin: the plugin no longer documents or checks the Cowork bridge.
   The setup skill no longer detects it, the auth skill no longer has a
   bridge status command, and the Cowork quick start guide is removed.

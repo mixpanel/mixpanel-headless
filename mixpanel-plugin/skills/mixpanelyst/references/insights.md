@@ -95,7 +95,7 @@ for label, kwargs in sweeps:
 
 - **`math_property` with count math is an error.** A top-level `math_property` with `unique`, `dau`, `wau`, or `mau` raises `BookmarkValidationError` before the query runs. The same applies to `Metric(..., property=...)`. Only `total` accepts a property as an option.
 - **`CohortMetric` ignores math.** For a `CohortMetric` entry, `math`, `math_property`, and `per_user` have no effect. Cohort size is always a count of unique users.
-- **`rolling` reduces the number of points.** A 30-day rolling window over 59 days gives about 29 points, not 59. There is no warning.
+- **`rolling` reduces the number of points.** A 30-day rolling window over 59 days gives 30 points, not 59. There is no warning.
 - **`rolling` and `cumulative` are mutually exclusive.**
 - **`unit` has no effect when `mode="total"`.** A total is one number for the whole range.
 - **`last=` is always a number of days**, whatever the `unit`. To query a calendar month, use `from_date` and `to_date`.

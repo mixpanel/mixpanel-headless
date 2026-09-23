@@ -302,7 +302,7 @@ This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's s
 | **Skill** | `session-replay` | Auto-triggered on session replay questions (web and mobile recordings) |
 | **Skill** | `dashboard-expert` | Auto-triggered on dashboard analysis, creation, modification |
 | **Skill** | `auth` | `/mixpanel-headless:auth` (also auto-triggered on credential questions) — manage credentials, accounts, OAuth |
-| **Skill** | `setup` | `/mixpanel-headless:setup` — install or upgrade deps (0.3.0 floor), verify install (user-invoked only) |
+| **Skill** | `setup` | `/mixpanel-headless:setup` — install or upgrade deps (0.3.0 floor), verify install and credentials (user-invoked only) |
 | **Script** | `auth_manager.py` | `python3 skills/auth/scripts/auth_manager.py session` — session status JSON (also `account`, `project`, `workspace`, `target`) |
 
 ### Usage

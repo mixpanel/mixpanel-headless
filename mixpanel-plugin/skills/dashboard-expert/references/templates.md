@@ -4,6 +4,7 @@ Nine dashboard templates for common analytics goals. Each template gives a row-b
 
 ## Contents
 
+- [Template selection guide](#template-selection-guide)
 - [How to use these templates](#how-to-use-these-templates)
 - [Template 1: KPI Dashboard](#template-1-kpi-dashboard)
 - [Template 2: Feature Launch Dashboard](#template-2-feature-launch-dashboard)
@@ -14,7 +15,25 @@ Nine dashboard templates for common analytics goals. Each template gives a row-b
 - [Template 7: Marketing Performance Dashboard](#template-7-marketing-performance-dashboard)
 - [Template 8: Experiment Results Dashboard](#template-8-experiment-results-dashboard)
 - [Template 9: Operational Health Dashboard](#template-9-operational-health-dashboard)
-- [Template selection guide](#template-selection-guide)
+
+---
+
+## Template selection guide
+
+Match the request of the user to a template here, then read only that template's section.
+
+| User Says | Template | Why |
+|---|---|---|
+| "executive dashboard", "KPI overview", "key metrics" | 1: KPI Dashboard | High-level health metrics |
+| "feature launch", "new feature tracking", "adoption" | 2: Feature Launch | Post-launch monitoring |
+| "growth metrics", "pirate metrics", "AARRR", "full funnel" | 3: AARRR | End-to-end growth tracking |
+| "funnel analysis", "conversion optimization", "drop-off" | 4: Conversion Funnel | Deep funnel investigation |
+| "retention analysis", "churn", "cohort analysis" | 5: Retention | Retention deep dive |
+| "engagement", "usage patterns", "power users" | 6: User Engagement | Engagement depth analysis |
+| "marketing", "channels", "campaigns", "acquisition" | 7: Marketing Performance | Channel effectiveness |
+| "A/B test", "experiment results", "variant comparison" | 8: Experiment Results | Experiment presentation |
+| "errors", "reliability", "ops health", "SLO", "incidents" | 9: Operational Health | Reliability monitoring |
+| Unclear or general request | 1: KPI Dashboard | Safe default |
 
 ---
 
@@ -22,7 +41,7 @@ Nine dashboard templates for common analytics goals. Each template gives a row-b
 
 ### Adaptation steps
 
-1. **Pick a template** that matches the goal of the user, or combine sections from several templates. The selection guide at the end maps requests to templates.
+1. **Pick a template** that matches the goal of the user, or combine sections from several templates. The selection guide above maps requests to templates.
 2. **Find the real events.** Run `ws.events()` and `ws.properties(event=...)`, or `ws.schema_graph()` for the full event and property map.
 3. **Map the placeholders** such as `{signup_event}` to real event names. Drop a section when its events have no volume.
 4. **Check the data.** Query each event before you build its report. Skip a report that would render as an empty chart.
@@ -60,6 +79,8 @@ The **Math** column in the report tables uses the values of the query methods. C
 | ratio of two events | `ws.query([event_a, event_b], math="unique", formula="A / B")`, or a two-step funnel when order matters |
 | overall rate, step rate | `ws.query_funnel(steps)`; the default math is the unique conversion rate |
 | time to convert | No query math gives this. Build a steps funnel, then switch the chart to time to convert in Mixpanel. |
+
+These are not math values: `sum`, `count`, `distinct`, `avg`, `mean`, `p95`, `avg_count_per_user`. Use the rows above instead.
 
 ### Placeholder events
 
@@ -824,22 +845,3 @@ The templates use placeholders in curly braces for event names. Replace them wit
 | By version | `{error_event}` | `total` | App version | Bar chart, top 10 |
 | Impact table | `{error_event}` | `total`, `dau` | Error type | Table: count, users, rate |
 | Recovery rate | Born: `{error_event}`, Return: `{login_event}` | -- | -- | 7-day retention post-error |
-
----
-
-## Template selection guide
-
-Use this table to quickly match the user's request to the right template.
-
-| User Says | Template | Why |
-|---|---|---|
-| "executive dashboard", "KPI overview", "key metrics" | 1: KPI Dashboard | High-level health metrics |
-| "feature launch", "new feature tracking", "adoption" | 2: Feature Launch | Post-launch monitoring |
-| "growth metrics", "pirate metrics", "AARRR", "full funnel" | 3: AARRR | End-to-end growth tracking |
-| "funnel analysis", "conversion optimization", "drop-off" | 4: Conversion Funnel | Deep funnel investigation |
-| "retention analysis", "churn", "cohort analysis" | 5: Retention | Retention deep dive |
-| "engagement", "usage patterns", "power users" | 6: User Engagement | Engagement depth analysis |
-| "marketing", "channels", "campaigns", "acquisition" | 7: Marketing Performance | Channel effectiveness |
-| "A/B test", "experiment results", "variant comparison" | 8: Experiment Results | Experiment presentation |
-| "errors", "reliability", "ops health", "SLO", "incidents" | 9: Operational Health | Reliability monitoring |
-| Unclear or general request | 1: KPI Dashboard | Safe default |

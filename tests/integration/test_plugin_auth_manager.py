@@ -98,7 +98,6 @@ def _run(
     *args: str,
     tmp_home: Path,
     env_extra: dict[str, str] | None = None,
-    stdin: str | None = None,
 ) -> dict[str, Any]:
     """Run ``auth_manager.py`` with ``args``; return parsed JSON from stdout.
 
@@ -112,7 +111,6 @@ def _run(
         *args: CLI args after the script path.
         tmp_home: Tmp ``$HOME`` containing isolated ``.mp/``.
         env_extra: Extra env vars (e.g. ``MP_OAUTH_TOKEN`` for env-auth tests).
-        stdin: Optional stdin payload (used by ``account add --from-stdin``).
 
     Returns:
         Parsed JSON dict from stdout.
@@ -121,7 +119,6 @@ def _run(
         [sys.executable, str(PLUGIN_AUTH_MANAGER), *args],
         capture_output=True,
         text=True,
-        input=stdin,
         env=_hermetic_env(tmp_home, env_extra),
         check=False,
     )
@@ -355,31 +352,40 @@ class TestAccountUseSubcommand:
         assert isinstance(payload["error"]["actionable"], bool)
 
 
-class TestAccountAddSubcommand:
-    """``account add`` accepts a JSON account record via --from-stdin."""
+class TestErrorOutput:
+    """Failures outside a handler still print one JSON error with exit 0."""
 
-    def test_add_via_stdin(self, tmp_home: Path) -> None:
-        """Adding a service_account via stdin records it + auto-promotes."""
-        record = {
-            "name": "team",
-            "type": "service_account",
-            "region": "us",
-            "default_project": "3713224",
-            "username": "sa.user",
-            "secret": "supersecret",
-        }
-        payload = _run(
-            "account",
-            "add",
-            "--from-stdin",
-            tmp_home=tmp_home,
-            stdin=json.dumps(record),
+    def test_usage_error_is_json(self, tmp_home: Path) -> None:
+        """A missing positional argument yields a ``USAGE_ERROR`` envelope."""
+        payload = _run("account", "test", tmp_home=tmp_home)
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "USAGE_ERROR"
+        assert "name" in payload["error"]["message"]
+        assert payload["error"]["actionable"] is False
+        assert payload["error"]["usage"].startswith("usage: auth_manager.py")
+
+    def test_account_add_is_not_a_subcommand(self, tmp_home: Path) -> None:
+        """``account add`` is gone: the script never handles account secrets."""
+        payload = _run("account", "add", tmp_home=tmp_home)
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "USAGE_ERROR"
+
+    def test_missing_library_is_json(self, tmp_home: Path) -> None:
+        """An import failure yields an actionable error that names setup."""
+        shadow = tmp_home / "shadow" / "mixpanel_headless"
+        shadow.mkdir(parents=True)
+        (shadow / "__init__.py").write_text(
+            'raise ImportError("simulated missing library")\n', encoding="utf-8"
         )
-        assert payload["state"] == "ok"
-        assert payload["added"]["name"] == "team"
-        assert payload["added"]["type"] == "service_account"
-        # The first account added auto-promotes to active.
-        assert payload["added"]["is_active"] is True
+        payload = _run(
+            "session",
+            tmp_home=tmp_home,
+            env_extra={"PYTHONPATH": str(shadow.parent)},
+        )
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "LIBRARY_NOT_INSTALLED"
+        assert payload["error"]["actionable"] is True
+        assert "/mixpanel-headless:setup" in payload["error"]["message"]
 
 
 # =============================================================================

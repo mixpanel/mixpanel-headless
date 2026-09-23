@@ -408,7 +408,7 @@ Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. 
   - `session-replay` — Auto-triggered on session replay questions; finds, fetches, and analyzes web and mobile recordings (rage clicks, rage taps, dead clicks, errors, action timelines)
   - `dashboard-expert` — Auto-triggered on dashboard requests; full CRUD for Mixpanel dashboards with layout system, text cards, report arrangement, and 9 design templates
   - `auth` — `/mixpanel-headless:auth`; manage credentials, accounts, OAuth login, project discovery
-  - `setup` — `/mixpanel-headless:setup`; install dependencies and verify the installation
+  - `setup` — `/mixpanel-headless:setup`; install dependencies, verify the installation, and check for credentials
 - **Live API reference**: the skills look up signatures, types, and allowed values with the library's built-in help instead of a copied reference — `mp help Workspace.query`, `mp help search cohort`, or `mp.help("Filter")` in Python
 - **Script**: `auth_manager.py` (programmatic credential management)
 - **Secure by design**: Credentials managed outside conversation context

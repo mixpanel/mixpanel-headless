@@ -24,7 +24,7 @@ The plugin has five skills: analysis, session replay, dashboards, authentication
 | `session-replay` | Automatic on session replay questions | Find, fetch, and analyze session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines) |
 | `dashboard-expert` | Automatic on dashboard requests | Read, explain, build, and change dashboards, text cards, and layouts |
 | `auth` | `/mixpanel-headless:auth` | Show the session; add, log in, and switch accounts, projects, workspaces, and targets |
-| `setup` | `/mixpanel-headless:setup` | Install or upgrade `mixpanel_headless` (0.3.0 or later) and verify the installation |
+| `setup` | `/mixpanel-headless:setup` | Install or upgrade `mixpanel_headless` (0.3.0 or later), verify the installation, and check for credentials |
 
 `setup` runs only when you call it. The other skills also load when your request matches their description.
 
@@ -109,6 +109,18 @@ claude --plugin-dir /path/to/mixpanel-headless/mixpanel-plugin
 ```
 
 Run `/reload-plugins` to load changes without a restart.
+
+## Permissions
+
+When `mixpanelyst`, `session-replay`, or `dashboard-expert` runs, Claude Code pre-approves these tools for that turn, so analysis code runs without a prompt for each command:
+
+- `mp`, `python3`, `python`, and `uv run` commands
+- File reads, writes, and edits
+- Fetches from the documentation site (`mixpanel.github.io`)
+
+The pre-approval also covers `mp` commands and Python code that change or delete Mixpanel objects. The skills tell Claude to list the objects and get your confirmation before any delete. Your own permission rules take precedence over the pre-approval. To get a prompt for each command, add ask rules for these tools (for example, `Bash(mp *)`) to your Claude Code permission settings. To block a command, add a deny rule.
+
+`setup` and `auth` pre-approve only their own scripts.
 
 ## Prerequisites
 

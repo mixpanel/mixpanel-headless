@@ -14,6 +14,7 @@ For the signature of a query method, run `mp help Workspace.query_funnel` (or `q
 - [6. End to end: one report from each engine](#6-end-to-end-one-report-from-each-engine)
 
 ```python
+import datetime
 import json
 
 import mixpanel_headless as mp
@@ -25,6 +26,8 @@ from mixpanel_headless.types import (
 )
 
 ws = mp.Workspace()
+end = datetime.date.today().isoformat()
+start = (datetime.date.today() - datetime.timedelta(days=90)).isoformat()
 
 
 def text(html):
@@ -158,8 +161,8 @@ item = report("DAU by Platform (90d)", "insights", result, "Daily active users b
 ```python
 result = ws.query_funnel(
     ["Page View", "Signup Started", "Signup Completed", "First Action"],
-    from_date="2026-06-01",
-    to_date="2026-08-31",
+    from_date=start,
+    to_date=end,
 )
 print(result.df)
 print(f"Overall conversion: {result.overall_conversion_rate:.1%}")
@@ -173,8 +176,8 @@ result = ws.query_retention(
     "Sign Up",
     "Login",
     retention_unit="day",
-    from_date="2026-06-01",
-    to_date="2026-08-31",
+    from_date=start,
+    to_date=end,
 )
 print(result.df.head())
 item = report("New User Retention", "retention", result)
@@ -214,7 +217,7 @@ The report goes to a new full-width row at the bottom. To place it in an existin
 
 ## 4. Saved reports (bookmarks)
 
-Make a separate saved report only when the user wants one outside the dashboard, for example to share it on its own.
+Mixpanel requires every saved report to belong to a dashboard, so `CreateBookmarkParams` needs `dashboard_id`. The library raises an error before any request when it is missing. Make a saved report only when the user asks for one, for example to share it on its own.
 
 ```python
 bookmark = ws.create_bookmark(CreateBookmarkParams(
@@ -222,6 +225,7 @@ bookmark = ws.create_bookmark(CreateBookmarkParams(
     bookmark_type="insights",
     params=result.params,
     description="Daily active users by platform.",
+    dashboard_id=dashboard.id,
 ))
 url = ws.saved_report_link(bookmark.id, report_type="insights")
 ```
@@ -229,7 +233,7 @@ url = ws.saved_report_link(bookmark.id, report_type="insights")
 Three things differ from inline placement:
 
 - `CreateBookmarkParams.params` takes the dict itself. Only the inline `bookmark` dict needs `json.dumps()`.
-- `dashboard_id` on `CreateBookmarkParams` does not put the report on the dashboard. It sets metadata only.
+- `CreateBookmarkParams.dashboard_id` is required, but it does not place the report on the dashboard. Place a report with an inline bookmark content action or with `rows`.
 - `ws.add_report_to_dashboard(dashboard_id, bookmark.id)` puts a clone on the dashboard, named "Duplicate of ...". The saved report and the clone are then two separate reports.
 
 For a link that opens a query in Mixpanel without a saved report, use `ws.create_report_link(result)`. The mixpanelyst skill covers report links.
@@ -242,7 +246,7 @@ For a link that opens a query in Mixpanel without a saved report, use `ws.create
 |---|---|
 | `"type": "funnel"` or `"flow"` | Use `"funnels"` and `"flows"` |
 | `"params": result.params` in an inline `bookmark` dict | `"params": json.dumps(result.params)` |
-| `CreateBookmarkParams(dashboard_id=...)` and nothing else | Place the report inline, or call `add_report_to_dashboard` (a clone) |
+| `CreateBookmarkParams(dashboard_id=...)` alone, as a way to place the report | Place the report inline, or call `add_report_to_dashboard` (a clone) |
 | A report saved without a look at `result.df` | Check `result.df.empty` first |
 | Parameter names from other APIs | Look them up with `mp help Workspace.<method>` |
 

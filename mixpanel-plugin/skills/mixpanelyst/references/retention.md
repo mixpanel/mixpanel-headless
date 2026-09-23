@@ -75,7 +75,7 @@ for alignment in ["birth", "interval_start"]:
 - `carry_forward` credits a return to the buckets after it. A user who returns only on day 30 counts as retained in every bucket from day 30 on.
 - `carry_back` credits a return to earlier buckets. It inflates the early buckets.
 
-Both answer "did the user ever come back?". Both distort a standard retention curve. `consecutive_forward` is the fourth value; see `mp help RetentionUnboundedMode`.
+Both answer "did the user ever come back?". Both distort a standard retention curve. Other values exist; run `mp help RetentionUnboundedMode`.
 
 ## Cumulative retention hides gaps
 
@@ -86,7 +86,7 @@ Both answer "did the user ever come back?". Both distort a standard retention cu
 - `retention_rate` (default): the percentage of the cohort that returned.
 - `unique`: the number of users who returned.
 - `total`: the number of return events, not users. A user who logs in 5 times in bucket 1 counts as 5. Use it to measure intensity.
-- `average`: the library accepts it, but `query_retention()` has no `math_property` parameter, so you cannot name a property to average. Confirm what it returns on your data before you report it.
+- `average`: do not use it unless the user asks for it by name. `query_retention()` has no `math_property` parameter, so it is not clear what the value averages.
 
 ## Other rules
 

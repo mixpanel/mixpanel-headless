@@ -249,9 +249,12 @@ plugin-check-version:
         exit 1
     fi
 
-# Run the offline plugin eval suite (costs model calls; not part of `check`).
+# --allow-tools matches the analysis skills' allowed-tools and takes a list, so
+# --no-publish ends it before the caller's args. --no-publish keeps the report
+# on this machine; --trust-plugin answers the first-run prompt for this repo's plugin.
+# Run the offline plugin eval suite (costs model calls; not part of `check`)
 plugin-eval *args:
-    claude plugin eval mixpanel-plugin --tag offline {{ args }}
+    claude plugin eval mixpanel-plugin --tag offline --allow-tools "Bash(mp *)" "Bash(python3 *)" "Bash(python *)" "Bash(uv run *)" Write Edit "WebFetch(domain:mixpanel.github.io)" --no-publish --trust-plugin {{ args }}
 
 # Plugin statistics: skills, entry-file lines, reference files
 plugin-stats:

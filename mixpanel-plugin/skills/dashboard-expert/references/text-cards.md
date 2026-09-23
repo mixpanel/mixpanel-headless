@@ -122,10 +122,14 @@ To place a new card at a specific position, move its row after the create. Row I
 
 Explain mode adds data-driven cards to an existing dashboard.
 
-1. **Analyze.** Read the dashboard structure and run every report (the analyze steps in `SKILL.md`).
+1. **Analyze.** Run the analyze steps: read the layout, then run each report.
 2. **Compute the finding.** Use numbers from `result.df`, not estimates. A text card that states a wrong number is worse than no card.
 3. **Write the card.** One finding per card, with the key number in `<strong>`.
-4. **Insert the card** under the chart it explains, and check the result in Mixpanel.
+4. **Create the card.** A new card goes to a new full-width row at the bottom.
+5. **Find the ID of the new row.** Compare the row IDs before and after the create.
+6. **Move the new row** directly after the row of the chart it explains, in `rows_order`.
+7. **Send the layout PATCH.** It takes `rows_order` and `rows` as a list with an `id` on each row, not the dict that GET returns.
+8. **Check the result** in Mixpanel.
 
 ```python
 latest = df.iloc[-1]["count"]
@@ -137,6 +141,8 @@ html = (
     f"{direction} <strong>{abs(change):.1f}%</strong> vs. last week.</p>"
 ).replace("\n", "")
 
+# Step 4: create the card (it lands in a new row at the bottom)
+before_rows = set(ws.get_dashboard(dashboard_id).layout["rows"].keys())
 ws.update_dashboard(dashboard_id, UpdateDashboardParams(
     content={
         "action": "create",
@@ -144,7 +150,25 @@ ws.update_dashboard(dashboard_id, UpdateDashboardParams(
         "content_params": {"markdown": html},
     }
 ))
+
+# Step 5: find the new row
+layout = ws.get_dashboard(dashboard_id).layout
+new_row_id = (set(layout["rows"].keys()) - before_rows).pop()
+
+# Step 6: put it directly under the chart's row (chart_row_id comes from the analyze steps)
+order = [r for r in layout["order"] if r != new_row_id]
+order.insert(order.index(chart_row_id) + 1, new_row_id)
+
+# Step 7: layout PATCH with rows as a list; leave "version" out
+ws.update_dashboard(dashboard_id, UpdateDashboardParams(
+    layout={
+        "rows_order": order,
+        "rows": [{"id": r, **layout["rows"][r]} for r in order],
+    }
+))
 ```
+
+For several cards, place them one at a time. Each create changes the layout, so read the dashboard again before the next card.
 
 Check the column names of `result.df` before you index it. The columns differ by report type and by breakdown.
 

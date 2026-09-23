@@ -1,6 +1,6 @@
 # Chart types
 
-How to pick a chart type for each report type, and which width to give it on a dashboard. These are Mixpanel report settings, so the library reference does not list them.
+How to pick a chart type for each report type, and which width to give it on a dashboard (section 7 is the only width table). These are Mixpanel report settings, so the library reference does not list them.
 
 ## Contents
 
@@ -33,17 +33,17 @@ How to pick a chart type for each report type, and which width to give it on a d
 
 ## 2. Insights Chart Types
 
-| Chart Type | `chartType` | `plotStyle` | Best For | Width |
-|---|---|---|---|---|
-| Line | `line` | `standard` | Trends over time | 6 or 12 |
-| Stacked Line | `line` | `stacked` | Composition trends over time | 12 |
-| Bar | `bar` | `standard` | Categorical comparisons, rankings | 6 or 12 |
-| Stacked Bar | `bar` | `stacked` | Composition across categories | 12 |
-| Column | `column` | `standard` | Vertical bar, fewer categories | 6 or 12 |
-| Stacked Column | `column` | `stacked` | Composition across categories (vertical) | 12 |
-| Pie | `pie` | | Share/proportion (max 6 segments) | 6 |
-| Table | `table` | | Multi-dimensional detailed data | 12 |
-| Metric | `insights-metric` | | Single KPI headline number | 3 or 4 |
+| Chart Type | `chartType` | `plotStyle` | Best For |
+|---|---|---|---|
+| Line | `line` | `standard` | Trends over time |
+| Stacked Line | `line` | `stacked` | Composition trends over time |
+| Bar | `bar` | `standard` | Categorical comparisons, rankings |
+| Stacked Bar | `bar` | `stacked` | Composition across categories |
+| Column | `column` | `standard` | Vertical bar, fewer categories |
+| Stacked Column | `column` | `stacked` | Composition across categories (vertical) |
+| Pie | `pie` | | Share/proportion (max 6 segments) |
+| Table | `table` | | Multi-dimensional detailed data |
+| Metric | `insights-metric` | | Single KPI headline number |
 
 ### How Stacking Works
 
@@ -76,54 +76,43 @@ Valid `plotStyle` values: `standard` (default), `stacked`
 
 ## 3. Funnel Chart Types
 
-| Chart Type | Slug | Best For | Width |
-|---|---|---|---|
-| Steps | `funnel-steps` | Standard funnel visualization | 12 (3+ steps), 6 (2 steps) |
-| Trend | `funnel-trend` | Conversion rate over time | 6 or 12 |
-| Top Paths | `funnel-top-paths` | Alternative paths through funnel | 12 |
-| Frequency Line | `funnel-frequency-line` | How often users convert | 6 |
-| Frequency Bar | `funnel-frequency-bar` | Conversion frequency distribution | 6 |
-| Time to Convert (Line) | `funnel-ttc-line` | Duration analysis | 6 or 12 |
-| Time to Convert (Bar) | `funnel-ttc-bar` | Duration distribution | 6 |
-| Median TTC | `funnel-median-ttc` | Central tendency of conversion time | 6 |
+| Chart Type | Slug | Best For |
+|---|---|---|
+| Steps | `funnel-steps` | Standard funnel visualization |
+| Trend | `funnel-trend` | Conversion rate over time |
+| Top Paths | `funnel-top-paths` | Alternative paths through funnel |
+| Frequency Line | `funnel-frequency-line` | How often users convert |
+| Frequency Bar | `funnel-frequency-bar` | Conversion frequency distribution |
+| Time to Convert (Line) | `funnel-ttc-line` | Duration analysis |
+| Time to Convert (Bar) | `funnel-ttc-bar` | Duration distribution |
+| Median TTC | `funnel-median-ttc` | Central tendency of conversion time |
 
 ---
 
 ## 4. Retention Chart Types
 
-| Chart Type | Slug | Best For | Width |
-|---|---|---|---|
-| Curve | `retention-curve` | Classic retention decay curve | 12 |
-| Table | `retention-table` | Cohort-by-cohort retention grid | 12 |
-| Trend | `retention-trend` | Retention rate over time | 6 or 12 |
-| Trend Metric | `retention-trend-metric` | Single retention rate number | 3 or 4 |
-| Line | `line-retention` | Retention as line chart | 6 or 12 |
+| Chart Type | Slug | Best For |
+|---|---|---|
+| Curve | `retention-curve` | Classic retention decay curve |
+| Table | `retention-table` | Cohort-by-cohort retention grid |
+| Trend | `retention-trend` | Retention rate over time |
+| Trend Metric | `retention-trend-metric` | Single retention rate number |
+| Line | `line-retention` | Retention as line chart |
 
 ---
 
 ## 5. Flows Chart Types
 
-| Chart Type | Slug | Best For | Width |
-|---|---|---|---|
-| Sankey | `sankey` | User journey visualization | 12 |
-| Paths | `paths` | Path frequency analysis | 12 |
+| Chart Type | Slug | Best For |
+|---|---|---|
+| Sankey | `sankey` | User journey visualization |
+| Paths | `paths` | Path frequency analysis |
 
 ---
 
 ## 6. Math values
 
-The query methods list their math values in the library. Run `mp help MathType` for insights, `mp help FunnelMathType` for funnels, and `mp help RetentionMathType` for retention. Property math (`average`, `median`, `min`, `max`, the percentiles) needs `math_property`, and `percentile` also needs `percentile_value`.
-
-Values that agents often guess wrong:
-
-| Wrong | Correct |
-|---|---|
-| `sum` | `total` with `math_property` |
-| `count` | `total` without a property |
-| `distinct` | `unique` |
-| `avg`, `mean` | `average` with `math_property` |
-| `p95` | `percentile` with `percentile_value=95` |
-| `avg_count_per_user` | two metrics (`total` and `unique`) with `formula="A / B"` |
+For the math values of each query method, run `mp help MathType`, `mp help FunnelMathType`, or `mp help RetentionMathType`. The templates file maps each report's math to a query.
 
 ---
 
@@ -131,6 +120,7 @@ Values that agents often guess wrong:
 
 | Chart Type | Width | Layout Pattern |
 |---|---|---|
+| Text card (section header) | 12 | Always full width |
 | `insights-metric` | 3 or 4 | Pack 3-4 KPIs per row |
 | `line` | 6 or 12 | 6 for paired comparison, 12 for detail |
 | `line` + stacked | 12 | Composition needs space |
@@ -140,13 +130,17 @@ Values that agents often guess wrong:
 | `column` + stacked | 12 | Composition needs space |
 | `pie` | 6 | Pair with related chart |
 | `table` | 12 | Always full width |
-| `funnel-steps` | 12 | Complex funnels need space |
+| `funnel-steps` | 12, or 6 for a 2-step funnel | Complex funnels need space |
 | `funnel-trend` | 6 or 12 | 6 for paired, 12 for standalone |
 | `funnel-top-paths` | 12 | Path detail needs space |
+| `funnel-frequency-line`, `funnel-frequency-bar` | 6 | Pair with the steps chart |
+| `funnel-ttc-line` | 6 or 12 | 6 for paired, 12 for standalone |
+| `funnel-ttc-bar`, `funnel-median-ttc` | 6 | Pair with the steps chart |
 | `retention-curve` | 12 | Full width for readability |
 | `retention-table` | 12 | Full width for cohort grid |
 | `retention-trend` | 6 or 12 | 6 for paired, 12 for standalone |
 | `retention-trend-metric` | 3 or 4 | Same as insights-metric |
+| `line-retention` | 6 or 12 | 6 for paired, 12 for standalone |
 | `sankey` | 12 | Always full width |
 | `paths` | 12 | Always full width |
 

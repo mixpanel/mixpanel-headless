@@ -1,18 +1,19 @@
 ---
 name: mixpanelyst
-description: Analyzes Mixpanel product analytics data by writing and running Python with the mixpanel_headless library and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels and conversion, retention and churn, user paths, user profiles and cohorts, segment comparisons, revenue, feature adoption, or experiment results. Also use when the user wants to explore a project's events and properties, build a custom property or cohort, share a query as a Mixpanel report link, or read or write business context, or when code imports mixpanel_headless or runs the mp CLI. Do not use for adding Mixpanel tracking to an application's source code, for what a specific user did on screen (use session-replay), or for building or editing dashboards (use dashboard-expert).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write WebFetch(domain:mixpanel.github.io)
+description: Analyzes Mixpanel data with Python, the mixpanel_headless library, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's tracked event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, and other governance objects, or when code runs mixpanel_headless queries or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
+allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Mixpanel analysis with mixpanel_headless
 
 Answer questions about Mixpanel data. Write and run Python that uses the `mixpanel_headless` library and pandas. This skill teaches judgment: which query answers the question, which defaults mislead, and how to check a result. The library itself is the API reference.
 
-Installed: !`mp help 2>/dev/null | head -n 1 | grep . || python3 -m mixpanel_headless --version 2>/dev/null || echo "mixpanel_headless not found; run /mixpanel-headless:setup"`
+- Library that `python3` imports: !`python3 -m mixpanel_headless --version 2>/dev/null || echo "python3 cannot import mixpanel_headless; run /mixpanel-headless:setup"`
+- `mp` command: !`mp help 2>/dev/null | head -n 1 | grep . || echo "mp not on PATH; use python3 -m mixpanel_headless help for look-ups"`
 
 !`mp help 2>/dev/null | grep -A 30 "^Workspace domains" || python3 -m mixpanel_headless help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
 
-If the version above is older than 0.3.0, or says "not found", ask the user to run `/mixpanel-headless:setup`. The look-up commands below need 0.3.0 or later.
+Your code runs through `python3`, so the first line is the one that matters. If it is older than 0.3.0, or `python3` cannot import the library, ask the user to run `/mixpanel-headless:setup`. In a project that uses uv, `uv run python` can see the library when plain `python3` does not. The look-up commands below need 0.3.0 or later.
 
 ## Mental model
 
@@ -30,11 +31,11 @@ Every result has `.df` (a pandas DataFrame) and `.params` (the report definition
 
 ## Workflow
 
-1. **Ground in the schema.** Run `ws.schema_graph(include_density=True)`, then `schema.properties_for_event("<event>")` for each event that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
+1. **Ground in the schema.** Confirm that each event carries each property that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. When the question names one or two known events, use `ws.properties("<event>")`. For an unfamiliar project, run `ws.schema_graph(include_density=True)` once, then `schema.properties_for_event("<event>")`. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
 2. **Look up the API.** Use the look-up loop below for each method or type that you did not look up in this session.
 3. **Write and run.** Use `python3 -c "..."` for one quick look. Write a `.py` file for multi-step work, so that you can edit and run it again.
 4. **Check before you present.** Look at the row count and the date range. Treat an empty or all-zero result as a question, not an answer. Compare the magnitude with a simple total (`ws.query("<event>", mode="total")`). Look for gaps in a time series.
-5. **Share a report link.** Pass the result to `ws.create_report_link(result, name="...")`. Give the user `link.url`, so that they can open the same query in Mixpanel.
+5. **Share when asked.** When the user wants to share or open the result in Mixpanel, pass the result to `ws.create_report_link(result, name="...")` and give them `link.url`. Each call stores a new record on the server, so do not create links that nobody asked for.
 
 ## The look-up loop: check the API before you write code
 
@@ -83,7 +84,8 @@ Each of these returns a plausible but wrong answer, or fails in a way that looks
 - **A report link from another project or region raises `ReportLinkScopeMismatchError`.** The check runs before the record fetch. The message names the `ws.use(...)` call that fixes it.
 - **A shortlink (`/s/<code>`) can fail with `AuthenticationError`.** The shortlink can redirect to the login page, so the API cannot expand it. Ask the user for the full URL from the browser address bar.
 - **Demo and test projects can have old data.** When a result is empty, widen the date range with `from_date` before you conclude that nothing happened.
-- **`ws.schema_graph()` can take minutes on a very large project.** The result is cached for the life of the `Workspace`, so call it once and reuse it.
+- **`ws.schema_graph()` can take minutes on a very large project.** Its cache lasts only inside one Python process. Separate `python3 -c` runs fetch it again, so do multi-step work in one `.py` file, or save the schema to a file.
+- **Sweeps multiply queries and can hit the rate limit.** Cap each loop at a few values, and run the queries one after another, not in parallel. On `RateLimitError`, wait `e.retry_after` seconds (when it is set) before you retry.
 
 ## Reading guide
 
@@ -100,11 +102,11 @@ Read a reference file only when its condition applies. Each file holds judgment 
 | [segmentation.md](references/segmentation.md) | When a breakdown needs derived values, a behavioral population (inline cohort), or a frequency threshold |
 | [custom-property-formulas.md](references/custom-property-formulas.md) | Before you write any formula for a custom property (inline or saved) |
 | [business-context.md](references/business-context.md) | When the user asks to read, write, audit, or seed business context |
-| [entities.md](references/entities.md) | Before you create, update, or delete a Mixpanel entity (dashboards, reports, cohorts, flags, experiments, alerts, Lexicon, and so on) |
+| [entities.md](references/entities.md) | Before you create, update, or delete a Mixpanel entity (reports, cohorts, flags, experiments, alerts, Lexicon, and so on; for dashboards, use the `dashboard-expert` skill) |
 | The `session-replay` skill | When the user asks what a specific user did on screen, or about rage clicks, dead clicks, or recordings |
 | The `dashboard-expert` skill | When the user asks to build, change, or explain a dashboard |
-
-For the methods in any other area (alerts, annotations, feature flags, Lexicon, lookup tables, and so on), run `mp help Workspace --domain "<name>"`.
+| The `auth` skill | When `mp.Workspace()` raises `ConfigError` or `AuthenticationError`, or reports no account or no project |
+| `/mixpanel-headless:setup` | When the import fails or `mp help` does not exist |
 
 ## Output
 
@@ -115,7 +117,7 @@ For the methods in any other area (alerts, annotations, feature flags, Lexicon, 
 
 ## Worked example
 
-Question: "What share of iOS users who sign up go on to purchase within a day?"
+Question: "What share of iOS users who sign up go on to purchase within a day? Send me a link to the report."
 
 ```python
 import mixpanel_headless as mp
@@ -124,9 +126,8 @@ from mixpanel_headless import Filter
 ws = mp.Workspace()
 
 # 1. Ground in the schema: confirm that each step event carries "platform".
-schema = ws.schema_graph(include_density=True)
 for event in ["Sign Up", "Purchase"]:
-    print(event, "platform" in schema.properties_for_event(event))
+    print(event, "platform" in ws.properties(event))
 print(ws.property_values("platform", event="Sign Up"))  # exact value, e.g. "iOS"
 
 # 2. Look-ups done before this code:
@@ -154,7 +155,7 @@ wide = ws.query_funnel(
 )
 print(f"7-day window: {wide.overall_conversion_rate:.1%}")
 
-# 5. Share the query as a report link.
+# 5. The user asked for a link, so share the query as a report link.
 link = ws.create_report_link(result, name="iOS signup to purchase, 1-day window")
 print(link.url)
 ```

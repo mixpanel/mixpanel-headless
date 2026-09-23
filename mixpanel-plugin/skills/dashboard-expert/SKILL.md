@@ -1,7 +1,7 @@
 ---
 name: dashboard-expert
 description: >-
-  Analyzes, builds, modifies, and annotates Mixpanel dashboards with the
+  Analyzes, builds, modifies, and adds explainer text cards to Mixpanel dashboards with the
   mixpanel_headless Python library. It reads a dashboard's layout and runs
   every report on it, creates dashboards with text cards and a grid layout,
   edits cells and rows in place, and writes data-driven explainer cards. Use
@@ -11,7 +11,7 @@ description: >-
   or wants to turn queries into reports placed on a dashboard. Do not use for
   general analytics questions or one-off queries (use mixpanelyst), or for
   what a specific user did in a session recording (use session-replay).
-allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(mp *) Bash(python3 *) Bash(python *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Dashboard Expert
@@ -20,22 +20,25 @@ Analyze, build, modify, and explain Mixpanel dashboards with `mixpanel_headless`
 
 ## Pick the mode
 
-| User intent | Mode | Steps | Read first |
-|---|---|---|---|
-| Analyze, read, understand, audit a dashboard | **Analyze** | Read the layout, run each report, summarize by section | `references/content-and-layout.md` (analyze steps) |
-| Build, create, make a new dashboard | **Build** | Check the data, plan the sections, create with rows in one call, pin | `references/report-pipeline.md` and `references/templates.md` |
-| Modify, add to, fix, reorganize a dashboard | **Modify** | Read the current state, plan the changes, apply them in the fixed order | `references/content-and-layout.md` (modify steps) |
-| Explain, annotate, add insights to a dashboard | **Explain** | Analyze, compute key numbers, insert explainer cards | `references/text-cards.md` |
+| User intent | Mode | Steps |
+|---|---|---|
+| Analyze, read, understand, audit a dashboard | **Analyze** | Read the layout, run each report, summarize by section |
+| Build, create, make a new dashboard | **Build** | Check the data, plan the sections, create with rows in one call, pin |
+| Modify, add to, fix, reorganize a dashboard | **Modify** | Read the current state, plan the changes, apply them in the fixed order |
+| Explain a dashboard, add insights or explainer cards to it | **Explain** | Analyze, compute key numbers, insert explainer cards |
 
-Show the user a plan before you create or change a dashboard. A dashboard is shared team state, and a wrong layout is slow to undo.
+The reading guide at the end says which reference to read for each mode. Show the user a plan before you create or change a dashboard. A dashboard is shared team state, and a wrong layout is slow to undo.
 
 ## Quick start: analyze a dashboard
 
 ```python
+import datetime
 import re
 import mixpanel_headless as mp
 
 ws = mp.Workspace()
+end = datetime.date.today()
+start = end - datetime.timedelta(days=90)
 dash = ws.get_dashboard(DASHBOARD_ID)
 layout, contents = dash.layout, dash.contents
 
@@ -60,7 +63,7 @@ for cid, info in contents.get("report", {}).items():
     elif btype == "funnels":
         # Without dates, a saved funnel runs over the last 30 days.
         result = ws.query_saved_report(
-            bid, bookmark_type="funnels", from_date="2026-06-01", to_date="2026-08-31"
+            bid, bookmark_type="funnels", from_date=start.isoformat(), to_date=end.isoformat()
         )
     else:
         result = ws.query_saved_report(bid, bookmark_type=btype)
@@ -126,7 +129,7 @@ These 14 rules come from failures against the live Mixpanel API. The library doe
 2. **Redistribute widths when you add to a row.** A row with N cells gets N+1 cells of width `12 // (N + 1)`, because the widths in a row must sum to 12.
 3. **Apply updates in this order:** metadata, cell creates, row reorder (`rows_order`), cell updates, cell deletes, row deletes. A reorder before a create fails with an unknown row ID, and an early delete can leave gaps.
 4. **`per_user` needs `math_property`.** Without it, the query raises `BookmarkValidationError` before any network call. The same is true for `math="average"`, `"median"`, and the percentiles.
-5. **`CreateBookmarkParams(dashboard_id=...)` does not place the report.** It only sets metadata. Place a report with an inline `bookmark` content action or with `rows`.
+5. **`CreateBookmarkParams.dashboard_id` is required, but it does not place the report on the dashboard.** Mixpanel requires every saved report to belong to a dashboard. Place a report with an inline bookmark content action or with `rows`.
 6. **`add_report_to_dashboard()` clones the report.** The copy gets a "Duplicate of ..." name and a new content ID. Prefer `rows` or an inline content action.
 7. **The GET layout and the PATCH layout differ.** GET returns `order` and `rows` as a dict keyed by row ID. PATCH takes `rows_order` and `rows` as a list with an `id` on each row. A patch with `order` does not reorder anything.
 8. **Leave `version` out of a layout PATCH.** GET returns `"version": "2.0.0"`, and the API rejects a patch that sends it back.
@@ -160,5 +163,5 @@ Read a reference only when its condition is true. Each file stands alone.
 | [references/content-and-layout.md](references/content-and-layout.md) | Before you analyze or modify a dashboard, and before any `update_dashboard` call that adds, moves, resizes, or deletes a cell or row. It covers content actions, the grid, the PATCH format, operation order, report-link semantics, time filters, and duplication. |
 | [references/text-cards.md](references/text-cards.md) | Before you write or change a text card, and in Explain mode. It covers the allowed HTML, the whitespace rule, and card patterns. |
 | [references/report-pipeline.md](references/report-pipeline.md) | Before you build a dashboard, or when you turn query results from any engine into reports on a dashboard. It covers the build steps and the query-to-report path for insights, funnels, retention, and flows. |
-| [references/templates.md](references/templates.md) | When you plan a new dashboard or a new section. For layout and templates, read this file: it has nine dashboard templates with rows, widths, heights, text, and report specifications. |
+| [references/templates.md](references/templates.md) | When you plan a new dashboard or a new section. It has nine templates with rows, widths, heights, text, and report specifications. Read the selection guide and "How to use these templates", then read only the chosen template's section. |
 | [references/chart-types.md](references/chart-types.md) | When you pick or check a chart type, or pick a width for a chart. |
