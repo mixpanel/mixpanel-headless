@@ -376,3 +376,171 @@ def test_mobile_replay_bundle_matches_generator_when_present() -> None:
     text = OUT_PATH.read_text(encoding="utf-8")
     header = json.loads(text.splitlines()[0])["$bundle"]
     assert text == render_bundle(str(header["source_commit"]))
+
+
+def _analyze_mobile_vectors() -> list[dict[str, Any]]:
+    """Build the authored mobile analyzer vectors in memory.
+
+    Returns:
+        The vector objects that ``gen_replay_analyze_vectors`` writes.
+    """
+    from conformance.record.gen_replay_analyze_vectors import build_vectors
+
+    return build_vectors()
+
+
+def test_analyze_mobile_vectors_are_schema_valid_and_authored() -> None:
+    """Every generated mobile analyzer vector passes the authored-vector rules.
+
+    Raises:
+        AssertionError: On a schema, origin, id, or capability violation.
+    """
+    validator = _schema_validator()
+    bad: list[str] = []
+    ids: set[str] = set()
+    for body in _analyze_mobile_vectors():
+        vector_id = str(body["id"])
+        bad.extend(f"{vector_id}: {e.message}" for e in validator.iter_errors(body))
+        if body["origin"] != "authored" or body["capability"] != "replays":
+            bad.append(f"{vector_id}: wrong origin or capability")
+        if not vector_id.startswith("replays/rrweb_analyzer.analyze/authored-mobile-"):
+            bad.append(f"{vector_id}: unexpected id prefix")
+        if vector_id in ids:
+            bad.append(f"{vector_id}: duplicate id")
+        ids.add(vector_id)
+    assert bad == [], "\n".join(bad)
+
+
+def test_analyze_mobile_vectors_cover_fixtures_actions_and_scales() -> None:
+    """The vectors cover every mobile fixture, action kind, and scale shape.
+
+    Raises:
+        AssertionError: If a fixture is missing, an action kind never
+            appears, or a scale value is not exercised.
+    """
+    from conformance.record.gen_replay_analyze_vectors import FIXTURES
+
+    vectors = _analyze_mobile_vectors()
+    ids = {str(body["id"]) for body in vectors}
+    for name, _keep in FIXTURES:
+        assert any(name in vector_id for vector_id in ids), name
+    assert len(FIXTURES) == 9
+    actions: set[str] = set()
+    scales: set[float] = set()
+    for body in vectors:
+        for action in body["expect"]["output"]["actions"]:
+            actions.add(action["action"])
+            if action["action"] == "screen":
+                scales.add(action["metadata"]["scale"])
+    assert {"screen", "touch_start", "scroll", "click"} <= actions
+    assert {1.0, 2.0, 1.25, 0.5} <= scales
+
+
+def test_analyze_mobile_bundle_keeps_float_spelling() -> None:
+    """Integral float fields keep their ``.0`` spelling in the bundle text.
+
+    ``metadata.scale`` is a float in Python; a port must see ``1.0`` and
+    ``2.0``, never ``1`` or ``2``.
+
+    Raises:
+        AssertionError: If a scale is written as an integer token.
+    """
+    import re
+
+    from conformance.record.gen_replay_analyze_vectors import render_bundle
+
+    text = render_bundle("0" * 40)
+    tokens = set(re.findall(r'"scale":(-?[0-9][0-9.eE+-]*)', text))
+    assert {"1.0", "2.0", "1.25", "0.5"} <= tokens
+    assert all("." in token or "e" in token.lower() for token in tokens), tokens
+
+
+def test_analyze_mobile_vectors_replay_clean_through_the_runner() -> None:
+    """Each generated mobile analyzer vector passes the corpus runner.
+
+    Raises:
+        AssertionError: With the failure reasons of any vector that fails.
+    """
+    from conformance.record.clock import RecordClock
+    from conformance.runner.execute import run_vector
+    from conformance.runner.loading import LoadedVector
+
+    failures: list[str] = []
+    clock = RecordClock()
+    clock.start()
+    try:
+        for body in _analyze_mobile_vectors():
+            clock.reset_test_state()
+            outcome = run_vector(
+                LoadedVector(
+                    id=str(body["id"]),
+                    kind=str(body["kind"]),
+                    body=body,
+                    bundle=Path("authored/replays/rrweb-analyze-mobile.jsonl"),
+                )
+            )
+            if not outcome.passed:
+                failures.extend([str(body["id"]), *outcome.reasons])
+    finally:
+        clock.stop()
+    assert failures == [], "\n".join(failures)
+
+
+def test_analyze_mobile_full_fixtures_match_goldens() -> None:
+    """Untrimmed fixture vectors equal the committed rrweb goldens.
+
+    The goldens under ``conformance/goldens/rrweb/`` freeze the analyzer's
+    actions and markdown for the same streams; the vectors must agree.
+
+    Raises:
+        AssertionError: If an untrimmed vector's actions or markdown differ
+            from its golden.
+    """
+    from conformance.record.gen_replay_analyze_vectors import FIXTURES
+
+    goldens = Path(__file__).resolve().parents[1] / "goldens" / "rrweb"
+    by_id = {str(body["id"]): body for body in _analyze_mobile_vectors()}
+    for name, keep in FIXTURES:
+        if keep is not None:
+            continue
+        body = by_id[f"replays/rrweb_analyzer.analyze/authored-mobile-{name}"]
+        golden = json.loads((goldens / f"{name}.golden.json").read_text("utf-8"))
+        output = body["expect"]["output"]
+        assert output["actions"] == golden["actions"], name
+        assert output["markdown_summary"] == golden["markdown"], name
+
+
+def test_analyze_mobile_bundle_matches_generator_when_present() -> None:
+    """A committed mobile analyzer bundle equals a fresh generator run.
+
+    Raises:
+        AssertionError: If the committed bundle differs from the generator
+            output under its own stamp.
+    """
+    from conformance.record.gen_replay_analyze_vectors import (
+        OUT_PATH,
+        render_bundle,
+    )
+
+    if not OUT_PATH.exists():
+        pytest.skip("mobile analyzer bundle is written after the merge to main")
+    text = OUT_PATH.read_text(encoding="utf-8")
+    header = json.loads(text.splitlines()[0])["$bundle"]
+    assert text == render_bundle(str(header["source_commit"]))
+
+
+def test_gen_replay_analyze_vectors_cli(tmp_path: Path) -> None:
+    """The CLI writes the bundle to ``--out``.
+
+    Args:
+        tmp_path: pytest-provided scratch directory.
+
+    Raises:
+        AssertionError: If the written bundle differs from ``render_bundle``.
+    """
+    from conformance.record.gen_replay_analyze_vectors import main, render_bundle
+
+    stamp = "0" * 40
+    out = tmp_path / "nested" / "bundle.jsonl"
+    assert main(["--commit", stamp, "--out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == render_bundle(stamp)
