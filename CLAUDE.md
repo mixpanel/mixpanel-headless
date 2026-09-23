@@ -287,18 +287,18 @@ Suppressing stderr causes silent failures and makes it impossible to diagnose is
 
 ## mixpanel-headless Plugin
 
-This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin provides the `mixpanel_headless` API surface and a live documentation system (`help.py`) for querying and analyzing Mixpanel data with Python.
+This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's skills teach Mixpanel analysis judgment on top of the `mixpanel_headless` library; for API facts (signatures, types, allowed values) they point at the library's built-in reference (`mp help` / `mp.help()`) instead of copying it. The skills need `mixpanel_headless` 0.3.0 or later, and they run it from a plugin-owned venv: setup creates `${CLAUDE_PLUGIN_DATA}/venv` (`~/.claude/plugins/data/mixpanel-headless-<source>/venv`; `uv venv` when uv exists, else `python3 -m venv`) and installs there only, never into the system or user Python. The skills call `${CLAUDE_PLUGIN_DATA}/venv/bin/python` and `.../bin/mp` by full path, and the venv survives plugin updates. `setup.sh` takes the venv path as its required first argument (`bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv`); it checks `mp help` and `<venv>/bin/mp`, then prints the venv path. User-run `!` commands use the full CLI path (`${CLAUDE_PLUGIN_DATA}/venv/bin/mp login`), because `mp` is often not on `PATH`.
 
 ### Plugin Components
 
 | Type | Name | Invocation |
 |------|------|------------|
-| **Command** | `mixpanel-headless:auth` | `/mixpanel-headless:auth` — manage credentials, accounts, OAuth |
-| **Skill** | `mixpanel-headless:setup` | `/mixpanel-headless:setup` — install deps, verify auth |
 | **Skill** | `mixpanelyst` | Auto-triggered on analytics questions |
+| **Skill** | `session-replay` | Auto-triggered on session replay questions (web and mobile recordings) |
 | **Skill** | `dashboard-expert` | Auto-triggered on dashboard analysis, creation, modification |
-| **Script** | `help.py` | `python help.py Workspace.query` — live API docs with fuzzy search |
-| **Script** | `auth_manager.py` | `python auth_manager.py status` — auth status JSON |
+| **Skill** | `auth` | `/mixpanel-headless:auth` (also auto-triggered on credential questions) — manage credentials, accounts, OAuth |
+| **Skill** | `setup` | `/mixpanel-headless:setup` — create or upgrade the plugin venv (0.3.0 floor), verify it and credentials (user-invoked only) |
+| **Script** | `auth_manager.py` | `${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session` — session status JSON (also `account`, `project`, `workspace`, `target`) |
 
 ### Usage
 
@@ -306,11 +306,16 @@ This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin pro
 # Setup
 /mixpanel-headless:setup
 
-# API lookup
-python help.py Workspace.query        # method signature + docstring + referenced types
-python help.py search cohort           # fuzzy search across names, docstrings, enum members
-python help.py Filter                  # type fields + construction patterns + related methods
+# API lookup (no credentials, no network); the skills run the venv's mp by full path
+mp help Workspace.query               # method signature + docstring + referenced types
+mp help Workspace.query_funnel.math   # one parameter and its allowed values
+mp help search cohort                 # fuzzy search across names, docstrings, enum members
+mp help Filter                        # type fields + construction patterns + related methods
+mp help Workspace --domain "feature flags"   # every method in one domain
+python3 -m mixpanel_headless help types      # fallback when mp is not on PATH
 ```
+
+In Python: `mp.help("Workspace.query")` prints the same text; `mp.reference.search("cohort")` returns structured results.
 
 ## Active Technologies
 - Python 3.10+ (mypy --strict) + httpx (HTTP client), Pydantic v2 (validation), Typer (CLI), Rich (output)

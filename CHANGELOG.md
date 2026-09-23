@@ -5,6 +5,67 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Added
+
+- Plugin: repository tests guard the skills. Every Python block must
+  parse, every `ws.<method>()` call must name a real method and real
+  keyword arguments, and each skill must stay inside its size budget.
+- Plugin: a behavior eval suite (`claude plugin eval`) lives in
+  `mixpanel-plugin/evals/`.
+
+### Changed
+
+- Plugin: the skills now use the library's built-in reference for every
+  API fact. The bundled `help.py` script is removed; skills look up
+  signatures, types, and allowed values with `mp help <query>` (or
+  `mp.help()` in Python), so the answers match the installed library.
+  Copied method lists, type fields, and enum values leave the skill text.
+- Plugin: the `mixpanelyst` skill is restructured into a short entry file
+  (workflow, gotchas, the look-up loop) plus one reference file per query
+  engine and topic, loaded only when a question needs it.
+- Plugin: a new `session-replay` skill takes over session recording
+  analysis for web and mobile (rage clicks, rage taps, dead clicks,
+  errors, action timelines) from `mixpanelyst`.
+- Plugin: `/mixpanel-headless:auth` moves from a command to a skill, with
+  `auth_manager.py` beside it. The invocation does not change, and the
+  skill now also loads on its own when credentials are missing or failing.
+- Plugin: the `dashboard-expert` references are reorganized by topic
+  (content and layout, text cards, report pipeline, chart types,
+  templates).
+- Plugin: the plugin now runs code in its own Python environment. The
+  setup skill creates it at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`
+  (with `uv` when available, otherwise `python3 -m venv`) and installs
+  `mixpanel-headless>=0.3.0` and the analysis packages there, never into
+  the system or user Python. Running setup again upgrades the
+  environment, and setup checks that `mp help` works. The skills run
+  that environment's `python` and `mp`, and the environment survives
+  plugin updates. To run your own scripts with it, use the `python` path
+  that setup prints, or install `mixpanel-headless` in your own project.
+  Setup ignores the uv settings of the project you run it from, so a
+  project's uv configuration does not change the plugin install.
+- Plugin: the analysis skills pre-approve only the plugin environment's
+  `python` and `mp`, `uv run`, file reads, writes, and edits, and fetches
+  from the documentation site. For look-ups before setup, they also
+  pre-approve two read-only commands of an `mp` on your `PATH`:
+  `mp --version` and `mp help`. They no longer pre-approve any other
+  `python`, `python3`, or `mp` command on your `PATH`.
+- Plugin: skill descriptions say when to use each skill and when to use
+  another one.
+- Plugin: the plugin no longer documents or checks the Cowork bridge.
+  The setup skill no longer detects it, the auth skill no longer has a
+  bridge status command, and the Cowork quick start guide is removed.
+- Plugin: the manifest description and keywords describe the new skill
+  set, and the plugin README and guides use `mp help` in place of the
+  script.
+
+### Fixed
+
+- Plugin: examples and parameter names that no longer matched the
+  library are corrected (for example, `query_user()` takes `where=`, not
+  `filters=`).
+
 ## 0.3.0 — 2026-09-22
 
 Minor release: built-in API help and mobile session replays. A

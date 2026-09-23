@@ -221,53 +221,74 @@ docs-clean:
 
 # === Plugin Development ===
 
-# Validate plugin structure (JSON, YAML, references)
+# Validate the plugin: claude plugin validate --strict (skipped without the claude CLI), then the content guards
 plugin-validate:
-    @./mixpanel-plugin/scripts/validate.sh mixpanel-plugin
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v claude >/dev/null 2>&1; then
+        claude plugin validate mixpanel-plugin --strict
+    else
+        echo "⚠ claude CLI not found; skipping 'claude plugin validate' (the content guards still run)"
+    fi
+    uv run pytest tests/unit/plugin -q
 
-# Check version sync between plugin.json and marketplace.json
+# plugin.json wins silently when both files set a version, so the root
+# marketplace.json entry must not carry one.
+# Check that only plugin.json sets the plugin version
 plugin-check-version:
     #!/usr/bin/env bash
     set -euo pipefail
-    PLUGIN_VERSION=$(jq -r '.version' mixpanel-plugin/.claude-plugin/plugin.json)
-    MARKETPLACE_VERSION=$(jq -r '.plugins[0].version' mixpanel-plugin/.claude-plugin/marketplace.json)
-    if [ "$PLUGIN_VERSION" = "$MARKETPLACE_VERSION" ]; then
-        echo "✓ Versions match: $PLUGIN_VERSION"
+    PLUGIN_VERSION=$(jq -r '.version // empty' mixpanel-plugin/.claude-plugin/plugin.json)
+    MARKETPLACE_VERSION=$(jq -r '.plugins[] | select(.name == "mixpanel-headless") | .version // empty' .claude-plugin/marketplace.json)
+    if [ -z "$MARKETPLACE_VERSION" ]; then
+        echo "✓ Version set in plugin.json only: ${PLUGIN_VERSION:-<unset>}"
     else
-        echo "✗ Version mismatch:"
-        echo "  plugin.json:            $PLUGIN_VERSION"
-        echo "  marketplace.json (dev): $MARKETPLACE_VERSION"
+        echo "✗ .claude-plugin/marketplace.json sets version $MARKETPLACE_VERSION for mixpanel-headless"
+        echo "  plugin.json sets:  ${PLUGIN_VERSION:-<unset>}"
+        echo "  Remove the marketplace version; plugin.json wins silently when both are set."
         exit 1
     fi
 
-# Plugin statistics
+# The eval grants differ from the skills' allowed-tools on purpose: the eval
+# child ignores skill allowed-tools (only --allow-tools grants), and it has no
+# plugin venv, because ${CLAUDE_PLUGIN_DATA} is a new empty folder per run and
+# cannot be named here. So the list grants the venv by wildcard path and the
+# skills' read-only look-up fallback to an `mp` on PATH (the same three exact
+# grants the skills carry), plus the read-only Grep and Glob
+# that the harness gates. --allow-tools takes a list, so
+# --no-publish ends it before the caller's args. --no-publish keeps the report
+# on this machine; --trust-plugin answers the first-run prompt for this repo's plugin.
+# Run the offline plugin eval suite (costs model calls; not part of `check`)
+plugin-eval *args:
+    claude plugin eval mixpanel-plugin --tag offline --allow-tools "Bash(mp --version)" "Bash(mp help)" "Bash(mp help *)" "Bash(uv run *)" "Bash(*/venv/bin/mp *)" "Bash(*/venv/bin/python *)" Read Grep Glob Write Edit "WebFetch(domain:mixpanel.github.io)" --no-publish --trust-plugin {{ args }}
+
+# Plugin statistics: skills, entry-file lines, reference files
 plugin-stats:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "📊 Plugin statistics:"
     echo ""
-
-    # Commands
-    CMD_COUNT=$(ls -1 mixpanel-plugin/commands/*.md 2>/dev/null | wc -l)
-    CMD_LINES=$(wc -l mixpanel-plugin/commands/*.md 2>/dev/null | tail -1 | awk '{print $1}')
-    echo "Commands:    $CMD_COUNT files, $CMD_LINES lines"
-
-    # Skills
-    SKILL_COUNT=$(find mixpanel-plugin/skills -name "*.md" -type f 2>/dev/null | wc -l)
-    SKILL_LINES=$(find mixpanel-plugin/skills -name "*.md" -type f 2>/dev/null | xargs wc -l | tail -1 | awk '{print $1}')
-    echo "Skills:      $SKILL_COUNT files, $SKILL_LINES lines"
-
-    # Agents (if any)
-    AGENT_LINES=0
-    if [ -d mixpanel-plugin/agents ]; then
-        AGENT_COUNT=$(find mixpanel-plugin/agents -name "*.md" -type f 2>/dev/null | wc -l)
-        if [ "$AGENT_COUNT" -gt 0 ]; then
-            AGENT_LINES=$(find mixpanel-plugin/agents -name "*.md" -type f | xargs wc -l | tail -1 | awk '{print $1}')
-            echo "Agents:      $AGENT_COUNT files, $AGENT_LINES lines"
+    TOTAL_LINES=0
+    TOTAL_REFS=0
+    SKILL_COUNT=0
+    for skill_md in mixpanel-plugin/skills/*/SKILL.md; do
+        dir=$(dirname "$skill_md")
+        name=$(basename "$dir")
+        lines=$(wc -l < "$skill_md" | tr -d ' ')
+        ref_count=0
+        ref_lines=0
+        if [ -d "$dir/references" ]; then
+            ref_count=$(find "$dir/references" -name "*.md" -type f | wc -l | tr -d ' ')
+            if [ "$ref_count" -gt 0 ]; then
+                ref_lines=$(find "$dir/references" -name "*.md" -type f -exec cat {} + | wc -l | tr -d ' ')
+            fi
         fi
-    fi
-
-    # Total
-    TOTAL_LINES=$((CMD_LINES + SKILL_LINES + AGENT_LINES))
+        printf "%-18s SKILL.md %4s lines   references %2s files, %5s lines\n" "$name" "$lines" "$ref_count" "$ref_lines"
+        SKILL_COUNT=$((SKILL_COUNT + 1))
+        TOTAL_REFS=$((TOTAL_REFS + ref_count))
+        TOTAL_LINES=$((TOTAL_LINES + lines + ref_lines))
+    done
     echo ""
+    echo "Skills:      $SKILL_COUNT"
+    echo "References:  $TOTAL_REFS files"
     echo "Total:       $TOTAL_LINES lines"
