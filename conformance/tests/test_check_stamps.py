@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from conformance.record.check_stamps import (
+    AWAITING_FIRST_REPIN,
     GENERATED_CONTRACT_ARTIFACTS,
     LEGACY_AUTHORED_STAMPS,
     StampFinding,
@@ -43,6 +44,12 @@ OLD_SHA = "390c6e7fe79485d3844c75af78fb5fe90142af68"
 OLD_CONTRACT_SHA = "4504f3e3d25749768b053ccfd46a07302d3fc5c4"
 #: Legacy stamp shared by most hand-authored bundles.
 LEGACY_SHA = "52696743b913a0c4c152deb48af987ae412b5aee"
+
+
+_WRITTEN_ARTIFACTS: tuple[str, ...] = tuple(
+    name for name in GENERATED_CONTRACT_ARTIFACTS if name not in AWAITING_FIRST_REPIN
+)
+"""The generated artifacts a committed contract directory holds today."""
 
 
 def _reachable(*shas: str) -> Callable[[str], bool]:
@@ -177,7 +184,7 @@ def _make_tree(
     )
     _write(vectors / "enums" / "bookmark_enums.json", b"{}\n")
     generated_from = stamp if contract_stamp is None else contract_stamp
-    for name in GENERATED_CONTRACT_ARTIFACTS:
+    for name in _WRITTEN_ARTIFACTS:
         _write(
             contract / name,
             json.dumps({"generated_from": generated_from, "x": 1}).encode() + b"\n",
@@ -235,7 +242,7 @@ class TestReachability:
             "manifest.json",
             "segmentation/test_expressions.jsonl",
             "funnels/test_funnels.jsonl",
-            *(f"contract/{name}" for name in GENERATED_CONTRACT_ARTIFACTS),
+            *(f"contract/{name}" for name in _WRITTEN_ARTIFACTS),
         }
         assert all("not reachable from main" in f.detail for f in findings)
 
@@ -365,6 +372,49 @@ class TestReachability:
                 "generated artifact missing",
             )
         ]
+
+    def test_artifact_awaiting_first_repin_may_be_missing(self, tmp_path: Path) -> None:
+        """A generated artifact no re-pin has written yet is not a finding.
+
+        Args:
+            tmp_path: pytest-provided scratch directory.
+        """
+        vectors, contract = _make_tree(tmp_path, MAIN_SHA)
+        assert AWAITING_FIRST_REPIN
+        for name in AWAITING_FIRST_REPIN:
+            assert not (contract / name).exists()
+        assert check_reachability(vectors, contract, _reachable(MAIN_SHA)) == []
+
+    def test_written_artifact_must_leave_the_awaiting_set(self, tmp_path: Path) -> None:
+        """Once written, an awaiting artifact is flagged until its name leaves the set.
+
+        Its stamp is checked like any other generated artifact too.
+
+        Args:
+            tmp_path: pytest-provided scratch directory.
+        """
+        vectors, contract = _make_tree(tmp_path, MAIN_SHA)
+        for name in AWAITING_FIRST_REPIN:
+            _write(contract / name, json.dumps({"generated_from": OLD_SHA}).encode())
+        findings = check_reachability(vectors, contract, _reachable(MAIN_SHA))
+        for name in AWAITING_FIRST_REPIN:
+            details = {f.detail for f in findings if f.path == f"contract/{name}"}
+            assert "artifact is written; remove it from AWAITING_FIRST_REPIN" in details
+            assert any("not reachable from main" in d for d in details)
+
+    def test_guard_lists_every_generator_artifact(self) -> None:
+        """The guard's artifact list equals what ``generate_contract`` writes."""
+        from conformance.contract.generate_contract import ARTIFACT_NAMES
+
+        assert set(GENERATED_CONTRACT_ARTIFACTS) == set(ARTIFACT_NAMES)
+        assert AWAITING_FIRST_REPIN.issubset(GENERATED_CONTRACT_ARTIFACTS)
+
+    def test_committed_contract_matches_the_awaiting_set(self) -> None:
+        """Every generated artifact is committed unless it awaits its first re-pin."""
+        contract = Path(__file__).resolve().parents[1] / "contract"
+        committed = {p.name for p in contract.glob("*.json")}
+        for name in GENERATED_CONTRACT_ARTIFACTS:
+            assert (name in committed) != (name in AWAITING_FIRST_REPIN), name
 
     def test_input_json_without_stamp_is_ignored(self, tmp_path: Path) -> None:
         """Hand-maintained contract inputs without the key are not checked.

@@ -71,7 +71,16 @@ GENERATED_CONTRACT_ARTIFACTS: tuple[str, ...] = (
     "literal-aliases.json",
     "model-coverage.json",
     "tag-universe.json",
+    "help-registry.json",
 )
+
+#: Generated artifacts that ``generate_contract.py`` emits but that no
+#: re-pin has written yet. Until one does, a missing file is not a finding
+#: (the library PR that adds a generator never writes the artifact, per the
+#: two-step protocol); once the file exists it is checked like every other
+#: generated artifact, and its name must leave this set in the same re-pin
+#: (a present file still listed here is a finding).
+AWAITING_FIRST_REPIN: frozenset[str] = frozenset({"help-registry.json"})
 
 #: Existing authored bundles and the hand-authored provenance they carry.
 #: ``None`` means the header has no ``source_commit`` at all (the storybook
@@ -289,12 +298,24 @@ def _check_contract(contract: Path, is_ancestor: IsAncestor) -> list[StampFindin
         is_ancestor: Reachability predicate.
 
     Returns:
-        Findings for missing generated artifacts, missing keys on generated
-        artifacts, and unreachable or malformed ``generated_from`` values.
+        Findings for missing generated artifacts (except those in
+        :data:`AWAITING_FIRST_REPIN`), a written artifact still listed as
+        awaiting, missing keys on generated artifacts, and unreachable or
+        malformed ``generated_from`` values.
     """
     findings: list[StampFinding] = []
     present = {p.name: p for p in contract.glob("*.json")} if contract.is_dir() else {}
     for name in GENERATED_CONTRACT_ARTIFACTS:
+        if name in AWAITING_FIRST_REPIN:
+            if name in present:
+                findings.append(
+                    StampFinding(
+                        "reachability",
+                        f"contract/{name}",
+                        "artifact is written; remove it from AWAITING_FIRST_REPIN",
+                    )
+                )
+            continue
         if name not in present:
             findings.append(
                 StampFinding(

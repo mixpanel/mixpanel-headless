@@ -92,6 +92,23 @@ _SEARCH_USAGE = (
 )
 """Text printed for a bare ``search`` query."""
 
+_OVERVIEW_ENTRY_POINTS: tuple[tuple[str, str], ...] = (
+    ("mp.help(query)", "print reference text (this view)"),
+    ("mp.reference.describe(query)", "structured HelpEntry"),
+    ("mp.reference.search(term)", "structured SearchResult"),
+    ("mp.reference.render(entry, fmt)", "text | markdown | json"),
+    ("mp help QUERY...", "CLI (no auth); also: python3 -m mixpanel_headless help"),
+)
+"""The ``(entry point, description)`` rows of the overview, in display order."""
+
+_OVERVIEW_GRAMMAR: tuple[str, ...] = (
+    "Workspace | Workspace.<method> | Workspace.<method>.<param>",
+    "<Type> | <Enum> | <LiteralAlias> | <Exception> | <function>",
+    "accounts | session | targets | types | exceptions | help",
+    "search <term>",
+)
+"""The query-grammar lines of the overview, in display order."""
+
 _TYPES_LISTING_GROUPS: tuple[tuple[str, ExportKind], ...] = (
     ("models", "model"),
     ("dataclasses", "dataclass"),
@@ -591,19 +608,6 @@ def _overview_entry() -> HelpEntry:
     from mixpanel_headless._internal.help.inventory import workspace_members
     from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 
-    entry_points = (
-        ("mp.help(query)", "print reference text (this view)"),
-        ("mp.reference.describe(query)", "structured HelpEntry"),
-        ("mp.reference.search(term)", "structured SearchResult"),
-        ("mp.reference.render(entry, fmt)", "text | markdown | json"),
-        ("mp help QUERY...", "CLI (no auth); also: python3 -m mixpanel_headless help"),
-    )
-    grammar = (
-        "Workspace | Workspace.<method> | Workspace.<method>.<param>",
-        "<Type> | <Enum> | <LiteralAlias> | <Exception> | <function>",
-        "accounts | session | targets | types | exceptions | help",
-        "search <term>",
-    )
     cells = [f"{title} ({len(names)})" for title, names in WORKSPACE_DOMAINS]
     half = (len(cells) + 1) // 2
     rows = [
@@ -615,10 +619,10 @@ def _overview_entry() -> HelpEntry:
         "import mixpanel_headless as mp",
         "",
         "Entry points:",
-        *(f"  {name:<34} {text}" for name, text in entry_points),
+        *(f"  {name:<34} {text}" for name, text in _OVERVIEW_ENTRY_POINTS),
         "",
         "Queries (mp.help('help') for the full table):",
-        *(f"  {line}" for line in grammar),
+        *(f"  {line}" for line in _OVERVIEW_GRAMMAR),
         "",
         f"Workspace domains ({len(WORKSPACE_DOMAINS)} domains, {member_count} members;"
         " mp.help('Workspace', domain=...)):",
