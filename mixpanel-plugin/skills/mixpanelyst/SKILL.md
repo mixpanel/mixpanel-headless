@@ -14,9 +14,17 @@ Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m 
 
 ## Run code in the plugin environment
 
-The plugin keeps its own Python environment. Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. In this skill, `mp` means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
+The plugin keeps its own Python environment. The "Installed" line above already tells you whether it exists, so do not check again with `ls`, `which`, or shell variables. In every command, write the full literal path that this skill shows, not a shell variable, because only the literal path is pre-approved.
 
-If that interpreter does not exist, or the version above is older than 0.3.0, ask the user to run `/mixpanel-headless:setup`. Until then, you can use an `mp` on `PATH` for `mp help` look-ups only, and only after `mp --version` shows 0.3.0 or later. Do not run analysis code with a Python found on `PATH`, because its library version is unknown. When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` also works.
+Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. In this skill, `mp` means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
+
+If the "Installed" line says that the environment is not set up, or shows a version older than 0.3.0:
+
+1. Run `mp --version` on its own, as a standalone command.
+2. If it shows 0.3.0 or later, run `mp help <query>` the same way for look-ups. The look-up loop below still works.
+3. Ask the user to run `/mixpanel-headless:setup` before you run any analysis code. Do not run analysis code with a Python found on `PATH`, because its library version is unknown.
+
+When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` also works.
 
 ## Mental model
 
