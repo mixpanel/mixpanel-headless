@@ -433,7 +433,105 @@ def test_analyze_mobile_vectors_cover_fixtures_actions_and_scales() -> None:
             if action["action"] == "screen":
                 scales.add(action["metadata"]["scale"])
     assert {"screen", "touch_start", "scroll", "click"} <= actions
-    assert {1.0, 2.0, 1.25, 0.5} <= scales
+    assert {1.0, 2.0, 1.25, 0.5, 1.05, 0.95} <= scales
+
+
+def _analyze_mobile_output(slug: str) -> dict[str, Any]:
+    """Return the ``expect.output`` of one mobile analyzer vector.
+
+    Args:
+        slug: The id suffix after ``authored-mobile-``.
+
+    Returns:
+        The analyzer output.
+    """
+    by_id = {str(body["id"]): body for body in _analyze_mobile_vectors()}
+    body = by_id[f"replays/rrweb_analyzer.analyze/authored-mobile-{slug}"]
+    output: dict[str, Any] = body["expect"]["output"]
+    return output
+
+
+def _action_counts(output: dict[str, Any]) -> dict[str, int]:
+    """Count the actions of one analyzer output by kind.
+
+    Args:
+        output: The analyzer output.
+
+    Returns:
+        Action kind -> count.
+    """
+    counts: dict[str, int] = {}
+    for action in output["actions"]:
+        counts[action["action"]] = counts.get(action["action"], 0) + 1
+    return counts
+
+
+def test_analyze_mobile_trimmed_prefixes_keep_their_actions() -> None:
+    """The two trimmed fixtures keep the actions they are carried for.
+
+    A fixture or analyzer change that hollows out a prefix fails here
+    instead of silently shrinking the coverage.
+
+    Raises:
+        AssertionError: If a prefix loses screens, taps, scrolls, or the
+            overlapping finger-downs of the rage burst.
+    """
+    from conformance.record.gen_replay_analyze_vectors import _cases
+
+    snacks = _analyze_mobile_output("android-snacks-001-first-18")
+    assert _action_counts(snacks) == {"screen": 3, "touch_start": 3}
+    rage = _analyze_mobile_output("flutter-android-rage-001-first-73")
+    assert _action_counts(rage) == {"screen": 6, "scroll": 2, "touch_start": 10}
+    events = dict(_cases())["flutter-android-rage-001-first-73"]
+    down = False
+    overlapping = 0
+    for event in events:
+        data = event.get("data", {})
+        if event.get("type") != 3 or data.get("source") != 2:
+            continue
+        if data.get("type") == 7:
+            overlapping += int(down)
+            down = True
+        elif data.get("type") == 9:
+            down = False
+    assert overlapping >= 1
+
+
+def test_analyze_mobile_tolerance_case_discriminates() -> None:
+    """Inside the tolerance the bounds stay raw, and the tap proves it.
+
+    The same tap against a stream that does scale (by 1.05) misses the
+    button, so the ``stays-raw`` vector's ``button:Next`` target is only
+    possible without scaling.
+
+    Raises:
+        AssertionError: If the raw case scales or the tap stops
+            discriminating.
+    """
+    from conformance.record.adapters import analyze_rrweb
+    from conformance.record.gen_replay_analyze_vectors import _scaled_stream
+
+    raw = _analyze_mobile_output("scale-within-tolerance-stays-raw")
+    screen = next(a for a in raw["actions"] if a["action"] == "screen")
+    assert screen["metadata"]["scale"] == 1.0
+    tap = next(a for a in raw["actions"] if a["action"] == "touch_start")
+    assert tap["target_desc"] == "button:Next"
+    scaled = analyze_rrweb(_scaled_stream(420, 400, tap=(100, 701)))
+    scaled_tap = next(a for a in scaled.actions if a.action == "touch_start")
+    assert scaled_tap.target_desc != "button:Next"
+
+
+def test_analyze_mobile_scaled_bounds_round_half_to_even() -> None:
+    """Scaled bounds that land on .5 round half to even.
+
+    Raises:
+        AssertionError: If ``[21, 301, 5, 3]`` at scale 0.5 is not
+            ``[10, 150, 2, 2]``.
+    """
+    output = _analyze_mobile_output("scale-0-5-round-half-even")
+    screen = next(a for a in output["actions"] if a["action"] == "screen")
+    odd = next(e for e in screen["metadata"]["elements"] if e["text"] == "Odd")
+    assert odd["bounds"] == [10, 150, 2, 2]
 
 
 def test_analyze_mobile_bundle_keeps_float_spelling() -> None:

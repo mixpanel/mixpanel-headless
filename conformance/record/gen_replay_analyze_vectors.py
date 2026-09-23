@@ -4,8 +4,13 @@ Emits ``conformance/vectors/authored/replays/rrweb-analyze-mobile.jsonl``:
 authored ``rrweb_analyzer.analyze`` vectors over the nine mobile rrweb
 fixtures in ``tests/fixtures/rrweb/``, the synthetic mobile gesture
 stream in ``conformance/goldens/rrweb/``, and a few small synthetic
-wireframe streams whose Meta width differs from the wireframe viewport
-(physical-pixel bounds, so ``metadata.scale`` is not ``1.0``).
+wireframe streams whose Meta width differs from the wireframe viewport.
+When the viewport is wider than the Meta width (physical-pixel bounds
+against dp touches) the scale is below ``1.0``; when it is narrower (a
+coarse viewport) the scale is above ``1.0``. The synthetic streams also
+pin the tolerance boundary (a ratio of exactly 1.05 or 0.95 in floating
+point still scales), a ratio inside the tolerance that does not scale,
+and round-half-to-even on scaled bounds.
 
 The existing analyzer vectors (``rrweb-seed.jsonl``) cover web streams
 only, so without these no vector ran the analyzer over a wireframe stream
@@ -114,7 +119,12 @@ def _meta(offset_ms: int, width: int) -> dict[str, Any]:
     }
 
 
-def _screen(offset_ms: int, viewport_width: int, labels: list[str]) -> dict[str, Any]:
+def _screen(
+    offset_ms: int,
+    viewport_width: int,
+    labels: list[str],
+    extra: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build one ``mp_wireframe`` event with one text element per label.
 
     Bounds are in the viewport's units: each label is a 300 x 40 box at
@@ -125,6 +135,7 @@ def _screen(offset_ms: int, viewport_width: int, labels: list[str]) -> dict[str,
         offset_ms: Milliseconds after the stream start.
         viewport_width: The wireframe viewport width (height is twice it).
         labels: Text element labels, top to bottom.
+        extra: Raw elements appended after the button.
 
     Returns:
         The rrweb Custom event.
@@ -134,6 +145,7 @@ def _screen(offset_ms: int, viewport_width: int, labels: list[str]) -> dict[str,
         for index, label in enumerate(labels)
     ]
     elements.append({"role": "button", "text": "Next", "bounds": [100, 700, 200, 80]})
+    elements.extend(extra or [])
     return {
         "type": 5,
         "data": {
@@ -168,26 +180,39 @@ def _tap(offset_ms: int, x: int, y: int) -> list[dict[str, Any]]:
     ]
 
 
-def _scaled_stream(meta_width: int, viewport_width: int) -> list[dict[str, Any]]:
-    """Build a two-screen wireframe stream with one tap on the button.
+_HALF_EVEN = {"role": "text", "text": "Odd", "bounds": [21, 301, 5, 3]}
+"""An element whose bounds land on .5 at scale 0.5 (10.5, 150.5, 2.5, 1.5)."""
 
-    The tap lands on the button's center in Meta-width units, so it only
-    resolves to the button once the bounds are scaled by
+
+def _scaled_stream(
+    meta_width: int,
+    viewport_width: int,
+    tap: tuple[int, int] | None = None,
+    extra: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Build a two-screen wireframe stream with one tap near the button.
+
+    By default the tap lands on the button's center in Meta-width units,
+    so it resolves to the button only once the bounds are scaled by
     ``meta_width / viewport_width``.
 
     Args:
         meta_width: The Meta width.
         viewport_width: The wireframe viewport width.
+        tap: The tap point in Meta-width units, instead of the scaled
+            button center.
+        extra: Raw elements added to both screens.
 
     Returns:
         The events.
     """
     ratio = meta_width / viewport_width
+    x, y = tap if tap is not None else (round(200 * ratio), round(740 * ratio))
     return [
         _meta(0, meta_width),
-        _screen(100, viewport_width, ["Welcome", "Step 1"]),
-        *_tap(1_000, round(200 * ratio), round(740 * ratio)),
-        _screen(1_200, viewport_width, ["Welcome", "Step 2"]),
+        _screen(100, viewport_width, ["Welcome", "Step 1"], extra),
+        *_tap(1_000, x, y),
+        _screen(1_200, viewport_width, ["Welcome", "Step 2"], extra),
     ]
 
 
@@ -209,12 +234,31 @@ def _cases() -> list[tuple[str, list[dict[str, Any]]]]:
     )
     cases.append(("synthetic-mobile-gestures-001", gestures))
     for slug, meta_width, viewport_width in (
-        ("scale-2-physical-pixels", 800, 400),
-        ("scale-1-25", 500, 400),
-        ("scale-0-5", 200, 400),
-        ("scale-within-tolerance-stays-1", 410, 400),
+        ("scale-0-5-physical-pixels", 200, 400),
+        ("scale-2-coarse-viewport", 800, 400),
+        ("scale-1-25-coarse-viewport", 500, 400),
+        ("scale-1-05-tolerance-boundary-scales", 420, 400),
+        ("scale-0-95-tolerance-boundary-scales", 380, 400),
     ):
         cases.append((slug, _scaled_stream(meta_width, viewport_width)))
+    # 410 / 400 is inside the tolerance: the bounds stay raw. The tap at
+    # (100, 701) is inside the raw button [100, 700, 200, 80] but misses
+    # the button scaled by 1.025 ([102, 718, 205, 82]) even with hit slop,
+    # so the target shows that no scaling happened.
+    cases.append(
+        (
+            "scale-within-tolerance-stays-raw",
+            _scaled_stream(410, 400, tap=(100, 701)),
+        )
+    )
+    # 21, 301, 5, 3 at scale 0.5 land on 10.5, 150.5, 2.5, 1.5, which
+    # round half to even: 10, 150, 2, 2.
+    cases.append(
+        (
+            "scale-0-5-round-half-even",
+            _scaled_stream(200, 400, extra=[_HALF_EVEN]),
+        )
+    )
     return cases
 
 
