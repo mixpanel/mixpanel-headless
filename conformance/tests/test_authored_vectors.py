@@ -466,6 +466,66 @@ def _action_counts(output: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
+_SCALE_EXPECTATIONS: dict[str, tuple[float, list[int]]] = {
+    "scale-0-5-physical-pixels": (0.5, [50, 350, 100, 40]),
+    "scale-2-coarse-viewport": (2.0, [200, 1400, 400, 160]),
+    "scale-1-25-coarse-viewport": (1.25, [125, 875, 250, 100]),
+    "scale-1-05-tolerance-boundary-scales": (1.05, [105, 735, 210, 84]),
+    "scale-0-95-tolerance-boundary-scales": (0.95, [95, 665, 190, 76]),
+    "scale-within-tolerance-stays-raw": (1.0, [100, 700, 200, 80]),
+    "scale-0-5-round-half-even": (0.5, [50, 350, 100, 40]),
+}
+"""Per synthetic scale vector: the expected scale and the button's scaled bounds.
+
+The button is ``[100, 700, 200, 80]`` in viewport units.
+"""
+
+
+@pytest.mark.parametrize("slug", sorted(_SCALE_EXPECTATIONS))
+def test_analyze_mobile_scale_vector(slug: str) -> None:
+    """Each synthetic scale vector has its scale, its bounds, and a button tap.
+
+    Every screen action carries the expected ``metadata.scale`` and the
+    button at its scaled bounds; the one tap resolves to ``button:Next``.
+    For the in-tolerance case that hit is only possible with raw bounds
+    (see ``test_analyze_mobile_tolerance_case_discriminates``).
+
+    Args:
+        slug: The vector id suffix.
+
+    Raises:
+        AssertionError: If the scale, the scaled bounds, or the tap target
+            differ.
+    """
+    scale, button_bounds = _SCALE_EXPECTATIONS[slug]
+    output = _analyze_mobile_output(slug)
+    screens = [a for a in output["actions"] if a["action"] == "screen"]
+    assert len(screens) == 2
+    for screen in screens:
+        metadata = screen["metadata"]
+        assert metadata["scale"] == scale
+        assert isinstance(metadata["scale"], float)
+        button = next(e for e in metadata["elements"] if e["role"] == "button")
+        assert button["bounds"] == button_bounds
+    taps = [a for a in output["actions"] if a["action"] == "touch_start"]
+    assert [tap["target_desc"] for tap in taps] == ["button:Next"]
+
+
+def test_analyze_mobile_scale_table_covers_every_synthetic_vector() -> None:
+    """Every ``scale-*`` vector has a row in the per-vector expectations.
+
+    Raises:
+        AssertionError: If a scale vector is added without expectations.
+    """
+    prefix = "replays/rrweb_analyzer.analyze/authored-mobile-"
+    slugs = {
+        str(body["id"])[len(prefix) :]
+        for body in _analyze_mobile_vectors()
+        if str(body["id"]).startswith(f"{prefix}scale-")
+    }
+    assert slugs == set(_SCALE_EXPECTATIONS)
+
+
 def test_analyze_mobile_trimmed_prefixes_keep_their_actions() -> None:
     """The two trimmed fixtures keep the actions they are carried for.
 
