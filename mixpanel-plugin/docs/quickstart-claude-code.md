@@ -32,7 +32,7 @@ This installs the `mixpanel-headless` plugin, which teaches Claude how to be a M
 /mixpanel-headless:setup
 ```
 
-This installs the `mixpanel_headless` Python package and all analysis dependencies (pandas, matplotlib, networkx, etc.). It takes about a minute.
+This installs the `mixpanel_headless` Python package (version 0.3.0 or later) and all analysis dependencies (pandas, matplotlib, networkx, etc.). If an older version is installed, setup upgrades it, because the skills use the built-in reference (`mp help`) that first shipped in 0.3.0. It takes about a minute.
 
 At the end, setup checks for Mixpanel credentials. If you see a warning about missing credentials, continue to Step 3.
 
@@ -44,7 +44,7 @@ You only need to do this once. Choose the method that works best for you.
 
 ### Option A: Service Account (Recommended)
 
-Run the `/mixpanel-headless:auth` command:
+Run the `/mixpanel-headless:auth` skill:
 
 ```
 /mixpanel-headless:auth account add my-project
@@ -219,7 +219,7 @@ You never need to write this yourself, but it's helpful to know what's possible.
 
 ### Remove an account
 
-The slash command focuses on read + onboarding flows; destructive lifecycle
+The auth skill focuses on read + onboarding flows; destructive lifecycle
 operations stay on the CLI. Run them in your terminal (or via the `!`
 shell prefix inside Claude Code):
 
@@ -276,4 +276,3 @@ If you're behind a corporate proxy or firewall, you may need to configure `pip` 
 - **Full documentation**: [mixpanel.github.io/mixpanel-headless](https://mixpanel.github.io/mixpanel-headless/)
 - **Plugin details**: [Plugin README](https://github.com/mixpanel/mixpanel-headless/blob/main/mixpanel-plugin/README.md)
 - **Comprehensive getting started guide**: [Getting Started Guide](getting-started-guide.md) — covers the Python library and CLI in depth
-- **Using with Cowork**: [Cowork Quick Start](quickstart-claude-cowork.md)

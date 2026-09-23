@@ -1,50 +1,81 @@
-# Dashboard Design Templates
+# Dashboard templates
 
-9 purpose-built dashboard templates for common analytics use cases. Each template specifies a complete row-by-row layout, text card content, chart types, and placeholder events that an agent adapts to the user's actual schema.
+Nine dashboard templates for common analytics goals. Each template gives a row-by-row layout, the text for each card, the chart types, and placeholder events. Adapt each template to the real schema of the project.
+
+## Contents
+
+- [How to use these templates](#how-to-use-these-templates)
+- [Template 1: KPI Dashboard](#template-1-kpi-dashboard)
+- [Template 2: Feature Launch Dashboard](#template-2-feature-launch-dashboard)
+- [Template 3: AARRR / Pirate Metrics Dashboard](#template-3-aarrr--pirate-metrics-dashboard)
+- [Template 4: Conversion Funnel Dashboard](#template-4-conversion-funnel-dashboard)
+- [Template 5: Retention Dashboard](#template-5-retention-dashboard)
+- [Template 6: User Engagement Dashboard](#template-6-user-engagement-dashboard)
+- [Template 7: Marketing Performance Dashboard](#template-7-marketing-performance-dashboard)
+- [Template 8: Experiment Results Dashboard](#template-8-experiment-results-dashboard)
+- [Template 9: Operational Health Dashboard](#template-9-operational-health-dashboard)
+- [Template selection guide](#template-selection-guide)
 
 ---
 
-## How to Use These Templates
+## How to use these templates
 
-### Adaptation Workflow
+### Adaptation steps
 
-1. **Pick a template** that matches the user's goal (or combine sections from multiple templates).
-2. **Discover the schema** -- run `ws.events()` and `ws.properties(event=...)` to find real event names.
-3. **Map placeholders to real events** -- replace `{signup_event}`, `{login_event}`, etc. with actual event names from the project. Drop any section whose placeholder events have zero volume.
-4. **Validate data** -- query each event before building a report. Skip reports that would render as empty charts.
-5. **Adapt row count** -- remove sections that don't apply, or add sections for project-specific needs. Stay within the 30-row dashboard limit.
-6. **Build** -- follow the Build mode workflow in `SKILL.md`, using the template layout as the Phase B2 plan.
+1. **Pick a template** that matches the goal of the user, or combine sections from several templates. The selection guide at the end maps requests to templates.
+2. **Find the real events.** Run `ws.events()` and `ws.properties(event=...)`, or `ws.schema_graph()` for the full event and property map.
+3. **Map the placeholders** such as `{signup_event}` to real event names. Drop a section when its events have no volume.
+4. **Check the data.** Query each event before you build its report. Skip a report that would render as an empty chart.
+5. **Fit the row count.** Remove the sections that do not apply, and add sections the project needs. Stay within 30 rows.
+6. **Build.** Use the template layout as your plan, show it to the user, then create the dashboard with `rows` in one call.
 
-### Layout Conventions
+### Layout conventions
 
 | Symbol | Meaning |
 |---|---|
-| `w=N` | Cell width (columns out of 12). Widths in a row must sum to 12. |
-| `h=N` | Row height in pixels. `h=0` means auto-height (text-only rows). |
-| `insights-metric` | Big-number KPI card (single value with comparison). |
+| `w=N` | Cell width in columns out of 12. The widths in a row sum to 12. |
+| `h=N` | Row height in pixels. `h=0` is auto height, for text-only rows. |
+| `insights-metric` | Big-number KPI card: one value with a comparison. |
 | `line` | Time-series line chart. |
-| `bar` | Categorical bar chart. |
-| `table` | Data table with sortable columns. |
-| `line` + `plotStyle: stacked` | Stacked area/line chart for composition over time. |
-| `funnel-steps` | Funnel visualization showing step-by-step conversion. |
-| `retention-curve` | Retention curve or cohort grid. |
-| `sankey` | Sankey/flow diagram showing user paths. |
+| `bar` | Bar chart for categories. |
+| `table` | Data table. |
+| `line` + `plotStyle: stacked` | Stacked line chart for composition over time. |
+| `funnel-steps` | Funnel with step-by-step conversion. |
+| `retention-curve` | Retention curve. |
+| `sankey` | Flow diagram of user paths. |
 
-### Placeholder Event Conventions
+The query methods set the chart type from `mode`. For a chart type that no mode gives, such as `insights-metric`, change `displayOptions.chartType` in a copy of `result.params` before you place the report.
 
-Templates use curly-brace placeholders for event names. The agent replaces these with real events discovered from the project schema.
+### Math conventions
 
-| Placeholder | Typical Matches |
+The **Math** column in the report tables uses the values of the query methods. Check a value with `mp help MathType` or `mp help Workspace.query_funnel.math` before you use it.
+
+| Math column | How to query it |
+|---|---|
+| `total`, `unique`, `dau`, `wau`, `mau` | `ws.query(event, math=...)` |
+| `total` of a property (a sum) | `ws.query(event, math="total", math_property="amount")` |
+| `average`, `median` of a property | `ws.query(event, math="average", math_property="amount")` |
+| `percentile` 95 of a property | `ws.query(event, math="percentile", math_property="duration", percentile_value=95)` |
+| events per user | Two metrics and a formula: `ws.query([mp.Metric(e, math="total"), mp.Metric(e, math="unique")], formula="A / B")` |
+| ratio of two events | `ws.query([event_a, event_b], math="unique", formula="A / B")`, or a two-step funnel when order matters |
+| overall rate, step rate | `ws.query_funnel(steps)`; the default math is the unique conversion rate |
+| time to convert | No query math gives this. Build a steps funnel, then switch the chart to time to convert in Mixpanel. |
+
+### Placeholder events
+
+The templates use placeholders in curly braces for event names. Replace them with real events from the project schema.
+
+| Placeholder | Typical matches |
 |---|---|
 | `{signup_event}` | Sign Up, Create Account, Registration Complete |
 | `{login_event}` | Login, Sign In, Session Start |
-| `{core_action_event}` | The primary value-delivery action (e.g., Send Message, Create Post, Place Order) |
+| `{core_action_event}` | The main value action, for example Send Message, Create Post, Place Order |
 | `{purchase_event}` | Purchase, Order Completed, Subscription Started |
-| `{feature_event}` | The specific feature being tracked (agent fills in) |
+| `{feature_event}` | The feature being tracked |
 | `{error_event}` | Error, Exception, Crash, API Error |
 | `{page_view_event}` | Page Viewed, Screen View, $mp_web_page_view |
 | `{referral_event}` | Invite Sent, Referral Created, Share |
-| `{onboarding_step_N}` | Sequential onboarding steps (agent discovers from schema) |
+| `{onboarding_step_N}` | Onboarding steps in sequence, from the schema |
 
 ---
 
@@ -117,7 +148,7 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 | Signups trend | `{signup_event}` | `total` | -- | Line chart, 90 days |
 | Signup funnel | `{signup_event}` > `{login_event}` > `{core_action_event}` | -- | -- | 3-step funnel |
 | Retention curve | Born: `{signup_event}`, Return: `{login_event}` | -- | -- | 12-week retention |
-| Sessions/user | `{login_event}` | `avg_count_per_user` | -- | Bar chart by week |
+| Sessions/user | `{login_event}` | events per user | -- | Bar chart by week |
 | Top events | Top 10 events | `total` | -- | Table, sorted by volume |
 
 ---
@@ -190,9 +221,9 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 
 | Report | Event | Math | Breakdown | Notes |
 |---|---|---|---|---|
-| Adoption Rate | `{feature_event}` / `{login_event}` | `dau` ratio | -- | Percentage of DAU using feature |
+| Adoption Rate | `{feature_event}` / `{login_event}` | ratio (`dau`) | -- | Percentage of DAU using feature |
 | Feature DAU | `{feature_event}` | `dau` | -- | Compare to previous period |
-| Avg Uses/User | `{feature_event}` | `avg_count_per_user` | -- | Compare to previous period |
+| Avg Uses/User | `{feature_event}` | events per user | -- | Compare to previous period |
 | Adoption over time | `{feature_event}` | `dau` | -- | Line chart since launch |
 | Discovery funnel | `{page_view_event}` > `{feature_event}` | -- | -- | 2-step funnel |
 | Time to first use | `{feature_event}` | `total` | Time since signup bucket | Bar chart |
@@ -290,20 +321,20 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 | Signups trend | `{signup_event}` | `total` | -- | Line chart, 90 days |
 | Signups by channel | `{signup_event}` | `total` | UTM source | Bar chart, top 5 |
 | Activation Rate | `{core_action_event}` / `{signup_event}` | ratio | -- | Within first 7 days |
-| Time to Activate | `{core_action_event}` | `median_time` | -- | Median time from signup |
+| Time to Activate | `{core_action_event}` | time to convert | -- | Signup to core action; median |
 | Onboarding Completion | `{onboarding_step_2}` / `{onboarding_step_1}` | ratio | -- | Completion rate |
 | Activation funnel | `{signup_event}` > `{onboarding_step_1}` > `{core_action_event}` | -- | -- | 3-step funnel |
 | D1 Retention | Born: `{signup_event}`, Return: `{login_event}` | -- | -- | Day 1 value |
 | D7 Retention | Born: `{signup_event}`, Return: `{login_event}` | -- | -- | Day 7 value |
 | D30 Retention | Born: `{signup_event}`, Return: `{login_event}` | -- | -- | Day 30 value |
 | Retention curve | Born: `{signup_event}`, Return: `{login_event}` | -- | -- | 12-week curve |
-| Revenue | `{purchase_event}` | `sum` of revenue property | -- | Compare to previous period |
-| ARPU | `{purchase_event}` | `avg` of revenue property | -- | Per-user average |
+| Revenue | `{purchase_event}` | `total` of revenue property | -- | Compare to previous period |
+| ARPU | `{purchase_event}` | `average` of revenue property | -- | Per-user average |
 | Paid Conversion | `{purchase_event}` / `{signup_event}` | ratio | -- | Overall conversion |
-| ARPU trend | `{purchase_event}` | `avg` of revenue property | -- | Line chart, 90 days |
+| ARPU trend | `{purchase_event}` | `average` of revenue property | -- | Line chart, 90 days |
 | Paid funnel | `{signup_event}` > `{core_action_event}` > `{purchase_event}` | -- | -- | 3-step funnel |
 | Referral Rate | `{referral_event}` / `{login_event}` | ratio | -- | % of users who refer |
-| Viral Coefficient | `{referral_event}` | `avg_count_per_user` | -- | Invites per user |
+| Viral Coefficient | `{referral_event}` | events per user | -- | Invites per user |
 | Referred Signups | `{signup_event}` | `total` | Referral source | Filter to referred |
 | Referral trend | `{referral_event}` | `total` | -- | Line chart, 90 days |
 | Referral funnel | `{referral_event}` > `{signup_event}` (referred) | -- | -- | 2-step funnel |
@@ -379,7 +410,7 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 | Report | Event | Math | Breakdown | Notes |
 |---|---|---|---|---|
 | Overall Conversion | `{funnel_step_1}` > ... > `{funnel_step_4}` | overall rate | -- | Compare to previous period |
-| Median Time | `{funnel_step_1}` > `{funnel_step_4}` | `median_time` | -- | Time to complete funnel |
+| Median Time | `{funnel_step_1}` > `{funnel_step_4}` | time to convert | -- | Median time to complete the funnel |
 | Daily Conversions | `{funnel_step_4}` | `total` | -- | Completed conversions/day |
 | Full funnel | `{funnel_step_1}` > `{funnel_step_2}` > `{funnel_step_3}` > `{funnel_step_4}` | -- | -- | Full funnel chart |
 | Step 1>2 rate | `{funnel_step_1}` > `{funnel_step_2}` | step rate | -- | Pairwise conversion |
@@ -541,8 +572,8 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 | Report | Event | Math | Breakdown | Notes |
 |---|---|---|---|---|
 | DAU | `{login_event}` | `dau` | -- | Compare to previous period |
-| Sessions/User | `{login_event}` | `avg_count_per_user` | -- | Compare to previous period |
-| Avg Session Length | `{page_view_event}` | `avg` of session duration | -- | In minutes |
+| Sessions/User | `{login_event}` | events per user | -- | Compare to previous period |
+| Avg Session Length | `{page_view_event}` | `average` of session duration | -- | In minutes |
 | Feature Breadth | Distinct events per user | `unique` | -- | Avg distinct features used |
 | By day of week | `{login_event}` | `dau` | Day of week | Bar chart |
 | By hour of day | `{login_event}` | `total` | Hour of day | Bar chart |
@@ -703,10 +734,10 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 |---|---|---|---|---|
 | Primary Lift | `{primary_metric_event}` | relative lift | Experiment group | % change vs control |
 | Significance | `{primary_metric_event}` | p-value | Experiment group | Statistical confidence |
-| Sample Size | `{primary_metric_event}` | `total_users` | Experiment group | Total enrolled users |
+| Sample Size | `{primary_metric_event}` | `unique` | Experiment group | Total enrolled users |
 | Control vs variant | `{primary_metric_event}` | `total` or `dau` | Experiment group | Line chart over time |
 | Secondary A | `{secondary_metric_event}` | `total` | Experiment group | Bar chart |
-| Secondary B | `{login_event}` sessions | `avg_count_per_user` | Experiment group | Bar chart |
+| Secondary B | `{login_event}` sessions | events per user | Experiment group | Bar chart |
 | By segment table | `{primary_metric_event}` | lift + significance | Experiment group x segment | Table with per-segment results |
 | Funnel by group | `{signup_event}` > `{primary_metric_event}` | -- | Experiment group | Funnel segmented by group |
 | Control retention | Born: `{signup_event}` (control), Return: `{login_event}` | -- | -- | 4-week curve |
@@ -783,7 +814,7 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 | Report | Event | Math | Breakdown | Notes |
 |---|---|---|---|---|
 | Error Rate | `{error_event}` / `{core_action_event}` | ratio | -- | Compare to previous period |
-| P95 Latency | `{page_view_event}` | `p95` of duration property | -- | Compare to previous period |
+| P95 Latency | `{page_view_event}` | `percentile` 95 of duration property | -- | Compare to previous period |
 | Success Rate | `{core_action_event}` (success) / `{core_action_event}` (all) | ratio | -- | 1 - error rate |
 | Active Users | `{login_event}` | `dau` | -- | Compare to previous period |
 | Error rate trend | `{error_event}` | `total` | -- | Line chart, 30 days |
@@ -796,7 +827,7 @@ Templates use curly-brace placeholders for event names. The agent replaces these
 
 ---
 
-## Template Selection Guide
+## Template selection guide
 
 Use this table to quickly match the user's request to the right template.
 

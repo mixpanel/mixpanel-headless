@@ -307,7 +307,7 @@ print(bundle.compare(converters))   # action | self_count | other_count | delta
 
 ## Correlating Mixpanel Events
 
-`mixpanel_df` is populated when you fetch with `include_mixpanel_events=True` (the default for `replays_for_user`), or lazily via `join_mixpanel_events()`. It holds the tracked Mixpanel events that fired during each replay's time window — the analytics layer alongside the action layer:
+`mixpanel_df` is populated only when the fetch passes `include_mixpanel_events=True`. That is the default for `replays_for_user`; `fetch_replay` and `fetch_replays` default to `False`. `join_mixpanel_events()` does not query Mixpanel: it returns a new bundle that exposes the events the fetch already attached, so on a bundle fetched without the flag, `mixpanel_df` stays empty. When populated, `mixpanel_df` holds the tracked Mixpanel events that fired during each replay's time window — the analytics layer alongside the action layer:
 
 ```python
 bundle = ws.replays_for_user(

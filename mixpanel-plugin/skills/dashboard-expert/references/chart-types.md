@@ -1,10 +1,21 @@
-# Chart Type Selection Guide
+# Chart types
 
-Quick-lookup reference for choosing the right chart type per report type, with width recommendations for dashboard layout.
+How to pick a chart type for each report type, and which width to give it on a dashboard. These are Mixpanel report settings, so the library reference does not list them.
+
+## Contents
+
+- [1. Decision table](#1-decision-table)
+- [2. Insights chart types](#2-insights-chart-types)
+- [3. Funnel chart types](#3-funnel-chart-types)
+- [4. Retention chart types](#4-retention-chart-types)
+- [5. Flows chart types](#5-flows-chart-types)
+- [6. Math values](#6-math-values)
+- [7. Width recommendations](#7-width-recommendations)
+- [8. Set the chart type](#8-set-the-chart-type)
 
 ---
 
-## 1. Decision Tree
+## 1. Decision table
 
 | Question | Chart Type | `chartType` | `plotStyle` |
 |---|---|---|---|
@@ -36,7 +47,7 @@ Quick-lookup reference for choosing the right chart type per report type, with w
 
 ### How Stacking Works
 
-Stacked charts are NOT separate chart types. They use the base `chartType` (`line`, `bar`, or `column`) with `plotStyle` set to `"stacked"` in `displayOptions`:
+Stacked charts are not separate chart types. They use the base `chartType` (`line`, `bar`, or `column`) with `plotStyle` set to `"stacked"` in `displayOptions`:
 
 ```json
 "displayOptions": {
@@ -45,13 +56,13 @@ Stacked charts are NOT separate chart types. They use the base `chartType` (`lin
 }
 ```
 
-**NEVER use** `bar-stacked`, `stacked-line`, or `stacked-column` as `chartType` values — these are display-layer labels used by the Mixpanel frontend, not valid API values. The API will reject them.
+Do not use `bar-stacked`, `stacked-line`, or `stacked-column` as `chartType` values. They are labels in the Mixpanel UI, not API values, and the API rejects them.
 
-Valid `chartType` values: `line`, `bar`, `column`, `pie`, `table`, `insights-metric`, `funnel-steps`, `funnel-top-paths`, `retention-curve`, `frequency-curve`
+Common `chartType` values (the funnel, retention, and flows tables below list more): `line`, `bar`, `column`, `pie`, `table`, `insights-metric`, `funnel-steps`, `funnel-top-paths`, `retention-curve`, `frequency-curve`
 
 Valid `plotStyle` values: `standard` (default), `stacked`
 
-### When to Use / When NOT to Use
+### When to use each type
 
 - **Line** -- Use for time series with continuous data. Not for categorical comparisons or single data points.
 - **Bar** -- Use for ranking or comparing discrete categories. Not for time series (use line instead).
@@ -99,34 +110,20 @@ Valid `plotStyle` values: `standard` (default), `stacked`
 
 ---
 
-## 6. Math Types
+## 6. Math values
 
-| Math | Slug | Requires Property | Description |
-|---|---|---|---|
-| Total | `total` | No | Count of events |
-| Unique | `unique` | No | Count of unique users |
-| DAU | `dau` | No | Daily active users |
-| WAU | `wau` | No | Weekly active users |
-| MAU | `mau` | No | Monthly active users |
-| Sum | `total` | Yes (numeric) | Sum of property values |
-| Average | `average` | Yes (numeric) | Average property value |
-| Median | `median` | Yes (numeric) | Median property value |
-| Min | `min` | Yes (numeric) | Minimum property value |
-| Max | `max` | Yes (numeric) | Maximum property value |
-| P25 | `p25` | Yes (numeric) | 25th percentile |
-| P75 | `p75` | Yes (numeric) | 75th percentile |
-| P90 | `p90` | Yes (numeric) | 90th percentile |
-| P99 | `p99` | Yes (numeric) | 99th percentile |
+The query methods list their math values in the library. Run `mp help MathType` for insights, `mp help FunnelMathType` for funnels, and `mp help RetentionMathType` for retention. Property math (`average`, `median`, `min`, `max`, the percentiles) needs `math_property`, and `percentile` also needs `percentile_value`.
 
-### Common Invalid Aliases
+Values that agents often guess wrong:
 
-| Wrong | Correct | Note |
-|---|---|---|
-| `sum` | `total` (with property) | "sum" is not a valid math type |
-| `count` | `total` | Use `total` without a property |
-| `distinct` | `unique` | |
-| `avg` | `average` | |
-| `mean` | `average` | |
+| Wrong | Correct |
+|---|---|
+| `sum` | `total` with `math_property` |
+| `count` | `total` without a property |
+| `distinct` | `unique` |
+| `avg`, `mean` | `average` with `math_property` |
+| `p95` | `percentile` with `percentile_value=95` |
+| `avg_count_per_user` | two metrics (`total` and `unique`) with `formula="A / B"` |
 
 ---
 
@@ -155,33 +152,44 @@ Valid `plotStyle` values: `standard` (default), `stacked`
 
 ---
 
-## 8. Setting Chart Type
+## 8. Set the chart type
 
-Chart type is set in `displayOptions.chartType` within the bookmark params JSON. When using typed query methods, the chart type is set automatically.
+The chart type is `displayOptions.chartType` in the report params. The query methods set it from `mode`:
+
+| Query | `mode` | `chartType` |
+|---|---|---|
+| `ws.query` | `"timeseries"` (default) | `line` |
+| `ws.query` | `"total"` | `bar` |
+| `ws.query` | `"table"` | `table` |
+| `ws.query_funnel` | `"steps"` (default) | `funnel-steps` |
+| `ws.query_funnel` | `"trends"` | `line` |
+| `ws.query_retention` | `"curve"` (default) | `retention-curve` |
+| `ws.query_retention` | `"trends"` | `line` |
+
+For another chart type, change a copy of the params before you place the report:
 
 ```python
+import copy
 import json
 
-# Typed queries set chartType automatically -- no override needed
-result = ws.query("Login", from_date="2025-01-01", to_date="2025-03-31")
+import mixpanel_headless as mp
+from mixpanel_headless.types import UpdateDashboardParams
 
-# The chart type lives at params["displayOptions"]["chartType"]
-# To inspect:
-params = result.params
-chart_type = params.get("displayOptions", {}).get("chartType")
+ws = mp.Workspace()
+result = ws.query("Login", math="dau", mode="total", last=30)
 
-# When creating inline reports, the params carry the chart type through:
+params = copy.deepcopy(result.params)
+params["displayOptions"]["chartType"] = "insights-metric"
+
 ws.update_dashboard(dashboard_id, UpdateDashboardParams(
     content={
         "action": "create",
         "content_type": "report",
-        "content_params": {
-            "bookmark": {
-                "name": "DAU Trend",
-                "type": "insights",
-                "params": json.dumps(result.params),
-            }
-        },
+        "content_params": {"bookmark": {
+            "name": "DAU (30d)", "type": "insights", "params": json.dumps(params),
+        }},
     }
 ))
 ```
+
+Open the report in Mixpanel once to confirm that it renders as intended.

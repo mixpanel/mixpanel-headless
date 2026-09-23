@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Install mixpanel_headless and pandas for CodeMode analytics
+# Install mixpanel_headless (0.3.0 or newer) and the analysis stack, then
+# verify imports, the built-in API reference (mp help), and credentials.
 set -euo pipefail
 
-echo "=== mixpanel-headless — CodeMode Setup ==="
+echo "=== mixpanel-headless — Setup ==="
 echo ""
 
 # Find Python 3.10+
@@ -26,14 +27,29 @@ if [ -z "$python_cmd" ]; then
   exit 1
 fi
 
-# Install packages
-MIXPANEL_HEADLESS_PKG="mixpanel-headless"
+# Install packages. The floor matters: `mp help` (the built-in API
+# reference the skills rely on) first shipped in 0.3.0, and a bare package
+# name never upgrades an older install.
+MIXPANEL_HEADLESS_PKG="mixpanel-headless>=0.3.0"
 DEPS=(pandas numpy matplotlib seaborn 'networkx>=3.0' 'anytree>=2.8.0' scipy)
 
 # pyarrow is only needed on Python 3.11+ (for pandas 3.x Arrow-backed dtypes)
 if [ "$minor" -ge 11 ]; then
   DEPS+=('pyarrow>=17.0')
 fi
+
+# Print the installed mixpanel-headless version, or nothing when absent.
+installed_version() {
+  "$python_cmd" -c "
+from importlib.metadata import PackageNotFoundError, version
+try:
+    print(version('mixpanel-headless'))
+except PackageNotFoundError:
+    pass
+" 2>/dev/null || true
+}
+
+old_version="$(installed_version)"
 
 echo ""
 echo "Installing mixpanel-headless (import name: mixpanel_headless) and dependencies..."
@@ -62,7 +78,6 @@ import seaborn as sns
 import networkx as nx
 import anytree
 import scipy
-print(f'✓ mixpanel_headless installed')
 print(f'✓ pandas {pd.__version__}')
 if sys.version_info >= (3, 11):
     import pyarrow as pa
@@ -74,6 +89,23 @@ print(f'✓ networkx {nx.__version__}')
 print(f'✓ anytree {anytree.__version__}')
 print(f'✓ scipy {scipy.__version__}')
 " || { echo "✗ Import verification failed"; exit 1; }
+
+new_version="$(installed_version)"
+if [ -z "$old_version" ]; then
+  echo "✓ mixpanel-headless INSTALLED $new_version"
+elif [ "$old_version" != "$new_version" ]; then
+  echo "✓ mixpanel-headless UPGRADED $old_version → $new_version"
+else
+  echo "✓ mixpanel-headless OK $new_version"
+fi
+
+# The skills look up every API name with `mp help`; confirm it runs offline.
+if "$python_cmd" -m mixpanel_headless help -f json Workspace.query >/dev/null; then
+  echo "✓ built-in help (mp help)"
+else
+  echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version may be older than 0.3.0"
+  exit 1
+fi
 
 # Check credentials
 echo ""
@@ -118,52 +150,6 @@ except Exception as e:
     print(f'⚠ Could not read ~/.mp/config.toml: {e}')
     print('  Run mp login, set env vars (service-account quad or OAuth triple), or run mp account add ...')
 "
-
-# Cowork detection: check for bridge file
-if [ -d "/sessions" ] || [ -n "${CLAUDE_COWORK:-}" ]; then
-  echo ""
-  echo "Cowork environment detected."
-  BRIDGE_FOUND=""
-  # Single candidate path today; kept as a loop so more bridge locations can be
-  # appended. The one-iteration loop over a quoted word is intentional.
-  # shellcheck disable=SC2066
-  for f in "$HOME/.claude/mixpanel/auth.json"; do
-    if [ -f "$f" ]; then
-      echo "✓ Auth bridge file found: $f"
-      "$python_cmd" -c "
-import json, sys
-try:
-    with open(sys.argv[1]) as fh:
-        bridge = json.load(fh)
-    if bridge.get('version') != 2:
-        print(f'  ⚠ Unexpected bridge version: {bridge.get(\"version\")} (expected 2)')
-    account = bridge.get('account', {})
-    print(f'  Account: {account.get(\"name\", \"?\")} ({account.get(\"type\", \"?\")}, {account.get(\"region\", \"?\")})')
-    project = bridge.get('project') or account.get('default_project')
-    if project:
-        print(f'  Project: {project}')
-    if bridge.get('workspace'):
-        print(f'  Workspace: {bridge[\"workspace\"]}')
-    headers = bridge.get('headers') or {}
-    if headers:
-        print(f'  Custom headers: {len(headers)} entr{\"y\" if len(headers) == 1 else \"ies\"} ✓')
-    tokens = bridge.get('tokens')
-    if tokens and tokens.get('expires_at'):
-        print(f'  Token expires: {tokens[\"expires_at\"]}')
-except Exception as e:
-    print(f'  Error reading bridge file: {e}')
-" "$f"
-      BRIDGE_FOUND=1
-      break
-    fi
-  done
-  if [ -z "$BRIDGE_FOUND" ]; then
-    echo "⚠ No auth bridge file found."
-    echo "  On your HOST machine, run:"
-    echo "    mp account export-bridge --to ~/.claude/mixpanel/auth.json"
-    echo "  Then start a new Cowork session."
-  fi
-fi
 
 echo ""
 echo "=== Setup complete ==="
