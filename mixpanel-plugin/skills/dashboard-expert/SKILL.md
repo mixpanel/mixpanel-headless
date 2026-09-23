@@ -18,7 +18,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGI
 
 Analyze, build, modify, and explain Mixpanel dashboards with `mixpanel_headless`. A dashboard is a list of rows. Each row holds one to four cells on a 12-column grid. A cell is a report (owned by this dashboard), a report link (owned by another dashboard, read-only), or a text card (HTML).
 
-Run code with the plugin's Python environment: `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. Use that full path, because another Python on `PATH` may not have `mixpanel_headless`. If the path does not exist, the environment is not set up: tell the user to run `/mixpanel-headless:setup`. If the user's own project already has `mixpanel_headless` (for example a uv project), `uv run python` also works.
+Run code with the plugin's Python environment: `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. Use that full path, because another Python on `PATH` may not have `mixpanel_headless`. If the path does not exist, the environment is not set up: ask the user to run `/mixpanel-headless:setup`. Until then, you may use an `mp` on `PATH` for `mp help` look-ups only, and only after `mp --version` shows 0.3.0 or later. Do not run analysis code with a Python or `mp` found on `PATH`, because its library version is unknown. The one other route is the user's own project: if it already has `mixpanel_headless` (for example a uv project), `uv run python` works.
 
 ## Pick the mode
 

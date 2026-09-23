@@ -12,7 +12,7 @@ Session replay answers "what did this user actually do?". It gives the click-by-
 
 The plugin keeps its own Python environment. Run the Python examples with `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path.
 
-If that interpreter does not exist, the environment is not set up. Tell the user to run `/mixpanel-headless:setup`. When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` works too.
+If that interpreter does not exist, the environment is not set up. Ask the user to run `/mixpanel-headless:setup`. Until then, you can use an `mp` on `PATH` for `mp help` look-ups only, and only after `mp --version` shows 0.3.0 or later, because an older library gives wrong answers. Do not run analysis code with a Python on `PATH`: it can hold a different library version or none at all. The one exception is a user's own project that already has mixpanel_headless (for example, a uv project), where `uv run python` works.
 
 ## Workflow
 
