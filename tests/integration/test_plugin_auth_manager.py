@@ -27,12 +27,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_AUTH_MANAGER = (
-    REPO_ROOT
-    / "mixpanel-plugin"
-    / "skills"
-    / "mixpanelyst"
-    / "scripts"
-    / "auth_manager.py"
+    REPO_ROOT / "mixpanel-plugin" / "skills" / "auth" / "scripts" / "auth_manager.py"
 )
 
 

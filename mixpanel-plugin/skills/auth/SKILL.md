@@ -10,7 +10,7 @@ You manage Mixpanel credentials by shelling out to `auth_manager.py`. Every
 subcommand emits exactly one JSON object to stdout — parse it and present the
 result conversationally.
 
-**Script path:** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py`
+**Script path:** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py`
 
 **Schema:** Every response has `schema_version: 1` and a discriminated `state`
 of `ok` | `needs_account` | `needs_project` | `error`. Errors emit JSON to
@@ -52,11 +52,11 @@ Optional flags they may want:
 - `--no-browser` — print the authorization URL instead of launching a browser
 
 After the user confirms they ran it, verify with `account test`:
-`python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account test`
+`python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test`
 
 ### No arguments or "session"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py session`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session`
 
 Switch on `state`:
 - **`ok`** — show one line: "Active: `account.name` → project `project.id`"
@@ -75,7 +75,7 @@ Switch on `state`:
 
 ### "account list"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account list`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account list`
 
 Present `items` as a clean table: `name`, `type`, `region`, `is_active`.
 Mark the active account with a star. If `referenced_by_targets` is non-empty
@@ -122,13 +122,13 @@ Replace placeholders with the values collected above. The `!` prefix runs the
 command in the user's terminal session.
 
 6. After the user confirms they ran it, verify with `account test`:
-   `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account test <NAME>`
+   `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test <NAME>`
 7. Report success or failure based on the `result.ok` field.
 
 ### "account use" or "account use <name>"
 
 If a name is provided:
-- Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account use <name>`
+- Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account use <name>`
 
 If no name:
 - First run `account list` to show available accounts
@@ -140,7 +140,7 @@ On `state: error`, show `error.message`.
 
 ### "account login" or "account login <name>"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account login <name>`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account login <name>`
 
 Tell the user a browser window will open for Mixpanel authentication.
 Wait for the JSON response.
@@ -151,7 +151,7 @@ On `state: error`: Show `error.message` and suggest retrying.
 
 ### "account test" or "account test <name>"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py account test [name]`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test [name]`
 
 The subcommand never raises — `state` is always `ok`. Read `result.ok` to
 determine whether the credentials worked:
@@ -161,7 +161,7 @@ determine whether the credentials worked:
 
 ### "project list"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py project list`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py project list`
 
 Present `items` as a table: organization, project name, project ID. Mark the
 active project (`is_active: true`) with a star. Suggest
@@ -171,14 +171,14 @@ active project (`is_active: true`) with a star. Suggest
 
 If no ID: run `project list` first, then ask which to switch to.
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py project use <PROJECT_ID>`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py project use <PROJECT_ID>`
 
 On `state: ok`: "Switched to project `active.project`."
 On `state: error`: Show `error.message`.
 
 ### "workspace list"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py workspace list`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py workspace list`
 
 Present `items` as a table: workspace ID, name, `is_default`. Mark the
 active workspace with a star. Mention the parent project from
@@ -186,13 +186,13 @@ active workspace with a star. Mention the parent project from
 
 ### "workspace use <id>"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py workspace use <WORKSPACE_ID>`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py workspace use <WORKSPACE_ID>`
 
 On `state: ok`: "Pinned workspace `active.workspace`."
 
 ### "target list"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py target list`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target list`
 
 Targets are saved (account, project, workspace?) triples — named cursor
 positions. Present as a table: name, account, project, workspace.
@@ -203,21 +203,21 @@ Guided wizard — collect target name, account name, project ID, optional
 workspace ID. Then either invoke the auth_manager directly:
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py target add <NAME> --account <ACCT> --project <PROJ> [--workspace <WS>]
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target add <NAME> --account <ACCT> --project <PROJ> [--workspace <WS>]
 ```
 
 Or guide the user to `! mp target add <NAME> --account <ACCT> --project <PROJ> [--workspace <WS>]`.
 
 ### "target use <name>"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py target use <name>`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py target use <name>`
 
 Applies all three axes (`account` / `project` / `workspace`) to `[active]`
 in a single atomic config write.
 
 ### "bridge status"
 
-Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/mixpanelyst/scripts/auth_manager.py bridge status`
+Run: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py bridge status`
 
 Parse the JSON:
 - If `bridge` is null → "No Cowork bridge file found. To create one, run

@@ -26,7 +26,7 @@ This will:
 After installation, check the active session:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/../mixpanelyst/scripts/auth_manager.py session
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session
 ```
 
 Parse the JSON `state` field:
@@ -140,7 +140,7 @@ token (no browser needed). If refresh fails:
 ## Verify Everything Works
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/../mixpanelyst/scripts/auth_manager.py account test
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test
 ```
 
 The subcommand never raises — read `result.ok` to determine outcome.
