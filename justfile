@@ -253,13 +253,14 @@ plugin-check-version:
 # child ignores skill allowed-tools (only --allow-tools grants), and it has no
 # plugin venv, because ${CLAUDE_PLUGIN_DATA} is a new empty folder per run and
 # cannot be named here. So the list grants the venv by wildcard path and the
-# skills' look-up fallback to an `mp` on PATH, plus the read-only Grep and Glob
+# skills' read-only look-up fallback to an `mp` on PATH (the same three exact
+# grants the skills carry), plus the read-only Grep and Glob
 # that the harness gates. --allow-tools takes a list, so
 # --no-publish ends it before the caller's args. --no-publish keeps the report
 # on this machine; --trust-plugin answers the first-run prompt for this repo's plugin.
 # Run the offline plugin eval suite (costs model calls; not part of `check`)
 plugin-eval *args:
-    claude plugin eval mixpanel-plugin --tag offline --allow-tools "Bash(mp *)" "Bash(uv run *)" "Bash(*/venv/bin/mp *)" "Bash(*/venv/bin/python *)" Read Grep Glob Write Edit "WebFetch(domain:mixpanel.github.io)" --no-publish --trust-plugin {{ args }}
+    claude plugin eval mixpanel-plugin --tag offline --allow-tools "Bash(mp --version)" "Bash(mp help)" "Bash(mp help *)" "Bash(uv run *)" "Bash(*/venv/bin/mp *)" "Bash(*/venv/bin/python *)" Read Grep Glob Write Edit "WebFetch(domain:mixpanel.github.io)" --no-publish --trust-plugin {{ args }}
 
 # Plugin statistics: skills, entry-file lines, reference files
 plugin-stats:

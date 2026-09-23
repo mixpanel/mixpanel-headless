@@ -47,8 +47,10 @@ may include API changes.
   project's uv configuration does not change the plugin install.
 - Plugin: the analysis skills pre-approve only the plugin environment's
   `python` and `mp`, `uv run`, file reads, writes, and edits, and fetches
-  from the documentation site. They no longer pre-approve any `python`,
-  `python3`, or `mp` on your `PATH`.
+  from the documentation site. For look-ups before setup, they also
+  pre-approve two read-only commands of an `mp` on your `PATH`:
+  `mp --version` and `mp help`. They no longer pre-approve any other
+  `python`, `python3`, or `mp` command on your `PATH`.
 - Plugin: skill descriptions say when to use each skill and when to use
   another one.
 - Plugin: the plugin no longer documents or checks the Cowork bridge.

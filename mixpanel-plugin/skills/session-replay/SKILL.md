@@ -1,7 +1,7 @@
 ---
 name: session-replay
 description: Reads Mixpanel session replay recordings with the mixpanel_headless library. It fetches a user's sessions, turns them into action timelines and pandas DataFrames, and explains what happened on screen. Use when the user asks what a specific user did on screen, in a recording, or click by click; asks about rage clicks, dead clicks, rage taps, dead taps, error sessions, long pauses, or action timelines; wants to correlate a tracked event with on-screen behavior; gives a distinct_id or a replay ID and asks what happened in the session; or asks about iOS, Android, React Native, or Flutter recordings, screens, or taps. Do not use for aggregate analytics questions such as trends, funnels, retention, or segment counts (use mixpanelyst), or for building or editing dashboards (use dashboard-expert).
-allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Session replay
@@ -10,13 +10,15 @@ Session replay answers "what did this user actually do?". It gives the click-by-
 
 ## Run code
 
-The plugin keeps its own Python environment. Run the Python examples with `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path. Always write the full literal path, not a shell variable, because a variable expands to nothing and the command is denied.
+The plugin keeps its own Python environment. Run the Python examples with `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. When the plugin environment exists, `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path. Always write the full literal path, not a shell variable, because a variable expands to nothing and the command is denied.
 
 If the interpreter path fails, the environment is not set up. Do not check again with `ls`, `which`, or shell variables: those commands are not allowed and prompt the user. Instead:
 
 1. Ask the user to run `/mixpanel-headless:setup` before any analysis code.
-2. For look-ups until then, run `mp --version` on its own.
-3. If it shows 0.3.0 or later, run `mp help <query>` for look-ups. An older version gives wrong answers, so do not use it.
+2. For look-ups until then, run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
+3. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups. An older version gives wrong answers, so do not use it.
+
+A denial of some other command does not mean Bash is blocked. Still try the bare `mp --version`.
 
 Do not run analysis code with a Python found on `PATH`, because it can hold a different library version or none at all. The one exception is a user's own project that already has mixpanel_headless (for example, a uv project), where `uv run python` works.
 

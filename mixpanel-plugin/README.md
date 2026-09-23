@@ -120,11 +120,14 @@ claude --plugin-dir /path/to/mixpanel-headless/mixpanel-plugin
 
 Run `/reload-plugins` to load changes without a restart.
 
+A plugin loaded with `--plugin-dir` gets its own data folder (`~/.claude/plugins/data/mixpanel-headless-inline`), separate from the folder of the installed plugin. Run `/mixpanel-headless:setup` once inside that session to create its Python environment.
+
 ## Permissions
 
 When `mixpanelyst`, `session-replay`, or `dashboard-expert` runs, Claude Code pre-approves these tools for that turn, so analysis code runs without a prompt for each command:
 
 - The plugin environment's `python` and `mp` (full paths under `~/.claude/plugins/data/mixpanel-headless-<source>/venv/bin/`)
+- Two read-only commands of an `mp` on your `PATH`: `mp --version` and `mp help` look-ups, for use before setup has run. No other `mp`, `python`, or `python3` on your `PATH` is pre-approved.
 - `uv run` commands
 - File reads, writes, and edits
 - Fetches from the documentation site (`mixpanel.github.io`)

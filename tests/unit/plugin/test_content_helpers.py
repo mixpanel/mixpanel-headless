@@ -424,9 +424,28 @@ class TestAllowedToolsViolations:
         )
         assert allowed_tools_violations(SAMPLE, value) == []
 
+    def test_read_only_mp_grants_pass(self) -> None:
+        """The three exact read-only ``mp`` grants for the look-up fallback pass."""
+        value = "Bash(mp --version) Bash(mp help) Bash(mp help *) Read"
+        assert allowed_tools_violations(SAMPLE, value) == []
+
     @pytest.mark.parametrize(
         "entry",
-        ["Bash(python3 *)", "Bash(python *)", "Bash(mp *)", "Bash(python3:*)"],
+        [
+            "Bash(python3 *)",
+            "Bash(python *)",
+            "Bash(mp *)",
+            "Bash(python3:*)",
+            "Bash(mp:*)",
+            "Bash(mp)",
+            "Bash(mp query *)",
+            "Bash(mp help:*)",
+            "Bash(mp --version *)",
+            "Bash(mp help  x)",
+            "Bash(mp helper *)",
+            "Bash(python3 -c *)",
+            "Bash(python3 ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py *)",
+        ],
     )
     def test_system_grants_flagged(self, entry: str) -> None:
         """Each system Python or bare ``mp`` grant is reported.

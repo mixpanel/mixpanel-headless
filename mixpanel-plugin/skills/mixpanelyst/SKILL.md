@@ -1,7 +1,7 @@
 ---
 name: mixpanelyst
 description: Analyzes Mixpanel data with Python, the mixpanel_headless library, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's tracked event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, and other governance objects, or when code runs mixpanel_headless queries or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
-allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Mixpanel analysis with mixpanel_headless
@@ -14,14 +14,14 @@ Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m 
 
 ## Run code in the plugin environment
 
-The plugin keeps its own Python environment. The "Installed" line above already tells you whether it exists, so do not check again with `ls`, `which`, or shell variables. In every command, write the full literal path that this skill shows, not a shell variable, because only the literal path is pre-approved.
+The plugin keeps its own Python environment. The "Installed" line above already tells you whether it exists, so do not check again with `ls`, `which`, or shell variables. In every command, write the full literal path that this skill shows, not a shell variable, because only the literal path is pre-approved. A denial of some other command does not mean Bash is blocked. The commands that this skill shows are pre-approved, including the bare `mp --version` and `mp help <query>` fallback commands below.
 
-Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. In this skill, `mp` means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
+Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. When the plugin environment exists, `mp` in this skill means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
 
 If the "Installed" line says that the environment is not set up, or shows a version older than 0.3.0:
 
-1. Run `mp --version` on its own, as a standalone command.
-2. If it shows 0.3.0 or later, run `mp help <query>` the same way for look-ups. The look-up loop below still works.
+1. Run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
+2. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups. The look-up loop below still works.
 3. Ask the user to run `/mixpanel-headless:setup` before you run any analysis code. Do not run analysis code with a Python found on `PATH`, because its library version is unknown.
 
 When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` also works.

@@ -386,7 +386,11 @@ class TestPluginPythonEnvironment:
     """
 
     def test_allowed_tools_do_not_grant_system_python(self) -> None:
-        """No ``allowed-tools`` grants ``Bash(python3 *)``, ``Bash(python *)``, or ``Bash(mp *)``."""
+        """No ``allowed-tools`` grants the system Python or a bare ``mp``.
+
+        ``Bash(mp --version)``, ``Bash(mp help)``, and ``Bash(mp help *)`` are
+        the only bare-``mp`` grants allowed. They cover the read-only look-up fallback before setup.
+        """
         violations: list[str] = []
         for skill in skill_dirs():
             entry = skill / "SKILL.md"

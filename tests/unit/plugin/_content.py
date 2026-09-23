@@ -992,8 +992,17 @@ def parse_version_floor(text: str) -> tuple[int, ...] | None:
 # variable such as $CLAUDE_PLUGIN_DATA expands to nothing, and the check
 # denies it. A denied ``!`command``` line aborts the whole skill.
 
-SYSTEM_GRANTS = frozenset({"Bash(python3 *)", "Bash(python *)", "Bash(mp *)"})
-"""``allowed-tools`` entries that grant the system Python or a bare ``mp``."""
+READ_ONLY_MP_GRANTS = frozenset(
+    {"Bash(mp --version)", "Bash(mp help)", "Bash(mp help *)"}
+)
+"""The only bare-``mp`` grants allowed: the read-only look-up fallback.
+
+They let a skill check an ``mp`` on ``PATH`` and read its help before setup
+builds the plugin venv. Matched exactly, without the ``:*`` normalization.
+"""
+
+_BARE_GRANT = re.compile(r"^Bash\(\s*(?:mp|python3?)(?=[\s:)])")
+"""A ``Bash(...)`` grant whose command is a bare ``mp``, ``python``, or ``python3``."""
 
 
 def _split_tools(value: str) -> list[str]:
@@ -1025,9 +1034,12 @@ def _split_tools(value: str) -> list[str]:
 
 
 def allowed_tools_violations(path: Path, value: str) -> list[str]:
-    """Reject ``allowed-tools`` entries for the system Python or a bare ``mp``.
+    """Reject ``allowed-tools`` grants for the system Python or a bare ``mp``.
 
-    The legacy ``Bash(cmd:*)`` spelling counts as ``Bash(cmd *)``.
+    Any ``Bash(...)`` grant whose command starts with a bare ``mp``,
+    ``python``, or ``python3`` is rejected, in either the ``Bash(cmd *)`` or
+    the legacy ``Bash(cmd:*)`` spelling. The three exact entries in
+    ``READ_ONLY_MP_GRANTS`` are the only exceptions.
 
     Args:
         path: The ``SKILL.md`` file (for the message).
@@ -1035,15 +1047,23 @@ def allowed_tools_violations(path: Path, value: str) -> list[str]:
 
     Returns:
         One violation per rejected entry.
+
+    Example:
+        ```python
+        allowed_tools_violations(Path("SKILL.md"), "Bash(mp help *) Bash(mp *)")
+        # ["SKILL.md:1: allowed-tools grants 'Bash(mp *)'; ..."]
+        ```
     """
     found: list[str] = []
     for entry in _split_tools(value):
-        normal = re.sub(r"\s+", " ", entry.replace(":*)", " *)"))
-        if normal in SYSTEM_GRANTS:
-            found.append(
-                f"{rel(path)}:1: allowed-tools grants {entry!r}; use the plugin "
-                "venv path (${CLAUDE_PLUGIN_DATA}/venv/bin/...)"
-            )
+        normal = re.sub(r"\s+", " ", entry)
+        if normal in READ_ONLY_MP_GRANTS or not _BARE_GRANT.match(normal):
+            continue
+        found.append(
+            f"{rel(path)}:1: allowed-tools grants {entry!r}; use the plugin "
+            "venv path (${CLAUDE_PLUGIN_DATA}/venv/bin/...) or one of "
+            "Bash(mp --version), Bash(mp help), Bash(mp help *)"
+        )
     return found
 
 

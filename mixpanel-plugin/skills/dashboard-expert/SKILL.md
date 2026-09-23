@@ -11,7 +11,7 @@ description: >-
   or wants to turn queries into reports placed on a dashboard. Do not use for
   general analytics questions or one-off queries (use mixpanelyst), or for
   what a specific user did in a session recording (use session-replay).
-allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Dashboard Expert
@@ -23,8 +23,10 @@ Run code with the plugin's Python environment: `${CLAUDE_PLUGIN_DATA}/venv/bin/p
 If that interpreter path fails, the environment is not set up. Do not check again with `ls`, `which`, or shell variables; those checks are denied and prompt the user. Instead:
 
 1. Ask the user to run `/mixpanel-headless:setup` before any analysis code.
-2. For look-ups until then, run `mp --version` on its own.
-3. If it shows 0.3.0 or later, run `mp help <query>` with that same `mp`, for look-ups only.
+2. For look-ups until then, run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
+3. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups only.
+
+A denial of some other command does not mean Bash is blocked, so still try the bare `mp --version`.
 
 Do not run analysis code with a Python or `mp` found on `PATH`, because its library version is unknown. The one other route is the user's own project: if it already has `mixpanel_headless` (for example a uv project), `uv run python` works.
 
@@ -152,7 +154,7 @@ These 14 rules come from failures against the live Mixpanel API. The library doe
 
 ## Look up the API before you write code
 
-`mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path.
+When the plugin environment exists, `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path. When it does not exist, use the bare-`mp` fallback near the top of this file.
 
 The installed library documents itself, so do not guess a method name, a parameter, or a type field. Verify any signature with `mp help Workspace.<method>`, for example `mp help Workspace.update_dashboard`. Other useful look-ups:
 
