@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGI
 
 Answer questions about Mixpanel data. Write and run Python that uses the `mixpanel_headless` library and pandas. This skill teaches judgment: which query answers the question, which defaults mislead, and how to check a result. The library itself is the API reference.
 
-Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version 2>/dev/null || echo "plugin environment not set up; run /mixpanel-headless:setup"`
+Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version 2>&1 || echo "plugin environment not set up; run /mixpanel-headless:setup"`
 
 !`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
 

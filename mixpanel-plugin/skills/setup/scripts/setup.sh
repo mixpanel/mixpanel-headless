@@ -54,15 +54,17 @@ for cmd in python3 python; do
   fi
 done
 
-# Reuse a working venv. Replace a broken or too-old one, but only when the
-# directory is really a venv (it has pyvenv.cfg).
-if [ -e "$venv_dir" ] && ! python_ok "$venv_python"; then
-  if [ -f "$venv_dir/pyvenv.cfg" ]; then
-    echo "⚠ The existing environment at $venv_dir does not run Python 3.10+. Recreating it."
-    rm -rf "$venv_dir"
-  else
+# Reuse only a real venv (it has pyvenv.cfg). A folder without that file
+# may hold some other interpreter, so setup never reuses it or installs into
+# it. A real venv that is broken or too old is recreated.
+if [ -e "$venv_dir" ]; then
+  if [ ! -f "$venv_dir/pyvenv.cfg" ]; then
     echo "✗ $venv_dir exists but is not a virtual environment. Move it away, then run setup again."
     exit 1
+  fi
+  if ! python_ok "$venv_python"; then
+    echo "⚠ The existing environment at $venv_dir does not run Python 3.10+. Recreating it."
+    rm -rf "$venv_dir"
   fi
 fi
 
@@ -137,7 +139,7 @@ echo ""
 echo "Installing mixpanel-headless (import name: mixpanel_headless) and dependencies..."
 if [ -n "$has_uv" ]; then
   echo "  (using uv)"
-  uv --directory "$venv_parent" pip install --python "$venv_python" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}" \
+  uv --directory "$venv_parent" pip install --upgrade --python "$venv_python" "$MIXPANEL_HEADLESS_PKG" "${DEPS[@]}" \
     || { echo ""; echo "✗ Package install failed. Read the installer output above."; exit 1; }
 else
   echo "  (using pip)"

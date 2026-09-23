@@ -235,6 +235,24 @@ class TestSessionSubcommand:
         assert isinstance(payload.get("next"), list)
         assert payload["next"], "needs_project should suggest a next command"
 
+    def test_invalid_project_id_reports_error_not_onboarding(
+        self, populated_home: Path
+    ) -> None:
+        """A malformed ``MP_PROJECT_ID`` is reported as the config error it is.
+
+        The account resolves fine, so the answer must not be
+        ``needs_account`` onboarding; the user needs the resolver's own
+        message, which names the invalid variable.
+        """
+        payload = _run(
+            "session",
+            tmp_home=populated_home,
+            env_extra={"MP_PROJECT_ID": "abc"},
+        )
+        assert payload["state"] == "error"
+        assert "MP_PROJECT_ID" in payload["error"]["message"]
+        assert payload["error"]["actionable"] is True
+
     def test_env_only_auth_returns_ok_with_populated_axes(self, tmp_home: Path) -> None:
         """Env-only auth (no ``[active]``) MUST resolve to a fully populated ok.
 

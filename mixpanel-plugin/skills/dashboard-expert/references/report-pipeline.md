@@ -108,7 +108,7 @@ for event in ["Sign Up", "Login", "Purchase"]:
     try:
         result = ws.query(event, last=90)
         row_items.append(report(f"{event} Trend", "insights", result))
-    except Exception as exc:
+    except mp.MixpanelHeadlessError as exc:
         row_items.append(text(f"<p><strong>Not built:</strong> {event}: {exc}</p>"))
 ```
 

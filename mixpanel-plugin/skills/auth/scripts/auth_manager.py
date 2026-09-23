@@ -23,7 +23,11 @@ SCHEMA_VERSION = 1
 try:
     from mixpanel_headless import Workspace, accounts, targets
     from mixpanel_headless import session as sess
-    from mixpanel_headless._internal.auth.resolver import resolve_session
+    from mixpanel_headless._internal.auth.resolver import (
+        format_no_account_error,
+        format_no_project_error,
+        resolve_session,
+    )
     from mixpanel_headless._internal.config import ConfigManager
     from mixpanel_headless.exceptions import AccountNotFoundError, ConfigError
 except ImportError as _exc:  # keep the one-JSON-object, exit-0 output rule
@@ -141,14 +145,20 @@ def cmd_session(_args: argparse.Namespace) -> dict[str, Any]:
     cm = ConfigManager()
     try:
         session = resolve_session(config=cm)
-    except ConfigError:
-        # Second pass with a placeholder project resolves the account axis only,
-        # which distinguishes needs_account from needs_project.
+    except ConfigError as exc:
+        # Only the resolver's own "no account" and "no project" errors mean
+        # onboarding. Any other config error (a malformed MP_PROJECT_ID, a bad
+        # region, a broken config file) is reported with its own message.
+        if str(exc) == format_no_account_error():
+            return {"schema_version": SCHEMA_VERSION, "state": "needs_account", "next": _ONBOARDING}  # noqa: E501  # fmt: skip
         try:
+            # A placeholder project resolves the account axis only.
             account = resolve_session(config=cm, project="0").account
         except ConfigError:
-            return {"schema_version": SCHEMA_VERSION, "state": "needs_account", "next": _ONBOARDING}  # noqa: E501  # fmt: skip
-        return {"schema_version": SCHEMA_VERSION, "state": "needs_project", "account": _account_record(account), "next": _PROJECT_NEXT}  # noqa: E501  # fmt: skip
+            return _err(exc, actionable=True)
+        if str(exc) == format_no_project_error(account):
+            return {"schema_version": SCHEMA_VERSION, "state": "needs_project", "account": _account_record(account), "next": _PROJECT_NEXT}  # noqa: E501  # fmt: skip
+        return _err(exc, actionable=True)
 
     ws_id = session.workspace.id if session.workspace is not None else None
     has_env_account = _has_env_auth()

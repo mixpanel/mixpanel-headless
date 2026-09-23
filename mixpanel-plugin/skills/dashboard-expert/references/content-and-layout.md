@@ -153,7 +153,7 @@ for did in [1001, 1002, 1003]:
             else:
                 result = ws.query_saved_report(bid, bookmark_type=btype)
             all_reports[f"{dash.title} / {info['name']}"] = result.df
-        except Exception as exc:
+        except mp.MixpanelHeadlessError as exc:
             print(f"Skipped {info['name']}: {exc}")
 # Join the frames on the date index, then compare or correlate them.
 ```
