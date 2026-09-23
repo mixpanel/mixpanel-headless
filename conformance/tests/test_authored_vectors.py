@@ -581,6 +581,39 @@ def test_analyze_mobile_tolerance_case_discriminates() -> None:
     assert scaled_tap.target_desc != "button:Next"
 
 
+@pytest.mark.parametrize(
+    "slug", sorted(s for s, (scale, _) in _SCALE_EXPECTATIONS.items() if scale != 1.0)
+)
+def test_analyze_mobile_scaled_tap_misses_raw_bounds(slug: str) -> None:
+    """Each scaled vector's tap misses the button when the bounds stay raw.
+
+    The tap point is replayed against the same stream with the Meta width
+    equal to the viewport width (scale ``1.0``). A miss there means the
+    vector's ``button:Next`` target is only possible with scaled bounds,
+    so a port that hit-tests raw bounds fails the vector.
+
+    Args:
+        slug: The vector id suffix.
+
+    Raises:
+        AssertionError: If the tap also resolves to the button with raw
+            bounds.
+    """
+    from conformance.record.adapters import analyze_rrweb
+    from conformance.record.gen_replay_analyze_vectors import _scaled_stream
+
+    by_id = {str(body["id"]): body for body in _analyze_mobile_vectors()}
+    body = by_id[f"replays/rrweb_analyzer.analyze/authored-mobile-{slug}"]
+    down = next(
+        event["data"]
+        for event in body["call"]["input"]["events"]
+        if event["type"] == 3 and event["data"]["type"] == 7
+    )
+    raw = analyze_rrweb(_scaled_stream(400, 400, tap=(down["x"], down["y"])))
+    raw_tap = next(a for a in raw.actions if a.action == "touch_start")
+    assert raw_tap.target_desc != "button:Next"
+
+
 def test_analyze_mobile_scaled_bounds_round_half_to_even() -> None:
     """Scaled bounds that land on .5 round half to even.
 

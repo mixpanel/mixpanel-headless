@@ -193,8 +193,10 @@ def _scaled_stream(
     """Build a two-screen wireframe stream with one tap near the button.
 
     By default the tap lands on the button's center in Meta-width units,
-    so it resolves to the button only once the bounds are scaled by
-    ``meta_width / viewport_width``.
+    scaled by ``meta_width / viewport_width``. That point misses the raw
+    button only when the ratio is far from ``1.0``; near ``1.0`` pass an
+    edge ``tap`` that is inside the scaled button but outside the raw
+    button plus the hit slop.
 
     Args:
         meta_width: The Meta width.
@@ -237,10 +239,19 @@ def _cases() -> list[tuple[str, list[dict[str, Any]]]]:
         ("scale-0-5-physical-pixels", 200, 400),
         ("scale-2-coarse-viewport", 800, 400),
         ("scale-1-25-coarse-viewport", 500, 400),
-        ("scale-1-05-tolerance-boundary-scales", 420, 400),
-        ("scale-0-95-tolerance-boundary-scales", 380, 400),
     ):
         cases.append((slug, _scaled_stream(meta_width, viewport_width)))
+    # At the tolerance boundary the scaled button nearly covers the raw
+    # button, so a center tap hits both. Each tap is inside the scaled
+    # button but more than the 8 px hit slop outside the raw button
+    # [100, 700, 200, 80]: at 1.05 ([105, 735, 210, 84]) y = 800 is 20
+    # below the raw bottom; at 0.95 ([95, 665, 190, 76]) y = 670 is 30
+    # above the raw top.
+    for slug, meta_width, tap in (
+        ("scale-1-05-tolerance-boundary-scales", 420, (210, 800)),
+        ("scale-0-95-tolerance-boundary-scales", 380, (190, 670)),
+    ):
+        cases.append((slug, _scaled_stream(meta_width, 400, tap=tap)))
     # 410 / 400 is inside the tolerance: the bounds stay raw. The tap at
     # (100, 701) is inside the raw button [100, 700, 200, 80] but misses
     # the button scaled by 1.025 ([102, 718, 205, 82]) even with hit slop,
