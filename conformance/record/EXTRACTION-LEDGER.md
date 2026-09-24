@@ -74,8 +74,7 @@ was left behind.
 | authored bundle files | 15 | 17 | +2 |
 | authored vectors | 243 | 417 | +174 |
 
-Exclusions: `no_seam_hit` 4,022 → 4,151 (+129). Of these, +122 are #251's
-offline tests (58 new test functions, expanded by parametrization) and +7
+Exclusions: `no_seam_hit` 4,022 → 4,151 (+129). Of these, +122 are #251's offline tests (collected items 10,390 → 10,512 under `pytest tests --collect-only`; 8,620 → 8,674 test functions, net +54, expanded by parametrization) and +7
 are #249's (4 in `tests/unit/help/test_render.py`, 3 in `test_search.py`).
 None of them reaches a recording seam. #246 and #252 changed no test
 count, and #250 added only `conformance/tests/`, which the record run does
