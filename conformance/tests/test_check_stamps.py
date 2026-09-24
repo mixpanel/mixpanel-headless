@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from conformance.record import check_stamps
 from conformance.record.check_stamps import (
     AWAITING_FIRST_REPIN,
     GENERATED_CONTRACT_ARTIFACTS,
@@ -373,34 +374,47 @@ class TestReachability:
             )
         ]
 
-    def test_artifact_awaiting_first_repin_may_be_missing(self, tmp_path: Path) -> None:
+    def test_artifact_awaiting_first_repin_may_be_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A generated artifact no re-pin has written yet is not a finding.
 
         Args:
             tmp_path: pytest-provided scratch directory.
+            monkeypatch: pytest fixture used to list an artifact as awaiting.
         """
+        monkeypatch.setattr(
+            check_stamps, "AWAITING_FIRST_REPIN", frozenset({"help-registry.json"})
+        )
         vectors, contract = _make_tree(tmp_path, MAIN_SHA)
-        assert AWAITING_FIRST_REPIN
-        for name in AWAITING_FIRST_REPIN:
-            assert not (contract / name).exists()
+        (contract / "help-registry.json").unlink()
         assert check_reachability(vectors, contract, _reachable(MAIN_SHA)) == []
 
-    def test_written_artifact_must_leave_the_awaiting_set(self, tmp_path: Path) -> None:
+    def test_written_artifact_must_leave_the_awaiting_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Once written, an awaiting artifact is flagged until its name leaves the set.
 
         Its stamp is checked like any other generated artifact too.
 
         Args:
             tmp_path: pytest-provided scratch directory.
+            monkeypatch: pytest fixture used to list an artifact as awaiting.
         """
+        monkeypatch.setattr(
+            check_stamps, "AWAITING_FIRST_REPIN", frozenset({"help-registry.json"})
+        )
         vectors, contract = _make_tree(tmp_path, MAIN_SHA)
-        for name in AWAITING_FIRST_REPIN:
-            _write(contract / name, json.dumps({"generated_from": OLD_SHA}).encode())
+        _write(
+            contract / "help-registry.json",
+            json.dumps({"generated_from": OLD_SHA}).encode(),
+        )
         findings = check_reachability(vectors, contract, _reachable(MAIN_SHA))
-        for name in AWAITING_FIRST_REPIN:
-            details = {f.detail for f in findings if f.path == f"contract/{name}"}
-            assert "artifact is written; remove it from AWAITING_FIRST_REPIN" in details
-            assert any("not reachable from main" in d for d in details)
+        details = {
+            f.detail for f in findings if f.path == "contract/help-registry.json"
+        }
+        assert "artifact is written; remove it from AWAITING_FIRST_REPIN" in details
+        assert any("not reachable from main" in d for d in details)
 
     def test_guard_lists_every_generator_artifact(self) -> None:
         """The guard's artifact list equals what ``generate_contract`` writes."""

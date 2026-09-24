@@ -80,7 +80,7 @@ GENERATED_CONTRACT_ARTIFACTS: tuple[str, ...] = (
 #: two-step protocol); once the file exists it is checked like every other
 #: generated artifact, and its name must leave this set in the same re-pin
 #: (a present file still listed here is a finding).
-AWAITING_FIRST_REPIN: frozenset[str] = frozenset({"help-registry.json"})
+AWAITING_FIRST_REPIN: frozenset[str] = frozenset()
 
 #: Existing authored bundles and the hand-authored provenance they carry.
 #: ``None`` means the header has no ``source_commit`` at all (the storybook

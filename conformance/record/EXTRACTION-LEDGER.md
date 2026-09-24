@@ -8,6 +8,129 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 a prose snapshot of the committed extraction run.
 
 
+## 2026-09-23 re-pin: stamp `6b23b75` → `c7906bc` (PR #249 help conformance + PR #250 mobile analyzer vectors, with #246, #251, #252)
+
+Step 2 of the two-step protocol (README, "Which SHA to stamp") for the
+PRs squash-merged to `main` since the `6b23b75` re-pin (#245):
+
+- PR #246 `chore(review): add Greptile config and align reviewer
+  docstring guidance` → `7540fd8`
+- PR #251 `Plugin overhaul: skills built on the built-in reference
+  (mp help) and a plugin-owned Python environment` → `3006599`
+- PR #249 `feat(conformance): help registry contract and authored help
+  vectors` → `91de07b`
+- PR #252 `docs(replays): scope the DOM fallback of capture detection to
+  streams without a wireframe` → `0d9ede5`
+- PR #250 `feat(conformance): authored analyzer vectors over mobile
+  replay streams` → `c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259`
+
+This re-pin also writes, at the same stamp, the two authored bundles and the
+contract artifact those library PRs deferred:
+`authored/help/reference.jsonl` (157 vectors, `gen_help_vectors`),
+`authored/replays/rrweb-analyze-mobile.jsonl` (17 vectors,
+`gen_replay_analyze_vectors`), and `contract/help-registry.json`. With the
+artifact written, `help-registry.json` leaves
+`check_stamps.AWAITING_FIRST_REPIN`, which is now empty.
+
+### Why `c7906bc` is the honest stamp
+
+`c7906bc` is the tip of `main` and the exact `src/` + `tests/` +
+`conformance/` this corpus and contract were built from.
+`git log 6b23b75..c7906bc -- src tests conformance` is exactly #245 (the
+previous re-pin), #246, #251, #249, #252 and #250. None of them touched
+`conformance/vectors/` or `conformance/contract/`. The re-extraction
+reproduces their drift findings exactly (#249's PR body names the
+`no_seam_hit` finding), and nothing else moved.
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-09-23 \
+  --mp-record-commit=c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259
+uv run python -m conformance.record.gen_help_vectors \
+  --commit c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259
+uv run python -m conformance.record.gen_replay_analyze_vectors \
+  --commit c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259
+uv run python -m conformance.contract.generate_contract \
+  --generated-from c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259
+```
+
+The contract ran after both bundles were written, so `tag-universe.json`
+and `model-coverage.json` scan the final corpus. Interpreter and
+`tool_versions` are unchanged from the committed manifest. Record run:
+**9,982 passed, 1 skipped, 563 deselected, 0 failed** (9,853 → 9,982).
+The recorder wrote 3,237 vectors in 171 bundles, and no stale bundle file
+was left behind.
+
+### Headline counts (manifest `counts`)
+
+| Field | `6b23b75` | `c7906bc` | Δ |
+|---|---:|---:|---:|
+| `total` (extracted) | 3,237 | 3,237 | 0 |
+| `by_kind.builder` / `wire` / `validation-error` | 1,894 / 1,278 / 65 | 1,894 / 1,278 / 65 | 0 |
+| `with_setup` | 121 | 121 | 0 |
+| bundles (extracted) | 171 | 171 | 0 |
+| authored bundle files | 15 | 17 | +2 |
+| authored vectors | 243 | 417 | +174 |
+
+Exclusions: `no_seam_hit` 4,022 → 4,151 (+129). Of these, +122 are #251's offline tests (collected items 10,390 → 10,512 under `pytest tests --collect-only`; 8,620 → 8,674 test functions, net +54, expanded by parametrization) and +7
+are #249's (4 in `tests/unit/help/test_render.py`, 3 in `test_search.py`).
+None of them reaches a recording seam. #246 and #252 changed no test
+count, and #250 added only `conformance/tests/`, which the record run does
+not collect. Every other bucket is unchanged.
+
+### What changed
+
+- **New authored bundle `authored/help/reference.jsonl`** (157 vectors,
+  capability `help`): the 13 `help.*` adapter apis from #249, covering
+  parse_query, tokens, hints_for, match_domain, suggestions,
+  child_suggestions, search over a supplied index (including the blank
+  and negative-limit errors), render of every `HelpKind` × text/markdown/json
+  from frozen `describe()` output, five markdown `code_lang: "ts"`
+  vectors, render_search, render_miss, search_usage, lookup_error, and
+  domain_error.
+- **New authored bundle `authored/replays/rrweb-analyze-mobile.jsonl`**
+  (17 `rrweb_analyzer.analyze` vectors from #250): the nine mobile
+  fixtures (two trimmed to prefixes), the synthetic gesture stream, and
+  seven synthetic scale streams. Those cover scale 0.5, 2.0 and 1.25, the
+  1.05 / 0.95 tolerance boundary, an in-tolerance raw case, and
+  round-half-to-even on scaled bounds. Floats keep their `1.0` spelling.
+- **New contract artifact `contract/help-registry.json`**
+  (`schema_version` 1): Workspace domains (32 / 209 methods), properties,
+  hint rules (24, docs paths) with the worked `hint_urls`, `alias_docs`
+  (43), the Python inventory (`exports` 301, `workspace_members` 214),
+  parameter tables (`signatures`, 675 callables), grammar and usage
+  strings, `llms_url`, the `search_index` rules, the kind vocabularies,
+  and the layout constants.
+- **Contract**: `error-codes.json`, `literal-aliases.json`,
+  `model-coverage.json` and `tag-universe.json` change `generated_from`
+  only.
+- **`api-index.json`**: unchanged, byte for byte.
+- **Every other file** under `conformance/vectors/` changes only its
+  `source_commit` / `extraction_date` stamp (171 bundle headers plus the
+  manifest).
+
+### Verification
+
+- `uv run pytest conformance/tests -o addopts="" -q` → 617 passed (the
+  generator-equals-bundle checks for both new bundles now run instead of
+  skipping).
+- `uv run pytest conformance/runner -o addopts="" -q` → 3,654 passed
+  (3,480 + 157 help + 17 analyzer).
+- `just conformance-stamps` → `stamp check: CLEAN (all stamps reachable
+  from main; stamp moved with content)`.
+- CI drift command (re-extract to `/tmp/re-extract` with the committed
+  stamps, then `conformance.record.diff`) → record run `9,982 passed, 1
+  skipped, 563 deselected`; `drift check: CLEAN (byte-identical within D8
+  scope)`.
+- `just conformance-smoke` → `smoke result: PASS` (control clean; 14 sabotage patches, all caught).
+- `just check` → exit 0; `9,955 passed, 1 skipped, 563 deselected`; coverage 93.71%; `617 passed`; `3,654 passed`; stamp check CLEAN; build ok.
+
+After this PR merges, the TypeScript port sets
+`conformance-runner/corpus.config.json` `sourceCommit` to
+`c7906bcd6d7d6222fb225f5fd7e48e8ed39dd259` and runs `npm run sync:corpus`.
+
 ## 2026-09-22 re-pin: stamp `0dde506` → `6b23b75` (PR #241 built-in API reference + PR #244 mobile session replays)
 
 Step 2 of the two-step protocol (README, "Which SHA to stamp") for two
