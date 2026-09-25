@@ -135,8 +135,12 @@ Runtime-detected buckets that are NOT in the D10 design list:
   reads `MP_PACER` at every entry-call open and every transport
   interaction and applies the library's rule (`parse_pacer_switch`):
   only `off`, `false`, `0`, or `no` (trimmed, any case) turn the pacer
-  off, so an unset or invalid value counts as on. `tests/conftest.py` sets `MP_PACER=off` for every test, so the
-  bucket holds only the tests that turn the pacer back on. The classifier
+  off, so an unset or invalid value counts as on. Record mode sets `MP_PACER=off` at startup when the environment
+  does not set it (`pytest_configure`), and `tests/conftest.py` also sets
+  it for every test under `tests/`. So captures default to pacer-off,
+  including `conformance/tests/test_coverage_cases.py`, which does not
+  inherit that conftest, and the bucket holds only the tests that turn the
+  pacer back on. The classifier
   withholds every vector from such a test and lists its nodeid in
   `manifest.exclusion_details`. The manifest lists a bucket only when its
   count is above zero.

@@ -1449,7 +1449,8 @@ def pytest_configure(config: pytest.Config) -> None:
 
     Also sets a defensive ``faulthandler_timeout`` so any residual hang
     under the frozen clock produces a traceback, not a stalled extraction
-    (design risk register #2).
+    (design risk register #2), and defaults ``MP_PACER`` to ``off`` so
+    captures match the pacer-off replay.
 
     Args:
         config: The pytest configuration.
@@ -1459,6 +1460,12 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     if not out_dir:
         return
+    # Captures default to the request pacer off, the state the runner
+    # replays in. tests/conftest.py already sets it for tests/, but the
+    # record run also collects conformance/tests/test_coverage_cases.py,
+    # which does not inherit that conftest. A test that turns the pacer on
+    # itself is still marked ``env_pacer_on`` at capture time.
+    os.environ.setdefault(_PACER_ENV_VAR, "off")
     extraction_date = (
         config.getoption("--mp-record-date")
         or os.environ.get("CONFORMANCE_RECORD_DATE")
