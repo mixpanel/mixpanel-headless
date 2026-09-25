@@ -93,6 +93,7 @@ plugins:
           - guide/entity-management.md
           - guide/data-governance.md
           - guide/business-context.md
+          - guide/request-pacing.md
           - guide/built-in-help.md
         API Reference:
           - api/index.md
@@ -152,6 +153,7 @@ plugins:
           - guide/entity-management.md: "Create, update, delete dashboards, reports, and cohorts"
           - guide/data-governance.md: "Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, enforcement, auditing, anomalies, and event deletion requests"
           - guide/business-context.md: "Read and write the markdown business context that grounds AI assistants (org and project scopes, 50,000-char cap)"
+          - guide/request-pacing.md: "Shared query ledger — stay inside the Query API budget across processes, learn raised limits, fail fast with the exact next-slot time"
           - guide/built-in-help.md: "Offline API reference from Python (mp.help, mp.reference) and the CLI (mp help): query grammar, text/markdown/json formats, --domain filter, agent tips"
         API Reference:
           - api/index.md: "Python API overview"
@@ -202,6 +204,7 @@ nav:
       - Entity Management: guide/entity-management.md
       - Data Governance: guide/data-governance.md
       - Business Context: guide/business-context.md
+      - Request Pacing: guide/request-pacing.md
       - Built-in Help: guide/built-in-help.md
   - API Reference:
       - Overview: api/index.md

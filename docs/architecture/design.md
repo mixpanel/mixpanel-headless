@@ -87,6 +87,7 @@ HTTP client with Mixpanel-specific features:
 - Service account authentication
 - Regional endpoint routing (US, EU, India)
 - Automatic rate limit handling with exponential backoff
+- Client-side request pacing through a query ledger file that all processes on the machine share (see [Request Pacing](../guide/request-pacing.md))
 - Streaming JSONL parsing for large exports
 
 ### Three-Axis Hierarchy
