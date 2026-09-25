@@ -50,6 +50,7 @@ src/mixpanel_headless/
 │   ├── api_client.py        # MixpanelAPIClient (Session-bound; per-request OAuth bearer)
 │   ├── me.py                # MeService + per-account MeCache (~/.mp/accounts/{name}/me.json)
 │   ├── pagination.py        # Cursor-based App API pagination
+│   ├── pacer.py             # Shared query ledger: client-side pacing for the Query API budget (httpx event hooks)
 │   ├── auth/                # Auth subsystem
 │   │   ├── account.py       # Account discriminated union + TokenResolver protocol
 │   │   ├── session.py       # Session, Project, WorkspaceRef, ActiveSession
@@ -193,6 +194,7 @@ just mutate-check        # Check score meets 80% threshold
 - **Single resolver**: `resolve_session(...)` consults env → param → target → bridge → config in priority order; no silent cross-axis fallback.
 - **Connection-pool preservation**: `ws.use(account=...)` rebuilds the auth header but reuses the underlying `httpx.Client` (same Python instance — verified by `id()` equality in `tests/integration/test_cross_project_iteration.py`).
 - **Dependency injection**: Services accept dependencies as constructor arguments for testing.
+- **Shared query ledger**: counted Query API requests (not Export, not App API) are paced against a file-locked JSON ledger per (host, project) under `{storage}/pacer/`, so every `mp` process and Python session on the machine shares one exact budget. Waits up to `MP_PACER_MAX_WAIT` (default 30 s; per request in Python, a total budget per `mp` command) are absorbed and the Authorization header is re-resolved after a wait; longer waits raise `RateLimitError` at once with the exact next-slot time and nothing sent; raised limits are learned from the `RateLimit-Policy` header of one free 429 probe or configured (a configured limit is a ceiling); unexplained 429s back off exponentially from window/limit up to one hour; 429s without a `RateLimit` header get the normal retry; and `MP_PACER=off` is byte-identical to the unpaced client.
 
 ## Environment Variables
 
@@ -208,6 +210,9 @@ just mutate-check        # Check score meets 80% threshold
 | `MP_CONFIG_PATH` | Override config file location |
 | `MP_API_BASE_URL` | Route every API family at one alternate host (read per request; trailing slash tolerated). Bypasses the per-region `ENDPOINTS` table: `query` → `{base}/api/query`, `export` → `{base}/api/2.0`, `engage` → `{base}/api/query/engage`, `app` → `{base}/api/app`. Plain `http://` bases are accepted (local / headless deployments only). `mp login`'s region probe collapses to a single probe at the base (`MP_REGION` when valid, else `us`). `MP_REGION` stays required for non-URL uses. |
 | `MP_APP_BASE_URL` | Optional: re-home only the App API family at `{app_base}/api/app` (works alone or on top of `MP_API_BASE_URL`). Alone it does not collapse the `mp login` region probe — the persisted region still routes the live Query/Export/Engage families |
+| `MP_PACER` | `on` (default; also `true`/`1`/`yes`) or `off` (also `false`/`0`/`no`), case-insensitive; TOML booleans accepted in config; an invalid value leaves pacing on. `off` turns off the shared query ledger: no pacer file reads or writes, behavior identical to the unpaced client. Config: `[settings] pacer = "on"\|"off"` |
+| `MP_PACER_MAX_WAIT` | Longest wait in seconds (or `inf`) the pacer absorbs before raising `RateLimitError`; default `30`. Per request in Python; inside an `mp` command, a budget for the total of all pacer waits in the command. `inf` suits unattended jobs. Config: `[settings] pacer_max_wait = <number>` |
+| `MP_PACER_QUERY_LIMIT` | Known Query API limit (queries per hour) for every project in the process; wins over `[settings.pacer_query_limits] "<project_id>" = <int>` in config. A configured limit is a ceiling: the lower of it and a fresh (7-day) server-learned limit applies, so a value set too low is never raised, even after 429s. The config value is ignored when `config.toml` is readable by group or others (mode must be `0600`) |
 
 Recommended starter command: `mp login` (one-shot orchestrator covering region probe, `/me`-driven project pick, and account-name derivation; backed by `mp.accounts.login_unified()` in Python).
 

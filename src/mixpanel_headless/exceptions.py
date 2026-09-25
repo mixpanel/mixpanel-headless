@@ -14,7 +14,7 @@ from errors by providing structured access to:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlencode
@@ -705,6 +705,7 @@ class RateLimitError(APIError):
         request_url: str | None = None,
         request_params: dict[str, Any] | None = None,
         project_id: str | None = None,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         """Initialize RateLimitError.
 
@@ -719,6 +720,11 @@ class RateLimitError(APIError):
             project_id: Mixpanel project id active when the limit was hit, used
                 to prefill the rate-limit-increase request form. ``None`` when
                 unknown.
+            details: Extra structured context added to ``details``. A key
+                that is already set (such as ``retry_after``) keeps its
+                standard value, for example the client-side query budget
+                state when the request pacer refuses to send a request.
+                ``None`` adds nothing.
         """
         self._retry_after = retry_after
         self._project_id = project_id
@@ -740,6 +746,10 @@ class RateLimitError(APIError):
         # Add project_id to details so JSON consumers (to_dict) can attribute it.
         if project_id is not None:
             self._details["project_id"] = project_id
+        if details is not None:
+            # Canonical keys win, so to_dict() always agrees with the properties.
+            for name, value in details.items():
+                self._details.setdefault(name, value)
 
     @property
     def retry_after(self) -> int | None:

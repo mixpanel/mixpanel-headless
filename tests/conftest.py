@@ -142,6 +142,8 @@ _MP_ENV_VARS = (
     "MP_OAUTH_STORAGE_DIR",
     "MP_API_BASE_URL",
     "MP_APP_BASE_URL",
+    "MP_PACER_MAX_WAIT",
+    "MP_PACER_QUERY_LIMIT",
 )
 
 
@@ -154,9 +156,30 @@ def _clean_mp_env(monkeypatch: pytest.MonkeyPatch) -> None:
     fixture, a developer who exports ``MP_OAUTH_TOKEN`` (or any service-
     account var) in their shell would silently fail credential-resolution
     tests that expect "no credentials configured".
+
+    It also sets ``MP_PACER=off``: the request pacer then does no file-system
+    access, so no test writes a ledger under the real ``~/.mp`` and no test
+    waits on a budget. Pacer tests opt back in with
+    ``monkeypatch.setenv("MP_PACER", "on")`` plus a temporary
+    ``MP_STORAGE_DIR`` and ``MP_CONFIG_PATH``.
     """
     for var in _MP_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MP_PACER", "off")
+
+
+@pytest.fixture(autouse=True)
+def _pin_library_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with the library entry point, and restore it after.
+
+    The CLI's main callback sets the process-wide entry point to ``cli``.
+    That value changes the User-Agent and gives the request pacer a
+    per-command wait budget, so a CLI test must not leak it into later
+    tests. ``monkeypatch`` restores the previous value on teardown.
+    """
+    from mixpanel_headless._internal import client_metadata
+
+    monkeypatch.setattr(client_metadata, "_entry_point", "lib")
 
 
 def _real_home_mp_guard_enabled() -> bool:
