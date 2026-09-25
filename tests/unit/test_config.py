@@ -673,6 +673,63 @@ class TestSettingsCustomHeader:
         assert cm.get_custom_header() is None
 
 
+class TestGetSettings:
+    """``get_settings`` returns a shallow copy of the raw ``[settings]`` table."""
+
+    def test_missing_file_returns_empty(self, cm: ConfigManager) -> None:
+        """No config file gives an empty dict."""
+        assert cm.get_settings() == {}
+
+    def test_no_settings_block_returns_empty(self, tmp_path: Path) -> None:
+        """A config file with no ``[settings]`` block gives an empty dict."""
+        p = tmp_path / "config.toml"
+        p.write_text("[active]\n", encoding="utf-8")
+        p.chmod(0o600)
+        assert ConfigManager(config_path=p).get_settings() == {}
+
+    def test_returns_raw_table(self, tmp_path: Path) -> None:
+        """Every ``[settings]`` key comes back unvalidated."""
+        p = tmp_path / "config.toml"
+        p.write_text(
+            "[settings]\n"
+            'pacer = "off"\n'
+            'custom_header = { name = "X-A", value = "b" }\n'
+            "[settings.pacer_query_limits]\n"
+            '"3713224" = 240\n',
+            encoding="utf-8",
+        )
+        p.chmod(0o600)
+        assert ConfigManager(config_path=p).get_settings() == {
+            "pacer": "off",
+            "custom_header": {"name": "X-A", "value": "b"},
+            "pacer_query_limits": {"3713224": 240},
+        }
+
+    def test_returns_a_copy(self, tmp_path: Path) -> None:
+        """Changing the returned dict does not change a later read."""
+        p = tmp_path / "config.toml"
+        p.write_text('[settings]\npacer = "off"\n', encoding="utf-8")
+        p.chmod(0o600)
+        cm = ConfigManager(config_path=p)
+        cm.get_settings()["pacer"] = "on"
+        assert cm.get_settings() == {"pacer": "off"}
+
+    def test_malformed_toml_raises_config_error(self, tmp_path: Path) -> None:
+        """Malformed TOML raises ``ConfigError`` like the other readers."""
+        p = tmp_path / "config.toml"
+        p.write_text("[settings\n", encoding="utf-8")
+        p.chmod(0o600)
+        with pytest.raises(ConfigError):
+            ConfigManager(config_path=p).get_settings()
+
+    def test_non_table_settings_returns_empty(self, tmp_path: Path) -> None:
+        """A ``settings`` key that is not a table gives an empty dict."""
+        p = tmp_path / "config.toml"
+        p.write_text('settings = "x"\n', encoding="utf-8")
+        p.chmod(0o600)
+        assert ConfigManager(config_path=p).get_settings() == {}
+
+
 class TestMutateTransaction:
     """``_mutate()`` collapses N read-modify-write cycles into one transaction."""
 

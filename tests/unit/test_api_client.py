@@ -3070,9 +3070,9 @@ class TestClientIdentificationHeaders:
     def _reset_entry_point(self) -> Iterator[None]:
         """Force ``"lib"`` for each test, then restore the prior value.
 
-        Other test modules may import ``cli.main``, which flips the
-        process-wide entry point to ``"cli"`` at import time. Pin to
-        ``"lib"`` for deterministic assertions; restore on teardown.
+        A CLI test that runs a command sets the process-wide entry point
+        to ``"cli"``. Pin to ``"lib"`` for deterministic assertions;
+        restore on teardown.
         """
         from mixpanel_headless._internal.client_metadata import (
             get_entry_point,

@@ -12,13 +12,14 @@ diffing, corpus loading rules, and the CLI's ``vector_failed`` vs
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
-from conformance.runner.execute import run_vector
+from conformance.runner.execute import _isolated_home, run_vector
 from conformance.runner.loading import CorpusLoadError, LoadedVector, load_vectors
 from conformance.runner.transport import VectorReplayError, VectorTransport
 
@@ -424,6 +425,37 @@ def test_run_vector_diffs_callback_calls() -> None:
     outcome = run_vector(_wirestub_vector("auth/region_probe.probe_region/bad", body))
     assert not outcome.passed
     assert any("call-log mismatch" in reason for reason in outcome.reasons)
+
+
+@pytest.mark.parametrize("ambient_pacer", [None, "on"])
+def test_isolated_home_turns_pacer_off_and_restores(
+    monkeypatch: pytest.MonkeyPatch, ambient_pacer: str | None
+) -> None:
+    """The replay sandbox turns the request pacer off, then restores the env.
+
+    With the pacer off, a replay never reads or writes a ledger file and
+    never waits on a budget, so recorded vectors replay byte-for-byte.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture (restores the real env).
+        ambient_pacer: ``MP_PACER`` value before the sandbox, or ``None``
+            when it is unset.
+    """
+    if ambient_pacer is None:
+        monkeypatch.delenv("MP_PACER", raising=False)
+    else:
+        monkeypatch.setenv("MP_PACER", ambient_pacer)
+    monkeypatch.setenv("MP_PACER_MAX_WAIT", "inf")
+    monkeypatch.setenv("MP_PACER_QUERY_LIMIT", "7")
+
+    with _isolated_home():
+        assert os.environ["MP_PACER"] == "off"
+        assert "MP_PACER_MAX_WAIT" not in os.environ
+        assert "MP_PACER_QUERY_LIMIT" not in os.environ
+
+    assert os.environ.get("MP_PACER") == ambient_pacer
+    assert os.environ["MP_PACER_MAX_WAIT"] == "inf"
+    assert os.environ["MP_PACER_QUERY_LIMIT"] == "7"
 
 
 def _write_bundle(path: Path, vectors: list[dict[str, Any]]) -> None:

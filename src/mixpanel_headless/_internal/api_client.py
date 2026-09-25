@@ -50,6 +50,13 @@ from mixpanel_headless._internal.me import (
     WorkspaceView,
     select_workspace_id,
 )
+from mixpanel_headless._internal.pacer import (
+    Pacer,
+    PacerSettings,
+    classify,
+    load_pacer_settings,
+    request_content,
+)
 from mixpanel_headless._internal.report_links import web_host
 from mixpanel_headless._internal.response_validation import validate_response_models
 from mixpanel_headless.exceptions import (
@@ -82,6 +89,103 @@ _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 # _BACKOFF_MAX_SECONDS; anything larger would park the process for hours.
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 60.0
+
+#: Response extension key where the request pacer marks a 429 it explains.
+#: The value is ``"window"`` (the hourly quota is used up) or
+#: ``"concurrency"`` (too many queries ran at the same time).
+PACER_TRIPPED_EXTENSION = "mp_pacer_tripped"
+
+
+def pacer_window_tripped(response: httpx.Response) -> bool:
+    """Report whether the request pacer marked this 429 as a window trip.
+
+    After a window trip, a retry loop must not add its own wait. The next
+    attempt goes through the pacer again, and the pacer then waits for the
+    exact time until a slot opens, or raises ``RateLimitError`` at once. A
+    blind 60-second backoff against an hourly quota only wastes time.
+
+    Args:
+        response: The rate-limited response.
+
+    Returns:
+        ``True`` when the pacer marked the response ``"window"``; ``False``
+        for a concurrency trip, no marker, or the pacer turned off.
+
+    Example:
+        ```python
+        response = httpx.Response(429, extensions={"mp_pacer_tripped": "window"})
+        pacer_window_tripped(response)
+        # True
+        ```
+    """
+    return response.extensions.get(PACER_TRIPPED_EXTENSION) == "window"
+
+
+def log_rate_limit_retry(
+    log: logging.Logger,
+    response: httpx.Response,
+    wait_time: float,
+    attempt: int,
+    max_retries: int,
+    *,
+    context: str = "",
+) -> None:
+    """Log the WARNING a retry loop writes before it retries a 429.
+
+    After a pacer window trip the loop does not wait itself, so the message
+    says that the request pacer owns the wait. Otherwise the message is the
+    one the loops always wrote, with the wait in seconds.
+
+    Args:
+        log: The logger of the retry loop.
+        response: The 429 response.
+        wait_time: The loop's own wait before the retry.
+        attempt: Zero-based attempt number.
+        max_retries: The loop's retry budget.
+        context: Text after "Rate limited", for example " during pagination".
+    """
+    if pacer_window_tripped(response):
+        log.warning(
+            "Rate limited%s; retrying through the request pacer (attempt %d/%d)",
+            context,
+            attempt + 1,
+            max_retries,
+        )
+    else:
+        log.warning(
+            "Rate limited%s, retrying in %.1f seconds (attempt %d/%d)",
+            context,
+            wait_time,
+            attempt + 1,
+            max_retries,
+        )
+
+
+#: True once the fallback WARNING below has been logged in this process.
+_pacer_fallback_warned = False
+
+
+def _build_pacer() -> Pacer:
+    """Build the request pacer for one client, turning pacing off on failure.
+
+    A bug in settings resolution must never break the client. On any
+    exception the pacer is built turned off, and one WARNING per process
+    names the exception type.
+
+    Returns:
+        The pacer; turned off when its settings could not be resolved.
+    """
+    global _pacer_fallback_warned
+    try:
+        return Pacer(load_pacer_settings())
+    except Exception as exc:  # noqa: BLE001 - pacing must never break the client
+        if not _pacer_fallback_warned:
+            _pacer_fallback_warned = True
+            logger.warning(
+                "request pacing is off for this process: %s", type(exc).__name__
+            )
+        return Pacer(PacerSettings(enabled=False))
+
 
 # 045-report-links: the shortlink view returns 200 HTML instead of a 3xx when
 # the target URL is longer than ~2048 chars. The body then carries the target
@@ -214,9 +318,11 @@ ENDPOINTS: dict[str, dict[str, str]] = {
     },
 }
 
-# Server-side read deadlines Mixpanel's edge enforces per route family
-# (nginx ``proxy_read_timeout``): App API routes get ~120s; ``/api/query``
-# routes get 488s. The route-aware client defaults below add a margin so a
+# Server-side read deadlines per route family. App API routes get ~120s: the
+# web application's worker timeout ends the request there (the edge proxy in
+# front of it allows 130s, so the worker limit is the one that applies).
+# ``/api/query`` routes get 488s, the edge proxy's read timeout for those
+# routes. The route-aware client defaults below add a margin so a
 # slow request is always resolved by the server's own answer (success or
 # 5xx with diagnostics) and never pre-empted by a client read timeout. An
 # explicit ``timeout`` (constructor or per-call) overrides them.
@@ -632,6 +738,7 @@ class MixpanelAPIClient:
         self._export_timeout = export_timeout
         self._max_retries = max_retries
         self._client: httpx.Client | None = None
+        self._pacer: Pacer | None = None
         self._transport = _transport
         self._workspace_id: int | None = (
             session.workspace.id if session.workspace else None
@@ -738,6 +845,8 @@ class MixpanelAPIClient:
             The httpx.Client instance (connection pool only).
         """
         if self._client is None:
+            if self._pacer is None:
+                self._pacer = _build_pacer()
             self._client = httpx.Client(
                 # Pool-level fallback only — every request path passes a
                 # per-request timeout. Sized to the largest route default so
@@ -748,8 +857,88 @@ class MixpanelAPIClient:
                     else DEFAULT_QUERY_TIMEOUT_S
                 ),
                 transport=self._transport,
+                # Event hooks, not a transport wrapper: every send (retries,
+                # streams, redirects) passes through them, and passing no
+                # transport keeps the HTTP(S)_PROXY environment support.
+                event_hooks={
+                    "request": [self._pacer_before],
+                    "response": [self._pacer_after],
+                },
             )
         return self._client
+
+    def _pacer_before(self, request: httpx.Request) -> None:
+        """Pace one outgoing request (httpx request event hook).
+
+        Classifies the request against the server's rate-limit pools and
+        lets the pacer reserve a slot and sleep until it. A request the
+        server does not count passes straight through.
+
+        Args:
+            request: The request about to be sent.
+
+        Raises:
+            RateLimitError: The budget has no slot within the maximum wait.
+                The request is not sent, and no retry loop retries it.
+        """
+        if self._pacer is None or self._session is None:
+            return
+        try:
+            endpoints = _endpoints_for(self._session.account.region)
+            family = _api_family_for(str(request.url), endpoints)
+            base = endpoints.get(family) if family else None
+            key = classify(request.url, family, base, content=request_content(request))
+        except Exception:  # noqa: BLE001 - pacing must never block a request
+            logger.debug(
+                "Pacer could not classify a request; sending unpaced", exc_info=True
+            )
+            return
+        # Outside the guard: the pacer's RateLimitError must reach the caller.
+        slept = self._pacer.before_send(request, key)
+        if slept > 0 and "Authorization" in request.headers:
+            # The header was built before the wait; an OAuth bearer can expire
+            # during a long one, so resolve it again. A failed refresh keeps
+            # the old header rather than failing the request.
+            try:
+                request.headers["Authorization"] = self._get_auth_header()
+            except Exception:  # noqa: BLE001 - never fail a request over a refresh
+                logger.debug(
+                    "Could not refresh the Authorization header after a pacer "
+                    "wait; keeping the old one",
+                    exc_info=True,
+                )
+
+    def _refund_unsent(self, exc: httpx.HTTPError) -> None:
+        """Give back the pacer slot of a request the server never saw.
+
+        Only a connect failure proves that: the connection never opened.
+        A read timeout or a later error keeps the slot, because the server
+        may have counted the request.
+
+        Args:
+            exc: The transport error from a send.
+        """
+        if self._pacer is None or not isinstance(
+            exc, (httpx.ConnectError, httpx.ConnectTimeout)
+        ):
+            return
+        try:
+            request = exc.request
+        except RuntimeError:  # httpx raises when no request is attached
+            return
+        self._pacer.refund(request)
+
+    def _pacer_after(self, response: httpx.Response) -> None:
+        """Record one response in the ledger (httpx response event hook).
+
+        On a 429 the pacer marks ``response.extensions`` with the limit that
+        tripped, which the retry loops read. This hook never raises.
+
+        Args:
+            response: The response to a request.
+        """
+        if self._pacer is not None:
+            self._pacer.after_response(response)
 
     def _default_timeout(self, url: str) -> float:
         """Resolve the read timeout for a request to ``url``.
@@ -1031,6 +1220,25 @@ class MixpanelAPIClient:
             return self._calculate_backoff(attempt)
         return min(float(retry_after), _BACKOFF_MAX_SECONDS)
 
+    def _rate_limit_wait(self, response: httpx.Response, attempt: int) -> float:
+        """Resolve the wait before retrying a 429 response.
+
+        When the request pacer marked the 429 as a window trip, the wait is
+        0: the next attempt passes through the pacer, which waits for the
+        exact time until a slot opens. Otherwise the wait is the capped
+        ``Retry-After`` value or the exponential backoff, as before.
+
+        Args:
+            response: The 429 response.
+            attempt: Zero-based attempt number, used for the backoff fallback.
+
+        Returns:
+            A non-negative delay in seconds.
+        """
+        if pacer_window_tripped(response):
+            return 0.0
+        return self._retry_wait_seconds(self._parse_retry_after(response), attempt)
+
     def _execute_with_retry(
         self,
         method: str,
@@ -1106,14 +1314,9 @@ class MixpanelAPIClient:
                             request_params=params,
                             project_id=self.project_id,
                         )
-                    wait_time = self._retry_wait_seconds(
-                        self._parse_retry_after(response), attempt
-                    )
-                    logger.warning(
-                        "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
-                        wait_time,
-                        attempt + 1,
-                        self._max_retries,
+                    wait_time = self._rate_limit_wait(response, attempt)
+                    log_rate_limit_retry(
+                        logger, response, wait_time, attempt, self._max_retries
                     )
                     time.sleep(wait_time)
                     continue
@@ -1127,6 +1330,7 @@ class MixpanelAPIClient:
                 )
 
             except httpx.HTTPError as e:
+                self._refund_unsent(e)
                 raise MixpanelHeadlessError(
                     f"HTTP error: {e}",
                     code="HTTP_ERROR",
@@ -1652,14 +1856,9 @@ class MixpanelAPIClient:
                             request_params=request_params,
                             project_id=self.project_id,
                         )
-                    wait_time = self._retry_wait_seconds(
-                        self._parse_retry_after(response), attempt
-                    )
-                    logger.warning(
-                        "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
-                        wait_time,
-                        attempt + 1,
-                        self._max_retries,
+                    wait_time = self._rate_limit_wait(response, attempt)
+                    log_rate_limit_retry(
+                        logger, response, wait_time, attempt, self._max_retries
                     )
                     time.sleep(wait_time)
                     continue
@@ -2220,9 +2419,7 @@ class MixpanelAPIClient:
                                 request_params=params,
                                 project_id=self.project_id,
                             )
-                        wait_time = self._retry_wait_seconds(
-                            self._parse_retry_after(response), attempt
-                        )
+                        wait_time = self._rate_limit_wait(response, attempt)
                         time.sleep(wait_time)
                         continue
 
@@ -5086,12 +5283,9 @@ class MixpanelAPIClient:
                     request_url=url,
                     project_id=self.project_id,
                 )
-            wait_time = self._retry_wait_seconds(retry_after, attempt)
-            logger.warning(
-                "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
-                wait_time,
-                attempt + 1,
-                self._max_retries,
+            wait_time = self._rate_limit_wait(response, attempt)
+            log_rate_limit_retry(
+                logger, response, wait_time, attempt, self._max_retries
             )
             time.sleep(wait_time)
         raise RateLimitError(  # pragma: no cover - loop always returns or raises

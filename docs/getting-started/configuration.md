@@ -65,6 +65,9 @@ Service accounts are the right default for unattended automation. OAuth browser 
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 | `MP_API_BASE_URL` | Route every API family at one alternate host — see [Alternate API host](#alternate-api-host-mp_api_base_url) |
 | `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
+| `MP_PACER` | `on` (default) or `off` (`true`/`false`, `1`/`0`, `yes`/`no` also work); `off` turns off client-side request pacing — see [Request Pacing](../guide/request-pacing.md) |
+| `MP_PACER_MAX_WAIT` | Longest wait (seconds, or `inf`) the pacer absorbs before it raises `RateLimitError`; default `30`. Per request in Python; a total for the whole command in `mp` |
+| `MP_PACER_QUERY_LIMIT` | Known Query API limit (queries per hour) for every project in the process |
 
 These map onto the [credential resolution chain](#credential-resolution-chain) below.
 

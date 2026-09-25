@@ -60,6 +60,9 @@ except mp.MixpanelHeadlessError as e:
     print(f"Error [{e.code}]: {e.message}")
 ```
 
+!!! note "Two sources of `RateLimitError`"
+    The server raises it with an HTTP 429 after the client's retries run out. The library's request pacer also raises it before a request goes out, when the project's query budget is full for longer than `MP_PACER_MAX_WAIT`. In that case `details["sent"]` is `False`, `retry_after` is exact, `details["next_slot_at"]` gives the next free slot, and `details["reason"]` is `"ledger"` (this machine filled the budget) or `"server"` (other clients probably share the project). Do not retry either kind in a loop. See [Request Pacing](../guide/request-pacing.md).
+
 ## Base Exception
 
 ::: mixpanel_headless.MixpanelHeadlessError

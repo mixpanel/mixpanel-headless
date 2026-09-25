@@ -459,6 +459,42 @@ def _base_url_override_active() -> bool:
     )
 
 
+_PACER_ENV_VAR = "MP_PACER"
+"""Environment variable that turns the library's request pacer on or off.
+
+The runner replays every vector with ``MP_PACER=off``, so a capture taken
+with the pacer on (its waits, a ``RateLimitError`` raised before any
+request is sent, a 429 retried at once) cannot replay. Checked at capture
+time, because pacer tests turn it on with ``monkeypatch.setenv`` inside
+the test body."""
+
+
+def _pacer_on_active() -> bool:
+    """Report whether the library's request pacer is on in the environment.
+
+    Applies the library's own switch rule (``parse_pacer_switch``): only
+    ``off``, ``false``, ``0``, or ``no`` (after trimming and lower-casing)
+    turn the pacer off. The default is on, so an unset or invalid value
+    counts as on.
+
+    Returns:
+        True unless ``MP_PACER`` turns the pacer off; False otherwise.
+
+    Example:
+        ```python
+        os.environ["MP_PACER"] = " OFF "
+        _pacer_on_active()
+        # False
+        del os.environ["MP_PACER"]
+        _pacer_on_active()
+        # True
+        ```
+    """
+    from mixpanel_headless._internal.pacer import parse_pacer_switch
+
+    return parse_pacer_switch(os.environ.get(_PACER_ENV_VAR, "")) is not False
+
+
 def _module_clock_mocked(func: Callable[..., Any]) -> bool:
     """Detect a test-local clock mock shadowing the D1.4 freeze (design D1.2).
 
@@ -814,6 +850,8 @@ class RecordSession:
         assert capture is not None  # guarded by the wrapper
         if _base_url_override_active():
             capture.env_base_url_override = True
+        if _pacer_on_active():
+            capture.env_pacer_on = True
         instance: Any = args[0] if (is_method and args) else None
         excluded: str | None = None
         arguments: dict[str, Any] = {}
@@ -1166,6 +1204,8 @@ class RecordSession:
             return None
         if _base_url_override_active():
             capture.env_base_url_override = True
+        if _pacer_on_active():
+            capture.env_pacer_on = True
         span = (
             self._thread_state.span_stack[-1] if self._thread_state.span_stack else None
         )

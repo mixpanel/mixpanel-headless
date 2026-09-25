@@ -889,3 +889,79 @@ def test_env_base_url_override_unset_leaves_capture_unmarked(
     capture = record_session.captures[-1]
     assert capture.env_base_url_override is False
     assert capture.interactions[0].request.scheme_host == "https://mixpanel.com"
+
+
+@pytest.mark.parametrize(
+    ("value", "marked"),
+    [
+        (None, True),
+        ("on", True),
+        ("1", True),
+        ("yes", True),
+        ("bogus", True),
+        ("off", False),
+        (" OFF ", False),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+    ],
+    ids=[
+        "unset",
+        "on",
+        "one",
+        "yes",
+        "invalid",
+        "off",
+        "off-padded",
+        "false",
+        "zero",
+        "no",
+    ],
+)
+def test_env_pacer_on_marks_capture(
+    record_session: RecordSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    value: str | None,
+    marked: bool,
+) -> None:
+    """A capture taken with the request pacer on is marked ``env_pacer_on``.
+
+    The library turns the pacer off only for ``off``, ``false``, ``0``, or
+    ``no`` (after trimming and lower-casing); an unset or other value
+    leaves the default, which is on. The runner
+    replays with the pacer off, so such a capture cannot replay. The value
+    is set inside the test body, as a pacer test does with
+    ``monkeypatch.setenv``.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+        tmp_path: Directory for the library's storage and config.
+        value: The ``MP_PACER`` value, or ``None`` when unset.
+        marked: Whether the capture must carry the mark.
+
+    Raises:
+        AssertionError: If the mark does not match the pacer state.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    monkeypatch.setenv("MP_PACER", "off")
+    nodeid = f"tests/unit/test_fake.py::test_pacer_{value}"
+    record_session.begin_test(nodeid, None)
+    if value is None:
+        monkeypatch.delenv("MP_PACER")
+    else:
+        monkeypatch.setenv("MP_PACER", value)
+    # With the pacer on, the library's own pacer runs too; keep its ledger
+    # and config reads away from the real home directory.
+    monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path / "storage"))
+    monkeypatch.setenv("MP_CONFIG_PATH", str(tmp_path / "config.toml"))
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.env_pacer_on is marked

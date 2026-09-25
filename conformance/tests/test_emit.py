@@ -932,3 +932,66 @@ def test_env_base_url_override_unset_capture_unaffected(tmp_path: Path) -> None:
     manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
     assert "env_base_url_override" not in manifest["exclusions"]
     assert "env_base_url_override" not in manifest["exclusion_details"]
+
+
+# ---------------------------------------------------------------------------
+# env_pacer_on exclusion (captures taken with the request pacer on — the
+# runner replays with MP_PACER=off, so pacer behavior cannot replay)
+# ---------------------------------------------------------------------------
+
+
+def test_env_pacer_on_capture_excluded(tmp_path: Path) -> None:
+    """A capture marked ``env_pacer_on`` emits no vector at all.
+
+    The test is counted once under ``env_pacer_on``, its nodeid is listed
+    in ``manifest.exclusion_details``, and an unmarked control still emits.
+
+    Args:
+        tmp_path: Output directory for the emit pass.
+
+    Raises:
+        AssertionError: If a vector leaks or the bucket is mis-counted.
+    """
+    import json as jsonlib
+
+    wire = _wire_capture("tests/unit/test_api_client_pacer.py::test_wire")
+    wire.env_pacer_on = True
+    control = _builder_capture("tests/unit/test_fake.py::test_control")
+    captures = [wire, control]
+
+    summary = emit_corpus(
+        captures, [capture.nodeid for capture in captures], _options(tmp_path)
+    )
+
+    assert summary.total_vectors == 1  # the unmarked control only
+    assert summary.exclusions.get("env_pacer_on") == 1
+    assert summary.exclusions.get("raw_transport_no_entrypoint", 0) == 0
+    bundles = list(tmp_path.rglob("*.jsonl"))
+    assert len(bundles) == 1
+    assert "test_api_client_pacer" not in bundles[0].read_text("utf-8")
+    manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert manifest["exclusions"]["env_pacer_on"] == 1
+    assert manifest["exclusion_details"]["env_pacer_on"] == [wire.nodeid]
+
+
+def test_env_pacer_on_unset_capture_unaffected(tmp_path: Path) -> None:
+    """An unmarked capture emits as before, and no ``env_pacer_on`` key appears.
+
+    Args:
+        tmp_path: Output directory for the emit pass.
+
+    Raises:
+        AssertionError: If the vector is withheld or the bucket appears.
+    """
+    import json as jsonlib
+
+    wire = _wire_capture("tests/unit/test_fake.py::test_wire_plain")
+    assert wire.env_pacer_on is False
+
+    summary = emit_corpus([wire], [wire.nodeid], _options(tmp_path))
+
+    assert summary.total_vectors == 1
+    assert "env_pacer_on" not in summary.exclusions
+    manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
+    assert "env_pacer_on" not in manifest["exclusions"]
+    assert "env_pacer_on" not in manifest["exclusion_details"]
