@@ -615,10 +615,9 @@ class ReplaysService:
         """Collapse a min-time Insights ``series`` into :class:`ReplaySummary` rows.
 
         Walks ``result.series`` — the raw nested dict the Insights API returns —
-        rather than the lossy ``.df`` projection. ``.df`` only flattens one
-        segment level and never names columns after the grouped property, so it
-        is unusable for the multi-key replay discovery group-by. The series
-        nests in group order with an ``$overall`` rollup key at every level::
+        rather than the ``.df`` projection, so the parser reads the leaf dict
+        keyed by retention window directly. The series nests in group order
+        with an ``$overall`` rollup key at every level::
 
             {metric: {replay_id: {retention: {"all": min_time_seconds}}}}
 
