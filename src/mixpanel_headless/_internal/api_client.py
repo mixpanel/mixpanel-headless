@@ -901,14 +901,23 @@ class MixpanelAPIClient:
             # process, shared with the pacer's own internal errors.
             report_internal_error()
             return
+        # The session the request was built for; ``use()`` on another thread
+        # can replace ``self._session`` during the wait.
+        session = self._session
         # Outside the guard: the pacer's RateLimitError must reach the caller.
         slept = self._pacer.before_send(request, key)
-        if slept > 0 and "Authorization" in request.headers:
+        if (
+            slept > 0
+            and "Authorization" in request.headers
+            and self._session is session
+        ):
             # The header was built before the wait; an OAuth bearer can expire
             # during a long one, so resolve it again. A failed refresh must
             # not send a stale bearer (the real cause would become a vague
             # 401): give the slot back, since nothing was sent, and raise the
-            # original error, as the unpaced path does before any send.
+            # original error, as the unpaced path does before any send. After
+            # a session swap the request keeps its original header, which
+            # matches its URL (the new account's header would not).
             try:
                 request.headers["Authorization"] = self._get_auth_header()
             except Exception:

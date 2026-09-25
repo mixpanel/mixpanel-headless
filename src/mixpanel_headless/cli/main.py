@@ -147,6 +147,12 @@ def main(
     # Set here, not at import: importing this module from a Python program
     # or a test must not turn the whole process into the CLI.
     set_entry_point("cli")
+    # In the CLI the pacer's max wait is a budget per command. Several
+    # commands can run in one process (CliRunner, an embedded CLI), so each
+    # one starts with the full budget.
+    from mixpanel_headless._internal.pacer import reset_wait_budget
+
+    reset_wait_budget()
     ctx.ensure_object(dict)
 
     if target is not None and (

@@ -191,7 +191,13 @@ _LOCK_RETRY_S = 0.02
 """The pause between tries of a busy ledger lock."""
 
 _HORIZON_S: Final = 86400.0
-"""Ledger entries further ahead than this (or max_wait, if shorter) are dropped."""
+"""Ledger entries further ahead than this are dropped as corrupt, in every process.
+
+The cutoff does not depend on a process's own max_wait, so a process with a
+short wait keeps the valid reservations of a process that waits without
+limit. A legitimate reservation more than a day ahead needs more than
+24 x limit queued callers.
+"""
 
 _LEDGER_VERSION: Final = 1
 _PROJECT_ID_RE: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -306,11 +312,23 @@ def _reset_warn_once() -> None:
         _warned.clear()
 
 
-def _reset_wait_budget() -> None:
-    """Forget how long this process slept in the pacer, so tests start clean."""
+def reset_wait_budget() -> None:
+    """Give the process its full pacer wait budget again.
+
+    In the ``mp`` CLI, ``max_wait_s`` is a budget for all the pacer sleeps of
+    one command. Call this at the start of each command (and in tests).
+
+    Example:
+        ```python
+        reset_wait_budget()  # the next command may wait max_wait_s in total
+        ```
+    """
     global _waited_s
     with _waited_guard:
         _waited_s = 0.0
+
+
+_reset_wait_budget = reset_wait_budget  # the earlier private name, kept for callers
 
 
 def _add_waited(seconds: float) -> None:
@@ -1124,14 +1142,14 @@ class Pacer:
             return max(0.0, self._settings.max_wait_s - _waited_s)
 
     def _track_streak(self, key: LedgerKey, led: _Ledger) -> None:
-        """Remember whether a ledger has a backoff streak to reset on success.
+        """Remember whether a ledger has a block or streak to clear on success.
 
         Args:
             key: The ledger key.
             led: The ledger just loaded or updated.
         """
         with self._streak_guard:
-            if led.blocked_streak > 0:
+            if led.blocked_streak > 0 or led.blocked_until > 0:
                 self._streak_keys.add(key)
             else:
                 self._streak_keys.discard(key)
@@ -1237,9 +1255,7 @@ class Pacer:
                 and now - learned_at < LEARNED_LIMIT_TTL_S
             ):
                 led.server_limit, led.learned_at = stored.server_limit, learned_at
-            # A legitimate reservation more than a day ahead needs more than
-            # 24 x limit queued callers, so later entries are corrupt.
-            horizon = now + max(window, min(self._settings.max_wait_s, _HORIZON_S))
+            horizon = now + max(window, _HORIZON_S)
             kept = [entry for entry in stored.sent if now - window < entry <= horizon]
             if any(entry > horizon for entry in stored.sent):
                 _warn_once(_CLOCK_WARNING)
@@ -1500,7 +1516,11 @@ class Pacer:
         return min(base * float(1 << min(led.blocked_streak, 32)), budget.window_s)
 
     def _reset_streak(self, key: LedgerKey) -> None:
-        """Reset the backoff streak after a success, only when one is known.
+        """Clear the block and the backoff streak after a success.
+
+        The server accepted a counted request, so the block no longer holds.
+        This runs only for keys whose ledger showed a block or streak, so a
+        normal success reads and writes nothing.
 
         Args:
             key: The ledger key.
@@ -1512,8 +1532,9 @@ class Pacer:
             path = self._ledger_path(key)
             with _ledger_lock(path):
                 led = self._load(path, key, self._now())
-                if led.blocked_streak > 0:
+                if led.blocked_streak > 0 or led.blocked_until > 0:
                     led.blocked_streak = 0
+                    led.blocked_until = 0.0
                     self._save(path, led)
                 self._track_streak(key, led)
         except (OSError, ValueError) as exc:
@@ -1525,7 +1546,7 @@ class Pacer:
         401, 402, and 429 refund: the server does not count them. A 429 whose
         headers name a trip also teaches the limit, and sets
         ``blocked_until`` (with exponential backoff) when the ledger cannot
-        explain a window trip. A 2xx resets the backoff. Any other response
+        explain a window trip. A 2xx clears the block and the backoff. Any other response
         keeps the reservation.
 
         Args:
