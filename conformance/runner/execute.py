@@ -70,11 +70,18 @@ _SCRUBBED_ENV_VARS = (
     "MP_STORAGE_DIR",
     "MP_OAUTH_STORAGE_DIR",
     "MP_TEST_GUARD_REAL_HOME",
+    "MP_PACER_MAX_WAIT",
+    "MP_PACER_QUERY_LIMIT",
 )
 """Env vars scrubbed inside the per-vector sandbox: replay sessions come
 from ``call.session`` exclusively — ambient credentials/config must never
 leak into (or be touched by) a replay (mirrors tests/conftest
 ``_clean_mp_env``, design D1.5)."""
+
+_PACER_ENV_VAR = "MP_PACER"
+"""Set to ``off`` inside the per-vector sandbox. The request pacer then does
+no file-system access and never waits, so a replay sends exactly the
+recorded requests (mirrors tests/conftest ``_clean_mp_env``)."""
 
 
 @contextlib.contextmanager
@@ -86,18 +93,20 @@ def _isolated_home() -> Iterator[None]:
     the replay POLLUTES THE REAL ``~/.mp`` with fake test state, and one
     vector's cache leaks into the next (a warm me-cache suppresses a
     recorded ``/me`` fetch, failing the interaction diff). A fresh temp
-    HOME per vector removes both; the cost is ~1 ms per vector.
+    HOME per vector removes both; the cost is ~1 ms per vector. The
+    request pacer is turned off (``MP_PACER=off``) for the same reasons.
 
     Yields:
         None while the sandbox is active.
     """
     saved = {
         name: os.environ.get(name)
-        for name in ("HOME", "USERPROFILE", *_SCRUBBED_ENV_VARS)
+        for name in ("HOME", "USERPROFILE", _PACER_ENV_VAR, *_SCRUBBED_ENV_VARS)
     }
     with tempfile.TemporaryDirectory(prefix="mp-conformance-home-") as home:
         os.environ["HOME"] = home
         os.environ["USERPROFILE"] = home
+        os.environ[_PACER_ENV_VAR] = "off"
         for name in _SCRUBBED_ENV_VARS:
             os.environ.pop(name, None)
         try:

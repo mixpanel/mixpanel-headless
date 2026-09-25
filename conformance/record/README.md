@@ -106,8 +106,8 @@ record invocation (word-split via `$(cat ...)` by both the CI drift step and
 No D10 *exclusion* selectors live here: every exclusion besides
 `-m "not live"` is detected at runtime by the plugin (Hypothesis via
 `hasattr(item.obj, "hypothesis")`, CLI via `CliRunner.invoke` observation,
-`destructive` via marker, `env_base_url_override` via an `os.environ` check
-at each capture, the rest per-capture at emit time), which keeps
+`destructive` via marker, `env_base_url_override` and `env_pacer_on` via
+an `os.environ` check at each capture, the rest per-capture at emit time), which keeps
 the corpus denominator honest without brittle `-k` selectors (see
 `EXTRACTION-LEDGER.md`). Add exclusion selectors here only if a future
 exclusion cannot be runtime-detected; the file must stay shell-word-safe
@@ -128,6 +128,22 @@ Runtime-detected buckets that are NOT in the D10 design list:
   population). Added at the 2026-09-11 `0dde506` re-pin, where the
   unfiltered extraction produced 30 loopback-host `wire` vectors that
   failed 26/30 under the runner.
+- `env_pacer_on` — captures taken while the library's request pacer was
+  on. The runner replays every vector with `MP_PACER=off`, so pacer
+  behavior (a wait before a send, a `RateLimitError` raised before any
+  request goes out, a 429 retried with no wait) cannot replay. The plugin
+  reads `MP_PACER` at every entry-call open and every transport
+  interaction and applies the library's rule (`parse_pacer_switch`):
+  only `off`, `false`, `0`, or `no` (trimmed, any case) turn the pacer
+  off, so an unset or invalid value counts as on. Record mode sets `MP_PACER=off` at startup when the environment
+  does not set it (`pytest_configure`), and `tests/conftest.py` also sets
+  it for every test under `tests/`. So captures default to pacer-off,
+  including `conformance/tests/test_coverage_cases.py`, which does not
+  inherit that conftest, and the bucket holds only the tests that turn the
+  pacer back on. The classifier
+  withholds every vector from such a test and lists its nodeid in
+  `manifest.exclusion_details`. The manifest lists a bucket only when its
+  count is above zero.
 
 ## Drift check (D8)
 
