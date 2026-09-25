@@ -221,10 +221,10 @@ A 429 without such a header (for example, from a proxy) causes no pause. It gets
 
 The first pause lasts one window divided by the limit: 60 seconds at a limit of 60, 15 seconds at a limit of 240. After the pause, the next query goes out as a probe. Rejected Query API probes are free. When the probe also gets a 429 that the ledger cannot explain, the pause doubles (60, 120, 240 seconds, and so on) up to one hour. The first successful query resets the pause. In real traffic, such an episode lasts a median of about 20 minutes. The error's `details["blocked_streak"]` gives the number of these 429s in a row. If this error happens often, set a lower [configured limit](#raised-limits) to leave room for the other users.
 
-**A warning says that pacing is off or partial.** The pacer never fails a request because of its own problems. When it cannot work, it logs one warning per process and requests go out unpaced:
+**A warning says that pacing is off or partial.** The pacer never fails a request because of its own problems. When it cannot work fully, it logs one warning per process. The effect depends on the warning:
 
 - `Request pacing is off for this process: cannot use the ledger under ... Requests go out unpaced.` The ledger directory cannot be used, for example because the storage directory is read-only, or because another process held the ledger's file lock for more than 1 second. Check the permissions of `~/.mp/pacer` (or `$MP_STORAGE_DIR/pacer`).
-- `Request pacing uses a thread lock only: processes on this machine are not paced together.` The file system or the platform does not support the file lock (for example, some network file systems). Threads in one process are still paced, but separate processes do not share the budget.
+- `Request pacing uses a thread lock only: processes on this machine are not paced together.` The file system or the platform does not support the file lock (for example, some network file systems). Pacing still works inside one process, but the processes on the machine are not paced together, so separate processes do not share the budget.
 - `Request pacer internal error; requests go out unpaced; please report.` An unexpected error in the pacer. Please report it with the `DEBUG` log.
 - `Request pacer: ignoring ledger entries in the future; the system clock stepped back.` The ledger holds send times too far in the future to be real reservations, so the library ignores them. Pacing continues.
 
