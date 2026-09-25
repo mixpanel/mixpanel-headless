@@ -191,7 +191,7 @@ Do not retry a `RateLimitError` in a loop. Each attempt fails the same way until
 The `mp` CLI prints the message to stderr and exits with code `5`, the same code as for every other rate-limit error (see [Exit Codes](../cli/index.md#exit-codes)):
 
 ```bash
-mp query segmentation -e Login --from 2025-01-01
+mp query segmentation -e Login --from 2025-01-01 --to 2025-01-31
 # Rate limited: Mixpanel query budget exhausted for project 3713224: 60 of 60 ...
 # Wait 432 seconds before retrying.
 echo $?
@@ -201,7 +201,7 @@ echo $?
 Inside one `mp` command, `MP_PACER_MAX_WAIT` limits the total of all pacer waits, not each wait. A command that pages through many counted requests therefore fails fast once its waits add up to the limit. A scheduled job can wait instead of failing:
 
 ```bash
-MP_PACER_MAX_WAIT=inf mp query segmentation -e Login --from 2025-01-01
+MP_PACER_MAX_WAIT=inf mp query segmentation -e Login --from 2025-01-01 --to 2025-01-31
 ```
 
 ## Troubleshooting
@@ -209,7 +209,7 @@ MP_PACER_MAX_WAIT=inf mp query segmentation -e Login --from 2025-01-01
 **Turn pacing off.** Set `MP_PACER=off` to rule the pacer out. The library then sends every request directly, as it did before pacing existed, and the server's 429 responses reach the normal retry logic.
 
 ```bash
-MP_PACER=off mp query segmentation -e Login --from 2025-01-01
+MP_PACER=off mp query segmentation -e Login --from 2025-01-01 --to 2025-01-31
 ```
 
 **429s from other machines** (`details["reason"] == "server"`). The ledger knows only the requests from this machine. Other machines, CI jobs, and teammates can use the same project's budget. The library pauses a project's queries when a 429's `RateLimit` header says that the hourly limit tripped and the ledger cannot explain it. This happens in two cases:
