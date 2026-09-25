@@ -19,7 +19,9 @@ import logging
 import os
 import random
 import re
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
@@ -90,6 +92,11 @@ _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 # _BACKOFF_MAX_SECONDS; anything larger would park the process for hours.
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 60.0
+
+#: How many post-wait header refreshes a client remembers (oldest evicted).
+#: Each is one old -> new Authorization pair; a few cover the requests that
+#: can wait and retry at the same time.
+_REFRESHED_AUTH_MAX = 8
 
 #: Response extension key where the request pacer marks a 429 it explains.
 #: The value is ``"window"`` (the hourly quota is used up) or
@@ -740,13 +747,16 @@ class MixpanelAPIClient:
         self._max_retries = max_retries
         self._client: httpx.Client | None = None
         self._pacer: Pacer | None = None
-        # The last Authorization header the pacer hook replaced after a wait:
-        # (old value, new value). Retry loops rebuild later attempts from
-        # headers captured before the wait; this maps them to the new value
-        # with a string compare, no token lookup. The old bearer string
-        # identifies its account, and the new value is that same account's
-        # fresh token, so the mapping holds whichever session is current.
-        self._refreshed_auth: tuple[str, str] | None = None
+        # Authorization headers the pacer hook replaced after a wait, old
+        # value -> new value, newest last, at most _REFRESHED_AUTH_MAX. Retry
+        # loops rebuild later attempts from headers captured before the wait;
+        # this maps them to the new value with a dict lookup, no token
+        # lookup. The old bearer string identifies its account, and the new
+        # value is that same account's fresh token, so the mapping holds
+        # whichever session is current. Several requests can wait and retry
+        # at once (threads), hence a map and a lock, not one pair.
+        self._refreshed_auth: OrderedDict[str, str] = OrderedDict()
+        self._refreshed_auth_lock = threading.Lock()
         self._transport = _transport
         self._workspace_id: int | None = (
             session.workspace.id if session.workspace else None
@@ -905,13 +915,13 @@ class MixpanelAPIClient:
         """
         if self._pacer is None or self._session is None:
             return
-        refreshed = self._refreshed_auth
-        if (
-            refreshed is not None
-            and request.headers.get("Authorization") == refreshed[0]
-        ):
-            # A retry of a request whose header was refreshed after a wait.
-            request.headers["Authorization"] = refreshed[1]
+        current = request.headers.get("Authorization")
+        if current is not None and self._refreshed_auth:
+            with self._refreshed_auth_lock:
+                replacement = self._refreshed_auth.get(current)
+            if replacement is not None:
+                # A retry of a request whose header was refreshed after a wait.
+                request.headers["Authorization"] = replacement
         try:
             endpoints = _endpoints_for(self._session.account.region)
             family = _api_family_for(str(request.url), endpoints)
@@ -950,7 +960,27 @@ class MixpanelAPIClient:
                 self._pacer.refund(request)
                 raise
             request.headers["Authorization"] = new_header
-            self._refreshed_auth = (old_header, new_header)
+            self._remember_refresh(old_header, new_header)
+
+    def _remember_refresh(self, old_header: str, new_header: str) -> None:
+        """Remember a post-wait header refresh for later retries.
+
+        Earlier entries that pointed at ``old_header`` now point at
+        ``new_header``, so a chain of refreshes maps to the newest token.
+        The map keeps the newest ``_REFRESHED_AUTH_MAX`` entries.
+
+        Args:
+            old_header: The Authorization value the request was built with.
+            new_header: The value that replaced it.
+        """
+        with self._refreshed_auth_lock:
+            for key, value in self._refreshed_auth.items():
+                if value == old_header:
+                    self._refreshed_auth[key] = new_header
+            self._refreshed_auth[old_header] = new_header
+            self._refreshed_auth.move_to_end(old_header)
+            while len(self._refreshed_auth) > _REFRESHED_AUTH_MAX:
+                self._refreshed_auth.popitem(last=False)
 
     def _refund_unsent(self, exc: httpx.HTTPError) -> None:
         """Give back the pacer slot of a request the server never saw.

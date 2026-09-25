@@ -191,12 +191,14 @@ _LOCK_RETRY_S = 0.02
 """The pause between tries of a busy ledger lock."""
 
 _HORIZON_S: Final = 86400.0
-"""Ledger entries further ahead than this are dropped as corrupt, in every process.
+"""The furthest ahead a reservation may be, in seconds (24 h).
 
-The cutoff does not depend on a process's own max_wait, so a process with a
-short wait keeps the valid reservations of a process that waits without
-limit. A legitimate reservation more than a day ahead needs more than
-24 x limit queued callers.
+Invariant: no valid reservation is ever more than this far ahead. The
+reserve path refuses a slot beyond it with ``RateLimitError`` (nothing
+reserved, nothing sent), even when max_wait is unbounded. So a later load
+can drop any entry beyond the cutoff as corrupt (for example after the
+clock stepped back) without handing a live slot out twice. The cutoff is
+the same in every process, independent of each process's max_wait.
 """
 
 _LEDGER_VERSION: Final = 1
@@ -1388,7 +1390,7 @@ class Pacer:
                 ledger_slot = _ledger_slot(led, budget, now)
                 slot = max(ledger_slot, led.blocked_until)
                 self._track_streak(key, led)
-                if slot - now > self._max_wait():
+                if slot - now > min(self._max_wait(), _HORIZON_S):
                     from_server = led.blocked_until > ledger_slot
                     raise self._exhausted(key, led, slot, now, from_server, request)
                 used = len(led.sent)
