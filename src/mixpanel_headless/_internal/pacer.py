@@ -867,6 +867,9 @@ class _Ledger:
         server_limit: The limit the server confirmed (within its TTL), or None.
         learned_at: When the server confirmed it (0 when it did not).
         blocked_until: A floor on the next slot.
+        blocked_at: When an unexplained window trip last set the block (0
+            when none). A success clears the block only if its request was
+            reserved at or after this time.
         blocked_streak: Unexplained window trips since the last success.
         sent: Sorted reservation times inside the window plus margin.
     """
@@ -876,6 +879,7 @@ class _Ledger:
     server_limit: int | None
     learned_at: float
     blocked_until: float
+    blocked_at: float
     blocked_streak: int
     sent: list[float]
 
@@ -985,6 +989,7 @@ def _stored_ledger(data: object) -> _Ledger | None:
     source = data.get("limit_source")
     learned_at = _number(data.get("learned_at"))
     blocked_until = _number(data.get("blocked_until"))
+    blocked_at = _number(data.get("blocked_at", 0))
     streak = data.get("blocked_streak", 0)
     raw_sent = data.get("sent")
     if (
@@ -993,6 +998,7 @@ def _stored_ledger(data: object) -> _Ledger | None:
         or source not in get_args(LimitSource)
         or learned_at is None
         or blocked_until is None
+        or blocked_at is None
         or type(streak) is not int
         or streak < 0
         or not isinstance(raw_sent, list)
@@ -1007,6 +1013,7 @@ def _stored_ledger(data: object) -> _Ledger | None:
         server_limit=limit if source == "server" else None,
         learned_at=learned_at,
         blocked_until=blocked_until,
+        blocked_at=blocked_at,
         blocked_streak=streak,
         sent=[entry for entry in sent if entry is not None],
     )
@@ -1246,7 +1253,7 @@ class Pacer:
                 stored = _stored_ledger(data)
                 if stored is None:
                     logger.debug("Ignoring a corrupt pacer ledger at %s", path)
-        led = _Ledger(0, "default", None, 0.0, 0.0, 0, [])
+        led = _Ledger(0, "default", None, 0.0, 0.0, 0.0, 0, [])
         if stored is not None:
             window = BUDGETS[key.bucket].window_s + MARGIN_S
             learned_at = min(stored.learned_at, now)
@@ -1261,6 +1268,7 @@ class Pacer:
                 _warn_once(_CLOCK_WARNING)
             led.sent = sorted(kept)
             led.blocked_until = min(stored.blocked_until, now + window)
+            led.blocked_at = stored.blocked_at
             led.blocked_streak = stored.blocked_streak
         self._set_limit(led, key)
         return led
@@ -1289,6 +1297,7 @@ class Pacer:
             "limit_source": source,
             "learned_at": learned_at,
             "blocked_until": led.blocked_until,
+            "blocked_at": led.blocked_at,
             "blocked_streak": led.blocked_streak,
             "sent": led.sent,
         }
@@ -1461,7 +1470,7 @@ class Pacer:
         """
         status = response.status_code
         if 200 <= status < 300:
-            self._reset_streak(key)
+            self._reset_streak(key, slot)
             return None
         if status not in (401, 402, 429):
             return None
@@ -1489,6 +1498,7 @@ class Pacer:
                             led.blocked_until,
                             now + self._backoff(key, led),
                         )
+                        led.blocked_at = now
                         led.blocked_streak += 1
                         self._track_streak(key, led)
                 self._save(path, led)
@@ -1515,15 +1525,18 @@ class Pacer:
         base = budget.window_s / led.limit
         return min(base * float(1 << min(led.blocked_streak, 32)), budget.window_s)
 
-    def _reset_streak(self, key: LedgerKey) -> None:
+    def _reset_streak(self, key: LedgerKey, slot: float) -> None:
         """Clear the block and the backoff streak after a success.
 
-        The server accepted a counted request, so the block no longer holds.
-        This runs only for keys whose ledger showed a block or streak, so a
-        normal success reads and writes nothing.
+        The server accepted a counted request, so the block no longer holds,
+        unless the request was reserved before the trip that set the block
+        (a concurrent query admitted earlier). This runs only for keys whose
+        ledger showed a block or streak, so a normal success reads and
+        writes nothing.
 
         Args:
             key: The ledger key.
+            slot: The reserved slot of the successful request.
         """
         with self._streak_guard:
             if key not in self._streak_keys:
@@ -1532,9 +1545,11 @@ class Pacer:
             path = self._ledger_path(key)
             with _ledger_lock(path):
                 led = self._load(path, key, self._now())
-                if led.blocked_streak > 0 or led.blocked_until > 0:
+                blocked = led.blocked_streak > 0 or led.blocked_until > 0
+                if blocked and slot >= led.blocked_at:
                     led.blocked_streak = 0
                     led.blocked_until = 0.0
+                    led.blocked_at = 0.0
                     self._save(path, led)
                 self._track_streak(key, led)
         except (OSError, ValueError) as exc:
@@ -1546,8 +1561,9 @@ class Pacer:
         401, 402, and 429 refund: the server does not count them. A 429 whose
         headers name a trip also teaches the limit, and sets
         ``blocked_until`` (with exponential backoff) when the ledger cannot
-        explain a window trip. A 2xx clears the block and the backoff. Any other response
-        keeps the reservation.
+        explain a window trip. A 2xx clears the block and the backoff when
+        its request was reserved at or after the trip that set the block.
+        Any other response keeps the reservation.
 
         Args:
             key: The ledger key.

@@ -741,10 +741,12 @@ class MixpanelAPIClient:
         self._client: httpx.Client | None = None
         self._pacer: Pacer | None = None
         # The last Authorization header the pacer hook replaced after a wait:
-        # (session, old value, new value). Retry loops rebuild later attempts
-        # from headers captured before the wait; this maps them to the new
-        # value with a string compare, no token lookup.
-        self._refreshed_auth: tuple[Session, str, str] | None = None
+        # (old value, new value). Retry loops rebuild later attempts from
+        # headers captured before the wait; this maps them to the new value
+        # with a string compare, no token lookup. The old bearer string
+        # identifies its account, and the new value is that same account's
+        # fresh token, so the mapping holds whichever session is current.
+        self._refreshed_auth: tuple[str, str] | None = None
         self._transport = _transport
         self._workspace_id: int | None = (
             session.workspace.id if session.workspace else None
@@ -792,13 +794,20 @@ class MixpanelAPIClient:
         """
         return self._me_resolver is not None
 
-    def _get_auth_header(self) -> str:
+    def _get_auth_header(self, session: Session | None = None) -> str:
         """Generate the Authorization header value, resolving per request.
 
         For OAuth accounts (browser or static token), delegates to the bound
         :class:`TokenResolver` on every call so a refreshed bearer is picked
         up without rebuilding the API client. Service accounts return the
         cached ``Basic ...`` header since Basic Auth has no freshness concern.
+
+        Args:
+            session: The session to sign for. None (the default) uses the
+                current session. The token resolver is per account, so an
+                OAuth account resolves its own token either way; a service
+                account other than the current one builds its Basic header
+                from its own credentials, not the current session's cache.
 
         Returns:
             Authorization header value appropriate for the auth method.
@@ -807,8 +816,11 @@ class MixpanelAPIClient:
             OAuthError: An OAuth account's token cannot be re-resolved
                 (e.g. on-disk tokens deleted or refresh failed).
         """
-        account = self._session.account
+        target = self._session if session is None else session
+        account = target.account
         if isinstance(account, ServiceAccount):
+            if target is not self._session:
+                return account.auth_header(token_resolver=self._token_resolver)
             assert self._cached_basic_header is not None
             return self._cached_basic_header
         if isinstance(account, OAuthBrowserAccount):
@@ -896,11 +908,10 @@ class MixpanelAPIClient:
         refreshed = self._refreshed_auth
         if (
             refreshed is not None
-            and refreshed[0] is self._session
-            and request.headers.get("Authorization") == refreshed[1]
+            and request.headers.get("Authorization") == refreshed[0]
         ):
             # A retry of a request whose header was refreshed after a wait.
-            request.headers["Authorization"] = refreshed[2]
+            request.headers["Authorization"] = refreshed[1]
         try:
             endpoints = _endpoints_for(self._session.account.region)
             family = _api_family_for(str(request.url), endpoints)
@@ -922,24 +933,24 @@ class MixpanelAPIClient:
         if (
             slept > 0
             and "Authorization" in request.headers
-            and self._session is session
+            and not isinstance(session.account, ServiceAccount)
         ):
             # The header was built before the wait; an OAuth bearer can expire
-            # during a long one, so resolve it again. A failed refresh must
+            # during a long one, so resolve it again, from the SAVED session:
+            # the request's URL belongs to it even when another thread swapped
+            # the session during the wait. (Basic auth does not expire, so a
+            # service-account request keeps its header.) A failed refresh must
             # not send a stale bearer (the real cause would become a vague
             # 401): give the slot back, since nothing was sent, and raise the
-            # original error, as the unpaced path does before any send. After
-            # a session swap the request keeps its original header, which
-            # matches its URL (the new account's header would not).
+            # original error, as the unpaced path does before any send.
             old_header = request.headers["Authorization"]
             try:
-                new_header = self._get_auth_header()
+                new_header = self._get_auth_header(session)
             except Exception:
                 self._pacer.refund(request)
                 raise
             request.headers["Authorization"] = new_header
-            if new_header != old_header:
-                self._refreshed_auth = (session, old_header, new_header)
+            self._refreshed_auth = (old_header, new_header)
 
     def _refund_unsent(self, exc: httpx.HTTPError) -> None:
         """Give back the pacer slot of a request the server never saw.
