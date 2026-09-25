@@ -2018,6 +2018,70 @@ class TestAuthRefreshAfterPacerSleep:
         assert seen == ["Bearer tok-1", "Bearer tok-2"]
         assert resolver.calls == 2  # no refresh after the swap
 
+    def test_retry_after_a_refresh_reuses_the_refreshed_header(
+        self, pacer_on: Path, recorded_sleeps: list[float]
+    ) -> None:
+        """A retry of a refreshed request carries the new header, with no lookup.
+
+        The retry loop rebuilds each attempt from headers captured before the
+        wait. After a concurrency 429 the retry does not wait in the pacer,
+        so without help it would resend the bearer that expired during the
+        first wait.
+
+        Args:
+            pacer_on: Pacer storage root.
+            recorded_sleeps: Recorded ``time.sleep`` durations.
+        """
+        del pacer_on
+        resolver = _CountingResolver()
+        seen: list[str | None] = []
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer 200, except a real concurrency 429 for the second request.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                The response.
+            """
+            nonlocal calls
+            calls += 1
+            seen.append(request.headers.get("Authorization"))
+            if calls == 2:
+                return httpx.Response(
+                    429,
+                    headers={
+                        "RateLimit-Policy": (
+                            '"project";q=60;w=3600, '
+                            '"project-concurrency";q=5;qu="concurrent-requests"'
+                        ),
+                        "RateLimit": '"project";r=12, "project-concurrency";r=0;t=10',
+                        "Retry-After": "1",
+                    },
+                )
+            return httpx.Response(200, json={"ok": True})
+
+        session = make_session(project_id="12345", region="us", oauth_token="static")
+        with MixpanelAPIClient(
+            session=session,
+            token_resolver=resolver,
+            _transport=httpx.MockTransport(handler),
+        ) as client:
+            fake = _FakeTime()
+            _install_pacer(
+                client, fake, PacerSettings(max_wait_s=math.inf, query_limit=1)
+            )
+            url = client._build_url("query", "/segmentation")
+            client._request("GET", url)
+            assert client._request("GET", url) == {"ok": True}
+
+        assert len(fake.sleeps) == 1  # only the second request waited
+        assert recorded_sleeps == [1.0]  # the loop's concurrency wait
+        assert seen == ["Bearer tok-1", "Bearer tok-3", "Bearer tok-3"]
+        assert resolver.calls == 3  # tok-1, tok-2 (built), tok-3 (refresh)
+
     def test_request_without_authorization_is_untouched(self, pacer_on: Path) -> None:
         """A request with no Authorization header gets none after a sleep.
 
