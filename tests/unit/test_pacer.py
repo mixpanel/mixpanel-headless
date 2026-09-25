@@ -1032,6 +1032,7 @@ class TestLedgerFile:
             "limit_source": "default",
             "learned_at": 0,
             "blocked_until": 0,
+            "blocked_at": 0,
             "blocked_streak": 0,
             "sent": [NOW],
         }
@@ -1838,6 +1839,46 @@ class TestObserve:
         paced_response(make_pacer(), QKEY, 200)
         assert read_ledger(root)["blocked_until"] == 0
 
+    def test_older_success_keeps_newer_block(
+        self, make_pacer: Callable[..., Pacer], root: Path, clock: FakeClock
+    ) -> None:
+        """A success reserved before a newer unexplained 429 leaves its block."""
+        pacer = make_pacer()
+        older = httpx.Request("GET", US_QUERY)
+        pacer.before_send(older, QKEY)
+        clock.advance(10.0)
+        paced_response(pacer, QKEY, 429, rl_headers(), WINDOW_BODY)
+        data = read_ledger(root)
+        assert data["blocked_at"] == NOW + 10.0
+        pacer.after_response(httpx.Response(200, request=older))
+        data = read_ledger(root)
+        assert data["blocked_until"] == NOW + 70.0
+        assert data["blocked_streak"] == 1
+
+    def test_newer_success_clears_block(
+        self, make_pacer: Callable[..., Pacer], root: Path, clock: FakeClock
+    ) -> None:
+        """A success reserved after the block clears it and its time."""
+        pacer = make_pacer(max_wait_s=math.inf)
+        paced_response(pacer, QKEY, 429, rl_headers(), WINDOW_BODY)
+        paced_response(pacer, QKEY, 200)
+        data = read_ledger(root)
+        assert (data["blocked_until"], data["blocked_at"], data["blocked_streak"]) == (
+            0,
+            0,
+            0,
+        )
+
+    def test_ledger_without_blocked_at_loads(
+        self, make_pacer: Callable[..., Pacer], root: Path
+    ) -> None:
+        """An older ledger file with no blocked_at loads and gains the field."""
+        write_ledger(root, blocked_until=NOW + 20.0, blocked_streak=1)
+        assert make_pacer().reserve(QKEY) == NOW + 20.0
+        data = read_ledger(root)
+        assert data["blocked_at"] == 0
+        assert data["blocked_until"] == NOW + 20.0
+
     def test_streak_reset_elsewhere_is_forgotten(
         self, make_pacer: Callable[..., Pacer], root: Path
     ) -> None:
@@ -2277,6 +2318,8 @@ class TestFailOpen:
             '"blocked_until": NaN, "sent": []}',
             '{"v": 1, "limit": 60, "limit_source": "default", "learned_at": 0, '
             '"blocked_until": 0, "blocked_streak": -1, "sent": []}',
+            '{"v": 1, "limit": 60, "limit_source": "default", "learned_at": 0, '
+            '"blocked_until": 0, "blocked_at": "x", "sent": []}',
             '{"v": 1, "limit": 60, "limit_source": "default", "learned_at": 0, '
             '"blocked_until": 0, "blocked_streak": true, "sent": []}',
             '{"v": 1, "limit": 60, "limit_source": "server", "learned_at": 0, '

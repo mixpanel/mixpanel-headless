@@ -1833,6 +1833,7 @@ class _CountingResolver:
             fail_on_call: The 1-based call that raises, or None to never raise.
         """
         self.calls = 0
+        self.accounts: list[str] = []
         self._fail_on_call = fail_on_call
 
     def _next(self) -> str:
@@ -1859,19 +1860,20 @@ class _CountingResolver:
         Returns:
             The next token.
         """
-        del name, region
+        del region
+        self.accounts.append(name)
         return self._next()
 
     def get_static_token(self, account: object) -> str:
         """Return the next token for a static-token account.
 
         Args:
-            account: The account (ignored).
+            account: The account; its name is recorded.
 
         Returns:
             The next token.
         """
-        del account
+        self.accounts.append(str(getattr(account, "name", "")))
         return self._next()
 
 
@@ -1977,14 +1979,15 @@ class TestAuthRefreshAfterPacerSleep:
         assert seen == ["Bearer tok-1"]  # the second request never went out
         assert second_slot not in ledger["sent"]  # its reservation was refunded
 
-    def test_session_swap_during_the_wait_keeps_the_original_header(
+    def test_session_swap_during_the_wait_refreshes_the_original_account(
         self, pacer_on: Path
     ) -> None:
-        """A session swapped during the wait does not re-sign the waiting request.
+        """A session swapped during the wait re-signs with the ORIGINAL account.
 
         Another thread can call ``use(account=...)`` while a request sleeps in
-        the pacer. The request's URL still belongs to the old session, so it
-        keeps the header it was built with, and no new token is resolved.
+        the pacer. The request's URL belongs to the saved session, and its
+        OAuth token can expire during the wait, so the hook resolves a fresh
+        token for the saved session's account, never the new account's.
 
         Args:
             pacer_on: Pacer storage root.
@@ -1993,21 +1996,10 @@ class TestAuthRefreshAfterPacerSleep:
         resolver = _CountingResolver()
         seen: list[str | None] = []
         with self._oauth_client(resolver, seen) as client:
-            other = make_session(project_id="999", region="us", oauth_token="other")
-
-            class _SwappingTime(_FakeTime):
-                """A fake clock whose sleep swaps the client's session."""
-
-                def sleep(self, seconds: float) -> None:
-                    """Swap the session, then advance the clock.
-
-                    Args:
-                        seconds: Seconds to sleep.
-                    """
-                    client._session = other
-                    super().sleep(seconds)
-
-            fake = _SwappingTime()
+            other = make_session(
+                project_id="999", region="us", name="other", oauth_token="other"
+            )
+            fake = _swapping_time(client, other)
             _install_pacer(
                 client, fake, PacerSettings(max_wait_s=math.inf, query_limit=1)
             )
@@ -2015,8 +2007,71 @@ class TestAuthRefreshAfterPacerSleep:
             client._request("GET", url)
             client._request("GET", url)
         assert fake.sleeps and fake.sleeps[0] > 0
-        assert seen == ["Bearer tok-1", "Bearer tok-2"]
-        assert resolver.calls == 2  # no refresh after the swap
+        assert seen == ["Bearer tok-1", "Bearer tok-3"]
+        assert resolver.accounts == ["test_account"] * 3  # never "other"
+
+    def test_session_swap_keeps_a_service_account_header(
+        self, test_credentials: Session, pacer_on: Path
+    ) -> None:
+        """A service-account request keeps its Basic header across a swap.
+
+        Basic auth does not expire, and the cached header belongs to the new
+        session, so the waiting request keeps the header it was built with.
+
+        Args:
+            test_credentials: Session fixture (a service account).
+            pacer_on: Pacer storage root.
+        """
+        del pacer_on
+        resolver = _CountingResolver()
+        seen: list[str | None] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record the Authorization header and answer 200.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                A 200 response.
+            """
+            seen.append(request.headers.get("Authorization"))
+            return httpx.Response(200, json={"ok": True})
+
+        with MixpanelAPIClient(
+            session=test_credentials,
+            token_resolver=resolver,
+            _transport=httpx.MockTransport(handler),
+        ) as client:
+            original = client._get_auth_header()
+            other = make_session(username="someone", secret="else", project_id="999")
+            fake = _swapping_time(client, other)
+            _install_pacer(
+                client, fake, PacerSettings(max_wait_s=math.inf, query_limit=1)
+            )
+            url = client._build_url("query", "/segmentation")
+            client._request("GET", url)
+            client._request("GET", url)
+        assert fake.sleeps and fake.sleeps[0] > 0
+        assert seen == [original, original]
+        assert resolver.calls == 0
+
+    def test_auth_header_for_another_service_account_session(
+        self, test_credentials: Session
+    ) -> None:
+        """``_get_auth_header(session)`` builds Basic auth from that session.
+
+        It never returns the current session's cached header for a
+        different service account.
+
+        Args:
+            test_credentials: Session fixture (a service account).
+        """
+        client = MixpanelAPIClient(session=test_credentials)
+        other = make_session(username="someone", secret="else", project_id="999")
+        assert client._get_auth_header(other) != client._get_auth_header()
+        assert client._get_auth_header(other).startswith("Basic ")
+        assert client._get_auth_header(test_credentials) == client._get_auth_header()
 
     def test_retry_after_a_refresh_reuses_the_refreshed_header(
         self, pacer_on: Path, recorded_sleeps: list[float]
@@ -2102,3 +2157,32 @@ class TestAuthRefreshAfterPacerSleep:
         assert fake.sleeps and fake.sleeps[0] > 0
         assert seen == [None]
         assert resolver.calls == 0
+
+
+def _swapping_time(client: MixpanelAPIClient, other: Session) -> _FakeTime:
+    """Build a fake clock whose sleep swaps the client's session.
+
+    It stands in for another thread calling ``use(account=...)`` while a
+    request waits in the pacer.
+
+    Args:
+        client: The client whose session is swapped.
+        other: The session swapped in.
+
+    Returns:
+        The fake clock.
+    """
+
+    class _SwappingTime(_FakeTime):
+        """A fake clock whose sleep swaps the client's session."""
+
+        def sleep(self, seconds: float) -> None:
+            """Swap the session, then advance the clock.
+
+            Args:
+                seconds: Seconds to sleep.
+            """
+            client._session = other
+            super().sleep(seconds)
+
+    return _SwappingTime()
