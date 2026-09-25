@@ -735,6 +735,83 @@ class TestQueryResultMultiLevelDataFrame:
         assert hit.iloc[0]["count"] == 10
 
 
+def _empty_result(
+    chart_type: str | None, headers: list[str], series: dict[str, Any] | None = None
+) -> QueryResult:
+    """Build a QueryResult with no data rows, as the API returns for no matches.
+
+    Args:
+        chart_type: ``displayOptions.chartType`` in the params, or None to
+            omit ``displayOptions``.
+        headers: Response headers, ``["$metric", prop_1, ...]``.
+        series: Series to use. Defaults to ``{}``.
+
+    Returns:
+        QueryResult whose ``df`` has no rows.
+    """
+    params: dict[str, Any] = (
+        {} if chart_type is None else {"displayOptions": {"chartType": chart_type}}
+    )
+    return QueryResult(
+        computed_at="",
+        from_date="",
+        to_date="",
+        headers=headers,
+        series={} if series is None else series,
+        params=params,
+        meta={},
+    )
+
+
+class TestQueryResultEmptyDataFrame:
+    """Tests that an empty QueryResult.df has the columns a non-empty one would."""
+
+    @pytest.mark.parametrize("chart_type", ["line", "column"])
+    def test_empty_timeseries_chart_has_date(self, chart_type: str) -> None:
+        """Line and column charts return date keys, so the empty frame has date."""
+        df = _empty_result(chart_type, ["$metric"]).df
+        assert len(df) == 0
+        assert list(df.columns) == ["date", "event", "count"]
+
+    @pytest.mark.parametrize("chart_type", ["bar", "pie", "table", "insights-metric"])
+    def test_empty_total_chart_has_no_date(self, chart_type: str) -> None:
+        """Total-style charts return ``"all"``, so the empty frame has no date."""
+        df = _empty_result(chart_type, ["$metric"]).df
+        assert len(df) == 0
+        assert list(df.columns) == ["event", "count"]
+
+    def test_empty_single_group_by(self) -> None:
+        """One group-by level adds the segment column to an empty frame."""
+        df = _empty_result("bar", ["$metric", "auth"]).df
+        assert list(df.columns) == ["event", "segment", "count"]
+
+    def test_empty_two_level_group_by(self) -> None:
+        """Two group-by levels add one column per property to an empty frame."""
+        df = _empty_result("line", ["$metric", "auth", "status_code"]).df
+        assert list(df.columns) == ["date", "event", "auth", "status_code", "count"]
+
+    def test_empty_two_level_colliding_headers_fall_back(self) -> None:
+        """Unusable header names fall back to numbered columns when empty too."""
+        df = _empty_result("table", ["$metric", "event", "status_code"]).df
+        assert list(df.columns) == ["event", "segment_1", "segment_2", "count"]
+
+    def test_empty_metric_node_matches_empty_series(self) -> None:
+        """A metric with no leaf values gives the same columns as ``{}``."""
+        df = _empty_result("bar", ["$metric", "auth"], {"Login": {}}).df
+        assert len(df) == 0
+        assert list(df.columns) == ["event", "segment", "count"]
+
+    def test_empty_without_headers_first_entry_metric_has_no_segments(self) -> None:
+        """Headers that do not start with ``$metric`` give no segment columns."""
+        df = _empty_result("bar", ["h"]).df
+        assert list(df.columns) == ["event", "count"]
+
+    def test_empty_without_chart_type_keeps_date(self) -> None:
+        """Without a chart type the mode is unknown, so date stays for compatibility."""
+        df = _empty_result(None, ["$metric", "auth"]).df
+        assert list(df.columns) == ["date", "event", "segment", "count"]
+
+
 class TestQueryResultToDict:
     """Tests for QueryResult.to_dict() serialization."""
 
