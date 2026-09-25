@@ -720,8 +720,9 @@ class RateLimitError(APIError):
             project_id: Mixpanel project id active when the limit was hit, used
                 to prefill the rate-limit-increase request form. ``None`` when
                 unknown.
-            details: Extra structured context merged into ``details`` after
-                the standard keys, for example the client-side query budget
+            details: Extra structured context added to ``details``. A key
+                that is already set (such as ``retry_after``) keeps its
+                standard value, for example the client-side query budget
                 state when the request pacer refuses to send a request.
                 ``None`` adds nothing.
         """
@@ -746,7 +747,9 @@ class RateLimitError(APIError):
         if project_id is not None:
             self._details["project_id"] = project_id
         if details is not None:
-            self._details.update(details)
+            # Canonical keys win, so to_dict() always agrees with the properties.
+            for name, value in details.items():
+                self._details.setdefault(name, value)
 
     @property
     def retry_after(self) -> int | None:

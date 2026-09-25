@@ -190,6 +190,9 @@ _LOCK_TIMEOUT_S = 1.0
 _LOCK_RETRY_S = 0.02
 """The pause between tries of a busy ledger lock."""
 
+_HORIZON_S: Final = 86400.0
+"""Ledger entries further ahead than this (or max_wait, if shorter) are dropped."""
+
 _LEDGER_VERSION: Final = 1
 _PROJECT_ID_RE: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _UNSAFE_HOST_CHARS: Final = re.compile(r"[^A-Za-z0-9._-]")
@@ -339,6 +342,26 @@ def _reset_after_fork() -> None:
 
 if hasattr(os, "register_at_fork"):  # pragma: no branch - absent on Windows only
     os.register_at_fork(after_in_child=_reset_after_fork)
+
+
+def report_internal_error() -> None:
+    """Report that pacing stopped because of an unexpected error.
+
+    Logs the current exception (if any) at DEBUG, and the fixed
+    internal-error WARNING once per process. Callers outside this module
+    (for example a request hook that fails to classify a request) use it,
+    so users hear once that requests go out unpaced.
+
+    Example:
+        ```python
+        try:
+            key = classify(request.url, family, base)
+        except Exception:
+            report_internal_error()
+        ```
+    """
+    logger.debug("Pacer internal error", exc_info=True)
+    _warn_once(_INTERNAL_WARNING)
 
 
 def parse_pacer_switch(value: object) -> bool | None:
@@ -1154,8 +1177,7 @@ class Pacer:
     @staticmethod
     def _internal_error() -> None:
         """Log an unexpected pacer error: DEBUG per request, one WARNING per process."""
-        logger.debug("Pacer internal error", exc_info=True)
-        _warn_once(_INTERNAL_WARNING)
+        report_internal_error()
 
     def _set_limit(self, led: _Ledger, key: LedgerKey) -> None:
         """Set the effective limit from the server limit and the configured one.
@@ -1215,7 +1237,9 @@ class Pacer:
                 and now - learned_at < LEARNED_LIMIT_TTL_S
             ):
                 led.server_limit, led.learned_at = stored.server_limit, learned_at
-            horizon = now + max(window, self._settings.max_wait_s)
+            # A legitimate reservation more than a day ahead needs more than
+            # 24 x limit queued callers, so later entries are corrupt.
+            horizon = now + max(window, min(self._settings.max_wait_s, _HORIZON_S))
             kept = [entry for entry in stored.sent if now - window < entry <= horizon]
             if any(entry > horizon for entry in stored.sent):
                 _warn_once(_CLOCK_WARNING)
@@ -1520,8 +1544,9 @@ class Pacer:
         """Pace one request: reserve a slot, then sleep until it with no lock held.
 
         Does nothing when the pacer is off or ``key`` is None. Stores
-        ``(key, slot)`` in ``request.extensions["mp_pacer"]``. The sleep is
-        capped at one window plus the margin. Only the deliberate
+        ``(key, slot)`` in ``request.extensions["mp_pacer"]``. It never
+        sends before the slot: it sleeps in chunks of at most one window
+        plus the margin and re-reads the clock after each. Only the deliberate
         ``RateLimitError`` escapes; any other failure lets the request go
         out unpaced.
 
@@ -1550,12 +1575,19 @@ class Pacer:
         if slot is None:
             return 0.0
         request.extensions["mp_pacer"] = (key, slot)
-        wait = min(slot - self._now(), BUDGETS[key.bucket].window_s + MARGIN_S)
-        if wait <= 0:
-            return 0.0
-        self._sleep(wait)
-        _add_waited(wait)
-        return wait
+        chunk = BUDGETS[key.bucket].window_s + MARGIN_S
+        slept = 0.0
+        now = self._now()
+        while now < slot:
+            step = min(slot - now, chunk)
+            self._sleep(step)
+            slept += step
+            # Re-read the clock: a forward jump ends the wait early. The
+            # step really elapsed, so a clock that stalls or steps back
+            # never makes the pacer sleep past the slot or send early.
+            now = max(self._now(), now + step)
+        _add_waited(slept)
+        return slept
 
     def after_response(self, response: httpx.Response) -> None:
         """Observe the response to a paced request. Never raises.

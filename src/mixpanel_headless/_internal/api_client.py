@@ -55,6 +55,7 @@ from mixpanel_headless._internal.pacer import (
     PacerSettings,
     classify,
     load_pacer_settings,
+    report_internal_error,
     request_content,
 )
 from mixpanel_headless._internal.report_links import web_host
@@ -880,6 +881,10 @@ class MixpanelAPIClient:
         Raises:
             RateLimitError: The budget has no slot within the maximum wait.
                 The request is not sent, and no retry loop retries it.
+            OAuthError: The Authorization header could not be resolved again
+                after a pacer wait (any error from the token resolver
+                propagates). The request is not sent, and its slot is
+                refunded.
         """
         if self._pacer is None or self._session is None:
             return
@@ -892,21 +897,23 @@ class MixpanelAPIClient:
             logger.debug(
                 "Pacer could not classify a request; sending unpaced", exc_info=True
             )
+            # Pacing that stops silently must be visible: one WARNING per
+            # process, shared with the pacer's own internal errors.
+            report_internal_error()
             return
         # Outside the guard: the pacer's RateLimitError must reach the caller.
         slept = self._pacer.before_send(request, key)
         if slept > 0 and "Authorization" in request.headers:
             # The header was built before the wait; an OAuth bearer can expire
-            # during a long one, so resolve it again. A failed refresh keeps
-            # the old header rather than failing the request.
+            # during a long one, so resolve it again. A failed refresh must
+            # not send a stale bearer (the real cause would become a vague
+            # 401): give the slot back, since nothing was sent, and raise the
+            # original error, as the unpaced path does before any send.
             try:
                 request.headers["Authorization"] = self._get_auth_header()
-            except Exception:  # noqa: BLE001 - never fail a request over a refresh
-                logger.debug(
-                    "Could not refresh the Authorization header after a pacer "
-                    "wait; keeping the old one",
-                    exc_info=True,
-                )
+            except Exception:
+                self._pacer.refund(request)
+                raise
 
     def _refund_unsent(self, exc: httpx.HTTPError) -> None:
         """Give back the pacer slot of a request the server never saw.

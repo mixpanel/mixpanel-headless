@@ -120,7 +120,7 @@ pacer_max_wait = 120         # seconds
 
 For each setting, the environment variable wins over `config.toml`, and `config.toml` wins over the default. An invalid value logs one warning and is ignored, and the next source applies. For example, `MP_PACER_QUERY_LIMIT=0`, `MP_PACER=maybe`, or an environment variable set to an empty string is ignored, and the value in `config.toml` (or the default) is used. An invalid `MP_PACER` value leaves pacing on; its warning ends with "request pacing stays on". An invalid value never fails a request. With `MP_PACER=off`, the library does not read the pacer settings in `config.toml`.
 
-A long wait is safe with OAuth. After a pacer wait, the library resolves the `Authorization` header again, so a request that waited (for example, with `MP_PACER_MAX_WAIT=inf`) does not send an expired OAuth token.
+A long wait is safe with OAuth. After a pacer wait, the library resolves the `Authorization` header again, so a request that waited (for example, with `MP_PACER_MAX_WAIT=inf`) does not send an expired OAuth token. If that refresh fails, the library sends nothing, gives the slot back, and raises the refresh error.
 
 There are no `Workspace` arguments for pacing. The environment variables work for both the CLI and Python.
 

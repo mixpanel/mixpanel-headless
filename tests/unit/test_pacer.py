@@ -41,6 +41,7 @@ from mixpanel_headless._internal.pacer import (
     load_pacer_settings,
     parse_pacer_switch,
     parse_rate_limit_headers,
+    report_internal_error,
     request_content,
 )
 from mixpanel_headless.exceptions import RateLimitError
@@ -1249,17 +1250,101 @@ class TestReserve:
         clock.advance(LEARNED_LIMIT_TTL_S + 1)
         assert pacer.snapshot(QKEY).limit_source == "default"
 
-    def test_sleep_is_capped_at_one_window(
-        self, make_pacer: Callable[..., Pacer], root: Path, sleeps: list[float]
+    def test_reservation_two_windows_ahead_is_not_released_early(
+        self, root: Path, clock: FakeClock
     ) -> None:
-        """A slot more than one window away sleeps one window plus the margin."""
+        """A slot two windows ahead sleeps in chunks until the clock reaches it."""
         write_ledger(
             root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + W - 1]
         )
+        sleeps: list[float] = []
+
+        def sleeper(seconds: float) -> None:
+            """Sleep by moving the fake clock forward.
+
+            Args:
+                seconds: Seconds to sleep.
+            """
+            sleeps.append(seconds)
+            clock.advance(seconds)
+
+        pacer = Pacer(
+            PacerSettings(max_wait_s=math.inf),
+            storage_root=root,
+            clock=clock,
+            sleep=sleeper,
+        )
         request = httpx.Request("GET", US_QUERY)
-        make_pacer(max_wait_s=math.inf).before_send(request, QKEY)
-        assert request.extensions["mp_pacer"] == (QKEY, NOW + 2 * W - 1)
+        slept = pacer.before_send(request, QKEY)
+        slot = NOW + 2 * W - 1
+        assert request.extensions["mp_pacer"] == (QKEY, slot)
+        assert slept == pytest.approx(slot - NOW)
+        assert clock.now >= slot
+        assert len(sleeps) == 2
+        assert max(sleeps) <= W
+
+    def test_stalled_clock_sleeps_exactly_the_wait(
+        self, make_pacer: Callable[..., Pacer], root: Path, sleeps: list[float]
+    ) -> None:
+        """A clock that does not move during sleep still gets the full wait, once."""
+        write_ledger(
+            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + W - 1]
+        )
+        slept = make_pacer(max_wait_s=math.inf).before_send(
+            httpx.Request("GET", US_QUERY), QKEY
+        )
+        assert slept == pytest.approx(2 * W - 1)
+        assert sum(sleeps) == pytest.approx(2 * W - 1)
+        assert max(sleeps) <= W
+
+    def test_clock_jump_forward_ends_the_wait_early(
+        self, root: Path, clock: FakeClock
+    ) -> None:
+        """A clock that jumps forward during a chunk is re-read, so the wait ends."""
+        write_ledger(
+            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + W - 1]
+        )
+        sleeps: list[float] = []
+
+        def sleeper(seconds: float) -> None:
+            """Sleep, while the wall clock jumps a whole day ahead.
+
+            Args:
+                seconds: Seconds to sleep.
+            """
+            sleeps.append(seconds)
+            clock.advance(86400.0)
+
+        pacer = Pacer(
+            PacerSettings(max_wait_s=math.inf),
+            storage_root=root,
+            clock=clock,
+            sleep=sleeper,
+        )
+        pacer.before_send(httpx.Request("GET", US_QUERY), QKEY)
         assert sleeps == [W]
+
+    def test_horizon_keeps_reservations_within_a_day(
+        self,
+        make_pacer: Callable[..., Pacer],
+        root: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """With an unbounded wait, entries up to 24 h ahead stay; later ones drop."""
+        pacer = make_pacer(max_wait_s=math.inf)
+        write_ledger(
+            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + 72000.0]
+        )
+        assert pacer.reserve(QKEY) == NOW + 72000.0 + W
+        write_ledger(
+            root,
+            limit=1,
+            limit_source="server",
+            learned_at=NOW,
+            sent=[NOW + 2 * 86400.0],
+        )
+        assert pacer.reserve(QKEY) == NOW
+        assert any("clock" in m for m in pacer_warnings(caplog))
 
     def test_wait_equal_to_max_is_absorbed(
         self, make_pacer: Callable[..., Pacer], root: Path, sleeps: list[float]
@@ -2214,6 +2299,41 @@ class TestFailOpen:
         assert pacer_warnings(caplog) == [
             "Request pacer internal error; requests go out unpaced; please report."
         ]
+
+    def test_report_internal_error_warns_once(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The public helper logs the fixed internal-error warning once per process."""
+        report_internal_error()
+        report_internal_error()
+        assert pacer_warnings(caplog) == [
+            "Request pacer internal error; requests go out unpaced; please report."
+        ]
+
+    def test_report_internal_error_shares_dedup_with_pacer(
+        self,
+        make_pacer: Callable[..., Pacer],
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A hook error after the helper adds no second internal-error warning."""
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            """Raise an unexpected error.
+
+            Args:
+                *_args: Ignored.
+                **_kwargs: Ignored.
+
+            Raises:
+                RuntimeError: Always.
+            """
+            raise RuntimeError("bug")
+
+        report_internal_error()
+        monkeypatch.setattr(Pacer, "_reserve", boom)
+        make_pacer().before_send(httpx.Request("GET", US_QUERY), QKEY)
+        assert len(pacer_warnings(caplog)) == 1
 
     def test_type_error_is_an_internal_error(
         self,

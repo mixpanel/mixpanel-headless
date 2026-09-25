@@ -49,9 +49,10 @@ may include API changes.
   request; inside an `mp` command it is a budget for the total of all
   pacer waits in the command. After a pacer wait, the library resolves the
   `Authorization` header again, so a long wait does not send an expired
-  OAuth token. `MP_PACER=off` restores the previous behavior exactly.
-- `RateLimitError` accepts a keyword-only `details` mapping. A pacer error
-  carries `limit`, `used`, `window_seconds`, `next_slot_at`,
+  OAuth token; if that refresh fails, nothing is sent and the refresh
+  error is raised. `MP_PACER=off` restores the previous behavior exactly.
+- `RateLimitError` accepts a keyword-only `details` mapping, which adds
+  keys but never replaces the standard ones. A pacer error carries `limit`, `used`, `window_seconds`, `next_slot_at`,
   `limit_source`, `bucket`, `sent: False`, and `reason` in `details`.
   `reason` is `"ledger"` when this machine's own requests fill the budget,
   or `"server"` when the server reported the budget full and other clients

@@ -1078,6 +1078,58 @@ class TestClassificationFailsOpen:
         assert "mp_pacer" not in calls[0].extensions
         assert not (pacer_on / "pacer").exists()
 
+    def test_classification_failure_warns_once_per_process(
+        self,
+        test_credentials: Session,
+        pacer_on: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Two failing requests log the fixed internal-error WARNING exactly once.
+
+        Pacing that stops silently must be visible, but only once per
+        process; each failure still logs at DEBUG with the traceback.
+
+        Args:
+            test_credentials: Session fixture.
+            pacer_on: Pacer storage root.
+            monkeypatch: pytest monkeypatch fixture.
+            caplog: pytest log capture fixture.
+        """
+        del pacer_on
+
+        def boom(*args: object, **kwargs: object) -> None:
+            """Fail classification.
+
+            Args:
+                *args: Ignored.
+                **kwargs: Ignored.
+
+            Raises:
+                ValueError: Always.
+            """
+            del args, kwargs
+            raise ValueError("classify failed")
+
+        pacer_module._reset_warn_once()
+        caplog.set_level(logging.DEBUG)
+        with _client(test_credentials, _ok_json({"ok": True})) as client:
+            url = client._build_url("query", "/segmentation") + "?project_id=12345"
+            monkeypatch.setattr("mixpanel_headless._internal.api_client.classify", boom)
+            for _ in range(2):
+                assert client._ensure_client().get(url).json() == {"ok": True}
+
+        warnings = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+        ]
+        assert warnings == [pacer_module._INTERNAL_WARNING]
+        debug_with_trace = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.DEBUG and r.exc_info is not None
+        ]
+        assert len(debug_with_trace) >= 2
+
 
 def _seed_ledger(
     storage: Path,
@@ -1895,23 +1947,35 @@ class TestAuthRefreshAfterPacerSleep:
         assert seen == ["Bearer tok-1"]
         assert resolver.calls == 1
 
-    def test_failed_refresh_keeps_the_old_header(self, pacer_on: Path) -> None:
-        """A refresh that raises keeps the old header, and the request is sent.
+    def test_failed_refresh_raises_and_refunds(self, pacer_on: Path) -> None:
+        """A refresh that fails after a wait raises its error and sends nothing.
+
+        Without the pacer the same failure surfaces before any send, so the
+        paced request behaves the same: the original error reaches the
+        caller, the request is never sent, and its reservation is refunded.
 
         Args:
             pacer_on: Pacer storage root.
         """
-        del pacer_on
         resolver = _CountingResolver(fail_on_call=3)
         seen: list[str | None] = []
+        fake = _FakeTime()
         with self._oauth_client(resolver, seen) as client:
             _install_pacer(
-                client, _FakeTime(), PacerSettings(max_wait_s=math.inf, query_limit=1)
+                client, fake, PacerSettings(max_wait_s=math.inf, query_limit=1)
             )
             url = client._build_url("query", "/segmentation")
             client._request("GET", url)
-            assert client._request("GET", url) == {"ok": True}
-        assert seen == ["Bearer tok-1", "Bearer tok-2"]
+            with pytest.raises(RuntimeError, match="token refresh failed"):
+                client._request("GET", url)
+        # The second request slept to its slot, then failed before the send.
+        assert len(fake.sleeps) == 1
+        second_slot = fake.now
+        ledger = json.loads(
+            (pacer_on / "pacer" / "mixpanel.com" / "12345-query.json").read_text()
+        )
+        assert seen == ["Bearer tok-1"]  # the second request never went out
+        assert second_slot not in ledger["sent"]  # its reservation was refunded
 
     def test_request_without_authorization_is_untouched(self, pacer_on: Path) -> None:
         """A request with no Authorization header gets none after a sleep.

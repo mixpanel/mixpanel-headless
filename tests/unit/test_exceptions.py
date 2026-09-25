@@ -181,6 +181,29 @@ class TestOperationExceptions:
         assert exc.details["sent"] is False
         assert exc.to_dict()["details"]["limit"] == 60
 
+    def test_rate_limit_error_details_do_not_override_canonical_keys(self) -> None:
+        """Canonical keys win over ``details``; only new keys are added."""
+        exc = RateLimitError(
+            "Budget exhausted",
+            retry_after=12,
+            project_id="3018488",
+            request_method="GET",
+            details={
+                "retry_after": 99,
+                "project_id": "other",
+                "status_code": 500,
+                "request_method": "POST",
+                "limit": 60,
+            },
+        )
+
+        assert exc.details["retry_after"] == 12
+        assert exc.details["project_id"] == "3018488"
+        assert exc.details["status_code"] == 429
+        assert exc.details["request_method"] == "GET"
+        assert exc.details["limit"] == 60
+        assert exc.to_dict()["details"]["retry_after"] == exc.retry_after
+
     def test_rate_limit_error_details_default_adds_nothing(self) -> None:
         """RateLimitError without ``details`` keeps today's detail keys only."""
         exc = RateLimitError("Too many requests", retry_after=5)
