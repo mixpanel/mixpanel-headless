@@ -1227,6 +1227,22 @@ class TestReserve:
             "stepped back."
         ]
 
+    def test_reservation_past_horizon_is_refused(
+        self, make_pacer: Callable[..., Pacer], root: Path
+    ) -> None:
+        """With an unbounded wait, a slot more than 24 h ahead raises; nothing is written."""
+        pacer = make_pacer(query_limit=1, max_wait_s=math.inf)
+        slots = [pacer.reserve(QKEY) for _ in range(24)]
+        assert slots[-1] == NOW + 23 * W
+        assert slots[-1] - NOW < 86400.0
+        before = ledger_path(root).read_bytes()
+        with pytest.raises(RateLimitError) as info:
+            pacer.reserve(QKEY)
+        assert info.value.retry_after == math.ceil(24 * W)
+        assert info.value.details["reason"] == "ledger"
+        assert ledger_path(root).read_bytes() == before
+        assert len(read_ledger(root)["sent"]) == 24
+
     def test_horizon_does_not_depend_on_max_wait(
         self,
         make_pacer: Callable[..., Pacer],

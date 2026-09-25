@@ -2186,3 +2186,123 @@ def _swapping_time(client: MixpanelAPIClient, other: Session) -> _FakeTime:
             super().sleep(seconds)
 
     return _SwappingTime()
+
+
+class TestRefreshedHeaderMap:
+    """Refreshed headers are remembered per old header, in a bounded map."""
+
+    @staticmethod
+    def _paced_oauth_client(resolver: _CountingResolver) -> MixpanelAPIClient:
+        """Build an OAuth client whose counted requests each wait one window.
+
+        Args:
+            resolver: The token resolver.
+
+        Returns:
+            The client, with a fake-clock pacer and one slot already used.
+        """
+        session = make_session(project_id="12345", region="us", oauth_token="static")
+        client = MixpanelAPIClient(
+            session=session,
+            token_resolver=resolver,
+            _transport=httpx.MockTransport(_ok_json({"ok": True})),
+        )
+        pacer = _install_pacer(
+            client, _FakeTime(), PacerSettings(max_wait_s=math.inf, query_limit=1)
+        )
+        pacer.reserve(_QUERY_KEY)  # the next counted request must wait
+        return client
+
+    @staticmethod
+    def _refresh(client: MixpanelAPIClient, old: str) -> str:
+        """Pass a counted request with ``old`` through the hook; it waits and refreshes.
+
+        Args:
+            client: The client.
+            old: The Authorization header the request was built with.
+
+        Returns:
+            The header after the hook.
+        """
+        request = httpx.Request(
+            "GET",
+            "https://mixpanel.com/api/query/segmentation?project_id=12345",
+            headers={"Authorization": old},
+        )
+        client._pacer_before(request)
+        return request.headers["Authorization"]
+
+    @staticmethod
+    def _retry(client: MixpanelAPIClient, old: str) -> str:
+        """Pass a retry built with ``old`` through the hook, with no pacer wait.
+
+        Args:
+            client: The client.
+            old: The Authorization header captured before the first wait.
+
+        Returns:
+            The header after the hook.
+        """
+        request = httpx.Request(
+            "GET",
+            "https://mixpanel.com/api/app/projects/12345/items",
+            headers={"Authorization": old},
+        )
+        client._pacer_before(request)
+        return request.headers["Authorization"]
+
+    def test_two_refreshes_are_both_remembered(self, pacer_on: Path) -> None:
+        """Retries of two different refreshed requests each get their own header.
+
+        Args:
+            pacer_on: Pacer storage root.
+        """
+        del pacer_on
+        resolver = _CountingResolver()
+        client = self._paced_oauth_client(resolver)
+        try:
+            assert self._refresh(client, "Bearer old-a") == "Bearer tok-1"
+            assert self._refresh(client, "Bearer old-b") == "Bearer tok-2"
+            assert self._retry(client, "Bearer old-a") == "Bearer tok-1"
+            assert self._retry(client, "Bearer old-b") == "Bearer tok-2"
+            assert self._retry(client, "Bearer unrelated") == "Bearer unrelated"
+        finally:
+            client.close()
+        assert resolver.calls == 2  # the retries made no lookup
+
+    def test_map_is_bounded_and_evicts_the_oldest(self, pacer_on: Path) -> None:
+        """After more refreshes than the bound, the oldest entry is gone.
+
+        Args:
+            pacer_on: Pacer storage root.
+        """
+        del pacer_on
+        bound = api_client_module._REFRESHED_AUTH_MAX
+        resolver = _CountingResolver()
+        client = self._paced_oauth_client(resolver)
+        try:
+            for index in range(bound + 1):
+                self._refresh(client, f"Bearer old-{index}")
+            assert len(client._refreshed_auth) == bound
+            assert self._retry(client, "Bearer old-0") == "Bearer old-0"  # evicted
+            newest = f"Bearer tok-{bound + 1}"
+            assert self._retry(client, f"Bearer old-{bound}") == newest
+        finally:
+            client.close()
+
+    def test_chained_refreshes_map_to_the_newest_header(self, pacer_on: Path) -> None:
+        """A header refreshed twice maps its first value to the newest one.
+
+        Args:
+            pacer_on: Pacer storage root.
+        """
+        del pacer_on
+        resolver = _CountingResolver()
+        client = self._paced_oauth_client(resolver)
+        try:
+            assert self._refresh(client, "Bearer old-a") == "Bearer tok-1"
+            assert self._refresh(client, "Bearer tok-1") == "Bearer tok-2"
+            assert self._retry(client, "Bearer old-a") == "Bearer tok-2"
+            assert self._retry(client, "Bearer tok-1") == "Bearer tok-2"
+        finally:
+            client.close()
