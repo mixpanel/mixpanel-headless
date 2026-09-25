@@ -14,7 +14,7 @@ from errors by providing structured access to:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlencode
@@ -675,11 +675,19 @@ def _build_rate_limit_form_url(project_id: str | None) -> str:
 
 
 class RateLimitError(APIError):
-    """Mixpanel API rate limit exceeded (HTTP 429).
+    """Mixpanel API rate limit exceeded.
 
-    Raised when the API returns a 429 status. The retry_after property
-    indicates when the request can be retried. Inherits from APIError
-    to provide full request context for debugging.
+    Raised in two cases:
+
+    - The server answered HTTP 429 and the client's retries ran out.
+      ``retry_after`` then comes from the server's ``Retry-After`` header.
+    - The client-side request pacer refused to send a Query API request
+      because the local ledger has no free slot within the maximum wait.
+      No request was sent (``details["sent"]`` is ``False``), and
+      ``retry_after`` is the seconds until the next free slot, rounded up.
+
+    The retry_after property indicates when the request can be retried.
+    Inherits from APIError to provide full request context for debugging.
 
     Example:
         ```python
@@ -705,12 +713,16 @@ class RateLimitError(APIError):
         request_url: str | None = None,
         request_params: dict[str, Any] | None = None,
         project_id: str | None = None,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         """Initialize RateLimitError.
 
         Args:
             message: Human-readable error message.
-            retry_after: Seconds until retry is allowed (from Retry-After header).
+            retry_after: Seconds until retry is allowed: from the server's
+                ``Retry-After`` header after a 429, or the seconds until the
+                next free slot in the local ledger, rounded up, when the
+                request pacer refuses a request.
             status_code: HTTP status code (default 429).
             response_body: Raw response body.
             request_method: HTTP method used.
@@ -719,6 +731,11 @@ class RateLimitError(APIError):
             project_id: Mixpanel project id active when the limit was hit, used
                 to prefill the rate-limit-increase request form. ``None`` when
                 unknown.
+            details: Extra structured context added to ``details``. A key
+                that is already set (such as ``retry_after``) keeps its
+                standard value, for example the client-side query budget
+                state when the request pacer refuses to send a request.
+                ``None`` adds nothing.
         """
         self._retry_after = retry_after
         self._project_id = project_id
@@ -740,6 +757,10 @@ class RateLimitError(APIError):
         # Add project_id to details so JSON consumers (to_dict) can attribute it.
         if project_id is not None:
             self._details["project_id"] = project_id
+        if details is not None:
+            # Canonical keys win, so to_dict() always agrees with the properties.
+            for name, value in details.items():
+                self._details.setdefault(name, value)
 
     @property
     def retry_after(self) -> int | None:
