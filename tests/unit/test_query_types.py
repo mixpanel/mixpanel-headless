@@ -503,6 +503,237 @@ class TestQueryResultSegmentedDataFrame:
         login_us = df[(df["event"] == "Login [Total]") & (df["segment"] == "US")]
         assert login_us.iloc[0]["count"] == 300
 
+    def test_single_level_keeps_segment_column_with_headers(self) -> None:
+        """One group-by level keeps the ``segment`` column even when headers name it."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "country"],
+            series={
+                "Login [Total Events]": {
+                    "$overall": {"all": 500},
+                    "US": {"all": 300},
+                },
+            },
+            params={},
+            meta={},
+        )
+        assert list(qr.df.columns) == ["event", "segment", "count"]
+
+
+def _two_level_series(leaf_key: str = "all") -> dict[str, Any]:
+    """Build a two-level (auth x status_code) series shaped like the Insights API.
+
+    Args:
+        leaf_key: Key used at the leaf level (``"all"`` for total mode or a
+            date string for timeseries mode).
+
+    Returns:
+        Series dict with ``$overall`` rollups at both levels.
+    """
+    return {
+        "api-query [Total Events]": {
+            "$overall": {leaf_key: 3135},
+            "oauth": {
+                "$overall": {leaf_key: 36},
+                "200": {leaf_key: 36},
+            },
+            "serviceaccount": {
+                "$overall": {leaf_key: 311},
+                "200": {leaf_key: 301},
+                "429": {leaf_key: 10},
+            },
+        },
+    }
+
+
+class TestQueryResultMultiLevelDataFrame:
+    """Tests for QueryResult.df with two or more group_by levels."""
+
+    def test_two_level_total_columns_named_from_headers(self) -> None:
+        """Two-level total mode names one column per group-by property."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=_two_level_series(),
+            params={},
+            meta={},
+        )
+        assert list(qr.df.columns) == ["event", "auth", "status_code", "count"]
+
+    def test_two_level_total_counts_are_scalars(self) -> None:
+        """Two-level total mode count column holds scalars, not nested dicts."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=_two_level_series(),
+            params={},
+            meta={},
+        )
+        for val in qr.df["count"]:
+            assert isinstance(val, (int, float)), f"count should be scalar: {val!r}"
+
+    def test_two_level_total_keeps_rollups_padded_with_overall(self) -> None:
+        """Rollup rows carry ``$overall`` in every column below their level."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=_two_level_series(),
+            params={},
+            meta={},
+        )
+        rows = {
+            (row["auth"], row["status_code"]): row["count"]
+            for row in qr.df.to_dict("records")
+        }
+        assert rows == {
+            ("$overall", "$overall"): 3135,
+            ("oauth", "$overall"): 36,
+            ("oauth", "200"): 36,
+            ("serviceaccount", "$overall"): 311,
+            ("serviceaccount", "200"): 301,
+            ("serviceaccount", "429"): 10,
+        }
+
+    def test_two_level_leaf_filter_drops_every_rollup(self) -> None:
+        """The documented ``!= "$overall"`` filter keeps leaf rows only."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=_two_level_series(),
+            params={},
+            meta={},
+        )
+        df = qr.df
+        leaves = df[(df[["auth", "status_code"]] != "$overall").all(axis=1)]
+        assert len(leaves) == 3
+        assert leaves["count"].sum() == 347
+
+    def test_two_level_timeseries(self) -> None:
+        """Two-level timeseries adds a normalized date column before event."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=_two_level_series("2026-09-25T00:00:00-07:00"),
+            params={},
+            meta={},
+        )
+        df = qr.df
+        assert list(df.columns) == ["date", "event", "auth", "status_code", "count"]
+        assert set(df["date"]) == {"2026-09-25T00:00:00"}
+        hit = df[(df["auth"] == "serviceaccount") & (df["status_code"] == "429")]
+        assert hit.iloc[0]["count"] == 10
+
+    def test_three_level_total(self) -> None:
+        """Three levels produce three property columns and pad rollups to depth."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code", "endpoint"],
+            series={
+                "api-query [Total Events]": {
+                    "$overall": {"all": 50},
+                    "oauth": {
+                        "$overall": {"all": 50},
+                        "200": {
+                            "$overall": {"all": 50},
+                            "insights": {"all": 14},
+                            "engage": {"all": 36},
+                        },
+                    },
+                },
+            },
+            params={},
+            meta={},
+        )
+        df = qr.df
+        assert list(df.columns) == [
+            "event",
+            "auth",
+            "status_code",
+            "endpoint",
+            "count",
+        ]
+        assert len(df) == 5
+        top = df[df["auth"] == "$overall"].iloc[0]
+        assert (top["status_code"], top["endpoint"], top["count"]) == (
+            "$overall",
+            "$overall",
+            50,
+        )
+        engage = df[df["endpoint"] == "engage"].iloc[0]
+        assert (engage["auth"], engage["status_code"], engage["count"]) == (
+            "oauth",
+            "200",
+            36,
+        )
+
+    def test_multi_metric_two_level(self) -> None:
+        """Each metric contributes its own rows under the shared columns."""
+        series = _two_level_series()
+        series["Other [Total Events]"] = {
+            "$overall": {"all": 5},
+            "oauth": {"$overall": {"all": 5}, "200": {"all": 5}},
+        }
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", "auth", "status_code"],
+            series=series,
+            params={},
+            meta={},
+        )
+        df = qr.df
+        assert len(df) == 9
+        other = df[
+            (df["event"] == "Other [Total Events]") & (df["status_code"] == "200")
+        ]
+        assert other.iloc[0]["count"] == 5
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            pytest.param(["$metric", "event", "status_code"], id="collides-event"),
+            pytest.param(["$metric", "auth", "date"], id="collides-date"),
+            pytest.param(["$metric", "count", "status_code"], id="collides-count"),
+            pytest.param(["$metric", "auth", "auth"], id="duplicate"),
+            pytest.param(["$metric", "", "status_code"], id="empty"),
+            pytest.param([], id="missing"),
+            pytest.param(["$metric", "auth"], id="too-short"),
+            pytest.param(["$metric", "a", "b", "c"], id="too-long"),
+        ],
+    )
+    def test_unusable_headers_fall_back_to_numbered_columns(
+        self, headers: list[str]
+    ) -> None:
+        """Unusable headers name every level ``segment_1`` .. ``segment_N``."""
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=headers,
+            series=_two_level_series(),
+            params={},
+            meta={},
+        )
+        df = qr.df
+        assert list(df.columns) == ["event", "segment_1", "segment_2", "count"]
+        hit = df[(df["segment_1"] == "serviceaccount") & (df["segment_2"] == "429")]
+        assert hit.iloc[0]["count"] == 10
+
 
 class TestQueryResultToDict:
     """Tests for QueryResult.to_dict() serialization."""
