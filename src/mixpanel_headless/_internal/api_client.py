@@ -740,6 +740,11 @@ class MixpanelAPIClient:
         self._max_retries = max_retries
         self._client: httpx.Client | None = None
         self._pacer: Pacer | None = None
+        # The last Authorization header the pacer hook replaced after a wait:
+        # (session, old value, new value). Retry loops rebuild later attempts
+        # from headers captured before the wait; this maps them to the new
+        # value with a string compare, no token lookup.
+        self._refreshed_auth: tuple[Session, str, str] | None = None
         self._transport = _transport
         self._workspace_id: int | None = (
             session.workspace.id if session.workspace else None
@@ -888,6 +893,14 @@ class MixpanelAPIClient:
         """
         if self._pacer is None or self._session is None:
             return
+        refreshed = self._refreshed_auth
+        if (
+            refreshed is not None
+            and refreshed[0] is self._session
+            and request.headers.get("Authorization") == refreshed[1]
+        ):
+            # A retry of a request whose header was refreshed after a wait.
+            request.headers["Authorization"] = refreshed[2]
         try:
             endpoints = _endpoints_for(self._session.account.region)
             family = _api_family_for(str(request.url), endpoints)
@@ -918,11 +931,15 @@ class MixpanelAPIClient:
             # original error, as the unpaced path does before any send. After
             # a session swap the request keeps its original header, which
             # matches its URL (the new account's header would not).
+            old_header = request.headers["Authorization"]
             try:
-                request.headers["Authorization"] = self._get_auth_header()
+                new_header = self._get_auth_header()
             except Exception:
                 self._pacer.refund(request)
                 raise
+            request.headers["Authorization"] = new_header
+            if new_header != old_header:
+                self._refreshed_auth = (session, old_header, new_header)
 
     def _refund_unsent(self, exc: httpx.HTTPError) -> None:
         """Give back the pacer slot of a request the server never saw.

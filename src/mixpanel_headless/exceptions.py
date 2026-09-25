@@ -675,11 +675,19 @@ def _build_rate_limit_form_url(project_id: str | None) -> str:
 
 
 class RateLimitError(APIError):
-    """Mixpanel API rate limit exceeded (HTTP 429).
+    """Mixpanel API rate limit exceeded.
 
-    Raised when the API returns a 429 status. The retry_after property
-    indicates when the request can be retried. Inherits from APIError
-    to provide full request context for debugging.
+    Raised in two cases:
+
+    - The server answered HTTP 429 and the client's retries ran out.
+      ``retry_after`` then comes from the server's ``Retry-After`` header.
+    - The client-side request pacer refused to send a Query API request
+      because the local ledger has no free slot within the maximum wait.
+      No request was sent (``details["sent"]`` is ``False``), and
+      ``retry_after`` is the seconds until the next free slot, rounded up.
+
+    The retry_after property indicates when the request can be retried.
+    Inherits from APIError to provide full request context for debugging.
 
     Example:
         ```python
@@ -711,7 +719,10 @@ class RateLimitError(APIError):
 
         Args:
             message: Human-readable error message.
-            retry_after: Seconds until retry is allowed (from Retry-After header).
+            retry_after: Seconds until retry is allowed: from the server's
+                ``Retry-After`` header after a 429, or the seconds until the
+                next free slot in the local ledger, rounded up, when the
+                request pacer refuses a request.
             status_code: HTTP status code (default 429).
             response_body: Raw response body.
             request_method: HTTP method used.

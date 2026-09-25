@@ -23,9 +23,10 @@ _entry_point: _EntryPoint = "lib"
 def set_entry_point(value: _EntryPoint) -> None:
     """Record how this process was launched (call once at startup).
 
-    The CLI calls this with ``"cli"`` on import so the User-Agent tag
-    reflects interactive vs programmatic use. Library callers leave the
-    default ``"lib"``.
+    The CLI's main callback calls this with ``"cli"`` each time an ``mp``
+    command runs (not on import), so the User-Agent tag reflects
+    interactive vs programmatic use. Library callers leave the default
+    ``"lib"``.
 
     Args:
         value: One of ``"lib"`` or ``"cli"``.

@@ -28,8 +28,10 @@ may include API changes.
   `RateLimit` header that names a limit (for example, from a proxy) gets
   the same retry as before.
 - When the pacer cannot work (an unusable ledger directory, a file lock
-  that stays busy, no file lock support, or an internal error), requests
-  go out unpaced and the library logs one warning per process.
+  that stays busy, or an internal error), requests go out unpaced and the
+  library logs one warning per process. When the file system has no file
+  lock support, pacing still works inside one process, but the processes
+  on the machine are not paced together; the library logs one warning.
 - When the server rejects queries that the ledger cannot explain (other
   clients use the project's hourly quota), the pause before the next probe
   starts at one window divided by the limit (60 seconds at 60 per hour),
