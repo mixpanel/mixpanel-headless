@@ -347,6 +347,38 @@ class TestQueryResultDfInvariant:
                 first = values.index("$overall")
                 assert all(v == "$overall" for v in values[first:])
 
+    @given(
+        depth=st.integers(min_value=0, max_value=3),
+        chart_type=st.sampled_from(
+            ["line", "column", "bar", "pie", "table", "insights-metric"]
+        ),
+    )
+    def test_empty_df_columns_match_non_empty(
+        self, depth: int, chart_type: str
+    ) -> None:
+        """An empty result has the same columns as a non-empty one of the same shape."""
+        leaf_key = "2024-01-01" if chart_type in ("line", "column") else "all"
+        node: dict[str, Any] = {leaf_key: 1}
+        for level in range(depth):
+            node = {"$overall": {leaf_key: 1}, f"value_{level}": node}
+        headers = ["$metric", *(f"prop_{i}" for i in range(depth))]
+        params = {"displayOptions": {"chartType": chart_type}}
+
+        def columns(series: dict[str, Any]) -> list[str]:
+            """Return the df columns for ``series`` with the shared headers/params."""
+            qr = QueryResult(
+                computed_at="",
+                from_date="",
+                to_date="",
+                headers=headers,
+                series=series,
+                params=params,
+                meta={},
+            )
+            return list(qr.df.columns)
+
+        assert columns({}) == columns({"Metric": node})
+
 
 # =============================================================================
 # T054e: build_params() invariants

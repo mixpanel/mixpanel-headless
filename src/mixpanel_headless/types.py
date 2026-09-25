@@ -10109,6 +10109,33 @@ def _segment_columns(headers: list[str], depth: int) -> list[str]:
     return [f"segment_{i}" for i in range(1, depth + 1)]
 
 
+_INSIGHTS_DATED_CHART_TYPES = frozenset(
+    {"line", "column", "stacked-line", "stacked-column"}
+)
+"""Insights chart types whose series leaves are keyed by date, not ``"all"``."""
+
+
+def _insights_chart_has_dates(params: dict[str, Any]) -> bool:
+    """Report whether Insights bookmark params ask for per-date results.
+
+    Used to pick the columns of an empty ``QueryResult.df``, where the
+    series has no keys to read the shape from.
+
+    Args:
+        params: Bookmark params sent with the query.
+
+    Returns:
+        True for a line or column chart, and when ``displayOptions.chartType``
+        is missing (mode unknown, so the ``date`` column stays). False for
+        every other chart type, such as ``bar``, ``pie``, or ``table``.
+    """
+    display = params.get("displayOptions")
+    chart_type = display.get("chartType") if isinstance(display, dict) else None
+    if not isinstance(chart_type, str):
+        return True
+    return chart_type in _INSIGHTS_DATED_CHART_TYPES
+
+
 @dataclass(frozen=True)
 class QueryResult(ResultWithDataFrame):
     """Structured output from a Workspace.query() execution.
@@ -10205,6 +10232,11 @@ class QueryResult(ResultWithDataFrame):
         leaves = df[(df[["auth", "status_code"]] != "$overall").all(axis=1)]
         ```
 
+        An empty result (no matching data) has the same columns as a
+        non-empty one. The segment columns come from ``headers``, and
+        ``date`` is present for a line or column chart. It is also
+        present when ``params`` has no ``displayOptions.chartType``.
+
         Returns:
             Normalized DataFrame with one row per (date, metric, segment
             path) combination. Segment depth is detected from the nesting
@@ -10235,13 +10267,15 @@ class QueryResult(ResultWithDataFrame):
                     row["count"] = value
                     rows.append(row)
 
-        cols = (["date"] if has_dates else []) + ["event", *seg_cols, "count"]
+        if not rows:
+            # No data to read the shape from: take it from the request.
+            has_dates = _insights_chart_has_dates(self.params)
+            has_metric_header = bool(self.headers) and self.headers[0] == "$metric"
+            empty_depth = len(self.headers) - 1 if has_metric_header else 0
+            seg_cols = _segment_columns(self.headers, empty_depth)
 
-        result_df = (
-            pd.DataFrame(rows, columns=cols)
-            if rows
-            else pd.DataFrame(columns=["date", "event", "count"])
-        )
+        cols = (["date"] if has_dates else []) + ["event", *seg_cols, "count"]
+        result_df = pd.DataFrame(rows, columns=cols)
 
         object.__setattr__(self, "_df_cache", result_df)
         return result_df

@@ -72,6 +72,10 @@ may include API changes.
   when a name does not fit). Rollup rows are kept, with `$overall` in
   each column below the level they summarize. A single `group_by` still
   gives one `segment` column.
+- An empty `QueryResult.df` now has the same columns as a non-empty
+  result of the same query. Before, it always had `date`, `event`,
+  `count`, so total and table results gained a `date` column and lost
+  their segment columns when nothing matched.
 
 ## 0.3.0 — 2026-09-22
 
