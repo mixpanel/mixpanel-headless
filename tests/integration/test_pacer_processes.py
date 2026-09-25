@@ -92,7 +92,7 @@ def _assert_ledger_invariants(slots: list[float]) -> None:
     assert ordered[_LIMIT] >= ordered[0] + window
 
 
-def test_processes_never_exceed_the_limit_or_share_a_slot(tmp_path: Path) -> None:
+def test_processes_never_exceed_the_limit(tmp_path: Path) -> None:
     """Several processes reserve on one ledger without breaking the limit."""
     ctx = multiprocessing.get_context("spawn")
     barrier = ctx.Barrier(_WORKERS)
@@ -115,11 +115,13 @@ def test_processes_never_exceed_the_limit_or_share_a_slot(tmp_path: Path) -> Non
             worker.join(timeout=30)
             if worker.is_alive():  # pragma: no cover - only on a hang
                 worker.terminate()
+                worker.join(timeout=5)
+    assert not any(worker.is_alive() for worker in workers)
     assert all(worker.exitcode == 0 for worker in workers)
     _assert_ledger_invariants(slots)
 
 
-def test_threads_never_exceed_the_limit_or_share_a_slot(tmp_path: Path) -> None:
+def test_threads_never_exceed_the_limit(tmp_path: Path) -> None:
     """Several threads, each with its own pacer, share one ledger safely."""
     barrier = threading.Barrier(_WORKERS)
     slots: list[float] = []
@@ -138,11 +140,13 @@ def test_threads_never_exceed_the_limit_or_share_a_slot(tmp_path: Path) -> None:
         with guard:
             slots.extend(mine)
 
-    threads = [threading.Thread(target=run) for _ in range(_WORKERS)]
+    # Daemon threads: a hung worker cannot keep pytest alive after the timeout.
+    threads = [threading.Thread(target=run, daemon=True) for _ in range(_WORKERS)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(timeout=30)
+    assert not any(thread.is_alive() for thread in threads)
     assert errors == []
     _assert_ledger_invariants(slots)
 
@@ -156,4 +160,5 @@ def test_single_worker_reserves_in_order(tmp_path: Path) -> None:
     slots = _reserve_many(str(tmp_path), _LIMIT + 1)
     assert slots == sorted(slots)
     window = BUDGETS["query"].window_s + MARGIN_S
-    assert slots[_LIMIT] == pytest.approx(slots[0] + window)
+    # rel=0: a relative tolerance would be ~1,790 s at epoch 1.79e9.
+    assert slots[_LIMIT] == pytest.approx(slots[0] + window, rel=0, abs=1e-6)

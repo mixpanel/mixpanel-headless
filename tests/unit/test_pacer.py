@@ -43,6 +43,7 @@ from mixpanel_headless._internal.pacer import (
     parse_rate_limit_headers,
     report_internal_error,
     request_content,
+    reset_wait_budget,
 )
 from mixpanel_headless.exceptions import RateLimitError
 
@@ -138,10 +139,10 @@ def _reset_warn_once(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     monkeypatch.setattr(client_metadata, "_entry_point", "lib")
     pacer_mod._reset_warn_once()
-    pacer_mod._reset_wait_budget()
+    reset_wait_budget()
     yield
     pacer_mod._reset_warn_once()
-    pacer_mod._reset_wait_budget()
+    reset_wait_budget()
 
 
 @pytest.fixture
@@ -1212,21 +1213,33 @@ class TestReserve:
         root: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Entries more than one window ahead are dropped and logged once."""
-        write_ledger(
-            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + 2 * W]
-        )
+        """Entries more than 24 h ahead are dropped and logged once."""
+        far = NOW + 2 * 86400.0
+        write_ledger(root, limit=1, limit_source="server", learned_at=NOW, sent=[far])
         pacer = make_pacer()
         assert pacer.reserve(QKEY) == NOW
-        write_ledger(
-            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + 2 * W]
-        )
+        write_ledger(root, limit=1, limit_source="server", learned_at=NOW, sent=[far])
         assert pacer.reserve(QKEY) == NOW
         clock_warnings = [m for m in pacer_warnings(caplog) if "clock" in m]
         assert clock_warnings == [
             "Request pacer: ignoring ledger entries in the future; the system clock "
             "stepped back."
         ]
+
+    def test_horizon_does_not_depend_on_max_wait(
+        self,
+        make_pacer: Callable[..., Pacer],
+        root: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A 30 s pacer keeps a reservation that an unbounded pacer made 2 h ahead."""
+        write_ledger(
+            root, limit=1, limit_source="server", learned_at=NOW, sent=[NOW + 7200.0]
+        )
+        snap = make_pacer(max_wait_s=30.0).snapshot(QKEY)
+        assert snap.used == 1
+        assert snap.next_slot_at == NOW + 7200.0 + W
+        assert not any("clock" in m for m in pacer_warnings(caplog))
 
     def test_future_entries_within_max_wait_kept(
         self, make_pacer: Callable[..., Pacer], root: Path
@@ -1546,6 +1559,21 @@ class TestWaitBudget:
         write_ledger(root)
         assert pacer.reserve(QKEY) == NOW
 
+    def test_reset_wait_budget_restores_full_budget(
+        self,
+        cli_entry: None,
+        make_pacer: Callable[..., Pacer],
+        root: Path,
+        sleeps: list[float],
+    ) -> None:
+        """The public reset gives a new command its full budget again."""
+        write_ledger(root, blocked_until=NOW + 20.0)
+        pacer = make_pacer()
+        pacer.before_send(httpx.Request("GET", US_QUERY), QKEY)
+        reset_wait_budget()
+        pacer.before_send(httpx.Request("GET", US_QUERY), QKEY)
+        assert sleeps == [20.0, 20.0]
+
     def test_fork_resets_budget(
         self,
         cli_entry: None,
@@ -1791,6 +1819,24 @@ class TestObserve:
         write_ledger(root, blocked_streak=2, sent=[NOW - 5.0] * fill)
         paced_response(make_pacer(), QKEY, 429, headers)
         assert read_ledger(root)["blocked_streak"] == 2
+
+    def test_success_clears_blocked_until(
+        self, make_pacer: Callable[..., Pacer], root: Path
+    ) -> None:
+        """A 2xx after a server block clears the block along with the streak."""
+        write_ledger(root, blocked_until=NOW + 100.0, blocked_streak=1)
+        paced_response(make_pacer(max_wait_s=math.inf), QKEY, 200)
+        data = read_ledger(root)
+        assert data["blocked_until"] == 0
+        assert data["blocked_streak"] == 0
+
+    def test_success_clears_block_without_streak(
+        self, make_pacer: Callable[..., Pacer], root: Path
+    ) -> None:
+        """A nonzero blocked_until alone is enough for a 2xx to clear it."""
+        write_ledger(root, blocked_until=NOW - 5.0)
+        paced_response(make_pacer(), QKEY, 200)
+        assert read_ledger(root)["blocked_until"] == 0
 
     def test_streak_reset_elsewhere_is_forgotten(
         self, make_pacer: Callable[..., Pacer], root: Path

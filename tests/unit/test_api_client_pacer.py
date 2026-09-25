@@ -325,7 +325,7 @@ def pacer_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     storage = tmp_path / "storage"
     # tests/conftest.py pins the library entry point; also start each test
     # with an unused process wait budget.
-    pacer_module._reset_wait_budget()
+    pacer_module.reset_wait_budget()
     monkeypatch.setenv("MP_PACER", "on")
     monkeypatch.setenv("MP_STORAGE_DIR", str(storage))
     monkeypatch.setenv("MP_CONFIG_PATH", str(tmp_path / "config.toml"))
@@ -1976,6 +1976,47 @@ class TestAuthRefreshAfterPacerSleep:
         )
         assert seen == ["Bearer tok-1"]  # the second request never went out
         assert second_slot not in ledger["sent"]  # its reservation was refunded
+
+    def test_session_swap_during_the_wait_keeps_the_original_header(
+        self, pacer_on: Path
+    ) -> None:
+        """A session swapped during the wait does not re-sign the waiting request.
+
+        Another thread can call ``use(account=...)`` while a request sleeps in
+        the pacer. The request's URL still belongs to the old session, so it
+        keeps the header it was built with, and no new token is resolved.
+
+        Args:
+            pacer_on: Pacer storage root.
+        """
+        del pacer_on
+        resolver = _CountingResolver()
+        seen: list[str | None] = []
+        with self._oauth_client(resolver, seen) as client:
+            other = make_session(project_id="999", region="us", oauth_token="other")
+
+            class _SwappingTime(_FakeTime):
+                """A fake clock whose sleep swaps the client's session."""
+
+                def sleep(self, seconds: float) -> None:
+                    """Swap the session, then advance the clock.
+
+                    Args:
+                        seconds: Seconds to sleep.
+                    """
+                    client._session = other
+                    super().sleep(seconds)
+
+            fake = _SwappingTime()
+            _install_pacer(
+                client, fake, PacerSettings(max_wait_s=math.inf, query_limit=1)
+            )
+            url = client._build_url("query", "/segmentation")
+            client._request("GET", url)
+            client._request("GET", url)
+        assert fake.sleeps and fake.sleeps[0] > 0
+        assert seen == ["Bearer tok-1", "Bearer tok-2"]
+        assert resolver.calls == 2  # no refresh after the swap
 
     def test_request_without_authorization_is_untouched(self, pacer_on: Path) -> None:
         """A request with no Authorization header gets none after a sleep.

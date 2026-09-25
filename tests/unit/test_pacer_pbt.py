@@ -31,6 +31,7 @@ from mixpanel_headless._internal.pacer import (
     LedgerKey,
     Pacer,
     PacerSettings,
+    _body_params,
     classify,
     parse_rate_limit_headers,
 )
@@ -210,8 +211,9 @@ def test_slots_follow_the_optimal_recurrence(limit: int, gaps: list[float]) -> N
                 expected = max(arrival, slots[len(slots) - limit] + W)
             slots.append(pacer.reserve(KEY))
             # The pacer adds the same floats in the same order, so this is
-            # exact in practice; the tolerance only guards float rounding.
-            assert slots[-1] == pytest.approx(expected, abs=1e-6)
+            # exact in practice; the absolute tolerance only guards float
+            # rounding (rel=0: a relative one would be ~1,790 s at 1.79e9).
+            assert slots[-1] == pytest.approx(expected, rel=0, abs=1e-6)
 
 
 @given(
@@ -259,7 +261,16 @@ def test_parser_reads_policy_exactly(quota: int, window: int, concurrency: int) 
     ),
     project_id=st.text(max_size=70),
     family=st.sampled_from(["query", "engage", "export", "app", None]),
-    content=st.one_of(st.none(), st.binary(max_size=60)),
+    content=st.one_of(
+        st.none(),
+        st.binary(max_size=60),
+        st.one_of(st.text(max_size=12), st.integers(), st.booleans()).map(
+            lambda pid: json.dumps({"project_id": pid}).encode()
+        ),
+        st.text(alphabet="0123456789", min_size=1, max_size=8).map(
+            lambda pid: f"project_id={pid}".encode()
+        ),
+    ),
 )
 def test_classify_never_raises(
     segments: list[str],
@@ -267,11 +278,17 @@ def test_classify_never_raises(
     family: str | None,
     content: bytes | None,
 ) -> None:
-    """Arbitrary paths, project IDs, and bodies never raise; keys are safe."""
+    """Arbitrary paths, project IDs, and bodies never raise; keys are safe.
+
+    The key's project is the effective one: a body value replaces the URL
+    value, like the server merges them.
+    """
     base = "https://mixpanel.com/api/query"
     url = httpx.URL(base + "/" + "/".join(segments), params={"project_id": project_id})
     key = classify(url, family, base, content=content)
     if key is not None:
+        body = _body_params(content)
+        effective = str(body["project_id"]) if "project_id" in body else project_id
         assert key.bucket in BUDGETS
-        assert key.project_id == project_id
+        assert key.project_id == effective
         assert "/" not in key.project_id and key.project_id not in ("", ".", "..")

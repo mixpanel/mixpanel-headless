@@ -109,3 +109,20 @@ class TestEntryPoint:
         result = cli_runner.invoke(app, ["help", "search", "cohort"])
         assert result.exit_code == 0, result.output
         assert get_entry_point() == "cli"
+
+
+class TestPacerWaitBudget:
+    """Each ``mp`` command gets its own pacer wait budget."""
+
+    def test_command_resets_the_process_wait_total(self, cli_runner: CliRunner) -> None:
+        """A wait left by an earlier command in the same process is forgotten."""
+        from mixpanel_headless._internal import pacer
+
+        pacer._add_waited(25.0)
+        try:
+            assert pacer._waited_s == 25.0
+            result = cli_runner.invoke(app, ["help", "search", "cohort"])
+            assert result.exit_code == 0, result.output
+            assert pacer._waited_s == 0.0
+        finally:
+            pacer.reset_wait_budget()
