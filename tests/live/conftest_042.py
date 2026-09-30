@@ -46,23 +46,44 @@ REAL_CONFIG_PATH = Path(
 # =============================================================================
 
 
+def isolate_mp_home(home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point HOME, the config path, and both storage roots into ``home``.
+
+    Creates ``<home>/.mp/`` at mode 0o700 and sets HOME, MP_CONFIG_PATH,
+    MP_STORAGE_DIR, and MP_OAUTH_STORAGE_DIR. Both storage variables get the
+    same tmp directory: the library prefers MP_STORAGE_DIR, and a run may
+    export it (the live conftest puts it back for every test), so setting
+    only MP_OAUTH_STORAGE_DIR would leave the storage root outside ``home``.
+
+    Args:
+        home: The directory to use as the tmp ``$HOME``.
+        monkeypatch: Restores the environment after the test.
+
+    Returns:
+        ``home``.
+    """
+    mp_dir = home / ".mp"
+    mp_dir.mkdir(mode=0o700)
+    storage = str(mp_dir / "oauth")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("MP_CONFIG_PATH", str(mp_dir / "config.toml"))
+    monkeypatch.setenv("MP_STORAGE_DIR", storage)
+    monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", storage)
+    return home
+
+
 @pytest.fixture
 def tmp_mp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Yield a tmp ``$HOME`` with isolated v3 ``~/.mp/`` and ``MP_CONFIG_PATH``.
 
-    Sets HOME, MP_CONFIG_PATH, MP_OAUTH_STORAGE_DIR; creates ~/.mp/ at
-    mode 0o700; yields the tmp HOME path. The dev's real ~/.mp/ is
-    completely untouched.
+    Uses :func:`isolate_mp_home`, so HOME, MP_CONFIG_PATH, and both storage
+    roots point into the tmp directory. The dev's real ~/.mp/ is completely
+    untouched.
 
     Yields:
         Path to the tmp $HOME root.
     """
-    mp_dir = tmp_path / ".mp"
-    mp_dir.mkdir(mode=0o700)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MP_CONFIG_PATH", str(mp_dir / "config.toml"))
-    monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", str(mp_dir / "oauth"))
-    yield tmp_path
+    yield isolate_mp_home(tmp_path, monkeypatch)
 
 
 # =============================================================================
