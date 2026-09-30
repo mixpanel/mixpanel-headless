@@ -641,6 +641,22 @@ class TestBuildShowSection:
         }
         assert show[1]["measurement"] == {"math": "total"}
 
+    def test_plain_strings_take_the_query_percentile(self) -> None:
+        """The query-level percentile value reaches a bare event name."""
+        show = build_show_section(
+            ["Load"],
+            math="percentile",
+            math_property="ms",
+            per_user=None,
+            percentile_value=95,
+            formulas=[],
+        )
+        assert show[0]["measurement"] == {
+            "math": "custom_percentile",
+            "property": {"name": "ms", "resourceType": "events"},
+            "percentile": 95,
+        }
+
     def test_no_events(self) -> None:
         """No events and no formulas give an empty list."""
         assert (
@@ -1118,6 +1134,14 @@ class TestBuildMetricRefOverrides:
         result = build_metric_ref_overrides(ref)
         result["measurement"]["multiAttribution"]["type"] = "changed"
         assert raw == {"measurement": {"multiAttribution": {"type": "x"}}}
+
+    def test_raw_list_values_are_deep_copies(self) -> None:
+        """A raw list value is copied with its items."""
+        raw: dict[str, Any] = {"goals": [{"id": "g1", "label": "Target"}]}
+        result = build_metric_ref_overrides(MetricRef(1, overrides=raw))
+        assert result == {"goals": [{"id": "g1", "label": "Target"}]}
+        result["goals"][0]["label"] = "changed"
+        assert raw == {"goals": [{"id": "g1", "label": "Target"}]}
 
 
 class TestBuildMetricRefClause:
