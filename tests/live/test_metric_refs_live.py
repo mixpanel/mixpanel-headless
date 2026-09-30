@@ -5,18 +5,16 @@ Read-only. Each test picks a saved behavior metric that the caller can view
 inline, and checks that both give the same numbers. Nothing is created,
 changed, or deleted.
 
-Skipped by default. Enable with ``MP_LIVE_TESTS=1``.
+Usage:
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_metric_refs_live.py -m live -v
 
 Environment:
-- ``MP_TEST_METRICS_ACCOUNT`` — account to use (default ``journey-lab-us``).
-- ``MP_TEST_METRICS_PROJECT`` — project with saved metrics (default
-  ``3409416``).
-- ``MP_TEST_METRICS_FROM`` / ``MP_TEST_METRICS_TO`` — date range with data
-  (default ``2024-09-01`` to ``2024-09-07``; the default project's clock
-  reads 2024-09-15).
-
-Usage:
-    MP_LIVE_TESTS=1 uv run pytest tests/live/test_metric_refs_live.py -o addopts="" -q
+    - ``MP_LIVE_ACCOUNT`` — the configured account to read with. The suite
+      skips when it is unset. The Workspace uses the account's default
+      project, which needs at least one viewable saved behavior metric.
+    - ``MP_LIVE_FROM`` and ``MP_LIVE_TO`` — optional date range
+      (YYYY-MM-DD) with data for that metric. Without them the queries use
+      the last 30 days, which is empty when the project's clock is behind.
 """
 
 from __future__ import annotations
@@ -29,29 +27,33 @@ import pytest
 import mixpanel_headless as mp
 from mixpanel_headless.types import QueryResult
 
-pytestmark = [
-    pytest.mark.live,
-    pytest.mark.skipif(
-        os.environ.get("MP_LIVE_TESTS") != "1",
-        reason="MP_LIVE_TESTS=1 not set — live tests skipped by default",
-    ),
-]
-
-_ACCOUNT = os.environ.get("MP_TEST_METRICS_ACCOUNT", "journey-lab-us")
-_PROJECT = os.environ.get("MP_TEST_METRICS_PROJECT", "3409416")
-_FROM = os.environ.get("MP_TEST_METRICS_FROM", "2024-09-01")
-_TO = os.environ.get("MP_TEST_METRICS_TO", "2024-09-07")
+pytestmark = pytest.mark.live
 
 _INLINE_BEHAVIOR_TYPES = ("event", "simple", "funnel", "retention")
 """Behavior types to try, in order of preference, for the inline comparison."""
 
 
+def _window() -> dict[str, Any]:
+    """Return the date arguments of every query in this module.
+
+    Returns:
+        ``from_date`` and ``to_date`` from ``MP_LIVE_FROM`` and
+        ``MP_LIVE_TO`` when both are set, otherwise ``last=30``.
+    """
+    from_date = os.environ.get("MP_LIVE_FROM")
+    to_date = os.environ.get("MP_LIVE_TO")
+    if from_date and to_date:
+        return {"from_date": from_date, "to_date": to_date}
+    return {"last": 30}
+
+
 @pytest.fixture(scope="module")
 def ws() -> mp.Workspace:
-    """One Workspace on the saved-metrics project for the whole module."""
-    workspace = mp.Workspace(account=_ACCOUNT, project=_PROJECT)
-    assert str(workspace.api.project_id) == _PROJECT
-    return workspace
+    """One Workspace on the ``MP_LIVE_ACCOUNT`` account, or a skip when unset."""
+    account = os.environ.get("MP_LIVE_ACCOUNT")
+    if not account:
+        pytest.skip("MP_LIVE_ACCOUNT is not set")
+    return mp.Workspace(account=account)
 
 
 @pytest.fixture(scope="module")
@@ -104,7 +106,7 @@ def _inline_params(
     Returns:
         Insights params whose only show clause is the inline definition.
     """
-    params = ws.build_params("placeholder", from_date=_FROM, to_date=_TO)
+    params = ws.build_params("placeholder", **_window())
     params["sections"]["show"] = [
         {
             "type": "metric",
@@ -121,14 +123,15 @@ def test_reference_matches_inline_definition(
     """A saved metric by reference gives the numbers of its inline definition."""
     definition = saved_metric.definition
 
-    by_reference = ws.query(saved_metric, from_date=_FROM, to_date=_TO)
+    by_reference = ws.query(saved_metric, **_window())
     inline = ws.run_params(_inline_params(ws, definition, definition["measurement"]))
 
     assert by_reference.params["sections"]["show"] == [
         {"type": "metric", "id": saved_metric.id}
     ]
     assert _only_series(by_reference) == _only_series(inline)
-    assert any(value for value in _only_series(by_reference).values())
+    if not any(value for value in _only_series(by_reference).values()):
+        pytest.skip("no data in the window; set MP_LIVE_FROM and MP_LIVE_TO")
 
 
 def test_math_override_matches_inline_change(
@@ -140,9 +143,7 @@ def test_math_override_matches_inline_change(
         "total" if saved_metric.math == "unique" else "unique"
     )
 
-    by_reference = ws.query(
-        saved_metric.to_ref(math=new_math), from_date=_FROM, to_date=_TO
-    )
+    by_reference = ws.query(saved_metric.to_ref(math=new_math), **_window())
     inline = ws.run_params(
         _inline_params(ws, definition, {**definition["measurement"], "math": new_math})
     )

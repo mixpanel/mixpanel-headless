@@ -9,8 +9,10 @@ report and report-link round trip of reference params. Fixtures copy
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -200,50 +202,52 @@ class TestBuildParamsWithMetricRef:
         assert _codes(exc_info.value) == ["CP1_INVALID_ID"]
 
 
-_REFERENCE_RESPONSE: dict[str, Any] = {
-    "computed_at": "2026-09-30T08:31:15.232311+00:00",
-    "date_range": {
-        "from_date": "2024-09-01T00:00:00-07:00",
-        "to_date": "2024-09-03T23:59:59.999000-07:00",
-    },
-    "headers": ["$event"],
-    "meta": {
-        "is_segmentation_limit_hit": False,
-        "min_sampling_factor": 1.0,
-        "report_sections": {"group": [], "show": [{"metric_key": "Docs created"}]},
-        "sub_query_count": 1,
-    },
-    "series": {
-        "Docs created": {
-            "2024-09-01T00:00:00-07:00": 962,
-            "2024-09-02T00:00:00-07:00": 952,
-            "2024-09-03T00:00:00-07:00": 981,
-        }
-    },
-}
-"""Shape of a live insights response for a saved-metric reference.
+_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "saved_metrics"
+"""Redacted live responses recorded against a project with saved metrics."""
 
-The series key is the saved metric name with no math suffix, and the
-header is ``$event`` (an inline event metric gives ``$metric``).
-"""
+
+def _load_fixture(name: str) -> dict[str, Any]:
+    """Load one recorded response body.
+
+    Args:
+        name: The fixture file name without ``.json``.
+
+    Returns:
+        The decoded JSON body.
+    """
+    body: dict[str, Any] = json.loads(
+        (_FIXTURES / f"{name}.json").read_text(encoding="utf-8")
+    )
+    return body
 
 
 class TestQueryWithMetricRef:
     """query() sends the reference params to the insights endpoint."""
 
-    def test_reference_response_labels(
+    def test_recorded_reference_response(
         self, ws: Workspace, mock_api_client: MagicMock
     ) -> None:
-        """A reference response parses, and the saved name labels the series."""
-        mock_api_client.insights_query.return_value = _REFERENCE_RESPONSE
+        """The recorded response to a reference query parses into a QueryResult.
 
-        result = ws.query(MetricRef(42), from_date="2024-09-01", to_date="2024-09-03")
+        A reference changes the labels: the series key is the saved metric
+        name with no math suffix, and the header is ``$event`` (an inline
+        event metric gives ``$metric``).
+        """
+        body = _load_fixture("query_insights_metric_reference")
+        mock_api_client.insights_query.return_value = body
+        (label,) = body["series"]
+
+        result = ws.query(MetricRef(42), from_date="2024-09-01", to_date="2024-09-07")
 
         assert result.headers == ["$event"]
+        assert result.series == body["series"]
+        assert result.meta["report_sections"]["show"] == [{"metric_key": label}]
+        assert "[" not in label
         df = result.df
         assert list(df.columns) == ["date", "event", "count"]
-        assert df["event"].unique().tolist() == ["Docs created"]
-        assert df["count"].tolist() == [962, 952, 981]
+        assert df["event"].unique().tolist() == [label]
+        assert df["count"].tolist() == list(body["series"][label].values())
+        assert len(df) == 7
 
     def test_query_sends_reference(
         self, ws: Workspace, mock_live_query: MagicMock
