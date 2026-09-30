@@ -9,6 +9,7 @@ frozen monotonic clock.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -889,3 +890,213 @@ def test_env_base_url_override_unset_leaves_capture_unmarked(
     capture = record_session.captures[-1]
     assert capture.env_base_url_override is False
     assert capture.interactions[0].request.scheme_host == "https://mixpanel.com"
+
+
+@pytest.mark.parametrize(
+    ("value", "marked"),
+    [
+        (None, True),
+        ("on", True),
+        ("1", True),
+        ("yes", True),
+        ("bogus", True),
+        ("off", False),
+        (" OFF ", False),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+    ],
+    ids=[
+        "unset",
+        "on",
+        "one",
+        "yes",
+        "invalid",
+        "off",
+        "off-padded",
+        "false",
+        "zero",
+        "no",
+    ],
+)
+def test_env_pacer_on_marks_capture(
+    record_session: RecordSession,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    value: str | None,
+    marked: bool,
+) -> None:
+    """A capture taken with the request pacer on is marked ``env_pacer_on``.
+
+    The library turns the pacer off only for ``off``, ``false``, ``0``, or
+    ``no`` (after trimming and lower-casing); an unset or other value
+    leaves the default, which is on. The runner
+    replays with the pacer off, so such a capture cannot replay. The value
+    is set inside the test body, as a pacer test does with
+    ``monkeypatch.setenv``.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+        tmp_path: Directory for the library's storage and config.
+        value: The ``MP_PACER`` value, or ``None`` when unset.
+        marked: Whether the capture must carry the mark.
+
+    Raises:
+        AssertionError: If the mark does not match the pacer state.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    monkeypatch.setenv("MP_PACER", "off")
+    nodeid = f"tests/unit/test_fake.py::test_pacer_{value}"
+    record_session.begin_test(nodeid, None)
+    if value is None:
+        monkeypatch.delenv("MP_PACER")
+    else:
+        monkeypatch.setenv("MP_PACER", value)
+    # With the pacer on, the library's own pacer runs too; keep its ledger
+    # and config reads away from the real home directory.
+    monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path / "storage"))
+    monkeypatch.setenv("MP_CONFIG_PATH", str(tmp_path / "config.toml"))
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.env_pacer_on is marked
+
+
+class _FakePluginManager:
+    """Records plugin registrations from ``pytest_configure``."""
+
+    def __init__(self) -> None:
+        """Start with no registrations."""
+        self.registered: list[str] = []
+
+    def register(self, plugin: object, name: str) -> None:
+        """Record one registration.
+
+        Args:
+            plugin: The plugin object (ignored).
+            name: The registration name.
+        """
+        del plugin
+        self.registered.append(name)
+
+
+class _FakeConfig:
+    """The parts of ``pytest.Config`` that ``pytest_configure`` reads."""
+
+    def __init__(self, out_dir: Path) -> None:
+        """Point record mode at an output directory.
+
+        Args:
+            out_dir: The ``--mp-record-vectors`` value.
+        """
+        self._options = {
+            "--mp-record-vectors": str(out_dir),
+            "--mp-record-date": "2026-08-14",
+            "--mp-record-commit": "0" * 40,
+        }
+        self.inicfg: dict[str, str] = {"faulthandler_timeout": "300"}
+        self.stash = pytest.Stash()
+        self.pluginmanager = _FakePluginManager()
+
+    def getoption(self, name: str) -> str | None:
+        """Return a record option.
+
+        Args:
+            name: The option name.
+
+        Returns:
+            The option value, or None.
+        """
+        return self._options.get(name)
+
+
+@pytest.mark.parametrize(
+    ("ambient", "expected"),
+    [(None, "off"), ("on", "on"), ("off", "off")],
+    ids=["unset-defaults-off", "explicit-on-kept", "explicit-off-kept"],
+)
+def test_record_mode_defaults_the_pacer_off(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ambient: str | None,
+    expected: str,
+) -> None:
+    """Record mode sets ``MP_PACER=off`` unless the environment already sets it.
+
+    Recording also runs ``conformance/tests/test_coverage_cases.py``, which
+    does not inherit the ``MP_PACER=off`` that ``tests/conftest.py`` sets.
+    Without this default those captures would count as pacer-on and be
+    excluded, and the re-extraction would drift from the committed corpus.
+
+    Args:
+        tmp_path: Output directory for the record session.
+        monkeypatch: pytest env patcher (restores ``MP_PACER``).
+        ambient: ``MP_PACER`` before record mode starts, or None when unset.
+        expected: ``MP_PACER`` after ``pytest_configure``.
+    """
+    from conformance.record import plugin
+
+    if ambient is None:
+        monkeypatch.delenv("MP_PACER", raising=False)
+    else:
+        monkeypatch.setenv("MP_PACER", ambient)
+    config = _FakeConfig(tmp_path / "vectors")
+    plugin.pytest_configure(config)  # type: ignore[arg-type]
+    try:
+        assert os.environ["MP_PACER"] == expected
+        assert config.pluginmanager.registered == ["mp-record-hooks"]
+    finally:
+        plugin.pytest_unconfigure(config)  # type: ignore[arg-type]
+
+
+def test_record_mode_leaves_the_pacer_alone_when_not_recording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Loading the plugin without record options does not touch ``MP_PACER``.
+
+    Args:
+        monkeypatch: pytest env patcher.
+    """
+    from conformance.record import plugin
+
+    monkeypatch.delenv("MP_PACER", raising=False)
+    monkeypatch.delenv("CONFORMANCE_RECORD_DIR", raising=False)
+    config = _FakeConfig(Path("unused"))
+    config._options["--mp-record-vectors"] = None  # type: ignore[assignment]
+    plugin.pytest_configure(config)  # type: ignore[arg-type]
+    assert "MP_PACER" not in os.environ
+    assert config.pluginmanager.registered == []
+
+
+def test_capture_after_the_default_is_not_marked(
+    record_session: RecordSession, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A test that never sets ``MP_PACER`` records normally under the default.
+
+    This is the ``test_coverage_cases.py`` case: record mode set
+    ``MP_PACER=off`` and the test does not touch it.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher.
+        tmp_path: Directory for the library's storage and config.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    monkeypatch.setenv("MP_PACER", "off")  # what record mode set at startup
+    monkeypatch.setenv("MP_STORAGE_DIR", str(tmp_path / "storage"))
+    monkeypatch.setenv("MP_CONFIG_PATH", str(tmp_path / "config.toml"))
+    nodeid = "conformance/tests/test_coverage_cases.py::test_fake"
+    record_session.begin_test(nodeid, None)
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+    assert record_session.captures[-1].env_pacer_on is False

@@ -8,6 +8,21 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 a prose snapshot of the committed extraction run.
 
 
+## Pending for the next re-pin: new exclusion bucket `env_pacer_on`
+
+The request pacer (the shared query ledger) adds a runtime-detected
+bucket. `conformance/record/plugin.py` reads `MP_PACER` at every
+entry-call open and every transport interaction and flags
+`TestCapture.env_pacer_on` unless the value is `off`.
+`conformance/record/emit.py::_classify_capture` routes a flagged test to
+`exclusions.add("env_pacer_on", nodeid)`, and the bucket is in
+`_DETAILED_EXCLUSIONS`. `tests/conftest.py` sets `MP_PACER=off` for every
+test, so only the tests that turn the pacer back on land here. The runner
+replays with `MP_PACER=off` (`conformance/runner/execute.py`
+`_isolated_home`). The re-pin that follows the pacer change records the
+bucket count and nodeids here. If the TS port's manifest schema
+enumerates exclusion bucket names, it must add `env_pacer_on`.
+
 ## 2026-09-23 re-pin: stamp `6b23b75` → `c7906bc` (PR #249 help conformance + PR #250 mobile analyzer vectors, with #246, #251, #252)
 
 Step 2 of the two-step protocol (README, "Which SHA to stamp") for the

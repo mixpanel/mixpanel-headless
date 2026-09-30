@@ -1138,6 +1138,7 @@ _DETAILED_EXCLUSIONS = frozenset(
         "test_local_clock",
         "fs_dependent",
         "env_base_url_override",
+        "env_pacer_on",
         "layer3_deferred",
         "raw_transport_no_entrypoint",
         "freeze_incompatible",
@@ -1207,6 +1208,12 @@ def _classify_capture(
         # the recorded URLs are host-dependent (loopback / proxy hosts)
         # and cannot replay without that environment (PR #235 tests).
         exclusions.add("env_base_url_override", nodeid)
+        return []
+    if capture.env_pacer_on:
+        # Captures taken with the request pacer on: the runner replays with
+        # MP_PACER=off, so pacer waits, a RateLimitError raised before any
+        # request is sent, or a 429 retried at once cannot replay.
+        exclusions.add("env_pacer_on", nodeid)
         return []
     vectors: list[_PendingVector] = []
     for call in capture.entry_calls:

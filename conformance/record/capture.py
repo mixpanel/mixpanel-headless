@@ -184,6 +184,11 @@ class TestCapture:
             under them is host-dependent and cannot replay without that
             environment; the classifier excludes the whole test as
             ``env_base_url_override``.
+        env_pacer_on: True when the library's request pacer was on
+            (``MP_PACER`` not ``off``) at the moment any entry call or
+            transport interaction was captured. The runner replays with
+            the pacer off, so the classifier excludes the whole test as
+            ``env_pacer_on``.
         outcome: Final pytest outcome (``passed``/``failed``/``skipped``).
     """
 
@@ -193,6 +198,7 @@ class TestCapture:
     interactions: list[RecordedInteraction] = field(default_factory=list)
     cli_used: bool = False
     env_base_url_override: bool = False
+    env_pacer_on: bool = False
     outcome: str = "passed"
 
 
