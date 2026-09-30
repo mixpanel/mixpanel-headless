@@ -537,3 +537,76 @@ class TestMetricsVerify:
         assert [(e.id, e.verified) for e in entries] == [(1, False), (99, False)]
         assert "99" in result.stderr
         assert "skipped" in result.stderr
+
+
+class TestMetricsQuery:
+    """Tests for mp metrics query."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_queries_the_saved_metric_by_reference(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """query reads the metric, then runs Workspace.query on its reference."""
+        saved = _metrics()[1]
+        result_obj = MagicMock()
+        result_obj.to_dict.return_value = {"series": {"Signup conversion": {}}}
+        mock_ws = MagicMock()
+        mock_ws.get_metric.return_value = saved
+        mock_ws.query.return_value = result_obj
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "query",
+                "2",
+                "--from",
+                "2024-09-01",
+                "--to",
+                "2024-09-07",
+                "--unit",
+                "week",
+                "--group-by",
+                "$os",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        mock_ws.get_metric.assert_called_once_with(2)
+        (ref,), kwargs = mock_ws.query.call_args
+        assert ref == saved.to_ref()
+        assert ref.type == "formula"
+        assert kwargs == {
+            "from_date": "2024-09-01",
+            "to_date": "2024-09-07",
+            "last": 30,
+            "unit": "week",
+            "group_by": "$os",
+        }
+        assert json.loads(result.stdout) == {"series": {"Signup conversion": {}}}
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_defaults_and_table(self, mock_get_ws: MagicMock) -> None:
+        """Without options the query runs the last 30 days by day; table uses rows."""
+        result_obj = MagicMock()
+        result_obj.to_table_dict.return_value = [{"date": "2024-09-01", "value": 3}]
+        mock_ws = MagicMock()
+        mock_ws.get_metric.return_value = _metrics()[0]
+        mock_ws.query.return_value = result_obj
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["metrics", "query", "1", "--format", "table"])
+        assert result.exit_code == 0, result.output
+        assert mock_ws.query.call_args.kwargs == {
+            "from_date": None,
+            "to_date": None,
+            "last": 30,
+            "unit": "day",
+            "group_by": None,
+        }
+        assert "2024-09-01" in result.stdout
+
+    def test_bad_unit_exits_3(self) -> None:
+        """A --unit outside day, week, month is a usage error."""
+        result = runner.invoke(app, ["metrics", "query", "1", "--unit", "year"])
+        assert result.exit_code == 3

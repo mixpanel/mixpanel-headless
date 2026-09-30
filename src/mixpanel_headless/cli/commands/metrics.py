@@ -8,6 +8,7 @@ metrics, formulas, and warehouse metrics) via the App API:
 - create: Create a saved metric from a wire definition file or stdin
 - update: Update a saved metric
 - verify: Verify or unverify saved metrics in one request
+- query: Run a saved metric by reference
 - delete: Delete one or more saved metrics
 """
 
@@ -18,12 +19,14 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import typer
 
+from mixpanel_headless._literal_types import QueryTimeUnit
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
     err_console,
     get_workspace,
     handle_errors,
     output_result,
+    present_result,
     status_spinner,
 )
 from mixpanel_headless.cli.validators import read_json_object_file, validate_literal
@@ -458,6 +461,80 @@ def verify_metrics(
         format=format,
         jq_filter=jq_filter,
     )
+
+
+@metrics_app.command("query")
+@handle_errors
+def query_metric(
+    ctx: typer.Context,
+    metric_id: Annotated[
+        int,
+        typer.Argument(help="Saved metric ID to run."),
+    ],
+    from_date: Annotated[
+        str | None,
+        typer.Option("--from", help="Start date (YYYY-MM-DD)."),
+    ] = None,
+    to_date: Annotated[
+        str | None,
+        typer.Option("--to", help="End date (YYYY-MM-DD)."),
+    ] = None,
+    last: Annotated[
+        int,
+        typer.Option("--last", help="Days back from today when --from/--to are unset."),
+    ] = 30,
+    unit: Annotated[
+        str,
+        typer.Option(
+            "--unit", "-u", help="Time unit: hour, day, week, month, quarter."
+        ),
+    ] = "day",
+    group_by: Annotated[
+        str | None,
+        typer.Option("--group-by", help="Property to break the result down by."),
+    ] = None,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Run a saved metric by reference, as a report that uses it does.
+
+    Reads the metric to learn its kind, then runs an insights query whose
+    only metric is a reference to it. The server expands the saved
+    definition at query time, so the result follows the stored metric.
+
+    Args:
+        ctx: Typer context with global options.
+        metric_id: The saved metric identifier.
+        from_date: Optional start date.
+        to_date: Optional end date.
+        last: Days back from today when no dates are given.
+        unit: Time unit of the series.
+        group_by: Optional breakdown property.
+        format: Output format (json, jsonl, table, csv, plain).
+        jq_filter: Optional jq filter for JSON output.
+
+    Example:
+        ```bash
+        mp metrics query 104700 --from 2024-09-01 --to 2024-09-30 --unit week
+        ```
+    """
+    validated_unit = cast(
+        QueryTimeUnit, validate_literal(unit, QueryTimeUnit, "--unit")
+    )
+    workspace = get_workspace(ctx)
+
+    with status_spinner(ctx, "Running saved metric..."):
+        metric = workspace.get_metric(metric_id)
+        result = workspace.query(
+            metric.to_ref(),
+            from_date=from_date,
+            to_date=to_date,
+            last=last,
+            unit=validated_unit,
+            group_by=group_by,
+        )
+
+    present_result(ctx, result, format, jq_filter=jq_filter)
 
 
 @metrics_app.command("delete")
