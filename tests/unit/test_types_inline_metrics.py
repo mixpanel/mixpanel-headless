@@ -134,11 +134,11 @@ class TestSimpleBehavior:
 class TestFunnelBehavior:
     """``FunnelBehavior`` is an ordered list of two or more steps."""
 
-    def test_defaults_follow_the_web_app(self) -> None:
-        """Defaults: a 7-day window, loose order, no exclusions or constants."""
+    def test_defaults_match_query_funnel(self) -> None:
+        """Defaults: a 14-day window, loose order, no exclusions or constants."""
         behavior = _funnel()
         assert behavior.steps == ["Signup", "Purchase"]
-        assert behavior.conversion_window == 7
+        assert behavior.conversion_window == 14
         assert behavior.conversion_window_unit == "day"
         assert behavior.order == "loose"
         assert behavior.exclusions is None
@@ -227,12 +227,12 @@ class TestFunnelBehavior:
 class TestRetentionBehavior:
     """``RetentionBehavior`` is a born event and a return event."""
 
-    def test_defaults_follow_the_web_app(self) -> None:
-        """Defaults: daily buckets aligned to birth, server default for the rest."""
+    def test_defaults_match_query_retention(self) -> None:
+        """Defaults: weekly buckets aligned to birth, server default for the rest."""
         behavior = _retention()
         assert behavior.born_event == "Signup"
         assert behavior.return_event == "Login"
-        assert behavior.retention_unit == "day"
+        assert behavior.retention_unit == "week"
         assert behavior.alignment == "birth"
         assert behavior.bucket_sizes is None
         assert behavior.unbounded_mode is None
@@ -427,6 +427,29 @@ class TestEngineParameterNames:
         engine = set(inspect.signature(Workspace.query_retention).parameters)
         names = {f.name for f in dataclasses.fields(RetentionBehavior)}
         assert names <= engine
+
+    @pytest.mark.parametrize(
+        ("value_type", "method"),
+        [
+            (FunnelBehavior, Workspace.query_funnel),
+            (FunnelMetric, Workspace.query_funnel),
+            (RetentionBehavior, Workspace.query_retention),
+            (RetentionMetric, Workspace.query_retention),
+        ],
+    )
+    def test_defaults_match_the_engine_method(
+        self, value_type: type, method: object
+    ) -> None:
+        """A field that shares a name with an engine parameter shares its default."""
+        engine = inspect.signature(method).parameters  # type: ignore[arg-type]
+        checked = 0
+        for field in dataclasses.fields(value_type):
+            parameter = engine.get(field.name)
+            if parameter is None or parameter.default is inspect.Parameter.empty:
+                continue
+            assert field.default == parameter.default, field.name
+            checked += 1
+        assert checked >= 1
 
     def test_retention_metric_measurement_names(self) -> None:
         """``math`` and ``retention_cumulative`` match ``query_retention``."""

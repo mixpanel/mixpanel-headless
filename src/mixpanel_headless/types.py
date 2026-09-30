@@ -12119,16 +12119,17 @@ class SimpleBehavior:
 class FunnelBehavior:
     """An ordered sequence of two or more steps that users convert through.
 
-    The fields use the parameter names of :meth:`Workspace.query_funnel`.
-    The defaults follow the Mixpanel web app for a funnel behavior: a
-    7-day conversion window (``query_funnel`` defaults to 14 days) and
-    loose order.
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_funnel`, so a funnel behavior and a
+    ``query_funnel`` call over the same steps count the same way. The web
+    app starts a new funnel behavior with a 7-day window; pass
+    ``conversion_window=7`` to match it.
 
     Attributes:
         steps: The funnel steps, at least two. Each is an event name or a
             :class:`FunnelStep`.
         conversion_window: How long users have to complete the funnel.
-            Default: ``7``.
+            Default: ``14``.
         conversion_window_unit: The unit of ``conversion_window``.
             Default: ``"day"``.
         order: ``"loose"`` requires the steps in order, with other events
@@ -12158,7 +12159,7 @@ class FunnelBehavior:
     steps: list[str | FunnelStep]
     """The funnel steps, at least two."""
 
-    conversion_window: int = 7
+    conversion_window: int = 14
     """How long users have to complete the funnel."""
 
     conversion_window_unit: ConversionWindowUnit = "day"
@@ -12212,17 +12213,19 @@ class FunnelBehavior:
 class RetentionBehavior:
     """A born event and a return event: users who come back after they start.
 
-    The fields use the parameter names of :meth:`Workspace.query_retention`.
-    The defaults follow the Mixpanel web app for a retention behavior: daily
-    buckets (``query_retention`` defaults to weekly) aligned to each
-    user's born date. A retention behavior always holds exactly two events.
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_retention`, so a retention behavior and a
+    ``query_retention`` call over the same events count the same way. The
+    web app starts a new retention behavior with daily buckets; pass
+    ``retention_unit="day"`` to match it. A retention behavior always holds
+    exactly two events.
 
     Attributes:
         born_event: The event that puts a user in a cohort. An event name
             or a :class:`RetentionEvent`.
         return_event: The event that counts as a return. An event name or a
             :class:`RetentionEvent`.
-        retention_unit: The bucket unit. Default: ``"day"``.
+        retention_unit: The bucket unit. Default: ``"week"``.
         alignment: ``"birth"`` aligns each cohort to its born date;
             ``"interval_start"`` aligns all cohorts to the same start.
             Default: ``"birth"``.
@@ -12245,7 +12248,7 @@ class RetentionBehavior:
     return_event: str | RetentionEvent
     """The event that counts as a return."""
 
-    retention_unit: TimeUnit = "day"
+    retention_unit: TimeUnit = "week"
     """The bucket unit."""
 
     alignment: RetentionAlignment = "birth"
