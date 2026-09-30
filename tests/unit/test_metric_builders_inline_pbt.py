@@ -16,7 +16,7 @@ Usage:
 
 from __future__ import annotations
 
-from typing import get_args
+from typing import Any, get_args
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -142,6 +142,18 @@ operands: st.SearchStrategy[FormulaOperand] = st.one_of(inline_metrics, operand_
 """Any formula operand: an inline metric or a saved-metric reference."""
 
 
+def _without_filter(block: dict[str, Any]) -> dict[str, Any]:
+    """Return a behavior block without the legacy ``filter`` key.
+
+    Args:
+        block: A behavior block from a show clause.
+
+    Returns:
+        A copy without ``filter``.
+    """
+    return {key: value for key, value in block.items() if key != "filter"}
+
+
 class TestDefinitionCompilerProperties:
     """The saved definition and the show clause come from one builder."""
 
@@ -151,10 +163,13 @@ class TestDefinitionCompilerProperties:
         metric: Metric | CohortMetric | FunnelMetric | RetentionMetric,
         hidden: bool,
     ) -> None:
-        """The definition is the behavior and measurement of the show clause."""
+        """The definition is the clause's behavior and measurement, less ``filter``.
+
+        ``filter`` is the one behavior key that the save schema leaves out.
+        """
         clause = build_inline_metric_clause(metric, hidden=hidden)
         assert build_metric_definition(metric) == {
-            "behavior": clause["behavior"],
+            "behavior": _without_filter(clause["behavior"]),
             "measurement": clause["measurement"],
         }
 
@@ -162,14 +177,16 @@ class TestDefinitionCompilerProperties:
     def test_behavior_definition_equals_metric_behavior(
         self, behavior: FunnelBehavior | RetentionBehavior
     ) -> None:
-        """A saved behavior stores the behavior block of its metric clause."""
+        """A saved behavior stores its metric's behavior block, less ``filter``."""
         metric = (
             FunnelMetric(behavior)
             if isinstance(behavior, FunnelBehavior)
             else RetentionMetric(behavior)
         )
         clause = build_inline_metric_clause(metric)
-        assert build_behavior_definition(behavior) == {"behavior": clause["behavior"]}
+        assert build_behavior_definition(behavior) == {
+            "behavior": _without_filter(clause["behavior"])
+        }
 
     @given(
         st.one_of(
@@ -204,19 +221,31 @@ class TestDefinitionCompilerProperties:
     def test_formula_operands_are_operand_definitions(
         self, several: list[FormulaOperand], data: st.DataObject
     ) -> None:
-        """Each entry is its operand's definition, or ``{type, id}`` for a ref."""
+        """Query operands are clause blocks; saved operands are definitions.
+
+        A reference operand is ``{type, id}`` in both. An inline operand in
+        the query clause keeps the clause's behavior block; in the saved
+        definition it drops the legacy ``filter`` key.
+        """
         index = data.draw(st.integers(min_value=0, max_value=len(several) - 1))
         formula = Formula(f"{letters_for_index(index)} * 2", metrics=several)
-        entries = build_formula_clause(formula)["referencedMetrics"]
-        assert entries == [
-            {"type": op.type, "id": op.id}
-            if isinstance(op, MetricRef)
-            else {"type": "metric", **build_metric_definition(op)}
-            for op in several
+        query_entries = build_formula_clause(formula)["referencedMetrics"]
+        saved_entries = build_formula_definition(formula)["formula"][
+            "referencedMetrics"
         ]
-        assert build_formula_definition(formula)["formula"]["referencedMetrics"] == (
-            entries
-        )
+        for op, query_entry, saved_entry in zip(
+            several, query_entries, saved_entries, strict=True
+        ):
+            if isinstance(op, MetricRef):
+                assert query_entry == saved_entry == {"type": op.type, "id": op.id}
+                continue
+            clause = build_inline_metric_clause(op)
+            assert query_entry == {
+                "type": "metric",
+                "behavior": clause["behavior"],
+                "measurement": clause["measurement"],
+            }
+            assert saved_entry == {"type": "metric", **build_metric_definition(op)}
 
 
 class TestSeveralEventsProperties:

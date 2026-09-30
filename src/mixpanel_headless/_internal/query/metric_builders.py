@@ -1271,6 +1271,48 @@ def build_inline_metric_clause(
     return build_metric_clause(metric, hidden=hidden)
 
 
+SAVE_OMITTED_BEHAVIOR_KEYS: frozenset[str] = frozenset({"filter"})
+"""Behavior keys that queries accept and the save schema forbids.
+
+The server's ``Behavior`` model types ``filter`` as ``Ignore[...]``: the
+query path ignores the key, but the JSON Schema that checks a saved
+definition skips it and forbids extra keys, so a create with it fails with
+400. The query clauses keep the key, so their bytes do not change.
+"""
+
+
+def _saved_behavior(block: dict[str, Any]) -> dict[str, Any]:
+    """Return a behavior block without the keys that the save schema forbids.
+
+    Args:
+        block: A behavior block from a show-clause builder.
+
+    Returns:
+        A shallow copy without the :data:`SAVE_OMITTED_BEHAVIOR_KEYS`.
+    """
+    return {
+        key: value
+        for key, value in block.items()
+        if key not in SAVE_OMITTED_BEHAVIOR_KEYS
+    }
+
+
+def _clause_parts(
+    metric: Metric | CohortMetric | FunnelMetric | RetentionMetric,
+) -> dict[str, Any]:
+    """Return the behavior and measurement blocks of a metric's show clause.
+
+    Args:
+        metric: An inline metric.
+
+    Returns:
+        ``{"behavior": ..., "measurement": ...}`` exactly as the show clause
+        writes them.
+    """
+    clause = build_inline_metric_clause(metric)
+    return {"behavior": clause["behavior"], "measurement": clause["measurement"]}
+
+
 def build_metric_definition(
     metric: Metric | CohortMetric | FunnelMetric | RetentionMetric,
 ) -> dict[str, Any]:
@@ -1278,7 +1320,9 @@ def build_metric_definition(
 
     A saved behavior metric stores ``{behavior, measurement}``. Both blocks
     come from the show-clause builder, so a saved metric queries the same
-    way as the inline metric it came from.
+    way as the inline metric it came from. The behavior block leaves out
+    the keys that the server's save schema forbids
+    (:data:`SAVE_OMITTED_BEHAVIOR_KEYS`).
 
     Args:
         metric: A ``Metric``, ``CohortMetric``, ``FunnelMetric``, or
@@ -1295,8 +1339,11 @@ def build_metric_definition(
         #  "measurement": {"math": "unique"}}
         ```
     """
-    clause = build_inline_metric_clause(metric)
-    return {"behavior": clause["behavior"], "measurement": clause["measurement"]}
+    parts = _clause_parts(metric)
+    return {
+        "behavior": _saved_behavior(parts["behavior"]),
+        "measurement": parts["measurement"],
+    }
 
 
 def build_behavior_definition(
@@ -1305,9 +1352,10 @@ def build_behavior_definition(
     """Build the saved definition of a behavior value.
 
     A saved behavior stores ``{behavior}``. The block comes from the same
-    builders as the behavior of a metric clause, without ``name``: the
+    builders as the behavior of a metric clause, without ``name`` (the
     server refuses a name inside a saved behavior definition, and the
-    saved behavior's own name labels it.
+    saved behavior's own name labels it) and without the keys that the
+    save schema forbids (:data:`SAVE_OMITTED_BEHAVIOR_KEYS`).
 
     Args:
         behavior: A ``SimpleBehavior``, ``FunnelBehavior``, or
@@ -1324,20 +1372,26 @@ def build_behavior_definition(
         ```
     """
     if isinstance(behavior, FunnelBehavior):
-        block = build_funnel_metric_behavior(behavior)
+        block = _saved_behavior(build_funnel_metric_behavior(behavior))
     elif isinstance(behavior, RetentionBehavior):
-        block = build_retention_metric_behavior(behavior)
+        block = _saved_behavior(build_retention_metric_behavior(behavior))
     else:
         block = build_simple_behavior(behavior.events)
         del block["name"]
     return {"behavior": block}
 
 
-def build_formula_operands(formula: Formula) -> list[dict[str, Any]]:
+def build_formula_operands(
+    formula: Formula, *, saved: bool = False
+) -> list[dict[str, Any]]:
     """Build the ``referencedMetrics`` list of a formula.
 
     Args:
         formula: The formula.
+        saved: ``False`` (the default) writes the query form: an inline
+            operand keeps the behavior block of its show clause. ``True``
+            writes the saved form of :func:`build_metric_definition`, which
+            leaves out the keys that the save schema forbids.
 
     Returns:
         One entry per operand, in order: ``{"type": "metric", "behavior":
@@ -1354,7 +1408,10 @@ def build_formula_operands(formula: Formula) -> list[dict[str, Any]]:
         if isinstance(operand, MetricRef):
             operands.append(build_operand_ref_clause(operand))
         else:
-            operands.append({"type": "metric", **build_metric_definition(operand)})
+            parts = (
+                build_metric_definition(operand) if saved else _clause_parts(operand)
+            )
+            operands.append({"type": "metric", **parts})
     return operands
 
 
@@ -1367,7 +1424,7 @@ def build_formula_definition(formula: Formula) -> dict[str, Any]:
 
     Returns:
         ``{"formula": {"definition": ..., "referencedMetrics": [...]}}``,
-        with the operands of :func:`build_formula_operands`.
+        with the saved-form operands of :func:`build_formula_operands`.
 
     Raises:
         ValueError: If the formula has no operands. A saved formula must
@@ -1381,6 +1438,6 @@ def build_formula_definition(formula: Formula) -> dict[str, Any]:
     return {
         "formula": {
             "definition": formula.expression,
-            "referencedMetrics": build_formula_operands(formula),
+            "referencedMetrics": build_formula_operands(formula, saved=True),
         }
     }

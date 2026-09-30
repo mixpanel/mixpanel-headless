@@ -596,13 +596,96 @@ class TestDispatchAndDefinition:
     def test_definition_is_behavior_and_measurement_of_the_clause(
         self, metric: Metric | CohortMetric | FunnelMetric | RetentionMetric
     ) -> None:
-        """The saved definition equals the behavior and measurement of the clause."""
+        """The definition is the clause's behavior and measurement, less ``filter``.
+
+        The server's save schema has no legacy behavior ``filter`` key (the
+        query path ignores it), so only the definition leaves it out.
+        """
         clause = build_inline_metric_clause(metric)
+        behavior = {k: v for k, v in clause["behavior"].items() if k != "filter"}
         assert build_metric_definition(metric) == {
-            "behavior": clause["behavior"],
+            "behavior": behavior,
             "measurement": clause["measurement"],
         }
         assert list(build_metric_definition(metric)) == ["behavior", "measurement"]
+
+    def test_funnel_definition_without_filter_key(self) -> None:
+        """A funnel metric definition has no legacy behavior ``filter`` key."""
+        assert build_metric_definition(FunnelMetric(FUNNEL)) == {
+            "behavior": {
+                "type": "funnel",
+                "resourceType": "events",
+                "behaviors": [
+                    {
+                        "type": "event",
+                        "id": None,
+                        "name": "Signup",
+                        "filters": [],
+                        "filtersDeterminer": "all",
+                        "funnelOrder": "loose",
+                    },
+                    {
+                        "type": "event",
+                        "id": None,
+                        "name": "Purchase",
+                        "filters": [],
+                        "filtersDeterminer": "all",
+                        "funnelOrder": "loose",
+                    },
+                ],
+                "conversionWindowDuration": 14,
+                "conversionWindowUnit": "day",
+                "funnelOrder": "loose",
+                "exclusions": [],
+                "aggregateBy": [],
+            },
+            "measurement": {
+                "math": "conversion_rate_unique",
+                "property": None,
+                "stepIndex": None,
+            },
+        }
+
+    def test_retention_definition_without_filter_key(self) -> None:
+        """A retention metric definition has no legacy behavior ``filter`` key."""
+        assert build_metric_definition(RetentionMetric(RETENTION, bucket_index=1)) == {
+            "behavior": {
+                "type": "retention",
+                "resourceType": "events",
+                "behaviors": [
+                    {
+                        "type": "event",
+                        "id": None,
+                        "name": "Signup",
+                        "filters": [],
+                        "filtersDeterminer": "all",
+                    },
+                    {
+                        "type": "event",
+                        "id": None,
+                        "name": "Login",
+                        "filters": [],
+                        "filtersDeterminer": "all",
+                    },
+                ],
+                "retentionUnit": "week",
+                "retentionAlignmentType": "birth",
+                "retentionCustomBucketSizes": [],
+            },
+            "measurement": {"math": "retention_rate", "retentionBucketIndex": 1},
+        }
+
+    def test_query_clause_keeps_the_filter_key(self) -> None:
+        """The query show clause keeps the bytes of every release."""
+        assert (
+            build_funnel_metric_clause(FunnelMetric(FUNNEL))["behavior"]["filter"] == []
+        )
+        assert (
+            build_retention_metric_clause(RetentionMetric(RETENTION))["behavior"][
+                "filter"
+            ]
+            == []
+        )
 
     def test_dispatch_matches_each_builder(self) -> None:
         """The dispatcher calls the builder of each kind."""
@@ -652,19 +735,21 @@ class TestBehaviorDefinition:
         }
 
     def test_funnel_behavior_is_the_funnel_metric_behavior(self) -> None:
-        """A funnel behavior writes the behavior block of its funnel metric."""
-        assert build_behavior_definition(FUNNEL) == {
-            "behavior": build_funnel_metric_clause(FunnelMetric(FUNNEL))["behavior"]
-        }
-        assert "name" not in build_behavior_definition(FUNNEL)["behavior"]
+        """A funnel behavior is its metric's behavior block, less ``filter``."""
+        query_block = build_funnel_metric_clause(FunnelMetric(FUNNEL))["behavior"]
+        saved = build_behavior_definition(FUNNEL)["behavior"]
+        assert saved == {k: v for k, v in query_block.items() if k != "filter"}
+        assert "name" not in saved
+        assert "filter" not in saved
 
     def test_retention_behavior_is_the_retention_metric_behavior(self) -> None:
-        """A retention behavior writes the behavior block of its retention metric."""
-        assert build_behavior_definition(RETENTION) == {
-            "behavior": build_retention_metric_clause(RetentionMetric(RETENTION))[
-                "behavior"
-            ]
-        }
+        """A retention behavior is its metric's behavior block, less ``filter``."""
+        query_block = build_retention_metric_clause(RetentionMetric(RETENTION))[
+            "behavior"
+        ]
+        saved = build_behavior_definition(RETENTION)["behavior"]
+        assert saved == {k: v for k, v in query_block.items() if k != "filter"}
+        assert "filter" not in saved
 
 
 # =============================================================================
@@ -690,10 +775,20 @@ class TestFormulaWithOperands:
             "measurement": {},
             "referencedMetrics": [
                 {"type": "metric", **build_metric_definition(operands[0])},
-                {"type": "metric", **build_metric_definition(operands[1])},
+                {
+                    "type": "metric",
+                    "behavior": build_funnel_metric_clause(FunnelMetric(FUNNEL))[
+                        "behavior"
+                    ],
+                    "measurement": build_funnel_metric_clause(FunnelMetric(FUNNEL))[
+                        "measurement"
+                    ],
+                },
             ],
             "name": "Per",
         }
+        # A query keeps the legacy behavior key of every release.
+        assert clause["referencedMetrics"][1]["behavior"]["filter"] == []
 
     def test_clause_without_operands_is_unchanged(self) -> None:
         """Without operands ``referencedMetrics`` stays empty."""
@@ -706,12 +801,17 @@ class TestFormulaWithOperands:
             RetentionMetric(RETENTION),
         ]
         formula = Formula("A * B", label="ignored", metrics=[*operands])
-        assert build_formula_definition(formula) == {
+        definition = build_formula_definition(formula)
+        assert definition == {
             "formula": {
                 "definition": "A * B",
-                "referencedMetrics": build_formula_clause(formula)["referencedMetrics"],
+                "referencedMetrics": [
+                    {"type": "metric", **build_metric_definition(op)} for op in operands
+                ],
             }
         }
+        # The save schema has no legacy behavior filter key.
+        assert "filter" not in definition["formula"]["referencedMetrics"][1]["behavior"]
 
     def test_definition_needs_operands(self) -> None:
         """A formula without operands has no saved definition."""
