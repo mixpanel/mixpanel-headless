@@ -12113,17 +12113,30 @@ class CustomEventRef:
     """A reference to a saved custom event by its integer ID.
 
     A custom event is a saved union of events, with optional filters, under
-    one name. Use this reference where a behavior accepts an event, to count
-    the custom event instead of one raw event.
+    one name. Use this reference as the event of a :class:`Metric` or as
+    an event of a :class:`SimpleBehavior`, to count the custom event
+    instead of one raw event. The query counts each user once across the
+    events of the union.
+
+    The ID is ``CustomEvent.id`` from :meth:`Workspace.create_custom_event`,
+    or ``custom_event_id`` of an entry of :meth:`Workspace.list_custom_events`.
+    Where a query takes an event name only (a ``query_funnel`` step, a
+    ``query_retention`` event), pass the name ``"$custom_event:<id>"``
+    instead. The display name of a custom event is not an event name: it
+    matches no events and returns zero rows, with no error.
 
     Attributes:
         id: The custom event's server-assigned ID.
 
     Example:
         ```python
-        from mixpanel_headless.types import CustomEventRef, SimpleBehavior
+        from mixpanel_headless import CustomEventRef, Metric
 
-        behavior = SimpleBehavior([CustomEventRef(42)])
+        # Unique users of the custom event 42
+        result = ws.query(Metric(CustomEventRef(42), math="unique"))
+
+        # The same custom event as a funnel step, by name
+        result = ws.query_funnel(["$custom_event:42", "Purchase"])
         ```
     """
 
@@ -12228,7 +12241,7 @@ class FunnelBehavior:
 
     Example:
         ```python
-        from mixpanel_headless.types import Exclusion, FunnelBehavior
+        from mixpanel_headless import Exclusion, FunnelBehavior
 
         checkout = FunnelBehavior(
             ["View Cart", "Checkout", "Purchase"],
@@ -12320,7 +12333,7 @@ class RetentionBehavior:
 
     Example:
         ```python
-        from mixpanel_headless.types import RetentionBehavior
+        from mixpanel_headless import RetentionBehavior
 
         weekly = RetentionBehavior("Signup", "Login", retention_unit="week")
         ```
@@ -12364,6 +12377,13 @@ class RetentionBehavior:
 class FunnelMetric:
     """A funnel behavior measured as one metric, such as its conversion rate.
 
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`. The math and property rules are those of
+    :meth:`Workspace.query_funnel` and ``math_property``: a funnel metric
+    and a ``query_funnel`` call over the same funnel give the same number.
+    A property math with no property is refused, because the query server
+    refuses it too.
+
     Attributes:
         behavior: The funnel to measure.
         math: The funnel aggregation. Default:
@@ -12373,16 +12393,19 @@ class FunnelMetric:
             ``histogram``); optional for ``total``; refused for the others.
         step_index: The zero-based step to measure. ``None`` measures the
             whole funnel.
-        label: The display name of the metric. ``None`` lets the server
-            name it.
+        label: The series label. ``None`` lets the server name the series
+            after the first and last steps.
 
     Example:
         ```python
-        from mixpanel_headless.types import FunnelBehavior, FunnelMetric
+        from mixpanel_headless import FunnelBehavior, FunnelMetric, Metric
 
         checkout = FunnelBehavior(["Checkout", "Purchase"])
         rate = FunnelMetric(checkout, label="Checkout conversion")
         spend = FunnelMetric(checkout, math="average", property="amount")
+
+        # Conversion rate next to the number of users who checked out
+        result = ws.query([Metric("Checkout", math="unique"), rate])
         ```
     """
 
@@ -12433,6 +12456,9 @@ class FunnelMetric:
 class RetentionMetric:
     """A retention behavior measured as one metric, such as its retention rate.
 
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`.
+
     Attributes:
         behavior: The retention behavior to measure.
         math: The retention aggregation. Default: ``"retention_rate"``.
@@ -12444,15 +12470,16 @@ class RetentionMetric:
         property: The property to aggregate. Required for ``average``;
             optional for ``total``; refused for ``retention_rate`` and
             ``unique``.
-        label: The display name of the metric. ``None`` lets the server
-            name it.
+        label: The series label. ``None`` lets the server name the series
+            after the two events.
 
     Example:
         ```python
-        from mixpanel_headless.types import RetentionBehavior, RetentionMetric
+        from mixpanel_headless import RetentionBehavior, RetentionMetric
 
-        returning = RetentionBehavior("Signup", "Login")
+        returning = RetentionBehavior("Signup", "Login", retention_unit="day")
         day_7 = RetentionMetric(returning, bucket_index=7, label="Day 7 retention")
+        result = ws.query(day_7, last=60)
         ```
     """
 

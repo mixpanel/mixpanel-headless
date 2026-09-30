@@ -823,6 +823,11 @@ ALIAS_DOCS: dict[str, str] = {
         "Discriminated union over the three account variants, dispatched on "
         "the type field; build one from a dict with pydantic.TypeAdapter(Account)."
     ),
+    "FormulaOperand": (
+        "One operand of a Formula that holds its own operands (Formula.metrics): "
+        "a Metric, CohortMetric, FunnelMetric, or RetentionMetric, never another "
+        "Formula."
+    ),
     "PropertySpec": (
         "Any way of naming a property in a query parameter: a plain property "
         "name or a custom-property reference (Metric.property, "

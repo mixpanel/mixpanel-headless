@@ -101,7 +101,26 @@ may include API changes.
   `B29_OPERAND_MISSING_TYPE`. A saved-formula reference clause gets the
   positive-id check too. The bookmark schema check gains the warehouse
   show clause.
-
+- `Metric` counts more than one event as one series: pass a list of
+  event names and custom events, or a `SimpleBehavior` (optional series
+  name, per-event filters through `FunnelStep`). Unique users are counted
+  once across the events. Metric filters apply to every event.
+- `CustomEventRef(id)` queries a saved custom event by ID, alone or as one
+  of the events of a metric. The guide documents the `"$custom_event:<id>"`
+  name for funnel steps and retention events, and that the display name
+  of a custom event returns zero rows.
+- `FunnelMetric` and `RetentionMetric`, over `FunnelBehavior` and
+  `RetentionBehavior`, put funnel and retention measurements in
+  `Workspace.query()` and `build_params()`, next to other metrics. The
+  behaviors use the parameter names and defaults of `query_funnel()` and
+  `query_retention()`, and their rules keep the same error codes.
+- `Formula(expression, label=None, metrics=[...])` holds its own
+  operands (`FormulaOperand`): the letters name the operands, and the
+  formula can be the whole query. New error codes: `FM2_UNKNOWN_LETTER`,
+  `FM3_NESTED_FORMULA`, `FM4_SYNTAX`, `FM5_UPPER_E`; an expression with no
+  letter gets `V16_FORMULA_SYNTAX`.
+- New error codes for behaviors: `BH1_STEP_COUNT`, `BH2_EMPTY_EVENT`,
+  `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
@@ -114,6 +133,15 @@ may include API changes.
   defaults to `None`, so a `BehaviorRef` can stand alone. Event retention
   still needs it; a missing `return_event` gives `R2_EMPTY_RETURN_EVENT`
   instead of a `TypeError`.
+- A `Formula` without operands whose expression passes the
+  `V16_FORMULA_SYNTAX` and `V19_FORMULA_BOUNDS` checks but is outside
+  the server formula grammar (for example `A ^ -B`) is now refused with
+  `FM4_SYNTAX` before the request, not by the server.
+- `query_funnel()` and `query_retention()` refuse a step or event that
+  holds more than one event (a list or a `SimpleBehavior`) with a message
+  that names custom events as the fix. The funnel code stays
+  `F2_EMPTY_STEP_EVENT`; the retention codes are `R1_EMPTY_BORN_EVENT`
+  and `R2_EMPTY_RETURN_EVENT`.
 - Plugin: the skills now use the library's built-in reference for every
   API fact. The bundled `help.py` script is removed; skills look up
   signatures, types, and allowed values with `mp help <query>` (or

@@ -2329,11 +2329,14 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a MetricRef or a
-                SavedMetric (from ``list_metrics`` or ``get_metric``), a
-                Formula object, or a sequence mixing them. Formula
-                objects in the list are extracted and appended as formula
-                show clauses. ``math``, ``math_property``, and
+                a Metric object, a CohortMetric object, a FunnelMetric,
+                a RetentionMetric, a MetricRef or a SavedMetric (from
+                ``list_metrics`` or ``get_metric``), a Formula object, or
+                a sequence mixing them. Formula objects in the list are
+                extracted and appended as formula show clauses. A Formula
+                with its own operands (``metrics=``) can be the only
+                item. A Metric can count a custom event or more than one
+                event as one series. ``math``, ``math_property``, and
                 ``per_user`` apply to plain strings only: a CohortMetric
                 always counts unique users (CM3), and a saved metric keeps
                 its saved definition except for its own overrides. The
@@ -2555,11 +2558,13 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``MetricRef``,
-                ``SavedMetric``, ``Formula``, or a sequence mixing them. A
-                ``MetricRef`` or ``SavedMetric`` stays a reference in the
-                params (``{"type", "id", "overrides"}``), so a report built
-                from them follows the saved metric.
+                a ``Metric``, ``CohortMetric``, ``FunnelMetric``,
+                ``RetentionMetric``, ``MetricRef``, ``SavedMetric``,
+                ``Formula``, or a sequence mixing them. A ``Formula`` with
+                its own operands can be the only item. A ``MetricRef`` or
+                ``SavedMetric`` stays a reference in the params
+                (``{"type", "id", "overrides"}``), so a report built from
+                them follows the saved metric.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
