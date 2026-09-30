@@ -1,19 +1,18 @@
 """Live QA tests for saved metrics and saved behaviors (read only).
 
 Lists and gets saved metrics and saved behaviors against the real
-``/metrics`` and ``/behaviors`` App API endpoints, on the account
-``journey-lab-us`` (project 3409416, a shared project), and checks that
-every row parses into the open read models. The tests create, change, and
-delete nothing.
+``/metrics`` and ``/behaviors`` App API endpoints, and checks that every row
+parses into the open read models. The tests create, change, and delete
+nothing, so any project where the account may read saved metrics works,
+also a shared one.
 
 Usage:
-    uv run pytest tests/live/test_saved_metrics_live.py -v -m live
-    MP_SAVED_METRICS_ACCOUNT=other uv run pytest tests/live/test_saved_metrics_live.py -v -m live
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_saved_metrics_live.py -v -m live
 
-Constraints:
-    - Reads only; safe on a shared project.
-    - ``MP_SAVED_METRICS_ACCOUNT`` overrides the account (default
-      ``journey-lab-us``).
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to read with. The suite
+      skips when it is unset. The Workspace uses the account's default
+      project.
 """
 
 from __future__ import annotations
@@ -27,13 +26,14 @@ import mixpanel_headless as mp
 # All tests require the `live` marker — skipped by default
 pytestmark = pytest.mark.live
 
-_ACCOUNT = os.environ.get("MP_SAVED_METRICS_ACCOUNT", "journey-lab-us")
-
 
 @pytest.fixture(scope="module")
 def ws() -> mp.Workspace:
-    """One Workspace on the saved-metrics test account for the whole module."""
-    return mp.Workspace(account=_ACCOUNT)
+    """One Workspace on the ``MP_LIVE_ACCOUNT`` account, or a skip when unset."""
+    account = os.environ.get("MP_LIVE_ACCOUNT")
+    if not account:
+        pytest.skip("MP_LIVE_ACCOUNT is not set")
+    return mp.Workspace(account=account)
 
 
 class TestSavedMetricsLive:
