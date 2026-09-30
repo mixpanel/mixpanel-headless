@@ -1,0 +1,24 @@
+{
+  "results": {
+    "id": 162521,
+    "link": "lexicon/transformations/metrics/162521",
+    "name": "zz-probe-20260930T083034Z-event-total",
+    "owner": {
+      "canEdit": true,
+      "customDefinitionPermissions": [
+        "write_behaviors",
+        "write_cohorts",
+        "write_custom_properties",
+        "write_customevents",
+        "write_metrics"
+      ],
+      "email": "user@example.com",
+      "id": 1000001,
+      "name": "Example User"
+    },
+    "projectShares": [],
+    "teamShares": [],
+    "userShares": []
+  },
+  "status": "ok"
+}

@@ -1,0 +1,435 @@
+{
+  "details": {
+    "data": null,
+    "path": [
+      "root",
+      "behavior",
+      "definition"
+    ],
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregateBy": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "behaviors": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/definitions/SubBehavior"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": [],
+          "title": ""
+        },
+        "conversionWindowDuration": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "conversionWindowUnit": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ConversionWindowUnit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "customBucket": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Bucket"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "customEventSet": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "dataGroupId": {
+          "$ref": "#/definitions/DataGroupId",
+          "default": null,
+          "title": ""
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "datasetId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "disableCohortize": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "display": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetricDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "exclusions": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/definitions/ExclusionFunnelStep"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "filtersDeterminer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FiltersDeterminer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "funnelOrder": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FunnelOrder"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "funnelReentryMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FunnelReentryModeType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "hasUnsavedChanges": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": ""
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "profileType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "projectId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "raw_cohort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "renamed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "resourceType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/InsightsResourceType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionAlignmentType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RetentionAlignmentType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionCustomBucketSizes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RetentionType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionUnbounded": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionUnboundedMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RetentionUnboundedModeType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "retentionUnit": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TimeUnit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "segmentationEvent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MetricType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "unsavedId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        }
+      },
+      "title": "Behavior",
+      "type": "object"
+    }
+  },
+  "error": "definition: Additional properties are not allowed (&#x27;bogusKey&#x27; was unexpected){&#x27;type&#x27;: &#x27;simple&#x27;, &#x27;name&#x27;: &#x27;zz-probe-20260930T083034Z-behavior-bad-key&#x27;, &#x27;definition&#x27;: {&#x27;behavior&#x27;: {&#x27;type&#x27;: &#x27;simple&#x27;, &#x27;resourceType&#x27;: &#x27;events&#x27;, &#x27;behaviors&#x27;: [{&#x27;type&#x27;: &#x27;event&#x27;, &#x27;name&#x27;: &#x27;document created&#x27;, &#x27;filters&#x27;: [], &#x27;filtersDeterminer&#x27;: &#x27;all&#x27;}, {&#x27;type&#x27;: &#x27;event&#x27;, &#x27;name&#x27;: &#x27;document shared&#x27;, &#x27;filters&#x27;: [], &#x27;filtersDeterminer&#x27;: &#x27;all&#x27;}], &#x27;bogusKey&#x27;: True}}} is not valid under any of the given schemas",
+  "status": "error"
+}

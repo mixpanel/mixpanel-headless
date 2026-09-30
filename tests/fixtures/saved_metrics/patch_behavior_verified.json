@@ -1,0 +1,57 @@
+{
+  "results": {
+    "58856": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "created": "2026-09-30T08:30:54.689",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "aggregateBy": [],
+          "behaviors": [
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document created",
+              "type": "event"
+            },
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document shared",
+              "type": "event"
+            }
+          ],
+          "conversionWindowDuration": 7,
+          "conversionWindowUnit": "day",
+          "exclusions": [],
+          "funnelOrder": "loose",
+          "resourceType": "events",
+          "type": "funnel"
+        }
+      },
+      "description": null,
+      "id": 58856,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "last_verified": "2026-09-30T08:31:09.855",
+      "last_verified_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "modified": "2026-09-30T08:31:10.034",
+      "name": "zz-probe-20260930T083034Z-behavior-funnel",
+      "type": "funnel",
+      "verified": true
+    }
+  },
+  "status": "ok"
+}
