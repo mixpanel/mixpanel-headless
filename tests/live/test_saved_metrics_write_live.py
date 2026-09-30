@@ -10,7 +10,9 @@ The project can be shared with other users. Safety rules, enforced in code:
 - A test changes or deletes only ids that its own creates returned in the
   same run. Each update and delete first asserts that its target id is in
   the created set.
-- The module teardown deletes only the created ids.
+- The module teardown deletes only the created ids, then writes an audit
+  record (the run prefix, the created ids, and any id still active) to
+  ``saved_metrics_write_live.json`` in the temp directory.
 
 Usage:
     MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \
@@ -32,7 +34,9 @@ Environment:
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -151,9 +155,20 @@ def created(ws: mp.Workspace) -> Iterator[_Created]:
         ws.delete_metrics(sorted(tracker.metrics))
     if tracker.behaviors:
         ws.delete_behaviors(sorted(tracker.behaviors))
-    remaining = {m.id for m in ws.list_metrics()} & tracker.metrics
-    remaining |= {b.id for b in ws.list_behaviors()} & tracker.behaviors
-    assert remaining == set()
+    remaining_metrics = {m.id for m in ws.list_metrics()} & tracker.metrics
+    remaining_behaviors = {b.id for b in ws.list_behaviors()} & tracker.behaviors
+    audit = {
+        "prefix": _PREFIX,
+        "project_id": str(ws.api.project_id),
+        "created_metrics": sorted(tracker.metrics),
+        "created_behaviors": sorted(tracker.behaviors),
+        "active_after_teardown": sorted(remaining_metrics | remaining_behaviors),
+    }
+    audit_path = os.path.join(tempfile.gettempdir(), "saved_metrics_write_live.json")
+    with open(audit_path, "w", encoding="utf-8") as handle:
+        json.dump(audit, handle, indent=2)
+    assert remaining_metrics == set()
+    assert remaining_behaviors == set()
 
 
 class TestSavedMetricWriteCycle:
