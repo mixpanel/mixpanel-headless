@@ -1,16 +1,16 @@
 """Live integration tests for inline metrics over several events, funnel metrics, and formulas.
 
-Skipped by default. The queries are read-only. One step may create a custom
-event, only when no custom event already unions the two events and only when
-the resolved project id equals ``MP_LIVE_WRITE_PROJECT``; it deletes that
-custom event, by the id its own create returned, in teardown.
+Skipped by default (the ``live`` marker). The queries are read-only. One
+step may create a custom event, only when no custom event already unions
+the two events and only when the resolved project id equals
+``MP_LIVE_WRITE_PROJECT``; it deletes that custom event, by the id its own
+create returned, in teardown.
 
 Usage:
-    MP_LIVE_TESTS=1 MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \\
+    MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \\
         uv run pytest tests/live/test_inline_metrics_live.py -m live -v
 
 Environment:
-- ``MP_LIVE_TESTS=1`` — enable.
 - ``MP_LIVE_ACCOUNT`` — the account the suite uses (unset: the suite skips).
 - ``MP_LIVE_WRITE_PROJECT`` — write steps run only when the resolved
   project id equals it (unset or different: the write step skips).
@@ -30,8 +30,7 @@ queried again while its limit runs.
 Markers:
 - ``@pytest.mark.live`` lets the rest of the suite skip them via
   ``-m "not live"``.
-- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_TESTS`` or
-  ``MP_LIVE_ACCOUNT`` is absent.
+- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_ACCOUNT`` is absent.
 """
 
 from __future__ import annotations
@@ -61,10 +60,6 @@ _VALUE = os.environ.get("MP_LIVE_FILTER_VALUE", "San Francisco")
 
 pytestmark = [
     pytest.mark.live,
-    pytest.mark.skipif(
-        os.environ.get("MP_LIVE_TESTS") != "1",
-        reason="MP_LIVE_TESTS=1 not set — live tests skipped by default",
-    ),
     pytest.mark.skipif(
         not _ACCOUNT,
         reason="MP_LIVE_ACCOUNT not set — the suite needs a named account",
