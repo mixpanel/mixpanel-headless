@@ -2041,6 +2041,7 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "BH3_PROPERTY_MATH",
         # -- formula operands and metrics over several events: types.py ------
         "FM3_NESTED_FORMULA",
+        "FM7_WAREHOUSE_OPERAND",
         "MT3_FILTERS_WITH_BEHAVIOR",
         # -- saved behaviors inside inline metrics: types.py ------------------
         "BH5_BEHAVIOR_REF_TYPE",

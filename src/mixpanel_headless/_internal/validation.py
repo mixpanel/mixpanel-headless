@@ -2631,7 +2631,8 @@ def _validate_formula_operand_args(
         Type errors (``V21_INVALID_EVENT_TYPE``), the funnel and retention
         rules, the Metric rules, and custom property errors, under
         ``"{fpath}.metrics[i]"``. A ``MetricRef`` operand was checked at
-        construction (no override, not a formula) and adds nothing.
+        construction (no override, not a formula, not a warehouse metric)
+        and adds nothing.
     """
     errors: list[ValidationError] = []
     for j, operand in enumerate(formula.metrics or []):

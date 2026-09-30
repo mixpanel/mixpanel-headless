@@ -133,8 +133,10 @@ may include API changes.
   `funnel`), or a `RetentionMetric` (type `retention`); another type raises
   the new code `BH5_BEHAVIOR_REF_TYPE`. A `MetricRef` is an operand of a
   `Formula` with its own operands, written as `{"type", "id"}`; a
-  reference to a saved formula raises `FM3_NESTED_FORMULA`, and an operand
-  reference with an override raises `MR2_OPERAND_OVERRIDE`.
+  reference to a saved formula raises `FM3_NESTED_FORMULA`, a warehouse
+  metric reference raises `FM7_WAREHOUSE_OPERAND` (the server accepts only
+  behavior metrics as operands), and an operand reference with an override
+  raises `MR2_OPERAND_OVERRIDE`.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.

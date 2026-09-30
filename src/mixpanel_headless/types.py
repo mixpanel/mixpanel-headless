@@ -7768,9 +7768,13 @@ class Formula:
         label: Optional display label for the formula result.
         metrics: The formula's own operands, or ``None`` to name the other
             metrics of the query. An operand is an inline metric or a
-            ``MetricRef`` to a saved behavior metric or warehouse metric
-            (with no overrides, because the server ignores overrides on an
-            operand).
+            ``MetricRef`` to a saved behavior metric (with no overrides,
+            because the server ignores overrides on an operand). The server
+            refuses a warehouse metric as an operand; a ``MetricRef`` with
+            ``type="warehouse"`` (as ``SavedMetric.to_ref()`` makes for a
+            warehouse metric) is refused, but a bare ``MetricRef(id)``
+            keeps the default kind, so the client cannot detect a warehouse
+            metric behind it.
 
     Example:
         ```python
@@ -7821,7 +7825,8 @@ class Formula:
             ParamValidationError: If expression is empty
                 (``FM1_EMPTY_EXPRESSION``). With ``metrics``: if an operand
                 is a formula or a reference to a saved formula
-                (``FM3_NESTED_FORMULA``), a ``MetricRef`` operand sets an
+                (``FM3_NESTED_FORMULA``), an operand is a warehouse metric
+                (``FM7_WAREHOUSE_OPERAND``), a ``MetricRef`` operand sets an
                 override (``MR2_OPERAND_OVERRIDE``), the expression is not
                 in the server grammar (``FM4_SYNTAX``), a literal has an
                 uppercase E (``FM5_UPPER_E``), a letter names no operand
@@ -7848,6 +7853,14 @@ class Formula:
                     f"Formula.metrics[{i}] is a formula; an operand of a "
                     "formula cannot be another formula",
                     code="FM3_NESTED_FORMULA",
+                )
+            if isinstance(operand, MetricRef) and operand.type == "warehouse":
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a warehouse metric; the server "
+                    "accepts only behavior metrics as formula operands. Query "
+                    "a warehouse metric alone by reference, for example "
+                    "ws.query(MetricRef(id, type='warehouse'))",
+                    code="FM7_WAREHOUSE_OPERAND",
                 )
             if isinstance(operand, MetricRef):
                 # Raises MR2_OPERAND_OVERRIDE for a reference with overrides.
@@ -12626,8 +12639,8 @@ FormulaOperand: TypeAlias = (
 """One operand of a :class:`Formula` that holds its own operands.
 
 An inline metric of any kind except a formula, or a saved behavior metric
-or warehouse metric by reference (:class:`MetricRef` with no overrides): a
-formula cannot be an operand of another formula.
+by reference (:class:`MetricRef` with no overrides): a formula or a
+warehouse metric cannot be an operand of a formula.
 """
 
 

@@ -41,7 +41,9 @@ from mixpanel_headless.types import (
     Metric,
     MetricRef,
     RetentionMetric,
+    SavedMetric,
 )
+from tests.unit._saved_metric_fixtures import warehouse_metric_json
 
 _TEST_SESSION = Session(
     account=ServiceAccount(
@@ -114,16 +116,35 @@ class TestBehaviorRefConstruction:
 
 
 class TestMetricRefOperandConstruction:
-    """A saved metric can be a formula operand, unless it is a formula."""
+    """A saved behavior metric can be a formula operand; a formula or warehouse cannot."""
 
-    def test_metric_and_warehouse_refs_are_operands(self) -> None:
-        """Behavior-metric and warehouse references are accepted operands."""
-        operands: list[FormulaOperand] = [
-            MetricRef(10),
-            MetricRef(11, type="warehouse"),
-            Metric("Login"),
-        ]
+    def test_behavior_metric_refs_are_operands(self) -> None:
+        """Behavior-metric references are accepted operands."""
+        operands: list[FormulaOperand] = [MetricRef(10), MetricRef(11), Metric("Login")]
         assert Formula("A + B + C", metrics=operands).metrics == operands
+
+    def test_warehouse_ref_raises_fm7(self) -> None:
+        """A warehouse reference raises FM7_WAREHOUSE_OPERAND."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A + B", metrics=[Metric("Login"), MetricRef(11, type="warehouse")])
+        assert excinfo.value.code == "FM7_WAREHOUSE_OPERAND"
+        assert "Formula.metrics[1]" in excinfo.value.message
+        assert "behavior metrics" in excinfo.value.message
+
+    def test_saved_warehouse_metric_ref_raises_fm7(self) -> None:
+        """SavedMetric.to_ref() of a warehouse metric carries the kind and is refused."""
+        saved = SavedMetric.model_validate(warehouse_metric_json())
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A", metrics=[saved.to_ref()])
+        assert excinfo.value.code == "FM7_WAREHOUSE_OPERAND"
+
+    def test_bare_ref_to_a_warehouse_metric_is_not_detected(self) -> None:
+        """A bare MetricRef keeps the default kind, so the client cannot refuse it."""
+        assert Formula("A", metrics=[MetricRef(11)]).metrics == [MetricRef(11)]
+
+    def test_fm7_is_registered(self) -> None:
+        """FM7_WAREHOUSE_OPERAND is a minted registry code."""
+        assert "FM7_WAREHOUSE_OPERAND" in CODED_GUARD_REGISTRY
 
     def test_formula_ref_raises_fm3(self) -> None:
         """A reference to a saved formula cannot be an operand."""
@@ -213,11 +234,11 @@ class TestMetricRefOperands:
         """Reference operands keep their type; inline operands keep their blocks."""
         formula = Formula(
             "A / B + C",
-            metrics=[MetricRef(10), MetricRef(11, type="warehouse"), Metric("Login")],
+            metrics=[MetricRef(10), MetricRef(11), Metric("Login")],
         )
         assert build_formula_clause(formula)["referencedMetrics"] == [
             {"type": "metric", "id": 10},
-            {"type": "warehouse", "id": 11},
+            {"type": "metric", "id": 11},
             {"type": "metric", **build_metric_definition(Metric("Login"))},
         ]
 

@@ -135,7 +135,7 @@ inline_metrics: st.SearchStrategy[
 ] = st.one_of(metrics, funnel_metrics, retention_metrics, cohort_metrics)
 """Any inline metric."""
 
-operand_refs = st.builds(MetricRef, ids, type=st.sampled_from(["metric", "warehouse"]))
+operand_refs = st.builds(MetricRef, ids)
 """Saved-metric references that can be formula operands."""
 
 operands: st.SearchStrategy[FormulaOperand] = st.one_of(inline_metrics, operand_refs)

@@ -162,7 +162,7 @@ result = ws.query(
 )
 ```
 
-A `MetricRef` operand takes no override: the server ignores overrides on an operand, so the library refuses them (`MR2_OPERAND_OVERRIDE`). A saved formula is not an operand (`FM3_NESTED_FORMULA`).
+A `MetricRef` operand takes no override: the server ignores overrides on an operand, so the library refuses them (`MR2_OPERAND_OVERRIDE`). A saved formula is not an operand (`FM3_NESTED_FORMULA`), and neither is a warehouse metric (`FM7_WAREHOUSE_OPERAND`): the server accepts only behavior metrics as operands, so run a warehouse metric alone by reference.
 
 A reference changes the result labels: the series takes the saved name, with no math suffix such as `[Total Events]`. See [Insights Queries — Saved Metrics by Reference](query.md#saved-metrics-by-reference) for the override table, warehouse metrics, and every rule.
 

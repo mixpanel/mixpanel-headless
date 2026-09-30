@@ -623,13 +623,14 @@ result = ws.query(
 )
 ```
 
-An operand is a `Metric`, `CohortMetric`, `FunnelMetric`, `RetentionMetric`, or a `MetricRef` to a saved behavior metric or warehouse metric, never a formula. A `MetricRef` operand is written as `{"type": ..., "id": ...}` and takes no override. A saved formula stores this same form. The operands and the expression are checked when the `Formula` is built:
+An operand is a `Metric`, `CohortMetric`, `FunnelMetric`, `RetentionMetric`, or a `MetricRef` to a saved behavior metric, never a formula or a warehouse metric (the server accepts only behavior metrics as operands; run a warehouse metric alone by reference). A `MetricRef` operand is written as `{"type": "metric", "id": ...}` and takes no override. A bare `MetricRef(id)` keeps the default kind, so the library cannot detect a warehouse metric behind it; `SavedMetric.to_ref()` carries the kind. A saved formula stores this same form. The operands and the expression are checked when the `Formula` is built:
 
 | Code | Rule |
 |---|---|
 | `FM2_UNKNOWN_LETTER` | Each letter names an operand. |
 | `FM3_NESTED_FORMULA` | No operand is a formula or a reference to a saved formula. |
 | `MR2_OPERAND_OVERRIDE` | A `MetricRef` operand sets no override (the server ignores overrides on an operand). |
+| `FM7_WAREHOUSE_OPERAND` | No operand is a warehouse metric (`MetricRef(id, type="warehouse")`). |
 | `FM4_SYNTAX` | The expression uses `+ - * / ^`, unary minus, parentheses, numbers, and letters. Only a number, a letter, or a parenthesized expression can follow `^`: write `A ^ (-B)`, not `A ^ -B`. |
 | `FM5_UPPER_E` | A number uses a lowercase exponent (`1e5`, not `1E5`). |
 | `V16_FORMULA_SYNTAX` | The expression uses at least one letter. |

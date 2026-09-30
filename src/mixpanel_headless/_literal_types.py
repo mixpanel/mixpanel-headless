@@ -826,7 +826,8 @@ ALIAS_DOCS: dict[str, str] = {
     "FormulaOperand": (
         "One operand of a Formula that holds its own operands (Formula.metrics): "
         "a Metric, CohortMetric, FunnelMetric, RetentionMetric, or a MetricRef "
-        "with no overrides, never a formula."
+        "to a behavior metric with no overrides, never a formula or a warehouse "
+        "metric."
     ),
     "PropertySpec": (
         "Any way of naming a property in a query parameter: a plain property "
