@@ -76,8 +76,8 @@ GENERATED_CONTRACT_ARTIFACTS: tuple[str, ...] = (
 
 #: Generated artifacts that ``generate_contract.py`` emits but that no
 #: re-pin has written yet. Until one does, a missing file is not a finding
-#: (the library PR that adds a generator never writes the artifact, per the
-#: two-step protocol); once the file exists it is checked like every other
+#: (the library PR that adds a generator never writes the artifact; the next
+#: re-pin does); once the file exists it is checked like every other
 #: generated artifact, and its name must leave this set in the same re-pin
 #: (a present file still listed here is a finding).
 AWAITING_FIRST_REPIN: frozenset[str] = frozenset()

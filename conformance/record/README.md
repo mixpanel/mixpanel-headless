@@ -42,9 +42,9 @@ survives only in local reflogs and the stamp stops resolving once the
 branch is deleted (every stamp in the corpus before the 2026-09 re-pin had
 this defect — see `EXTRACTION-LEDGER.md`).
 
-CI enforces this with `conformance/record/check_stamps.py` (step
-"Stamp-provenance guard", before the drift check; locally
-`just conformance-stamps`):
+The Conformance workflow (`.github/workflows/conformance.yml`) enforces
+this with `conformance/record/check_stamps.py` (step "Stamp-provenance
+guard", before the drift check; locally `just conformance-stamps`):
 
 1. `manifest.source_commit`, every extracted `$bundle.source_commit`, and
    every `conformance/contract/*.json` `generated_from` must be a 40-hex
@@ -59,27 +59,63 @@ CI enforces this with `conformance/record/check_stamps.py` (step
    with `main` in anything other than the stamp fields, then
    `manifest.source_commit` must also differ from the merge-base's value.
 
-Consequence: a commit cannot contain its own SHA, so a PR that changes
-vectors cannot stamp them with its own future squash SHA. The repo adopts
-the **two-step protocol**:
+A commit cannot contain its own SHA, so a PR that changes vectors cannot
+stamp them with its own future squash SHA. Vector changes therefore land in
+a separate re-pin PR that stamps a commit already on `main`.
 
-1. **Library PR.** Land the `src/` / `tests/` change WITHOUT touching
-   `conformance/vectors/` or `conformance/contract/`. The drift check will
-   fail on that PR if the change alters recorded behavior; that is the
-   expected signal, and the PR should say so (the R10.7 batch, PR #208,
-   is the precedent: "Conformance vectors deliberately NOT touched
-   (RE-PIN task owns re-extraction)"). Merge it; note the squash SHA on
-   `main`.
-2. **Re-pin PR.** Re-extract with `--mp-record-commit=<that squash SHA>`
-   and `--mp-record-date=<today>`, regenerate the contract with
-   `--generated-from <the same SHA>`, append an `EXTRACTION-LEDGER.md`
-   entry, and open a conformance-only PR. Rule 2 passes because the stamp
-   moved with the content; rule 1 passes because the SHA is on `main`.
+### When to re-pin
 
-The single-PR alternative — stamping with the PR's merge-base on `main` —
-also satisfies both rules, but the stamp then names the code BEFORE the
-change and anyone following it will not find the source of the new
-vectors. It is NOT adopted. Use the two-step protocol.
+Once per release. The TypeScript port follows releases, not `main`, so the
+corpus only needs to match the code that shipped.
+
+The Conformance workflow runs in one of two modes:
+
+- **Strict mode**: a pull request that changes `manifest.source_commit`
+  (a re-pin). Any drift fails the job.
+- **Report mode**: every other run (other pull requests that change
+  `conformance/`, pushes to `main`, releases, manual runs). The job
+  summary and a warning annotation report drift, the drift report and the
+  re-extracted corpus upload as the `conformance-drift` artifact, and the
+  job passes.
+
+In both modes, a type error in `conformance/`, a crashed pytest session, a
+failed recording run, and a stamp-provenance finding fail the job.
+
+The cycle:
+
+1. **Library PRs** never touch `conformance/vectors/` or
+   `conformance/contract/`, and the workflow does not run on them.
+   Between releases, `main` drifts from the corpus. The workflow runs after
+   each merge to `main`, so the job summary and the artifact show which
+   merge changed which vectors.
+2. **Release.** The workflow also runs on each published release. If the
+   code drifted, its job summary names the release commit to stamp.
+3. **Re-pin PR.** After the release commit is on `main`, open one
+   conformance-only PR from a worktree cut from `origin/main`:
+   1. Check that `src/` and `tests/` still equal the release commit:
+      `git diff --quiet <release SHA> origin/main -- src tests`.
+   2. Re-extract with `--mp-record-commit=<release SHA>` and
+      `--mp-record-date=<today>`.
+   3. Regenerate the contract with `--generated-from <the same SHA>`, and
+      regenerate each authored bundle whose generator output changed.
+   4. Append an `EXTRACTION-LEDGER.md` entry.
+
+   Strict mode applies. Rule 2 passes because the stamp moved with the
+   content, and rule 1 passes because the SHA is on `main`. The workflow
+   also fails the PR if `src/` or `tests/` differ from the new stamp.
+
+If a library change reached `main` after the release, the release SHA no
+longer names the code that records the corpus: the drift check records from
+the PR's own code, not from the code at the stamp. Stamp the current `main`
+commit instead, say so in the ledger entry, and pin the TypeScript port to
+that SHA.
+
+A conformance tooling PR between re-pins runs in report mode. Some tooling
+tests compare committed files with the live library (the enums snapshot,
+the generated help bundle, contract census counts), so a failure there can
+be drift, and the workflow cannot tell it from a tooling bug. Run
+`just conformance` locally and read the job summary before you merge. The
+next re-pin runs everything in strict mode.
 
 After each re-pin PR merges, the TypeScript port (`mixpanel-headless-ts`)
 re-pins to the same SHA: set `conformance-runner/corpus.config.json`
@@ -129,9 +165,9 @@ Runtime-detected buckets that are NOT in the D10 design list:
   unfiltered extraction produced 30 loopback-host `wire` vectors that
   failed 26/30 under the runner.
 
-## Drift check (D8)
+## Drift check
 
-CI's `conformance` job re-extracts to `/tmp/re-extract` with the committed
+The Conformance workflow re-extracts to `/tmp/re-extract` with the committed
 manifest's own stamps injected, then runs the bidirectional byte-diff.
 Because the stamps are injected back in, this check proves that the
 vectors reproduce but says nothing about whether the stamps are RIGHT;
@@ -145,4 +181,5 @@ Scope is the extracted subset only (`authored/**` and `enums/**` excluded —
 record mode never emits them; `enums/` is regenerated only by an explicit
 flag). Within scope, bundle-path sets, per-bundle vector-id sets, per-line
 bytes, `$bundle` headers, `manifest.json`, and `api-index.json` must all
-match in BOTH directions; any asymmetry fails the PR.
+match in BOTH directions. Any asymmetry is drift: it fails a re-pin PR, and
+every other run reports it (see "When to re-pin").
