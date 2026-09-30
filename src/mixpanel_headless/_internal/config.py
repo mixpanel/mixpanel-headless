@@ -1027,6 +1027,16 @@ class ConfigManager:
             )
         return (name, value)
 
+    def get_settings(self) -> dict[str, Any]:
+        """Return a shallow copy of the raw ``[settings]`` table, not validated.
+
+        Returns:
+            The table, or ``{}`` when the file or a ``[settings]`` table is absent.
+        Raises:
+            ConfigError: If the TOML file is malformed.
+        """
+        return {**s} if isinstance(s := self._read_raw().get("settings"), dict) else {}
+
     def set_custom_header(self, *, name: str, value: str) -> None:
         """Write the custom HTTP header to ``[settings].custom_header``.
 

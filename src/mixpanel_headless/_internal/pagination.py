@@ -18,6 +18,10 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from mixpanel_headless._internal.api_client import (
+    log_rate_limit_retry,
+    pacer_window_tripped,
+)
 from mixpanel_headless.exceptions import (
     AuthenticationError,
     MixpanelHeadlessError,
@@ -194,18 +198,23 @@ def paginate_all(
                         request_method="GET",
                         request_url=url,
                     )
-                # Honor a sane Retry-After, but never sleep longer than the
-                # backoff cap — a server-advertised hour would hang the walk.
-                if advertised is None:
+                # After a pacer window trip the pacer owns the wait: the next
+                # attempt passes through it again. Otherwise honor a sane
+                # Retry-After, but never sleep longer than the backoff cap —
+                # a server-advertised hour would hang the walk.
+                if pacer_window_tripped(response):
+                    wait_time = 0.0
+                elif advertised is None:
                     wait_time = min(_BACKOFF_BASE * (2**attempt), _BACKOFF_MAX)
                 else:
                     wait_time = min(advertised, _BACKOFF_MAX)
-                logger.warning(
-                    "Rate limited during pagination, retrying in %.1f seconds "
-                    "(attempt %d/%d)",
+                log_rate_limit_retry(
+                    logger,
+                    response,
                     wait_time,
-                    attempt + 1,
+                    attempt,
                     MAX_RATE_LIMIT_RETRIES,
+                    context=" during pagination",
                 )
                 time.sleep(wait_time)
                 continue

@@ -9,6 +9,60 @@ may include API changes.
 
 ### Added
 
+- Client-side request pacing (the shared query ledger). Before a request
+  that counts against the Mixpanel Query API limit (counted Query API
+  endpoints and the first page of a profile query), the library checks a
+  small ledger file per host and project under
+  `~/.mp/pacer/` (or `$MP_STORAGE_DIR/pacer/`). Every `mp` process and
+  Python session on the machine shares it. Under the budget nothing
+  changes. A short wait (30 seconds by default) is absorbed. A longer wait
+  raises `RateLimitError` at once, with the exact time of the next slot and
+  no request sent, instead of a 429, blind retries, and a `retry_after`
+  that could be off by most of an hour. The typed queries (`query`,
+  `query_funnel`, `query_retention`, `query_flow`, `activity_feed`), which
+  send the project ID in the request body, are paced too. App API calls
+  and later profile pages (which the server does not count) are not paced.
+  Raw event export has separate limits on a separate system; it is not
+  paced, and its 429 handling does not change.
+  A request whose connection fails gives its slot back. A 429 without a
+  `RateLimit` header that names a limit (for example, from a proxy) gets
+  the same retry as before.
+- When the pacer cannot work (an unusable ledger directory, a file lock
+  that stays busy, or an internal error), requests go out unpaced and the
+  library logs one warning per process. When the file system has no file
+  lock support, pacing still works inside one process, but the processes
+  on the machine are not paced together; the library logs one warning.
+- When the server rejects queries that the ledger cannot explain (other
+  clients use the project's hourly quota), the pause before the next probe
+  starts at one window divided by the limit (60 seconds at 60 per hour),
+  doubles with each such 429 in a row up to one hour, and resets after a
+  success.
+- Raised rate limits are learned from the server: the first query past the
+  default of 60 per hour goes out as a probe, and a rejected probe does not
+  count against the budget. A known limit can also be set with
+  `MP_PACER_QUERY_LIMIT` or `[settings.pacer_query_limits]` in
+  `config.toml`. A configured limit is a ceiling: the lower of it and the
+  server's limit applies. A limit set lower than the real one is never
+  raised, so it can leave room for teammates on the same project.
+- New settings: `MP_PACER` (`on` / `off`, also `true` / `false`, `1` / `0`,
+  `yes` / `no`; `[settings] pacer`),
+  `MP_PACER_MAX_WAIT` (seconds or `inf`; `[settings] pacer_max_wait`), and
+  `MP_PACER_QUERY_LIMIT`. In Python, `MP_PACER_MAX_WAIT` applies to each
+  request; inside an `mp` command it is a budget for the total of all
+  pacer waits in the command. After a pacer wait, the library resolves the
+  `Authorization` header again, so a long wait does not send an expired
+  OAuth token; if that refresh fails, nothing is sent and the refresh
+  error is raised. `MP_PACER=off` restores the previous behavior exactly.
+- `RateLimitError` accepts a keyword-only `details` mapping, which adds
+  keys but never replaces the standard ones. A pacer error carries `limit`, `used`, `window_seconds`, `next_slot_at`,
+  `limit_source`, `bucket`, `sent: False`, and `reason` in `details`.
+  `reason` is `"ledger"` when this machine's own requests fill the budget,
+  or `"server"` when the server reported the budget full and other clients
+  probably share the project. A `"server"` error also carries
+  `blocked_streak`, the number of such 429s in a row. The CLI still exits
+  with code 5.
+- Docs: a new Request Pacing guide page.
+
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.

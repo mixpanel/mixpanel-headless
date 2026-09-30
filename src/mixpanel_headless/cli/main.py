@@ -25,8 +25,6 @@ import mixpanel_headless
 from mixpanel_headless._internal.client_metadata import set_entry_point
 from mixpanel_headless.cli.utils import ExitCode, err_console
 
-set_entry_point("cli")
-
 
 def _get_rich_markup_mode() -> Literal["markdown", "rich"] | None:
     """Determine rich_markup_mode based on terminal detection.
@@ -146,6 +144,15 @@ def main(
     Designed for AI coding agents. Discover schema, run live analytics,
     and manage Mixpanel entities programmatically.
     """
+    # Set here, not at import: importing this module from a Python program
+    # or a test must not turn the whole process into the CLI.
+    set_entry_point("cli")
+    # In the CLI the pacer's max wait is a budget per command. Several
+    # commands can run in one process (CliRunner, an embedded CLI), so each
+    # one starts with the full budget.
+    from mixpanel_headless._internal.pacer import reset_wait_budget
+
+    reset_wait_budget()
     ctx.ensure_object(dict)
 
     if target is not None and (
