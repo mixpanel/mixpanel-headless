@@ -297,6 +297,7 @@ Manage the saved metrics of the project (behavior metrics, formulas, warehouse m
 | `mp metrics create` | Create a saved metric from a definition file or stdin |
 | `mp metrics update` | Update a saved metric |
 | `mp metrics verify` | Verify or unverify saved metrics in one request |
+| `mp metrics query` | Run a saved metric by reference |
 | `mp metrics delete` | Delete one or more saved metrics |
 
 ### behaviors — Saved Behavior Management

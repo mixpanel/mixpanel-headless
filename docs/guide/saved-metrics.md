@@ -172,12 +172,16 @@ A saved metric takes its kind from its definition; you never write the wire `typ
 
 | Definition value | Kind |
 |---|---|
-| `mp.Metric(...)` | `metric` (the `behavior` and `measurement` of its show clause) |
+| `mp.Metric(...)`, including a list of events or a `SimpleBehavior` | `metric` (the `behavior` and `measurement` of its show clause) |
 | `mp.CohortMetric(...)` | `metric` (a cohort size metric) |
+| `mp.FunnelMetric(...)`, `mp.RetentionMetric(...)` | `metric` (a funnel or retention measurement; the behavior can be a `BehaviorRef`) |
+| `mp.Formula(expression, metrics=[...])` | `formula` (the operands are saved inside it; a `MetricRef` operand stays a reference) |
 | `mp.WarehouseMetric(source_id, sql, metric_type, ...)` | `warehouse` |
 | `mp.RawMetricDefinition(kind, definition, warehouse_source_id=None)` | the kind it names |
 
-`RawMetricDefinition` takes a wire definition dict, for example the `definition` of a metric that `get_metric` returned. Use it for shapes that no typed value covers, such as profile metrics and saved formulas.
+The typed values go through the same builders as `ws.query()`, so a saved metric queries the same way as its inline twin. A `Formula` without `metrics` names the other metrics of a query by letter, so it cannot be saved (`SM7_FORMULA_WITHOUT_OPERANDS`). `RawMetricDefinition` takes a wire definition dict, for example the `definition` of a metric that `get_metric` returned. Use it for shapes that no typed value covers, such as profile metrics.
+
+A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehavior`, or a `RawBehaviorDefinition`; its wire type comes from the value. The saved definition never holds a `name`: the saved behavior's own name labels it.
 
 === "Python"
 
@@ -193,6 +197,21 @@ A saved metric takes its kind from its definition; you never write the wire `typ
         goals=[mp.MetricGoal(label="Q4", checkpoints=[(date(2026, 12, 31), 5000)])],
         owned_by=12345,        # user id
         verified=True,
+    ))
+
+    # A saved formula over an inline metric and a saved metric
+    ws.create_metric(mp.CreateMetricParams(
+        name="Purchases per signup",
+        definition=mp.Formula(
+            "A / B",
+            metrics=[mp.Metric("Purchase", math="unique"), mp.MetricRef(104700)],
+        ),
+    ))
+
+    # A funnel metric
+    ws.create_metric(mp.CreateMetricParams(
+        name="Checkout conversion",
+        definition=mp.FunnelMetric(mp.FunnelBehavior(["View Cart", "Purchase"])),
     ))
 
     # A warehouse metric (the source id is in the project's warehouse sources)
@@ -212,10 +231,14 @@ A saved metric takes its kind from its definition; you never write the wire `typ
         definition=mp.RawMetricDefinition(source.type, source.definition),
     ))
 
-    # A saved behavior
+    # A saved behavior, then a funnel metric over it
     checkout = ws.create_behavior(mp.CreateBehaviorParams(
         name="Checkout",
-        behavior=mp.RawBehaviorDefinition(ws.get_behavior(3001).definition),
+        behavior=mp.FunnelBehavior(["View Cart", "Checkout", "Purchase"], conversion_window=7),
+    ))
+    ws.create_metric(mp.CreateMetricParams(
+        name="Checkout conversion (saved funnel)",
+        definition=mp.FunnelMetric(checkout.to_ref()),
     ))
     ```
 
@@ -279,6 +302,17 @@ A new definition replaces the stored one in full, because that is what the serve
 `bulk_update_metrics` reads each metric that gets a new definition, then sends one request. The server skips ids that do not name a metric of the project, with no error; `mp metrics verify` names the skipped ids on stderr.
 
 `verified=True` stamps the verification time again on each call; `verified=False` clears the flag. An owner cannot be removed once set.
+
+## Run a saved metric
+
+`ws.query()` runs a saved metric by reference (see [Query by reference](#query-by-reference)). From the shell, `mp metrics query ID` reads the metric to learn its kind, then runs it:
+
+```bash
+mp metrics query 104700 --from 2024-09-01 --to 2024-09-30 --unit week
+mp metrics query 104700 --last 90 --group-by '$os' --format table
+```
+
+A `WarehouseMetric` is a definition, not a query value: the server runs warehouse SQL only by saved id, so `ws.query()` refuses it (`MR3_WAREHOUSE_INLINE`). Save it with `create_metric`, then query the reference.
 
 ## Delete
 
@@ -346,6 +380,7 @@ The server has several traps. The write methods handle them before any request, 
 | `SM2_NAME_TOO_LONG` | The name and the description have at most 255 characters. The server fails with a 500 on a longer value. |
 | `SM3_KIND_CHANGE` | A new definition keeps the kind of the stored metric (or the type of the stored behavior) and the warehouse source. The server ignores a new kind but stores the new definition, which would leave a definition that does not match its kind. |
 | `SM4_SCHEMA` | The definition passes a mirror of the server's POST schema. The error names the field path, because the server's own 400 message can name the wrong cause. `validate=False` (CLI: `--no-validate`) skips this check. |
+| `SM7_FORMULA_WITHOUT_OPERANDS` | A saved formula holds its own operands (`Formula(expression, metrics=[...])`). |
 | `FM6_OPERAND_ATTRIBUTION` | No operand of a saved formula sets a segment method or an attribution model. The query engine drops or rejects them, and the web app refuses to save such a formula. Set attribution on the formula's own measurement instead. |
 
 Other traps the library handles for you:

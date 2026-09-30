@@ -182,6 +182,18 @@ may include API changes.
   message: the failure and its schema location, without the HTML-escaped
   copy of the request that the server appends. The full body stays in
   `response_body`.
+- Saved definitions from the typed values: `CreateMetricParams` takes a
+  `FunnelMetric`, a `RetentionMetric`, a `Metric` over several events, and
+  a `Formula` with its own operands (a `MetricRef` operand stays a
+  reference), compiled by the same builders as `Workspace.query`.
+  `CreateBehaviorParams` takes a `SimpleBehavior`, `FunnelBehavior`, or
+  `RetentionBehavior` (new alias `BehaviorDefinition`); the saved
+  definition never holds a name. A `Formula` without operands raises the
+  new code `SM7_FORMULA_WITHOUT_OPERANDS`.
+- `Workspace.query` and `build_params` refuse a `WarehouseMetric` with the
+  new code `MR3_WAREHOUSE_INLINE`: the server runs warehouse SQL only by
+  saved id, so a warehouse metric is saved first and queried by reference.
+- CLI: `mp metrics query ID` runs a saved metric by reference.
 - CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
   `--definition-file FILE|-` takes the wire definition that `get` prints,
   so get, edit, and update is a round trip. `mp metrics verify` names on
