@@ -20,6 +20,10 @@ Environment:
 - ``MP_TEST_WRITE_PROJECT`` — the only project id where the test may create
   a custom event (unset: the test skips when none exists).
 
+Rate limits: the client does not retry a 429 here. A test that gets one is
+skipped, and the skip reason records the error, so a shared project is not
+queried again while its limit runs.
+
 Markers:
 - ``@pytest.mark.live`` lets the rest of the suite skip them via
   ``-m "not live"``.
@@ -29,13 +33,17 @@ Markers:
 from __future__ import annotations
 
 import copy
+import functools
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import ParamSpec
 
 import pytest
 
 import mixpanel_headless as mp
-from mixpanel_headless.exceptions import QueryError
+from mixpanel_headless.exceptions import QueryError, RateLimitError
+
+_P = ParamSpec("_P")
 
 pytestmark = [
     pytest.mark.live,
@@ -56,10 +64,33 @@ _VALUE = os.environ.get("MP_TEST_FILTER_VALUE", "San Francisco")
 _WRITE_PROJECT = os.environ.get("MP_TEST_WRITE_PROJECT")
 
 
+def _skip_on_429(test: Callable[_P, None]) -> Callable[_P, None]:
+    """Turn a rate-limit error in a test into a skip that records it.
+
+    Args:
+        test: The test function.
+
+    Returns:
+        The wrapped test.
+    """
+
+    @functools.wraps(test)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> None:
+        """Run the test; skip with the error text on a 429."""
+        try:
+            test(*args, **kwargs)
+        except RateLimitError as exc:
+            pytest.skip(f"429 from the project, not retried: {exc}")
+
+    return wrapper
+
+
 @pytest.fixture(scope="module")
 def ws() -> mp.Workspace:
-    """One Workspace on the chosen account for the whole module."""
-    return mp.Workspace(account=_ACCOUNT) if _ACCOUNT else mp.Workspace()
+    """One Workspace on the chosen account, with no retry on a 429."""
+    workspace = mp.Workspace(account=_ACCOUNT) if _ACCOUNT else mp.Workspace()
+    workspace._require_api_client()._max_retries = 0
+    return workspace
 
 
 def _total(ws: mp.Workspace, events: object) -> float:
@@ -106,7 +137,10 @@ def union_custom_event(ws: mp.Workspace) -> Iterator[int]:
     Yields:
         The custom event id.
     """
-    found = _find_union_custom_event(ws)
+    try:
+        found = _find_union_custom_event(ws)
+    except RateLimitError as exc:
+        pytest.skip(f"429 from the project, not retried: {exc}")
     if found is not None:
         yield found
         return
@@ -130,6 +164,7 @@ def union_custom_event(ws: mp.Workspace) -> Iterator[int]:
 class TestMetricOverTwoEvents:
     """A metric over two events counts like the custom event of the same union."""
 
+    @_skip_on_429
     def test_unique_matches_custom_event(
         self, ws: mp.Workspace, union_custom_event: int
     ) -> None:
@@ -144,6 +179,7 @@ class TestMetricOverTwoEvents:
         assert several == by_ref == by_name
         assert several > 0
 
+    @_skip_on_429
     def test_display_name_of_a_custom_event_returns_no_rows(
         self, ws: mp.Workspace, union_custom_event: int
     ) -> None:
@@ -161,6 +197,7 @@ class TestMetricOverTwoEvents:
 class TestSimpleBehaviorFilters:
     """Filters on a multi-event behavior work per event, not on the behavior."""
 
+    @_skip_on_429
     def test_behavior_level_filters_are_ignored_and_event_filters_apply(
         self, ws: mp.Workspace
     ) -> None:
@@ -191,6 +228,7 @@ class TestSimpleBehaviorFilters:
 class TestFunnelMetric:
     """A funnel metric gives the number of ``query_funnel`` for the same funnel."""
 
+    @_skip_on_429
     def test_conversion_rate_matches_query_funnel(self, ws: mp.Workspace) -> None:
         """The funnel metric's rate equals the overall rate of query_funnel."""
         behavior = mp.FunnelBehavior([_A, _C])
@@ -198,6 +236,7 @@ class TestFunnelMetric:
         engine = ws.query_funnel([_A, _C], from_date=_FROM, to_date=_TO)
         assert rate == pytest.approx(engine.overall_conversion_rate)
 
+    @_skip_on_429
     def test_time_math_without_property_is_refused_by_the_server(
         self, ws: mp.Workspace
     ) -> None:
@@ -216,6 +255,7 @@ class TestFunnelMetric:
 class TestFormulaWithOperands:
     """A formula with its own operands computes over them, not the query's metrics."""
 
+    @_skip_on_429
     def test_ratio_of_operands(self, ws: mp.Workspace) -> None:
         """``A / B`` over two operands equals the ratio of their counts."""
         a = _total(ws, mp.Metric(_B, math="unique"))
