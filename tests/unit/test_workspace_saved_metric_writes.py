@@ -1069,7 +1069,11 @@ class TestTypedWrites:
     def test_create_refuses_a_raw_legacy_key_update_sends_it(
         self, temp_dir: Path
     ) -> None:
-        """A raw legacy key fails SM4 on create; an update sends it as given."""
+        """A raw legacy key fails SM4 on create; an update sends it as given.
+
+        A create with ``validate=False`` also sends it, and leaves the
+        refusal to the server.
+        """
         raw = RawMetricDefinition(
             "metric",
             {
@@ -1081,6 +1085,7 @@ class TestTypedWrites:
             {
                 ("GET", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1)),
                 ("PATCH", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1)),
+                ("POST", _METRICS_PATH): _ok(behavior_metric_json(2)),
             }
         )
         ws = _make_workspace(temp_dir, server)
@@ -1090,6 +1095,8 @@ class TestTypedWrites:
         assert server.requests == []
         ws.update_metric(1, UpdateMetricParams(definition=raw))
         assert server.body(1)["definition"]["behavior"]["filter"] == []
+        ws.create_metric(CreateMetricParams(name="n", definition=raw), validate=False)
+        assert server.body(2)["definition"]["behavior"]["filter"] == []
 
     def test_create_behavior_refuses_a_raw_legacy_key(self, temp_dir: Path) -> None:
         """A raw behavior definition with a legacy key fails SM4 on create."""

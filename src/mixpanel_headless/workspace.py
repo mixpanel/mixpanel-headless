@@ -9142,8 +9142,10 @@ class Workspace:
             params: Name, definition, and optional description, display,
                 goals, owner, and verified flag.
             validate: Check the definition with the mirror of the server
-                schema before the request (default). ``False`` sends it as
-                given; the server still checks a create.
+                schema before the request (default), including the refusal
+                of legacy keys such as a behavior ``filter``. ``False``
+                sends it as given; the server still checks a create and
+                answers a failing definition with a 400 (``QueryError``).
 
         Returns:
             The created ``SavedMetric`` (after the second request, when one
@@ -9688,8 +9690,10 @@ class Workspace:
         Args:
             params: Name, behavior definition, and optional description.
             validate: Check the definition with the mirror of the server
-                schema before the request (default). ``False`` sends it as
-                given; the server still checks a create.
+                schema before the request (default), including the refusal
+                of legacy keys such as a behavior ``filter``. ``False``
+                sends it as given; the server still checks a create and
+                answers a failing definition with a 400 (``QueryError``).
 
         Returns:
             The created ``SavedBehavior``.

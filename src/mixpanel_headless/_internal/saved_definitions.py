@@ -813,8 +813,10 @@ def prepare_new_metric(
         definition: The definition value.
         display: Presentation settings, or ``None``.
         goals: Goals, or ``None``.
-        validate: Run the schema mirror. ``False`` skips it; the operand
-            rule still runs.
+        validate: Run the schema mirror. ``False`` skips it, including the
+            legacy-key refusal of ``for_create``, and the server then
+            answers a failing create with a 400; the operand rule still
+            runs.
         for_create: The definition goes into a create, so the mirror also
             refuses legacy keys that the server's create schema leaves out.
 
