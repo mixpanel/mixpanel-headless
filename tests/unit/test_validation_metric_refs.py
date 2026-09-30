@@ -402,6 +402,23 @@ class TestWarehouseShowClauseMirror:
         assert _codes(errors) == ["B0_INVALID_LITERAL"]
         assert errors[0].path == "sections.show[0].metricType"
 
+    def test_operand_metric_id_is_tolerated(self) -> None:
+        """A stored operand may carry the server's string metric_id.
+
+        The server adds ``metric_id`` to saved formula operands in its
+        responses, and clients send it back; its ``BehaviorShowClause``
+        ignores the key.
+        """
+        clause = {
+            "type": "formula",
+            "definition": "A / B",
+            "referencedMetrics": [
+                {"type": "metric", "id": 5, "metric_id": "5"},
+                {"type": "metric", "id": 6, "metric_id": "6"},
+            ],
+        }
+        assert self._validate(clause) == []
+
     def test_metric_and_formula_references_pass(self) -> None:
         """Behavior-metric and formula references pass their own models."""
         assert self._validate({"type": "metric", "id": 42, "overrides": {}}) == []

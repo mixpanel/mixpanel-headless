@@ -1173,6 +1173,10 @@ class BehaviorShowClause(BaseModel):
     goals: list[Goal] | None = None
     overrides: dict[str, Any] | None = None
 
+    # The server adds a string ``metric_id`` to saved formula operands in
+    # its responses, and clients send it back; tolerated, never surfaced.
+    metric_id: Ignore[JsonValue]
+
 
 class FormulaShowClause(BaseModel):
     """Mirrors show.py ``FormulaShowClause``.

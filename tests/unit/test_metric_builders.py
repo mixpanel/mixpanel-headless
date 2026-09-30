@@ -1067,7 +1067,7 @@ class TestBuildMetricRefOverrides:
                 segment_method="first",
                 funnel_order="loose",
                 step_index=1,
-                retention_bucket_index=2,
+                bucket_index=2,
                 hidden=True,
             )
         )
@@ -1099,7 +1099,7 @@ class TestBuildMetricRefOverrides:
     def test_zero_indexes_are_written(self) -> None:
         """Index zero is a real override, not an absent one."""
         assert build_metric_ref_overrides(
-            MetricRef(1, step_index=0, retention_bucket_index=0)
+            MetricRef(1, step_index=0, bucket_index=0)
         ) == {"measurement": {"stepIndex": 0, "retentionBucketIndex": 0}}
 
     def test_raw_overrides_merge_last(self) -> None:
@@ -1222,7 +1222,7 @@ class TestBuildOperandRefClause:
             {"segment_method": "first"},
             {"funnel_order": "any"},
             {"step_index": 0},
-            {"retention_bucket_index": 0},
+            {"bucket_index": 0},
             {"hidden": True},
             {"hidden": False},
             {"overrides": {"measurement": {"actionMode": "include"}}},

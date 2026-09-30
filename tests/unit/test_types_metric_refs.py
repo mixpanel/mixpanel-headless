@@ -41,7 +41,7 @@ class TestMetricRefConstruction:
         assert ref.segment_method is None
         assert ref.funnel_order is None
         assert ref.step_index is None
-        assert ref.retention_bucket_index is None
+        assert ref.bucket_index is None
         assert ref.hidden is None
         assert ref.overrides is None
 
@@ -62,7 +62,7 @@ class TestMetricRefConstruction:
             segment_method="first",
             funnel_order="any",
             step_index=2,
-            retention_bucket_index=1,
+            bucket_index=1,
             hidden=True,
             overrides={"measurement": {"actionMode": "include"}},
         )
@@ -74,7 +74,7 @@ class TestMetricRefConstruction:
         assert ref.segment_method == "first"
         assert ref.funnel_order == "any"
         assert ref.step_index == 2
-        assert ref.retention_bucket_index == 1
+        assert ref.bucket_index == 1
         assert ref.hidden is True
         assert ref.overrides == {"measurement": {"actionMode": "include"}}
 
@@ -181,8 +181,8 @@ class TestMetricRefOverrideValueGuard:
             {"step_index": -1},
             {"step_index": True},
             {"step_index": 1.0},
-            {"retention_bucket_index": -2},
-            {"retention_bucket_index": False},
+            {"bucket_index": -2},
+            {"bucket_index": False},
             {"percentile_value": float("nan")},
             {"percentile_value": float("inf")},
             {"percentile_value": True},
@@ -209,8 +209,8 @@ class TestMetricRefOverrideValueGuard:
 
     def test_accepts_zero_indexes(self) -> None:
         """Step and bucket index zero are valid."""
-        ref = MetricRef(1, step_index=0, retention_bucket_index=0)
-        assert (ref.step_index, ref.retention_bucket_index) == (0, 0)
+        ref = MetricRef(1, step_index=0, bucket_index=0)
+        assert (ref.step_index, ref.bucket_index) == (0, 0)
 
     def test_empty_overrides_mapping_is_allowed(self) -> None:
         """An empty raw mapping is valid and adds nothing."""
@@ -241,7 +241,7 @@ class TestMetricRefKindGuard:
             {"segment_method": "first"},
             {"funnel_order": "loose"},
             {"step_index": 0},
-            {"retention_bucket_index": 0},
+            {"bucket_index": 0},
         ],
     )
     def test_rejects_behavior_overrides(

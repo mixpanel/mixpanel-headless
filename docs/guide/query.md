@@ -551,7 +551,7 @@ The typed fields of `MetricRef` change the saved definition for one query only:
 | `segment_method` | `measurement.segmentMethod` |
 | `funnel_order` | `behavior.funnelOrder` |
 | `step_index` | `measurement.stepIndex` |
-| `retention_bucket_index` | `measurement.retentionBucketIndex` |
+| `bucket_index` | `measurement.retentionBucketIndex` |
 | `hidden` | `isHidden` |
 
 The library writes them into `overrides` on the clause, and the server deep-merges `overrides` into the expanded definition:

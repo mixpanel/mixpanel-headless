@@ -539,8 +539,8 @@ def build_metric_ref_overrides(ref: MetricRef) -> dict[str, Any]:
         measurement["segmentMethod"] = ref.segment_method
     if ref.step_index is not None:
         measurement["stepIndex"] = ref.step_index
-    if ref.retention_bucket_index is not None:
-        measurement["retentionBucketIndex"] = ref.retention_bucket_index
+    if ref.bucket_index is not None:
+        measurement["retentionBucketIndex"] = ref.bucket_index
     if measurement:
         overrides["measurement"] = measurement
 

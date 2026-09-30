@@ -61,9 +61,9 @@ may include API changes.
   the saved definition at query time, and a report or report link built
   from the params follows later edits to the saved metric. Typed fields
   (`label`, `math`, `property`, `per_user`, `percentile_value`,
-  `segment_method`, `funnel_order`, `step_index`,
-  `retention_bucket_index`, `hidden`) become `overrides` at their wire
-  paths, and a raw `overrides` dict merges last. A `filters` override is
+  `segment_method`, `funnel_order`, `step_index`, `bucket_index`,
+  `hidden`) become `overrides` at their wire paths, and a raw `overrides`
+  dict merges last. A `filters` override is
   refused (`MR1_FILTER_OVERRIDE`), because the server merges override lists
   item by item; use report-level `where=` or an inline `Metric` instead.
 - `BehaviorRef` runs a saved behavior by id. `query_funnel()` and

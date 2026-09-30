@@ -7720,8 +7720,7 @@ class MetricRef:
         segment_method: Counting override: ``"all"`` or ``"first"``.
         funnel_order: Step order override for a saved funnel metric.
         step_index: Funnel step override for a saved funnel metric.
-        retention_bucket_index: Bucket override for a saved retention
-            metric.
+        bucket_index: Bucket override for a saved retention metric.
         hidden: Whether the chart hides this series. ``None`` keeps the
             query default.
         overrides: Raw overrides, deep-merged after the typed fields.
@@ -7775,7 +7774,7 @@ class MetricRef:
     step_index: int | None = None
     """Funnel step override for a saved funnel metric."""
 
-    retention_bucket_index: int | None = None
+    bucket_index: int | None = None
     """Bucket override for a saved retention metric."""
 
     hidden: bool | None = None
@@ -7830,7 +7829,7 @@ class MetricRef:
                     "segment_method",
                     "funnel_order",
                     "step_index",
-                    "retention_bucket_index",
+                    "bucket_index",
                 )
                 if getattr(self, name) is not None
             ]
@@ -7893,13 +7892,8 @@ class MetricRef:
             )
         elif self.step_index is not None and not _is_index(self.step_index):
             problem = f"step_index must be an integer >= 0, got {self.step_index!r}"
-        elif self.retention_bucket_index is not None and not _is_index(
-            self.retention_bucket_index
-        ):
-            problem = (
-                "retention_bucket_index must be an integer >= 0, "
-                f"got {self.retention_bucket_index!r}"
-            )
+        elif self.bucket_index is not None and not _is_index(self.bucket_index):
+            problem = f"bucket_index must be an integer >= 0, got {self.bucket_index!r}"
         elif self.hidden is not None and not isinstance(self.hidden, bool):
             problem = f"hidden must be a bool, got {self.hidden!r}"
         elif self.overrides is not None and (

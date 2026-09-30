@@ -66,7 +66,7 @@ def typed_refs(draw: st.DrawFn) -> MetricRef:
         segment_method=draw(st.none() | st.sampled_from(get_args(SegmentMethod))),
         funnel_order=draw(st.none() | st.sampled_from(get_args(FunnelOrder))),
         step_index=draw(st.none() | st.integers(min_value=0, max_value=20)),
-        retention_bucket_index=draw(st.none() | st.integers(min_value=0, max_value=20)),
+        bucket_index=draw(st.none() | st.integers(min_value=0, max_value=20)),
         hidden=draw(st.none() | st.booleans()),
     )
 
@@ -133,7 +133,7 @@ def test_raw_overrides_merge_last(ref: MetricRef, raw: dict[str, Any]) -> None:
         segment_method=ref.segment_method,
         funnel_order=ref.funnel_order,
         step_index=ref.step_index,
-        retention_bucket_index=ref.retention_bucket_index,
+        bucket_index=ref.bucket_index,
         hidden=ref.hidden,
         overrides=raw,
     )
