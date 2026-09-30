@@ -5,11 +5,14 @@ This module provides commands for the saved behaviors of a project
 
 - list: List saved behaviors with optional local filters
 - get: Get one saved behavior by ID
+- create: Create a saved behavior from a wire definition file or stdin
+- update: Update a saved behavior
 - delete: Delete one or more saved behaviors
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -22,6 +25,7 @@ from mixpanel_headless.cli.utils import (
     output_result,
     status_spinner,
 )
+from mixpanel_headless.cli.validators import read_json_object_file
 
 behaviors_app = typer.Typer(
     name="behaviors",
@@ -116,6 +120,155 @@ def get_behavior(
         format=format,
         jq_filter=jq_filter,
     )
+
+
+_NoValidateOption = Annotated[
+    bool,
+    typer.Option(
+        "--no-validate",
+        help="Skip the client-side check of the definition against the server schema.",
+    ),
+]
+"""The ``--no-validate`` option of ``create`` and ``update``."""
+
+
+@behaviors_app.command("create")
+@handle_errors
+def create_behavior(
+    ctx: typer.Context,
+    name: Annotated[
+        str,
+        typer.Option("--name", help="Behavior name (required, unique in the project)."),
+    ],
+    definition_file: Annotated[
+        Path,
+        typer.Option(
+            "--definition-file",
+            help=(
+                'File with the wire definition JSON ({"behavior": {...}}, the '
+                "`definition` field of `mp behaviors get ID --format json`), or "
+                "'-' to read stdin."
+            ),
+        ),
+    ],
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="Behavior description."),
+    ] = None,
+    no_validate: _NoValidateOption = False,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Create a saved behavior from a wire definition.
+
+    The behavior type comes from the definition (`behavior.type`). In a
+    project with sharing on, the new behavior is private to you.
+
+    Args:
+        ctx: Typer context with global options.
+        name: Behavior name.
+        definition_file: Definition JSON file, or ``-`` for stdin.
+        description: Optional description.
+        no_validate: Skip the client-side schema check.
+        format: Output format (json, jsonl, table, csv, plain).
+        jq_filter: Optional jq filter for JSON output.
+
+    Example:
+        ```bash
+        mp behaviors get 3001 --jq .definition | mp behaviors create --name Copy --definition-file -
+        ```
+    """
+    from mixpanel_headless.types import CreateBehaviorParams, RawBehaviorDefinition
+
+    definition = read_json_object_file(definition_file, "--definition-file")
+    params = CreateBehaviorParams(
+        name=name,
+        behavior=RawBehaviorDefinition(definition),
+        description=description,
+    )
+    workspace = get_workspace(ctx)
+
+    with status_spinner(ctx, "Creating saved behavior..."):
+        behavior = workspace.create_behavior(params, validate=not no_validate)
+
+    output_result(ctx, behavior.model_dump(), format=format, jq_filter=jq_filter)
+
+
+@behaviors_app.command("update")
+@handle_errors
+def update_behavior(
+    ctx: typer.Context,
+    behavior_id: Annotated[
+        int,
+        typer.Argument(help="Saved behavior ID to update."),
+    ],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="New behavior name."),
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="New description ('' clears it)."),
+    ] = None,
+    definition_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--definition-file",
+            help=(
+                "File with the new wire definition JSON, or '-' to read stdin. It "
+                "replaces the stored definition and must keep the behavior type."
+            ),
+        ),
+    ] = None,
+    verified: Annotated[
+        bool | None,
+        typer.Option(
+            "--verified/--no-verified",
+            help="Mark the behavior as verified, or clear the flag.",
+        ),
+    ] = None,
+    no_validate: _NoValidateOption = False,
+    format: FormatOption = "json",
+    jq_filter: JqOption = None,
+) -> None:
+    """Update a saved behavior.
+
+    Only the options you pass change. The server does not check an update,
+    so the client checks a new definition before the request.
+
+    Args:
+        ctx: Typer context with global options.
+        behavior_id: The saved behavior identifier.
+        name: Optional new name.
+        description: Optional new description.
+        definition_file: Optional new definition file, or ``-`` for stdin.
+        verified: Optional new verified state.
+        no_validate: Skip the client-side schema check.
+        format: Output format (json, jsonl, table, csv, plain).
+        jq_filter: Optional jq filter for JSON output.
+    """
+    from mixpanel_headless.types import RawBehaviorDefinition, UpdateBehaviorParams
+
+    params = UpdateBehaviorParams(
+        name=name,
+        description=description,
+        behavior=(
+            RawBehaviorDefinition(
+                read_json_object_file(definition_file, "--definition-file")
+            )
+            if definition_file is not None
+            else None
+        ),
+        verified=verified,
+    )
+    workspace = get_workspace(ctx)
+
+    with status_spinner(ctx, "Updating saved behavior..."):
+        behavior = workspace.update_behavior(
+            behavior_id, params, validate=not no_validate
+        )
+
+    output_result(ctx, behavior.model_dump(), format=format, jq_filter=jq_filter)
 
 
 @behaviors_app.command("delete")

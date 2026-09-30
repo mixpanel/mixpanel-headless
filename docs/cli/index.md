@@ -294,6 +294,9 @@ Manage the saved metrics of the project (behavior metrics, formulas, warehouse m
 |---------|-------------|
 | `mp metrics list` | List saved metrics (`--type`, `--verified/--no-verified`, `--name-contains`, `--viewable-only`) |
 | `mp metrics get` | Get a saved metric by ID |
+| `mp metrics create` | Create a saved metric from a definition file or stdin |
+| `mp metrics update` | Update a saved metric |
+| `mp metrics verify` | Verify or unverify saved metrics in one request |
 | `mp metrics delete` | Delete one or more saved metrics |
 
 ### behaviors — Saved Behavior Management
@@ -304,6 +307,8 @@ Manage the saved behaviors of the project (simple, funnel, retention) via the Ap
 |---------|-------------|
 | `mp behaviors list` | List saved behaviors (`--type`, `--name-contains`) |
 | `mp behaviors get` | Get a saved behavior by ID |
+| `mp behaviors create` | Create a saved behavior from a definition file or stdin |
+| `mp behaviors update` | Update a saved behavior |
 | `mp behaviors delete` | Delete one or more saved behaviors |
 
 ### lexicon — Data Governance: Lexicon Management, Enforcement, Auditing & Deletion

@@ -4,6 +4,8 @@
 Tests cover all behaviors subcommands:
 - list: List saved behaviors with local filters
 - get: Get one saved behavior by ID
+- create: Create a saved behavior from a definition file or stdin
+- update: Update a saved behavior
 - delete: Delete one or more saved behaviors
 """
 
@@ -19,7 +21,7 @@ import typer.testing
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import ServerError
-from mixpanel_headless.types import SavedBehavior
+from mixpanel_headless.types import RawBehaviorDefinition, SavedBehavior
 from mixpanel_headless.workspace import Workspace
 from tests.conftest import make_session
 from tests.unit._saved_metric_fixtures import saved_behavior_json
@@ -226,3 +228,113 @@ class TestBehaviorsDeleteForce:
         assert result.exit_code == 0
         assert "--force" in result.stdout
         assert "superadmin" in result.stdout
+
+
+class TestBehaviorsCreate:
+    """Tests for mp behaviors create."""
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_from_file(self, mock_get_ws: MagicMock, tmp_path: Path) -> None:
+        """A definition file becomes a RawBehaviorDefinition."""
+        definition = saved_behavior_json()["definition"]
+        path = tmp_path / "behavior.json"
+        path.write_text(json.dumps(definition), encoding="utf-8")
+        mock_ws = MagicMock()
+        mock_ws.create_behavior.return_value = _behaviors()[0]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "behaviors",
+                "create",
+                "--name",
+                "Checkout",
+                "--definition-file",
+                str(path),
+                "--description",
+                "Cart to purchase.",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        (params,) = mock_ws.create_behavior.call_args.args
+        assert params.name == "Checkout"
+        assert params.description == "Cart to purchase."
+        assert params.behavior == RawBehaviorDefinition(definition)
+        assert mock_ws.create_behavior.call_args.kwargs == {"validate": True}
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_from_stdin_no_validate(self, mock_get_ws: MagicMock) -> None:
+        """``--definition-file -`` reads stdin; --no-validate passes through."""
+        mock_ws = MagicMock()
+        mock_ws.create_behavior.return_value = _behaviors()[0]
+        mock_get_ws.return_value = mock_ws
+        with patch(
+            "mixpanel_headless.cli.validators._stdin_is_tty", return_value=False
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "behaviors",
+                    "create",
+                    "--name",
+                    "b",
+                    "--definition-file",
+                    "-",
+                    "--no-validate",
+                ],
+                input='{"behavior": {"type": "simple"}}',
+            )
+        assert result.exit_code == 0, result.output
+        (params,) = mock_ws.create_behavior.call_args.args
+        assert params.behavior == RawBehaviorDefinition(
+            {"behavior": {"type": "simple"}}
+        )
+        assert mock_ws.create_behavior.call_args.kwargs == {"validate": False}
+
+
+class TestBehaviorsUpdate:
+    """Tests for mp behaviors update."""
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_flags(self, mock_get_ws: MagicMock, tmp_path: Path) -> None:
+        """Name, description, definition file, and --verified map to the params."""
+        definition = saved_behavior_json()["definition"]
+        path = tmp_path / "behavior.json"
+        path.write_text(json.dumps(definition), encoding="utf-8")
+        mock_ws = MagicMock()
+        mock_ws.update_behavior.return_value = _behaviors()[0]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "behaviors",
+                "update",
+                "3001",
+                "--name",
+                "New",
+                "--definition-file",
+                str(path),
+                "--verified",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        behavior_id, params = mock_ws.update_behavior.call_args.args
+        assert behavior_id == 3001
+        assert params.name == "New"
+        assert params.behavior == RawBehaviorDefinition(definition)
+        assert params.verified is True
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_no_flags(self, mock_get_ws: MagicMock) -> None:
+        """Without flags every field is None; --no-verified clears the flag."""
+        mock_ws = MagicMock()
+        mock_ws.update_behavior.return_value = _behaviors()[0]
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(app, ["behaviors", "update", "3001", "--no-verified"])
+        assert result.exit_code == 0, result.output
+        _behavior_id, params = mock_ws.update_behavior.call_args.args
+        assert params.behavior is None
+        assert params.name is None
+        assert params.verified is False

@@ -4,19 +4,25 @@
 Tests cover all metrics subcommands:
 - list: List saved metrics with local filters
 - get: Get one saved metric by ID
+- create: Create a saved metric from a definition file or stdin
+- update: Update a saved metric
+- verify: Verify or unverify saved metrics in one request
 - delete: Delete one or more saved metrics
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 import typer.testing
 
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import ParamValidationError, QueryError
-from mixpanel_headless.types import SavedMetric
+from mixpanel_headless.types import RawMetricDefinition, SavedMetric
 from tests.unit._saved_metric_fixtures import (
     behavior_metric_json,
     formula_metric_json,
@@ -251,3 +257,283 @@ class TestMetricsDeleteForce:
         assert result.exit_code == 0
         assert "--force" in result.stdout
         assert "superadmin" in result.stdout
+
+
+def _write_definition(tmp_path: Path, definition: dict[str, Any]) -> str:
+    """Write a definition JSON file and return its path as a string.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        definition: The definition dict.
+
+    Returns:
+        The file path.
+    """
+    path = tmp_path / "definition.json"
+    path.write_text(json.dumps(definition), encoding="utf-8")
+    return str(path)
+
+
+class TestMetricsCreate:
+    """Tests for mp metrics create."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_behavior_metric_from_file(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """A definition file becomes a RawMetricDefinition of the inferred kind."""
+        definition = behavior_metric_json()["definition"]
+        mock_ws = MagicMock()
+        mock_ws.create_metric.return_value = _metrics()[0]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "Weekly signups",
+                "--definition-file",
+                _write_definition(tmp_path, definition),
+                "--description",
+                "Signups.",
+                "--owner-id",
+                "8",
+                "--verified",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)["id"] == 1
+        (params,) = mock_ws.create_metric.call_args.args
+        assert params.name == "Weekly signups"
+        assert params.description == "Signups."
+        assert params.owned_by == 8
+        assert params.verified is True
+        assert params.definition == RawMetricDefinition("metric", definition)
+        assert mock_ws.create_metric.call_args.kwargs == {"validate": True}
+
+    @pytest.mark.parametrize(
+        ("definition", "kind"),
+        [
+            ({"formula": {"definition": "A", "referencedMetrics": []}}, "formula"),
+            ({"query": "SELECT 1", "metricType": "numeric"}, "warehouse"),
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_kind_is_inferred(
+        self,
+        mock_get_ws: MagicMock,
+        tmp_path: Path,
+        definition: dict[str, Any],
+        kind: str,
+    ) -> None:
+        """A formula block gives kind formula; a query gives kind warehouse.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            tmp_path: Pytest temporary directory.
+            definition: The definition dict.
+            kind: The expected kind.
+        """
+        mock_ws = MagicMock()
+        mock_ws.create_metric.return_value = _metrics()[0]
+        mock_get_ws.return_value = mock_ws
+        args = [
+            "metrics",
+            "create",
+            "--name",
+            "m",
+            "--definition-file",
+            _write_definition(tmp_path, definition),
+        ]
+        if kind == "warehouse":
+            args += ["--warehouse-source-id", "55"]
+        result = runner.invoke(app, args)
+        assert result.exit_code == 0, result.output
+        (params,) = mock_ws.create_metric.call_args.args
+        assert params.definition.type == kind
+        if kind == "warehouse":
+            assert params.definition.warehouse_source_id == 55
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_definition_from_stdin_with_kind_and_no_validate(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """``--definition-file -`` reads stdin; --kind and --no-validate pass through."""
+        mock_ws = MagicMock()
+        mock_ws.create_metric.return_value = _metrics()[0]
+        mock_get_ws.return_value = mock_ws
+        with patch(
+            "mixpanel_headless.cli.validators._stdin_is_tty", return_value=False
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "metrics",
+                    "create",
+                    "--name",
+                    "m",
+                    "--definition-file",
+                    "-",
+                    "--kind",
+                    "metric",
+                    "--no-validate",
+                ],
+                input='{"behavior": {"type": "people"}, "measurement": {}}',
+            )
+        assert result.exit_code == 0, result.output
+        (params,) = mock_ws.create_metric.call_args.args
+        assert params.definition == RawMetricDefinition(
+            "metric", {"behavior": {"type": "people"}, "measurement": {}}
+        )
+        assert mock_ws.create_metric.call_args.kwargs == {"validate": False}
+
+    def test_bad_kind_exits_3(self, tmp_path: Path) -> None:
+        """A --kind outside metric, formula, warehouse is a usage error."""
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "m",
+                "--definition-file",
+                _write_definition(tmp_path, {}),
+                "--kind",
+                "behavior",
+            ],
+        )
+        assert result.exit_code == 3
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_coded_refusal_exits_nonzero(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """A ParamValidationError from the Workspace exits non-zero with its message."""
+        mock_ws = MagicMock()
+        mock_ws.create_metric.side_effect = ParamValidationError(
+            "The saved metric definition does not match the server schema at "
+            "definition.behavior.x: Extra inputs are not permitted.",
+            code="SM4_SCHEMA",
+        )
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "m",
+                "--definition-file",
+                _write_definition(tmp_path, {"behavior": {"x": 1}}),
+            ],
+        )
+        assert result.exit_code != 0
+        assert "definition.behavior.x" in result.stderr
+
+
+class TestMetricsUpdate:
+    """Tests for mp metrics update."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_metadata_flags(self, mock_get_ws: MagicMock) -> None:
+        """Name, description, owner, and --no-verified map to UpdateMetricParams."""
+        mock_ws = MagicMock()
+        mock_ws.update_metric.return_value = _metrics()[0]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "update",
+                "1",
+                "--name",
+                "New",
+                "--description",
+                "",
+                "--owner-id",
+                "8",
+                "--no-verified",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        metric_id, params = mock_ws.update_metric.call_args.args
+        assert metric_id == 1
+        assert params.name == "New"
+        assert params.description == ""
+        assert params.owned_by == 8
+        assert params.verified is False
+        assert params.definition is None
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_definition_round_trip(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """The definition of `get --format json` goes back through --definition-file."""
+        definition = formula_metric_json()["definition"]
+        mock_ws = MagicMock()
+        mock_ws.update_metric.return_value = _metrics()[1]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "update",
+                "2",
+                "--definition-file",
+                _write_definition(tmp_path, definition),
+                "--verified",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        _metric_id, params = mock_ws.update_metric.call_args.args
+        assert params.definition == RawMetricDefinition("formula", definition)
+        assert params.verified is True
+        assert mock_ws.update_metric.call_args.kwargs == {"validate": True}
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_no_flags_leave_everything(self, mock_get_ws: MagicMock) -> None:
+        """Without flags every field is None."""
+        mock_ws = MagicMock()
+        mock_ws.update_metric.return_value = _metrics()[0]
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(app, ["metrics", "update", "1"])
+        assert result.exit_code == 0, result.output
+        _metric_id, params = mock_ws.update_metric.call_args.args
+        assert params.verified is None
+        assert params.name is None
+
+
+class TestMetricsVerify:
+    """Tests for mp metrics verify."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_verify_many(self, mock_get_ws: MagicMock) -> None:
+        """verify sends one bulk update with verified=True for each id."""
+        mock_ws = MagicMock()
+        mock_ws.bulk_update_metrics.return_value = _metrics()[:2]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["metrics", "verify", "1", "2"])
+        assert result.exit_code == 0, result.output
+        (entries,) = mock_ws.bulk_update_metrics.call_args.args
+        assert [(e.id, e.verified) for e in entries] == [(1, True), (2, True)]
+        assert [m["id"] for m in json.loads(result.stdout)] == [1, 2]
+        assert "skipped" not in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_unverify_and_skipped_ids(self, mock_get_ws: MagicMock) -> None:
+        """--unverify clears the flag; ids missing from the result are named on stderr."""
+        mock_ws = MagicMock()
+        mock_ws.bulk_update_metrics.return_value = _metrics()[:1]
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["metrics", "verify", "1", "99", "--unverify"])
+        assert result.exit_code == 0, result.output
+        (entries,) = mock_ws.bulk_update_metrics.call_args.args
+        assert [(e.id, e.verified) for e in entries] == [(1, False), (99, False)]
+        assert "99" in result.stderr
+        assert "skipped" in result.stderr
