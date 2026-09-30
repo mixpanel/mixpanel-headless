@@ -14,16 +14,23 @@ Safety rules (the script enforces each one):
   through the account named by ``MP_LIVE_ACCOUNT``. Both settings are
   required and have no default. The script checks the account and the
   project before every write, and refuses to run otherwise.
-- Every entity it creates has the name prefix ``zz-probe-<UTC timestamp>-``.
+- Every entity it creates has a name prefix that is unique to the run:
+  ``zz-probe-<UTC timestamp>-<random hex>-``.
 - The project is shared with other users. Before the first write, the script
   saves the metric and behavior ids of the project to a snapshot file.
 - Every PATCH, DELETE, and share upsert goes through a target check first.
-  The check reads the ids from the request itself. Each id must be an id that
-  this run's POSTs returned, and must not be in the start snapshot. If the
-  check fails, the script stops and does not send the request.
-- A ``finally`` block deletes every entity that this run created, through the
-  bulk DELETE routes. At the end, the script lists the project again and
-  checks that no entity of this run is still active.
+  The check reads the ids from the request itself. Each id must not be in the
+  start snapshot, and must be an id that this run's POSTs returned or an
+  unrecorded entity of this run (see the next rule). If the check fails, the
+  script stops and does not send the request.
+- A ``finally`` block deletes every entity that this run recorded, through the
+  bulk DELETE routes. A create can succeed on the server but leave no usable
+  response (a timeout, for example), so the block then lists the project and
+  also deletes each row that has this run's prefix, is not in the start
+  snapshot, and was not recorded. It reports those rows.
+- At the end, the script lists the project again and checks that no entity of
+  this run is still active: no recorded id, and no row outside the start
+  snapshot with this run's prefix.
 
 This script is **not** in CI. It touches the live Mixpanel API. Run it by hand
 when the server contract needs a new recording.
@@ -47,6 +54,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import sys
 import tempfile
 import time
@@ -174,6 +182,8 @@ class ProbeRun:
     created_behaviors: list[int] = field(default_factory=list)
     start_metrics: set[int] = field(default_factory=set)
     start_behaviors: set[int] = field(default_factory=set)
+    swept_metrics: dict[int, str] = field(default_factory=dict)
+    swept_behaviors: dict[int, str] = field(default_factory=dict)
     last_status: int | None = None
     last_body: Any = None
 
@@ -194,6 +204,18 @@ def _utc_stamp() -> str:
         A string like ``20260930T081500Z``.
     """
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _run_prefix() -> str:
+    """Return the name prefix of one run: a UTC timestamp plus random hex.
+
+    The random part keeps two runs in the same second apart, so a row with
+    this prefix belongs to this run only.
+
+    Returns:
+        A string like ``zz-probe-20260930T081500Z-3f9a1c-``.
+    """
+    return f"zz-probe-{_utc_stamp()}-{secrets.token_hex(3)}-"
 
 
 def _assert_scratch(run: ProbeRun, path: str) -> None:
@@ -278,8 +300,10 @@ def _assert_own_targets(
 ) -> None:
     """Refuse a write that touches an entity that this run did not create.
 
-    Every target id must be in the created ids of this run, and must not be
-    in the start snapshot of the project.
+    Every target id must not be in the start snapshot of the project. It must
+    also be an id that this run's POSTs returned, or an unrecorded entity of
+    this run: an id that ``sweep_unrecorded`` found in a list with a name
+    that starts with this run's prefix. The check reads that name again here.
 
     Args:
         run: The probe run.
@@ -296,11 +320,16 @@ def _assert_own_targets(
         return
     kind, ids = targets
     created = set(run.created_metrics if kind == "metric" else run.created_behaviors)
+    swept = run.swept_metrics if kind == "metric" else run.swept_behaviors
     start = run.start_metrics if kind == "metric" else run.start_behaviors
     if not ids:
         raise ProbeRefusedError(f"refusing write: no target ids in {method} {path!r}")
     for target in ids:
-        if target not in created or target in start:
+        swept_name = swept.get(target)
+        own = target in created or (
+            swept_name is not None and swept_name.startswith(run.prefix)
+        )
+        if target in start or not own:
             raise ProbeRefusedError(
                 f"refusing write: {kind} {target} is not an entity of this run"
             )
@@ -723,6 +752,34 @@ RETENTION_MEASUREMENT: dict[str, Any] = {
 """Measurement of the retention metric probes."""
 
 
+def _list_rows(run: ProbeRun, collection: str) -> dict[int, dict[str, Any]]:
+    """List the active rows of ``/metrics`` or ``/behaviors``, keyed by id.
+
+    Args:
+        run: The probe run.
+        collection: ``"metrics"`` or ``"behaviors"``.
+
+    Returns:
+        A map from entity id to the entity dict.
+    """
+    rows = run.ws.api.app_request("GET", f"/projects/{run.pid}/{collection}")
+    return {int(k): v for k, v in rows.items() if isinstance(v, dict)}
+
+
+def _is_own_row(run: ProbeRun, row: dict[str, Any]) -> bool:
+    """Return whether a listed row has this run's name prefix.
+
+    Args:
+        run: The probe run.
+        row: One entity dict from a list response.
+
+    Returns:
+        ``True`` if the row's name starts with this run's prefix.
+    """
+    name = row.get("name")
+    return isinstance(name, str) and name.startswith(run.prefix)
+
+
 def snapshot_ids(run: ProbeRun) -> tuple[set[int], set[int]]:
     """List the active metric and behavior ids of the project.
 
@@ -732,9 +789,7 @@ def snapshot_ids(run: ProbeRun) -> tuple[set[int], set[int]]:
     Returns:
         ``(metric_ids, behavior_ids)``.
     """
-    metrics = run.ws.api.app_request("GET", f"/projects/{run.pid}/metrics")
-    behaviors = run.ws.api.app_request("GET", f"/projects/{run.pid}/behaviors")
-    return {int(k) for k in metrics}, {int(k) for k in behaviors}
+    return set(_list_rows(run, "metrics")), set(_list_rows(run, "behaviors"))
 
 
 def save_snapshot(run: ProbeRun, path: Path) -> None:
@@ -756,11 +811,13 @@ def save_snapshot(run: ProbeRun, path: Path) -> None:
 
 
 def final_check(run: ProbeRun) -> bool:
-    """List the project again and check that every created entity is gone.
+    """List the project again and check that every entity of this run is gone.
 
-    Other users can change the shared project during a run, so the check
-    that decides the result is on this run's ids only. A difference from the
-    start snapshot is reported as information.
+    An entity of this run is a recorded id, a swept id, or a row outside the
+    start snapshot whose name starts with this run's prefix. Other users can
+    change the shared project during a run, so the check that decides the
+    result is on this run's entities only. A difference from the start
+    snapshot is reported as information.
 
     Args:
         run: The probe run.
@@ -768,9 +825,22 @@ def final_check(run: ProbeRun) -> bool:
     Returns:
         ``True`` if no entity of this run is still active.
     """
-    end_metrics, end_behaviors = snapshot_ids(run)
-    left_metrics = sorted(set(run.created_metrics) & end_metrics)
-    left_behaviors = sorted(set(run.created_behaviors) & end_behaviors)
+    metric_rows = _list_rows(run, "metrics")
+    behavior_rows = _list_rows(run, "behaviors")
+    end_metrics, end_behaviors = set(metric_rows), set(behavior_rows)
+    own_metrics = set(run.created_metrics) | set(run.swept_metrics)
+    own_behaviors = set(run.created_behaviors) | set(run.swept_behaviors)
+    left_metrics = sorted(
+        i
+        for i, row in metric_rows.items()
+        if i in own_metrics or (i not in run.start_metrics and _is_own_row(run, row))
+    )
+    left_behaviors = sorted(
+        i
+        for i, row in behavior_rows.items()
+        if i in own_behaviors
+        or (i not in run.start_behaviors and _is_own_row(run, row))
+    )
     print(
         f"project {run.pid}: {len(end_metrics)} metrics, "
         f"{len(end_behaviors)} behaviors at end "
@@ -778,8 +848,10 @@ def final_check(run: ProbeRun) -> bool:
     )
     print(
         f"  created this run: {len(set(run.created_metrics))} metrics, "
-        f"{len(set(run.created_behaviors))} behaviors; still active: "
-        f"metrics {left_metrics}, behaviors {left_behaviors}"
+        f"{len(set(run.created_behaviors))} behaviors recorded; "
+        f"{len(run.swept_metrics)} metrics, {len(run.swept_behaviors)} behaviors "
+        f"unrecorded; still active: metrics {left_metrics}, "
+        f"behaviors {left_behaviors}"
     )
     if end_metrics != run.start_metrics or end_behaviors != run.start_behaviors:
         print(
@@ -1336,6 +1408,51 @@ def cleanup(run: ProbeRun) -> None:
         )
 
 
+def sweep_unrecorded(run: ProbeRun) -> tuple[list[int], list[int]]:
+    """Delete the entities of this run whose create was never recorded.
+
+    A create can succeed on the server and still leave no id in the created
+    lists, for example when the POST times out or the response has no usable
+    ``results`` map. This function lists metrics and behaviors, and deletes
+    each row whose name starts with this run's prefix, whose id is not in the
+    start snapshot, and whose id is not recorded. The prefix holds the run
+    timestamp and a random part, so such a row belongs to this run. The
+    delete goes through the target check, which reads the prefix again.
+
+    Args:
+        run: The probe run.
+
+    Returns:
+        ``(metric_ids, behavior_ids)`` of the unrecorded rows found.
+    """
+    found: dict[str, list[int]] = {}
+    for collection in ("metrics", "behaviors"):
+        is_metric = collection == "metrics"
+        created = set(run.created_metrics if is_metric else run.created_behaviors)
+        start = run.start_metrics if is_metric else run.start_behaviors
+        swept = run.swept_metrics if is_metric else run.swept_behaviors
+        new_ids: list[int] = []
+        for entity_id, row in _list_rows(run, collection).items():
+            if entity_id in start or entity_id in created or entity_id in swept:
+                continue
+            if _is_own_row(run, row):
+                swept[entity_id] = str(row["name"])
+                new_ids.append(entity_id)
+        new_ids.sort()
+        found[collection] = new_ids
+        if new_ids:
+            print(f"  unrecorded {collection} of this run: {new_ids}", flush=True)
+            call_app(
+                run,
+                f"delete_unrecorded_{collection}",
+                "DELETE",
+                f"/projects/{run.pid}/{collection}",
+                {collection: [{"id": i} for i in new_ids]},
+                note="rows with this run's prefix that no create response recorded",
+            )
+    return found["metrics"], found["behaviors"]
+
+
 def _fake_user_id(real: int, user_ids: dict[int, int]) -> int:
     """Map a real user id to a stable fake id.
 
@@ -1599,8 +1716,8 @@ def main() -> int:
     except ProbeRefusedError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    ws = mp.Workspace(account=target.account)
-    run = ProbeRun(ws=ws, prefix=f"zz-probe-{_utc_stamp()}-", target=target)
+    ws = mp.Workspace(account=target.account, project=target.project_id)
+    run = ProbeRun(ws=ws, prefix=_run_prefix(), target=target)
     exit_code = 0
     try:
         if run.pid != target.project_id or ws.account.name != target.account:
@@ -1629,7 +1746,10 @@ def main() -> int:
             elif not args.gate_only:
                 probe_full(run, warehouse=args.warehouse)
         finally:
-            cleanup(run)
+            try:
+                cleanup(run)
+            finally:
+                sweep_unrecorded(run)
             if not final_check(run):
                 exit_code = 1
             write_outputs(
