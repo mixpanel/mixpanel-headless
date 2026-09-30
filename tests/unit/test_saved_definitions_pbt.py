@@ -4,7 +4,10 @@
 Properties tested:
 - ``create_metric`` saves the same ``behavior`` and ``measurement`` that
   ``build_params`` writes into ``sections.show`` for the same inline metric
-  (a saved metric queries the same way as its inline twin)
+  (event, several events, cohort, funnel, and retention metrics), so a saved
+  metric queries the same way as its inline twin
+- ``create_metric`` saves the same ``referencedMetrics`` that
+  ``build_params`` writes for the same formula with its own operands
 - ``goal_to_wire`` always writes a string id and string checkpoint times,
   and never writes the deprecated ``unit`` and ``direction`` keys
 - ``check_formula_operands`` accepts every operand whose segment method and
@@ -23,7 +26,7 @@ from datetime import date, datetime
 from typing import Any
 
 import httpx
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 from pydantic import SecretStr
 
@@ -37,9 +40,16 @@ from mixpanel_headless._internal.saved_definitions import (
 from mixpanel_headless.types import (
     CohortMetric,
     CreateMetricParams,
+    CustomEventRef,
+    Formula,
+    FunnelBehavior,
+    FunnelMetric,
+    FunnelStep,
     MathType,
     Metric,
     MetricGoal,
+    RetentionBehavior,
+    RetentionMetric,
 )
 from mixpanel_headless.workspace import Workspace
 from tests.conftest import make_session
@@ -72,18 +82,23 @@ _plain_maths = st.sampled_from(_PLAIN_MATHS)
 _property_maths = st.sampled_from(_PROPERTY_MATHS)
 
 
+InlineMetric = Metric | CohortMetric | FunnelMetric | RetentionMetric
+"""The inline metric values that a saved behavior metric can hold."""
+
+
 @st.composite
-def inline_metrics(draw: st.DrawFn) -> Metric | CohortMetric:
+def inline_metrics(draw: st.DrawFn) -> InlineMetric:
     """Generate an inline metric that a saved behavior metric can hold.
 
     Args:
         draw: Hypothesis draw function.
 
     Returns:
-        A ``Metric`` (plain or property math, optional segment method) or a
-        ``CohortMetric`` over a saved cohort id.
+        A ``Metric`` (one or two events, plain or property math, optional
+        segment method), a ``CohortMetric`` over a saved cohort id, a
+        ``FunnelMetric`` over two or three steps, or a ``RetentionMetric``.
     """
-    choice = draw(st.integers(min_value=0, max_value=2))
+    choice = draw(st.integers(min_value=0, max_value=5))
     if choice == 0:
         return Metric(
             draw(_event_names),
@@ -95,6 +110,22 @@ def inline_metrics(draw: st.DrawFn) -> Metric | CohortMetric:
             draw(_event_names),
             math=draw(_property_maths),
             property=draw(_event_names),
+        )
+    if choice == 2:
+        events: list[str | CustomEventRef] = list(
+            draw(st.lists(_event_names, min_size=2, max_size=3, unique=True))
+        )
+        return Metric(events, math=draw(_plain_maths))
+    if choice == 3:
+        steps: list[str | FunnelStep] = list(
+            draw(st.lists(_event_names, min_size=2, max_size=3))
+        )
+        return FunnelMetric(
+            FunnelBehavior(steps, conversion_window=draw(st.integers(1, 30)))
+        )
+    if choice == 4:
+        return RetentionMetric(
+            RetentionBehavior(draw(_event_names), draw(_event_names))
         )
     return CohortMetric(draw(st.integers(min_value=1, max_value=10**9)), "Cohort")
 
@@ -125,9 +156,7 @@ def _workspace(captured: list[httpx.Request]) -> Workspace:
 
 
 @given(metric=inline_metrics())
-def test_saved_definition_equals_query_show_clause(
-    metric: Metric | CohortMetric,
-) -> None:
+def test_saved_definition_equals_query_show_clause(metric: InlineMetric) -> None:
     """The saved behavior and measurement equal those of the query show clause.
 
     Args:
@@ -139,6 +168,33 @@ def test_saved_definition_equals_query_show_clause(
     sent = json.loads(captured[0].content)["definition"]
     show = ws.build_params(metric)["sections"]["show"][0]
     assert sent == {"behavior": show["behavior"], "measurement": show["measurement"]}
+
+
+@given(operands=st.lists(inline_metrics(), min_size=1, max_size=3))
+def test_saved_formula_operands_equal_query_operands(
+    operands: list[InlineMetric],
+) -> None:
+    """A saved formula holds the operands that the query formula clause holds.
+
+    Operands with a segment method are left out: a saved formula refuses
+    them (``FM6_OPERAND_ATTRIBUTION``), while a query accepts them.
+
+    Args:
+        operands: Generated inline operands.
+    """
+    assume(all(getattr(op, "segment_method", None) is None for op in operands))
+    expression = " + ".join("ABC"[i] for i in range(len(operands)))
+    formula = Formula(expression, metrics=list(operands))
+    captured: list[httpx.Request] = []
+    ws = _workspace(captured)
+    ws.create_metric(CreateMetricParams(name="f", definition=formula))
+    sent = json.loads(captured[0].content)
+    assert sent["type"] == "formula"
+    clause = ws.build_params(formula)["sections"]["show"][-1]
+    assert sent["definition"]["formula"] == {
+        "definition": clause["definition"],
+        "referencedMetrics": clause["referencedMetrics"],
+    }
 
 
 _checkpoint_times = st.one_of(
