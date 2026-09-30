@@ -315,6 +315,22 @@ class TestMetricOverSeveralEvents:
             "measurement": {"math": "unique"},
         }
 
+    def test_list_combinator_goes_on_every_event(self) -> None:
+        """The metric's filter combinator is written on each event entry."""
+        clause = build_metric_clause(
+            Metric(["Login", "Signup"], filters=[PRO], filters_combinator="any")
+        )
+        entries = clause["behavior"]["behaviors"]
+        assert [e["filtersDeterminer"] for e in entries] == ["any", "any"]
+
+    def test_custom_event_metric_keeps_its_filters(self) -> None:
+        """Filters and the combinator of a custom-event metric are written."""
+        clause = build_metric_clause(
+            Metric(CustomEventRef(9), filters=[PRO], filters_combinator="any")
+        )
+        assert clause["behavior"]["filters"] == [build_filter_entry(PRO)]
+        assert clause["behavior"]["filtersDeterminer"] == "any"
+
     def test_list_of_one_name_is_the_single_event(self) -> None:
         """A one-element list writes the same clause as the element alone."""
         assert build_metric_clause(Metric(["Login"], filters=[PRO])) == (
@@ -598,6 +614,13 @@ class TestDispatchAndDefinition:
         )
         assert build_inline_metric_clause(cohort)["behavior"]["type"] == "cohort"
 
+    @pytest.mark.parametrize("metric", INLINE_METRICS)
+    def test_hidden_reaches_every_kind(
+        self, metric: Metric | CohortMetric | FunnelMetric | RetentionMetric
+    ) -> None:
+        """``hidden=True`` marks the clause of every kind as hidden."""
+        assert build_inline_metric_clause(metric, hidden=True)["isHidden"] is True
+
     def test_cohort_clause_keeps_is_hidden(self) -> None:
         """A cohort clause always writes ``isHidden``, as it does today."""
         assert build_inline_metric_clause(CohortMetric(12))["isHidden"] is False
@@ -706,3 +729,28 @@ class TestShowSectionWithNewKinds:
         """A formula with operands can be the only clause."""
         show = self._show([], [Formula("A", metrics=[Metric("Signup")])])
         assert [c["type"] for c in show] == ["formula"]
+
+    def test_plain_events_keep_query_level_settings(self) -> None:
+        """A bare event name still takes the query-level math settings."""
+        show = build_show_section(
+            ["Login"],
+            math="percentile",
+            math_property="ms",
+            per_user="total",
+            percentile_value=95,
+            formulas=[],
+        )
+        assert show[0]["measurement"] == {
+            "math": "custom_percentile",
+            "property": {"name": "ms", "resourceType": "events"},
+            "perUserAggregation": "total",
+            "percentile": 95,
+        }
+
+    def test_definition_needs_operands_message(self) -> None:
+        """The error for a formula without operands says how to fix it."""
+        with pytest.raises(ValueError) as excinfo:
+            build_formula_definition(Formula("A / B"))
+        assert str(excinfo.value) == (
+            "A saved formula needs its own operands: pass Formula(..., metrics=[...])"
+        )

@@ -199,6 +199,22 @@ class TestParseFormulaRefuses:
         assert "incomplete" in excinfo.value.message
         assert excinfo.value.details["position"] == len(expression)
 
+    def test_incomplete_message_is_exact(self) -> None:
+        """The incomplete message names the expression and the allowed syntax."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            parse_formula("A +")
+        assert excinfo.value.message == (
+            "Formula expression 'A +' is incomplete. A formula uses letters "
+            "(A, B, ...), numbers, + - * / ^, and parentheses."
+        )
+
+    def test_misplaced_number_names_its_position(self) -> None:
+        """A number in the wrong place is reported at its own position."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            parse_formula("A 12")
+        assert excinfo.value.details["position"] == 2
+        assert "unexpected token '12' at position 2" in excinfo.value.message
+
     def test_message_names_the_allowed_syntax(self) -> None:
         """The message tells the caller what an expression can contain."""
         with pytest.raises(ParamValidationError) as excinfo:
@@ -235,8 +251,11 @@ class TestCheckUpperE:
         with pytest.raises(ParamValidationError) as excinfo:
             check_upper_e(parse_formula("A * 1E5"))
         assert excinfo.value.details["literal"] == "1E5"
-        assert "'1E5'" in excinfo.value.message
-        assert "'1e5'" in excinfo.value.message
+        assert excinfo.value.message == (
+            "Formula expression 'A * 1E5' has the literal '1E5' with an "
+            "uppercase E. Write '1e5': the server renames uppercase letters "
+            "in a formula with its own operands, and that breaks the literal."
+        )
 
     @pytest.mark.parametrize("expression", ["A * 1e5", "E * 2", "A + E", "1_000"])
     def test_lowercase_exponent_and_letter_e_pass(self, expression: str) -> None:
@@ -318,6 +337,21 @@ class TestCheckLetters:
         with pytest.raises(ParamValidationError) as excinfo:
             check_letters(parse_formula("Z + AA + a + B + Z"), 2)
         assert excinfo.value.details["unknown"] == ["Z", "AA", "a"]
+        assert excinfo.value.message == (
+            "Formula expression 'Z + AA + a + B + Z' uses 'Z', 'AA', 'a', but "
+            "the formula has 2 operands (A to B). Each letter names an operand "
+            "by position: A is the first, Z the 26th, then BA, BB."
+        )
+
+    @pytest.mark.parametrize(
+        ("count", "described"),
+        [(0, "no operands"), (1, "1 operand (A)"), (3, "3 operands (A to C)")],
+    )
+    def test_operand_range_wording(self, count: int, described: str) -> None:
+        """The message describes the operands exactly."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            check_letters(parse_formula("Z"), count)
+        assert f"the formula has {described}. " in excinfo.value.message
 
     def test_letters_after_z_use_ba(self) -> None:
         """With 28 operands the letters run A to Z, then BA and BB."""
