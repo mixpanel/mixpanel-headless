@@ -286,6 +286,26 @@ Manage project webhooks via the App API.
 | `mp webhooks delete` | Delete a webhook |
 | `mp webhooks test` | Test webhook connectivity |
 
+### metrics — Saved Metric Management
+
+Manage the saved metrics of the project (behavior metrics, formulas, warehouse metrics) via the App API. Project-scoped.
+
+| Command | Description |
+|---------|-------------|
+| `mp metrics list` | List saved metrics (`--type`, `--verified/--no-verified`, `--name-contains`, `--viewable-only`) |
+| `mp metrics get` | Get a saved metric by ID |
+| `mp metrics delete` | Delete one or more saved metrics |
+
+### behaviors — Saved Behavior Management
+
+Manage the saved behaviors of the project (simple, funnel, retention) via the App API. Project-scoped.
+
+| Command | Description |
+|---------|-------------|
+| `mp behaviors list` | List saved behaviors (`--type`, `--name-contains`) |
+| `mp behaviors get` | Get a saved behavior by ID |
+| `mp behaviors delete` | Delete one or more saved behaviors |
+
 ### lexicon — Data Governance: Lexicon Management, Enforcement, Auditing & Deletion
 
 Manage Lexicon data definitions, tags, metadata, schema enforcement, data auditing, volume anomalies, and event deletion requests via the App API.

@@ -20,6 +20,19 @@ Two `mp reports` verbs and an opt-in flag on four `mp query` commands turn queri
 
 Exit codes for the report-link errors: not found 4; parse, unsupported, and scope mismatch 3 (with a `hint:` line); auth 2; shortlink extraction 1.
 
+## Saved metrics and behaviors
+
+Two project-scoped groups read and delete saved metrics and saved behaviors. Full walkthrough: [Saved Metrics and Behaviors guide](../guide/saved-metrics.md).
+
+| Command | Purpose |
+|---------|---------|
+| `mp metrics list [--type metric\|formula\|warehouse] [--verified \| --no-verified] [--name-contains TEXT] [--viewable-only]` | List saved metrics. The server list includes metrics that you cannot view; `--viewable-only` drops them. The filters apply locally. `--format table` shows `id`, `name`, `type`, `verified`, `can_view`, `modified`. |
+| `mp metrics get ID` | Print one saved metric with its definition. |
+| `mp metrics delete ID [ID ...]` | One ID: read, then delete (an unknown ID fails and deletes nothing). Several IDs: one bulk request; the server skips unknown IDs. No prompt; the message goes to stderr. |
+| `mp behaviors list [--type simple\|funnel\|retention] [--name-contains TEXT]` | List saved behaviors. `--format table` shows `id`, `name`, `type`, `verified`, `can_view`, `modified`. |
+| `mp behaviors get ID` | Print one saved behavior with its definition. The server answers an unknown ID with a 500. |
+| `mp behaviors delete ID [ID ...]` | Same rules as `mp metrics delete`, through the bulk behavior route. |
+
 ## Built-in help
 
 `mp help` prints an offline API reference from the installed package. It needs no credentials, ignores `-a / -p / -w / -t`, and never contacts Mixpanel. Full walkthrough: [Built-in Help guide](../guide/built-in-help.md).

@@ -175,6 +175,7 @@ def _register_commands() -> None:
     from mixpanel_headless.cli.commands.account import account_app
     from mixpanel_headless.cli.commands.alerts import alerts_app
     from mixpanel_headless.cli.commands.annotations import annotations_app
+    from mixpanel_headless.cli.commands.behaviors import behaviors_app
     from mixpanel_headless.cli.commands.business_context import business_context_app
     from mixpanel_headless.cli.commands.cohorts import cohorts_app
     from mixpanel_headless.cli.commands.custom_events import custom_events_app
@@ -186,6 +187,7 @@ def _register_commands() -> None:
     from mixpanel_headless.cli.commands.inspect import inspect_app
     from mixpanel_headless.cli.commands.lexicon import lexicon_app
     from mixpanel_headless.cli.commands.lookup_tables import lookup_tables_app
+    from mixpanel_headless.cli.commands.metrics import metrics_app
     from mixpanel_headless.cli.commands.project import project_app
     from mixpanel_headless.cli.commands.query import query_app
     from mixpanel_headless.cli.commands.replays import replays_app
@@ -238,6 +240,16 @@ def _register_commands() -> None:
         help="Manage custom properties.",
     )
     app.add_typer(custom_events_app, name="custom-events", help="Manage custom events.")
+    app.add_typer(
+        metrics_app,
+        name="metrics",
+        help="Manage saved metrics (behavior metrics, formulas, warehouse metrics).",
+    )
+    app.add_typer(
+        behaviors_app,
+        name="behaviors",
+        help="Manage saved behaviors (simple, funnel, retention).",
+    )
     app.add_typer(
         lookup_tables_app,
         name="lookup-tables",
