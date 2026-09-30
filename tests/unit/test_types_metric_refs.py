@@ -8,12 +8,20 @@ new codes in ``CODED_GUARD_REGISTRY``.
 from __future__ import annotations
 
 import dataclasses
+import json
 from typing import Any
 
 import pytest
 
 import mixpanel_headless as mp
-from mixpanel_headless.exceptions import CODED_GUARD_REGISTRY, ParamValidationError
+from mixpanel_headless._internal.query.metric_builders import (
+    build_metric_ref_overrides,
+)
+from mixpanel_headless.exceptions import (
+    CODED_GUARD_REGISTRY,
+    CODED_GUARD_TWIN_CODES,
+    ParamValidationError,
+)
 from mixpanel_headless.types import (
     BehaviorRef,
     CustomPropertyRef,
@@ -213,7 +221,9 @@ class TestMetricRefOverrideValueGuard:
     )
     def test_accepts_math_of_every_engine(self, math: Any) -> None:
         """Insights, funnel, and retention maths are all valid overrides."""
-        assert MetricRef(1, math=math).math == math
+        percentile_value = 95 if math == "percentile" else None
+        ref = MetricRef(1, math=math, percentile_value=percentile_value)
+        assert ref.math == math
 
     def test_accepts_zero_indexes(self) -> None:
         """Step and bucket index zero are valid."""
@@ -341,7 +351,7 @@ class TestSavedMetricToRef:
         metric = SavedMetric.model_validate(behavior_metric_json(metric_id=42))
         ref = metric.to_ref(
             label="First buyers",
-            math="unique",
+            math="average",
             property="amount",
             per_user="total",
             percentile_value=90,
@@ -355,7 +365,7 @@ class TestSavedMetricToRef:
         assert ref == MetricRef(
             42,
             label="First buyers",
-            math="unique",
+            math="average",
             property="amount",
             per_user="total",
             percentile_value=90,
@@ -416,6 +426,93 @@ class TestSavedBehaviorToRef:
 # =============================================================================
 # Code registration
 # =============================================================================
+
+
+class TestMetricRefOverridesAreFrozen:
+    """The raw overrides are copied into a read-only form at construction."""
+
+    def test_later_mutation_of_the_callers_dict_has_no_effect(self) -> None:
+        """A filter list added to the caller's dict afterwards never reaches the ref."""
+        raw: dict[str, Any] = {"behavior": {"funnelOrder": "any"}}
+        ref = MetricRef(1, overrides=raw)
+        raw["behavior"]["filters"] = [{"value": "US"}]
+        raw["measurement"] = {"math": "unique"}
+        assert ref.overrides == {"behavior": {"funnelOrder": "any"}}
+        assert build_metric_ref_overrides(ref) == {"behavior": {"funnelOrder": "any"}}
+
+    def test_nested_values_are_read_only(self) -> None:
+        """The stored mapping and its nested mappings cannot be changed."""
+        ref = MetricRef(1, overrides={"behavior": {"funnelOrder": "any"}, "x": [1]})
+        assert ref.overrides is not None
+        with pytest.raises(TypeError):
+            ref.overrides["behavior"]["filters"] = []
+        with pytest.raises(TypeError):
+            ref.overrides["y"] = 1  # type: ignore[index]
+        assert ref.overrides["x"] == (1,)
+
+    def test_builder_output_is_plain_json(self) -> None:
+        """The builder writes plain dicts and lists, not the frozen forms."""
+        ref = MetricRef(1, overrides={"measurement": {"x": [1, {"y": [2]}]}})
+        written = build_metric_ref_overrides(ref)
+        assert written == {"measurement": {"x": [1, {"y": [2]}]}}
+        assert type(written["measurement"]) is dict
+        assert type(written["measurement"]["x"]) is list
+        assert type(written["measurement"]["x"][1]) is dict
+        assert json.loads(json.dumps(written)) == written
+
+    def test_equal_refs_compare_equal(self) -> None:
+        """Two references with the same overrides are equal."""
+        assert MetricRef(1, overrides={"a": {"b": 1}}) == MetricRef(
+            1, overrides={"a": {"b": 1}}
+        )
+
+
+class TestMetricRefMeasurementRules:
+    """The inline Metric combination rules run on the typed override fields."""
+
+    @pytest.mark.parametrize("math", ["unique", "dau", "wau", "mau"])
+    def test_per_user_with_user_count_math_raises_v3(self, math: str) -> None:
+        """per_user with a user-count math raises V3_PER_USER_INCOMPATIBLE."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            MetricRef(1, math=math, per_user="average", property="amount")  # type: ignore[arg-type]
+        assert exc_info.value.code == "V3_PER_USER_INCOMPATIBLE"
+
+    @pytest.mark.parametrize("math", ["unique", "dau", "conversion_rate_unique"])
+    def test_property_with_non_property_math_raises_v14(self, math: str) -> None:
+        """A property with a math that takes none raises V14_METRIC_REJECTS_PROPERTY."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            MetricRef(1, math=math, property="amount")  # type: ignore[arg-type]
+        assert exc_info.value.code == "V14_METRIC_REJECTS_PROPERTY"
+
+    def test_percentile_without_value_raises_v26(self) -> None:
+        """math="percentile" without a value raises V26_PERCENTILE_REQUIRES_VALUE."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            MetricRef(1, math="percentile", property="ms")
+        assert exc_info.value.code == "V26_PERCENTILE_REQUIRES_VALUE"
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"math": "average"},
+            {"math": "histogram"},
+            {"per_user": "total"},
+            {"math": "total", "property": "amount"},
+            {"math": "percentile", "percentile_value": 95},
+            {"per_user": "average", "math": "average"},
+        ],
+    )
+    def test_partial_overrides_that_the_saved_metric_completes_pass(
+        self, kwargs: dict[str, Any]
+    ) -> None:
+        """A field the saved definition can supply (property, per_user) is not required."""
+        assert MetricRef(1, **kwargs).id == 1
+
+    @pytest.mark.parametrize(
+        "code", ["V3_PER_USER_INCOMPATIBLE", "V14_METRIC_REJECTS_PROPERTY"]
+    )
+    def test_codes_are_registered_twins(self, code: str) -> None:
+        """The reused validator codes are registered as guard twins."""
+        assert code in CODED_GUARD_TWIN_CODES
 
 
 class TestReferenceCodesRegistered:

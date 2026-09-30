@@ -28,6 +28,7 @@ from datetime import date as dt_date
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -7769,12 +7770,35 @@ def _find_filters_path(value: object, path: str = "overrides") -> str | None:
             found = _find_filters_path(child, child_path)
             if found is not None:
                 return found
-    elif isinstance(value, list):
+    elif isinstance(value, list | tuple):
         for index, child in enumerate(value):
             found = _find_filters_path(child, f"{path}[{index}]")
             if found is not None:
                 return found
     return None
+
+
+def _freeze_override_value(value: object) -> object:
+    """Copy one raw override value into a read-only form.
+
+    A mapping becomes a read-only ``MappingProxyType`` over a new dict, and
+    a list or tuple becomes a tuple, recursively. Any other value is
+    deep-copied. So a later change to the caller's objects cannot reach a
+    ``MetricRef`` after its guards ran.
+
+    Args:
+        value: A value from a raw overrides tree.
+
+    Returns:
+        The read-only copy.
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_override_value(child) for key, child in value.items()}
+        )
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_override_value(child) for child in value)
+    return copy.deepcopy(value)
 
 
 @dataclass(frozen=True)
@@ -7802,7 +7826,10 @@ class MetricRef:
         type: Saved metric kind: ``"metric"`` (a behavior metric),
             ``"formula"``, or ``"warehouse"``. The server corrects the kind
             of a top-level reference, so the default works for any kind
-            when no typed override is set.
+            when no typed override is set. The client cannot know the saved
+            kind without a read, so set ``type="warehouse"`` (or use
+            ``SavedMetric.to_ref()``) to get the warning for a warehouse
+            metric with ``group_by`` or ``where``.
         label: Series name for this query. Replaces the saved name.
         math: Aggregation override (an insights, funnel, or retention math).
         property: Property override for property math. The server merges
@@ -7817,7 +7844,8 @@ class MetricRef:
         bucket_index: Bucket override for a saved retention metric.
         hidden: Whether the chart hides this series. ``None`` keeps the
             query default.
-        overrides: Raw overrides, deep-merged after the typed fields.
+        overrides: Raw overrides, deep-merged after the typed fields. Stored
+            as a read-only copy (``MappingProxyType`` and tuples).
 
     Example:
         ```python
@@ -7875,7 +7903,7 @@ class MetricRef:
     """Whether the chart hides this series."""
 
     overrides: Mapping[str, Any] | None = None
-    """Raw overrides, deep-merged after the typed fields."""
+    """Raw overrides, deep-merged after the typed fields (a read-only copy)."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
@@ -7888,8 +7916,14 @@ class MetricRef:
                 (``MR7_INVALID_OVERRIDE``), ``segment_method`` is invalid
                 (``MT2_INVALID_SEGMENT_METHOD``), a formula or warehouse
                 reference sets a behavior-metric override
-                (``MR6_OVERRIDE_NOT_APPLICABLE``), or ``overrides`` holds a
-                filter list (``MR1_FILTER_OVERRIDE``).
+                (``MR6_OVERRIDE_NOT_APPLICABLE``), the typed measurement
+                fields contradict each other (``V3_PER_USER_INCOMPATIBLE``,
+                ``V14_METRIC_REJECTS_PROPERTY``,
+                ``V26_PERCENTILE_REQUIRES_VALUE``, the codes of the inline
+                ``Metric`` rules), or ``overrides`` holds a filter list
+                (``MR1_FILTER_OVERRIDE``). ``overrides`` is stored as a
+                read-only copy, so a later change to the caller's mapping
+                does not reach the reference.
         """
         if not _is_positive_int(self.id):
             raise ParamValidationError(
@@ -7935,8 +7969,13 @@ class MetricRef:
                     "hidden, or overrides for a formula or warehouse metric.",
                     code="MR6_OVERRIDE_NOT_APPLICABLE",
                 )
+        self._check_measurement_rules()
         if self.overrides is not None:
-            filters_path = _find_filters_path(self.overrides)
+            # Keep a read-only copy, so the guard below checks exactly what
+            # the builder later writes.
+            frozen = cast(Mapping[str, Any], _freeze_override_value(self.overrides))
+            object.__setattr__(self, "overrides", frozen)
+            filters_path = _find_filters_path(frozen)
             if filters_path is not None:
                 raise ParamValidationError(
                     f"MetricRef overrides cannot hold filters ({filters_path}). "
@@ -7948,6 +7987,52 @@ class MetricRef:
                     "own filters.",
                     code="MR1_FILTER_OVERRIDE",
                 )
+
+    def _check_measurement_rules(self) -> None:
+        """Run the inline ``Metric`` combination rules on the typed fields.
+
+        Only contradictions among the fields that are set are refused. A
+        field that the saved definition can supply (a property, a per-user
+        aggregation) is not required, because the server deep-merges the
+        overrides into the saved measurement: ``MetricRef(id,
+        math="median")`` keeps the saved property.
+
+        Raises:
+            ParamValidationError: ``V3_PER_USER_INCOMPATIBLE`` when
+                ``per_user`` is set with a user-count math (``unique``,
+                ``dau``, ``wau``, ``mau``), ``V14_METRIC_REJECTS_PROPERTY``
+                when ``property`` is set with a math that takes no property,
+                and ``V26_PERCENTILE_REQUIRES_VALUE`` when
+                ``math="percentile"`` has no ``percentile_value``.
+        """
+        from mixpanel_headless._internal.bookmark_enums import (
+            MATH_NO_PER_USER,
+            MATH_PROPERTY_OPTIONAL,
+            MATH_REQUIRING_PROPERTY,
+        )
+
+        math_type = self.math
+        if math_type is None:
+            return
+        if self.per_user is not None and math_type in MATH_NO_PER_USER:
+            raise ParamValidationError(
+                f"MetricRef per_user={self.per_user!r} is incompatible with "
+                f"math={math_type!r}",
+                code="V3_PER_USER_INCOMPATIBLE",
+            )
+        takes_property = MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL
+        if self.property is not None and math_type not in takes_property:
+            raise ParamValidationError(
+                f"MetricRef property is only valid with property-based math "
+                f"types ({', '.join(sorted(takes_property))}), not {math_type!r}",
+                code="V14_METRIC_REJECTS_PROPERTY",
+            )
+        if math_type == "percentile" and self.percentile_value is None:
+            raise ParamValidationError(
+                'MetricRef math="percentile" requires percentile_value (e.g., '
+                'MetricRef(id, math="percentile", percentile_value=95))',
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
 
     def _check_override_values(self) -> None:
         """Check the value of each typed override and of the raw mapping.

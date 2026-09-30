@@ -67,7 +67,16 @@ may include API changes.
   refused (`MR1_FILTER_OVERRIDE`), because the server merges override lists
   item by item; use report-level `where=` or an inline `Metric` instead.
   A `SavedMetric` works in the same places, and `SavedMetric.to_ref()`
-  makes the reference with overrides.
+  makes the reference with overrides. The typed fields follow the inline
+  `Metric` rules where they contradict each other
+  (`V3_PER_USER_INCOMPATIBLE`, `V14_METRIC_REJECTS_PROPERTY`,
+  `V26_PERCENTILE_REQUIRES_VALUE`); a field that the saved definition can
+  supply is not required. The raw `overrides` are stored as a read-only
+  copy.
+- A query-level `math`, `math_property`, `per_user`, or `percentile_value`
+  in a query that has saved-metric references and no plain event name is
+  refused (`V29_QUERY_MEASUREMENT_IGNORED`): no event would use it. Set it
+  on the reference, for example `MetricRef(id, math="unique")`.
 - `BehaviorRef` runs a saved behavior by id. `query_funnel()` and
   `build_funnel_params()` take it in place of the step list, and
   `query_retention()` and `build_retention_params()` take it in place of
@@ -78,13 +87,16 @@ may include API changes.
   `R15_BEHAVIOR_REF_SETTINGS`).
 - A query that pairs a warehouse metric reference with `group_by` or
   `where` logs a `V28_WAREHOUSE_BREAKDOWN` warning: the server gives a
-  warehouse metric no breakdown and no filter.
+  warehouse metric no breakdown and no filter. The warning needs the
+  warehouse kind on the reference (`MetricRef(id, type="warehouse")` or
+  `SavedMetric.to_ref()`); a bare `MetricRef(id)` keeps the default kind.
 - The bookmark validators accept saved-metric references: a show clause
   with an `id` and no `behavior`, a `type: "warehouse"` clause with an
   `id`, and formula operands in `referencedMetrics`. New codes:
   `B27_INVALID_REFERENCE_ID`, `B28_WAREHOUSE_MISSING_ID`, and
-  `B29_OPERAND_MISSING_TYPE`. The bookmark schema check gains the
-  warehouse show clause.
+  `B29_OPERAND_MISSING_TYPE`. A saved-formula reference clause gets the
+  positive-id check too. The bookmark schema check gains the warehouse
+  show clause.
 
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real

@@ -201,6 +201,17 @@ class TestBuildParamsWithMetricRef:
             ws.build_params(MetricRef(1, property=mp.CustomPropertyRef(0)))
         assert _codes(exc_info.value) == ["CP1_INVALID_ID"]
 
+    def test_query_math_that_no_event_uses_is_refused(self, ws: Workspace) -> None:
+        """Query-level math with only references would be dropped, so it is refused."""
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_params(MetricRef(1), math="unique")
+        assert _codes(exc_info.value) == ["V29_QUERY_MEASUREMENT_IGNORED"]
+
+    def test_query_math_on_a_typed_override_passes(self, ws: Workspace) -> None:
+        """The same math as a typed override reaches the reference."""
+        show = ws.build_params(MetricRef(1, math="unique"))["sections"]["show"]
+        assert show[0]["overrides"] == {"measurement": {"math": "unique"}}
+
 
 _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "saved_metrics"
 """Redacted live responses recorded against a project with saved metrics."""

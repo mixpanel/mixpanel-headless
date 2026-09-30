@@ -971,8 +971,13 @@ class TestCodedGuardRegistry:
             assert code in CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
-        """Every reused twin code already exists in the code universe."""
-        assert len(CODED_GUARD_TWIN_CODES) == 9
+        """Every reused twin code already exists in the code universe.
+
+        ``MetricRef`` reuses two per-Metric query validator codes for its
+        measurement rules (``V3_PER_USER_INCOMPATIBLE``,
+        ``V14_METRIC_REJECTS_PROPERTY``).
+        """
+        assert len(CODED_GUARD_TWIN_CODES) == 11
         assert CODED_GUARD_TWIN_CODES <= PRE_EXISTING_CODE_UNIVERSE
 
     def test_twins_disjoint_from_minted(self) -> None:

@@ -14,6 +14,11 @@ from typing import Any, get_args
 from hypothesis import given
 from hypothesis import strategies as st
 
+from mixpanel_headless._internal.bookmark_enums import (
+    MATH_NO_PER_USER,
+    MATH_PROPERTY_OPTIONAL,
+    MATH_REQUIRING_PROPERTY,
+)
 from mixpanel_headless._internal.query.metric_builders import (
     build_metric_ref_clause,
     build_metric_ref_overrides,
@@ -27,6 +32,7 @@ from mixpanel_headless._literal_types import (
     RetentionMathType,
     SegmentMethod,
 )
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import CustomPropertyRef, MetricRef
 
 _MATHS = sorted(
@@ -42,6 +48,45 @@ _properties = st.one_of(
 )
 
 
+_measurement_fields = st.tuples(
+    st.none() | st.sampled_from(_MATHS),
+    st.none() | _properties,
+    st.none() | st.sampled_from(get_args(PerUserAggregation)),
+    st.none()
+    | st.integers(min_value=1, max_value=99)
+    | st.floats(min_value=0.5, max_value=99.5, allow_nan=False),
+)
+"""Any mix of math, property, per_user, and percentile_value."""
+
+_TAKES_PROPERTY = MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL
+"""Maths that take a property."""
+
+
+def _consistent(
+    math: Any, prop: Any, per_user: Any, percentile_value: Any
+) -> tuple[Any, Any, Any, Any]:
+    """Drop or fill measurement fields so that they do not contradict.
+
+    Args:
+        math: The drawn math, or ``None``.
+        prop: The drawn property, or ``None``.
+        per_user: The drawn per-user aggregation, or ``None``.
+        percentile_value: The drawn percentile value, or ``None``.
+
+    Returns:
+        The four fields, with ``per_user`` dropped for a user-count math,
+        ``property`` dropped for a math that takes none, and a percentile
+        value added for ``math="percentile"``.
+    """
+    if math in MATH_NO_PER_USER:
+        per_user = None
+    if math is not None and math not in _TAKES_PROPERTY:
+        prop = None
+    if math == "percentile" and percentile_value is None:
+        percentile_value = 95
+    return math, prop, per_user, percentile_value
+
+
 @st.composite
 def typed_refs(draw: st.DrawFn) -> MetricRef:
     """Draw a behavior-metric MetricRef with any mix of typed overrides.
@@ -50,19 +95,17 @@ def typed_refs(draw: st.DrawFn) -> MetricRef:
         draw: The Hypothesis draw function.
 
     Returns:
-        A MetricRef with no raw overrides.
+        A MetricRef with no raw overrides. The measurement fields never
+        contradict each other (see ``_measurement_fields``).
     """
+    math, prop, per_user, percentile_value = _consistent(*draw(_measurement_fields))
     return MetricRef(
         draw(st.integers(min_value=1, max_value=10**9)),
         label=draw(st.none() | _labels),
-        math=draw(st.none() | st.sampled_from(_MATHS)),
-        property=draw(st.none() | _properties),
-        per_user=draw(st.none() | st.sampled_from(get_args(PerUserAggregation))),
-        percentile_value=draw(
-            st.none()
-            | st.integers(min_value=1, max_value=99)
-            | st.floats(min_value=0.5, max_value=99.5, allow_nan=False)
-        ),
+        math=math,
+        property=prop,
+        per_user=per_user,
+        percentile_value=percentile_value,
         segment_method=draw(st.none() | st.sampled_from(get_args(SegmentMethod))),
         funnel_order=draw(st.none() | st.sampled_from(get_args(FunnelOrder))),
         step_index=draw(st.none() | st.integers(min_value=0, max_value=20)),
@@ -159,3 +202,28 @@ def test_bare_operand_is_type_and_id(ref_id: int) -> None:
         "type": "metric",
         "id": ref_id,
     }
+
+
+@given(_measurement_fields)
+def test_measurement_rules_match_the_inline_rules(fields: tuple[Any, ...]) -> None:
+    """MetricRef refuses exactly the contradictory measurement combinations."""
+    math, prop, per_user, percentile_value = fields
+    expected: str | None = None
+    if math is not None and per_user is not None and math in MATH_NO_PER_USER:
+        expected = "V3_PER_USER_INCOMPATIBLE"
+    elif math is not None and prop is not None and math not in _TAKES_PROPERTY:
+        expected = "V14_METRIC_REJECTS_PROPERTY"
+    elif math == "percentile" and percentile_value is None:
+        expected = "V26_PERCENTILE_REQUIRES_VALUE"
+    try:
+        MetricRef(
+            1,
+            math=math,
+            property=prop,
+            per_user=per_user,
+            percentile_value=percentile_value,
+        )
+    except ParamValidationError as exc:
+        assert exc.code == expected
+    else:
+        assert expected is None

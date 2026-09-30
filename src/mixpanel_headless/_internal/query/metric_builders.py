@@ -469,12 +469,34 @@ def build_show_section(
 # =============================================================================
 
 
+def _thaw(value: object) -> object:
+    """Turn a stored override value back into plain JSON-safe objects.
+
+    ``MetricRef`` stores its raw overrides as a read-only tree of
+    ``MappingProxyType`` and tuples. The wire form is a plain dict with
+    lists.
+
+    Args:
+        value: A value from the stored overrides tree.
+
+    Returns:
+        A new plain dict for a mapping, a new list for a tuple or list,
+        and a deep copy of any other value.
+    """
+    if isinstance(value, Mapping):
+        return {key: _thaw(child) for key, child in value.items()}
+    if isinstance(value, list | tuple):
+        return [_thaw(child) for child in value]
+    return copy.deepcopy(value)
+
+
 def _merge_overrides(target: dict[str, Any], source: Mapping[str, Any]) -> None:
     """Deep-merge raw overrides into the typed overrides dict, in place.
 
     A mapping merges into a dict at the same key. Any other value (a
-    scalar, ``None``, or a list) replaces the target value. Values are
-    deep-copied, so the result never shares objects with ``source``.
+    scalar, ``None``, or a sequence) replaces the target value. Values are
+    copied into plain dicts and lists, so the result never shares objects
+    with ``source`` and is JSON-safe.
 
     Args:
         target: The typed overrides dict. Changed in place.
@@ -489,7 +511,7 @@ def _merge_overrides(target: dict[str, Any], source: Mapping[str, Any]) -> None:
             _merge_overrides(merged, value)
             target[key] = merged
         else:
-            target[key] = copy.deepcopy(value)
+            target[key] = _thaw(value)
 
 
 def build_metric_ref_overrides(ref: MetricRef) -> dict[str, Any]:

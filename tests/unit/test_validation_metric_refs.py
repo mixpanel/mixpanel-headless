@@ -149,6 +149,62 @@ class TestQueryArgsWithReferences:
         assert errors[0].path == "events[0]"
 
 
+class TestQueryMeasurementIgnoredByReferences:
+    """V29_QUERY_MEASUREMENT_IGNORED: no event uses a query-level measurement."""
+
+    @pytest.mark.parametrize(
+        ("argument", "value"),
+        [
+            ("math", "unique"),
+            ("math_property", "amount"),
+            ("per_user", "total"),
+            ("percentile_value", 95),
+        ],
+    )
+    def test_argument_with_only_references_is_refused(
+        self, argument: str, value: object
+    ) -> None:
+        """A non-default query-level argument with only references is refused."""
+        errors = validate_query_args(**_query_args(**{argument: value}))
+        assert "V29_QUERY_MEASUREMENT_IGNORED" in _codes(errors)
+        refused = [e for e in errors if e.code == "V29_QUERY_MEASUREMENT_IGNORED"]
+        assert [e.path for e in refused] == [argument]
+        assert "MetricRef" in refused[0].message
+
+    def test_every_ignored_argument_is_named(self) -> None:
+        """Each ignored argument gets its own error, in argument order."""
+        errors = validate_query_args(
+            **_query_args(math="average", math_property="amount", per_user="total")
+        )
+        refused = [e.path for e in errors if e.code == "V29_QUERY_MEASUREMENT_IGNORED"]
+        assert refused == ["math", "math_property", "per_user"]
+
+    def test_references_with_metrics_only_are_refused(self) -> None:
+        """A Metric does not use the query-level math either."""
+        errors = validate_query_args(
+            **_query_args(events=[MetricRef(1), Metric("Login")], math="unique")
+        )
+        assert _codes(errors) == ["V29_QUERY_MEASUREMENT_IGNORED"]
+
+    def test_bare_event_name_uses_the_argument(self) -> None:
+        """With a bare event name the argument is used, so nothing is refused."""
+        errors = validate_query_args(
+            **_query_args(events=[MetricRef(1), "Login"], math="unique")
+        )
+        assert errors == []
+
+    def test_default_arguments_pass(self) -> None:
+        """The default query-level measurement is not a conflict."""
+        assert validate_query_args(**_query_args()) == []
+
+    def test_metrics_without_references_keep_todays_behavior(self) -> None:
+        """Without a reference, a Metric still ignores the argument silently."""
+        errors = validate_query_args(
+            **_query_args(events=[Metric("Login")], math="unique")
+        )
+        assert errors == []
+
+
 class TestWarehouseBreakdownWarning:
     """V28_WAREHOUSE_BREAKDOWN: a warehouse reference ignores group_by and where."""
 
@@ -288,6 +344,17 @@ class TestFormulaOperands:
         errors = validate_bookmark(_bookmark(self._formula({"id": 5})))
         assert _codes(errors) == ["B29_OPERAND_MISSING_TYPE"]
         assert errors[0].path == "sections.show[0].referencedMetrics[0]"
+
+    @pytest.mark.parametrize("bad_id", [0, -3, "7", True])
+    def test_saved_formula_reference_bad_id(self, bad_id: object) -> None:
+        """A saved-formula reference clause gets the positive-id check too."""
+        errors = validate_bookmark(_bookmark({"type": "formula", "id": bad_id}))
+        assert _codes(errors) == ["B27_INVALID_REFERENCE_ID"]
+        assert errors[0].path == "sections.show[0].id"
+
+    def test_saved_formula_reference_good_id(self) -> None:
+        """A saved-formula reference with a positive id passes."""
+        assert validate_bookmark(_bookmark({"type": "formula", "id": 42})) == []
 
     def test_operand_bad_id(self) -> None:
         """An operand id is a positive integer."""

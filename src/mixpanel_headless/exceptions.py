@@ -2053,6 +2053,9 @@ CODED_GUARD_TWIN_CODES: Final[frozenset[str]] = frozenset(
         "V18_BUCKET_ORDER",
         "FL3_FORWARD_RANGE",
         "FL4_REVERSE_RANGE",
+        # MetricRef measurement rules twin the per-Metric query validator rules.
+        "V3_PER_USER_INCOMPATIBLE",
+        "V14_METRIC_REJECTS_PROPERTY",
     }
 )
 """Pre-existing registry codes reused by dual-enforcement guard twins.

@@ -3,7 +3,7 @@
 Two validation layers:
 
 - ``validate_query_args()``: Validates Python-level arguments before
-  bookmark construction (Layer 1, rules V0-V28, CF1-CF2, CB1-CB3,
+  bookmark construction (Layer 1, rules V0-V29, CF1-CF2, CB1-CB3,
   CM1-CM5).
 - ``validate_bookmark()``: Validates the bookmark JSON dict after
   construction (Layer 2, rules B1-B29).
@@ -2151,6 +2151,63 @@ def validate_flow_bookmark(
 # =============================================================================
 
 
+_MEASUREMENT_ARGUMENTS: tuple[tuple[str, str, object], ...] = (
+    ("math", "math", "total"),
+    ("math_property", "property", None),
+    ("per_user", "per_user", None),
+    ("percentile_value", "percentile_value", None),
+)
+"""Query-level measurement arguments: (argument, MetricRef field, default)."""
+
+
+def _ignored_query_measurement(
+    *,
+    math: MathType,
+    math_property: str | None,
+    per_user: PerUserAggregation | None,
+    percentile_value: int | float | None,
+) -> list[ValidationError]:
+    """Refuse query-level measurement arguments that no event would use (V29).
+
+    The caller makes sure that the query has saved-metric references and
+    no plain event name, so nothing consumes these arguments.
+
+    Args:
+        math: Query-level aggregation function.
+        math_property: Query-level property.
+        per_user: Query-level per-user aggregation.
+        percentile_value: Query-level percentile value.
+
+    Returns:
+        One ``V29_QUERY_MEASUREMENT_IGNORED`` error per argument that differs
+        from its default, in argument order.
+    """
+    values = {
+        "math": math,
+        "math_property": math_property,
+        "per_user": per_user,
+        "percentile_value": percentile_value,
+    }
+    errors: list[ValidationError] = []
+    for argument, field, default in _MEASUREMENT_ARGUMENTS:
+        value = values[argument]
+        if value == default:
+            continue
+        errors.append(
+            ValidationError(
+                path=argument,
+                message=(
+                    f"{argument}={value!r} applies only to plain event names, "
+                    "and this query has none: a saved metric keeps its saved "
+                    "measurement. Set it on the reference instead, for "
+                    f"example MetricRef(id, {field}={value!r})."
+                ),
+                code="V29_QUERY_MEASUREMENT_IGNORED",
+            )
+        )
+    return errors
+
+
 def validate_query_args(
     *,
     events: Sequence[str | Metric | CohortMetric | MetricRef],
@@ -2176,7 +2233,7 @@ def validate_query_args(
 ) -> list[ValidationError]:
     """Validate query arguments before bookmark construction (Layer 1).
 
-    Implements validation rules V0-V28, delegating time (V7-V10, V15,
+    Implements validation rules V0-V29, delegating time (V7-V10, V15,
     V20) and group-by (V11-V12, V18, V24) to extracted helpers.
     Returns all errors found, not just the first, so callers can
     fix multiple issues in a single pass.
@@ -2199,7 +2256,11 @@ def validate_query_args(
             Must be a positive integer if provided. Default: ``None``.
         where: Report-level filters. Used only for the warehouse-reference
             warning (V28); the filters themselves are validated elsewhere.
-            Default: ``None``.
+            The warning needs the warehouse kind on the reference
+            (``MetricRef(id, type="warehouse")`` or
+            ``SavedMetric.to_ref()``): a bare ``MetricRef(id)`` keeps the
+            default kind, because the client cannot know the saved kind
+            without a read. Default: ``None``.
 
     Returns:
         List of validation errors. Empty list means all arguments are valid.
@@ -2299,6 +2360,21 @@ def validate_query_args(
     # string events.  When all events are CohortMetric (or Metric, which
     # carries its own math), there are no consumers — skip V1/V2/V3/V26/V27.
     has_plain_events = any(isinstance(item, str) for item in events)
+
+    # V29: A query-level measurement argument that no event uses. A saved
+    # metric keeps its saved measurement (only its own overrides change
+    # it), so with references and no plain event name the argument would
+    # be dropped. A Metric ignores the arguments too, and keeps doing so
+    # silently when no reference is present.
+    if not has_plain_events and any(isinstance(item, MetricRef) for item in events):
+        errors.extend(
+            _ignored_query_measurement(
+                math=math,
+                math_property=math_property,
+                per_user=per_user,
+                percentile_value=percentile_value,
+            )
+        )
 
     # V1: Property math requires property
     if has_plain_events and math in MATH_REQUIRING_PROPERTY and math_property is None:
@@ -2557,7 +2633,12 @@ def validate_query_args(
                 )
 
     # V28: The server gives a warehouse metric no breakdown and no filter.
-    # The query still runs, so this is a warning, not an error.
+    # The query still runs, so this is a warning, not an error. The check
+    # reads the kind on the reference: a bare MetricRef(id) keeps the
+    # default "metric" even when the saved metric is a warehouse metric,
+    # because the client cannot know the saved kind without a read (the
+    # server corrects the kind only at query time). SavedMetric.to_ref()
+    # and MetricRef(id, type="warehouse") carry the kind.
     ignored = [
         name
         for name, value in (("group_by", group_by), ("where", where))
@@ -2830,10 +2911,14 @@ def _validate_show_clause(
         )
         return errors
 
-    # Formula show clause — check the operands only (pure formula clauses)
+    # Formula show clause — check the id of a saved-formula reference, then
+    # the operands (pure formula clauses)
     is_formula = "formula" in clause or clause.get("type") == "formula"
     if is_formula and "behavior" not in clause:
-        return _validate_formula_operands(clause, path, bookmark_type)
+        if clause.get("id") is not None:
+            errors.extend(_validate_reference_id(clause["id"], path))
+        errors.extend(_validate_formula_operands(clause, path, bookmark_type))
+        return errors
 
     # Saved-metric reference: the server expands the id at query time
     if clause.get("id") is not None and "behavior" not in clause:
