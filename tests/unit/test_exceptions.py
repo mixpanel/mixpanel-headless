@@ -946,16 +946,19 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 126 minted full codes, no duplicates.
+        """The registry lists all 127 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
         pydantic-internal, so those sites stay builtin under the design's
         P3 policy). 045-report-links added the six ``RL*`` guards: ``RL1``
         to ``RL4`` in the first cut, ``RL5`` (``ResolvedReport`` consistency)
-        and ``RL6`` (positive ids in the URL builders) from PR review.
+        and ``RL6`` (positive ids in the URL builders) from PR review. The
+        saved metrics delete added ``SM5_NOT_FOUND_FOR_DELETE`` (the
+        pre-read of ``delete_metric`` found no metric).
         """
-        assert len(CODED_GUARD_REGISTRY) == 126
+        assert len(CODED_GUARD_REGISTRY) == 127
+        assert "SM5_NOT_FOUND_FOR_DELETE" in CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
         """Every reused twin code already exists in the code universe."""

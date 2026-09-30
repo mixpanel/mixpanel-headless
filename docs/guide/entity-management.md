@@ -1,6 +1,6 @@
 # Entity Management
 
-Manage Mixpanel dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, and webhooks programmatically. Full CRUD operations with bulk support. For data governance operations (Lexicon definitions, drop filters, custom properties, custom events, and lookup tables), see the [Data Governance guide](data-governance.md).
+Manage Mixpanel dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, and webhooks programmatically. Full CRUD operations with bulk support. For saved metrics and saved behaviors, see the [Saved Metrics and Behaviors guide](saved-metrics.md). For data governance operations (Lexicon definitions, drop filters, custom properties, custom events, and lookup tables), see the [Data Governance guide](data-governance.md).
 
 !!! note "Prerequisites"
     Entity management requires **authentication** — service account or OAuth credentials.
@@ -8,7 +8,7 @@ Manage Mixpanel dashboards, reports (bookmarks), cohorts, feature flags, experim
     **Scoping differs by entity type:**
 
     - **Dashboards, reports, cohorts, alerts, annotations, webhooks** require a **workspace ID** — set via `MP_WORKSPACE_ID` env var, `--workspace` / `-w` CLI flag, `Workspace(workspace=N)`, or `ws.use(workspace=N)`. List available workspaces with `mp workspace list` or `ws.workspaces()`.
-    - **Feature flags and experiments** are **project-scoped** and do NOT require a workspace ID.
+    - **Feature flags, experiments, saved metrics, and saved behaviors** are **project-scoped** and do NOT require a workspace ID.
 
 ## Dashboards
 
@@ -1195,6 +1195,30 @@ Project webhooks receive HTTP notifications when events occur in your Mixpanel p
     mp webhooks test --url https://example.com/webhook
     ```
 
+## Saved Metrics and Behaviors
+
+Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors (simple, funnel, retention) are project-scoped. The list methods return the full server list, including metrics that you cannot view, and filter it locally. The deletes go through the bulk routes; the single-id forms read the entity first. The [Saved Metrics and Behaviors guide](saved-metrics.md) covers the details.
+
+=== "Python"
+
+    ```python
+    governed = ws.list_metrics(verified=True, viewable_only=True)
+    metric = ws.get_metric(governed[0].id)
+    funnels = ws.list_behaviors(behavior_type="funnel")
+
+    ws.delete_metric(104700)
+    ws.delete_behaviors([3001, 3002])
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp metrics list --verified --viewable-only --format table
+    mp metrics get 104700
+    mp behaviors list --type funnel
+    mp metrics delete 104700
+    ```
+
 ---
 
 ## Next Steps
@@ -1202,4 +1226,5 @@ Project webhooks receive HTTP notifications when events occur in your Mixpanel p
 - [API Reference — Workspace](../api/workspace.md) — Complete method signatures and docstrings
 - [API Reference — Types](../api/types.md) — Dashboard, Bookmark, Cohort, Feature Flag, Experiment, Alert, Annotation, and Webhook type definitions
 - [CLI Reference](../cli/index.md) — Full CLI command documentation
+- [Saved Metrics and Behaviors Guide](saved-metrics.md) — List, read, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
 - [Data Governance Guide](data-governance.md) — Manage Lexicon definitions, drop filters, custom properties, custom events, and lookup tables

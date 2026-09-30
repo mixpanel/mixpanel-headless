@@ -1,0 +1,175 @@
+# Saved Metrics and Behaviors
+
+List, read, and delete the saved metrics and saved behaviors of a Mixpanel project, from Python and from the `mp metrics` and `mp behaviors` CLI groups.
+
+!!! info "Saved versus inline"
+    A **saved metric** is a project entity: it has a numeric id, a name, an optional owner, a verified flag, and goals. The web app uses it by reference in Insights, Funnels, Retention, Experiments, Metric Trees, alerts, and boards, so a change to the saved metric reaches every report that refers to it.
+
+    The query types `mp.Metric`, `mp.Formula`, and `mp.CohortMetric` are **inline** values: they exist only for the duration of one query and have no id. This page covers the saved entities.
+
+!!! note "Prerequisites"
+    Saved metrics and saved behaviors require **authentication** (service account or OAuth). Both collections are **project-scoped**: they do not need a workspace ID, and a pinned workspace does not change which rows you see. An OAuth token needs the `metrics` and `behaviors` scopes.
+
+## The three metric kinds
+
+One server collection holds three kinds of saved metric. `SavedMetric.type` names the kind:
+
+| `type` | Kind | Definition shape |
+|---|---|---|
+| `metric` | Behavior metric: what users did plus how to count it | `{behavior, measurement, display?, goals?}` |
+| `formula` | Saved formula over other metrics | `{formula: {definition, referencedMetrics}, measurement?, display?, goals?}` |
+| `warehouse` | Warehouse metric: a SQL query against a warehouse source | `{query, metricType, aggregation?, syncInterval?, ...}` |
+
+Old rows can have `type: "behavior"`. The library parses every row, whatever its `type`, and keeps keys that it does not model (see [Open reads](#open-reads)).
+
+A behavior metric's `behavior.type` can be `event`, `simple` (more than one event), `funnel`, `retention`, `cohort`, or `people`. A formula's operands can be inline metrics or references to other saved metrics, written `{"type": "metric", "id": N}`.
+
+## The three behavior types
+
+A **saved behavior** is a reusable "what users did" with no counting rule. It lives in a separate collection, with its own permissions. `SavedBehavior.type` names the type:
+
+| `type` | What it describes |
+|---|---|
+| `simple` | One or more events, with optional filters |
+| `funnel` | Ordered steps, a conversion window, exclusions |
+| `retention` | A born event and a returning event |
+
+The definition of a saved behavior holds one key, `behavior`, in the show-clause shape of the web app.
+
+## List
+
+The server has no pagination, no filters, and no search. One request fetches every active row, and the filter arguments apply locally to that response. On a large project the request can take more than 30 seconds, so the list calls use a read timeout of at least 120 seconds.
+
+=== "Python"
+
+    ```python
+    import mixpanel_headless as mp
+
+    ws = mp.Workspace()
+
+    # Every saved metric, all kinds
+    metrics = ws.list_metrics()
+
+    # Local filters
+    formulas = ws.list_metrics(metric_type="formula")
+    governed = ws.list_metrics(verified=True)
+    revenue = ws.list_metrics(name_contains="revenue")        # case-insensitive
+    mine = ws.list_metrics(viewable_only=True)                # drop can_view false
+
+    for m in governed:
+        print(m.id, m.type, m.name, m.math, m.owned_by)
+
+    # Saved behaviors
+    funnels = ws.list_behaviors(behavior_type="funnel")
+    checkout = ws.list_behaviors(name_contains="checkout")
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp metrics list
+    mp metrics list --type formula
+    mp metrics list --verified              # --no-verified for unverified only
+    mp metrics list --name-contains revenue --viewable-only
+    mp metrics list --format table          # id, name, type, verified, can_view, modified
+
+    mp behaviors list --type funnel
+    mp behaviors list --name-contains checkout --format table
+    ```
+
+!!! warning "The list includes metrics that you cannot view"
+    The server returns every active metric of the project, also the ones that the caller cannot view, and it sends their full definitions. For those rows `SavedMetric.can_view` is `False`. `list_metrics()` returns what the server returns; pass `viewable_only=True` (CLI: `--viewable-only`) for the web app's view.
+
+## Get
+
+=== "Python"
+
+    ```python
+    metric = ws.get_metric(104700)
+    metric.type                  # "metric", "formula", or "warehouse"
+    metric.definition            # the stored definition, as a dict
+
+    # Typed accessors (None or [] for a shape they do not know; they never raise)
+    metric.behavior_type         # "event", "simple", "funnel", ...
+    metric.math                  # "unique", "total", "sessions", ...
+    metric.formula_expression    # "A / B * 100" for a saved formula
+    metric.referenced_metric_ids # saved metrics that a formula uses by id
+    metric.display               # MetricDisplay: prefix, suffix, precision, ...
+    metric.goals                 # list[MetricGoal]
+
+    behavior = ws.get_behavior(3001)
+    behavior.behavior_type       # "funnel"
+    behavior.definition["behavior"]
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp metrics get 104700
+    mp metrics get 104700 --jq '.definition'
+    mp behaviors get 3001
+    ```
+
+`get_metric` raises `QueryError` with `status_code == 404` for an unknown or deleted id. The server does not answer an unknown behavior id with 404: `get_behavior` raises `ServerError` (500) instead.
+
+## Delete
+
+The server's single-metric delete route answers 501, and its single-behavior delete route skips the permission check. So the library deletes through the **bulk** routes only. A delete is a soft delete on the server: the row leaves the lists, and reports that refer to it keep a copy of the definition but lose the link.
+
+The bulk routes skip ids that do not name an active row, with no error. The single-id methods read the entity first, so a typo in an id raises instead of passing silently:
+
+| Method | Requests | Unknown id |
+|---|---|---|
+| `delete_metric(id)` | GET, then bulk DELETE | `ParamValidationError` with code `SM5_NOT_FOUND_FOR_DELETE`; nothing is deleted |
+| `delete_metrics(ids)` | One bulk DELETE | Skipped by the server, no error |
+| `delete_behavior(id)` | GET, then bulk DELETE | `ServerError` (the server answers the read with 500); nothing is deleted |
+| `delete_behaviors(ids)` | One bulk DELETE | Skipped by the server, no error |
+
+=== "Python"
+
+    ```python
+    ws.delete_metric(104700)
+
+    stale = ws.list_metrics(name_contains="[old]")
+    ws.delete_metrics([m.id for m in stale])
+
+    ws.delete_behavior(3001)
+    ws.delete_behaviors([3002, 3003])
+    ```
+
+=== "CLI"
+
+    ```bash
+    mp metrics delete 104700              # one id: read first, then delete
+    mp metrics delete 104700 118228       # several ids: one bulk request
+    mp behaviors delete 3001
+    ```
+
+The CLI does not ask for confirmation. It prints its message on stderr, so stdout stays empty for scripts.
+
+A delete raises `QueryError` with `status_code == 403` when the caller cannot edit one of the rows. A warehouse metric also needs the warehouse-sources write permission.
+
+## Sharing and visibility
+
+In a project with sharing on, a metric or behavior that someone creates is private to its creator until they share it. The permission flags on each row tell you what the caller can do:
+
+| Field | Meaning |
+|---|---|
+| `can_view` | The caller can view the row |
+| `can_update_basic` | The caller can edit the name and definition |
+| `can_share` | The caller can share the row |
+| `is_visible` | The row is visible to the caller |
+| `is_locked` | The row is locked against edits |
+
+Projects without sharing add more flags (for example `can_update_restricted`). The models keep them as unknown keys: read them with `metric.model_extra`.
+
+## Open reads
+
+`SavedMetric` and `SavedBehavior` accept any `type`, any `math`, and keys that they do not model, because stored rows include shapes that no strict model accepts: legacy kinds, deprecated display and goal keys (`chartType`, goal `unit` and `direction`), and maths outside the documented list. `model_dump()` returns every key the server sent. The typed accessors return `None` or an empty list for a shape they do not know.
+
+## Next Steps
+
+- [API Reference — Workspace](../api/workspace.md) — Method signatures and docstrings
+- [API Reference — Types](../api/types.md) — `SavedMetric`, `SavedBehavior`, `MetricDisplay`, `MetricGoal`
+- [Insights Queries](query.md) — Inline metrics and formulas
+- [Entity Management](entity-management.md) — Dashboards, reports, cohorts, and other entities
