@@ -4,8 +4,9 @@
 Properties tested:
 - ``create_metric`` saves the same ``behavior`` and ``measurement`` that
   ``build_params`` writes into ``sections.show`` for the same inline metric
-  (event, several events, cohort, funnel, and retention metrics), so a saved
-  metric queries the same way as its inline twin
+  (event, several events, cohort, funnel, and retention metrics), apart from
+  the legacy keys that a create rejects and the server reads past, so a
+  saved metric queries the same way as its inline twin
 - ``create_metric`` saves the same ``referencedMetrics`` that
   ``build_params`` writes for the same formula with its own operands
 - ``goal_to_wire`` always writes a string id and string checkpoint times,
@@ -35,7 +36,9 @@ from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.saved_definitions import (
     check_formula_operands,
+    find_server_skipped_keys,
     goal_to_wire,
+    strip_server_skipped_keys,
 )
 from mixpanel_headless.types import (
     CohortMetric,
@@ -167,7 +170,10 @@ def test_saved_definition_equals_query_show_clause(metric: InlineMetric) -> None
     ws.create_metric(CreateMetricParams(name="m", definition=metric))
     sent = json.loads(captured[0].content)["definition"]
     show = ws.build_params(metric)["sections"]["show"][0]
-    assert sent == {"behavior": show["behavior"], "measurement": show["measurement"]}
+    expected = {"behavior": show["behavior"], "measurement": show["measurement"]}
+    strip_server_skipped_keys("metric", expected)
+    assert sent == expected
+    assert find_server_skipped_keys("metric", sent) == []
 
 
 @given(operands=st.lists(inline_metrics(), min_size=1, max_size=3))
@@ -191,10 +197,15 @@ def test_saved_formula_operands_equal_query_operands(
     sent = json.loads(captured[0].content)
     assert sent["type"] == "formula"
     clause = ws.build_params(formula)["sections"]["show"][-1]
-    assert sent["definition"]["formula"] == {
-        "definition": clause["definition"],
-        "referencedMetrics": clause["referencedMetrics"],
+    expected = {
+        "formula": {
+            "definition": clause["definition"],
+            "referencedMetrics": clause["referencedMetrics"],
+        }
     }
+    strip_server_skipped_keys("formula", expected)
+    assert sent["definition"] == expected
+    assert find_server_skipped_keys("formula", sent["definition"]) == []
 
 
 _checkpoint_times = st.one_of(

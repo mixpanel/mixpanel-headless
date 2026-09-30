@@ -930,7 +930,10 @@ class TestTypedWrites:
         ws.create_metric(CreateMetricParams(name="Checkout", definition=metric))
         body = server.body(0)
         assert body["type"] == "metric"
-        assert body["definition"] == build_metric_definition(metric)
+        expected = build_metric_definition(metric)
+        del expected["behavior"]["filter"]
+        assert body["definition"] == expected
+        assert '"filter"' not in json.dumps(body)
 
     def test_update_formula_kind_check(self, temp_dir: Path) -> None:
         """A formula update passes on a stored formula and refuses a behavior metric."""
@@ -975,8 +978,52 @@ class TestTypedWrites:
         ws.create_behavior(CreateBehaviorParams(name="b", behavior=behavior))
         body = server.body(0)
         assert body["type"] == wire_type
-        assert body["definition"] == build_behavior_definition(behavior)
+        expected = build_behavior_definition(behavior)
+        expected["behavior"].pop("filter", None)
+        assert body["definition"] == expected
         assert "name" not in body["definition"]["behavior"]
+        assert "filter" not in body["definition"]["behavior"]
+
+    def test_create_refuses_a_raw_legacy_key_update_sends_it(
+        self, temp_dir: Path
+    ) -> None:
+        """A raw legacy key fails SM4 on create; an update sends it as given."""
+        raw = RawMetricDefinition(
+            "metric",
+            {
+                "behavior": {"type": "event", "name": "Login", "filter": []},
+                "measurement": {"math": "total"},
+            },
+        )
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1)),
+                ("PATCH", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1)),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_metric(CreateMetricParams(name="n", definition=raw))
+        assert exc_info.value.details["path"] == "definition.behavior.filter"
+        assert server.requests == []
+        ws.update_metric(1, UpdateMetricParams(definition=raw))
+        assert server.body(1)["definition"]["behavior"]["filter"] == []
+
+    def test_create_behavior_refuses_a_raw_legacy_key(self, temp_dir: Path) -> None:
+        """A raw behavior definition with a legacy key fails SM4 on create."""
+        server = _Server({})
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_behavior(
+                CreateBehaviorParams(
+                    name="b",
+                    behavior=RawBehaviorDefinition(
+                        {"behavior": {"type": "funnel", "filter": []}}
+                    ),
+                )
+            )
+        assert exc_info.value.code == "SM4_SCHEMA"
+        assert server.requests == []
 
     def test_update_behavior_type_change_refused(self, temp_dir: Path) -> None:
         """A retention behavior for a stored funnel behavior raises SM3."""

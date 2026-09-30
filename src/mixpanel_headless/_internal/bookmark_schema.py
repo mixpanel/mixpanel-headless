@@ -1006,9 +1006,11 @@ class Goal(BaseModel):
     checkpoints: list[tuple[str, float]]
     target_type: Literal["absolute", "relative"] = "absolute"
     target_input: float | None = None
-    # Deprecated fields, excluded from output.
-    unit: Ignore[JsonValue]
-    direction: Ignore[JsonValue]
+    # Deprecated fields, excluded from output. Unlike ``Ignore[T]`` fields,
+    # they stay in the server's JSON Schema (``Field(exclude=True)`` only),
+    # so a create accepts them.
+    unit: JsonValue | None = Field(default=None, exclude=True)
+    direction: JsonValue | None = Field(default=None, exclude=True)
 
 
 class SubBehavior(BaseModel):

@@ -9187,7 +9187,11 @@ class Workspace:
         check_name(params.name, entity="saved metric")
         check_description(params.description, entity="saved metric")
         parts = prepare_new_metric(
-            params.definition, params.display, params.goals, validate=validate
+            params.definition,
+            params.display,
+            params.goals,
+            validate=validate,
+            for_create=True,
         )
         if parts.kind == "warehouse" and parts.warehouse_source_id is None:
             raise ParamValidationError(
@@ -9721,7 +9725,7 @@ class Workspace:
         definition = behavior_wire_definition(params.behavior)
         behavior_type = self._saved_behavior_type(definition)
         if validate:
-            check_behavior_definition(definition)
+            check_behavior_definition(definition, for_create=True)
         body: dict[str, Any] = {"type": behavior_type, "name": params.name}
         if params.description is not None:
             body["description"] = params.description

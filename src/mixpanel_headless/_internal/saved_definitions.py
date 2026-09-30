@@ -28,7 +28,10 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Any, Final
+from typing import Any, Final, cast, get_args, get_origin
+
+from pydantic import BaseModel
+from pydantic.json_schema import SkipJsonSchema
 
 from mixpanel_headless._internal.bookmark_schema import (
     SAVED_METRIC_DEFINITION_MODELS,
@@ -133,10 +136,10 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
         ```
     """
     if isinstance(definition, (Metric, CohortMetric, FunnelMetric, RetentionMetric)):
+        compiled = build_metric_definition(definition)
+        strip_server_skipped_keys("metric", compiled)
         return MetricWireParts(
-            kind="metric",
-            definition=build_metric_definition(definition),
-            warehouse_source_id=None,
+            kind="metric", definition=compiled, warehouse_source_id=None
         )
     if isinstance(definition, Formula):
         if definition.metrics is None:
@@ -148,10 +151,10 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
                 code="SM7_FORMULA_WITHOUT_OPERANDS",
                 details={"expression": definition.expression},
             )
+        compiled = build_formula_definition(definition)
+        strip_server_skipped_keys("formula", compiled)
         return MetricWireParts(
-            kind="formula",
-            definition=build_formula_definition(definition),
-            warehouse_source_id=None,
+            kind="formula", definition=compiled, warehouse_source_id=None
         )
     if isinstance(definition, WarehouseMetric):
         wire: dict[str, Any] = {
@@ -182,8 +185,9 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
     Args:
         behavior: A ``SimpleBehavior``, ``FunnelBehavior``, or
             ``RetentionBehavior`` (compiled with the same builders as the
-            behavior of a query metric, without a name), or a
-            ``RawBehaviorDefinition`` (copied).
+            behavior of a query metric, without a name and without the
+            legacy keys that a create rejects), or a
+            ``RawBehaviorDefinition`` (copied as given).
 
     Returns:
         A new ``{"behavior": {...}}`` dict that the caller may change.
@@ -196,7 +200,9 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
     """
     if isinstance(behavior, RawBehaviorDefinition):
         return _copy_mapping(behavior.definition)
-    return build_behavior_definition(behavior)
+    compiled = build_behavior_definition(behavior)
+    strip_server_skipped_keys("behavior", compiled)
+    return compiled
 
 
 def _copy_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -362,13 +368,19 @@ def _check_length(text: str, *, field: str, entity: str) -> None:
         )
 
 
-def check_metric_definition(kind: str, definition: Mapping[str, Any]) -> None:
+def check_metric_definition(
+    kind: str, definition: Mapping[str, Any], *, for_create: bool = False
+) -> None:
     """Check a saved metric definition with the mirror of the server POST schema.
 
     Args:
         kind: The metric kind: ``"metric"``, ``"formula"``, or
             ``"warehouse"``.
         definition: The wire definition.
+        for_create: Also refuse the legacy keys that the server's create
+            schema leaves out (see :func:`find_server_skipped_keys`). An
+            update does not refuse them, because the server stores an
+            update as sent and stored definitions carry them.
 
     Raises:
         ParamValidationError: The definition fails the mirror
@@ -379,13 +391,19 @@ def check_metric_definition(kind: str, definition: Mapping[str, Any]) -> None:
     errors = validate_with_pydantic(model, definition, path_prefix="definition")
     if errors:
         _raise_schema_error(f"saved {kind} definition", errors)
+    if for_create:
+        _refuse_skipped_keys(f"saved {kind} definition", kind, definition)
 
 
-def check_behavior_definition(definition: Mapping[str, Any]) -> None:
+def check_behavior_definition(
+    definition: Mapping[str, Any], *, for_create: bool = False
+) -> None:
     """Check a saved behavior definition with the mirror of the server POST schema.
 
     Args:
         definition: The wire definition, ``{"behavior": {...}}``.
+        for_create: Also refuse the legacy keys that the server's create
+            schema leaves out.
 
     Raises:
         ParamValidationError: The definition fails the mirror
@@ -397,6 +415,169 @@ def check_behavior_definition(definition: Mapping[str, Any]) -> None:
     )
     if errors:
         _raise_schema_error("saved behavior definition", errors)
+    if for_create:
+        _refuse_skipped_keys("saved behavior definition", "behavior", definition)
+
+
+# =============================================================================
+# Legacy keys that the server's create schema leaves out
+# =============================================================================
+# The server generates its POST JSON Schema from its Pydantic models, and a
+# field declared ``Ignore[...]`` there (``SkipJsonSchema``) is absent from
+# that schema, whose objects forbid extra keys. So such a key is read past at
+# query time but rejects a create. The mirror declares the same fields with
+# the same marker, and these helpers find them in a definition.
+
+_SKIPPED_KEY_ROOTS: Final[dict[str, type[BaseModel]]] = {
+    **SAVED_METRIC_DEFINITION_MODELS,
+    "behavior": SavedBehaviorDefinition,
+}
+"""Definition mirror per metric kind, plus ``behavior`` for saved behaviors."""
+
+
+_SKIP_JSON_SCHEMA: Final[type] = cast(type, SkipJsonSchema)
+"""The runtime class of pydantic's ``SkipJsonSchema`` marker."""
+
+
+def _is_skipped(field: Any) -> bool:
+    """Return whether a mirror field is absent from the server's JSON Schema.
+
+    Args:
+        field: A pydantic ``FieldInfo``.
+
+    Returns:
+        ``True`` when the field carries ``SkipJsonSchema``.
+    """
+    return any(isinstance(item, _SKIP_JSON_SCHEMA) for item in field.metadata)
+
+
+def _nested_model(annotation: Any) -> type[BaseModel] | None:
+    """Return the model type inside a field annotation, if any.
+
+    Args:
+        annotation: A field annotation such as ``Behavior | None`` or
+            ``list[SubBehavior] | None``.
+
+    Returns:
+        The first ``BaseModel`` subclass found in the annotation, looking
+        through unions and list element types; ``None`` when there is none.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    origin = get_origin(annotation)
+    if origin is None:
+        return None
+    for arg in get_args(annotation):
+        found = _nested_model(arg)
+        if found is not None:
+            return found
+    return None
+
+
+def _walk_skipped(
+    model: type[BaseModel], data: Any, path: str
+) -> list[tuple[dict[str, Any], str, str]]:
+    """Find the skipped keys of one mirror model in a dict, recursively.
+
+    Args:
+        model: The mirror model that describes ``data``.
+        data: The value to walk (dicts and lists are walked).
+        path: The dotted path of ``data``.
+
+    Returns:
+        ``(container, key, path)`` for each skipped key, in walk order.
+    """
+    found: list[tuple[dict[str, Any], str, str]] = []
+    if isinstance(data, list):
+        for index, item in enumerate(data):
+            found += _walk_skipped(model, item, f"{path}[{index}]")
+        return found
+    if not isinstance(data, dict):
+        return found
+    fields = {(info.alias or name): info for name, info in model.model_fields.items()}
+    for key, value in data.items():
+        info = fields.get(key)
+        if info is None:
+            continue
+        if _is_skipped(info):
+            found.append((data, key, f"{path}.{key}"))
+            continue
+        nested = _nested_model(info.annotation)
+        if nested is not None:
+            found += _walk_skipped(nested, value, f"{path}.{key}")
+    return found
+
+
+def find_server_skipped_keys(kind: str, definition: Mapping[str, Any]) -> list[str]:
+    """Return the paths of legacy keys that a create of this definition would hit.
+
+    Args:
+        kind: ``"metric"``, ``"formula"``, ``"warehouse"``, or ``"behavior"``.
+        definition: The wire definition.
+
+    Returns:
+        Dotted paths such as ``"definition.behavior.filter"``, in walk order.
+
+    Example:
+        ```python
+        find_server_skipped_keys("metric", {"behavior": {"filter": []}})
+        # ["definition.behavior.filter"]
+        ```
+    """
+    root = _SKIPPED_KEY_ROOTS[kind]
+    return [path for _, _, path in _walk_skipped(root, dict(definition), "definition")]
+
+
+def strip_server_skipped_keys(kind: str, definition: dict[str, Any]) -> None:
+    """Remove the legacy keys that the server's create schema leaves out, in place.
+
+    Used on definitions compiled from typed values: the shared show-clause
+    builders write the legacy behavior ``filter`` key for query-time
+    compatibility, and the server reads past it, so dropping it changes
+    nothing at query time and lets a create pass.
+
+    Args:
+        kind: ``"metric"``, ``"formula"``, ``"warehouse"``, or ``"behavior"``.
+        definition: The wire definition to change.
+    """
+    root = _SKIPPED_KEY_ROOTS[kind]
+    for container, key, _ in _walk_skipped(root, definition, "definition"):
+        del container[key]
+
+
+def _refuse_skipped_keys(
+    subject: str, kind: str, definition: Mapping[str, Any]
+) -> None:
+    """Raise ``SM4_SCHEMA`` when a definition carries a legacy key a create rejects.
+
+    Args:
+        subject: What is checked, for the message.
+        kind: ``"metric"``, ``"formula"``, ``"warehouse"``, or ``"behavior"``.
+        definition: The wire definition.
+
+    Raises:
+        ParamValidationError: A legacy key is present (``SM4_SCHEMA``).
+    """
+    paths = find_server_skipped_keys(kind, definition)
+    if not paths:
+        return
+    more = f" (and {len(paths) - 1} more)" if len(paths) > 1 else ""
+    raise ParamValidationError(
+        f"The {subject} has a legacy key at {paths[0]}{more} that the server "
+        f"reads past at query time but refuses on a create. Remove it.",
+        code="SM4_SCHEMA",
+        details={
+            "path": paths[0],
+            "errors": [
+                {
+                    "path": path,
+                    "message": "Legacy key not allowed on create",
+                    "code": "S3_UNKNOWN_FIELD",
+                }
+                for path in paths
+            ],
+        },
+    )
 
 
 def _raise_schema_error(subject: str, errors: Sequence[Any]) -> None:
@@ -641,6 +822,7 @@ def prepare_new_metric(
     goals: Sequence[MetricGoal] | None,
     *,
     validate: bool,
+    for_create: bool = False,
 ) -> MetricWireParts:
     """Build a saved metric definition and run its local checks.
 
@@ -654,6 +836,8 @@ def prepare_new_metric(
         goals: Goals, or ``None``.
         validate: Run the schema mirror. ``False`` skips it; the operand
             rule still runs.
+        for_create: The definition goes into a create, so the mirror also
+            refuses legacy keys that the server's create schema leaves out.
 
     Returns:
         The wire pieces, with display and goals written in.
@@ -668,7 +852,7 @@ def prepare_new_metric(
     if parts.kind == "formula":
         check_formula_operands(parts.definition)
     if validate:
-        check_metric_definition(parts.kind, parts.definition)
+        check_metric_definition(parts.kind, parts.definition, for_create=for_create)
     return parts
 
 

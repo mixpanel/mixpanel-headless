@@ -379,7 +379,7 @@ The server has several traps. The write methods handle them before any request, 
 | `SM1_EMPTY_NAME` | The name is not empty (names are stripped). |
 | `SM2_NAME_TOO_LONG` | The name and the description have at most 255 characters. The server fails with a 500 on a longer value. |
 | `SM3_KIND_CHANGE` | A new definition keeps the kind of the stored metric (or the type of the stored behavior) and the warehouse source. The server ignores a new kind but stores the new definition, which would leave a definition that does not match its kind. |
-| `SM4_SCHEMA` | The definition passes a mirror of the server's POST schema. The error names the field path, because the server's own 400 message can name the wrong cause. `validate=False` (CLI: `--no-validate`) skips this check. |
+| `SM4_SCHEMA` | The definition passes a mirror of the server's POST schema. The error names the field path, because the server's own 400 message can name the wrong cause. On a create it also refuses the legacy keys (for example a behavior's `filter`) that the server reads past at query time but leaves out of its create schema; an update keeps them, because stored definitions carry them. `validate=False` (CLI: `--no-validate`) skips this check. |
 | `SM7_FORMULA_WITHOUT_OPERANDS` | A saved formula holds its own operands (`Formula(expression, metrics=[...])`). |
 | `FM6_OPERAND_ATTRIBUTION` | No operand of a saved formula sets a segment method or an attribution model. The query engine drops or rejects them, and the web app refuses to save such a formula. Set attribution on the formula's own measurement instead. |
 
@@ -389,6 +389,7 @@ Other traps the library handles for you:
 - The server answers every get, create, and update with a map keyed by id; the library unwraps it.
 - A warehouse definition always holds `aggregation` and `syncInterval`, because the server stores the request as sent and fills in no defaults.
 - A behavior description is omitted when it is `None`, because the behavior schema does not accept `null`.
+- A definition compiled from a typed value drops the legacy behavior `filter` key that the query builders write for funnel and retention behaviors. The server reads past it at query time, and a create rejects it.
 
 Server errors keep the library-wide mapping: a duplicate active name gives `QueryError` with `status_code == 409`; the pricing-plan gate ("Cannot save metric with your current plan") and a missing permission give 403, whose body can have an empty error. A create that the server's schema refuses gives `QueryError` with `status_code == 400`. The server's text holds an HTML-escaped copy of the whole request, so the library shortens the message to the failure and its schema location, and keeps the full body in `QueryError.response_body`.
 
