@@ -39,6 +39,7 @@ import contextlib
 import json
 import subprocess
 import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -185,6 +186,39 @@ def _event_property_row(ws: Workspace, name: str) -> PropertyDefinition:
     return rows[0]
 
 
+_LOOKUP_BATCH = 50
+"""Names per Lexicon definition lookup while searching for a candidate."""
+
+
+def _batches(names: list[str]) -> Iterator[list[str]]:
+    """Split names into lookup batches of at most :data:`_LOOKUP_BATCH`.
+
+    Args:
+        names: The names to look up.
+
+    Yields:
+        Consecutive slices of ``names``.
+    """
+    for start in range(0, len(names), _LOOKUP_BATCH):
+        yield names[start : start + _LOOKUP_BATCH]
+
+
+def _restore(step: str, restore: Callable[[], object]) -> None:
+    """Run one restore step; any failure fails the test with its error text.
+
+    A restore puts back a value that the test changed on an existing
+    definition, so a silent failure would leave the project changed.
+
+    Args:
+        step: What the step restores, for the failure message.
+        restore: The call that writes the old value back.
+    """
+    try:
+        restore()
+    except Exception as exc:  # noqa: BLE001 - every failure must fail the test
+        pytest.fail(f"restore failed ({step}): {type(exc).__name__}: {exc}")
+
+
 @pytest.fixture(scope="module")
 def custom_event(ws: Workspace) -> str:
     """Name an event of the project whose definition is not a Mixpanel built-in.
@@ -197,10 +231,10 @@ def custom_event(ws: Workspace) -> str:
     Returns:
         The event name. The test skips when the project has none.
     """
-    names = [e for e in ws.events() if not e.startswith("$")][:50]
-    if names:
-        for definition in ws.get_event_definitions(names=names):
-            if definition.name in names and not _is_builtin(definition):
+    names = [e for e in ws.events() if not e.startswith("$")]
+    for batch in _batches(names):
+        for definition in ws.get_event_definitions(names=batch):
+            if definition.name in batch and not _is_builtin(definition):
                 return definition.name
     pytest.skip("no event definition that is not a Mixpanel built-in")
 
@@ -218,13 +252,13 @@ def custom_event_property(ws: Workspace, custom_event: str) -> str:
     Returns:
         The property name. The test skips when none qualifies.
     """
-    names = [p for p in ws.properties(custom_event) if not p.startswith("$")][:50]
-    if names:
+    names = [p for p in ws.properties(custom_event) if not p.startswith("$")]
+    for batch in _batches(names):
         for definition in ws.get_property_definitions(
-            names=names, resource_type="event"
+            names=batch, resource_type="event"
         ):
             if (
-                definition.name in names
+                definition.name in batch
                 and (definition.resource_type or "").lower() == "event"
                 and not _is_builtin(definition)
             ):
@@ -418,11 +452,17 @@ class TestEventDefinitions:
             )
             assert updated.description == new_desc
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_event_definition(
+            _restore(
+                "event description",
+                lambda: ws.update_event_definition(
                     custom_event,
                     UpdateEventDefinitionParams(description=old_desc),
-                )
+                ),
+            )
+            restored = _event_row(ws, custom_event).description or ""
+            assert restored == old_desc, (
+                f"restore left description {restored!r}, expected {old_desc!r}"
+            )
 
     def test_update_hidden_flag(self, ws: Workspace, custom_event: str) -> None:
         """Setting hidden=True then hidden=False both take effect.
@@ -445,11 +485,17 @@ class TestEventDefinitions:
             )
             assert visible.hidden is False
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_event_definition(
+            _restore(
+                "event hidden flag",
+                lambda: ws.update_event_definition(
                     custom_event,
                     UpdateEventDefinitionParams(hidden=old_hidden),
-                )
+                ),
+            )
+            restored = bool(_event_row(ws, custom_event).hidden)
+            assert restored is old_hidden, (
+                f"restore left hidden={restored}, expected {old_hidden}"
+            )
 
     def test_bulk_update(self, ws: Workspace, custom_event: str) -> None:
         """Bulk-updating event definitions returns a list.
@@ -472,11 +518,17 @@ class TestEventDefinitions:
             result = ws.bulk_update_event_definitions(params)
             assert isinstance(result, list)
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_event_definition(
+            _restore(
+                "event verified flag",
+                lambda: ws.update_event_definition(
                     custom_event,
                     UpdateEventDefinitionParams(verified=old_verified),
-                )
+                ),
+            )
+            restored = bool(_event_row(ws, custom_event).verified)
+            assert restored is old_verified, (
+                f"restore left verified={restored}, expected {old_verified}"
+            )
 
     def test_tracking_metadata(self, ws: Workspace) -> None:
         """Getting tracking metadata for a known event returns a dict.
@@ -551,13 +603,19 @@ class TestPropertyDefinitions:
             )
             assert updated.description == new_desc
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_property_definition(
+            _restore(
+                "event property description",
+                lambda: ws.update_property_definition(
                     custom_event_property,
                     UpdatePropertyDefinitionParams(
                         description=old_desc, resource_type="Event"
                     ),
-                )
+                ),
+            )
+            restored = _event_property_row(ws, custom_event_property).description or ""
+            assert restored == old_desc, (
+                f"restore left description {restored!r}, expected {old_desc!r}"
+            )
 
     def test_bulk_update(self, ws: Workspace) -> None:
         """Bulk-updating property definitions returns a list.
@@ -729,16 +787,18 @@ class TestLexiconCLI:
             )
             assert r.returncode == 0, f"stderr: {r.stderr}"
         finally:
-            with contextlib.suppress(Exception):
-                _mp(
-                    "lexicon",
-                    "events",
-                    "update",
-                    "--name",
-                    custom_event,
-                    "--description",
-                    old_desc,
-                )
+            revert = _mp(
+                "lexicon",
+                "events",
+                "update",
+                "--name",
+                custom_event,
+                "--description",
+                old_desc,
+            )
+            assert revert.returncode == 0, (
+                f"CLI revert failed (exit {revert.returncode}): {revert.stderr}"
+            )
 
     def test_events_bulk_update_invalid_json(self) -> None:
         """Bulk update with invalid JSON exits non-zero.
