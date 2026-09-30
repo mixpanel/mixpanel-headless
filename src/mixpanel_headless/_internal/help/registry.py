@@ -557,6 +557,8 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "ListItemGroupMode",
             "Formula",
             "Metric",
+            "MetricRef",
+            "BehaviorRef",
             "CohortBreakdown",
             "CohortMetric",
             "CohortDefinition",

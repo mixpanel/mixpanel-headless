@@ -55,6 +55,34 @@ may include API changes.
 - `mp help` gains the "saved metrics" and "saved behaviors" domains, and a
   new guide page, "Saved Metrics and Behaviors".
 - `MixpanelAPIClient.app_request` takes a per-call `timeout`.
+- `MetricRef` queries a saved metric by id. `Workspace.query()` and
+  `build_params()` accept it anywhere they accept a `Metric`. The params
+  keep the reference (`{"type", "id", "overrides"}`), so the server expands
+  the saved definition at query time, and a report or report link built
+  from the params follows later edits to the saved metric. Typed fields
+  (`label`, `math`, `property`, `per_user`, `percentile_value`,
+  `segment_method`, `funnel_order`, `step_index`,
+  `retention_bucket_index`, `hidden`) become `overrides` at their wire
+  paths, and a raw `overrides` dict merges last. A `filters` override is
+  refused (`MR1_FILTER_OVERRIDE`), because the server merges override lists
+  item by item; use report-level `where=` or an inline `Metric` instead.
+- `BehaviorRef` runs a saved behavior by id. `query_funnel()` and
+  `build_funnel_params()` take it in place of the step list, and
+  `query_retention()` and `build_retention_params()` take it in place of
+  the born and return events. The engines refuse a behavior of the wrong
+  type (`F13_BEHAVIOR_REF_TYPE`, `R14_BEHAVIOR_REF_TYPE`) and any behavior
+  setting that the saved behavior owns (`F14_BEHAVIOR_REF_SETTINGS`,
+  `R15_BEHAVIOR_REF_SETTINGS`).
+- A query that pairs a warehouse metric reference with `group_by` or
+  `where` logs a `V28_WAREHOUSE_BREAKDOWN` warning: the server gives a
+  warehouse metric no breakdown and no filter.
+- The bookmark validators accept saved-metric references: a show clause
+  with an `id` and no `behavior`, a `type: "warehouse"` clause with an
+  `id`, and formula operands in `referencedMetrics`. New codes:
+  `B27_INVALID_REFERENCE_ID`, `B28_WAREHOUSE_MISSING_ID`, and
+  `B29_OPERAND_MISSING_TYPE`. The bookmark schema check gains the
+  warehouse show clause.
+
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
@@ -63,6 +91,10 @@ may include API changes.
 
 ### Changed
 
+- `query_retention()` and `build_retention_params()`: `return_event` now
+  defaults to `None`, so a `BehaviorRef` can stand alone. Event retention
+  still needs it; a missing `return_event` gives `R2_EMPTY_RETURN_EVENT`
+  instead of a `TypeError`.
 - Plugin: the skills now use the library's built-in reference for every
   API fact. The bundled `help.py` script is removed; skills look up
   signatures, types, and allowed values with `mp help <query>` (or

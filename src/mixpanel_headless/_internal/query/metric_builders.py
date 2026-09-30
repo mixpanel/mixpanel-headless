@@ -22,7 +22,8 @@ These are internal helpers. Import them from
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import copy
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from mixpanel_headless._internal.bookmark_builders import (
@@ -43,7 +44,9 @@ from mixpanel_headless._literal_types import (
     SegmentMethod,
     TimeUnit,
 )
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortMetric,
     CustomPropertyRef,
     Exclusion,
@@ -53,6 +56,7 @@ from mixpanel_headless.types import (
     HoldingConstant,
     InlineCustomProperty,
     Metric,
+    MetricRef,
     PropertySpec,
     RetentionEvent,
     _sanitize_raw_cohort,
@@ -397,7 +401,7 @@ def build_formula_clause(formula: Formula) -> dict[str, Any]:
 
 
 def build_show_section(
-    events: Sequence[str | Metric | CohortMetric],
+    events: Sequence[str | Metric | CohortMetric | MetricRef],
     *,
     math: MathType,
     math_property: str | None,
@@ -412,8 +416,8 @@ def build_show_section(
     formula results only.
 
     Args:
-        events: Bare event names, ``Metric`` objects, and ``CohortMetric``
-            objects.
+        events: Bare event names, ``Metric`` objects, ``CohortMetric``
+            objects, and ``MetricRef`` references to saved metrics.
         math: Query-level aggregation function for bare event names.
         math_property: Query-level property for bare event names.
         per_user: Query-level per-user pre-aggregation for bare event names.
@@ -441,6 +445,8 @@ def build_show_section(
     for item in events:
         if isinstance(item, CohortMetric):
             show.append(build_cohort_metric_clause(item, hidden=hidden))
+        elif isinstance(item, MetricRef):
+            show.append(build_metric_ref_clause(item, hidden=hidden))
         elif isinstance(item, Metric):
             show.append(build_metric_clause(item, hidden=hidden))
         else:
@@ -456,6 +462,179 @@ def build_show_section(
             )
     show.extend(build_formula_clause(f) for f in formulas)
     return show
+
+
+# =============================================================================
+# Saved-entity references
+# =============================================================================
+
+
+def _merge_overrides(target: dict[str, Any], source: Mapping[str, Any]) -> None:
+    """Deep-merge raw overrides into the typed overrides dict, in place.
+
+    A mapping merges into a dict at the same key. Any other value (a
+    scalar, ``None``, or a list) replaces the target value. Values are
+    deep-copied, so the result never shares objects with ``source``.
+
+    Args:
+        target: The typed overrides dict. Changed in place.
+        source: The raw overrides of a ``MetricRef``.
+    """
+    for key, value in source.items():
+        current = target.get(key)
+        if isinstance(value, Mapping) and isinstance(current, dict):
+            _merge_overrides(current, value)
+        elif isinstance(value, Mapping):
+            merged: dict[str, Any] = {}
+            _merge_overrides(merged, value)
+            target[key] = merged
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def build_metric_ref_overrides(ref: MetricRef) -> dict[str, Any]:
+    """Build the ``overrides`` dict of a saved-metric reference.
+
+    Each typed field of the reference goes to its wire path in the show
+    clause: ``label`` to ``name``, ``funnel_order`` to
+    ``behavior.funnelOrder``, ``hidden`` to ``isHidden``, and the others to
+    ``measurement`` keys. The user-facing ``"percentile"`` math is written
+    as ``"custom_percentile"``, and a property has the same shape as the
+    property of an inline ``Metric``. The raw ``ref.overrides`` mapping
+    merges last, so a raw value wins over a typed field. Typed fields never
+    write a list.
+
+    Args:
+        ref: The saved-metric reference.
+
+    Returns:
+        The overrides dict. Empty when the reference changes nothing. Keys,
+        in order: ``name``, ``behavior``, ``measurement``, ``isHidden``,
+        then any other raw keys.
+
+    Example:
+        ```python
+        build_metric_ref_overrides(MetricRef(42, math="unique", label="Buyers"))
+        # {"name": "Buyers", "measurement": {"math": "unique"}}
+        ```
+    """
+    overrides: dict[str, Any] = {}
+    if ref.label is not None:
+        overrides["name"] = ref.label
+    if ref.funnel_order is not None:
+        overrides["behavior"] = {"funnelOrder": ref.funnel_order}
+
+    measurement: dict[str, Any] = {}
+    if ref.math is not None:
+        measurement["math"] = (
+            "custom_percentile" if ref.math == "percentile" else ref.math
+        )
+    if ref.property is not None:
+        measurement["property"] = build_measurement_property(ref.property)
+    if ref.per_user is not None:
+        measurement["perUserAggregation"] = ref.per_user
+    if ref.percentile_value is not None:
+        measurement["percentile"] = ref.percentile_value
+    if ref.segment_method is not None:
+        measurement["segmentMethod"] = ref.segment_method
+    if ref.step_index is not None:
+        measurement["stepIndex"] = ref.step_index
+    if ref.retention_bucket_index is not None:
+        measurement["retentionBucketIndex"] = ref.retention_bucket_index
+    if measurement:
+        overrides["measurement"] = measurement
+
+    if ref.hidden is not None:
+        overrides["isHidden"] = ref.hidden
+    if ref.overrides:
+        _merge_overrides(overrides, ref.overrides)
+    return overrides
+
+
+def build_metric_ref_clause(ref: MetricRef, *, hidden: bool = False) -> dict[str, Any]:
+    """Build the show clause of a saved-metric reference.
+
+    The server finds the saved metric by id, replaces the clause with the
+    saved definition, and then deep-merges ``overrides`` into it.
+
+    Args:
+        ref: The saved-metric reference.
+        hidden: Whether the query shows the metric only through a formula.
+            ``True`` adds a top-level ``isHidden: True``. A ``hidden`` value
+            set on the reference goes into ``overrides`` and wins.
+
+    Returns:
+        The show clause. Keys, in order: ``type``, ``id``, then
+        ``isHidden`` and ``overrides`` when set.
+
+    Example:
+        ```python
+        build_metric_ref_clause(MetricRef(42, segment_method="first"))
+        # {"type": "metric", "id": 42,
+        #  "overrides": {"measurement": {"segmentMethod": "first"}}}
+        ```
+    """
+    clause: dict[str, Any] = {"type": ref.type, "id": ref.id}
+    if hidden:
+        clause["isHidden"] = True
+    overrides = build_metric_ref_overrides(ref)
+    if overrides:
+        clause["overrides"] = overrides
+    return clause
+
+
+def build_operand_ref_clause(ref: MetricRef) -> dict[str, Any]:
+    """Build a formula operand that refers to a saved metric.
+
+    Use it for each ``MetricRef`` entry of a formula's
+    ``referencedMetrics``. The clause always holds ``type``, because the
+    server reads the type of an operand directly and fails when it is
+    absent (it corrects the type of a top-level clause only).
+
+    Args:
+        ref: The saved-metric reference. It must change nothing: no typed
+            field, no label, no hidden flag, and no raw overrides.
+
+    Returns:
+        ``{"type": ref.type, "id": ref.id}``.
+
+    Raises:
+        ParamValidationError: ``MR2_OPERAND_OVERRIDE`` when the reference
+            sets any override. The server ignores overrides on a formula
+            operand, so the query would run the saved definition without
+            the change.
+
+    Example:
+        ```python
+        build_operand_ref_clause(MetricRef(104700))
+        # {"type": "metric", "id": 104700}
+        ```
+    """
+    if build_metric_ref_overrides(ref):
+        raise ParamValidationError(
+            f"MetricRef({ref.id}) is a formula operand and cannot carry "
+            "overrides: the server ignores overrides on formula operands, so "
+            "the formula would use the saved definition unchanged. Remove "
+            "the overrides, or use an inline Metric as the operand.",
+            code="MR2_OPERAND_OVERRIDE",
+        )
+    return {"type": ref.type, "id": ref.id}
+
+
+def build_behavior_ref(ref: BehaviorRef) -> dict[str, Any]:
+    """Build a behavior block that refers to a saved behavior.
+
+    The block has no ``behaviors`` key, so the server replaces it with the
+    saved behavior at query time. A block with both an id and inline
+    ``behaviors`` keeps the inline copy instead.
+
+    Args:
+        ref: The saved-behavior reference.
+
+    Returns:
+        ``{"type": ref.type, "id": ref.id}``.
+    """
+    return {"type": ref.type, "id": ref.id}
 
 
 # =============================================================================

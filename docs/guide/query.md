@@ -516,6 +516,93 @@ result = ws.query(
 )
 ```
 
+## Saved Metrics by Reference
+
+A saved metric is a project entity with a numeric id: a behavior metric, a saved formula, or a warehouse metric. `MetricRef` puts a saved metric into a query by id. Use it anywhere a `Metric` goes:
+
+```python
+import mixpanel_headless as mp
+
+# A saved metric as it is saved
+result = ws.query(mp.MetricRef(88999), last=30)
+
+# Saved and inline metrics side by side, with a formula over them
+result = ws.query(
+    [mp.MetricRef(88999), mp.Metric("Signup", math="unique")],
+    formula="A / B",
+)
+```
+
+The params keep the reference as `{"type": "metric", "id": 88999}`. The server replaces it with the saved definition when the query runs. So a report or a report link built from these params follows later edits to the saved metric, the same way a report built in the web app does.
+
+The default `type` is `"metric"`. The server corrects the kind of a top-level reference, so `MetricRef(id)` also works for a saved formula or a warehouse metric. Set `type="formula"` or `type="warehouse"` when you know the kind.
+
+### Overrides
+
+The typed fields of `MetricRef` change the saved definition for one query only:
+
+| Field | Wire path |
+|---|---|
+| `label` | `name` (the series name) |
+| `math` | `measurement.math` (`"percentile"` becomes `"custom_percentile"`) |
+| `property` | `measurement.property` |
+| `per_user` | `measurement.perUserAggregation` |
+| `percentile_value` | `measurement.percentile` |
+| `segment_method` | `measurement.segmentMethod` |
+| `funnel_order` | `behavior.funnelOrder` |
+| `step_index` | `measurement.stepIndex` |
+| `retention_bucket_index` | `measurement.retentionBucketIndex` |
+| `hidden` | `isHidden` |
+
+The library writes them into `overrides` on the clause, and the server deep-merges `overrides` into the expanded definition:
+
+```python
+result = ws.query(
+    mp.MetricRef(88999, segment_method="first", label="First purchase"),
+    group_by="$os",
+)
+# params["sections"]["show"][0] ==
+# {"type": "metric", "id": 88999,
+#  "overrides": {"name": "First purchase",
+#                "measurement": {"segmentMethod": "first"}}}
+```
+
+`overrides=` takes a raw dict for any other path. It merges after the typed fields, so a raw value wins. A formula or warehouse reference takes `label`, `hidden`, and raw overrides only; the other fields change a behavior metric (`MR6_OVERRIDE_NOT_APPLICABLE`).
+
+### Filters are not an override
+
+The server merges lists in `overrides` item by item. A filter list in `overrides` would change the saved filters by position instead of adding to them. So `MetricRef` refuses any `filters` key in `overrides` (`MR1_FILTER_OVERRIDE`). To filter a saved metric:
+
+- Use report-level `where=`. It applies to every metric in the query.
+- Or send the metric inline as a `Metric` with its own `filters`.
+
+### Warehouse metrics
+
+The server runs a warehouse metric by saved id only, and it gives the warehouse series no breakdown and no filter. A query that pairs a warehouse reference with `group_by` or `where` still runs, and the library logs a `V28_WAREHOUSE_BREAKDOWN` warning.
+
+### Saved behaviors in funnels and retention
+
+A saved behavior is a reusable "what users did": a funnel, a retention pair, or a simple behavior. `BehaviorRef(id, type)` passes one to the funnel and retention engines in place of the steps or the events:
+
+```python
+# The saved funnel sets the steps, the window, the order, and the exclusions
+result = ws.query_funnel(mp.BehaviorRef(3120, "funnel"), last=90)
+
+# The saved retention behavior sets both events and the retention settings
+result = ws.query_retention(mp.BehaviorRef(4410, "retention"))
+```
+
+The behavior block becomes `{"type": "funnel", "id": 3120}`, and the server expands it at query time. The saved behavior owns its settings, so the engine arguments that change them must keep their defaults:
+
+- `query_funnel`: `conversion_window`, `conversion_window_unit`, `order`, `exclusions`, `holding_constant`, and `reentry_mode` (`F14_BEHAVIOR_REF_SETTINGS`).
+- `query_retention`: `return_event`, `retention_unit`, `alignment`, `bucket_sizes`, and `unbounded_mode` (`R15_BEHAVIOR_REF_SETTINGS`).
+
+The server expands a behavior id without checking its type, so the engines check it: a funnel query needs a `"funnel"` behavior (`F13_BEHAVIOR_REF_TYPE`) and a retention query needs a `"retention"` behavior (`R14_BEHAVIOR_REF_TYPE`).
+
+### Result labels
+
+A reference changes the series label. The series is named after the saved metric or behavior, with no math suffix such as `[Total Events]`, and `result.headers` is `["$event"]` for a metric reference. `result.df` puts the saved name in the `event` column.
+
 ## Time Ranges
 
 ### Relative (Default)

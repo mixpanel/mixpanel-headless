@@ -20,7 +20,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Annotated, Any, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, JsonValue, Tag
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    JsonValue,
+    Tag,
+    model_validator,
+)
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import SkipJsonSchema
 
@@ -267,6 +275,7 @@ _DISCRIMINATOR_TAGS: frozenset[str] = frozenset(
         # ShowClause
         "FormulaShowClause",
         "BehaviorShowClause",
+        "WarehouseShowClause",
     }
 )
 
@@ -1197,6 +1206,79 @@ class FormulaShowClause(BaseModel):
     goals: list[Goal] | None = None
 
 
+# Mirrors show.py ``WarehouseShowClauseSyncInterval``.
+WarehouseSyncIntervalLiteral = Literal["hourly", "daily", "weekly", "manual"]
+
+# Mirrors the ``aggregation`` Literal of show.py
+# ``WarehouseShowClauseDefinition``.
+WarehouseAggregationLiteral = Literal[
+    "none", "sum", "count", "average", "min", "max", "median", "last_value"
+]
+
+
+class WarehouseShowClause(BaseModel):
+    """Mirrors show.py ``WarehouseShowClause`` (with its definition base).
+
+    Discriminator: ``type == "warehouse"``. One deliberate difference from
+    the canonical model: ``query``, ``metricType``, and
+    ``warehouseSourceId`` are required only when ``id`` is absent. The web
+    app stores a saved warehouse metric in a report as ``{id, type,
+    overrides}``, and the server fills those fields from the saved metric
+    before it runs the query, so the canonical requirement applies to an
+    inline clause only.
+    """
+
+    model_config = _BASE_CONFIG
+
+    # WarehouseShowClauseDefinition fields
+    query: str | None = None
+    metricType: Literal["timeseries", "numeric"] | None = None
+    aggregation: WarehouseAggregationLiteral = "none"
+    syncInterval: WarehouseSyncIntervalLiteral = "hourly"
+    timeColumn: str | None = None
+    valueColumn: str | None = None
+    measurement: dict[str, Any] | None = None
+    goals: list[Goal] | None = None
+    display: MetricDisplay | None = None
+
+    # WarehouseShowClause fields
+    id: int | None = None
+    idx: str | None = Field(default=None, alias="_idx")
+    type: Literal["warehouse"]
+    warehouseSourceId: int | None = None
+    userNamed: bool | None = None
+    name: str | None = None
+    isHidden: bool | None = None
+    isExpanded: bool | None = None
+    labelPrefix: str | None = None
+    hasUnsavedChanges: bool | None = False
+    statsig: Statsig | None = None
+    overrides: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _require_definition_without_id(self) -> WarehouseShowClause:
+        """Require the inline definition fields when the clause has no id.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When ``id`` is absent and ``query``, ``metricType``,
+                or ``warehouseSourceId`` is missing.
+        """
+        if self.id is None:
+            missing = [
+                name
+                for name in ("query", "metricType", "warehouseSourceId")
+                if getattr(self, name) is None
+            ]
+            if missing:
+                raise ValueError(
+                    "A warehouse show clause without an id needs " + ", ".join(missing)
+                )
+        return self
+
+
 def _show_clause_discriminator(v: Any) -> str:
     """Mirrors show.py ``show_clause_discriminator``.
 
@@ -1209,16 +1291,17 @@ def _show_clause_discriminator(v: Any) -> str:
     else:
         clause_type = getattr(v, "type", None)
         has_formula = hasattr(v, "formula")
-    return (
-        "FormulaShowClause"
-        if clause_type == "formula" or has_formula
-        else "BehaviorShowClause"
-    )
+    if clause_type == "formula" or has_formula:
+        return "FormulaShowClause"
+    if clause_type == "warehouse":
+        return "WarehouseShowClause"
+    return "BehaviorShowClause"
 
 
 # Mirrors show.py ``ShowClause`` discriminated union.
 ShowClause = Annotated[
     Annotated[FormulaShowClause, Tag("FormulaShowClause")]
+    | Annotated[WarehouseShowClause, Tag("WarehouseShowClause")]
     | Annotated[BehaviorShowClause, Tag("BehaviorShowClause")],
     Discriminator(_show_clause_discriminator),
 ]

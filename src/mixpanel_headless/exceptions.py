@@ -2022,6 +2022,15 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "SM5_NOT_FOUND_FOR_DELETE",
         "SM6_DELETE_NOT_PERMITTED",
         "BH4_DELETE_NOT_PERMITTED",
+        # -- saved-entity references: MetricRef, BehaviorRef, formula operands
+        "MR1_FILTER_OVERRIDE",
+        "MR2_OPERAND_OVERRIDE",
+        "MR4_INVALID_ID",
+        "MR5_INVALID_TYPE",
+        "MR6_OVERRIDE_NOT_APPLICABLE",
+        "MR7_INVALID_OVERRIDE",
+        "BR1_INVALID_ID",
+        "BR2_INVALID_TYPE",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

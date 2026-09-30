@@ -22,8 +22,8 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable
-from dataclasses import MISSING, dataclass, field, fields
+from collections.abc import Callable, Mapping
+from dataclasses import KW_ONLY, MISSING, dataclass, field, fields
 from datetime import date as dt_date
 from datetime import datetime
 from enum import Enum
@@ -7607,6 +7607,360 @@ class Formula:
             raise ParamValidationError(
                 "Formula.expression must be a non-empty string",
                 code="FM1_EMPTY_EXPRESSION",
+            )
+
+
+_METRIC_REF_KINDS: Final[frozenset[str]] = frozenset({"metric", "formula", "warehouse"})
+"""Saved metric kinds that a ``MetricRef`` can name."""
+
+_METRIC_REF_MATHS: Final[frozenset[str]] = (
+    frozenset(get_args(MathType))
+    | frozenset(get_args(FunnelMathType))
+    | frozenset(get_args(RetentionMathType))
+)
+"""Maths a ``MetricRef`` can override: every insights, funnel, and retention math."""
+
+_PER_USER_AGGREGATIONS: Final[frozenset[str]] = frozenset(get_args(PerUserAggregation))
+"""Runtime view of :data:`PerUserAggregation`."""
+
+_FUNNEL_ORDERS: Final[frozenset[str]] = frozenset(get_args(FunnelOrder))
+"""Runtime view of :data:`FunnelOrder`."""
+
+_BEHAVIOR_REF_KINDS: Final[frozenset[str]] = frozenset(
+    {"simple", "funnel", "retention"}
+)
+"""Saved behavior types that a ``BehaviorRef`` can name."""
+
+
+def _is_positive_int(value: object) -> bool:
+    """Return whether a value is a positive ``int`` (``bool`` excluded).
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        ``True`` for an ``int`` greater than zero that is not a ``bool``.
+    """
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_index(value: object) -> bool:
+    """Return whether a value is a zero-based index (``bool`` excluded).
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        ``True`` for an ``int`` of zero or more that is not a ``bool``.
+    """
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _find_filters_path(value: object, path: str = "overrides") -> str | None:
+    """Find the first ``filters`` or ``filter`` key in a nested override value.
+
+    Args:
+        value: A mapping, a list, or a scalar from a raw overrides tree.
+        path: The dotted path of ``value``, for the error message.
+
+    Returns:
+        The dotted path of the first filter key, or ``None`` when the tree
+        has none.
+    """
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in ("filters", "filter"):
+                return child_path
+            found = _find_filters_path(child, child_path)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found = _find_filters_path(child, f"{path}[{index}]")
+            if found is not None:
+                return found
+    return None
+
+
+@dataclass(frozen=True)
+class MetricRef:
+    """A saved metric, used by id in a query.
+
+    Pass it to ``Workspace.query()`` or ``build_params()`` anywhere a
+    ``Metric`` is accepted. The params keep the reference
+    (``{"type", "id", "overrides"}``), so the server expands the saved
+    definition at query time, and a report or report link built from the
+    params follows later edits to the saved metric.
+
+    The typed fields change the saved definition for this query only. The
+    library writes each one into ``overrides`` at its wire path, and the
+    server deep-merges ``overrides`` into the expanded clause. ``overrides``
+    is an escape hatch for other paths and merges after the typed fields.
+
+    Filters are not an override. The server merges lists item by item, so
+    a filter list in ``overrides`` would change the saved filters by
+    position instead of adding to them. Use report-level ``where=`` to
+    filter every metric, or send the metric inline with its own filters.
+
+    Attributes:
+        id: Saved metric id.
+        type: Saved metric kind: ``"metric"`` (a behavior metric),
+            ``"formula"``, or ``"warehouse"``. The server corrects the kind
+            of a top-level reference, so the default works for any kind
+            when no typed override is set.
+        label: Series name for this query. Replaces the saved name.
+        math: Aggregation override (an insights, funnel, or retention math).
+        property: Property override for property math.
+        per_user: Per-user pre-aggregation override.
+        percentile_value: Percentile override (for example 95).
+        segment_method: Counting override: ``"all"`` or ``"first"``.
+        funnel_order: Step order override for a saved funnel metric.
+        step_index: Funnel step override for a saved funnel metric.
+        retention_bucket_index: Bucket override for a saved retention
+            metric.
+        hidden: Whether the chart hides this series. ``None`` keeps the
+            query default.
+        overrides: Raw overrides, deep-merged after the typed fields.
+
+    Example:
+        ```python
+        import mixpanel_headless as mp
+
+        ws = mp.Workspace()
+
+        # A saved metric as it is saved
+        result = ws.query(mp.MetricRef(88999), last=30)
+
+        # The same metric with a report-level change
+        result = ws.query(
+            mp.MetricRef(88999, segment_method="first", label="First purchase"),
+            group_by="$os",
+        )
+        ```
+    """
+
+    id: int
+    """Saved metric id."""
+
+    _: KW_ONLY
+
+    type: Literal["metric", "formula", "warehouse"] = "metric"
+    """Saved metric kind."""
+
+    label: str | None = None
+    """Series name for this query."""
+
+    math: MathType | FunnelMathType | RetentionMathType | None = None
+    """Aggregation override."""
+
+    property: str | CustomPropertyRef | InlineCustomProperty | None = None
+    """Property override for property math."""
+
+    per_user: PerUserAggregation | None = None
+    """Per-user pre-aggregation override."""
+
+    percentile_value: int | float | None = None
+    """Percentile override."""
+
+    segment_method: SegmentMethod | None = None
+    """Counting override."""
+
+    funnel_order: FunnelOrder | None = None
+    """Step order override for a saved funnel metric."""
+
+    step_index: int | None = None
+    """Funnel step override for a saved funnel metric."""
+
+    retention_bucket_index: int | None = None
+    """Bucket override for a saved retention metric."""
+
+    hidden: bool | None = None
+    """Whether the chart hides this series."""
+
+    overrides: Mapping[str, Any] | None = None
+    """Raw overrides, deep-merged after the typed fields."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``MR4_INVALID_ID``), the type is not a saved metric kind
+                (``MR5_INVALID_TYPE``), a typed override has a bad value or
+                ``overrides`` is not a string-keyed mapping
+                (``MR7_INVALID_OVERRIDE``), ``segment_method`` is invalid
+                (``MT2_INVALID_SEGMENT_METHOD``), a formula or warehouse
+                reference sets a behavior-metric override
+                (``MR6_OVERRIDE_NOT_APPLICABLE``), or ``overrides`` holds a
+                filter list (``MR1_FILTER_OVERRIDE``).
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"MetricRef id must be a positive integer, got {self.id!r}",
+                code="MR4_INVALID_ID",
+            )
+        if self.type not in _METRIC_REF_KINDS:
+            raise ParamValidationError(
+                f"MetricRef type must be one of {sorted(_METRIC_REF_KINDS)}, "
+                f"got {self.type!r}",
+                code="MR5_INVALID_TYPE",
+            )
+        self._check_override_values()
+        if self.segment_method is not None and self.segment_method not in (
+            "all",
+            "first",
+        ):
+            raise ParamValidationError(
+                "MetricRef segment_method must be one of ['all', 'first'], "
+                f"got {self.segment_method!r}",
+                code="MT2_INVALID_SEGMENT_METHOD",
+            )
+        if self.type != "metric":
+            behavior_fields = [
+                name
+                for name in (
+                    "math",
+                    "property",
+                    "per_user",
+                    "percentile_value",
+                    "segment_method",
+                    "funnel_order",
+                    "step_index",
+                    "retention_bucket_index",
+                )
+                if getattr(self, name) is not None
+            ]
+            if behavior_fields:
+                raise ParamValidationError(
+                    f"MetricRef type={self.type!r} does not take "
+                    f"{', '.join(behavior_fields)}: those fields change a "
+                    "behavior metric's measurement or behavior. Use label, "
+                    "hidden, or overrides for a formula or warehouse metric.",
+                    code="MR6_OVERRIDE_NOT_APPLICABLE",
+                )
+        if self.overrides is not None:
+            filters_path = _find_filters_path(self.overrides)
+            if filters_path is not None:
+                raise ParamValidationError(
+                    f"MetricRef overrides cannot hold filters ({filters_path}). "
+                    "The server merges override lists item by item, so a "
+                    "filter list changes the saved filters by index instead "
+                    "of adding to them. To filter the metric, use "
+                    "report-level where= (it applies to every metric in the "
+                    "query), or send the metric inline as a Metric with its "
+                    "own filters.",
+                    code="MR1_FILTER_OVERRIDE",
+                )
+
+    def _check_override_values(self) -> None:
+        """Check the value of each typed override and of the raw mapping.
+
+        Raises:
+            ParamValidationError: ``MR7_INVALID_OVERRIDE`` for the first bad
+                value.
+        """
+        problem: str | None = None
+        if self.label is not None and (
+            not isinstance(self.label, str) or not self.label.strip()
+        ):
+            problem = "label must be a non-empty string"
+        elif self.math is not None and self.math not in _METRIC_REF_MATHS:
+            problem = (
+                f"math {self.math!r} is not an insights, funnel, or retention math"
+            )
+        elif self.per_user is not None and self.per_user not in _PER_USER_AGGREGATIONS:
+            problem = (
+                f"per_user must be one of {sorted(_PER_USER_AGGREGATIONS)}, "
+                f"got {self.per_user!r}"
+            )
+        elif self.percentile_value is not None and (
+            isinstance(self.percentile_value, bool)
+            or not isinstance(self.percentile_value, (int, float))
+            or not math.isfinite(self.percentile_value)
+        ):
+            problem = (
+                f"percentile_value must be a finite number, "
+                f"got {self.percentile_value!r}"
+            )
+        elif self.funnel_order is not None and self.funnel_order not in _FUNNEL_ORDERS:
+            problem = (
+                f"funnel_order must be one of {sorted(_FUNNEL_ORDERS)}, "
+                f"got {self.funnel_order!r}"
+            )
+        elif self.step_index is not None and not _is_index(self.step_index):
+            problem = f"step_index must be an integer >= 0, got {self.step_index!r}"
+        elif self.retention_bucket_index is not None and not _is_index(
+            self.retention_bucket_index
+        ):
+            problem = (
+                "retention_bucket_index must be an integer >= 0, "
+                f"got {self.retention_bucket_index!r}"
+            )
+        elif self.hidden is not None and not isinstance(self.hidden, bool):
+            problem = f"hidden must be a bool, got {self.hidden!r}"
+        elif self.overrides is not None and (
+            not isinstance(self.overrides, Mapping)
+            or not all(isinstance(key, str) for key in self.overrides)
+        ):
+            problem = "overrides must be a mapping with string keys"
+        if problem is not None:
+            raise ParamValidationError(
+                f"MetricRef {problem}",
+                code="MR7_INVALID_OVERRIDE",
+            )
+
+
+@dataclass(frozen=True)
+class BehaviorRef:
+    """A saved behavior, used by id in a funnel or retention query.
+
+    Pass it to ``Workspace.query_funnel()`` in place of the step list, or to
+    ``Workspace.query_retention()`` in place of the born and return events.
+    The params keep the reference (``{"type", "id"}``), and the server
+    expands the saved behavior at query time. The saved behavior sets the
+    steps, the conversion window, the order, the exclusions, and the other
+    behavior settings.
+
+    Attributes:
+        id: Saved behavior id.
+        type: Saved behavior type: ``"simple"``, ``"funnel"``, or
+            ``"retention"``. The engines check it, because the server
+            expands the id without checking the type.
+
+    Example:
+        ```python
+        import mixpanel_headless as mp
+
+        ws = mp.Workspace()
+        result = ws.query_funnel(mp.BehaviorRef(3120, "funnel"), last=90)
+        ```
+    """
+
+    id: int
+    """Saved behavior id."""
+
+    type: Literal["simple", "funnel", "retention"]
+    """Saved behavior type."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``BR1_INVALID_ID``) or the type is not a saved behavior
+                type (``BR2_INVALID_TYPE``).
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"BehaviorRef id must be a positive integer, got {self.id!r}",
+                code="BR1_INVALID_ID",
+            )
+        if self.type not in _BEHAVIOR_REF_KINDS:
+            raise ParamValidationError(
+                f"BehaviorRef type must be one of {sorted(_BEHAVIOR_REF_KINDS)}, "
+                f"got {self.type!r}",
+                code="BR2_INVALID_TYPE",
             )
 
 
