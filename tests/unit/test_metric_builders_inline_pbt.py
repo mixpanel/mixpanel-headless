@@ -23,6 +23,7 @@ from hypothesis import strategies as st
 
 from mixpanel_headless._internal.query.formula import letters_for_index
 from mixpanel_headless._internal.query.metric_builders import (
+    build_behavior_definition,
     build_formula_clause,
     build_formula_definition,
     build_inline_metric_clause,
@@ -131,6 +132,27 @@ class TestDefinitionCompilerProperties:
             "behavior": clause["behavior"],
             "measurement": clause["measurement"],
         }
+
+    @given(st.one_of(funnel_metrics, retention_metrics))
+    def test_behavior_definition_equals_metric_behavior(
+        self, metric: FunnelMetric | RetentionMetric
+    ) -> None:
+        """A saved behavior stores the behavior block of its metric clause."""
+        clause = build_inline_metric_clause(metric)
+        assert build_behavior_definition(metric.behavior) == {
+            "behavior": clause["behavior"]
+        }
+
+    @given(st.lists(events, min_size=1, max_size=5), st.one_of(st.none(), names))
+    def test_simple_behavior_definition_has_no_name(
+        self, several: list[str | CustomEventRef], name: str | None
+    ) -> None:
+        """A saved simple behavior is the query block without its name."""
+        behavior = SimpleBehavior(list(several), name=name)
+        query_block = build_metric_clause(Metric(behavior))["behavior"]
+        saved = build_behavior_definition(behavior)["behavior"]
+        assert "name" not in saved
+        assert saved == {k: v for k, v in query_block.items() if k != "name"}
 
     @given(st.lists(inline_metrics, min_size=1, max_size=4), st.data())
     def test_formula_operands_are_operand_definitions(

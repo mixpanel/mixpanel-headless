@@ -14,6 +14,7 @@ import pytest
 
 from mixpanel_headless._internal.bookmark_builders import build_filter_entry
 from mixpanel_headless._internal.query.metric_builders import (
+    build_behavior_definition,
     build_custom_event_behavior,
     build_formula_clause,
     build_formula_definition,
@@ -625,6 +626,45 @@ class TestDispatchAndDefinition:
         """A cohort clause always writes ``isHidden``, as it does today."""
         assert build_inline_metric_clause(CohortMetric(12))["isHidden"] is False
         assert build_inline_metric_clause(CohortMetric(12), hidden=True)["isHidden"]
+
+
+# =============================================================================
+# Saved behavior definitions
+# =============================================================================
+
+
+class TestBehaviorDefinition:
+    """A saved behavior stores ``{behavior}``, with no name inside it."""
+
+    def test_simple_behavior(self) -> None:
+        """A simple behavior writes its events and no name."""
+        definition = build_behavior_definition(
+            SimpleBehavior(["Login", CustomEventRef(3)], name="Signed in")
+        )
+        assert definition == {
+            "behavior": {
+                "type": "simple",
+                "resourceType": "events",
+                "filtersDeterminer": "all",
+                "filters": [],
+                "behaviors": [_entry("Login"), _ce_entry(3)],
+            }
+        }
+
+    def test_funnel_behavior_is_the_funnel_metric_behavior(self) -> None:
+        """A funnel behavior writes the behavior block of its funnel metric."""
+        assert build_behavior_definition(FUNNEL) == {
+            "behavior": build_funnel_metric_clause(FunnelMetric(FUNNEL))["behavior"]
+        }
+        assert "name" not in build_behavior_definition(FUNNEL)["behavior"]
+
+    def test_retention_behavior_is_the_retention_metric_behavior(self) -> None:
+        """A retention behavior writes the behavior block of its retention metric."""
+        assert build_behavior_definition(RETENTION) == {
+            "behavior": build_retention_metric_clause(RetentionMetric(RETENTION))[
+                "behavior"
+            ]
+        }
 
 
 # =============================================================================

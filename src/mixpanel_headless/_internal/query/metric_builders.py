@@ -1282,6 +1282,40 @@ def build_metric_definition(metric: FormulaOperand) -> dict[str, Any]:
     return {"behavior": clause["behavior"], "measurement": clause["measurement"]}
 
 
+def build_behavior_definition(
+    behavior: SimpleBehavior | FunnelBehavior | RetentionBehavior,
+) -> dict[str, Any]:
+    """Build the saved definition of a behavior value.
+
+    A saved behavior stores ``{behavior}``. The block comes from the same
+    builders as the behavior of a metric clause, without ``name``: the
+    server refuses a name inside a saved behavior definition, and the
+    saved behavior's own name labels it.
+
+    Args:
+        behavior: A ``SimpleBehavior``, ``FunnelBehavior``, or
+            ``RetentionBehavior``. The name of a ``SimpleBehavior`` is a
+            query-time series label and is not written.
+
+    Returns:
+        ``{"behavior": ...}``.
+
+    Example:
+        ```python
+        build_behavior_definition(FunnelBehavior(["Signup", "Purchase"]))
+        # {"behavior": {"type": "funnel", "resourceType": "events", ...}}
+        ```
+    """
+    if isinstance(behavior, FunnelBehavior):
+        block = build_funnel_metric_behavior(behavior)
+    elif isinstance(behavior, RetentionBehavior):
+        block = build_retention_metric_behavior(behavior)
+    else:
+        block = build_simple_behavior(behavior.events)
+        del block["name"]
+    return {"behavior": block}
+
+
 def build_formula_operands(formula: Formula) -> list[dict[str, Any]]:
     """Build the ``referencedMetrics`` list of a formula.
 
