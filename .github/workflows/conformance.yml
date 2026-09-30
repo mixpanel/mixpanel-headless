@@ -178,8 +178,12 @@ jobs:
       # either drift that main already has or a regression in this PR. To
       # tell them apart, run each failing suite again on the merge-base with
       # main, and fail on any failure that the merge-base does not have. That
-      # includes a new test or a new vector that fails. Limit: in a PR that
-      # also changes src/, the PR's own library drift counts as new.
+      # includes a new test or a new vector that fails. Limits: in a PR that
+      # also changes src/, the PR's own library drift counts as new. Failures
+      # match by test id only, so a test that already fails on main and now
+      # fails for a different reason is not new; the next re-pin (strict
+      # mode) catches it. Comparing failure messages is not reliable: the
+      # short summary truncates them, and some carry per-run values.
       - name: New failures against the merge-base
         id: baseline
         if: github.event_name == 'pull_request' && steps.policy.outputs.mode == 'report' && (steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift')

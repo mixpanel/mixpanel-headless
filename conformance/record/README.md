@@ -122,9 +122,11 @@ be drift that `main` already has, or a regression in the PR. To tell them
 apart, the workflow runs each failing suite (tooling tests, corpus runner)
 again on the merge-base with `main`, and fails on any failure that the
 merge-base does not have. That includes a new test or a new authored vector
-that fails. Limit: in a PR that also changes `src/`, the PR's own library
+that fails. Limits: in a PR that also changes `src/`, the PR's own library
 drift counts as new, so keep library changes and tooling changes in
-separate PRs.
+separate PRs. Failures match by test id only, so a test that already fails
+on `main` and now fails for a different reason does not count as new. The
+next re-pin runs in strict mode and catches it.
 
 After each re-pin PR merges, the TypeScript port (`mixpanel-headless-ts`)
 re-pins to the same SHA: set `conformance-runner/corpus.config.json`
