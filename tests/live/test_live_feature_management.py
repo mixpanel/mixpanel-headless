@@ -1,16 +1,23 @@
 # ruff: noqa: S101, S603, S607
 """Live QA tests for Feature Management (Flags + Experiments) — Phase 025.
 
-Exercises the full stack against the real Mixpanel API on Project 8.
-All created objects are prefixed ``QA-025-`` and cleaned up after tests.
+Exercises the full stack against the real Mixpanel API. All created
+objects are prefixed ``QA-025-`` and cleaned up after tests.
 
 Usage:
-    uv run pytest tests/live/test_live_feature_management.py -v -m live
-    uv run pytest tests/live/test_live_feature_management.py -v -m live -k flags
-    uv run pytest tests/live/test_live_feature_management.py -v -m live -k experiments
+    MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \
+        uv run pytest tests/live/test_live_feature_management.py -v -m live
+    MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \
+        uv run pytest tests/live/test_live_feature_management.py -v -m live -k flags
+
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+    - ``MP_LIVE_WRITE_PROJECT`` — the project id this suite may write to.
+      Every test skips unless it is set and the account resolves to that
+      project. The ``mp`` CLI calls pass both as global flags.
 
 Constraints:
-    - Uses account ``p8`` (Project ID 8)
     - Never modifies pre-existing flags or experiments
     - All QA objects named ``QA-025-*``
     - Cleanup guaranteed via fixtures with finalizers
@@ -45,9 +52,17 @@ from mixpanel_headless.types import (
     UpdateExperimentParams,
     UpdateFeatureFlagParams,
 )
+from tests.live._live_settings import (
+    live_cli_command,
+    live_cli_env,
+    live_workspace,
+    requires_live_account,
+    requires_write_project,
+)
 
-# All tests require the `live` marker — skipped by default
-pytestmark = pytest.mark.live
+# All tests require the `live` marker, MP_LIVE_ACCOUNT, and
+# MP_LIVE_WRITE_PROJECT — skipped by default
+pytestmark = [pytest.mark.live, requires_live_account, requires_write_project]
 
 QA_PREFIX = "QA-025-"
 
@@ -85,12 +100,13 @@ def _unique_key(label: str) -> str:
 
 @pytest.fixture(scope="module")
 def ws() -> Workspace:
-    """Create a Workspace connected to Project 8.
+    """Create the Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
-        Workspace instance using the ``p8`` account.
+        Workspace on ``MP_LIVE_WRITE_PROJECT``; the test skips when a
+        setting is missing or the account resolves to another project.
     """
-    return Workspace(account="p8")
+    return live_workspace(write=True)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -118,19 +134,21 @@ def cleanup_stale_qa_objects(ws: Workspace) -> None:
 
 
 def _mp(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run an ``mp`` CLI command against Project 8.
+    """Run an ``mp`` CLI command on the live account and write project.
 
     Args:
-        *args: CLI arguments after ``mp -a p8``.
+        *args: CLI arguments after the global ``--account`` and
+            ``--project`` flags.
 
     Returns:
         Completed process with captured stdout and stderr.
     """
     return subprocess.run(
-        ["uv", "run", "mp", "-a", "p8", *args],
+        live_cli_command(*args),
         capture_output=True,
         text=True,
         timeout=30,
+        env=live_cli_env(),
     )
 
 

@@ -8,18 +8,24 @@ project. Uses tmp v3 home so the user's real ~/.mp/ is never touched.
 
     # All categories (requires all three modes):
     source ~/.zshrc          # ensure MP_LIVE_OAUTH_TOKEN is loaded
-    MP_LIVE_TESTS=1 uv run pytest tests/live/test_042_auth_redesign_live.py -v -m live
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_042_auth_redesign_live.py -v -m live
 
     # Single category:
-    MP_LIVE_TESTS=1 uv run pytest tests/live/test_042_auth_redesign_live.py -v -m live -k CatB
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_042_auth_redesign_live.py -v -m live -k CatB
 
-**Required env vars** (each gates the corresponding category):
+**Required env vars** (each gates the corresponding category; a test
+skips when its settings are missing):
 
-    OAuth browser (Cat B): nothing — uses ~/.mp/oauth/tokens_us.json directly
+    OAuth browser (Cat B, D, E, F): MP_LIVE_ACCOUNT — an oauth_browser
+        account with fresh tokens; its tokens, region, and default project
+        are copied into the tmp home
     Service account (Cat A): MP_LIVE_SA_USERNAME, MP_LIVE_SA_SECRET,
                              MP_LIVE_SA_PROJECT_ID, MP_LIVE_SA_REGION
     Static OAuth token (Cat C): MP_LIVE_OAUTH_TOKEN, MP_LIVE_PROJECT_ID,
                                 MP_LIVE_REGION
+
+No test reads the active account or project of the real config, so no
+test falls back to the default session.
 
 The MP_LIVE_* prefix dodges the autouse env-var cleanup in
 tests/conftest.py — that fixture scrubs MP_USERNAME / MP_SECRET /
@@ -56,8 +62,10 @@ from mixpanel_headless.exceptions import (
 
 # Re-export the fixtures from conftest_042.py so pytest picks them up.
 from tests.live.conftest_042 import (  # noqa: F401 — fixture imports
-    copy_user_oauth_tokens_to_account,
-    get_user_active_project_id,
+    copy_live_account_tokens,
+    live_account_project_id,
+    live_account_region,
+    live_account_tokens_path,
     live_oauth_token_creds,
     live_sa_creds,
     require_oauth_browser_available,
@@ -194,7 +202,7 @@ class TestCatA_ServiceAccount:
 
 
 # =============================================================================
-# Cat B — OAuth browser end-to-end (reuses user's tokens)
+# Cat B — OAuth browser end-to-end (reuses the MP_LIVE_ACCOUNT tokens)
 # =============================================================================
 
 
@@ -204,21 +212,23 @@ def _seed_oauth_browser_account(
     name: str = "personal",
     project_id: str | None = None,
 ) -> str:
-    """Seed a v3 oauth_browser account using the user's real on-disk tokens.
+    """Seed a v3 oauth_browser account from the ``MP_LIVE_ACCOUNT`` account.
 
     Args:
         home: Tmp $HOME root from the ``tmp_mp_home`` fixture.
         name: Account name to create in the v3 config.
         project_id: Project ID to set in [active]; defaults to the
-            project from the user's real config.
+            default project of the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
         The project ID that was set in [active] (for use in assertions).
     """
-    copy_user_oauth_tokens_to_account(home, name)
+    copy_live_account_tokens(home, name)
     cm = ConfigManager()
-    pid = project_id or get_user_active_project_id() or "1"
-    cm.add_account(name, type="oauth_browser", region="us", default_project=pid)
+    pid = project_id or live_account_project_id()
+    cm.add_account(
+        name, type="oauth_browser", region=live_account_region(), default_project=pid
+    )
     cm.set_active(account=name)
     return pid
 
@@ -231,7 +241,7 @@ class TestCatB_OAuthBrowser:
         tmp_mp_home: Path,
         require_oauth_browser_available: None,
     ) -> None:
-        """B1.01 — Tokens copied from legacy path; Workspace() authenticates."""
+        """B1.01 — Tokens copied from the MP_LIVE_ACCOUNT account; Workspace() authenticates."""
         _seed_oauth_browser_account(tmp_mp_home)
         ws = Workspace()
         try:
@@ -409,12 +419,12 @@ class TestCatD_CrossModeSwitching:
             username=live_sa_creds["username"],
             secret=SecretStr(live_sa_creds["secret"]),
         )
-        copy_user_oauth_tokens_to_account(tmp_mp_home, "personal")
+        copy_live_account_tokens(tmp_mp_home, "personal")
         ConfigManager().add_account(
             "personal",
             type="oauth_browser",
-            region="us",
-            default_project=get_user_active_project_id() or "1",
+            region=live_account_region(),
+            default_project=live_account_project_id(),
         )
         accounts_ns.add(
             "ci",
@@ -434,7 +444,7 @@ class TestCatD_CrossModeSwitching:
             # Switch to OAuth browser.
             ws.use(
                 account="personal",
-                project=get_user_active_project_id() or "1",
+                project=live_account_project_id(),
             )
             ws.events()
             assert id(client._http) == before_id, (  # noqa: SLF001
@@ -467,12 +477,12 @@ class TestCatD_CrossModeSwitching:
             username=live_sa_creds["username"],
             secret=SecretStr(live_sa_creds["secret"]),
         )
-        copy_user_oauth_tokens_to_account(tmp_mp_home, "personal")
+        copy_live_account_tokens(tmp_mp_home, "personal")
         ConfigManager().add_account(
             "personal",
             type="oauth_browser",
-            region="us",
-            default_project=get_user_active_project_id() or "1",
+            region=live_account_region(),
+            default_project=live_account_project_id(),
         )
         ConfigManager().set_active(account="team")
         ws = Workspace()
@@ -480,7 +490,7 @@ class TestCatD_CrossModeSwitching:
             assert ws.account.name == "team"
             ws.use(
                 account="personal",
-                project=get_user_active_project_id() or "1",
+                project=live_account_project_id(),
                 persist=True,
             )
         finally:
@@ -508,7 +518,7 @@ class TestCatE_CliEndToEnd:
         require_oauth_browser_available: None,
     ) -> None:
         """E1.01 — `mp account add → mp project use → mp inspect events` round-trips."""
-        copy_user_oauth_tokens_to_account(tmp_mp_home, "personal-cli")
+        copy_live_account_tokens(tmp_mp_home, "personal-cli")
         env = os.environ.copy()
         env.update(
             {
@@ -528,7 +538,7 @@ class TestCatE_CliEndToEnd:
                 "--type",
                 "oauth_browser",
                 "--region",
-                "us",
+                live_account_region(),
             ],
             capture_output=True,
             env=env,
@@ -538,7 +548,7 @@ class TestCatE_CliEndToEnd:
         assert r1.returncode == 0, f"add: {r1.stderr}"
 
         # Set active project.
-        pid = get_user_active_project_id() or "1"
+        pid = live_account_project_id()
         r2 = subprocess.run(
             ["uv", "run", "mp", "project", "use", pid],
             capture_output=True,
@@ -584,7 +594,7 @@ class TestCatE_CliEndToEnd:
         assert result.returncode == 0
         payload = json.loads(result.stdout.strip())
         assert payload["account"] == "personal-json"
-        assert payload["project"] == (get_user_active_project_id() or "1")
+        assert payload["project"] == (live_account_project_id())
 
     def test_E1_04_cli_target_account_mutex_exits_3(
         self,
@@ -641,21 +651,21 @@ class TestCatF_Bridge:
         ``tokens.json`` keyed by ``account.name``. We seed both the bridge
         file and the on-disk token path under the same account name.
         """
-        # Read user's real on-disk tokens (used both inline-in-bridge and
+        # Read the MP_LIVE_ACCOUNT account's on-disk tokens (used both inline-in-bridge and
         # at the per-account on-disk path the resolver reads from).
-        from tests.live.conftest_042 import LEGACY_TOKENS_PATH
-
-        legacy_tokens = json.loads(LEGACY_TOKENS_PATH.read_text(encoding="utf-8"))
-        copy_user_oauth_tokens_to_account(tmp_mp_home, "bridged")
+        legacy_tokens = json.loads(
+            live_account_tokens_path().read_text(encoding="utf-8")
+        )
+        copy_live_account_tokens(tmp_mp_home, "bridged")
 
         bridge_path = tmp_mp_home / "bridge.json"
-        pid = get_user_active_project_id() or "1"
+        pid = live_account_project_id()
         bridge_payload = {
             "version": 2,
             "account": {
                 "type": "oauth_browser",
                 "name": "bridged",
-                "region": "us",
+                "region": live_account_region(),
             },
             "tokens": {
                 "access_token": legacy_tokens["access_token"],

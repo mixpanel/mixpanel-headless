@@ -6,13 +6,14 @@ project.  All tests are **read-only** — no profiles are created, updated,
 or deleted.
 
 Usage:
-    uv run pytest tests/live/test_live_query_user.py -v -m live
-    uv run pytest tests/live/test_live_query_user.py -v -m live -k profiles
-    uv run pytest tests/live/test_live_query_user.py -v -m live -k aggregate
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_live_query_user.py -v -m live
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_live_query_user.py -v -m live -k profiles
 
-Pre-requisites:
-    - Active OAuth token: ``mp account login NAME``
-    - Project switched to target project with profiles
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+      The Workspace uses the account's default project, which needs
+      profiles.
 """
 
 from __future__ import annotations
@@ -28,9 +29,10 @@ from mixpanel_headless import (
     Workspace,
 )
 from mixpanel_headless.types import UserQueryResult
+from tests.live._live_settings import live_workspace, requires_live_account
 
-# All tests require the `live` marker — skipped by default
-pytestmark = pytest.mark.live
+# All tests require the `live` marker and MP_LIVE_ACCOUNT — skipped by default
+pytestmark = [pytest.mark.live, requires_live_account]
 
 
 # =============================================================================
@@ -40,12 +42,12 @@ pytestmark = pytest.mark.live
 
 @pytest.fixture(scope="module")
 def ws() -> Iterator[Workspace]:
-    """Live Workspace connected to the active project.
+    """Live Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Yields:
-        Workspace instance using default credentials.
+        Workspace instance; the test skips when ``MP_LIVE_ACCOUNT`` is unset.
     """
-    workspace = Workspace()
+    workspace = live_workspace()
     yield workspace
     workspace.close()
 
