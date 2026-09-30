@@ -1172,13 +1172,17 @@ def build_funnel_metric_clause(
             ``True`` adds ``isHidden: True``.
 
     Returns:
-        The metric show clause.
+        The metric show clause. A label is written as the clause ``name``,
+        which the query server uses as the series label.
     """
-    return _event_metric_clause(
+    clause = _event_metric_clause(
         build_funnel_metric_behavior(metric.behavior),
         build_funnel_metric_measurement(metric),
         hidden=hidden,
     )
+    if metric.label:
+        clause["name"] = metric.label
+    return clause
 
 
 def build_retention_metric_behavior(behavior: RetentionBehavior) -> dict[str, Any]:
@@ -1214,7 +1218,8 @@ def build_retention_metric_clause(
             ``True`` adds ``isHidden: True``.
 
     Returns:
-        The metric show clause.
+        The metric show clause. A label is written as the clause ``name``,
+        which the query server uses as the series label.
     """
     measurement = build_retention_measurement(
         math=metric.math,
@@ -1222,9 +1227,12 @@ def build_retention_metric_clause(
         bucket_index=metric.bucket_index,
         property=metric.property,
     )
-    return _event_metric_clause(
+    clause = _event_metric_clause(
         build_retention_metric_behavior(metric.behavior), measurement, hidden=hidden
     )
+    if metric.label:
+        clause["name"] = metric.label
+    return clause
 
 
 def build_inline_metric_clause(

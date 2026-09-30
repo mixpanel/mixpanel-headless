@@ -487,6 +487,18 @@ class TestFunnelMetricClause:
         clause = build_funnel_metric_clause(FunnelMetric(FUNNEL), hidden=True)
         assert clause["isHidden"] is True
 
+    def test_label_is_the_clause_name(self) -> None:
+        """A label is written as the clause ``name``, the series label."""
+        clause = build_funnel_metric_clause(FunnelMetric(FUNNEL, label="Checkout"))
+        assert clause["name"] == "Checkout"
+        assert "name" not in clause["behavior"]
+        assert "name" not in build_funnel_metric_clause(FunnelMetric(FUNNEL))
+
+    def test_label_is_not_part_of_the_definition(self) -> None:
+        """The saved definition holds no label; it is the saved metric's name."""
+        definition = build_metric_definition(FunnelMetric(FUNNEL, label="Checkout"))
+        assert definition == build_metric_definition(FunnelMetric(FUNNEL))
+
 
 # =============================================================================
 # Retention metrics
@@ -537,6 +549,12 @@ class TestRetentionMetricClause:
             "retentionCumulative": True,
         }
         assert clause["isHidden"] is True
+
+    def test_label_is_the_clause_name(self) -> None:
+        """A label is written as the clause ``name``, the series label."""
+        metric = RetentionMetric(RETENTION, label="Week 1")
+        assert build_retention_metric_clause(metric)["name"] == "Week 1"
+        assert "name" not in build_retention_metric_clause(RetentionMetric(RETENTION))
 
 
 # =============================================================================
