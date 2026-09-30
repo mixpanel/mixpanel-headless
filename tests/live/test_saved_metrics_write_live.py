@@ -1,12 +1,11 @@
 """Live QA tests for saved metric and saved behavior writes.
 
-Creates saved metrics and saved behaviors, changes them, and deletes them,
-on one shared project (default: account ``journey-lab-us``, project
-3409416). Safety rules, enforced in code:
+Creates saved metrics and saved behaviors, changes them, and deletes them.
+The project can be shared with other users. Safety rules, enforced in code:
 
-- The tests write only when the Workspace project equals
-  ``MP_SAVED_METRICS_WRITE_PROJECT`` (default ``3409416``); otherwise they
-  skip before any write.
+- The tests run only when ``MP_LIVE_ACCOUNT`` is set, and they write only
+  when the account's project id equals ``MP_LIVE_WRITE_PROJECT``; otherwise
+  they skip before any write.
 - Every created entity has a ``zz-`` name prefix.
 - A test changes or deletes only ids that its own creates returned in the
   same run. Each update and delete first asserts that its target id is in
@@ -14,14 +13,17 @@ on one shared project (default: account ``journey-lab-us``, project
 - The module teardown deletes only the created ids.
 
 Usage:
-    uv run pytest tests/live/test_saved_metrics_write_live.py -v -m live
+    MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \
+        uv run pytest tests/live/test_saved_metrics_write_live.py -v -m live
 
 Environment:
-    - ``MP_SAVED_METRICS_ACCOUNT`` — the account (default ``journey-lab-us``).
-    - ``MP_SAVED_METRICS_WRITE_PROJECT`` — the only project the tests write
-      to (default ``3409416``).
-    - ``MP_SAVED_METRICS_EVENTS`` — two event names in that project, comma
-      separated (default ``document created,document shared``).
+    - ``MP_LIVE_ACCOUNT`` — the configured account; the suite skips when it
+      is unset.
+    - ``MP_LIVE_WRITE_PROJECT`` — the only project id the tests write to; the
+      suite skips when it is unset or differs from the account's project.
+    - ``MP_LIVE_EVENTS`` — two event names for the metric definitions, comma
+      separated. Optional: a create does not need the events to exist, so
+      the default names are placeholders.
 """
 
 from __future__ import annotations
@@ -39,10 +41,8 @@ from mixpanel_headless.exceptions import ParamValidationError, QueryError
 # All tests require the `live` marker — skipped by default
 pytestmark = pytest.mark.live
 
-_ACCOUNT = os.environ.get("MP_SAVED_METRICS_ACCOUNT", "journey-lab-us")
-_WRITE_PROJECT = os.environ.get("MP_SAVED_METRICS_WRITE_PROJECT", "3409416")
 _EVENTS = os.environ.get(
-    "MP_SAVED_METRICS_EVENTS", "document created,document shared"
+    "MP_LIVE_EVENTS", "zz-headless-live event a,zz-headless-live event b"
 ).split(",")
 _PREFIX = f"zz-headless-live-{uuid.uuid4().hex[:8]}-"
 
@@ -84,14 +84,30 @@ class _Created:
         return behavior_id
 
 
+def _write_project() -> str:
+    """Return the write project id from ``MP_LIVE_WRITE_PROJECT``, or skip.
+
+    Returns:
+        The project id that write steps may change.
+    """
+    project = os.environ.get("MP_LIVE_WRITE_PROJECT")
+    if not project:
+        pytest.skip("MP_LIVE_WRITE_PROJECT is not set; write steps are off")
+    return project
+
+
 @pytest.fixture(scope="module")
 def ws() -> mp.Workspace:
-    """A Workspace on the write account, or a skip when it points elsewhere."""
-    workspace = mp.Workspace(account=_ACCOUNT)
-    if str(workspace.api.project_id) != _WRITE_PROJECT:
+    """A Workspace on ``MP_LIVE_ACCOUNT`` whose project is the write project, or a skip."""
+    account = os.environ.get("MP_LIVE_ACCOUNT")
+    if not account:
+        pytest.skip("MP_LIVE_ACCOUNT is not set")
+    write_project = _write_project()
+    workspace = mp.Workspace(account=account)
+    if str(workspace.api.project_id) != write_project:
         pytest.skip(
-            f"account {_ACCOUNT} resolves to project {workspace.api.project_id}, "
-            f"not the write project {_WRITE_PROJECT}"
+            f"the account resolves to project {workspace.api.project_id}, not the "
+            f"write project {write_project}"
         )
     return workspace
 
@@ -108,7 +124,7 @@ def created(ws: mp.Workspace) -> Iterator[_Created]:
     """
     tracker = _Created()
     yield tracker
-    assert str(ws.api.project_id) == _WRITE_PROJECT
+    assert str(ws.api.project_id) == _write_project()
     if tracker.metrics:
         ws.delete_metrics(sorted(tracker.metrics))
     if tracker.behaviors:
