@@ -22,7 +22,7 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import MISSING, dataclass, field, fields
 from datetime import date as dt_date
 from datetime import datetime
@@ -10022,6 +10022,93 @@ def _normalize_date_key(date_key: str) -> str:
     return date_key
 
 
+def _is_segment_leaf(node: dict[str, Any]) -> bool:
+    """Report whether an Insights series node is a leaf.
+
+    A leaf maps date keys (or ``"all"``) to scalars. Any other node maps
+    segment values to deeper nodes.
+
+    Args:
+        node: One node of an Insights ``series`` tree.
+
+    Returns:
+        True when no value of ``node`` is a dict.
+    """
+    return not any(isinstance(value, dict) for value in node.values())
+
+
+def _segment_depth(node: dict[str, Any]) -> int:
+    """Count the group-by levels above the leaves of an Insights series node.
+
+    Args:
+        node: The subtree under one metric name.
+
+    Returns:
+        0 for a flat ``{date_or_"all": scalar}`` node, otherwise one more
+        than the deepest child. Non-dict children are ignored.
+    """
+    if _is_segment_leaf(node):
+        return 0
+    return 1 + max(
+        _segment_depth(child) for child in node.values() if isinstance(child, dict)
+    )
+
+
+def _iter_segment_leaves(
+    node: dict[str, Any], path: list[str] | None = None
+) -> Iterator[tuple[list[str], dict[str, Any]]]:
+    """Walk an Insights series node and yield each leaf with its segment path.
+
+    Args:
+        node: The subtree under one metric name.
+        path: Segment values above ``node``. Callers leave this unset.
+
+    Yields:
+        ``(path, leaf)`` pairs. ``path`` is shorter than the tree depth
+        for a rollup that stops early, such as the top-level ``$overall``.
+    """
+    path = path or []
+    if _is_segment_leaf(node):
+        yield path, node
+        return
+    for key, child in node.items():
+        if isinstance(child, dict):
+            yield from _iter_segment_leaves(child, [*path, str(key)])
+
+
+_QUERY_DF_FIXED_COLUMNS = frozenset({"date", "event", "count"})
+
+
+def _segment_columns(headers: list[str], depth: int) -> list[str]:
+    """Name the segment columns of a ``QueryResult`` DataFrame.
+
+    Args:
+        headers: Insights response headers, ``["$metric", prop_1, ...]``.
+        depth: Number of group-by levels in the series.
+
+    Returns:
+        ``[]`` for no group-by, ``["segment"]`` for one level, and the
+        property names from ``headers[1:]`` for two or more levels. When
+        those names do not fit (wrong count, empty, duplicated, or equal
+        to ``date`` / ``event`` / ``count``), every level falls back to
+        ``segment_1`` .. ``segment_N``.
+    """
+    if depth == 0:
+        return []
+    if depth == 1:
+        return ["segment"]
+    names = headers[1:]
+    usable = (
+        len(headers) == depth + 1
+        and all(isinstance(name, str) and name for name in names)
+        and len(set(names)) == depth
+        and not _QUERY_DF_FIXED_COLUMNS.intersection(names)
+    )
+    if usable:
+        return list(names)
+    return [f"segment_{i}" for i in range(1, depth + 1)]
+
+
 @dataclass(frozen=True)
 class QueryResult(ResultWithDataFrame):
     """Structured output from a Workspace.query() execution.
@@ -10077,6 +10164,9 @@ class QueryResult(ResultWithDataFrame):
 
     For timeseries: ``{metric_name: {date_string: value}}``
     For total: ``{metric_name: {"all": value}}``
+    With ``group_by``, each property adds one level of segment keys
+    between the metric name and the leaf, with an ``$overall`` rollup
+    key at every level.
     """
 
     params: dict[str, Any] = field(default_factory=dict)
@@ -10097,75 +10187,55 @@ class QueryResult(ResultWithDataFrame):
         For segmented total (with ``group_by``): columns are
         ``event``, ``segment``, ``count``.
 
+        With two or more ``group_by`` properties, the single ``segment``
+        column becomes one column per property, named from
+        ``headers[1:]`` (for example ``event``, ``auth``, ``status_code``,
+        ``count``). If those names are missing, do not match the number
+        of levels, are empty or duplicated, or equal ``date``, ``event``,
+        or ``count``, the columns are ``segment_1`` .. ``segment_N``.
+
+        Rollup rows are kept: a row that summarizes a level has
+        ``$overall`` in that column and in every column below it. For
+        unique counts, averages, and percentiles a rollup is not the sum
+        of its children, so it cannot be rebuilt from the leaf rows.
+        To keep leaf rows only:
+
+        ```python
+        df = result.df
+        leaves = df[(df[["auth", "status_code"]] != "$overall").all(axis=1)]
+        ```
+
         Returns:
-            Normalized DataFrame with one row per (date, metric, segment)
-            combination. Segmented responses are detected automatically
-            by checking whether inner values are dicts (segment nesting)
-            or scalars (flat response).
+            Normalized DataFrame with one row per (date, metric, segment
+            path) combination. Segment depth is detected from the nesting
+            of ``series``.
         """
         if self._df_cache is not None:
             return self._df_cache
 
+        metrics = {
+            name: node for name, node in self.series.items() if isinstance(node, dict)
+        }
+        depth = max((_segment_depth(node) for node in metrics.values()), default=0)
+        seg_cols = _segment_columns(self.headers, depth)
+
         rows: list[dict[str, Any]] = []
-        has_segments = False
         has_dates = False
 
-        for metric_name, date_values in self.series.items():
-            if not isinstance(date_values, dict):
-                continue
-
-            # Detect segmented response: if any value is a dict,
-            # the structure is {segment: {date_or_"all": scalar}}
-            first_value = next(iter(date_values.values()), None)
-            if isinstance(first_value, dict):
-                has_segments = True
-                for segment_name, segment_data in date_values.items():
-                    if not isinstance(segment_data, dict):
-                        continue
-                    for date_key, value in segment_data.items():
-                        if date_key == "all":
-                            rows.append(
-                                {
-                                    "event": metric_name,
-                                    "segment": segment_name,
-                                    "count": value,
-                                }
-                            )
-                        else:
-                            has_dates = True
-                            normalized_date = _normalize_date_key(date_key)
-                            rows.append(
-                                {
-                                    "date": normalized_date,
-                                    "event": metric_name,
-                                    "segment": segment_name,
-                                    "count": value,
-                                }
-                            )
-            else:
-                # Flat response: {date_or_"all": scalar}
-                for date_key, value in date_values.items():
-                    if date_key == "all":
-                        rows.append({"event": metric_name, "count": value})
-                    else:
+        for metric_name, node in metrics.items():
+            for path, leaf in _iter_segment_leaves(node):
+                # A branch that stops early is a rollup: pad with $overall.
+                padded = path + ["$overall"] * (depth - len(path))
+                segments = dict(zip(seg_cols, padded, strict=True))
+                for date_key, value in leaf.items():
+                    row: dict[str, Any] = {"event": metric_name, **segments}
+                    if date_key != "all":
                         has_dates = True
-                        normalized_date = _normalize_date_key(date_key)
-                        rows.append(
-                            {
-                                "date": normalized_date,
-                                "event": metric_name,
-                                "count": value,
-                            }
-                        )
+                        row["date"] = _normalize_date_key(date_key)
+                    row["count"] = value
+                    rows.append(row)
 
-        if has_segments and has_dates:
-            cols = ["date", "event", "segment", "count"]
-        elif has_segments:
-            cols = ["event", "segment", "count"]
-        elif has_dates:
-            cols = ["date", "event", "count"]
-        else:
-            cols = ["event", "count"]
+        cols = (["date"] if has_dates else []) + ["event", *seg_cols, "count"]
 
         result_df = (
             pd.DataFrame(rows, columns=cols)
