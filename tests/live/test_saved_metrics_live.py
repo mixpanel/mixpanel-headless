@@ -1,19 +1,19 @@
-"""Live integration tests for saved metrics and saved behaviors (read only).
+"""Live QA tests for saved metrics and saved behaviors (read only).
 
-Skipped by default — set ``MP_LIVE_TESTS=1`` to run. The tests only list and
-get; they create, change, and delete nothing. They round-trip against the
-real ``/metrics`` and ``/behaviors`` App API endpoints and check that every
-row parses into the open read models.
+Lists and gets saved metrics and saved behaviors against the real
+``/metrics`` and ``/behaviors`` App API endpoints, on the account
+``journey-lab-us`` (project 3409416, a shared project), and checks that
+every row parses into the open read models. The tests create, change, and
+delete nothing.
 
-Environment:
-- ``MP_LIVE_TESTS=1`` — enable.
-- ``MP_SAVED_METRICS_ACCOUNT`` — the account to read with (default
-  ``journey-lab-us``). The Workspace uses that account's default project.
+Usage:
+    uv run pytest tests/live/test_saved_metrics_live.py -v -m live
+    MP_SAVED_METRICS_ACCOUNT=other uv run pytest tests/live/test_saved_metrics_live.py -v -m live
 
-Markers:
-- ``@pytest.mark.live`` lets the rest of the suite skip them via
-  ``-m "not live"``.
-- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_TESTS`` is absent.
+Constraints:
+    - Reads only; safe on a shared project.
+    - ``MP_SAVED_METRICS_ACCOUNT`` overrides the account (default
+      ``journey-lab-us``).
 """
 
 from __future__ import annotations
@@ -24,13 +24,8 @@ import pytest
 
 import mixpanel_headless as mp
 
-pytestmark = [
-    pytest.mark.live,
-    pytest.mark.skipif(
-        os.environ.get("MP_LIVE_TESTS") != "1",
-        reason="MP_LIVE_TESTS=1 not set — live tests skipped by default",
-    ),
-]
+# All tests require the `live` marker — skipped by default
+pytestmark = pytest.mark.live
 
 _ACCOUNT = os.environ.get("MP_SAVED_METRICS_ACCOUNT", "journey-lab-us")
 
