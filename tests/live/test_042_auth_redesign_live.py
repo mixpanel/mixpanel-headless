@@ -54,6 +54,7 @@ from mixpanel_headless._internal.auth.account import (
     OAuthTokenAccount,
     ServiceAccount,
 )
+from mixpanel_headless._internal.auth.storage import account_dir
 from mixpanel_headless._internal.config import ConfigManager
 from mixpanel_headless.exceptions import (
     AuthenticationError,
@@ -278,7 +279,7 @@ class TestCatB_OAuthBrowser:
         """
         _seed_oauth_browser_account(tmp_mp_home)
         # Corrupt BEFORE Workspace construction.
-        tokens_path = tmp_mp_home / ".mp" / "accounts" / "personal" / "tokens.json"
+        tokens_path = account_dir("personal") / "tokens.json"
         tokens_path.write_text('{"access_token":', encoding="utf-8")
         with pytest.raises((OAuthError, AuthenticationError)) as excinfo:
             Workspace()

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -24,8 +25,13 @@ from typing import Any
 import pytest
 
 from mixpanel_headless._internal.auth.account import Region
-from mixpanel_headless._internal.auth.storage import accounts_root
+from mixpanel_headless._internal.auth.storage import account_dir, accounts_root
 from tests.live._live_settings import LIVE_ACCOUNT_ENV
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
 
 # The real per-account state directory and config file, captured at import
 # time: the ``tmp_mp_home`` fixture points HOME at a tmp directory later.
@@ -93,23 +99,17 @@ def _live_account_record() -> dict[str, Any]:
 
     Returns:
         The ``[accounts.<name>]`` table, or an empty dict when the config is
-        missing, unreadable, or has no such account.
+        missing or has no such account.
+
+    Raises:
+        OSError: If the config file exists but cannot be read.
+        UnicodeDecodeError: If the config file is not UTF-8.
+        tomllib.TOMLDecodeError: If the config file is not valid TOML.
     """
     account = live_account_name()
     if not REAL_CONFIG_PATH.exists():
         return {}
-    try:
-        import sys
-
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:  # pragma: no cover
-            import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
-        raw: dict[str, Any] = tomllib.loads(
-            REAL_CONFIG_PATH.read_text(encoding="utf-8")
-        )
-    except Exception:  # noqa: BLE001 - any parse failure → no record
-        return {}
+    raw: dict[str, Any] = tomllib.loads(REAL_CONFIG_PATH.read_text(encoding="utf-8"))
     accounts = raw.get("accounts", {})
     record = accounts.get(account) if isinstance(accounts, dict) else None
     return record if isinstance(record, dict) else {}
@@ -147,12 +147,15 @@ def live_account_region() -> Region:
 def copy_live_account_tokens(home: Path, account_name: str) -> Path:
     """Copy the ``MP_LIVE_ACCOUNT`` account's OAuth tokens into the tmp layout.
 
-    Reads the account's real ``tokens.json`` and writes it to
-    ``<home>/.mp/accounts/<account_name>/tokens.json``, the v3 path that the
-    resolver reads for an account of that name.
+    Reads the account's real ``tokens.json`` and writes it to the
+    ``tokens.json`` of ``account_name`` under the storage root that the
+    library uses now: :func:`account_dir` reads the same environment as the
+    token resolver, which ``tmp_mp_home`` points into the tmp home.
 
     Args:
-        home: The tmp $HOME path (from the ``tmp_mp_home`` fixture).
+        home: The tmp $HOME path (from the ``tmp_mp_home`` fixture). The
+            destination must be inside it, so real tokens are never
+            overwritten.
         account_name: V3 account name to host the tokens under.
 
     Returns:
@@ -170,9 +173,14 @@ def copy_live_account_tokens(home: Path, account_name: str) -> Path:
     payload: dict[str, Any] = json.loads(source.read_text(encoding="utf-8"))
     payload.pop("project_id", None)  # v3 drops this field
 
-    account_dir = home / ".mp" / "accounts" / account_name
-    account_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    dst = account_dir / "tokens.json"
+    dst_dir = account_dir(account_name)
+    if not dst_dir.is_relative_to(home):
+        pytest.fail(
+            f"token destination {dst_dir} is outside the tmp home {home}; "
+            "use the tmp_mp_home fixture"
+        )
+    dst_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    dst = dst_dir / "tokens.json"
     dst.write_text(json.dumps(payload), encoding="utf-8")
     dst.chmod(0o600)
     return dst
