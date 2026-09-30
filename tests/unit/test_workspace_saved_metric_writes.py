@@ -22,6 +22,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from mixpanel_headless._internal import saved_definitions
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
@@ -46,6 +47,7 @@ from mixpanel_headless.types import (
     RawBehaviorDefinition,
     RawMetricDefinition,
     RetentionBehavior,
+    RetentionMetric,
     SavedBehavior,
     SavedMetric,
     SimpleBehavior,
@@ -930,10 +932,7 @@ class TestTypedWrites:
         ws.create_metric(CreateMetricParams(name="Checkout", definition=metric))
         body = server.body(0)
         assert body["type"] == "metric"
-        expected = build_metric_definition(metric)
-        del expected["behavior"]["filter"]
-        assert body["definition"] == expected
-        assert '"filter"' not in json.dumps(body)
+        assert body["definition"] == build_metric_definition(metric)
 
     def test_update_formula_kind_check(self, temp_dir: Path) -> None:
         """A formula update passes on a stored formula and refuses a behavior metric."""
@@ -978,11 +977,94 @@ class TestTypedWrites:
         ws.create_behavior(CreateBehaviorParams(name="b", behavior=behavior))
         body = server.body(0)
         assert body["type"] == wire_type
-        expected = build_behavior_definition(behavior)
-        expected["behavior"].pop("filter", None)
-        assert body["definition"] == expected
+        assert body["definition"] == build_behavior_definition(behavior)
         assert "name" not in body["definition"]["behavior"]
-        assert "filter" not in body["definition"]["behavior"]
+
+    @pytest.mark.parametrize(
+        "definition",
+        [
+            FunnelMetric(FunnelBehavior(["View Cart", "Purchase"])),
+            RetentionMetric(RetentionBehavior("Signup", "Login")),
+            Formula(
+                "A / B",
+                metrics=[
+                    FunnelMetric(FunnelBehavior(["View Cart", "Purchase"])),
+                    Metric("Login"),
+                ],
+            ),
+        ],
+    )
+    def test_create_metric_sends_no_legacy_filter_key(
+        self,
+        temp_dir: Path,
+        definition: FunnelMetric | RetentionMetric | Formula,
+    ) -> None:
+        """A funnel or retention behavior, also as a formula operand, saves without ``filter``.
+
+        The server's create schema rejects the legacy behavior key
+        ``filter`` with a 400.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            definition: A typed value whose query clause holds the legacy key.
+        """
+        server = _Server({("POST", _METRICS_PATH): _ok(behavior_metric_json())})
+        ws = _make_workspace(temp_dir, server)
+        ws.create_metric(CreateMetricParams(name="n", definition=definition))
+        assert '"filter"' not in json.dumps(server.body(0))
+
+    @pytest.mark.parametrize(
+        "behavior",
+        [
+            FunnelBehavior(["View Cart", "Purchase"]),
+            RetentionBehavior("Signup", "Login"),
+        ],
+    )
+    def test_create_behavior_sends_no_legacy_filter_key(
+        self, temp_dir: Path, behavior: FunnelBehavior | RetentionBehavior
+    ) -> None:
+        """A funnel or retention behavior saves without the legacy key ``filter``.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            behavior: A typed funnel or retention behavior.
+        """
+        server = _Server({("POST", _BEHAVIORS_PATH): _ok(saved_behavior_json())})
+        ws = _make_workspace(temp_dir, server)
+        ws.create_behavior(CreateBehaviorParams(name="b", behavior=behavior))
+        assert '"filter"' not in json.dumps(server.body(0))
+
+    def test_create_refuses_a_legacy_key_in_a_compiled_definition(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A compiled definition with a legacy key fails SM4 before any request."""
+        monkeypatch.setattr(
+            saved_definitions,
+            "build_metric_definition",
+            lambda _metric: {
+                "behavior": {"type": "funnel", "filter": []},
+                "measurement": {},
+            },
+        )
+        monkeypatch.setattr(
+            saved_definitions,
+            "build_behavior_definition",
+            lambda _behavior: {"behavior": {"type": "funnel", "filter": []}},
+        )
+        server = _Server({})
+        ws = _make_workspace(temp_dir, server)
+        funnel = FunnelBehavior(["View Cart", "Purchase"])
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_metric(
+                CreateMetricParams(name="n", definition=FunnelMetric(funnel))
+            )
+        assert exc_info.value.code == "SM4_SCHEMA"
+        assert exc_info.value.details["path"] == "definition.behavior.filter"
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_behavior(CreateBehaviorParams(name="b", behavior=funnel))
+        assert exc_info.value.code == "SM4_SCHEMA"
+        assert exc_info.value.details["path"] == "definition.behavior.filter"
+        assert server.requests == []
 
     def test_create_refuses_a_raw_legacy_key_update_sends_it(
         self, temp_dir: Path

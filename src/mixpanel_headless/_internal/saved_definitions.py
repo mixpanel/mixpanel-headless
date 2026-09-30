@@ -136,10 +136,10 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
         ```
     """
     if isinstance(definition, (Metric, CohortMetric, FunnelMetric, RetentionMetric)):
-        compiled = build_metric_definition(definition)
-        strip_server_skipped_keys("metric", compiled)
         return MetricWireParts(
-            kind="metric", definition=compiled, warehouse_source_id=None
+            kind="metric",
+            definition=build_metric_definition(definition),
+            warehouse_source_id=None,
         )
     if isinstance(definition, Formula):
         if definition.metrics is None:
@@ -151,10 +151,10 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
                 code="SM7_FORMULA_WITHOUT_OPERANDS",
                 details={"expression": definition.expression},
             )
-        compiled = build_formula_definition(definition)
-        strip_server_skipped_keys("formula", compiled)
         return MetricWireParts(
-            kind="formula", definition=compiled, warehouse_source_id=None
+            kind="formula",
+            definition=build_formula_definition(definition),
+            warehouse_source_id=None,
         )
     if isinstance(definition, WarehouseMetric):
         wire: dict[str, Any] = {
@@ -185,8 +185,7 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
     Args:
         behavior: A ``SimpleBehavior``, ``FunnelBehavior``, or
             ``RetentionBehavior`` (compiled with the same builders as the
-            behavior of a query metric, without a name and without the
-            legacy keys that a create rejects), or a
+            behavior of a query metric, without a name), or a
             ``RawBehaviorDefinition`` (copied as given).
 
     Returns:
@@ -200,9 +199,7 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
     """
     if isinstance(behavior, RawBehaviorDefinition):
         return _copy_mapping(behavior.definition)
-    compiled = build_behavior_definition(behavior)
-    strip_server_skipped_keys("behavior", compiled)
-    return compiled
+    return build_behavior_definition(behavior)
 
 
 def _copy_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -426,7 +423,9 @@ def check_behavior_definition(
 # field declared ``Ignore[...]`` there (``SkipJsonSchema``) is absent from
 # that schema, whose objects forbid extra keys. So such a key is read past at
 # query time but rejects a create. The mirror declares the same fields with
-# the same marker, and these helpers find them in a definition.
+# the same marker, and these helpers find them in a definition. A create
+# refuses them in every definition, raw or compiled from a typed value; an
+# update sends a definition as given, because stored definitions carry them.
 
 _SKIPPED_KEY_ROOTS: Final[dict[str, type[BaseModel]]] = {
     **SAVED_METRIC_DEFINITION_MODELS,
@@ -474,25 +473,23 @@ def _nested_model(annotation: Any) -> type[BaseModel] | None:
     return None
 
 
-def _walk_skipped(
-    model: type[BaseModel], data: Any, path: str
-) -> list[tuple[dict[str, Any], str, str]]:
-    """Find the skipped keys of one mirror model in a dict, recursively.
+def _walk_skipped(model: type[BaseModel], data: Any, path: str) -> list[str]:
+    """Find the skipped keys of one mirror model in a value, recursively.
 
     Args:
         model: The mirror model that describes ``data``.
-        data: The value to walk (dicts and lists are walked).
+        data: The value to walk (mappings and lists are walked).
         path: The dotted path of ``data``.
 
     Returns:
-        ``(container, key, path)`` for each skipped key, in walk order.
+        The dotted path of each skipped key, in walk order.
     """
-    found: list[tuple[dict[str, Any], str, str]] = []
+    found: list[str] = []
     if isinstance(data, list):
         for index, item in enumerate(data):
             found += _walk_skipped(model, item, f"{path}[{index}]")
         return found
-    if not isinstance(data, dict):
+    if not isinstance(data, Mapping):
         return found
     fields = {(info.alias or name): info for name, info in model.model_fields.items()}
     for key, value in data.items():
@@ -500,7 +497,7 @@ def _walk_skipped(
         if info is None:
             continue
         if _is_skipped(info):
-            found.append((data, key, f"{path}.{key}"))
+            found.append(f"{path}.{key}")
             continue
         nested = _nested_model(info.annotation)
         if nested is not None:
@@ -524,25 +521,7 @@ def find_server_skipped_keys(kind: str, definition: Mapping[str, Any]) -> list[s
         # ["definition.behavior.filter"]
         ```
     """
-    root = _SKIPPED_KEY_ROOTS[kind]
-    return [path for _, _, path in _walk_skipped(root, dict(definition), "definition")]
-
-
-def strip_server_skipped_keys(kind: str, definition: dict[str, Any]) -> None:
-    """Remove the legacy keys that the server's create schema leaves out, in place.
-
-    Used on definitions compiled from typed values: the shared show-clause
-    builders write the legacy behavior ``filter`` key for query-time
-    compatibility, and the server reads past it, so dropping it changes
-    nothing at query time and lets a create pass.
-
-    Args:
-        kind: ``"metric"``, ``"formula"``, ``"warehouse"``, or ``"behavior"``.
-        definition: The wire definition to change.
-    """
-    root = _SKIPPED_KEY_ROOTS[kind]
-    for container, key, _ in _walk_skipped(root, definition, "definition"):
-        del container[key]
+    return _walk_skipped(_SKIPPED_KEY_ROOTS[kind], definition, "definition")
 
 
 def _refuse_skipped_keys(

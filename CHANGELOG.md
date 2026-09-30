@@ -189,11 +189,11 @@ may include API changes.
   `CreateBehaviorParams` takes a `SimpleBehavior`, `FunnelBehavior`, or
   `RetentionBehavior` (new alias `BehaviorDefinition`); the saved
   definition never holds a name. A `Formula` without operands raises the
-  new code `SM7_FORMULA_WITHOUT_OPERANDS`. A definition compiled from a
-  typed value drops the legacy behavior `filter` key that the funnel and
-  retention builders write: the server reads past it at query time, but
-  its create schema rejects it. On a create, `SM4_SCHEMA` also refuses
-  such legacy keys in a raw definition; an update keeps them.
+  new code `SM7_FORMULA_WITHOUT_OPERANDS`. The saved definition of a typed
+  value holds no legacy behavior `filter` key: the server reads past it at
+  query time, but its create schema rejects it. On a create, `SM4_SCHEMA`
+  refuses such legacy keys in every definition, raw or compiled from a
+  typed value; an update sends them as given.
 - `Workspace.query` and `build_params` refuse a `WarehouseMetric` with the
   new code `MR3_WAREHOUSE_INLINE`: the server runs warehouse SQL only by
   saved id, so a warehouse metric is saved first and queried by reference.

@@ -5,10 +5,11 @@ Properties tested:
 - ``create_metric`` saves the same ``behavior`` and ``measurement`` that
   ``build_params`` writes into ``sections.show`` for the same inline metric
   (event, several events, cohort, funnel, and retention metrics), apart from
-  the legacy keys that a create rejects and the server reads past, so a
+  the legacy behavior key ``filter`` that only the query path writes, so a
   saved metric queries the same way as its inline twin
 - ``create_metric`` saves the same ``referencedMetrics`` that
-  ``build_params`` writes for the same formula with its own operands
+  ``build_params`` writes for the same formula with its own operands, apart
+  from the same legacy key
 - ``goal_to_wire`` always writes a string id and string checkpoint times,
   and never writes the deprecated ``unit`` and ``direction`` keys
 - ``check_formula_operands`` accepts every operand whose segment method and
@@ -38,7 +39,6 @@ from mixpanel_headless._internal.saved_definitions import (
     check_formula_operands,
     find_server_skipped_keys,
     goal_to_wire,
-    strip_server_skipped_keys,
 )
 from mixpanel_headless.types import (
     CohortMetric,
@@ -153,6 +153,34 @@ def _workspace(captured: list[httpx.Request]) -> Workspace:
     return Workspace(session=_SESSION, _api_client=client)
 
 
+_QUERY_ONLY_BEHAVIOR_KEY = "filter"
+"""Legacy behavior key that only the query path writes.
+
+The query builders write ``filter: []`` into a funnel or retention
+behavior. The server reads past it at query time and its create schema
+rejects it, so the saved definition leaves it out.
+"""
+
+
+def _without_query_only_key(clause: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of a query clause whose behavior has no legacy ``filter`` key.
+
+    Args:
+        clause: A show clause or a formula operand from ``build_params``.
+
+    Returns:
+        A shallow copy with a new ``behavior`` dict, when the clause has one.
+    """
+    if "behavior" not in clause:
+        return dict(clause)
+    behavior = {
+        key: value
+        for key, value in clause["behavior"].items()
+        if key != _QUERY_ONLY_BEHAVIOR_KEY
+    }
+    return {**clause, "behavior": behavior}
+
+
 # =============================================================================
 # Properties
 # =============================================================================
@@ -170,8 +198,11 @@ def test_saved_definition_equals_query_show_clause(metric: InlineMetric) -> None
     ws.create_metric(CreateMetricParams(name="m", definition=metric))
     sent = json.loads(captured[0].content)["definition"]
     show = ws.build_params(metric)["sections"]["show"][0]
-    expected = {"behavior": show["behavior"], "measurement": show["measurement"]}
-    strip_server_skipped_keys("metric", expected)
+    saved_show = _without_query_only_key(show)
+    expected = {
+        "behavior": saved_show["behavior"],
+        "measurement": saved_show["measurement"],
+    }
     assert sent == expected
     assert find_server_skipped_keys("metric", sent) == []
 
@@ -200,10 +231,12 @@ def test_saved_formula_operands_equal_query_operands(
     expected = {
         "formula": {
             "definition": clause["definition"],
-            "referencedMetrics": clause["referencedMetrics"],
+            "referencedMetrics": [
+                _without_query_only_key(operand)
+                for operand in clause["referencedMetrics"]
+            ],
         }
     }
-    strip_server_skipped_keys("formula", expected)
     assert sent["definition"] == expected
     assert find_server_skipped_keys("formula", sent["definition"]) == []
 

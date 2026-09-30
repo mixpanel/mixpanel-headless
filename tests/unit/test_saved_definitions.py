@@ -17,13 +17,13 @@ before any request:
 
 from __future__ import annotations
 
-import copy
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 
+from mixpanel_headless._internal import saved_definitions
 from mixpanel_headless._internal.query.metric_builders import (
     build_behavior_definition,
     build_formula_definition,
@@ -50,6 +50,7 @@ from mixpanel_headless.exceptions import CODED_GUARD_REGISTRY, ParamValidationEr
 from mixpanel_headless.types import (
     BehaviorRef,
     CohortMetric,
+    Exclusion,
     Filter,
     Formula,
     FunnelBehavior,
@@ -693,24 +694,6 @@ class TestFinishMetricChange:
 # =============================================================================
 
 
-def _without_legacy_filter(definition: dict[str, Any]) -> dict[str, Any]:
-    """Return a compiled definition without the legacy behavior ``filter`` key.
-
-    The shared show-clause builders write ``filter: []`` into funnel and
-    retention behaviors; a saved definition drops it, because a create
-    rejects it.
-
-    Args:
-        definition: A definition from the compiler.
-
-    Returns:
-        A copy without ``behavior.filter``.
-    """
-    copied = copy.deepcopy(definition)
-    copied.get("behavior", {}).pop("filter", None)
-    return copied
-
-
 class TestTypedDefinitions:
     """metric_wire_parts and behavior_wire_definition over the typed values."""
 
@@ -719,9 +702,7 @@ class TestTypedDefinitions:
         metric = FunnelMetric(FunnelBehavior(["Signup", "Purchase"]))
         parts = metric_wire_parts(metric)
         assert parts.kind == "metric"
-        assert parts.definition == _without_legacy_filter(
-            build_metric_definition(metric)
-        )
+        assert parts.definition == build_metric_definition(metric)
         assert parts.definition["behavior"]["type"] == "funnel"
         assert "name" not in parts.definition
 
@@ -804,7 +785,7 @@ class TestTypedDefinitions:
             wire_type: Its wire type.
         """
         definition = behavior_wire_definition(behavior)
-        assert definition == _without_legacy_filter(build_behavior_definition(behavior))
+        assert definition == build_behavior_definition(behavior)
         assert definition["behavior"]["type"] == wire_type
         assert "name" not in definition["behavior"]
         check_behavior_definition(definition)
@@ -868,49 +849,106 @@ class TestServerSkippedKeys:
         )
 
     @pytest.mark.parametrize(
-        "metric",
+        ("kind", "value"),
         [
-            FunnelMetric(FunnelBehavior(["Signup", "Purchase"])),
-            RetentionMetric(RetentionBehavior("Signup", "Login")),
+            ("metric", Metric("Login", math="unique")),
+            ("metric", Metric(["Purchase", "Subscribe"])),
+            ("metric", CohortMetric(123, "Power users")),
+            ("metric", FunnelMetric(FunnelBehavior(["Signup", "Purchase"]))),
+            (
+                "metric",
+                FunnelMetric(
+                    FunnelBehavior(
+                        ["Signup", "Purchase"],
+                        exclusions=[Exclusion("Cancel", from_step=0, to_step=1)],
+                        holding_constant="platform",
+                    )
+                ),
+            ),
+            ("metric", RetentionMetric(RetentionBehavior("Signup", "Login"))),
+            (
+                "formula",
+                Formula(
+                    "A / B",
+                    metrics=[
+                        FunnelMetric(FunnelBehavior(["a", "b"])),
+                        RetentionMetric(RetentionBehavior("a", "b")),
+                    ],
+                ),
+            ),
         ],
     )
-    def test_typed_metrics_compile_without_skipped_keys(
-        self, metric: FunnelMetric | RetentionMetric
+    def test_compiler_writes_no_skipped_key_for_a_typed_metric(
+        self, kind: str, value: Metric | CohortMetric | FunnelMetric | Formula
     ) -> None:
-        """Funnel and retention metrics save without the legacy behavior ``filter``.
+        """The saved definition that the compiler builds holds no legacy key.
 
         Args:
-            metric: A typed funnel or retention metric.
+            kind: The metric kind of the value.
+            value: A typed metric or formula value.
         """
-        parts = metric_wire_parts(metric)
-        assert "filter" not in parts.definition["behavior"]
-        assert find_server_skipped_keys("metric", parts.definition) == []
-
-    def test_typed_formula_operands_compile_without_skipped_keys(self) -> None:
-        """A funnel operand of a saved formula loses the legacy ``filter`` too."""
-        formula = Formula("A", metrics=[FunnelMetric(FunnelBehavior(["a", "b"]))])
-        parts = metric_wire_parts(formula)
-        operand = parts.definition["formula"]["referencedMetrics"][0]
-        assert "filter" not in operand["behavior"]
+        if isinstance(value, Formula):
+            definition = build_formula_definition(value)
+        else:
+            definition = build_metric_definition(value)
+        assert find_server_skipped_keys(kind, definition) == []
+        parts = prepare_new_metric(value, None, None, validate=True, for_create=True)
+        assert parts.definition == definition
 
     @pytest.mark.parametrize(
         "behavior",
         [
+            SimpleBehavior(["Purchase", "Subscribe"]),
             FunnelBehavior(["View Cart", "Purchase"]),
             RetentionBehavior("Signup", "Login"),
         ],
     )
-    def test_typed_behaviors_compile_without_skipped_keys(
-        self, behavior: FunnelBehavior | RetentionBehavior
+    def test_compiler_writes_no_skipped_key_for_a_typed_behavior(
+        self, behavior: SimpleBehavior | FunnelBehavior | RetentionBehavior
     ) -> None:
-        """Funnel and retention behaviors save without the legacy ``filter``.
+        """The saved behavior definition that the compiler builds holds no legacy key.
 
         Args:
-            behavior: A typed funnel or retention behavior.
+            behavior: A typed behavior value.
         """
-        definition = behavior_wire_definition(behavior)
-        assert "filter" not in definition["behavior"]
-        check_behavior_definition(definition, for_create=True)
+        definition = build_behavior_definition(behavior)
+        assert find_server_skipped_keys("behavior", definition) == []
+        check_behavior_definition(behavior_wire_definition(behavior), for_create=True)
+
+    def test_create_refuses_a_skipped_key_in_a_compiled_metric(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A compiled definition gets the same create check as a raw one."""
+        monkeypatch.setattr(
+            saved_definitions,
+            "build_metric_definition",
+            lambda _metric: {
+                "behavior": {"type": "funnel", "filter": []},
+                "measurement": {},
+            },
+        )
+        metric = FunnelMetric(FunnelBehavior(["Signup", "Purchase"]))
+        parts = metric_wire_parts(metric)
+        assert parts.definition["behavior"]["filter"] == []
+        with pytest.raises(ParamValidationError) as exc_info:
+            prepare_new_metric(metric, None, None, validate=True, for_create=True)
+        assert exc_info.value.code == "SM4_SCHEMA"
+        assert exc_info.value.details["path"] == "definition.behavior.filter"
+
+    def test_compiled_behavior_is_sent_as_compiled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """behavior_wire_definition removes no key from the compiler output."""
+        monkeypatch.setattr(
+            saved_definitions,
+            "build_behavior_definition",
+            lambda _behavior: {"behavior": {"type": "funnel", "filter": []}},
+        )
+        definition = behavior_wire_definition(FunnelBehavior(["a", "b"]))
+        assert definition == {"behavior": {"type": "funnel", "filter": []}}
+        with pytest.raises(ParamValidationError) as exc_info:
+            check_behavior_definition(definition, for_create=True)
+        assert exc_info.value.details["path"] == "definition.behavior.filter"
 
     def test_create_refuses_a_raw_skipped_key(self) -> None:
         """A raw definition with a legacy key fails SM4 on create, not on update."""
