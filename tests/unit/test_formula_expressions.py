@@ -370,11 +370,26 @@ class TestValidateOperandFormula:
             validate_operand_formula("C * 1E5", 1)
         assert excinfo.value.code == "FM5_UPPER_E"
 
-    def test_unknown_letter_is_reported_last(self) -> None:
+    def test_unknown_letter_is_reported_after_literals(self) -> None:
         """An unknown letter is reported when syntax and literals are valid."""
         with pytest.raises(ParamValidationError) as excinfo:
             validate_operand_formula("C * 1e5", 1)
         assert excinfo.value.code == "FM2_UNKNOWN_LETTER"
+
+    @pytest.mark.parametrize("expression", ["1 + 2", "-(3)", "1e5"])
+    def test_expression_without_letters_raises_v16(self, expression: str) -> None:
+        """An expression that uses no operand raises V16_FORMULA_SYNTAX."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            validate_operand_formula(expression, 2)
+        assert excinfo.value.code == "V16_FORMULA_SYNTAX"
+        assert excinfo.value.details == {"expression": expression}
+        assert "at least one operand (A, B, C, ...)" in excinfo.value.message
+
+    def test_uppercase_literal_without_letters_raises_fm5_first(self) -> None:
+        """``1E5`` alone breaks the uppercase E rule before the letter rule."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            validate_operand_formula("1E5", 1)
+        assert excinfo.value.code == "FM5_UPPER_E"
 
 
 # =============================================================================

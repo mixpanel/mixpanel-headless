@@ -2039,6 +2039,9 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "BH1_STEP_COUNT",
         "BH2_EMPTY_EVENT",
         "BH3_PROPERTY_MATH",
+        # -- formula operands and metrics over several events: types.py ------
+        "FM3_NESTED_FORMULA",
+        "MT3_FILTERS_WITH_BEHAVIOR",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.
@@ -2067,6 +2070,8 @@ CODED_GUARD_TWIN_CODES: Final[frozenset[str]] = frozenset(
         # FunnelMetric property rules twin the query_funnel validator rules.
         "F10_MATH_MISSING_PROPERTY",
         "F11_MATH_REJECTS_PROPERTY",
+        # A formula with operands and no letter twins the query validator rule.
+        "V16_FORMULA_SYNTAX",
     }
 )
 """Pre-existing registry codes reused by dual-enforcement guard twins.

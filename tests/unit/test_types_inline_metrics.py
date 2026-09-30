@@ -20,14 +20,17 @@ from mixpanel_headless.exceptions import (
     ParamValidationError,
 )
 from mixpanel_headless.types import (
+    CohortMetric,
     CustomEventRef,
     CustomPropertyRef,
     Exclusion,
     Filter,
+    Formula,
     FunnelBehavior,
     FunnelMetric,
     FunnelStep,
     HoldingConstant,
+    Metric,
     RetentionBehavior,
     RetentionEvent,
     RetentionMetric,
@@ -80,22 +83,22 @@ class TestSimpleBehavior:
     """``SimpleBehavior`` is one or more events counted as one behavior."""
 
     def test_defaults(self) -> None:
-        """Filters default to none, combined with AND."""
+        """The name defaults to none (the builder derives one)."""
         behavior = SimpleBehavior(["Login"])
         assert behavior.events == ["Login"]
-        assert behavior.filters is None
-        assert behavior.filters_combinator == "all"
+        assert behavior.name is None
+
+    def test_has_no_behavior_level_filters(self) -> None:
+        """The server ignores behavior-level filters, so the type has none."""
+        names = {f.name for f in dataclasses.fields(SimpleBehavior)}
+        assert names == {"events", "name"}
 
     def test_accepts_names_custom_events_and_steps(self) -> None:
         """Events can be names, custom event references, or steps with filters."""
         step = FunnelStep("Purchase", filters=[Filter.greater_than("amount", 5)])
-        behavior = SimpleBehavior(
-            ["Login", CustomEventRef(7), step],
-            filters=[Filter.equals("platform", "ios")],
-            filters_combinator="any",
-        )
+        behavior = SimpleBehavior(["Login", CustomEventRef(7), step], name="Engaged")
         assert behavior.events == ["Login", CustomEventRef(7), step]
-        assert behavior.filters_combinator == "any"
+        assert behavior.name == "Engaged"
 
     def test_immutable(self) -> None:
         """A behavior cannot be changed after construction."""
@@ -409,6 +412,167 @@ class TestRetentionMetric:
 
 
 # =============================================================================
+# Metric over a custom event or more than one event
+# =============================================================================
+
+
+class TestMetricEvents:
+    """``Metric.event`` takes one event, a custom event, or several events."""
+
+    def test_custom_event_ref(self) -> None:
+        """A custom event reference is stored unchanged."""
+        assert Metric(CustomEventRef(5), math="unique").event == CustomEventRef(5)
+
+    def test_list_of_names_and_refs(self) -> None:
+        """A list of names and custom event references is stored unchanged."""
+        metric = Metric(["Login", CustomEventRef(5)], math="unique")
+        assert metric.event == ["Login", CustomEventRef(5)]
+
+    def test_simple_behavior(self) -> None:
+        """A simple behavior is stored unchanged."""
+        behavior = SimpleBehavior(["Login", "SSO Login"], name="Signed in")
+        assert Metric(behavior).event == behavior
+
+    def test_empty_list_raises_bh1(self) -> None:
+        """A metric over an empty list of events raises BH1_STEP_COUNT."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric([])
+        assert excinfo.value.code == "BH1_STEP_COUNT"
+        assert "Metric needs at least 1 event" in excinfo.value.message
+
+    def test_blank_name_in_list_raises_bh2(self) -> None:
+        """A blank name in the list raises BH2_EMPTY_EVENT with its position."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(["Login", " "])
+        assert excinfo.value.code == "BH2_EMPTY_EVENT"
+        assert "Metric.event[1]" in excinfo.value.message
+
+    def test_control_character_in_list_raises_ev2(self) -> None:
+        """A name with a control character in the list raises EV2."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(["Log\x00in", "Signup"])
+        assert excinfo.value.code == "EV2_CONTROL_CHAR_EVENT"
+
+    def test_filters_with_simple_behavior_raise_mt3(self) -> None:
+        """Metric filters cannot be combined with a simple behavior."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(
+                SimpleBehavior(["Login", "Signup"]),
+                filters=[Filter.equals("platform", "ios")],
+            )
+        assert excinfo.value.code == "MT3_FILTERS_WITH_BEHAVIOR"
+        assert "FunnelStep" in excinfo.value.message
+
+    def test_empty_filters_with_simple_behavior_pass(self) -> None:
+        """An empty filter list is no filter."""
+        assert Metric(SimpleBehavior(["Login", "Signup"]), filters=[]).filters == []
+
+    def test_filters_with_a_list_of_events_pass(self) -> None:
+        """Filters on a metric over a list apply to every event."""
+        metric = Metric(["Login", "Signup"], filters=[Filter.equals("plan", "pro")])
+        assert metric.filters == [Filter.equals("plan", "pro")]
+
+    def test_property_rule_still_applies(self) -> None:
+        """A property math without a property keeps V13_METRIC_MATH_PROPERTY."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(["Login", "Signup"], math="average")
+        assert excinfo.value.code == "V13_METRIC_MATH_PROPERTY"
+
+    def test_mt3_is_registered(self) -> None:
+        """MT3_FILTERS_WITH_BEHAVIOR is a minted registry code."""
+        assert "MT3_FILTERS_WITH_BEHAVIOR" in CODED_GUARD_REGISTRY
+
+
+# =============================================================================
+# Formula with operands
+# =============================================================================
+
+
+class TestFormulaOperands:
+    """``Formula(metrics=...)`` names its own operands by letter."""
+
+    def test_default_has_no_operands(self) -> None:
+        """Without operands the letters name the other metrics of the query."""
+        formula = Formula("B / A")
+        assert formula.metrics is None
+
+    def test_operands_are_stored(self) -> None:
+        """Operands of every metric kind are stored in order."""
+        operands: list[Metric | CohortMetric | FunnelMetric | RetentionMetric] = [
+            Metric("Signup", math="unique"),
+            FunnelMetric(_funnel()),
+            RetentionMetric(_retention()),
+            CohortMetric(12),
+        ]
+        formula = Formula("(A + B) * C / D", label="Mix", metrics=operands)
+        assert formula.metrics == operands
+        assert formula.label == "Mix"
+
+    def test_letters_after_z_name_later_operands(self) -> None:
+        """With 27 operands the 27th is ``BA``."""
+        operands: list[Metric | CohortMetric | FunnelMetric | RetentionMetric] = [
+            Metric(f"E{i}") for i in range(27)
+        ]
+        assert Formula("BA / A", metrics=operands).metrics == operands
+
+    def test_empty_expression_keeps_fm1(self) -> None:
+        """An empty expression raises FM1 before any operand rule."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula(" ", metrics=[Metric("A")])
+        assert excinfo.value.code == "FM1_EMPTY_EXPRESSION"
+
+    def test_formula_operand_raises_fm3(self) -> None:
+        """A formula cannot be an operand of another formula."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula(
+                "A + B",
+                metrics=[Metric("Login"), Formula("A")],  # type: ignore[list-item]
+            )
+        assert excinfo.value.code == "FM3_NESTED_FORMULA"
+        assert "Formula.metrics[1]" in excinfo.value.message
+
+    def test_syntax_error_raises_fm4(self) -> None:
+        """An expression outside the server grammar raises FM4_SYNTAX."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A ^ -B", metrics=[Metric("A"), Metric("B")])
+        assert excinfo.value.code == "FM4_SYNTAX"
+
+    def test_uppercase_exponent_raises_fm5(self) -> None:
+        """A literal with an uppercase E raises FM5_UPPER_E with operands."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A * 1E3", metrics=[Metric("A")])
+        assert excinfo.value.code == "FM5_UPPER_E"
+
+    def test_uppercase_exponent_passes_without_operands(self) -> None:
+        """Without operands the server does not rename letters, so 1E3 passes."""
+        assert Formula("A * 1E3").expression == "A * 1E3"
+
+    def test_unknown_letter_raises_fm2(self) -> None:
+        """A letter past the last operand raises FM2_UNKNOWN_LETTER."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A + C", metrics=[Metric("A"), Metric("B")])
+        assert excinfo.value.code == "FM2_UNKNOWN_LETTER"
+
+    def test_no_operands_listed_raises_fm2(self) -> None:
+        """An empty operand list leaves every letter unknown."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("A", metrics=[])
+        assert excinfo.value.code == "FM2_UNKNOWN_LETTER"
+
+    def test_no_letters_raises_v16_twin(self) -> None:
+        """An operand formula with no letters raises V16_FORMULA_SYNTAX."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Formula("1 + 2", metrics=[Metric("A")])
+        assert excinfo.value.code == "V16_FORMULA_SYNTAX"
+        assert "at least one operand" in excinfo.value.message
+
+    def test_v16_is_a_registered_twin(self) -> None:
+        """The operand form reuses the V16 validator code as a twin."""
+        assert "V16_FORMULA_SYNTAX" in CODED_GUARD_TWIN_CODES
+        assert "FM3_NESTED_FORMULA" in CODED_GUARD_REGISTRY
+
+
+# =============================================================================
 # Names shared with the engine methods
 # =============================================================================
 
@@ -440,12 +604,19 @@ class TestEngineParameterNames:
     def test_defaults_match_the_engine_method(
         self, value_type: type, method: object
     ) -> None:
-        """A field that shares a name with an engine parameter shares its default."""
+        """A field with a default shares the default of its engine parameter.
+
+        A required field (a retention return event) has no default to share.
+        """
         engine = inspect.signature(method).parameters  # type: ignore[arg-type]
         checked = 0
         for field in dataclasses.fields(value_type):
             parameter = engine.get(field.name)
-            if parameter is None or parameter.default is inspect.Parameter.empty:
+            if (
+                parameter is None
+                or parameter.default is inspect.Parameter.empty
+                or field.default is dataclasses.MISSING
+            ):
                 continue
             assert field.default == parameter.default, field.name
             checked += 1

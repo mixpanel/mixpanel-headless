@@ -7596,24 +7596,35 @@ class TimeComparison:
 
 @dataclass(frozen=True)
 class Metric:
-    """Encapsulates a single event to query with its aggregation settings.
+    """Encapsulates the event(s) to query with their aggregation settings.
 
     Used with ``Workspace.query()`` to specify per-event math, property,
     per-user aggregation, and filters. Plain event name strings inherit
     top-level query defaults; Metric objects override them.
 
+    The event is one event name, a saved custom event
+    (:class:`CustomEventRef`), a list of names and custom events, or a
+    :class:`SimpleBehavior`. A metric over more than one event counts the
+    events as one series: unique users are counted once across all the
+    events, and totals add up. ``query_funnel`` and ``query_retention`` do
+    not take more than one event per step; use a custom event there.
+
     Attributes:
-        event: Mixpanel event name.
+        event: Mixpanel event name, a custom event reference, a list of
+            them, or a simple behavior.
         math: Aggregation function. Default: ``"total"``.
         property: Property for property-based math types (name, ref, or inline).
         per_user: Per-user pre-aggregation (average, total, min, max).
         filters: Per-metric filters (applied in addition to global ``where``).
+            On a list of events they apply to every event. They cannot be
+            combined with a ``SimpleBehavior``; put per-event filters on
+            its ``FunnelStep`` entries.
         filters_combinator: How per-metric filters combine.
             ``"all"`` = AND (default), ``"any"`` = OR.
 
     Example:
         ```python
-        from mixpanel_headless import Metric
+        from mixpanel_headless import CustomEventRef, Metric
 
         # Simple event with defaults
         m1 = Metric("Login")
@@ -7623,11 +7634,17 @@ class Metric:
 
         # With per-user aggregation
         m3 = Metric("Purchase", math="total", per_user="average")
+
+        # Users who did any of two events, counted once
+        m4 = Metric(["Login", "SSO Login"], math="unique")
+
+        # A saved custom event by id
+        m5 = Metric(CustomEventRef(42), math="unique")
         ```
     """
 
-    event: str
-    """Mixpanel event name."""
+    event: str | CustomEventRef | list[str | CustomEventRef] | SimpleBehavior
+    """Event name, custom event reference, list of them, or simple behavior."""
 
     math: MathType = "total"
     """Aggregation function."""
@@ -7667,13 +7684,36 @@ class Metric:
         Raises:
             ParamValidationError: If event is empty or contains control
                 characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
+                a list of events is empty (``BH1_STEP_COUNT``), a name in
+                the list is blank (``BH2_EMPTY_EVENT``) or contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``), filters are set on
+                a simple behavior (``MT3_FILTERS_WITH_BEHAVIOR``),
                 math requires a property but none is set
                 (``V13_METRIC_MATH_PROPERTY``), math="percentile" but
                 percentile_value is missing
                 (``V26_PERCENTILE_REQUIRES_VALUE``), or segment_method is
                 invalid (``MT2_INVALID_SEGMENT_METHOD``).
         """
-        _validate_event_name(self.event, "Metric")
+        event = self.event
+        if isinstance(event, str):
+            _validate_event_name(event, "Metric")
+        elif isinstance(event, SimpleBehavior):
+            if self.filters:
+                raise ParamValidationError(
+                    "Metric filters cannot be combined with a SimpleBehavior "
+                    "event; put per-event filters on FunnelStep entries of "
+                    "the behavior instead",
+                    code="MT3_FILTERS_WITH_BEHAVIOR",
+                )
+        elif not isinstance(event, CustomEventRef):
+            if len(event) < 1:
+                raise ParamValidationError(
+                    "Metric needs at least 1 event (got 0)",
+                    code="BH1_STEP_COUNT",
+                )
+            for i, item in enumerate(event):
+                if isinstance(item, str):
+                    _validate_behavior_event(item, f"Metric.event[{i}]")
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
             raise ParamValidationError(
                 f"Metric math={self.math!r} requires a property "
@@ -7700,22 +7740,30 @@ class Metric:
 
 @dataclass(frozen=True)
 class Formula:
-    """A formula expression referencing events by position letter (A, B, C...).
+    """A formula expression over metrics named by position letter (A, B, C...).
 
-    Letters map to event positions in the list passed to
-    ``Workspace.query()``. A is the first event, B the second, etc.
+    Without ``metrics``, the letters name the other metrics of the query:
+    A is the first item in the list passed to ``Workspace.query()``, B the
+    second, and so on. With ``metrics``, the letters name the formula's own
+    operands instead, and the formula needs no other metric in the query.
+    This is also the form of a saved formula.
+
+    Letters run A to Z, then BA, BB, and so on (27 operands end at BA).
+    The expression uses ``+ - * / ^``, parentheses, and numbers.
 
     Can be passed as an element of the events list alongside strings
     and ``Metric`` objects, or use the top-level ``formula`` parameter
-    for single-formula convenience.
+    for single-formula convenience (without operands).
 
     Attributes:
         expression: Formula expression, e.g. ``"(B / A) * 100"``.
         label: Optional display label for the formula result.
+        metrics: The formula's own operands, or ``None`` to name the other
+            metrics of the query.
 
     Example:
         ```python
-        from mixpanel_headless import Formula, Metric
+        from mixpanel_headless import Formula, FunnelBehavior, FunnelMetric, Metric
 
         # Formula in the events list
         result = ws.query(
@@ -7731,27 +7779,59 @@ class Formula:
             formula="(B / A) * 100",
             formula_label="Conversion %",
         )
+
+        # A formula with its own operands
+        result = ws.query(
+            Formula(
+                "A / B",
+                label="Purchases per checkout conversion",
+                metrics=[
+                    Metric("Purchase", math="total"),
+                    FunnelMetric(FunnelBehavior(["Checkout", "Purchase"])),
+                ],
+            )
+        )
         ```
     """
 
     expression: str
-    """Formula expression referencing events by letter."""
+    """Formula expression referencing metrics by letter."""
 
     label: str | None = None
     """Optional display label for the formula result."""
+
+    metrics: list[FormulaOperand] | None = None
+    """The formula's own operands, or ``None`` to use the query's metrics."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
             ParamValidationError: If expression is empty
-                (``FM1_EMPTY_EXPRESSION``).
+                (``FM1_EMPTY_EXPRESSION``). With ``metrics``: if an operand
+                is a formula (``FM3_NESTED_FORMULA``), the expression is not
+                in the server grammar (``FM4_SYNTAX``), a literal has an
+                uppercase E (``FM5_UPPER_E``), a letter names no operand
+                (``FM2_UNKNOWN_LETTER``), or the expression uses no letter
+                (``V16_FORMULA_SYNTAX``).
         """
         if not self.expression or not self.expression.strip():
             raise ParamValidationError(
                 "Formula.expression must be a non-empty string",
                 code="FM1_EMPTY_EXPRESSION",
             )
+        if self.metrics is None:
+            return
+        for i, operand in enumerate(self.metrics):
+            if isinstance(operand, Formula):
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a Formula; an operand of a "
+                    "formula cannot be another formula",
+                    code="FM3_NESTED_FORMULA",
+                )
+        from mixpanel_headless._internal.query.formula import validate_operand_formula
+
+        validate_operand_formula(self.expression, len(self.metrics))
 
 
 _METRIC_REF_KINDS: Final[frozenset[str]] = frozenset({"metric", "formula", "warehouse"})
@@ -12055,30 +12135,37 @@ class CustomEventRef:
 class SimpleBehavior:
     """One or more events that count as one behavior.
 
-    A user performs the behavior when the user does any of the events. Each
-    event is an event name, a :class:`CustomEventRef`, or a
-    :class:`FunnelStep` (for per-event filters and a display label; the
-    step ``order`` has no effect here).
+    A user performs the behavior when the user does any of the events. The
+    query counts the events as one series: unique users are counted once
+    across all the events, and totals add up. Each event is an event name,
+    a :class:`CustomEventRef`, or a :class:`FunnelStep` (for per-event
+    filters; the step ``order`` has no effect here).
+
+    Filters go on each event (a ``FunnelStep`` with ``filters``). The
+    query server ignores filters on the behavior as a whole, so this type
+    has none.
 
     Attributes:
         events: The events, at least one.
-        filters: Filters on the behavior as a whole, not on one event. ``None``
-            means no filters.
-        filters_combinator: How the filters combine. ``"all"`` requires
-            every filter to match (AND logic); ``"any"`` requires one
-            (OR logic).
+        name: The series label. The query server counts the events as one
+            series only under a non-empty name, so ``None`` (or a blank
+            name) makes the library join the event names with ``" or "``.
 
     Example:
         ```python
-        from mixpanel_headless.types import (
+        from mixpanel_headless import (
             CustomEventRef,
             Filter,
             FunnelStep,
+            Metric,
             SimpleBehavior,
         )
 
-        # Any of three sign-in events
-        signed_in = SimpleBehavior(["Login", "SSO Login", CustomEventRef(42)])
+        # Any of three sign-in events, as one series named "Signed in"
+        signed_in = SimpleBehavior(
+            ["Login", "SSO Login", CustomEventRef(42)], name="Signed in"
+        )
+        result = ws.query(Metric(signed_in, math="unique"))
 
         # Per-event filters through FunnelStep
         big_purchase = SimpleBehavior(
@@ -12090,11 +12177,8 @@ class SimpleBehavior:
     events: list[str | CustomEventRef | FunnelStep]
     """The events, at least one."""
 
-    filters: list[Filter] | None = None
-    """Filters on the behavior as a whole, not on one event."""
-
-    filters_combinator: FiltersCombinator = "all"
-    """How the filters combine (``"all"`` = AND, ``"any"`` = OR)."""
+    name: str | None = None
+    """The series label; ``None`` joins the event names with ``" or "``."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
@@ -12413,6 +12497,14 @@ class RetentionMetric:
                 f"{_property_maths(get_args(RetentionMathType))}",
                 code="BH3_PROPERTY_MATH",
             )
+
+
+FormulaOperand: TypeAlias = Metric | CohortMetric | FunnelMetric | RetentionMetric
+"""One operand of a :class:`Formula` that holds its own operands.
+
+An inline metric of any kind except a formula: a formula cannot be an
+operand of another formula.
+"""
 
 
 # =============================================================================

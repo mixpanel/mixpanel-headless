@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 143 minted full codes, no duplicates.
+        """The registry lists all 145 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -964,9 +964,10 @@ class TestCodedGuardRegistry:
         The formula expression rules added ``FM2_UNKNOWN_LETTER``,
         ``FM4_SYNTAX``, and ``FM5_UPPER_E``. The inline behavior values
         added ``BH1_STEP_COUNT``, ``BH2_EMPTY_EVENT``, and
-        ``BH3_PROPERTY_MATH``.
+        ``BH3_PROPERTY_MATH``. Formula operands added ``FM3_NESTED_FORMULA``,
+        and metrics over several events added ``MT3_FILTERS_WITH_BEHAVIOR``.
         """
-        assert len(CODED_GUARD_REGISTRY) == 143
+        assert len(CODED_GUARD_REGISTRY) == 145
         for code in (
             "SM5_NOT_FOUND_FOR_DELETE",
             "SM6_DELETE_NOT_PERMITTED",
@@ -981,9 +982,11 @@ class TestCodedGuardRegistry:
         measurement rules (``V3_PER_USER_INCOMPATIBLE``,
         ``V14_METRIC_REJECTS_PROPERTY``).
         ``FunnelMetric`` reuses the two ``query_funnel`` property-math codes
-        (``F10_MATH_MISSING_PROPERTY``, ``F11_MATH_REJECTS_PROPERTY``).
+        (``F10_MATH_MISSING_PROPERTY``, ``F11_MATH_REJECTS_PROPERTY``). A
+        formula with its own operands and no letter reuses
+        ``V16_FORMULA_SYNTAX``.
         """
-        assert len(CODED_GUARD_TWIN_CODES) == 13
+        assert len(CODED_GUARD_TWIN_CODES) == 14
         assert CODED_GUARD_TWIN_CODES <= PRE_EXISTING_CODE_UNIVERSE
 
     def test_twins_disjoint_from_minted(self) -> None:

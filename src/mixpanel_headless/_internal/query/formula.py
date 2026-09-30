@@ -400,7 +400,10 @@ def validate_operand_formula(expression: str, operand_count: int) -> ParsedFormu
     """Run every expression rule for a formula that holds its own operands.
 
     The rules run in this order: syntax (``FM4_SYNTAX``), uppercase ``E``
-    literals (``FM5_UPPER_E``), then operand letters (``FM2_UNKNOWN_LETTER``).
+    literals (``FM5_UPPER_E``), operand letters (``FM2_UNKNOWN_LETTER``),
+    then at least one letter (``V16_FORMULA_SYNTAX``, the code that the
+    query validator gives a formula without letters when it has no
+    operands).
 
     Args:
         expression: The formula expression.
@@ -410,8 +413,9 @@ def validate_operand_formula(expression: str, operand_count: int) -> ParsedFormu
         The parsed expression.
 
     Raises:
-        ParamValidationError: ``FM4_SYNTAX``, ``FM5_UPPER_E``, or
-            ``FM2_UNKNOWN_LETTER``, for the first rule that fails.
+        ParamValidationError: ``FM4_SYNTAX``, ``FM5_UPPER_E``,
+            ``FM2_UNKNOWN_LETTER``, or ``V16_FORMULA_SYNTAX``, for the first
+            rule that fails.
 
     Example:
         ```python
@@ -421,4 +425,11 @@ def validate_operand_formula(expression: str, operand_count: int) -> ParsedFormu
     parsed = parse_formula(expression)
     check_upper_e(parsed)
     check_letters(parsed, operand_count)
+    if not parsed.variables:
+        raise ParamValidationError(
+            f"Formula '{expression}' must reference at least one operand "
+            "(A, B, C, ...)",
+            code="V16_FORMULA_SYNTAX",
+            details={"expression": expression},
+        )
     return parsed
