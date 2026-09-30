@@ -11568,7 +11568,7 @@ class Workspace:
         Example:
             ```python
             ws = Workspace()
-            result = ws.query(mp.Metric.total("Login"), last=7)
+            result = ws.query(mp.Metric("Login", math="total"), last=7)
             link = ws.create_report_link(result, name="Logins, last 7 days")
             print(link.url)
             # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw

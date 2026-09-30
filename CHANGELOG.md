@@ -65,6 +65,10 @@ may include API changes.
 - Plugin: examples and parameter names that no longer matched the
   library are corrected (for example, `query_user()` takes `where=`, not
   `filters=`).
+- Docs: the report link examples in `Workspace.create_report_link`, the
+  report links guide, and the `Workspace` API page called
+  `mp.Metric.total("Login")`, which does not exist. They now use
+  `mp.Metric("Login", math="total")`.
 
 ## 0.3.0 — 2026-09-22
 
