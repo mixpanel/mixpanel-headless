@@ -229,11 +229,22 @@ CI will pass. The only documented difference is that CI sets
 `HYPOTHESIS_PROFILE=ci` (200 deterministic examples vs the local default 100),
 which doesn't change pass/fail outcomes.
 
+**The conformance corpus is maintainer tooling.** `conformance/` holds the
+recorded library behavior that the TypeScript port replays. It has its own
+workflow (`.github/workflows/conformance.yml`) and recipe (`just conformance`),
+and neither is part of `just check` or the CI workflow. The workflow runs on PRs
+that change `conformance/`, after each merge to `main`, and on each release.
+Library PRs never touch `conformance/vectors/` or `conformance/contract/`.
+Between releases the library drifts from the corpus; the workflow reports that
+drift and fails on it only in a re-pin PR. The corpus is re-pinned once per
+release (`conformance/record/README.md`, "When to re-pin").
+
 | Command | Description |
 |---------|-------------|
 | `just` | List all available commands |
 | `just install-hooks` | One-time: install git pre-commit hook (block ruff/format failures) |
 | `just check` | Run all checks (lint + fmt-check + typecheck + test-cov + build) |
+| `just conformance` | Conformance corpus checks (maintainer tooling; not part of `check`) |
 | `just test` | Run tests (supports args: `just test -k foo`) |
 | `just test-dev` | Run tests with dev Hypothesis profile (fast, 10 examples) |
 | `just test-ci` | Run tests with CI Hypothesis profile (thorough, 200 examples) |
