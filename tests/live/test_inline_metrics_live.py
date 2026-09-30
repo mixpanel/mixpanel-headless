@@ -1,24 +1,27 @@
 """Live integration tests for inline metrics over several events, funnel metrics, and formulas.
 
-Skipped by default — set ``MP_LIVE_TESTS=1`` and point auth at a project
-with two events that share users. The queries are read-only. One test may
-create a custom event, only when no custom event already unions the two
-events and only on the project named by ``MP_TEST_WRITE_PROJECT``; it
-deletes that custom event, by the id its own create returned, in teardown.
+Skipped by default. The queries are read-only. One step may create a custom
+event, only when no custom event already unions the two events and only when
+the resolved project id equals ``MP_LIVE_WRITE_PROJECT``; it deletes that
+custom event, by the id its own create returned, in teardown.
+
+Usage:
+    MP_LIVE_TESTS=1 MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \\
+        uv run pytest tests/live/test_inline_metrics_live.py -m live -v
 
 Environment:
 - ``MP_LIVE_TESTS=1`` — enable.
-- ``MP_TEST_ACCOUNT`` — account name (default: the active account).
-- ``MP_TEST_EVENT_A`` / ``MP_TEST_EVENT_B`` — two event names (defaults
-  ``login`` and ``sign up``).
-- ``MP_TEST_EVENT_C`` — a funnel second step (default ``document opened``).
-- ``MP_TEST_FROM`` / ``MP_TEST_TO`` — the date range (defaults
+- ``MP_LIVE_ACCOUNT`` — the account the suite uses (unset: the suite skips).
+- ``MP_LIVE_WRITE_PROJECT`` — write steps run only when the resolved
+  project id equals it (unset or different: the write step skips).
+- ``MP_LIVE_EVENT_A`` / ``MP_LIVE_EVENT_B`` — two event names that share
+  users (defaults ``login`` and ``sign up``).
+- ``MP_LIVE_EVENT_C`` — a funnel second step (default ``document opened``).
+- ``MP_LIVE_FROM`` / ``MP_LIVE_TO`` — the date range (defaults
   ``2024-09-01`` and ``2024-09-07``).
-- ``MP_TEST_FILTER_PROPERTY`` / ``MP_TEST_FILTER_VALUE`` — a string event
+- ``MP_LIVE_FILTER_PROPERTY`` / ``MP_LIVE_FILTER_VALUE`` — a string event
   property and a value that some events have (defaults ``$city`` and
   ``San Francisco``).
-- ``MP_TEST_WRITE_PROJECT`` — the only project id where the test may create
-  a custom event (unset: the test skips when none exists).
 
 Rate limits: the client does not retry a 429 here. A test that gets one is
 skipped, and the skip reason records the error, so a shared project is not
@@ -27,7 +30,8 @@ queried again while its limit runs.
 Markers:
 - ``@pytest.mark.live`` lets the rest of the suite skip them via
   ``-m "not live"``.
-- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_TESTS`` is absent.
+- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_TESTS`` or
+  ``MP_LIVE_ACCOUNT`` is absent.
 """
 
 from __future__ import annotations
@@ -45,23 +49,27 @@ from mixpanel_headless.exceptions import QueryError, RateLimitError
 
 _P = ParamSpec("_P")
 
+_ACCOUNT = os.environ.get("MP_LIVE_ACCOUNT")
+_WRITE_PROJECT = os.environ.get("MP_LIVE_WRITE_PROJECT")
+_A = os.environ.get("MP_LIVE_EVENT_A", "login")
+_B = os.environ.get("MP_LIVE_EVENT_B", "sign up")
+_C = os.environ.get("MP_LIVE_EVENT_C", "document opened")
+_FROM = os.environ.get("MP_LIVE_FROM", "2024-09-01")
+_TO = os.environ.get("MP_LIVE_TO", "2024-09-07")
+_PROPERTY = os.environ.get("MP_LIVE_FILTER_PROPERTY", "$city")
+_VALUE = os.environ.get("MP_LIVE_FILTER_VALUE", "San Francisco")
+
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
         os.environ.get("MP_LIVE_TESTS") != "1",
         reason="MP_LIVE_TESTS=1 not set — live tests skipped by default",
     ),
+    pytest.mark.skipif(
+        not _ACCOUNT,
+        reason="MP_LIVE_ACCOUNT not set — the suite needs a named account",
+    ),
 ]
-
-_ACCOUNT = os.environ.get("MP_TEST_ACCOUNT")
-_A = os.environ.get("MP_TEST_EVENT_A", "login")
-_B = os.environ.get("MP_TEST_EVENT_B", "sign up")
-_C = os.environ.get("MP_TEST_EVENT_C", "document opened")
-_FROM = os.environ.get("MP_TEST_FROM", "2024-09-01")
-_TO = os.environ.get("MP_TEST_TO", "2024-09-07")
-_PROPERTY = os.environ.get("MP_TEST_FILTER_PROPERTY", "$city")
-_VALUE = os.environ.get("MP_TEST_FILTER_VALUE", "San Francisco")
-_WRITE_PROJECT = os.environ.get("MP_TEST_WRITE_PROJECT")
 
 
 def _skip_on_429(test: Callable[_P, None]) -> Callable[_P, None]:
@@ -87,8 +95,8 @@ def _skip_on_429(test: Callable[_P, None]) -> Callable[_P, None]:
 
 @pytest.fixture(scope="module")
 def ws() -> mp.Workspace:
-    """One Workspace on the chosen account, with no retry on a 429."""
-    workspace = mp.Workspace(account=_ACCOUNT) if _ACCOUNT else mp.Workspace()
+    """One Workspace on ``MP_LIVE_ACCOUNT``, with no retry on a 429."""
+    workspace = mp.Workspace(account=_ACCOUNT)
     workspace._require_api_client()._max_retries = 0
     return workspace
 
@@ -147,8 +155,8 @@ def union_custom_event(ws: mp.Workspace) -> Iterator[int]:
     project = str(ws._session.project.id)
     if _WRITE_PROJECT is None or project != _WRITE_PROJECT:
         pytest.skip(
-            "no custom event unions the two events, and MP_TEST_WRITE_PROJECT "
-            "does not name this project"
+            "no custom event unions the two events, and the resolved project "
+            "id does not equal MP_LIVE_WRITE_PROJECT"
         )
     created = ws.create_custom_event(
         mp.CreateCustomEventParams(
