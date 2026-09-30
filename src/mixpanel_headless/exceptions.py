@@ -2031,6 +2031,10 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "MR7_INVALID_OVERRIDE",
         "BR1_INVALID_ID",
         "BR2_INVALID_TYPE",
+        # -- formula expressions: _internal/query/formula.py ----------------
+        "FM2_UNKNOWN_LETTER",
+        "FM4_SYNTAX",
+        "FM5_UPPER_E",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.
