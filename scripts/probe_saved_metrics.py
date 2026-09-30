@@ -10,9 +10,10 @@ and a redacted log of every probe to a file in the temp directory.
 
 Safety rules (the script enforces each one):
 
-- Writes go only to project ``3409416`` through the account
-  ``journey-lab-us``. The script checks the account and the project before
-  every write, and refuses to run otherwise.
+- Writes go only to the scratch project named by ``MP_LIVE_WRITE_PROJECT``,
+  through the account named by ``MP_LIVE_ACCOUNT``. Both settings are
+  required and have no default. The script checks the account and the
+  project before every write, and refuses to run otherwise.
 - Every entity it creates has the name prefix ``zz-probe-<UTC timestamp>-``.
 - The project is shared with other users. Before the first write, the script
   saves the metric and behavior ids of the project to a snapshot file.
@@ -30,19 +31,21 @@ when the server contract needs a new recording.
 Usage:
 
 ```
+export MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<scratch project id>
 uv run python scripts/probe_saved_metrics.py --gate-only   # one POST, then delete
 uv run python scripts/probe_saved_metrics.py               # the full probe
 uv run python scripts/probe_saved_metrics.py --time-list   # read-only list timing
 ```
 
-``--time-list`` uses the default session and sends one GET of the metric list.
-It writes nothing and saves nothing.
+``--time-list`` needs only ``MP_LIVE_ACCOUNT``. It sends one GET of the
+metric list of that account's project, and writes and saves nothing.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import tempfile
@@ -58,11 +61,11 @@ import httpx
 import mixpanel_headless as mp
 from mixpanel_headless.exceptions import MixpanelHeadlessError
 
-SCRATCH_ACCOUNT = "journey-lab-us"
-"""The only account that the script uses for writes."""
+ACCOUNT_ENV = "MP_LIVE_ACCOUNT"
+"""Environment variable that names the account of every run."""
 
-SCRATCH_PROJECT_ID = "3409416"
-"""The only project that the script writes to."""
+WRITE_PROJECT_ENV = "MP_LIVE_WRITE_PROJECT"
+"""Environment variable that names the only project a run may write to."""
 
 REDACTED_EMAIL = "user@example.com"
 """Replacement for every email address in a recorded body."""
@@ -102,6 +105,49 @@ class ProbeRefusedError(RuntimeError):
     """A write would go to an account or a project other than the scratch pair."""
 
 
+@dataclass(frozen=True)
+class ScratchTarget:
+    """The account and the project that a write run may use."""
+
+    account: str
+    project_id: str
+
+
+def _live_account() -> str:
+    """Return the account name from ``MP_LIVE_ACCOUNT``.
+
+    Returns:
+        The account name.
+
+    Raises:
+        ProbeRefusedError: If the variable is unset or empty.
+    """
+    account = os.environ.get(ACCOUNT_ENV, "").strip()
+    if not account:
+        raise ProbeRefusedError(f"{ACCOUNT_ENV} is not set; name the account to use")
+    return account
+
+
+def scratch_target() -> ScratchTarget:
+    """Read the scratch account and project from the environment.
+
+    Returns:
+        The target that every write must match.
+
+    Raises:
+        ProbeRefusedError: If ``MP_LIVE_ACCOUNT`` or ``MP_LIVE_WRITE_PROJECT``
+            is unset or empty.
+    """
+    account = _live_account()
+    project = os.environ.get(WRITE_PROJECT_ENV, "").strip()
+    if not project:
+        raise ProbeRefusedError(
+            f"{WRITE_PROJECT_ENV} is not set; name the scratch project id that "
+            f"this run may write to"
+        )
+    return ScratchTarget(account=account, project_id=project)
+
+
 @dataclass
 class ProbeRecord:
     """One recorded request and its response."""
@@ -121,6 +167,7 @@ class ProbeRun:
 
     ws: mp.Workspace
     prefix: str
+    target: ScratchTarget
     records: list[ProbeRecord] = field(default_factory=list)
     comparisons: list[dict[str, Any]] = field(default_factory=list)
     created_metrics: list[int] = field(default_factory=list)
@@ -161,11 +208,11 @@ def _assert_scratch(run: ProbeRun, path: str) -> None:
             the scratch target.
     """
     account = run.ws.account.name
-    if account != SCRATCH_ACCOUNT:
+    if account != run.target.account:
         raise ProbeRefusedError(f"refusing write: account is {account!r}")
-    if run.pid != SCRATCH_PROJECT_ID:
+    if run.pid != run.target.project_id:
         raise ProbeRefusedError(f"refusing write: project is {run.pid}")
-    if not path.startswith(f"/projects/{SCRATCH_PROJECT_ID}/"):
+    if not path.startswith(f"/projects/{run.target.project_id}/"):
         raise ProbeRefusedError(f"refusing write: path {path!r}")
 
 
@@ -311,7 +358,7 @@ def call_app(
         run: The probe run.
         name: The probe name (also the fixture key).
         method: The HTTP method.
-        path: The App API path, for example ``/projects/3409416/metrics``.
+        path: The App API path, for example ``/projects/{pid}/metrics``.
         body: The JSON body, if any.
         note: A short free-text note for the log.
 
@@ -1469,14 +1516,19 @@ def write_outputs(
 
 
 def time_list() -> int:
-    """Time one read-only GET of the metric list on the default session.
+    """Time one read-only GET of the metric list on the ``MP_LIVE_ACCOUNT`` account.
 
     Prints the project, the metric count, and the seconds. Saves nothing.
 
     Returns:
-        The process exit code.
+        The process exit code: 0 on success, 1 when ``MP_LIVE_ACCOUNT`` is unset.
     """
-    ws = mp.Workspace()
+    try:
+        account = _live_account()
+    except ProbeRefusedError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    ws = mp.Workspace(account=account)
     try:
         pid = ws.api.project_id
         start = time.monotonic()
@@ -1492,8 +1544,9 @@ def main() -> int:
     """CLI entry point.
 
     Returns:
-        The process exit code: 0 on success, 1 when a check fails, 2 when the
-        ``formulas`` saving gate (a 403) refuses the first create.
+        The process exit code: 0 on success, 1 when a setting is missing or a
+        check fails, 2 when the ``formulas`` saving gate (a 403) refuses the
+        first create.
     """
     parser = argparse.ArgumentParser(
         description="Probe the saved metrics and saved behaviors App API."
@@ -1506,7 +1559,7 @@ def main() -> int:
     parser.add_argument(
         "--time-list",
         action="store_true",
-        help="Time one read-only metric list on the default session, then exit.",
+        help="Time one read-only metric list (needs only MP_LIVE_ACCOUNT), then exit.",
     )
     parser.add_argument(
         "--warehouse",
@@ -1541,11 +1594,16 @@ def main() -> int:
     if args.time_list:
         return time_list()
 
-    ws = mp.Workspace(account=SCRATCH_ACCOUNT)
-    run = ProbeRun(ws=ws, prefix=f"zz-probe-{_utc_stamp()}-")
+    try:
+        target = scratch_target()
+    except ProbeRefusedError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    ws = mp.Workspace(account=target.account)
+    run = ProbeRun(ws=ws, prefix=f"zz-probe-{_utc_stamp()}-", target=target)
     exit_code = 0
     try:
-        if run.pid != SCRATCH_PROJECT_ID or ws.account.name != SCRATCH_ACCOUNT:
+        if run.pid != target.project_id or ws.account.name != target.account:
             raise ProbeRefusedError(
                 f"refusing to run: account {ws.account.name!r}, project {run.pid}"
             )
