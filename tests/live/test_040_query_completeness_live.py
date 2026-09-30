@@ -18,8 +18,10 @@ Usage:
 
 Environment:
     - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
-      skips when it is unset; the suite never uses the default session.
-      The Workspace uses the account's default project, which needs events.
+      that uses the Workspace skips when it is unset; the suite never uses
+      the default session. The tests that build no Workspace (type
+      validation) run without it. The Workspace uses the account's default
+      project, which needs events.
 """
 
 from __future__ import annotations
@@ -46,10 +48,11 @@ from mixpanel_headless import (
     Workspace,
 )
 from mixpanel_headless.exceptions import APIError, QueryError
-from tests.live._live_settings import live_workspace, requires_live_account
+from tests.live._live_settings import live_workspace
 
-# All tests require the `live` marker and MP_LIVE_ACCOUNT — skipped by default
-pytestmark = [pytest.mark.live, requires_live_account]
+# All tests require the `live` marker. The Workspace fixture skips when
+# MP_LIVE_ACCOUNT is unset, so tests that build no Workspace still run.
+pytestmark = pytest.mark.live
 
 
 # =============================================================================
