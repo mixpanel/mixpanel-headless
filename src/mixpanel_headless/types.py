@@ -7711,7 +7711,10 @@ class MetricRef:
             when no typed override is set.
         label: Series name for this query. Replaces the saved name.
         math: Aggregation override (an insights, funnel, or retention math).
-        property: Property override for property math.
+        property: Property override for property math. The server merges
+            it into the saved property dict, so the keys of a saved custom
+            property stay; to replace a saved custom property with a plain
+            property, send the metric inline.
         per_user: Per-user pre-aggregation override.
         percentile_value: Percentile override (for example 95).
         segment_method: Counting override: ``"all"`` or ``"first"``.

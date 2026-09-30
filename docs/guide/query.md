@@ -567,6 +567,8 @@ result = ws.query(
 #                "measurement": {"segmentMethod": "first"}}}
 ```
 
+A dict value merges into the saved dict at the same path. So a `property` override keeps the keys of a saved custom property; to replace a saved custom property with a plain property, send the metric inline.
+
 `overrides=` takes a raw dict for any other path. It merges after the typed fields, so a raw value wins. A formula or warehouse reference takes `label`, `hidden`, and raw overrides only; the other fields change a behavior metric (`MR6_OVERRIDE_NOT_APPLICABLE`).
 
 ### Filters are not an override
