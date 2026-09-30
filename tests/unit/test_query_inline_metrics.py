@@ -29,13 +29,17 @@ from mixpanel_headless._internal.validation import (
 )
 from mixpanel_headless.exceptions import BookmarkValidationError, ValidationError
 from mixpanel_headless.types import (
+    CohortCriteria,
+    CohortDefinition,
     CohortMetric,
     CustomEventRef,
     Exclusion,
+    Filter,
     Formula,
     FormulaOperand,
     FunnelBehavior,
     FunnelMetric,
+    FunnelStep,
     InlineCustomProperty,
     Metric,
     RetentionBehavior,
@@ -88,6 +92,22 @@ def _args(
         group_by=None,
         formulas=resolved,
     )
+
+
+def _inline_cohort_metric() -> CohortMetric:
+    """Return a CohortMetric that holds an inline definition.
+
+    Construction refuses an inline definition, because the server returns
+    500 for it. The query validator checks it again, so this helper skips
+    the constructor checks to reach that check.
+    """
+    definition = CohortDefinition(
+        CohortCriteria.did_event("Purchase", at_least=1, within_days=30)
+    )
+    metric = object.__new__(CohortMetric)
+    object.__setattr__(metric, "cohort", definition)
+    object.__setattr__(metric, "name", None)
+    return metric
 
 
 def _codes(errors: list[ValidationError]) -> list[str]:
@@ -266,6 +286,68 @@ class TestFormulaRules:
         assert by_code["F3_CONVERSION_WINDOW_POSITIVE"] == (
             "formula.metrics[1].conversion_window"
         )
+
+    def test_inline_cohort_operand_is_refused(self) -> None:
+        """An operand CohortMetric with an inline definition gets CM5, as at top level."""
+        operand = _inline_cohort_metric()
+        errors = _args([], [Formula("A", metrics=[operand])])
+        assert _codes(errors) == ["CM5_INLINE_COHORT_METRIC"]
+        assert errors[0].path == "formula.metrics[0]"
+
+    def test_operand_step_filters_are_scanned(self) -> None:
+        """A custom property in an operand's simple-behavior step filter is checked."""
+        bad = Filter.equals(InlineCustomProperty(formula="", inputs={}), "x")
+        behavior = SimpleBehavior([FunnelStep("Buy", filters=[bad]), "Login"])
+        errors = _args([], [Formula("A", metrics=[Metric(behavior)])])
+        assert "CP2_EMPTY_FORMULA" in _codes(errors)
+        assert errors[0].path == "formula.metrics[0].event[0].filters[0]"
+
+    def test_top_level_step_filters_keep_their_path(self) -> None:
+        """The top-level scan of simple-behavior step filters keeps its path."""
+        bad = Filter.equals(InlineCustomProperty(formula="", inputs={}), "x")
+        behavior = SimpleBehavior([FunnelStep("Buy", filters=[bad]), "Login"])
+        errors = _args([Metric(behavior)])
+        assert "CP2_EMPTY_FORMULA" in _codes(errors)
+        assert errors[0].path == "events[0].event[0].filters[0]"
+
+
+class TestEventNamesInsideMetrics:
+    """The event-name checks run on each name inside a multi-event Metric."""
+
+    @pytest.mark.parametrize("invisible", ["\u200b", "\u200b\ufeff", "\u2060"])
+    def test_invisible_name_in_a_list_gives_v22(self, invisible: str) -> None:
+        """An invisible-only name in a list gives V22_INVISIBLE_EVENT with its path."""
+        errors = _args([Metric(["Login", invisible])])
+        assert _codes(errors) == ["V22_INVISIBLE_EVENT"]
+        assert errors[0].path == "events[0].event[1]"
+
+    def test_invisible_name_in_a_simple_behavior_gives_v22(self) -> None:
+        """Names in a SimpleBehavior, plain and in a FunnelStep, are checked."""
+        behavior = SimpleBehavior(["\u200b", FunnelStep("\ufeff"), "Login"])
+        errors = _args([Metric(behavior)])
+        assert _codes(errors) == ["V22_INVISIBLE_EVENT", "V22_INVISIBLE_EVENT"]
+        assert [e.path for e in errors] == ["events[0].event[0]", "events[0].event[1]"]
+
+    def test_invisible_name_in_an_operand_gives_v22(self) -> None:
+        """Operand names are checked under the operand's path."""
+        operands: list[FormulaOperand] = [Metric("\u200b"), Metric(["A", "\u2060"])]
+        errors = _args([], [Formula("A + B", metrics=operands)])
+        assert [(e.code, e.path) for e in errors] == [
+            ("V22_INVISIBLE_EVENT", "formula.metrics[0]"),
+            ("V22_INVISIBLE_EVENT", "formula.metrics[1].event[1]"),
+        ]
+
+    def test_visible_names_pass(self) -> None:
+        """Ordinary names in lists and behaviors pass."""
+        behavior = SimpleBehavior(["Login", FunnelStep("Buy")])
+        assert _args([Metric(["Login", CustomEventRef(3)]), Metric(behavior)]) == []
+
+    def test_single_event_name_keeps_todays_error(self) -> None:
+        """A single invisible event name keeps the top-level V22 path."""
+        errors = _args([Metric("\u200b")])
+        assert [(e.code, e.path) for e in errors] == [
+            ("V22_INVISIBLE_EVENT", "events[0]")
+        ]
 
 
 # =============================================================================

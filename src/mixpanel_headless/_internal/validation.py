@@ -313,24 +313,7 @@ def _scan_custom_properties(
                     _validate_custom_property(item.property, f"events[{idx}]")
                 )
             if isinstance(item, Metric):
-                if isinstance(item.property, (CustomPropertyRef, InlineCustomProperty)):
-                    errors.extend(
-                        _validate_custom_property(item.property, f"events[{idx}]")
-                    )
-                if item.filters:
-                    errors.extend(
-                        _scan_filters_for_custom_properties(
-                            item.filters, f"events[{idx}]"
-                        )
-                    )
-                if isinstance(item.event, SimpleBehavior):
-                    for si, sub in enumerate(item.event.events):
-                        if isinstance(sub, FunnelStep) and sub.filters:
-                            errors.extend(
-                                _scan_filters_for_custom_properties(
-                                    sub.filters, f"events[{idx}].event[{si}]"
-                                )
-                            )
+                errors.extend(_scan_metric_custom_properties(item, f"events[{idx}]"))
 
     # Scan funnel steps (FunnelStep.filters)
     if funnel_steps is not None:
@@ -2503,6 +2486,138 @@ def _validate_metric_rules(item: Metric, mpath: str) -> list[ValidationError]:
     return errors
 
 
+def _event_name_errors(name: str, path: str) -> list[ValidationError]:
+    """Check one event name (V17, V22).
+
+    Args:
+        name: The event name.
+        path: The path of the name, for error reporting.
+
+    Returns:
+        ``V17_EMPTY_EVENT`` for a blank name, otherwise any of
+        ``V22_CONTROL_CHAR_EVENT`` and ``V22_INVISIBLE_EVENT``, in that
+        order.
+    """
+    # V17: Non-empty after stripping whitespace
+    if not name.strip():
+        return [
+            ValidationError(
+                path=path,
+                message="Event name must be a non-empty string",
+                code="V17_EMPTY_EVENT",
+            )
+        ]
+    errors: list[ValidationError] = []
+    # V22a: No control characters (null bytes, etc.)
+    if _CONTROL_CHAR_RE.search(name):
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    f"Event name contains control characters "
+                    f"(e.g. null bytes): {name!r}"
+                ),
+                code="V22_CONTROL_CHAR_EVENT",
+            )
+        )
+    # V22b: No invisible-only names (zero-width spaces, etc.)
+    if _INVISIBLE_RE.match(name):
+        errors.append(
+            ValidationError(
+                path=path,
+                message="Event name contains only invisible characters",
+                code="V22_INVISIBLE_EVENT",
+            )
+        )
+    return errors
+
+
+def _metric_event_name_errors(item: Metric, path: str) -> list[ValidationError]:
+    """Check every event name of a Metric (V17, V22).
+
+    Args:
+        item: The metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        The name errors of a single event name at ``path``, or of each name
+        inside a list of events or a simple behavior (a plain name or a
+        ``FunnelStep`` event) at ``"{path}.event[i]"``. A custom event or a
+        saved behavior has no name to check.
+    """
+    event = item.event
+    if isinstance(event, str):
+        return _event_name_errors(event, path)
+    if isinstance(event, SimpleBehavior):
+        entries: Sequence[object] = event.events
+    elif isinstance(event, list | tuple):
+        entries = event
+    else:
+        return []
+    errors: list[ValidationError] = []
+    for i, entry in enumerate(entries):
+        name = entry.event if isinstance(entry, FunnelStep) else entry
+        if isinstance(name, str):
+            errors.extend(_event_name_errors(name, f"{path}.event[{i}]"))
+    return errors
+
+
+def _cohort_metric_errors(item: CohortMetric, path: str) -> list[ValidationError]:
+    """Refuse a CohortMetric with an inline definition (CM5).
+
+    Args:
+        item: The cohort metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        One ``CM5_INLINE_COHORT_METRIC`` error for an inline
+        ``CohortDefinition`` (the server returns 500 for it), otherwise an
+        empty list.
+    """
+    # CM5: Inline CohortDefinition in CohortMetric triggers a
+    # server-side 500. Only saved cohort IDs are supported.
+    if not isinstance(item.cohort, CohortDefinition):
+        return []
+    return [
+        ValidationError(
+            path=path,
+            message=(
+                "CohortMetric does not support inline CohortDefinition "
+                "(server returns 500). Use a saved cohort ID instead."
+            ),
+            code="CM5_INLINE_COHORT_METRIC",
+        )
+    ]
+
+
+def _scan_metric_custom_properties(item: Metric, path: str) -> list[ValidationError]:
+    """Check the custom properties of a Metric (CP1-CP6).
+
+    Args:
+        item: The metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        The errors of its measurement property and its filters at ``path``,
+        then of the filters of each ``FunnelStep`` inside a simple behavior
+        at ``"{path}.event[i]"``.
+    """
+    errors: list[ValidationError] = []
+    if isinstance(item.property, (CustomPropertyRef, InlineCustomProperty)):
+        errors.extend(_validate_custom_property(item.property, path))
+    if item.filters:
+        errors.extend(_scan_filters_for_custom_properties(item.filters, path))
+    if isinstance(item.event, SimpleBehavior):
+        for si, sub in enumerate(item.event.events):
+            if isinstance(sub, FunnelStep) and sub.filters:
+                errors.extend(
+                    _scan_filters_for_custom_properties(
+                        sub.filters, f"{path}.event[{si}]"
+                    )
+                )
+    return errors
+
+
 def _validate_formula_operand_args(
     formula: Formula, fpath: str
 ) -> list[ValidationError]:
@@ -2526,14 +2641,12 @@ def _validate_formula_operand_args(
         elif isinstance(operand, RetentionMetric):
             errors.extend(validate_retention_metric_args(operand, path=opath))
         elif isinstance(operand, Metric):
+            errors.extend(_metric_event_name_errors(operand, opath))
             errors.extend(_validate_metric_rules(operand, opath))
-            if isinstance(operand.property, (CustomPropertyRef, InlineCustomProperty)):
-                errors.extend(_validate_custom_property(operand.property, opath))
-            if operand.filters:
-                errors.extend(
-                    _scan_filters_for_custom_properties(operand.filters, opath)
-                )
-        elif not isinstance(operand, CohortMetric | MetricRef):
+            errors.extend(_scan_metric_custom_properties(operand, opath))
+        elif isinstance(operand, CohortMetric):
+            errors.extend(_cohort_metric_errors(operand, opath))
+        elif not isinstance(operand, MetricRef):
             errors.append(
                 ValidationError(
                     path=opath,
@@ -2670,63 +2783,15 @@ def validate_query_args(
 
         # CohortMetric: validate cohort type, then skip event-name validation
         if isinstance(item, CohortMetric):
-            # CM5: Inline CohortDefinition in CohortMetric triggers a
-            # server-side 500. Only saved cohort IDs are supported.
-            if isinstance(item.cohort, CohortDefinition):
-                errors.append(
-                    ValidationError(
-                        path=epath,
-                        message=(
-                            "CohortMetric does not support inline CohortDefinition "
-                            "(server returns 500). Use a saved cohort ID instead."
-                        ),
-                        code="CM5_INLINE_COHORT_METRIC",
-                    )
-                )
+            errors.extend(_cohort_metric_errors(item, epath))
             continue
 
-        # A Metric over a custom event or several events was checked at
-        # construction; only a single event name has name checks here.
+        # V17/V22: each event name, including each name inside a Metric over
+        # several events or a simple behavior
         if isinstance(item, Metric):
-            if not isinstance(item.event, str):
-                continue
-            name = item.event
+            errors.extend(_metric_event_name_errors(item, epath))
         else:
-            name = item
-
-        # V17: Non-empty after stripping whitespace
-        if not name.strip():
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message="Event name must be a non-empty string",
-                    code="V17_EMPTY_EVENT",
-                )
-            )
-            continue
-
-        # V22a: No control characters (null bytes, etc.)
-        if _CONTROL_CHAR_RE.search(name):
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message=(
-                        f"Event name contains control characters "
-                        f"(e.g. null bytes): {name!r}"
-                    ),
-                    code="V22_CONTROL_CHAR_EVENT",
-                )
-            )
-
-        # V22b: No invisible-only names (zero-width spaces, etc.)
-        if _INVISIBLE_RE.match(name):
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message="Event name contains only invisible characters",
-                    code="V22_INVISIBLE_EVENT",
-                )
-            )
+            errors.extend(_event_name_errors(item, epath))
 
     # CM3/FR-020: Top-level math/math_property/per_user only apply to plain
     # string events.  When all events are CohortMetric (or Metric, which
