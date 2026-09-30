@@ -29,7 +29,7 @@ Infrastructure           → ConfigManager, MixpanelAPIClient
 **Capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks, schema graph)
 - **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
-- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
+- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API; list, read, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
 - **Session replay**: Discover, sign, fetch, and analyze rrweb session recordings (`Workspace.replays_for_user` / `fetch_replay`, `Replay` / `ReplayBundle`, `mp replays`)
 
 ## Package Structure
@@ -71,7 +71,8 @@ src/mixpanel_headless/
     │                        # + query, inspect, dashboards, reports, cohorts, flags,
     │                        # experiments, alerts, annotations, webhooks, lexicon,
     │                        # drop-filters, custom-properties, custom-events,
-    │                        # lookup-tables, schemas, business-context, replays
+    │                        # lookup-tables, schemas, business-context, replays,
+    │                        # metrics, behaviors
     ├── formatters.py        # JSON, JSONL, Table, CSV, Plain output
     └── utils.py             # Error handling, console helpers
 ```
