@@ -238,6 +238,23 @@ def _schema_error_message(body: object) -> str | None:
     )
 
 
+def is_schema_refusal(body: object) -> bool:
+    """Return whether a response body is the server's JSON Schema refusal.
+
+    Its ``error`` text holds an HTML-escaped copy of the whole request, so
+    a caller that shows errors (the CLI) prints only the short
+    ``QueryError`` message for it.
+
+    Args:
+        body: The parsed response body.
+
+    Returns:
+        ``True`` when the body has the shape that ``_schema_error_message``
+        shortens.
+    """
+    return _schema_error_message(body) is not None
+
+
 def _post_checked(client: MixpanelAPIClient, path: str, body: dict[str, Any]) -> Any:
     """POST to a JSON Schema-checked App API route with a readable 400.
 

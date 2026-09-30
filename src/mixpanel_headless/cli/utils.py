@@ -25,6 +25,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape as rich_escape
 
+from mixpanel_headless._internal.api_client import is_schema_refusal
 from mixpanel_headless.exceptions import (
     AccountExistsError,
     AccountNotFoundError,
@@ -228,6 +229,11 @@ def handle_errors(func: F) -> F:
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except QueryError as e:
             err_console.print(f"[red]Query error:[/red] {rich_escape(e.message)}")
+            if e.status_code == 400 and is_schema_refusal(e.response_body):
+                # The server's error text, like the request context below,
+                # holds the whole request (for a warehouse metric, its SQL).
+                # The message already names the failure.
+                raise typer.Exit(ExitCode.INVALID_ARGS) from None
             # Show response body - often contains the actual API error message
             if e.response_body:
                 if isinstance(e.response_body, dict):

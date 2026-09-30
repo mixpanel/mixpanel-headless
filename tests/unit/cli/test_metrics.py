@@ -12,17 +12,22 @@ Tests cover all metrics subcommands:
 
 from __future__ import annotations
 
+import html
 import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 import typer.testing
 
+from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import ParamValidationError, QueryError
 from mixpanel_headless.types import RawMetricDefinition, SavedMetric
+from mixpanel_headless.workspace import Workspace
+from tests.conftest import make_session
 from tests.unit._saved_metric_fixtures import (
     behavior_metric_json,
     formula_metric_json,
@@ -431,6 +436,66 @@ class TestMetricsCreate:
         )
         assert result.exit_code != 0
         assert "definition.behavior.x" in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_server_schema_refusal_prints_no_request_echo(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """A 400 from the server schema prints the short message, not the SQL.
+
+        The server's error text ends with an HTML-escaped copy of the whole
+        request, so it holds the warehouse SQL.
+        """
+        sql = "SELECT secret_column FROM warehouse.revenue"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the create with the server's schema 400 body.
+
+            Args:
+                request: The create request.
+
+            Returns:
+                The 400 response, whose error echoes the request.
+            """
+            echo = html.escape(repr(json.loads(request.content)))
+            return httpx.Response(
+                400,
+                json={
+                    "details": {
+                        "data": None,
+                        "path": ["root", "definition"],
+                        "schema": {},
+                    },
+                    "error": f"Additional properties are not allowed {echo}",
+                    "status": "error",
+                },
+            )
+
+        session = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(handler)
+        )
+        mock_get_ws.return_value = Workspace(session=session, _api_client=client)
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "Revenue",
+                "--warehouse-source-id",
+                "5",
+                "--no-validate",
+                "--definition-file",
+                _write_definition(
+                    tmp_path, {"query": sql, "metricType": "numeric", "bogus": 1}
+                ),
+            ],
+        )
+        assert result.exit_code == 3, result.output
+        assert "The server refused the request body" in result.stderr
+        assert "secret_column" not in result.stderr
+        assert "secret_column" not in result.stdout
 
 
 class TestMetricsUpdate:

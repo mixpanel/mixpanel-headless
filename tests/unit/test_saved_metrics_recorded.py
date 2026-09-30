@@ -26,7 +26,10 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import (
+    MixpanelAPIClient,
+    is_schema_refusal,
+)
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import ParamValidationError, QueryError, ServerError
@@ -404,6 +407,20 @@ class TestRecordedWriteErrors:
             assert location in exc.message
         assert exc.response_body == body
         assert isinstance(exc.__cause__, QueryError)
+
+    def test_schema_refusal_shape(self) -> None:
+        """Only the recorded JSON Schema 400 bodies count as a schema refusal."""
+        for name in (
+            "error_400_unknown_key",
+            "error_400_behavior_unknown_key",
+            "error_400_bad_math",
+            "error_400_global_access_type",
+        ):
+            assert is_schema_refusal(_load(name)), name
+        for name in ("error_409_duplicate_name", "error_404_unknown_metric"):
+            assert not is_schema_refusal(_load(name)), name
+        assert not is_schema_refusal("Bad request")
+        assert not is_schema_refusal(None)
 
     def test_400_wrong_branch_message_carries_a_note(self) -> None:
         """A 400 whose text can name the wrong schema branch says so."""

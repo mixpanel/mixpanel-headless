@@ -181,7 +181,8 @@ may include API changes.
   the server's schema refuses raises `QueryError` (400) with a short
   message: the failure and its schema location, without the HTML-escaped
   copy of the request that the server appends. The full body stays in
-  `response_body`.
+  `response_body`. The CLI prints only the short message for such a 400,
+  not the server's copy of the request or the request body.
 - Saved definitions from the typed values: `CreateMetricParams` takes a
   `FunnelMetric`, a `RetentionMetric`, a `Metric` over several events, and
   a `Formula` with its own operands (a `MetricRef` operand stays a

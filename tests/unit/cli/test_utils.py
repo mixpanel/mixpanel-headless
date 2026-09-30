@@ -274,6 +274,38 @@ class TestHandleErrors:
         # Should show request params
         assert "NonExistent" in captured.err
 
+    def test_schema_refusal_prints_only_the_message(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A JSON Schema 400 prints the short message, not the echoed request."""
+        echo = "{&#x27;query&#x27;: &#x27;SELECT secret_column FROM t&#x27;}"
+
+        @handle_errors
+        def create_fail() -> None:
+            raise QueryError(
+                "The server refused the request body: bad key.",
+                status_code=400,
+                response_body={
+                    "details": {"data": None, "path": ["root"], "schema": {}},
+                    "error": f"Additional properties are not allowed {echo}",
+                    "status": "error",
+                },
+                request_params={"source": "SELECT secret_column FROM t"},
+                request_body={
+                    "type": "warehouse",
+                    "definition": {"query": "SELECT secret_column FROM t"},
+                },
+            )
+
+        with pytest.raises(click.exceptions.Exit) as exc_info:
+            create_fail()
+
+        assert exc_info.value.exit_code == ExitCode.INVALID_ARGS
+        captured = capsys.readouterr()
+        assert "The server refused the request body: bad key." in captured.err
+        assert "secret_column" not in captured.err
+        assert "API error" not in captured.err
+
     def test_rate_limit_error_with_retry_after(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
