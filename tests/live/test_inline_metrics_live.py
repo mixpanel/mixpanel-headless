@@ -269,3 +269,45 @@ class TestFormulaWithOperands:
             metrics=[mp.Metric(_B, math="unique"), mp.Metric(_A, math="unique")],
         )
         assert _total(ws, formula) == pytest.approx(a / b)
+
+
+@pytest.fixture(scope="module")
+def two_saved_metrics(ws: mp.Workspace) -> tuple[int, int]:
+    """Return the ids of two viewable saved behavior metrics.
+
+    Reads ``list_metrics(viewable_only=True)`` and keeps the saved behavior
+    metrics over events, funnels, and retention, which give one total each.
+
+    Returns:
+        Two saved metric ids, lowest first.
+    """
+    try:
+        saved = ws.list_metrics(metric_type="metric", viewable_only=True)
+    except RateLimitError as exc:
+        pytest.skip(f"429 from the project, not retried: {exc}")
+    kinds = ("event", "simple", "funnel", "retention")
+    ids = sorted(m.id for m in saved if m.behavior_type in kinds)
+    if len(ids) < 2:
+        pytest.skip("fewer than two viewable saved behavior metrics")
+    return ids[0], ids[1]
+
+
+class TestFormulaWithSavedMetricOperands:
+    """An inline formula over saved metrics computes over their saved definitions."""
+
+    @_skip_on_429
+    def test_ratio_of_saved_metrics(
+        self, ws: mp.Workspace, two_saved_metrics: tuple[int, int]
+    ) -> None:
+        """``A / B`` over two ``MetricRef`` operands equals the ratio of the refs."""
+        first, second = two_saved_metrics
+        a = _total(ws, mp.MetricRef(first))
+        b = _total(ws, mp.MetricRef(second))
+        if b == 0:
+            pytest.skip(f"saved metric {second} has no data in the date range")
+        formula = mp.Formula(
+            "A / B",
+            label="ratio of saved metrics",
+            metrics=[mp.MetricRef(first), mp.MetricRef(second)],
+        )
+        assert _total(ws, formula) == pytest.approx(a / b)
