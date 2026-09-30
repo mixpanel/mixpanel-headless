@@ -1,8 +1,8 @@
-"""Live integration tests for saved metric and saved behavior writes.
+"""Live QA tests for saved metric and saved behavior writes.
 
-Skipped by default — set ``MP_LIVE_TESTS=1`` to run. The tests create saved
-metrics and saved behaviors, change them, and delete them, on one shared
-project. Safety rules, enforced in code:
+Creates saved metrics and saved behaviors, changes them, and deletes them,
+on one shared project (default: account ``journey-lab-us``, project
+3409416). Safety rules, enforced in code:
 
 - The tests write only when the Workspace project equals
   ``MP_SAVED_METRICS_WRITE_PROJECT`` (default ``3409416``); otherwise they
@@ -13,18 +13,15 @@ project. Safety rules, enforced in code:
   the created set.
 - The module teardown deletes only the created ids.
 
-Environment:
-- ``MP_LIVE_TESTS=1`` — enable.
-- ``MP_SAVED_METRICS_ACCOUNT`` — the account (default ``journey-lab-us``).
-- ``MP_SAVED_METRICS_WRITE_PROJECT`` — the only project the tests write to
-  (default ``3409416``).
-- ``MP_SAVED_METRICS_EVENTS`` — two event names in that project, comma
-  separated (default ``document created,document shared``).
+Usage:
+    uv run pytest tests/live/test_saved_metrics_write_live.py -v -m live
 
-Markers:
-- ``@pytest.mark.live`` lets the rest of the suite skip them via
-  ``-m "not live"``.
-- ``@pytest.mark.skipif`` short-circuits when ``MP_LIVE_TESTS`` is absent.
+Environment:
+    - ``MP_SAVED_METRICS_ACCOUNT`` — the account (default ``journey-lab-us``).
+    - ``MP_SAVED_METRICS_WRITE_PROJECT`` — the only project the tests write
+      to (default ``3409416``).
+    - ``MP_SAVED_METRICS_EVENTS`` — two event names in that project, comma
+      separated (default ``document created,document shared``).
 """
 
 from __future__ import annotations
@@ -39,13 +36,8 @@ import pytest
 import mixpanel_headless as mp
 from mixpanel_headless.exceptions import ParamValidationError, QueryError
 
-pytestmark = [
-    pytest.mark.live,
-    pytest.mark.skipif(
-        os.environ.get("MP_LIVE_TESTS") != "1",
-        reason="MP_LIVE_TESTS=1 not set — live tests skipped by default",
-    ),
-]
+# All tests require the `live` marker — skipped by default
+pytestmark = pytest.mark.live
 
 _ACCOUNT = os.environ.get("MP_SAVED_METRICS_ACCOUNT", "journey-lab-us")
 _WRITE_PROJECT = os.environ.get("MP_SAVED_METRICS_WRITE_PROJECT", "3409416")
