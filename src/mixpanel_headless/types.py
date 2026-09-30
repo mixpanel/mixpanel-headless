@@ -7768,8 +7768,9 @@ class Formula:
         label: Optional display label for the formula result.
         metrics: The formula's own operands, or ``None`` to name the other
             metrics of the query. An operand is an inline metric or a
-            ``MetricRef`` to a saved behavior or warehouse metric (with no
-            overrides, because the server ignores overrides on an operand).
+            ``MetricRef`` to a saved behavior metric or warehouse metric
+            (with no overrides, because the server ignores overrides on an
+            operand).
 
     Example:
         ```python
@@ -12588,8 +12589,8 @@ FormulaOperand: TypeAlias = (
 )
 """One operand of a :class:`Formula` that holds its own operands.
 
-An inline metric of any kind except a formula, or a saved behavior or
-warehouse metric by reference (:class:`MetricRef` with no overrides): a
+An inline metric of any kind except a formula, or a saved behavior metric
+or warehouse metric by reference (:class:`MetricRef` with no overrides): a
 formula cannot be an operand of another formula.
 """
 

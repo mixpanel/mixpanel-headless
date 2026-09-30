@@ -249,6 +249,8 @@ result = ws.query(Metric(signed_in, math="unique"))
 
 Filters go on each event. The query server ignores filters on the behavior as a whole, so `SimpleBehavior` has none, and `Metric(filters=...)` cannot be combined with a `SimpleBehavior` (`MT3_FILTERS_WITH_BEHAVIOR`).
 
+A saved simple behavior works as the event too: `Metric(BehaviorRef(4410, "simple"), math="unique")`. The saved behavior sets the events, so `Metric(filters=...)` cannot be combined with it either.
+
 A funnel step and a retention event take one event each. `query_funnel()` and `query_retention()` refuse a list of events there, and the error names custom events as the fix.
 
 ### Custom Events by ID
@@ -302,6 +304,7 @@ result = ws.query([
 - A property math (`average`, `median`, `min`, `max`, the percentiles, `histogram`) needs `property`, as `query_funnel(math_property=...)` does. The query server also refuses a property math without a property.
 - A retention metric defaults to the retention rate. `bucket_index` picks the bucket that a line chart trends (0 is the first bucket).
 - `label` names the series. Without it, the server names a funnel after its first and last steps.
+- The behavior can be a saved one: `FunnelMetric(BehaviorRef(3120, "funnel"))` or `RetentionMetric(BehaviorRef(4410, "retention"))`. The saved behavior owns the steps and settings. A reference of another type raises `BH5_BEHAVIOR_REF_TYPE`.
 
 ## Filters
 
@@ -620,12 +623,13 @@ result = ws.query(
 )
 ```
 
-An operand is a `Metric`, `CohortMetric`, `FunnelMetric`, or `RetentionMetric`, never another `Formula`. A saved formula stores this same form. The expression is checked when the `Formula` is built:
+An operand is a `Metric`, `CohortMetric`, `FunnelMetric`, `RetentionMetric`, or a `MetricRef` to a saved behavior metric or warehouse metric, never a formula. A `MetricRef` operand is written as `{"type": ..., "id": ...}` and takes no override. A saved formula stores this same form. The operands and the expression are checked when the `Formula` is built:
 
 | Code | Rule |
 |---|---|
 | `FM2_UNKNOWN_LETTER` | Each letter names an operand. |
-| `FM3_NESTED_FORMULA` | No operand is a formula. |
+| `FM3_NESTED_FORMULA` | No operand is a formula or a reference to a saved formula. |
+| `MR2_OPERAND_OVERRIDE` | A `MetricRef` operand sets no override (the server ignores overrides on an operand). |
 | `FM4_SYNTAX` | The expression uses `+ - * / ^`, unary minus, parentheses, numbers, and letters. Only a number, a letter, or a parenthesized expression can follow `^`: write `A ^ (-B)`, not `A ^ -B`. |
 | `FM5_UPPER_E` | A number uses a lowercase exponent (`1e5`, not `1E5`). |
 | `V16_FORMULA_SYNTAX` | The expression uses at least one letter. |

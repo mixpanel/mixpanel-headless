@@ -121,6 +121,13 @@ may include API changes.
   letter gets `V16_FORMULA_SYNTAX`.
 - New error codes for behaviors: `BH1_STEP_COUNT`, `BH2_EMPTY_EVENT`,
   `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`.
+- Saved behaviors and saved metrics inside inline values: a `BehaviorRef`
+  is the behavior of a `Metric` (type `simple`), a `FunnelMetric` (type
+  `funnel`), or a `RetentionMetric` (type `retention`); another type raises
+  the new code `BH5_BEHAVIOR_REF_TYPE`. A `MetricRef` is an operand of a
+  `Formula` with its own operands, written as `{"type", "id"}`; a
+  reference to a saved formula raises `FM3_NESTED_FORMULA`, and an operand
+  reference with an override raises `MR2_OPERAND_OVERRIDE`.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
