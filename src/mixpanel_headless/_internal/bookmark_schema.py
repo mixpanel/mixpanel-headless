@@ -1659,16 +1659,10 @@ PARTIAL_UPDATE_SUB_MODELS.update(
 # stored definitions carry them, and the query engine reads past them.
 # =============================================================================
 
-# Mirrors show.py ``WarehouseShowClauseDefinition.metricType``.
+# Mirrors show.py ``WarehouseShowClauseDefinition.metricType``. The
+# aggregation and sync interval literals are defined with
+# ``WarehouseShowClause`` above.
 WarehouseMetricTypeLiteral = Literal["timeseries", "numeric"]
-
-# Mirrors show.py ``WarehouseShowClauseDefinition.aggregation``.
-WarehouseAggregationLiteral = Literal[
-    "none", "sum", "count", "average", "min", "max", "median", "last_value"
-]
-
-# Mirrors show.py ``WarehouseShowClauseDefinition.syncInterval``.
-WarehouseSyncIntervalLiteral = Literal["hourly", "daily", "weekly", "manual"]
 
 
 class WarehouseShowClauseDefinition(BaseModel):
