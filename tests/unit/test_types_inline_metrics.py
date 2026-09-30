@@ -504,7 +504,7 @@ class TestFormulaOperands:
             RetentionMetric(_retention()),
             CohortMetric(12),
         ]
-        formula = Formula("(A + B) * C / D", label="Mix", metrics=operands)
+        formula = Formula("(A + B) * C / D", label="Mix", metrics=[*operands])
         assert formula.metrics == operands
         assert formula.label == "Mix"
 
@@ -513,7 +513,7 @@ class TestFormulaOperands:
         operands: list[Metric | CohortMetric | FunnelMetric | RetentionMetric] = [
             Metric(f"E{i}") for i in range(27)
         ]
-        assert Formula("BA / A", metrics=operands).metrics == operands
+        assert Formula("BA / A", metrics=[*operands]).metrics == operands
 
     def test_empty_expression_keeps_fm1(self) -> None:
         """An empty expression raises FM1 before any operand rule."""

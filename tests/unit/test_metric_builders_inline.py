@@ -681,7 +681,9 @@ class TestFormulaWithOperands:
             Metric("Purchase", math="total"),
             FunnelMetric(FUNNEL),
         ]
-        clause = build_formula_clause(Formula("A / B", label="Per", metrics=operands))
+        clause = build_formula_clause(
+            Formula("A / B", label="Per", metrics=[*operands])
+        )
         assert clause == {
             "type": "formula",
             "definition": "A / B",
@@ -703,7 +705,7 @@ class TestFormulaWithOperands:
             Metric("Purchase", math="total"),
             RetentionMetric(RETENTION),
         ]
-        formula = Formula("A * B", label="ignored", metrics=operands)
+        formula = Formula("A * B", label="ignored", metrics=[*operands])
         assert build_formula_definition(formula) == {
             "formula": {
                 "definition": "A * B",
