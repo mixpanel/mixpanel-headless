@@ -21,9 +21,13 @@ Environment:
       is unset.
     - ``MP_LIVE_WRITE_PROJECT`` — the only project id the tests write to; the
       suite skips when it is unset or differs from the account's project.
-    - ``MP_LIVE_EVENTS`` — two event names for the metric definitions, comma
-      separated. Optional: a create does not need the events to exist, so
-      the default names are placeholders.
+    - ``MP_LIVE_EVENT_A`` and ``MP_LIVE_EVENT_B`` — two event names for the
+      metric definitions. Optional: a create does not need the events to
+      exist, so the default names are placeholders. The reference-query
+      step compares numbers, so it needs real events to mean something.
+    - ``MP_LIVE_FROM`` and ``MP_LIVE_TO`` — optional date range
+      (YYYY-MM-DD) with data for the events. Without them the queries use
+      the last 30 days, which is empty when the project's clock is behind.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
@@ -41,9 +46,26 @@ from mixpanel_headless.exceptions import ParamValidationError, QueryError
 # All tests require the `live` marker — skipped by default
 pytestmark = pytest.mark.live
 
-_EVENTS = os.environ.get(
-    "MP_LIVE_EVENTS", "zz-headless-live event a,zz-headless-live event b"
-).split(",")
+_EVENTS = [
+    os.environ.get("MP_LIVE_EVENT_A", "zz-headless-live event a"),
+    os.environ.get("MP_LIVE_EVENT_B", "zz-headless-live event b"),
+]
+
+
+def _window() -> dict[str, Any]:
+    """Return the date arguments of every query in this module.
+
+    Returns:
+        ``from_date`` and ``to_date`` from ``MP_LIVE_FROM`` and
+        ``MP_LIVE_TO`` when both are set, otherwise ``last=30``.
+    """
+    from_date = os.environ.get("MP_LIVE_FROM")
+    to_date = os.environ.get("MP_LIVE_TO")
+    if from_date and to_date:
+        return {"from_date": from_date, "to_date": to_date}
+    return {"last": 30}
+
+
 _PREFIX = f"zz-headless-live-{uuid.uuid4().hex[:8]}-"
 
 
@@ -209,6 +231,57 @@ class TestSavedMetricWriteCycle:
                 mp.CreateMetricParams(name=name, definition=mp.Metric(_EVENTS[1]))
             )
         assert exc_info.value.status_code == 409
+
+
+class TestTypedDefinitionsLive:
+    """Typed values save through the definition compiler and query by reference."""
+
+    def test_formula_and_funnel_metric(
+        self, ws: mp.Workspace, created: _Created
+    ) -> None:
+        """A formula with operands and a funnel metric save with their kinds."""
+        formula = ws.create_metric(
+            mp.CreateMetricParams(
+                name=f"{_PREFIX}formula",
+                definition=mp.Formula(
+                    "A / B",
+                    metrics=[mp.Metric(_EVENTS[0]), mp.Metric(_EVENTS[1])],
+                ),
+            )
+        )
+        created.metrics.add(formula.id)
+        assert formula.type == "formula"
+        assert formula.formula_expression == "A / B"
+
+        funnel = ws.create_metric(
+            mp.CreateMetricParams(
+                name=f"{_PREFIX}funnel",
+                definition=mp.FunnelMetric(mp.FunnelBehavior(list(_EVENTS))),
+            )
+        )
+        created.metrics.add(funnel.id)
+        assert funnel.type == "metric"
+        assert funnel.behavior_type == "funnel"
+
+    def test_reference_query_matches_inline(
+        self, ws: mp.Workspace, created: _Created
+    ) -> None:
+        """A created metric queried by reference gives the numbers of its inline twin."""
+        inline_metric = mp.Metric(_EVENTS[0], math="total")
+        saved = ws.create_metric(
+            mp.CreateMetricParams(
+                name=f"{_PREFIX}by-reference", definition=inline_metric
+            )
+        )
+        created.metrics.add(saved.id)
+
+        by_reference = ws.query(saved, **_window())
+        inline = ws.query(inline_metric, **_window())
+
+        assert by_reference.params["sections"]["show"][0]["id"] == saved.id
+        (reference_series,) = by_reference.series.values()
+        (inline_series,) = inline.series.values()
+        assert reference_series == inline_series
 
 
 class TestSavedBehaviorWriteCycle:
