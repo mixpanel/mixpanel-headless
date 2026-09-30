@@ -196,6 +196,33 @@ def _id_map_rows(result: object, endpoint: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _single_row(result: object, endpoint: str) -> dict[str, Any]:
+    """Unwrap an id-keyed ``results`` map that must hold exactly one entity.
+
+    A single get, a create, and a single update of a saved metric or saved
+    behavior all answer with a one-entry map.
+
+    Args:
+        result: The ``results`` value that :meth:`MixpanelAPIClient.app_request`
+            returned.
+        endpoint: Name of the calling method, for the error message.
+
+    Returns:
+        The one entity dict.
+
+    Raises:
+        MixpanelHeadlessError: ``result`` is not an id-keyed map of entity
+            dicts, or it holds a number of entities other than one.
+    """
+    rows = _id_map_rows(result, endpoint)
+    if len(rows) != 1:
+        raise MixpanelHeadlessError(
+            f"Unexpected response from {endpoint}: expected one entity, "
+            f"got {len(rows)}",
+        )
+    return rows[0]
+
+
 def _iter_jsonl_lines(response: httpx.Response) -> Iterator[str]:
     """Iterate over JSONL lines from a streaming response with proper buffering.
 
@@ -9028,13 +9055,7 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/metrics/{metric_id}"
-        rows = _id_map_rows(self.app_request("GET", path), "get_metric")
-        if len(rows) != 1:
-            raise MixpanelHeadlessError(
-                f"Unexpected response from get_metric: expected one metric, "
-                f"got {len(rows)}",
-            )
-        return rows[0]
+        return _single_row(self.app_request("GET", path), "get_metric")
 
     def delete_metrics(self, metric_ids: list[int]) -> None:
         """Soft-delete saved metrics through the bulk route.
@@ -9064,6 +9085,122 @@ class MixpanelAPIClient:
         path = f"/projects/{self._session.project.id}/metrics"
         body = {"metrics": [{"id": metric_id} for metric_id in metric_ids]}
         self.app_request("DELETE", path, json_body=body)
+
+    def create_metric(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Create a saved metric.
+
+        Calls ``POST /api/app/projects/{pid}/metrics``. The server checks the
+        body against its JSON Schema, so an unknown key anywhere gives 400.
+        It drops ``owned_by`` and ``verified`` from a create; set them with
+        :meth:`update_metric`. A write is never retried on a timeout, because
+        a retried create can make a duplicate.
+
+        Args:
+            body: ``{"type", "name", "definition"}`` plus optional
+                ``description`` and, for a warehouse metric,
+                ``warehouse_source_id``.
+
+        Returns:
+            The created metric dict (the single value of the id-keyed map).
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: Schema failure (400), plan gate, permission, or
+                unknown warehouse source (403), or a duplicate active name
+                (409).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx), including a name or
+                description longer than 255 characters.
+            MixpanelHeadlessError: Network errors, including a timeout, or
+                an unexpected response shape.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                row = client.create_metric({
+                    "type": "metric",
+                    "name": "Logins",
+                    "definition": {"behavior": {...}, "measurement": {...}},
+                })
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/metrics"
+        return _single_row(
+            self.app_request("POST", path, json_body=body), "create_metric"
+        )
+
+    def update_metric(self, metric_id: int, body: dict[str, Any]) -> dict[str, Any]:
+        """Update one saved metric.
+
+        Calls ``PATCH /api/app/projects/{pid}/metrics/{metric_id}``. The
+        server runs no schema check on an update: it stores a ``definition``
+        as sent and replaces the old one in full. It reads ``name``,
+        ``description``, ``definition``, ``owned_by`` (only its ``id``), and
+        ``verified``, and ignores ``type`` and ``warehouse_source_id``.
+
+        Args:
+            metric_id: The saved metric id.
+            body: The fields to change.
+
+        Returns:
+            The updated metric dict (the single value of the id-keyed map).
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The metric is absent or deleted (404), the caller
+                cannot edit it (403), or the new name is taken (409).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx), including
+                ``owned_by: null``.
+            MixpanelHeadlessError: Network errors, including a timeout, or
+                an unexpected response shape.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                row = client.update_metric(104700, {"verified": True})
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/metrics/{metric_id}"
+        return _single_row(
+            self.app_request("PATCH", path, json_body=body), "update_metric"
+        )
+
+    def bulk_update_metrics(
+        self, entries: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Update several saved metrics in one request.
+
+        Calls ``PATCH /api/app/projects/{pid}/metrics`` with
+        ``{"metrics": [{"id": N, ...}, ...]}``. Each ``id`` must be a JSON
+        integer (a string id gives 500). The server skips ids that do not
+        name a metric of the project, with no error, and runs no schema
+        check.
+
+        Args:
+            entries: One dict per metric: ``id`` plus the fields to change.
+
+        Returns:
+            The updated metric dicts, in server order.
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit one of the metrics (403), or
+                a new name is taken (409).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network errors, including a timeout, or
+                an unexpected response shape.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                rows = client.bulk_update_metrics([{"id": 1, "verified": True}])
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/metrics"
+        result = self.app_request("PATCH", path, json_body={"metrics": entries})
+        return _id_map_rows(result, "bulk_update_metrics")
 
     def list_behaviors(self) -> list[dict[str, Any]]:
         """List every active saved behavior of the project.
@@ -9122,13 +9259,7 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/behaviors/{behavior_id}"
-        rows = _id_map_rows(self.app_request("GET", path), "get_behavior")
-        if len(rows) != 1:
-            raise MixpanelHeadlessError(
-                f"Unexpected response from get_behavior: expected one behavior, "
-                f"got {len(rows)}",
-            )
-        return rows[0]
+        return _single_row(self.app_request("GET", path), "get_behavior")
 
     def delete_behaviors(self, behavior_ids: list[int]) -> None:
         """Soft-delete saved behaviors through the bulk route.
@@ -9159,6 +9290,79 @@ class MixpanelAPIClient:
         path = f"/projects/{self._session.project.id}/behaviors"
         body = {"behaviors": [{"id": behavior_id} for behavior_id in behavior_ids]}
         self.app_request("DELETE", path, json_body=body)
+
+    def create_behavior(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Create one saved behavior.
+
+        Calls ``POST /api/app/projects/{pid}/behaviors`` with one behavior,
+        not the list form (the list form is not atomic). The server checks
+        the body against its JSON Schema: ``description`` must be a string
+        when present, never ``null``.
+
+        Args:
+            body: ``{"type", "name", "definition"}`` plus an optional
+                ``description``.
+
+        Returns:
+            The created behavior dict (the single value of the id-keyed map).
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: Schema failure (400), plan gate or permission (403),
+                or a duplicate active name (409).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network errors, including a timeout, or
+                an unexpected response shape.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                row = client.create_behavior({
+                    "type": "funnel",
+                    "name": "Checkout",
+                    "definition": {"behavior": {...}},
+                })
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/behaviors"
+        return _single_row(
+            self.app_request("POST", path, json_body=body), "create_behavior"
+        )
+
+    def update_behavior(self, behavior_id: int, body: dict[str, Any]) -> dict[str, Any]:
+        """Update one saved behavior.
+
+        Calls ``PATCH /api/app/projects/{pid}/behaviors/{behavior_id}``. The
+        server runs no schema check on an update and reads ``name``,
+        ``description``, ``definition``, and ``verified``.
+
+        Args:
+            behavior_id: The saved behavior id.
+            body: The fields to change.
+
+        Returns:
+            The updated behavior dict (the single value of the id-keyed map).
+
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit the behavior (403), or the new
+                name is taken (409).
+            RateLimitError: Rate limit exceeded after max retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network errors, including a timeout, or
+                an unexpected response shape.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                row = client.update_behavior(3001, {"verified": True})
+            ```
+        """
+        path = f"/projects/{self._session.project.id}/behaviors/{behavior_id}"
+        return _single_row(
+            self.app_request("PATCH", path, json_body=body), "update_behavior"
+        )
 
     # =========================================================================
     # Schema Enforcement (Phase 028)

@@ -251,7 +251,7 @@ class TestSavedMetricAccessors:
             {"display": "wide"},
             {"display": {"precision": "many"}},
             {"goals": "none"},
-            {"goals": [{"label": "no id"}, 5]},
+            {"goals": [{"id": "no label"}, 5]},
         ],
     )
     def test_unknown_shapes_give_none_or_empty(
@@ -276,7 +276,7 @@ class TestSavedMetricAccessors:
         """Goals that parse are returned; entries that do not are left out."""
         row = behavior_metric_json()
         good = row["definition"]["goals"][0]
-        row["definition"]["goals"] = [good, {"label": "missing id"}, "junk"]
+        row["definition"]["goals"] = [good, {"id": "missing label"}, "junk"]
         metric = SavedMetric.model_validate(row)
         assert [g.id for g in metric.goals] == [good["id"]]
 
@@ -443,8 +443,9 @@ class TestMetricGoal:
         assert goal.target_input == 0.1
 
     def test_defaults(self) -> None:
-        """Only id and label are required."""
-        goal = MetricGoal(id="g", label="L")
+        """Only the label is required; a new goal has no id yet."""
+        goal = MetricGoal(label="L")
+        assert goal.id is None
         assert goal.checkpoints == []
         assert goal.target_type == "absolute"
         assert goal.target_input is None

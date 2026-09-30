@@ -337,11 +337,11 @@ class TestWorkspaceMembers:
         assert len(members) == len(properties) + len(methods)
 
     def test_counts(self) -> None:
-        """``Workspace`` exposes 5 public properties and 217 public methods."""
+        """``Workspace`` exposes 5 public properties and 222 public methods."""
         members = workspace_members()
         assert sum(1 for _, kind in members if kind == "property") == 5
-        assert sum(1 for _, kind in members if kind == "method") == 217
-        assert len(members) == 222
+        assert sum(1 for _, kind in members if kind == "method") == 222
+        assert len(members) == 227
 
     def test_sorted_and_public(self) -> None:
         """Members are sorted by name and none is private."""

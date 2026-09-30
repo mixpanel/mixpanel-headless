@@ -82,6 +82,12 @@ from mixpanel_headless._literal_types import RetentionMode as RetentionMode
 from mixpanel_headless._literal_types import SegmentMethod as SegmentMethod
 from mixpanel_headless._literal_types import TimeComparisonType as TimeComparisonType
 from mixpanel_headless._literal_types import TimeComparisonUnit as TimeComparisonUnit
+from mixpanel_headless._literal_types import (
+    WarehouseAggregation as WarehouseAggregation,
+)
+from mixpanel_headless._literal_types import (
+    WarehouseSyncInterval as WarehouseSyncInterval,
+)
 from mixpanel_headless.auth_types import (
     AccountName,
     AccountType,
@@ -5788,14 +5794,14 @@ def _str_at(data: object, *keys: str) -> str | None:
 
     Args:
         data: The root value, usually a definition dict.
-        *keys: Dict keys to follow in order.
+        *keys: Mapping keys to follow in order.
 
     Returns:
-        The value at the path when every step is a dict and the value is a
-        string; otherwise None.
+        The value at the path when every step is a mapping and the value is
+        a string; otherwise None.
     """
     for key in keys:
-        if not isinstance(data, dict):
+        if not isinstance(data, Mapping):
             return None
         data = data.get(key)
     return data if isinstance(data, str) else None
@@ -5892,14 +5898,20 @@ class MetricDisplay(BaseModel):
 
 
 class MetricGoal(BaseModel):
-    """A goal stored with a saved metric: a label and dated target values.
+    """A goal of a saved metric: a label and dated target values.
 
-    The deprecated goal keys ``unit`` and ``direction`` still appear in
-    stored rows. The model keeps them as unknown keys (``model_extra``); the
-    server no longer reads them.
+    Read from ``SavedMetric.goals`` and written through ``CreateMetricParams``
+    and ``UpdateMetricParams``. The deprecated goal keys ``unit`` and
+    ``direction`` still appear in stored rows. The model keeps them as
+    unknown keys (``model_extra``); the server no longer reads them, and the
+    library never writes them.
+
+    On a write, a goal without an ``id`` gets a new UUID, and a ``date`` or
+    ``datetime`` checkpoint is written as a naive ISO timestamp
+    (``"2026-12-31T00:00:00"``), the form the web app stores.
 
     Attributes:
-        id: Goal identifier (a UUID string).
+        id: Goal identifier (a UUID string). ``None`` on a new goal.
         label: Goal label shown in the web app.
         checkpoints: ``(timestamp, value)`` pairs; the value is absolute.
         target_type: ``"absolute"`` or ``"relative"``.
@@ -5910,19 +5922,26 @@ class MetricGoal(BaseModel):
         metric = ws.get_metric(104700)
         for goal in metric.goals:
             print(goal.label, goal.checkpoints[-1])
+
+        goal = MetricGoal(label="Q4", checkpoints=[(date(2026, 12, 31), 5000)])
         ```
     """
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    id: str
-    """Goal identifier (a UUID string)."""
+    id: str | None = None
+    """Goal identifier (a UUID string). ``None`` on a new goal."""
 
     label: str
     """Goal label shown in the web app."""
 
-    checkpoints: list[tuple[str, float]] = Field(default_factory=list)
-    """``(timestamp, value)`` pairs; the value is absolute."""
+    checkpoints: list[tuple[str | datetime | dt_date, float]] = Field(
+        default_factory=list
+    )
+    """``(timestamp, value)`` pairs; the value is absolute.
+
+    Stored goals read back with ISO timestamp strings.
+    """
 
     target_type: str = "absolute"
     """``"absolute"`` or ``"relative"``."""
@@ -16522,3 +16541,606 @@ ReportLinkQueryResult = (
 
 Narrow with ``isinstance`` or by :attr:`ResolvedReport.report_type`.
 """
+
+
+# =============================================================================
+# Saved Metrics & Saved Behaviors — write types
+# =============================================================================
+# The read models (SavedMetric, SavedBehavior, MetricDisplay, MetricGoal) sit
+# in the "Saved Metrics & Saved Behaviors" section above. The write types
+# live here, after Metric and CohortMetric, because the params models name
+# them as definition values. The rules that carry registry codes (SM1 to
+# SM4, FM6) run in the Workspace write methods before any request, because a
+# coded error raised inside a pydantic validator loses its code.
+
+_SAVED_METRIC_KINDS: Final[tuple[str, ...]] = ("metric", "formula", "warehouse")
+"""Wire kinds of a saved metric that the POST schema accepts."""
+
+
+def _strip_name(value: object) -> object:
+    """Strip surrounding whitespace from a name before validation.
+
+    Args:
+        value: The raw ``name`` input.
+
+    Returns:
+        The stripped string, or the input unchanged when it is not a string.
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
+@dataclass(frozen=True)
+class WarehouseMetric:
+    """The definition of a saved warehouse metric: a SQL query on a warehouse source.
+
+    Valid only as the definition of :class:`CreateMetricParams` or
+    :class:`UpdateMetricParams`. The server runs the SQL of the saved metric
+    at query time, so a warehouse metric is queried by reference, never
+    inline. The wire definition always holds ``aggregation`` and
+    ``syncInterval``, because the server stores the request as sent and does
+    not fill in its defaults.
+
+    Attributes:
+        source_id: The warehouse source to run the query on (see the
+            project's warehouse sources in the web app).
+        sql: The SQL query.
+        metric_type: ``"numeric"`` (one value) or ``"timeseries"`` (a value
+            per time bucket).
+        value_column: The result column that holds the value.
+        time_column: The result column that holds the time, for a timeseries.
+        aggregation: How the metric aggregates the query rows.
+        sync_interval: How long a query result stays cached.
+
+    Example:
+        ```python
+        definition = WarehouseMetric(
+            55,
+            "SELECT day, revenue FROM finance.daily_revenue",
+            "timeseries",
+            value_column="revenue",
+            time_column="day",
+            aggregation="last_value",
+            sync_interval="daily",
+        )
+        ws.create_metric(CreateMetricParams(name="Daily revenue", definition=definition))
+        ```
+    """
+
+    source_id: int
+    """The warehouse source to run the query on."""
+
+    sql: str
+    """The SQL query (wire key ``query``)."""
+
+    metric_type: Literal["numeric", "timeseries"]
+    """``"numeric"`` or ``"timeseries"`` (wire key ``metricType``)."""
+
+    value_column: str | None = None
+    """The result column that holds the value (wire key ``valueColumn``)."""
+
+    time_column: str | None = None
+    """The result column that holds the time (wire key ``timeColumn``)."""
+
+    aggregation: WarehouseAggregation = "none"
+    """How the metric aggregates the query rows."""
+
+    sync_interval: WarehouseSyncInterval = "hourly"
+    """How long a query result stays cached (wire key ``syncInterval``)."""
+
+
+@dataclass(frozen=True)
+class RawMetricDefinition:
+    """A saved metric definition as a wire dict, with its kind.
+
+    Use it for a definition that no typed value covers (for example a
+    profile metric), or to send back a definition as ``get_metric`` returned
+    it: ``RawMetricDefinition(metric.type, metric.definition)``. The write
+    methods check the dict with the mirror of the server's POST schema
+    before they send it.
+
+    Attributes:
+        type: The metric kind: ``"metric"`` (a behavior metric),
+            ``"formula"``, or ``"warehouse"``.
+        definition: The wire definition dict.
+        warehouse_source_id: The warehouse source of a warehouse metric.
+            Required by ``create_metric``; ``update_metric`` keeps the
+            stored source when it is ``None``.
+
+    Raises:
+        ParamValidationError: ``type`` is not one of the three kinds,
+            ``definition`` is not a mapping, or a metric or formula kind has
+            a ``warehouse_source_id`` (``SM4_SCHEMA``).
+
+    Example:
+        ```python
+        stored = ws.get_metric(104700)
+        definition = RawMetricDefinition(stored.type, stored.definition)
+        ```
+    """
+
+    type: Literal["metric", "formula", "warehouse"]
+    """The metric kind."""
+
+    definition: Mapping[str, Any]
+    """The wire definition dict."""
+
+    warehouse_source_id: int | None = None
+    """The warehouse source of a warehouse metric."""
+
+    def __post_init__(self) -> None:
+        """Check the kind, the definition container, and the source id.
+
+        Raises:
+            ParamValidationError: A rule of the server POST schema fails
+                (``SM4_SCHEMA``).
+        """
+        if self.type not in _SAVED_METRIC_KINDS:
+            raise ParamValidationError(
+                f"RawMetricDefinition type must be one of "
+                f"{list(_SAVED_METRIC_KINDS)}, got {self.type!r}.",
+                code="SM4_SCHEMA",
+                details={"path": "type"},
+            )
+        if not isinstance(self.definition, Mapping):
+            raise ParamValidationError(
+                "RawMetricDefinition definition must be a mapping (the "
+                f"`definition` dict of a saved metric), got "
+                f"{type(self.definition).__name__}.",
+                code="SM4_SCHEMA",
+                details={"path": "definition"},
+            )
+        if self.warehouse_source_id is not None and self.type != "warehouse":
+            raise ParamValidationError(
+                f"warehouse_source_id applies to warehouse metrics only, not to "
+                f"type {self.type!r}.",
+                code="SM4_SCHEMA",
+                details={"path": "warehouse_source_id"},
+            )
+
+
+@dataclass(frozen=True)
+class RawBehaviorDefinition:
+    """A saved behavior definition as a wire dict: ``{"behavior": {...}}``.
+
+    Send back a definition as ``get_behavior`` returned it:
+    ``RawBehaviorDefinition(behavior.definition)``. The wire ``type`` of the
+    saved behavior comes from ``definition["behavior"]["type"]``. The write
+    methods check the dict with the mirror of the server's POST schema
+    before they send it.
+
+    Attributes:
+        definition: The wire definition dict.
+
+    Raises:
+        ParamValidationError: ``definition`` is not a mapping
+            (``SM4_SCHEMA``).
+
+    Example:
+        ```python
+        checkout = RawBehaviorDefinition({
+            "behavior": {
+                "type": "funnel",
+                "behaviors": [
+                    {"type": "event", "name": "View Cart"},
+                    {"type": "event", "name": "Purchase"},
+                ],
+                "conversionWindowDuration": 7,
+                "conversionWindowUnit": "day",
+            }
+        })
+        ```
+    """
+
+    definition: Mapping[str, Any]
+    """The wire definition dict."""
+
+    def __post_init__(self) -> None:
+        """Check the definition container.
+
+        Raises:
+            ParamValidationError: ``definition`` is not a mapping
+                (``SM4_SCHEMA``).
+        """
+        if not isinstance(self.definition, Mapping):
+            raise ParamValidationError(
+                "RawBehaviorDefinition definition must be a mapping "
+                '({"behavior": {...}}), got '
+                f"{type(self.definition).__name__}.",
+                code="SM4_SCHEMA",
+                details={"path": "definition"},
+            )
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The wire type of the behavior.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string;
+            otherwise None.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+
+MetricDefinition: TypeAlias = (
+    Metric | CohortMetric | WarehouseMetric | RawMetricDefinition
+)
+"""A value that defines a saved metric.
+
+``Metric`` and ``CohortMetric`` give a behavior metric (kind ``metric``),
+``WarehouseMetric`` gives a warehouse metric, and ``RawMetricDefinition``
+gives the kind it names.
+"""
+
+
+def _definition_instance(
+    value: object,
+    allowed: tuple[type[Any], ...],
+    *,
+    field_name: str,
+    wrapper: str,
+    allow_none: bool,
+) -> object:
+    """Accept a definition value only as an instance of an allowed type.
+
+    Used as a pydantic ``plain`` validator, so a plain dict is never
+    coerced into a dataclass by field names; the caller wraps a wire dict
+    in the raw definition type on purpose.
+
+    Args:
+        value: The field input.
+        allowed: The accepted definition types.
+        field_name: The field name, for the message.
+        wrapper: The raw definition type to suggest for a dict.
+        allow_none: Whether ``None`` is valid (an optional field).
+
+    Returns:
+        ``value`` unchanged.
+
+    Raises:
+        ValueError: ``value`` is not an instance of an allowed type (pydantic
+            reports it as a validation error).
+    """
+    if value is None and allow_none:
+        return value
+    if isinstance(value, allowed):
+        return value
+    names = ", ".join(t.__name__ for t in allowed)
+    raise ValueError(
+        f"{field_name} must be one of: {names}; got {type(value).__name__}. "
+        f"Wrap a wire definition dict in {wrapper}."
+    )
+
+
+_METRIC_DEFINITION_TYPES: Final[tuple[type[Any], ...]] = get_args(MetricDefinition)
+"""The types of ``MetricDefinition``, for instance checks."""
+
+
+class CreateMetricParams(BaseModel):
+    """Parameters for :meth:`Workspace.create_metric`.
+
+    The kind of the saved metric comes from the definition; the caller never
+    writes a wire ``type``. ``create_metric`` checks the params before any
+    request: the name is not empty (``SM1_EMPTY_NAME``), the name and
+    description are at most 255 characters (``SM2_NAME_TOO_LONG``), and
+    the definition passes the mirror of the server POST schema
+    (``SM4_SCHEMA``).
+
+    ``owned_by`` and ``verified`` go in a second request, because the server
+    drops them from a create.
+
+    Attributes:
+        name: Metric name, unique among the active metrics of the project.
+            Surrounding whitespace is stripped.
+        definition: What the metric counts.
+        description: Metric description.
+        display: Presentation settings. Replaces a ``display`` key of the
+            definition.
+        goals: Goals. Replace a ``goals`` key of the definition.
+        owned_by: User id of the owner.
+        verified: ``True`` marks the metric as verified.
+
+    Example:
+        ```python
+        params = CreateMetricParams(
+            name="Weekly buyers",
+            definition=Metric("Purchase", math="unique"),
+            description="Unique users who bought.",
+            display=MetricDisplay(suffix=" users"),
+            verified=True,
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    """Metric name (stripped)."""
+
+    definition: MetricDefinition
+    """What the metric counts."""
+
+    description: str | None = None
+    """Metric description."""
+
+    display: MetricDisplay | None = None
+    """Presentation settings."""
+
+    goals: list[MetricGoal] | None = None
+    """Goals."""
+
+    owned_by: int | None = None
+    """User id of the owner (sent in a follow-up request)."""
+
+    verified: bool | None = None
+    """``True`` marks the metric as verified (sent in a follow-up request)."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=False,
+        )
+
+
+class UpdateMetricParams(BaseModel):
+    """Parameters for :meth:`Workspace.update_metric`.
+
+    Every field is optional; ``None`` leaves the stored value as it is.
+    ``update_metric`` runs the same checks as ``create_metric``, because the
+    server stores an update as sent, without its own schema check.
+
+    A new definition replaces the stored one in full, but keeps the stored
+    ``display`` and ``goals`` unless the params or the new definition set
+    them. Pass ``goals=[]`` to remove the goals.
+
+    Attributes:
+        name: New name (stripped).
+        description: New description; ``""`` clears it.
+        definition: New definition, of the same kind as the stored metric.
+        display: New presentation settings.
+        goals: New goals; ``[]`` removes them.
+        owned_by: User id of the new owner. An owner cannot be removed.
+        verified: ``True`` marks the metric as verified again (and stamps
+            the verification time again); ``False`` clears the flag.
+
+    Example:
+        ```python
+        params = UpdateMetricParams(
+            description="Unique buyers per week.",
+            display=MetricDisplay(precision=0),
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    definition: MetricDefinition | None = None
+    """New definition, of the same kind as the stored metric."""
+
+    display: MetricDisplay | None = None
+    """New presentation settings."""
+
+    goals: list[MetricGoal] | None = None
+    """New goals; ``[]`` removes them."""
+
+    owned_by: int | None = None
+    """User id of the new owner."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance or None, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=True,
+        )
+
+
+class BulkUpdateMetricEntry(BaseModel):
+    """One entry of :meth:`Workspace.bulk_update_metrics`.
+
+    Holds the id plus the five fields that the server reads on a bulk
+    update. Its main use is to verify or reassign many metrics in one
+    request.
+
+    Attributes:
+        id: The saved metric id.
+        name: New name (stripped).
+        description: New description.
+        definition: New definition, of the same kind as the stored metric.
+        owned_by: User id of the new owner.
+        verified: New verified state.
+
+    Example:
+        ```python
+        entries = [BulkUpdateMetricEntry(id=m.id, verified=True) for m in metrics]
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: int = Field(gt=0)
+    """The saved metric id."""
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    definition: MetricDefinition | None = None
+    """New definition, of the same kind as the stored metric."""
+
+    owned_by: int | None = None
+    """User id of the new owner."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance or None, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=True,
+        )
+
+
+class CreateBehaviorParams(BaseModel):
+    """Parameters for :meth:`Workspace.create_behavior`.
+
+    The wire ``type`` of the saved behavior comes from the behavior value.
+    ``create_behavior`` checks the name (``SM1_EMPTY_NAME``,
+    ``SM2_NAME_TOO_LONG``) and the definition (``SM4_SCHEMA``) before the
+    request.
+
+    Attributes:
+        name: Behavior name, unique among the active behaviors of the
+            project. Surrounding whitespace is stripped.
+        behavior: What users did.
+        description: Behavior description.
+
+    Example:
+        ```python
+        params = CreateBehaviorParams(
+            name="Checkout",
+            behavior=RawBehaviorDefinition({"behavior": {...}}),
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    """Behavior name (stripped)."""
+
+    behavior: RawBehaviorDefinition
+    """What users did."""
+
+    description: str | None = None
+    """Behavior description."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("behavior", mode="plain")
+    @classmethod
+    def _check_behavior(cls, value: object) -> object:
+        """Accept only a behavior definition instance, never a coerced dict.
+
+        Args:
+            value: The ``behavior`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            (RawBehaviorDefinition,),
+            field_name="behavior",
+            wrapper="RawBehaviorDefinition",
+            allow_none=False,
+        )
+
+
+class UpdateBehaviorParams(BaseModel):
+    """Parameters for :meth:`Workspace.update_behavior`.
+
+    Every field is optional; ``None`` leaves the stored value as it is. A
+    new behavior replaces the stored definition in full and must have the
+    same type as the stored behavior.
+
+    Attributes:
+        name: New name (stripped).
+        description: New description; ``""`` clears it.
+        behavior: New definition, of the same type as the stored behavior.
+        verified: ``True`` marks the behavior as verified again; ``False``
+            clears the flag.
+
+    Example:
+        ```python
+        params = UpdateBehaviorParams(description="Cart to purchase.", verified=True)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    behavior: RawBehaviorDefinition | None = None
+    """New definition, of the same type as the stored behavior."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("behavior", mode="plain")
+    @classmethod
+    def _check_behavior(cls, value: object) -> object:
+        """Accept only a behavior definition instance or None.
+
+        Args:
+            value: The ``behavior`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            (RawBehaviorDefinition,),
+            field_name="behavior",
+            wrapper="RawBehaviorDefinition",
+            allow_none=True,
+        )

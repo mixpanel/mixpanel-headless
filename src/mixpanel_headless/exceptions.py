@@ -2018,9 +2018,14 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "RL4_REPORT_TYPE_CONFLICT",
         "RL5_RESOLVED_REPORT_INCONSISTENT",
         "RL6_INVALID_ID",
-        # -- saved metrics and saved behaviors: delete guards ----------------
+        # -- saved metrics and saved behaviors: write and delete guards ------
+        "SM1_EMPTY_NAME",
+        "SM2_NAME_TOO_LONG",
+        "SM3_KIND_CHANGE",
+        "SM4_SCHEMA",
         "SM5_NOT_FOUND_FOR_DELETE",
         "SM6_DELETE_NOT_PERMITTED",
+        "FM6_OPERAND_ATTRIBUTION",
         "BH4_DELETE_NOT_PERMITTED",
         # -- saved-entity references: MetricRef, BehaviorRef, formula operands
         "MR1_FILTER_OVERRIDE",

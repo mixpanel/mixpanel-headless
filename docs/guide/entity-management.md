@@ -1197,7 +1197,7 @@ Project webhooks receive HTTP notifications when events occur in your Mixpanel p
 
 ## Saved Metrics and Behaviors
 
-Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors (simple, funnel, retention) are project-scoped. The list methods return the full server list, including metrics that you cannot view, and filter it locally. The deletes go through the bulk routes; the single-id forms read the entity first. The [Saved Metrics and Behaviors guide](saved-metrics.md) covers the details.
+Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors (simple, funnel, retention) are project-scoped. The list methods return the full server list, including metrics that you cannot view, and filter it locally. Creates and updates are checked on the client before the request, because the server does not check an update. The deletes go through the bulk routes; the single-id forms read the entity first. The [Saved Metrics and Behaviors guide](saved-metrics.md) covers the details.
 
 === "Python"
 
@@ -1205,6 +1205,11 @@ Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behavior
     governed = ws.list_metrics(verified=True, viewable_only=True)
     metric = ws.get_metric(governed[0].id)
     funnels = ws.list_behaviors(behavior_type="funnel")
+
+    saved = ws.create_metric(mp.CreateMetricParams(
+        name="Weekly buyers", definition=mp.Metric("Purchase", math="unique"),
+    ))
+    ws.update_metric(saved.id, mp.UpdateMetricParams(verified=True))
 
     ws.delete_metric(104700)
     ws.delete_behaviors([3001, 3002])
@@ -1215,6 +1220,8 @@ Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behavior
     ```bash
     mp metrics list --verified --viewable-only --format table
     mp metrics get 104700
+    mp metrics get 104700 --jq .definition | mp metrics create --name "Copy" --definition-file -
+    mp metrics verify 104700 118228
     mp behaviors list --type funnel
     mp metrics delete 104700
     ```
@@ -1226,5 +1233,5 @@ Saved metrics (behavior metrics, formulas, warehouse metrics) and saved behavior
 - [API Reference — Workspace](../api/workspace.md) — Complete method signatures and docstrings
 - [API Reference — Types](../api/types.md) — Dashboard, Bookmark, Cohort, Feature Flag, Experiment, Alert, Annotation, and Webhook type definitions
 - [CLI Reference](../cli/index.md) — Full CLI command documentation
-- [Saved Metrics and Behaviors Guide](saved-metrics.md) — List, read, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
+- [Saved Metrics and Behaviors Guide](saved-metrics.md) — List, read, create, update, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
 - [Data Governance Guide](data-governance.md) — Manage Lexicon definitions, drop filters, custom properties, custom events, and lookup tables
