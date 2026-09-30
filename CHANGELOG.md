@@ -165,6 +165,10 @@ may include API changes.
   `RawBehaviorDefinition` (a wire definition dict, for example one that a
   get returned), the `MetricDefinition` alias, and the `Literal` aliases
   `WarehouseAggregation` and `WarehouseSyncInterval`.
+  `SavedMetric.to_raw_definition()` returns a stored metric as a
+  `RawMetricDefinition`, with its kind and warehouse source, for a copy;
+  a legacy `behavior` kind becomes `metric`, and an unknown kind raises
+  `SM4_SCHEMA`.
 - The server checks a create against its JSON Schema but stores an update
   as sent, so every write runs the same client-side checks before any
   request, with new `ParamValidationError` codes: `SM1_EMPTY_NAME`,

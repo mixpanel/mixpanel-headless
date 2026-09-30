@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any
 
 import httpx
 import pytest
@@ -180,11 +180,10 @@ class TestCreateMetric:
         [behavior_metric_json(1), formula_metric_json(2), warehouse_metric_json(3)],
     )
     def test_copy_from_a_get(self, temp_dir: Path, stored: dict[str, Any]) -> None:
-        """A copy made from get_metric passes the warehouse source along.
+        """A copy made from get_metric with to_raw_definition keeps the source.
 
-        A warehouse metric keeps its source outside the definition, so the
-        copy passes ``source.warehouse_source_id`` (``None`` for the other
-        kinds) to ``RawMetricDefinition``.
+        A warehouse metric keeps its source outside the definition;
+        ``to_raw_definition`` carries it (``None`` for the other kinds).
 
         Args:
             temp_dir: Temporary directory fixture.
@@ -199,16 +198,10 @@ class TestCreateMetric:
         )
         ws = _make_workspace(temp_dir, server)
         source = ws.get_metric(metric_id)
-        # SavedMetric.type is an open str; RawMetricDefinition checks it.
-        kind = cast(Literal["metric", "formula", "warehouse"], source.type)
         ws.create_metric(
             CreateMetricParams(
                 name=f"{source.name} (copy)",
-                definition=RawMetricDefinition(
-                    kind,
-                    source.definition,
-                    warehouse_source_id=source.warehouse_source_id,
-                ),
+                definition=source.to_raw_definition(),
             )
         )
         body = server.body(1)

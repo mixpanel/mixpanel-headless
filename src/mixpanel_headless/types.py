@@ -6388,6 +6388,48 @@ class SavedMetric(BaseModel):
             )
         return ref
 
+    def to_raw_definition(self) -> RawMetricDefinition:
+        """Return the stored definition as a write value, for a copy.
+
+        The value holds a copy of the definition, the kind, and (for a
+        warehouse metric) the warehouse source, which the server keeps
+        outside the definition. A legacy ``behavior`` kind becomes
+        ``metric``, as in the kind check of ``update_metric``.
+
+        Returns:
+            A :class:`RawMetricDefinition` for
+            :class:`CreateMetricParams` or :class:`UpdateMetricParams`.
+
+        Raises:
+            ParamValidationError: The stored kind is not one that a create
+                accepts (``SM4_SCHEMA``).
+
+        Example:
+            ```python
+            source = ws.get_metric(118228)
+            ws.create_metric(mp.CreateMetricParams(
+                name=f"{source.name} (copy)",
+                definition=source.to_raw_definition(),
+            ))
+            ```
+        """
+        kind = "metric" if self.type == "behavior" else self.type
+        if kind not in _SAVED_METRIC_KINDS:
+            raise ParamValidationError(
+                f"Saved metric {self.id} has kind {self.type!r}, which no "
+                f"create accepts. The kinds are {list(_SAVED_METRIC_KINDS)} "
+                f"(a legacy 'behavior' kind counts as 'metric').",
+                code="SM4_SCHEMA",
+                details={"path": "type", "id": self.id, "type": self.type},
+            )
+        return RawMetricDefinition(
+            cast(Literal["metric", "formula", "warehouse"], kind),
+            copy.deepcopy(self.definition),
+            warehouse_source_id=(
+                self.warehouse_source_id if kind == "warehouse" else None
+            ),
+        )
+
 
 # =============================================================================
 # Schema Registry Types (Phase 028)
@@ -16633,11 +16675,11 @@ class RawMetricDefinition:
     """A saved metric definition as a wire dict, with its kind.
 
     Use it for a definition that no typed value covers (for example a
-    profile metric), or to send back a definition as ``get_metric`` returned
-    it. A warehouse metric keeps its source outside the definition, so a
-    copy passes ``metric.warehouse_source_id`` too (``None`` for the other
-    kinds). The write methods check the dict with the mirror of the server's
-    POST schema before they send it.
+    profile metric), or to send back a definition as ``get_metric``
+    returned it: :meth:`SavedMetric.to_raw_definition` builds one with the
+    kind and, for a warehouse metric, the source that the server keeps
+    outside the definition. The write methods check the dict with the
+    mirror of the server's POST schema before they send it.
 
     Attributes:
         type: The metric kind: ``"metric"`` (a behavior metric),
@@ -16655,11 +16697,7 @@ class RawMetricDefinition:
     Example:
         ```python
         stored = ws.get_metric(104700)
-        definition = RawMetricDefinition(
-            stored.type,
-            stored.definition,
-            warehouse_source_id=stored.warehouse_source_id,
-        )
+        definition = stored.to_raw_definition()
         ```
     """
 

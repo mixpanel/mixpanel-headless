@@ -179,7 +179,7 @@ A saved metric takes its kind from its definition; you never write the wire `typ
 | `mp.WarehouseMetric(source_id, sql, metric_type, ...)` | `warehouse` |
 | `mp.RawMetricDefinition(kind, definition, warehouse_source_id=None)` | the kind it names |
 
-The typed values go through the same builders as `ws.query()`, so a saved metric queries the same way as its inline twin. A `Formula` without `metrics` names the other metrics of a query by letter, so it cannot be saved (`SM7_FORMULA_WITHOUT_OPERANDS`). `RawMetricDefinition` takes a wire definition dict, for example the `definition` of a metric that `get_metric` returned. Use it for shapes that no typed value covers, such as profile metrics.
+The typed values go through the same builders as `ws.query()`, so a saved metric queries the same way as its inline twin. A `Formula` without `metrics` names the other metrics of a query by letter, so it cannot be saved (`SM7_FORMULA_WITHOUT_OPERANDS`). `RawMetricDefinition` takes a wire definition dict, for example the `definition` of a metric that `get_metric` returned; `SavedMetric.to_raw_definition()` builds that value with the kind and, for a warehouse metric, the source. Use it for shapes that no typed value covers, such as profile metrics.
 
 A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehavior`, or a `RawBehaviorDefinition`; its wire type comes from the value. The saved definition never holds a `name`: the saved behavior's own name labels it.
 
@@ -224,16 +224,13 @@ A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehav
         ),
     ))
 
-    # Copy a metric: read it, then create from its wire definition. A warehouse
-    # metric keeps its source outside the definition, so pass it too (it is
-    # None for the other kinds).
+    # Copy a metric: read it, then create from its stored definition.
+    # to_raw_definition() carries the kind and, for a warehouse metric, the
+    # source that the server keeps outside the definition.
     source = ws.get_metric(118228)
     ws.create_metric(mp.CreateMetricParams(
         name=f"{source.name} (copy)",
-        definition=mp.RawMetricDefinition(
-            source.type, source.definition,
-            warehouse_source_id=source.warehouse_source_id,
-        ),
+        definition=source.to_raw_definition(),
     ))
 
     # A saved behavior, then a funnel metric over it
