@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import httpx
 import pytest
@@ -174,6 +174,47 @@ def _ok(*rows: dict[str, Any]) -> httpx.Response:
 
 class TestCreateMetric:
     """Tests for Workspace.create_metric()."""
+
+    @pytest.mark.parametrize(
+        "stored",
+        [behavior_metric_json(1), formula_metric_json(2), warehouse_metric_json(3)],
+    )
+    def test_copy_from_a_get(self, temp_dir: Path, stored: dict[str, Any]) -> None:
+        """A copy made from get_metric passes the warehouse source along.
+
+        A warehouse metric keeps its source outside the definition, so the
+        copy passes ``source.warehouse_source_id`` (``None`` for the other
+        kinds) to ``RawMetricDefinition``.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            stored: The stored metric of one kind.
+        """
+        metric_id = stored["id"]
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/{metric_id}"): _ok(stored),
+                ("POST", _METRICS_PATH): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        source = ws.get_metric(metric_id)
+        # SavedMetric.type is an open str; RawMetricDefinition checks it.
+        kind = cast(Literal["metric", "formula", "warehouse"], source.type)
+        ws.create_metric(
+            CreateMetricParams(
+                name=f"{source.name} (copy)",
+                definition=RawMetricDefinition(
+                    kind,
+                    source.definition,
+                    warehouse_source_id=source.warehouse_source_id,
+                ),
+            )
+        )
+        body = server.body(1)
+        assert body["type"] == stored["type"]
+        assert body["definition"] == stored["definition"]
+        assert body.get("warehouse_source_id") == stored.get("warehouse_source_id")
 
     def test_metric_post_body(self, temp_dir: Path) -> None:
         """A Metric sends {type, name, definition} with its show-clause parts."""

@@ -224,11 +224,16 @@ A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehav
         ),
     ))
 
-    # Copy a metric: read it, then create from its wire definition
+    # Copy a metric: read it, then create from its wire definition. A warehouse
+    # metric keeps its source outside the definition, so pass it too (it is
+    # None for the other kinds).
     source = ws.get_metric(118228)
     ws.create_metric(mp.CreateMetricParams(
         name=f"{source.name} (copy)",
-        definition=mp.RawMetricDefinition(source.type, source.definition),
+        definition=mp.RawMetricDefinition(
+            source.type, source.definition,
+            warehouse_source_id=source.warehouse_source_id,
+        ),
     ))
 
     # A saved behavior, then a funnel metric over it
@@ -248,6 +253,11 @@ A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehav
     # The definition file is the `definition` object that `get` prints
     mp metrics get 118228 --jq .definition > definition.json
     mp metrics create --name "Signup conversion (copy)" --definition-file definition.json
+
+    # A warehouse metric keeps its source outside the definition: pass it again
+    mp metrics get 120001 --jq .definition > wh.json
+    mp metrics create --name "Daily revenue (copy)" --definition-file wh.json \
+        --warehouse-source-id "$(mp metrics get 120001 --jq .warehouse_source_id)"
 
     # --kind is inferred (formula block, then query, then metric); stdin works too
     cat definition.json | mp metrics create --name "From stdin" --definition-file -

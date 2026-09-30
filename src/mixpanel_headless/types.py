@@ -16634,9 +16634,10 @@ class RawMetricDefinition:
 
     Use it for a definition that no typed value covers (for example a
     profile metric), or to send back a definition as ``get_metric`` returned
-    it: ``RawMetricDefinition(metric.type, metric.definition)``. The write
-    methods check the dict with the mirror of the server's POST schema
-    before they send it.
+    it. A warehouse metric keeps its source outside the definition, so a
+    copy passes ``metric.warehouse_source_id`` too (``None`` for the other
+    kinds). The write methods check the dict with the mirror of the server's
+    POST schema before they send it.
 
     Attributes:
         type: The metric kind: ``"metric"`` (a behavior metric),
@@ -16654,7 +16655,11 @@ class RawMetricDefinition:
     Example:
         ```python
         stored = ws.get_metric(104700)
-        definition = RawMetricDefinition(stored.type, stored.definition)
+        definition = RawMetricDefinition(
+            stored.type,
+            stored.definition,
+            warehouse_source_id=stored.warehouse_source_id,
+        )
         ```
     """
 

@@ -155,6 +155,21 @@ class TestMetricsGet:
         mock_ws.get_metric.assert_called_once_with(2)
 
     @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_jq_prints_the_bare_warehouse_source(self, mock_get_ws: MagicMock) -> None:
+        """--jq .warehouse_source_id prints a bare id for --warehouse-source-id."""
+        mock_ws = MagicMock()
+        mock_ws.get_metric.return_value = SavedMetric.model_validate(
+            warehouse_metric_json()
+        )
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(
+            app, ["metrics", "get", "120001", "--jq", ".warehouse_source_id"]
+        )
+        assert result.exit_code == 0, result.output
+        assert result.stdout == "55\n"
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
     def test_not_found_exits_nonzero(self, mock_get_ws: MagicMock) -> None:
         """A 404 from the server exits with a non-zero code and an error on stderr."""
         mock_ws = MagicMock()
