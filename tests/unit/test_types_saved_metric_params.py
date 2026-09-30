@@ -19,11 +19,17 @@ from mixpanel_headless.types import (
     CohortMetric,
     CreateBehaviorParams,
     CreateMetricParams,
+    Formula,
+    FunnelBehavior,
+    FunnelMetric,
     Metric,
     MetricDisplay,
     MetricGoal,
     RawBehaviorDefinition,
     RawMetricDefinition,
+    RetentionBehavior,
+    RetentionMetric,
+    SimpleBehavior,
     UpdateBehaviorParams,
     UpdateMetricParams,
     WarehouseMetric,
@@ -154,6 +160,9 @@ class TestCreateMetricParams:
         [
             Metric("Login", math="unique"),
             CohortMetric(123, "Power users"),
+            FunnelMetric(FunnelBehavior(["Signup", "Purchase"])),
+            RetentionMetric(RetentionBehavior("Signup", "Login")),
+            Formula("A / B", metrics=[Metric("A"), Metric("B")]),
             WarehouseMetric(55, "SELECT 1", "numeric"),
             RawMetricDefinition("formula", {"formula": {}}),
         ],
@@ -251,6 +260,24 @@ class TestBehaviorParams:
         assert params.name == "Any purchase"
         assert params.behavior is raw
         assert params.description is None
+
+    @pytest.mark.parametrize(
+        "behavior",
+        [
+            SimpleBehavior(["Purchase", "Subscribe"]),
+            FunnelBehavior(["View Cart", "Purchase"]),
+            RetentionBehavior("Signup", "Login"),
+        ],
+    )
+    def test_create_accepts_typed_behaviors(self, behavior: object) -> None:
+        """Each typed behavior value is kept as the same instance.
+
+        Args:
+            behavior: A typed behavior value.
+        """
+        params = CreateBehaviorParams(name="b", behavior=behavior)
+        assert params.behavior is behavior
+        assert UpdateBehaviorParams(behavior=behavior).behavior is behavior
 
     def test_create_refuses_a_plain_dict(self) -> None:
         """A plain dict is not a behavior; wrap it in RawBehaviorDefinition."""

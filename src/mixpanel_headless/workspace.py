@@ -334,6 +334,7 @@ from mixpanel_headless.types import (
     UserQueryResult,
     ValidateAlertsForBookmarkParams,
     ValidateAlertsForBookmarkResponse,
+    WarehouseMetric,
     WebhookMutationResult,
     WebhookTestParams,
     WebhookTestResult,
@@ -2415,6 +2416,9 @@ class Workspace:
 
         Raises:
             ValueError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``,
+                which defines a saved warehouse metric and is not a query
+                value (``MR3_WAREHOUSE_INLINE``); query it by reference.
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid query parameters.
@@ -2615,6 +2619,8 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``); query it by reference.
 
         Example:
             ```python
@@ -2734,7 +2740,23 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If validation fails at any layer.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``).
         """
+        # A WarehouseMetric defines a saved warehouse metric. The server runs
+        # warehouse SQL only by saved id and ignores an inline query, so the
+        # value is refused here with a pointer to the reference form.
+        items = events if isinstance(events, (list, tuple)) else [events]
+        if any(isinstance(item, WarehouseMetric) for item in items):
+            raise ParamValidationError(
+                "A WarehouseMetric defines a saved warehouse metric; it is not a "
+                "query value, because the server runs warehouse SQL only by saved "
+                "id. Save it with create_metric, then query "
+                'MetricRef(id, type="warehouse") or the SavedMetric that '
+                "create_metric returns.",
+                code="MR3_WAREHOUSE_INLINE",
+            )
+
         # Type guard: events must be an inline metric, a saved-metric
         # reference, a Formula, or a sequence thereof
         if not isinstance(
@@ -9095,12 +9117,15 @@ class Workspace:
     ) -> SavedMetric:
         """Create a saved metric from a typed or raw definition.
 
-        The kind comes from the definition: a ``Metric`` or ``CohortMetric``
-        gives a behavior metric, a ``WarehouseMetric`` gives a warehouse
-        metric, and a ``RawMetricDefinition`` gives the kind it names. A
-        behavior metric saves the ``behavior`` and ``measurement`` that
-        :meth:`query` writes for the same value, so the saved metric queries
-        the same way as its inline twin.
+        The kind comes from the definition: a ``Metric``, ``CohortMetric``,
+        ``FunnelMetric``, or ``RetentionMetric`` gives a behavior metric, a
+        ``Formula`` with its own operands gives a saved formula, a
+        ``WarehouseMetric`` gives a warehouse metric, and a
+        ``RawMetricDefinition`` gives the kind it names. A behavior metric
+        saves the ``behavior`` and ``measurement`` that :meth:`query` writes
+        for the same value, and a saved formula holds the operands that a
+        query formula holds, so the saved metric queries the same way as its
+        inline twin.
 
         Before any request, the method checks the name and description and
         the definition (see Raises). Then it sends the create. The server
@@ -9131,7 +9156,8 @@ class Workspace:
                 (``SM2_NAME_TOO_LONG``); a definition that fails the schema
                 mirror, or a warehouse definition without a source
                 (``SM4_SCHEMA``); a saved formula whose operands use segment
-                method or attribution (``FM6_OPERAND_ATTRIBUTION``).
+                method or attribution (``FM6_OPERAND_ATTRIBUTION``); a
+                ``Formula`` without operands (``SM7_FORMULA_WITHOUT_OPERANDS``).
             ResponseValidationError: Malformed API response payload
                 (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.

@@ -138,6 +138,7 @@ from mixpanel_headless.types import (
     AnnotationUser,
     AuditResponse,
     AuditViolation,
+    BehaviorDefinition,
     BehaviorRef,
     BlueprintCard,
     BlueprintConfig,
@@ -662,6 +663,7 @@ __all__ = [
     "CreateBehaviorParams",
     "UpdateBehaviorParams",
     "RawBehaviorDefinition",
+    "BehaviorDefinition",
     # Business Context (AIE-147)
     "BUSINESS_CONTEXT_MAX_CHARS",
     "BusinessContext",

@@ -40,17 +40,22 @@ from mixpanel_headless._internal.bookmark_schema import (
     MetricDisplay as _MetricDisplaySchema,
 )
 from mixpanel_headless._internal.query.metric_builders import (
-    build_cohort_metric_clause,
-    build_metric_clause,
+    build_behavior_definition,
+    build_formula_definition,
+    build_metric_definition,
 )
 from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
+    BehaviorDefinition,
     CohortMetric,
+    Formula,
+    FunnelMetric,
     Metric,
     MetricDefinition,
     MetricDisplay,
     MetricGoal,
     RawBehaviorDefinition,
+    RetentionMetric,
     SavedMetric,
     WarehouseMetric,
 )
@@ -99,12 +104,26 @@ class MetricWireParts:
 def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
     """Turn a saved metric definition value into its wire pieces.
 
+    A behavior metric definition is the ``behavior`` and ``measurement`` of
+    the show clause that ``Workspace.query`` writes for the same value, and
+    a saved formula holds its operands the way a query formula with its own
+    operands does. So a saved metric queries the same way as its inline
+    twin.
+
     Args:
-        definition: A ``Metric`` or ``CohortMetric`` (a behavior metric),
-            a ``WarehouseMetric``, or a ``RawMetricDefinition``.
+        definition: A ``Metric``, ``CohortMetric``, ``FunnelMetric``, or
+            ``RetentionMetric`` (a behavior metric); a ``Formula`` with its
+            own operands (a saved formula); a ``WarehouseMetric``; or a
+            ``RawMetricDefinition``.
 
     Returns:
         The kind, a new definition dict, and the warehouse source.
+
+    Raises:
+        ParamValidationError: A ``Formula`` without operands, whose letters
+            name the other metrics of a query and so mean nothing on their
+            own (``SM7_FORMULA_WITHOUT_OPERANDS``); a ``MetricRef`` operand
+            with overrides (``MR2_OPERAND_OVERRIDE``).
 
     Example:
         ```python
@@ -113,24 +132,25 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
         parts.definition  # {"behavior": {...}, "measurement": {"math": "unique"}}
         ```
     """
-    if isinstance(definition, Metric):
-        clause = build_metric_clause(definition)
+    if isinstance(definition, (Metric, CohortMetric, FunnelMetric, RetentionMetric)):
         return MetricWireParts(
             kind="metric",
-            definition={
-                "behavior": clause["behavior"],
-                "measurement": clause["measurement"],
-            },
+            definition=build_metric_definition(definition),
             warehouse_source_id=None,
         )
-    if isinstance(definition, CohortMetric):
-        clause = build_cohort_metric_clause(definition)
+    if isinstance(definition, Formula):
+        if definition.metrics is None:
+            raise ParamValidationError(
+                f"Formula {definition.expression!r} names the other metrics of a "
+                f"query by letter, so it has no meaning as a saved formula. Give "
+                f"the formula its own operands: Formula(expression, "
+                f"metrics=[...]).",
+                code="SM7_FORMULA_WITHOUT_OPERANDS",
+                details={"expression": definition.expression},
+            )
         return MetricWireParts(
-            kind="metric",
-            definition={
-                "behavior": clause["behavior"],
-                "measurement": clause["measurement"],
-            },
+            kind="formula",
+            definition=build_formula_definition(definition),
             warehouse_source_id=None,
         )
     if isinstance(definition, WarehouseMetric):
@@ -156,22 +176,27 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
     )
 
 
-def behavior_wire_definition(behavior: RawBehaviorDefinition) -> dict[str, Any]:
+def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
     """Turn a saved behavior definition value into its wire definition.
 
     Args:
-        behavior: A ``RawBehaviorDefinition``.
+        behavior: A ``SimpleBehavior``, ``FunnelBehavior``, or
+            ``RetentionBehavior`` (compiled with the same builders as the
+            behavior of a query metric, without a name), or a
+            ``RawBehaviorDefinition`` (copied).
 
     Returns:
         A new ``{"behavior": {...}}`` dict that the caller may change.
 
     Example:
         ```python
-        behavior_wire_definition(RawBehaviorDefinition({"behavior": {"type": "simple"}}))
-        # {"behavior": {"type": "simple"}}
+        behavior_wire_definition(FunnelBehavior(["View Cart", "Purchase"]))
+        # {"behavior": {"type": "funnel", "resourceType": "events", ...}}
         ```
     """
-    return _copy_mapping(behavior.definition)
+    if isinstance(behavior, RawBehaviorDefinition):
+        return _copy_mapping(behavior.definition)
+    return build_behavior_definition(behavior)
 
 
 def _copy_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

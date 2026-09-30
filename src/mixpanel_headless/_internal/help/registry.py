@@ -903,6 +903,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "CreateBehaviorParams",
             "UpdateBehaviorParams",
             "RawBehaviorDefinition",
+            "BehaviorDefinition",
         ),
         "saved behaviors — simple, funnel, and retention",
         "guide/saved-metrics.md",

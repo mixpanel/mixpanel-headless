@@ -865,8 +865,12 @@ ALIAS_DOCS: dict[str, str] = {
     ),
     "MetricDefinition": (
         "Any value that defines a saved metric (CreateMetricParams.definition): "
-        "a typed inline metric, a warehouse metric, or a raw wire definition "
-        "with its kind."
+        "a typed inline metric, a formula with its own operands, a warehouse "
+        "metric, or a raw wire definition with its kind."
+    ),
+    "BehaviorDefinition": (
+        "Any value that defines a saved behavior (CreateBehaviorParams.behavior): "
+        "a typed simple, funnel, or retention behavior, or a raw wire definition."
     ),
     "ReportLinkQueryResult": (
         "Typed result of Workspace.query_report_link; the concrete class "
@@ -893,6 +897,7 @@ aliases defined in this module; the rest describe exports that live
 elsewhere (``Region`` and ``AccountType`` are exported from
 ``_internal/auth/account.py``, ``BookmarkType``, ``SavedReportType``,
 ``EntityType``, ``ReportLinkType``, ``PropertySpec``, ``MetricDefinition``,
+``BehaviorDefinition``,
 ``ReportLinkQueryResult`` and ``BUSINESS_CONTEXT_MAX_CHARS`` from
 ``types.py``, ``Account`` from ``auth_types.py``) so one dict covers every
 such export. ``tests/unit/help/test_registry_completeness.py`` asserts the

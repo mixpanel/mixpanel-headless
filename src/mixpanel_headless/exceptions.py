@@ -2025,7 +2025,9 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "SM4_SCHEMA",
         "SM5_NOT_FOUND_FOR_DELETE",
         "SM6_DELETE_NOT_PERMITTED",
+        "SM7_FORMULA_WITHOUT_OPERANDS",
         "FM6_OPERAND_ATTRIBUTION",
+        "MR3_WAREHOUSE_INLINE",
         "BH4_DELETE_NOT_PERMITTED",
         # -- saved-entity references: MetricRef, BehaviorRef, formula operands
         "MR1_FILTER_OVERRIDE",

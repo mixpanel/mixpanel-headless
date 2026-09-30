@@ -16762,13 +16762,30 @@ class RawBehaviorDefinition:
 
 
 MetricDefinition: TypeAlias = (
-    Metric | CohortMetric | WarehouseMetric | RawMetricDefinition
+    Metric
+    | CohortMetric
+    | FunnelMetric
+    | RetentionMetric
+    | Formula
+    | WarehouseMetric
+    | RawMetricDefinition
 )
 """A value that defines a saved metric.
 
-``Metric`` and ``CohortMetric`` give a behavior metric (kind ``metric``),
-``WarehouseMetric`` gives a warehouse metric, and ``RawMetricDefinition``
-gives the kind it names.
+``Metric``, ``CohortMetric``, ``FunnelMetric``, and ``RetentionMetric`` give
+a behavior metric (kind ``metric``); a ``Formula`` with its own operands
+gives a saved formula; ``WarehouseMetric`` gives a warehouse metric; and
+``RawMetricDefinition`` gives the kind it names.
+"""
+
+BehaviorDefinition: TypeAlias = (
+    SimpleBehavior | FunnelBehavior | RetentionBehavior | RawBehaviorDefinition
+)
+"""A value that defines a saved behavior.
+
+The typed behavior values give the wire type of their kind (``simple``,
+``funnel``, ``retention``); ``RawBehaviorDefinition`` takes it from
+``definition["behavior"]["type"]``.
 """
 
 
@@ -16814,6 +16831,9 @@ def _definition_instance(
 _METRIC_DEFINITION_TYPES: Final[tuple[type[Any], ...]] = get_args(MetricDefinition)
 """The types of ``MetricDefinition``, for instance checks."""
 
+_BEHAVIOR_DEFINITION_TYPES: Final[tuple[type[Any], ...]] = get_args(BehaviorDefinition)
+"""The types of ``BehaviorDefinition``, for instance checks."""
+
 
 class CreateMetricParams(BaseModel):
     """Parameters for :meth:`Workspace.create_metric`.
@@ -16821,8 +16841,9 @@ class CreateMetricParams(BaseModel):
     The kind of the saved metric comes from the definition; the caller never
     writes a wire ``type``. ``create_metric`` checks the params before any
     request: the name is not empty (``SM1_EMPTY_NAME``), the name and
-    description are at most 255 characters (``SM2_NAME_TOO_LONG``), and
-    the definition passes the mirror of the server POST schema
+    description are at most 255 characters (``SM2_NAME_TOO_LONG``), a
+    ``Formula`` holds its own operands (``SM7_FORMULA_WITHOUT_OPERANDS``),
+    and the definition passes the mirror of the server POST schema
     (``SM4_SCHEMA``).
 
     ``owned_by`` and ``verified`` go in a second request, because the server
@@ -17052,7 +17073,7 @@ class CreateBehaviorParams(BaseModel):
         ```python
         params = CreateBehaviorParams(
             name="Checkout",
-            behavior=RawBehaviorDefinition({"behavior": {...}}),
+            behavior=FunnelBehavior(["View Cart", "Checkout", "Purchase"]),
         )
         ```
     """
@@ -17062,7 +17083,7 @@ class CreateBehaviorParams(BaseModel):
     name: str
     """Behavior name (stripped)."""
 
-    behavior: RawBehaviorDefinition
+    behavior: BehaviorDefinition
     """What users did."""
 
     description: str | None = None
@@ -17083,7 +17104,7 @@ class CreateBehaviorParams(BaseModel):
         """
         return _definition_instance(
             value,
-            (RawBehaviorDefinition,),
+            _BEHAVIOR_DEFINITION_TYPES,
             field_name="behavior",
             wrapper="RawBehaviorDefinition",
             allow_none=False,
@@ -17118,7 +17139,7 @@ class UpdateBehaviorParams(BaseModel):
     description: str | None = None
     """New description."""
 
-    behavior: RawBehaviorDefinition | None = None
+    behavior: BehaviorDefinition | None = None
     """New definition, of the same type as the stored behavior."""
 
     verified: bool | None = None
@@ -17139,7 +17160,7 @@ class UpdateBehaviorParams(BaseModel):
         """
         return _definition_instance(
             value,
-            (RawBehaviorDefinition,),
+            _BEHAVIOR_DEFINITION_TYPES,
             field_name="behavior",
             wrapper="RawBehaviorDefinition",
             allow_none=True,

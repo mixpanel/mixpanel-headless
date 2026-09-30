@@ -23,6 +23,11 @@ from typing import Any
 
 import pytest
 
+from mixpanel_headless._internal.query.metric_builders import (
+    build_behavior_definition,
+    build_formula_definition,
+    build_metric_definition,
+)
 from mixpanel_headless._internal.saved_definitions import (
     apply_presentation,
     behavior_wire_definition,
@@ -37,17 +42,26 @@ from mixpanel_headless._internal.saved_definitions import (
     goal_to_wire,
     metric_wire_parts,
     prepare_metric_change,
+    prepare_new_metric,
 )
 from mixpanel_headless.exceptions import CODED_GUARD_REGISTRY, ParamValidationError
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortMetric,
     Filter,
+    Formula,
+    FunnelBehavior,
+    FunnelMetric,
     Metric,
     MetricDisplay,
     MetricGoal,
+    MetricRef,
     RawBehaviorDefinition,
     RawMetricDefinition,
+    RetentionBehavior,
+    RetentionMetric,
     SavedMetric,
+    SimpleBehavior,
     WarehouseMetric,
 )
 from tests.unit._saved_metric_fixtures import (
@@ -670,3 +684,105 @@ class TestFinishMetricChange:
         with pytest.raises(ParamValidationError) as exc_info:
             finish_metric_change(change, stored)
         assert exc_info.value.code == "SM3_KIND_CHANGE"
+
+
+# =============================================================================
+# Typed metric and behavior values through the definition compiler
+# =============================================================================
+
+
+class TestTypedDefinitions:
+    """metric_wire_parts and behavior_wire_definition over the typed values."""
+
+    def test_funnel_metric(self) -> None:
+        """A FunnelMetric gives a behavior metric with the funnel behavior."""
+        metric = FunnelMetric(FunnelBehavior(["Signup", "Purchase"]))
+        parts = metric_wire_parts(metric)
+        assert parts.kind == "metric"
+        assert parts.definition == build_metric_definition(metric)
+        assert parts.definition["behavior"]["type"] == "funnel"
+        assert "name" not in parts.definition
+
+    def test_retention_metric_over_a_saved_behavior(self) -> None:
+        """A RetentionMetric over a BehaviorRef keeps the reference."""
+        metric = RetentionMetric(BehaviorRef(4410, "retention"))
+        parts = metric_wire_parts(metric)
+        assert parts.kind == "metric"
+        assert parts.definition["behavior"]["id"] == 4410
+        assert parts.definition["behavior"]["type"] == "retention"
+
+    def test_metric_over_several_events(self) -> None:
+        """A Metric over two events gives a simple behavior metric."""
+        parts = metric_wire_parts(Metric(["Purchase", "Subscribe"], math="unique"))
+        assert parts.definition["behavior"]["type"] == "simple"
+        assert parts.definition["measurement"] == {"math": "unique"}
+
+    def test_formula_with_operands(self) -> None:
+        """A Formula with operands gives a saved formula; references keep their id."""
+        formula = Formula(
+            "A / B",
+            label="Ratio",
+            metrics=[Metric("Purchase", math="unique"), MetricRef(104700)],
+        )
+        parts = metric_wire_parts(formula)
+        assert parts.kind == "formula"
+        assert parts.warehouse_source_id is None
+        assert parts.definition == build_formula_definition(formula)
+        operands = parts.definition["formula"]["referencedMetrics"]
+        assert operands[1] == {"type": "metric", "id": 104700}
+        assert parts.definition["formula"]["definition"] == "A / B"
+
+    def test_formula_without_operands_refused(self) -> None:
+        """A Formula whose letters name the query's metrics cannot be saved (SM7)."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            metric_wire_parts(Formula("B / A"))
+        exc = exc_info.value
+        assert exc.code == "SM7_FORMULA_WITHOUT_OPERANDS"
+        assert exc.code in CODED_GUARD_REGISTRY
+        assert "metrics=" in str(exc)
+
+    def test_formula_operand_segment_method_refused(self) -> None:
+        """An inline operand with a segment method fails the operand rule (FM6)."""
+        formula = Formula(
+            "A", metrics=[Metric("Login", math="unique", segment_method="first")]
+        )
+        with pytest.raises(ParamValidationError) as exc_info:
+            prepare_new_metric(formula, None, None, validate=True)
+        assert exc_info.value.code == "FM6_OPERAND_ATTRIBUTION"
+
+    def test_typed_formula_passes_the_schema_check(self) -> None:
+        """The compiled formula passes the mirror of the server schema."""
+        formula = Formula(
+            "A + B",
+            metrics=[
+                Metric("Login"),
+                FunnelMetric(FunnelBehavior(["Signup", "Purchase"])),
+            ],
+        )
+        parts = prepare_new_metric(formula, None, None, validate=True)
+        assert parts.kind == "formula"
+
+    @pytest.mark.parametrize(
+        ("behavior", "wire_type"),
+        [
+            (SimpleBehavior(["Purchase", "Subscribe"], name="Buyers"), "simple"),
+            (FunnelBehavior(["View Cart", "Purchase"]), "funnel"),
+            (RetentionBehavior("Signup", "Login"), "retention"),
+        ],
+    )
+    def test_behavior_values(
+        self,
+        behavior: SimpleBehavior | FunnelBehavior | RetentionBehavior,
+        wire_type: str,
+    ) -> None:
+        """Each behavior value compiles to {"behavior"} with no name and passes the mirror.
+
+        Args:
+            behavior: A typed behavior value.
+            wire_type: Its wire type.
+        """
+        definition = behavior_wire_definition(behavior)
+        assert definition == build_behavior_definition(behavior)
+        assert definition["behavior"]["type"] == wire_type
+        assert "name" not in definition["behavior"]
+        check_behavior_definition(definition)

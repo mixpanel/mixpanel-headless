@@ -25,19 +25,30 @@ from pydantic import SecretStr
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless._internal.query.metric_builders import (
+    build_behavior_definition,
+    build_formula_definition,
+    build_metric_definition,
+)
 from mixpanel_headless.exceptions import ParamValidationError, QueryError
 from mixpanel_headless.types import (
     BulkUpdateMetricEntry,
     CohortMetric,
     CreateBehaviorParams,
     CreateMetricParams,
+    Formula,
+    FunnelBehavior,
+    FunnelMetric,
     Metric,
     MetricDisplay,
     MetricGoal,
+    MetricRef,
     RawBehaviorDefinition,
     RawMetricDefinition,
+    RetentionBehavior,
     SavedBehavior,
     SavedMetric,
+    SimpleBehavior,
     UpdateBehaviorParams,
     UpdateMetricParams,
     WarehouseMetric,
@@ -873,4 +884,146 @@ class TestUpdateBehavior:
                 ),
             )
         assert exc_info.value.code == "SM4_SCHEMA"
+        assert server.requests == []
+
+
+# =============================================================================
+# Typed values through the definition compiler
+# =============================================================================
+
+
+class TestTypedWrites:
+    """create and update with the typed metric, formula, and behavior values."""
+
+    def test_create_formula_with_operands(self, temp_dir: Path) -> None:
+        """A Formula with operands saves as kind formula; references keep their id."""
+        formula = Formula(
+            "A / B * 100",
+            label="Conversion",
+            metrics=[Metric("Purchase", math="unique"), MetricRef(104700)],
+        )
+        server = _Server({("POST", _METRICS_PATH): _ok(formula_metric_json())})
+        ws = _make_workspace(temp_dir, server)
+        ws.create_metric(CreateMetricParams(name="Conversion", definition=formula))
+        body = server.body(0)
+        assert body["type"] == "formula"
+        assert body["definition"] == build_formula_definition(formula)
+        assert body["definition"]["formula"]["referencedMetrics"][1] == {
+            "type": "metric",
+            "id": 104700,
+        }
+
+    def test_formula_without_operands_refused(self, temp_dir: Path) -> None:
+        """A Formula without operands raises SM7 before any request."""
+        server = _Server({})
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.create_metric(CreateMetricParams(name="n", definition=Formula("B / A")))
+        assert exc_info.value.code == "SM7_FORMULA_WITHOUT_OPERANDS"
+        assert server.requests == []
+
+    def test_create_funnel_metric(self, temp_dir: Path) -> None:
+        """A FunnelMetric saves as a behavior metric over the funnel behavior."""
+        metric = FunnelMetric(FunnelBehavior(["View Cart", "Purchase"]))
+        server = _Server({("POST", _METRICS_PATH): _ok(behavior_metric_json())})
+        ws = _make_workspace(temp_dir, server)
+        ws.create_metric(CreateMetricParams(name="Checkout", definition=metric))
+        body = server.body(0)
+        assert body["type"] == "metric"
+        assert body["definition"] == build_metric_definition(metric)
+
+    def test_update_formula_kind_check(self, temp_dir: Path) -> None:
+        """A formula update passes on a stored formula and refuses a behavior metric."""
+        formula = Formula("A", metrics=[Metric("Login")])
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/2"): _ok(formula_metric_json(2)),
+                ("PATCH", f"{_METRICS_PATH}/2"): _ok(formula_metric_json(2)),
+                ("GET", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1)),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(2, UpdateMetricParams(definition=formula))
+        assert server.body(1)["definition"]["formula"]["definition"] == "A"
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.update_metric(1, UpdateMetricParams(definition=formula))
+        assert exc_info.value.code == "SM3_KIND_CHANGE"
+
+    @pytest.mark.parametrize(
+        ("behavior", "wire_type"),
+        [
+            (SimpleBehavior(["Purchase", "Subscribe"], name="Buyers"), "simple"),
+            (FunnelBehavior(["View Cart", "Purchase"]), "funnel"),
+            (RetentionBehavior("Signup", "Login"), "retention"),
+        ],
+    )
+    def test_create_typed_behavior(
+        self,
+        temp_dir: Path,
+        behavior: SimpleBehavior | FunnelBehavior | RetentionBehavior,
+        wire_type: str,
+    ) -> None:
+        """A typed behavior saves with its wire type and no name in the definition.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            behavior: A typed behavior value.
+            wire_type: Its wire type.
+        """
+        server = _Server({("POST", _BEHAVIORS_PATH): _ok(saved_behavior_json())})
+        ws = _make_workspace(temp_dir, server)
+        ws.create_behavior(CreateBehaviorParams(name="b", behavior=behavior))
+        body = server.body(0)
+        assert body["type"] == wire_type
+        assert body["definition"] == build_behavior_definition(behavior)
+        assert "name" not in body["definition"]["behavior"]
+
+    def test_update_behavior_type_change_refused(self, temp_dir: Path) -> None:
+        """A retention behavior for a stored funnel behavior raises SM3."""
+        server = _Server({("GET", f"{_BEHAVIORS_PATH}/3"): _ok(saved_behavior_json(3))})
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.update_behavior(
+                3, UpdateBehaviorParams(behavior=RetentionBehavior("Signup", "Login"))
+            )
+        assert exc_info.value.code == "SM3_KIND_CHANGE"
+
+
+# =============================================================================
+# MR3: a warehouse metric is not a query value
+# =============================================================================
+
+
+class TestWarehouseMetricInQuery:
+    """Workspace.query and build_params refuse a WarehouseMetric (MR3)."""
+
+    @pytest.mark.parametrize(
+        "events",
+        [
+            WarehouseMetric(55, "SELECT 1", "numeric"),
+            [Metric("Login"), WarehouseMetric(55, "SELECT 1", "numeric")],
+        ],
+    )
+    def test_build_params_refuses(self, temp_dir: Path, events: Any) -> None:
+        """build_params raises MR3_WAREHOUSE_INLINE and points to MetricRef.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            events: A warehouse metric alone or in a list.
+        """
+        ws = _make_workspace(temp_dir, _Server({}))
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.build_params(events)
+        exc = exc_info.value
+        assert exc.code == "MR3_WAREHOUSE_INLINE"
+        assert "MetricRef" in str(exc)
+        assert "create_metric" in str(exc)
+
+    def test_query_refuses_before_any_request(self, temp_dir: Path) -> None:
+        """query raises MR3_WAREHOUSE_INLINE and sends nothing."""
+        server = _Server({})
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.query(WarehouseMetric(55, "SELECT 1", "numeric"))  # type: ignore[arg-type]
+        assert exc_info.value.code == "MR3_WAREHOUSE_INLINE"
         assert server.requests == []
