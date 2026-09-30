@@ -75,3 +75,54 @@ class TestMainCallback:
 
         assert result.exit_code == 0
         assert "Mixpanel data CLI" in result.stdout
+
+
+class TestEntryPoint:
+    """The CLI marks the process as the CLI only when a command runs."""
+
+    def test_importing_the_cli_keeps_the_library_entry_point(self) -> None:
+        """Importing ``cli.main`` in a fresh interpreter leaves ``entry=lib``."""
+        import subprocess
+        import sys
+
+        code = (
+            "import mixpanel_headless.cli.main\n"
+            "from mixpanel_headless._internal.client_metadata import get_entry_point\n"
+            "print(get_entry_point())\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+        assert result.stdout.strip() == "lib"
+
+    def test_running_a_command_sets_the_cli_entry_point(
+        self, cli_runner: CliRunner
+    ) -> None:
+        """Any ``mp`` command runs the main callback, which sets ``entry=cli``."""
+        from mixpanel_headless._internal.client_metadata import get_entry_point
+
+        assert get_entry_point() == "lib"
+        result = cli_runner.invoke(app, ["help", "search", "cohort"])
+        assert result.exit_code == 0, result.output
+        assert get_entry_point() == "cli"
+
+
+class TestPacerWaitBudget:
+    """Each ``mp`` command gets its own pacer wait budget."""
+
+    def test_command_resets_the_process_wait_total(self, cli_runner: CliRunner) -> None:
+        """A wait left by an earlier command in the same process is forgotten."""
+        from mixpanel_headless._internal import pacer
+
+        pacer._add_waited(25.0)
+        try:
+            assert pacer._waited_s == 25.0
+            result = cli_runner.invoke(app, ["help", "search", "cohort"])
+            assert result.exit_code == 0, result.output
+            assert pacer._waited_s == 0.0
+        finally:
+            pacer.reset_wait_budget()
