@@ -119,8 +119,15 @@ may include API changes.
   formula can be the whole query. New error codes: `FM2_UNKNOWN_LETTER`,
   `FM3_NESTED_FORMULA`, `FM4_SYNTAX`, `FM5_UPPER_E`; an expression with no
   letter gets `V16_FORMULA_SYNTAX`.
-- New error codes for behaviors: `BH1_STEP_COUNT`, `BH2_EMPTY_EVENT`,
-  `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`.
+- New error codes for behaviors and inline metrics: `BH1_STEP_COUNT`,
+  `BH2_EMPTY_EVENT`, `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`,
+  `CE1_INVALID_ID` (a custom event id is a positive integer, never a
+  bool), and `MT4_INVALID_INDEX` (`FunnelMetric.step_index` and
+  `RetentionMetric.bucket_index` are integers >= 0, never a bool). The
+  query checks for event names (`V17_EMPTY_EVENT`, `V22_*`) run on each
+  name inside a list of events or a `SimpleBehavior`, and on formula
+  operands, whose inline cohort definitions and step filters get the
+  top-level checks too.
 - Saved behaviors and saved metrics inside inline values: a `BehaviorRef`
   is the behavior of a `Metric` (type `simple`), a `FunnelMetric` (type
   `funnel`), or a `RetentionMetric` (type `retention`); another type raises

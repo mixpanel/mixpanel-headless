@@ -12112,6 +12112,25 @@ def _check_behavior_ref_type(
         )
 
 
+def _check_index(value: int | None, where: str) -> None:
+    """Check an optional zero-based index of a funnel or retention metric.
+
+    Args:
+        value: The index, or ``None``.
+        where: The field path for messages, for example
+            ``"FunnelMetric.step_index"``.
+
+    Raises:
+        ParamValidationError: If the value is set and is not an ``int`` of
+            zero or more (``MT4_INVALID_INDEX``); a ``bool`` is not an index.
+    """
+    if value is not None and not _is_index(value):
+        raise ParamValidationError(
+            f"{where} must be an integer >= 0, got {value!r}",
+            code="MT4_INVALID_INDEX",
+        )
+
+
 def _property_math_problem(
     math: str, prop: PropertySpec | None
 ) -> Literal["missing", "rejected"] | None:
@@ -12189,6 +12208,19 @@ class CustomEventRef:
 
     id: int
     """The custom event's server-assigned ID."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``CE1_INVALID_ID``); a ``bool`` is not an id.
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"CustomEventRef id must be a positive integer, got {self.id!r}",
+                code="CE1_INVALID_ID",
+            )
 
 
 @dataclass(frozen=True)
@@ -12480,12 +12512,14 @@ class FunnelMetric:
 
         Raises:
             ParamValidationError: If a saved behavior is not a funnel
-                (``BH5_BEHAVIOR_REF_TYPE``), a property math has no
+                (``BH5_BEHAVIOR_REF_TYPE``), ``step_index`` is not an
+                integer >= 0 (``MT4_INVALID_INDEX``), a property math has no
                 property (``F10_MATH_MISSING_PROPERTY``), or a math that
                 takes no property has one (``F11_MATH_REJECTS_PROPERTY``).
         """
         if isinstance(self.behavior, BehaviorRef):
             _check_behavior_ref_type(self.behavior, "funnel", "FunnelMetric.behavior")
+        _check_index(self.step_index, "FunnelMetric.step_index")
         problem = _property_math_problem(self.math, self.property)
         if problem == "missing":
             raise ParamValidationError(
@@ -12559,7 +12593,8 @@ class RetentionMetric:
 
         Raises:
             ParamValidationError: If a saved behavior is not a retention
-                behavior (``BH5_BEHAVIOR_REF_TYPE``), or ``average`` has no
+                behavior (``BH5_BEHAVIOR_REF_TYPE``), ``bucket_index`` is not
+                an integer >= 0 (``MT4_INVALID_INDEX``), or ``average`` has no
                 property, or ``retention_rate`` or ``unique`` has one
                 (``BH3_PROPERTY_MATH``).
         """
@@ -12567,6 +12602,7 @@ class RetentionMetric:
             _check_behavior_ref_type(
                 self.behavior, "retention", "RetentionMetric.behavior"
             )
+        _check_index(self.bucket_index, "RetentionMetric.bucket_index")
         problem = _property_math_problem(self.math, self.property)
         if problem == "missing":
             raise ParamValidationError(

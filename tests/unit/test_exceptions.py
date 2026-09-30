@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 146 minted full codes, no duplicates.
+        """The registry lists all 148 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -967,9 +967,10 @@ class TestCodedGuardRegistry:
         ``BH3_PROPERTY_MATH``. Formula operands added ``FM3_NESTED_FORMULA``,
         and metrics over several events added ``MT3_FILTERS_WITH_BEHAVIOR``.
         Saved behaviors inside inline metrics added
-        ``BH5_BEHAVIOR_REF_TYPE``.
+        ``BH5_BEHAVIOR_REF_TYPE``. Custom event ids and metric indexes added
+        ``CE1_INVALID_ID`` and ``MT4_INVALID_INDEX``.
         """
-        assert len(CODED_GUARD_REGISTRY) == 146
+        assert len(CODED_GUARD_REGISTRY) == 148
         for code in (
             "SM5_NOT_FOUND_FOR_DELETE",
             "SM6_DELETE_NOT_PERMITTED",

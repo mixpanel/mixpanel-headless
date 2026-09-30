@@ -20,6 +20,7 @@ from mixpanel_headless.exceptions import (
     ParamValidationError,
 )
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortMetric,
     CustomEventRef,
     CustomPropertyRef,
@@ -31,6 +32,7 @@ from mixpanel_headless.types import (
     FunnelStep,
     HoldingConstant,
     Metric,
+    MetricRef,
     RetentionBehavior,
     RetentionEvent,
     RetentionMetric,
@@ -72,6 +74,53 @@ class TestCustomEventRef:
         assert CustomEventRef(42) == CustomEventRef(42)
         assert hash(CustomEventRef(42)) == hash(CustomEventRef(42))
         assert CustomEventRef(42) != CustomEventRef(43)
+
+
+class TestIdAndIndexGuards:
+    """Ids are positive ints and indexes are ints >= 0; ``bool`` is never one."""
+
+    @pytest.mark.parametrize("bad", [0, -1, True, False, 1.5, "7"])
+    def test_custom_event_id_must_be_a_positive_int(self, bad: object) -> None:
+        """A non-positive, bool, or non-int id raises CE1_INVALID_ID."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            CustomEventRef(bad)  # type: ignore[arg-type]
+        assert excinfo.value.code == "CE1_INVALID_ID"
+
+    @pytest.mark.parametrize("bad", [-1, True, False, 1.0, "1"])
+    def test_funnel_step_index_must_be_an_index(self, bad: object) -> None:
+        """A negative, bool, or non-int step_index raises MT4_INVALID_INDEX."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FunnelMetric(_funnel(), step_index=bad)  # type: ignore[arg-type]
+        assert excinfo.value.code == "MT4_INVALID_INDEX"
+        assert "FunnelMetric.step_index" in excinfo.value.message
+
+    @pytest.mark.parametrize("bad", [-1, True, False, 1.0, "1"])
+    def test_retention_bucket_index_must_be_an_index(self, bad: object) -> None:
+        """A negative, bool, or non-int bucket_index raises MT4_INVALID_INDEX."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            RetentionMetric(_retention(), bucket_index=bad)  # type: ignore[arg-type]
+        assert excinfo.value.code == "MT4_INVALID_INDEX"
+        assert "RetentionMetric.bucket_index" in excinfo.value.message
+
+    def test_zero_indexes_pass(self) -> None:
+        """Step and bucket index zero are valid."""
+        assert FunnelMetric(_funnel(), step_index=0).step_index == 0
+        assert RetentionMetric(_retention(), bucket_index=0).bucket_index == 0
+
+    @pytest.mark.parametrize("bad", [True, False, 0])
+    def test_saved_entity_refs_refuse_bool_ids(self, bad: object) -> None:
+        """BehaviorRef and MetricRef refuse a bool or non-positive id too."""
+        with pytest.raises(ParamValidationError) as behavior_exc:
+            BehaviorRef(bad, "funnel")  # type: ignore[arg-type]
+        assert behavior_exc.value.code == "BR1_INVALID_ID"
+        with pytest.raises(ParamValidationError) as metric_exc:
+            MetricRef(bad)  # type: ignore[arg-type]
+        assert metric_exc.value.code == "MR4_INVALID_ID"
+
+    @pytest.mark.parametrize("code", ["CE1_INVALID_ID", "MT4_INVALID_INDEX"])
+    def test_codes_are_registered(self, code: str) -> None:
+        """The two guard codes are minted in the registry."""
+        assert code in CODED_GUARD_REGISTRY
 
 
 # =============================================================================

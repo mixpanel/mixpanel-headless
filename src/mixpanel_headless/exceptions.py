@@ -2044,6 +2044,9 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "MT3_FILTERS_WITH_BEHAVIOR",
         # -- saved behaviors inside inline metrics: types.py ------------------
         "BH5_BEHAVIOR_REF_TYPE",
+        # -- custom event ids and metric indexes: types.py -------------------
+        "CE1_INVALID_ID",
+        "MT4_INVALID_INDEX",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.
