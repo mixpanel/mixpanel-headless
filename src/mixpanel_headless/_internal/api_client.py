@@ -14,6 +14,7 @@ or service layer instead of accessing this module directly.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -194,6 +195,81 @@ def _id_map_rows(result: object, endpoint: str) -> list[dict[str, Any]]:
             )
         rows.append(value)
     return rows
+
+
+def _schema_error_message(body: object) -> str | None:
+    """Shorten the server's JSON Schema 400 body into a readable message.
+
+    The ``/metrics`` and ``/behaviors`` POST routes answer a schema failure
+    with ``{"error", "details": {"path", "schema", "data"}, "status"}``.
+    The ``error`` text is the failure message followed by an HTML-escaped
+    repr of the whole request, and ``details.path`` lists the location in
+    reverse order. The server schema is a union, so the message can come
+    from the wrong branch.
+
+    Args:
+        body: The parsed 400 response body.
+
+    Returns:
+        The message without the request repr, unescaped, with the schema
+        location in reading order and a note on the wrong-branch risk; or
+        ``None`` when the body does not have that shape.
+    """
+    if not isinstance(body, dict) or not isinstance(body.get("details"), dict):
+        return None
+    raw = body.get("error")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = html.unescape(raw)
+    cut = text.find("{'")
+    if cut > 0:
+        text = text[:cut]
+    text = text.strip()
+    path = body["details"].get("path")
+    location = ""
+    if isinstance(path, list):
+        parts = [str(part) for part in reversed(path) if part != "root"]
+        if parts:
+            location = f" (schema location: {'.'.join(parts)})"
+    return (
+        f"The server refused the request body: {text}{location}. The server "
+        f"message can name the wrong branch of its schema; with validate=True "
+        f"the client names the failing field."
+    )
+
+
+def _post_checked(client: MixpanelAPIClient, path: str, body: dict[str, Any]) -> Any:
+    """POST to a JSON Schema-checked App API route with a readable 400.
+
+    Args:
+        client: The API client.
+        path: The App API path.
+        body: The JSON body.
+
+    Returns:
+        The ``results`` value of the response.
+
+    Raises:
+        QueryError: The server refused the body (400). For a schema failure
+            the message is shortened (see ``_schema_error_message``) and the
+            full body stays in ``response_body``; the original error is
+            chained. Other errors propagate as ``app_request`` raises them.
+    """
+    try:
+        return client.app_request("POST", path, json_body=body)
+    except QueryError as exc:
+        message = _schema_error_message(exc.response_body)
+        if exc.status_code != 400 or message is None:
+            raise
+        raise QueryError(
+            message,
+            status_code=400,
+            response_body=exc.response_body,
+            request_method=exc.request_method,
+            request_url=exc.request_url,
+            request_params=exc.request_params,
+            request_body=exc.request_body,
+        ) from exc
 
 
 def _single_row(result: object, endpoint: str) -> dict[str, Any]:
@@ -9125,9 +9201,7 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/metrics"
-        return _single_row(
-            self.app_request("POST", path, json_body=body), "create_metric"
-        )
+        return _single_row(_post_checked(self, path, body), "create_metric")
 
     def update_metric(self, metric_id: int, body: dict[str, Any]) -> dict[str, Any]:
         """Update one saved metric.
@@ -9326,9 +9400,7 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/behaviors"
-        return _single_row(
-            self.app_request("POST", path, json_body=body), "create_behavior"
-        )
+        return _single_row(_post_checked(self, path, body), "create_behavior")
 
     def update_behavior(self, behavior_id: int, body: dict[str, Any]) -> dict[str, Any]:
         """Update one saved behavior.

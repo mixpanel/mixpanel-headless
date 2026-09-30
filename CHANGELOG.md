@@ -177,7 +177,11 @@ may include API changes.
   `verified` from a create, so `create_metric` sets them in a second
   request; the two requests are not atomic. An update with new display or
   goals but no definition reads the metric and sends its full definition
-  back, because the server replaces a definition in full.
+  back, because the server replaces a definition in full. A create that
+  the server's schema refuses raises `QueryError` (400) with a short
+  message: the failure and its schema location, without the HTML-escaped
+  copy of the request that the server appends. The full body stays in
+  `response_body`.
 - CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
   `--definition-file FILE|-` takes the wire definition that `get` prints,
   so get, edit, and update is a round trip. `mp metrics verify` names on

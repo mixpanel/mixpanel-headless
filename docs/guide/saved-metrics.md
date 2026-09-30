@@ -322,9 +322,6 @@ The CLI does not ask for confirmation. It prints its message on stderr, so stdou
 
 A delete raises `QueryError` with `status_code == 403` when the caller cannot edit one of the rows. A warehouse metric also needs the warehouse-sources write permission.
 
-!!! warning "Superadmins can delete other users' entities"
-    The server lets a project superadmin delete metrics and behaviors that other users own, and the read before a single delete does not show the owner. Check `owned_by` and `created_by` of `get_metric` first when that matters.
-
 ## Sharing and visibility
 
 In a project with sharing on, a metric or behavior that someone creates is private to its creator until they share it. The create API cannot set sharing, so a metric that `create_metric` makes is private to the account that made it; share it in the web app. The permission flags on each row tell you what the caller can do:
@@ -358,7 +355,7 @@ Other traps the library handles for you:
 - A warehouse definition always holds `aggregation` and `syncInterval`, because the server stores the request as sent and fills in no defaults.
 - A behavior description is omitted when it is `None`, because the behavior schema does not accept `null`.
 
-Server errors keep the library-wide mapping: a duplicate active name gives `QueryError` with `status_code == 409`; the pricing-plan gate ("Cannot save metric with your current plan") and a missing permission give 403, whose body can have an empty error.
+Server errors keep the library-wide mapping: a duplicate active name gives `QueryError` with `status_code == 409`; the pricing-plan gate ("Cannot save metric with your current plan") and a missing permission give 403, whose body can have an empty error. A create that the server's schema refuses gives `QueryError` with `status_code == 400`. The server's text holds an HTML-escaped copy of the whole request, so the library shortens the message to the failure and its schema location, and keeps the full body in `QueryError.response_body`.
 
 ## Open reads
 

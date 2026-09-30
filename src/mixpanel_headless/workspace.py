@@ -9136,7 +9136,9 @@ class Workspace:
                 (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
-            QueryError: The server refused the body (400); the pricing-plan gate
+            QueryError: The server refused the body (400; the message names
+                the failure and its schema location, and ``response_body``
+                holds the full server body); the pricing-plan gate
                 ("Cannot save metric with your current plan"), a missing
                 permission, or an unknown warehouse source (403; the body can
                 have an empty error); an active metric has the same name

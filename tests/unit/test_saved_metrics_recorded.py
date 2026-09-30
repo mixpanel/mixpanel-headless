@@ -343,3 +343,116 @@ class TestRecordedErrors:
             session=creds, _transport=httpx.MockTransport(_replay(200, name))
         )
         assert getattr(client, call)([1]) is None
+
+
+# =============================================================================
+# Recorded write errors
+# =============================================================================
+
+
+class TestRecordedWriteErrors:
+    """The recorded 400 and 409 bodies of creates map to readable QueryErrors."""
+
+    @pytest.mark.parametrize(
+        ("name", "call", "fragment", "location"),
+        [
+            (
+                "error_400_unknown_key",
+                "create_metric",
+                "Additional properties are not allowed ('bogusKey' was unexpected)",
+                "definition.behavior",
+            ),
+            (
+                "error_400_behavior_unknown_key",
+                "create_behavior",
+                "Additional properties are not allowed ('bogusKey' was unexpected)",
+                "definition.behavior",
+            ),
+            (
+                "error_400_bad_math",
+                "create_metric",
+                "'not_a_math' is not valid under any of the given schemas",
+                None,
+            ),
+        ],
+    )
+    def test_400_message_is_readable(
+        self, name: str, call: str, fragment: str, location: str | None
+    ) -> None:
+        """The message drops the escaped request repr; the full body stays attached.
+
+        Args:
+            name: The fixture file name.
+            call: The client create method.
+            fragment: Text the readable message keeps.
+            location: The schema location, from the reversed server path.
+        """
+        body = _load(name)
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds, _transport=httpx.MockTransport(_replay(400, name))
+        )
+        with pytest.raises(QueryError) as exc_info:
+            getattr(client, call)({"type": "metric", "name": "n", "definition": {}})
+        exc = exc_info.value
+        assert exc.status_code == 400
+        assert fragment in exc.message
+        assert "&#x27;" not in exc.message
+        assert "{'type'" not in exc.message
+        assert len(exc.message) < 400
+        if location is not None:
+            assert location in exc.message
+        assert exc.response_body == body
+        assert isinstance(exc.__cause__, QueryError)
+
+    def test_400_wrong_branch_message_carries_a_note(self) -> None:
+        """A 400 whose text can name the wrong schema branch says so."""
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                _replay(400, "error_400_global_access_type")
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        message = exc_info.value.message
+        assert "('math' was unexpected)" in message
+        assert "validate=True" in message
+
+    def test_other_400_bodies_are_left_alone(self) -> None:
+        """A 400 without the schema shape keeps the plain server message."""
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json={"error": "Bad request"})
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.message == "Bad request"
+        assert exc_info.value.__cause__ is None
+
+    @pytest.mark.parametrize(
+        ("name", "call"),
+        [
+            ("error_409_duplicate_name", "create_metric"),
+            ("error_409_duplicate_behavior_name", "create_behavior"),
+        ],
+    )
+    def test_409_duplicate_name(self, name: str, call: str) -> None:
+        """The recorded duplicate-name bodies raise QueryError 409 with the server text.
+
+        Args:
+            name: The fixture file name.
+            call: The client create method.
+        """
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds, _transport=httpx.MockTransport(_replay(409, name))
+        )
+        with pytest.raises(QueryError) as exc_info:
+            getattr(client, call)({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.message == _load(name)["error"]
