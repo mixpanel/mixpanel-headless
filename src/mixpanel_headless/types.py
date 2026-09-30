@@ -6002,6 +6002,28 @@ class SavedBehavior(BaseModel):
         """
         return _str_at(self.definition, "behavior", "type")
 
+    def to_ref(self) -> BehaviorRef:
+        """Return a reference to this saved behavior, for use in a query.
+
+        Returns:
+            A :class:`BehaviorRef` with ``id`` and ``type`` from this
+            behavior. Pass it to ``query_funnel`` (type ``funnel``) or
+            ``query_retention`` (type ``retention``).
+
+        Raises:
+            ParamValidationError: ``BR2_INVALID_TYPE`` when the stored type
+                is not ``simple``, ``funnel``, or ``retention``.
+
+        Example:
+            ```python
+            checkout = ws.get_behavior(3120)
+            result = ws.query_funnel(checkout.to_ref(), last=90)
+            ```
+        """
+        return BehaviorRef(
+            self.id, cast(Literal["simple", "funnel", "retention"], self.type)
+        )
+
 
 class SavedMetric(BaseModel):
     """A saved metric: a behavior metric, a saved formula, or a warehouse metric.
@@ -6224,6 +6246,78 @@ class SavedMetric(BaseModel):
             except _PydanticValidationError:
                 continue
         return goals
+
+    def to_ref(
+        self,
+        *,
+        label: str | None = None,
+        math: MathType | FunnelMathType | RetentionMathType | None = None,
+        property: str | CustomPropertyRef | InlineCustomProperty | None = None,
+        per_user: PerUserAggregation | None = None,
+        percentile_value: int | float | None = None,
+        segment_method: SegmentMethod | None = None,
+        funnel_order: FunnelOrder | None = None,
+        step_index: int | None = None,
+        bucket_index: int | None = None,
+        hidden: bool | None = None,
+        overrides: Mapping[str, Any] | None = None,
+    ) -> MetricRef:
+        """Return a reference to this saved metric, for use in a query.
+
+        The reference takes the id and the kind of the saved metric. The
+        keyword arguments are the typed overrides of :class:`MetricRef` and
+        change the saved definition for one query only.
+
+        Args:
+            label: Series name for this query.
+            math: Aggregation override.
+            property: Property override for property math.
+            per_user: Per-user pre-aggregation override.
+            percentile_value: Percentile override.
+            segment_method: Counting override: ``"all"`` or ``"first"``.
+            funnel_order: Step order override for a saved funnel metric.
+            step_index: Funnel step override for a saved funnel metric.
+            bucket_index: Bucket override for a saved retention metric.
+            hidden: Whether the chart hides this series.
+            overrides: Raw overrides, deep-merged after the typed fields.
+
+        Returns:
+            A :class:`MetricRef` with ``id`` and ``type`` from this metric.
+
+        Raises:
+            ParamValidationError: ``MR5_INVALID_TYPE`` for a legacy kind
+                (such as ``behavior``) that the server does not run by
+                reference, or any :class:`MetricRef` guard on the overrides.
+
+        Example:
+            ```python
+            signup_rate = ws.get_metric(88999)
+            result = ws.query(signup_rate.to_ref(segment_method="first"))
+            ```
+        """
+        if self.type not in _METRIC_REF_KINDS:
+            raise ParamValidationError(
+                f"Saved metric {self.id} has kind {self.type!r}, which the "
+                f"server does not run by reference. Only kinds "
+                f"{sorted(_METRIC_REF_KINDS)} can be queried by id; send its "
+                f"definition inline instead.",
+                code="MR5_INVALID_TYPE",
+            )
+        return MetricRef(
+            self.id,
+            type=cast(Literal["metric", "formula", "warehouse"], self.type),
+            label=label,
+            math=math,
+            property=property,
+            per_user=per_user,
+            percentile_value=percentile_value,
+            segment_method=segment_method,
+            funnel_order=funnel_order,
+            step_index=step_index,
+            bucket_index=bucket_index,
+            hidden=hidden,
+            overrides=overrides,
+        )
 
 
 # =============================================================================

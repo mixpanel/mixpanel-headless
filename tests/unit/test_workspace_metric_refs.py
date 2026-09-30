@@ -30,6 +30,14 @@ from mixpanel_headless.types import (
     MetricRef,
     QueryResult,
     RetentionQueryResult,
+    SavedBehavior,
+    SavedMetric,
+)
+from tests.unit._saved_metric_fixtures import (
+    behavior_metric_json,
+    formula_metric_json,
+    saved_behavior_json,
+    warehouse_metric_json,
 )
 
 _SLUG = "EBrV5bW2u9Mw"
@@ -479,6 +487,125 @@ class TestRetentionWithBehaviorRef:
         assert params["sections"]["show"][0]["behavior"] == {
             "type": "retention",
             "id": 6,
+        }
+
+
+# =============================================================================
+# Saved entities as query inputs
+# =============================================================================
+
+
+class TestSavedEntitiesAsQueryInputs:
+    """SavedMetric and SavedBehavior work wherever their references do."""
+
+    def test_saved_metric_alone(self, ws: Workspace) -> None:
+        """A SavedMetric becomes a reference of its own kind."""
+        metric = SavedMetric.model_validate(formula_metric_json(metric_id=118228))
+        params = ws.build_params(metric)
+        assert params["sections"]["show"] == [{"type": "formula", "id": 118228}]
+
+    def test_list_of_saved_metrics(self, ws: Workspace) -> None:
+        """A list of saved metrics, as list_metrics returns it, is a valid query."""
+        metrics = [
+            SavedMetric.model_validate(behavior_metric_json(metric_id=1)),
+            SavedMetric.model_validate(warehouse_metric_json(metric_id=2)),
+        ]
+        params = ws.build_params(metrics, formula="A + B")
+        show = params["sections"]["show"]
+        assert show[0] == {"type": "metric", "id": 1, "isHidden": True}
+        assert show[1] == {"type": "warehouse", "id": 2, "isHidden": True}
+        assert show[2]["definition"] == "A + B"
+
+    def test_saved_metric_mixed_with_inline(self, ws: Workspace) -> None:
+        """Saved metrics, references, names, and Metrics mix in one list."""
+        metric = SavedMetric.model_validate(behavior_metric_json(metric_id=5))
+        params = ws.build_params(
+            [metric, MetricRef(6, math="unique"), "Login", mp.Metric("Signup")]
+        )
+        show = params["sections"]["show"]
+        assert show[0] == {"type": "metric", "id": 5}
+        assert show[1]["overrides"] == {"measurement": {"math": "unique"}}
+        assert show[2]["behavior"]["name"] == "Login"
+        assert show[3]["behavior"]["name"] == "Signup"
+
+    def test_query_with_saved_metric(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """query() runs a SavedMetric by reference."""
+        mock_live_query.query.return_value = QueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+        ws.query(SavedMetric.model_validate(behavior_metric_json(metric_id=9)))
+        params = mock_live_query.query.call_args.kwargs["bookmark_params"]
+        assert params["sections"]["show"] == [{"type": "metric", "id": 9}]
+
+    def test_legacy_saved_metric_is_refused(self, ws: Workspace) -> None:
+        """A legacy behavior row cannot run by reference."""
+        metric = SavedMetric.model_validate(
+            {**behavior_metric_json(), "type": "behavior"}
+        )
+        with pytest.raises(mp.ParamValidationError) as exc_info:
+            ws.build_params(metric)
+        assert exc_info.value.code == "MR5_INVALID_TYPE"
+
+    def test_saved_funnel_behavior(self, ws: Workspace) -> None:
+        """A SavedBehavior of type funnel replaces the step list."""
+        behavior = SavedBehavior.model_validate(saved_behavior_json(behavior_id=3001))
+        params = ws.build_funnel_params(behavior)
+        assert params["sections"]["show"][0]["behavior"] == {
+            "type": "funnel",
+            "id": 3001,
+        }
+
+    def test_saved_retention_behavior(self, ws: Workspace) -> None:
+        """A SavedBehavior of type retention replaces both events."""
+        behavior = SavedBehavior.model_validate(
+            saved_behavior_json(behavior_id=4410, behavior_type="retention")
+        )
+        params = ws.build_retention_params(behavior)
+        assert params["sections"]["show"][0]["behavior"] == {
+            "type": "retention",
+            "id": 4410,
+        }
+
+    def test_saved_behavior_of_wrong_type(self, ws: Workspace) -> None:
+        """The engines check the type of a SavedBehavior too."""
+        behavior = SavedBehavior.model_validate(
+            saved_behavior_json(behavior_type="retention")
+        )
+        with pytest.raises(BookmarkValidationError) as exc_info:
+            ws.build_funnel_params(behavior)
+        assert _codes(exc_info.value) == ["F13_BEHAVIOR_REF_TYPE"]
+
+    def test_query_funnel_with_saved_behavior(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """query_funnel runs a SavedBehavior by reference."""
+        mock_live_query.query_funnel.return_value = FunnelQueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+        ws.query_funnel(
+            SavedBehavior.model_validate(saved_behavior_json(behavior_id=7))
+        )
+        params = mock_live_query.query_funnel.call_args.kwargs["bookmark_params"]
+        assert params["sections"]["show"][0]["behavior"] == {"type": "funnel", "id": 7}
+
+    def test_query_retention_with_saved_behavior(
+        self, ws: Workspace, mock_live_query: MagicMock
+    ) -> None:
+        """query_retention runs a SavedBehavior by reference."""
+        mock_live_query.query_retention.return_value = RetentionQueryResult(
+            computed_at="t", from_date="d", to_date="d"
+        )
+        ws.query_retention(
+            SavedBehavior.model_validate(
+                saved_behavior_json(behavior_id=8, behavior_type="retention")
+            )
+        )
+        params = mock_live_query.query_retention.call_args.kwargs["bookmark_params"]
+        assert params["sections"]["show"][0]["behavior"] == {
+            "type": "retention",
+            "id": 8,
         }
 
 

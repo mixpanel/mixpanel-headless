@@ -2277,8 +2277,9 @@ class Workspace:
         | Metric
         | CohortMetric
         | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2312,16 +2313,16 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a MetricRef to a
-                saved metric, a Formula object, or a sequence mixing
-                them. Formula objects in the list are extracted and
-                appended as formula show clauses. ``math``,
-                ``math_property``, and ``per_user`` apply to plain
-                strings only: a CohortMetric always counts unique users
-                (CM3), and a MetricRef keeps the saved definition except
-                for its own overrides. The params keep each MetricRef as
-                a reference, so the server expands the saved definition
-                at query time.
+                a Metric object, a CohortMetric object, a MetricRef or a
+                SavedMetric (from ``list_metrics`` or ``get_metric``), a
+                Formula object, or a sequence mixing them. Formula
+                objects in the list are extracted and appended as formula
+                show clauses. ``math``, ``math_property``, and
+                ``per_user`` apply to plain strings only: a CohortMetric
+                always counts unique users (CM3), and a saved metric keeps
+                its saved definition except for its own overrides. The
+                params keep each saved metric as a reference, so the
+                server expands the saved definition at query time.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2491,8 +2492,9 @@ class Workspace:
         | Metric
         | CohortMetric
         | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2526,10 +2528,11 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``MetricRef``, ``Formula``,
-                or a sequence mixing them. A ``MetricRef`` stays a
-                reference in the params (``{"type", "id", "overrides"}``),
-                so a report built from them follows the saved metric.
+                a ``Metric``, ``CohortMetric``, ``MetricRef``,
+                ``SavedMetric``, ``Formula``, or a sequence mixing them. A
+                ``MetricRef`` or ``SavedMetric`` stays a reference in the
+                params (``{"type", "id", "overrides"}``), so a report built
+                from them follows the saved metric.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2611,8 +2614,9 @@ class Workspace:
         | Metric
         | CohortMetric
         | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         from_date: str | None,
         to_date: str | None,
         last: int,
@@ -2645,7 +2649,7 @@ class Workspace:
 
         Args:
             events: Raw events input (str, Metric, CohortMetric,
-                MetricRef, Formula, or sequence).
+                MetricRef, SavedMetric, Formula, or sequence).
             from_date: Start date (YYYY-MM-DD) or None.
             to_date: End date (YYYY-MM-DD) or None.
             last: Relative time range in days.
@@ -2674,9 +2678,10 @@ class Workspace:
             BookmarkValidationError: If validation fails at any layer.
         """
         # Type guard: events must be str, Metric, CohortMetric, MetricRef,
-        # Formula, or sequence thereof
+        # SavedMetric, Formula, or sequence thereof
         if not isinstance(
-            events, (str, Metric, CohortMetric, MetricRef, Formula, list, tuple)
+            events,
+            (str, Metric, CohortMetric, MetricRef, SavedMetric, Formula, list, tuple),
         ):
             raise BookmarkValidationError(
                 [
@@ -2684,7 +2689,7 @@ class Workspace:
                         path="events",
                         message=(
                             f"events must be a string, Metric, CohortMetric, "
-                            f"MetricRef, Formula, or sequence, got "
+                            f"MetricRef, SavedMetric, Formula, or sequence, got "
                             f"{type(events).__name__}"
                         ),
                         code="V21_INVALID_EVENT_TYPE",
@@ -2707,10 +2712,14 @@ class Workspace:
                 ]
             )
 
-        # Normalize events to sequence, separating Formula objects
+        # Normalize events to sequence, separating Formula objects. A
+        # SavedMetric becomes a MetricRef, so it stays a reference.
         if isinstance(events, str):
             events_list: list[str | Metric | CohortMetric | MetricRef] = [events]
             formulas_from_list: list[Formula] = []
+        elif isinstance(events, SavedMetric):
+            events_list = [events.to_ref()]
+            formulas_from_list = []
         elif isinstance(events, (Metric, CohortMetric, MetricRef)):
             events_list = [events]
             formulas_from_list = []
@@ -2730,6 +2739,8 @@ class Workspace:
             for item in events:
                 if isinstance(item, Formula):
                     formulas_from_list.append(item)
+                elif isinstance(item, SavedMetric):
+                    events_list.append(item.to_ref())
                 else:
                     events_list.append(item)
 
@@ -2985,7 +2996,7 @@ class Workspace:
     def _resolve_and_build_funnel_params(
         self,
         *,
-        steps: list[str | FunnelStep] | BehaviorRef,
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         conversion_window: int,
         conversion_window_unit: ConversionWindowUnit,
         order: FunnelOrder,
@@ -3018,7 +3029,7 @@ class Workspace:
 
         Args:
             steps: Funnel step specs (strings or FunnelStep objects), or a
-                BehaviorRef to a saved funnel behavior.
+                BehaviorRef or SavedBehavior for a saved funnel behavior.
             conversion_window: Conversion window size.
             conversion_window_unit: Conversion window time unit.
             order: Funnel step ordering mode.
@@ -3046,6 +3057,8 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(steps, SavedBehavior):
+            steps = steps.to_ref()
         if isinstance(steps, BehaviorRef):
             changed_settings = [
                 name
@@ -3174,7 +3187,7 @@ class Workspace:
 
     def query_funnel(
         self,
-        steps: list[str | FunnelStep] | BehaviorRef,
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3213,11 +3226,12 @@ class Workspace:
             steps: Funnel step specifications. At least 2 required.
                 Accepts event name strings or ``FunnelStep`` objects
                 for per-step filters, labels, and ordering. A
-                ``BehaviorRef`` to a saved funnel behavior replaces the
-                list: the saved behavior sets the steps, the conversion
-                window, the order, the exclusions, the held properties,
-                and the reentry mode, so those arguments must keep their
-                defaults (``F14_BEHAVIOR_REF_SETTINGS``).
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list: the saved behavior sets the
+                steps, the conversion window, the order, the exclusions,
+                the held properties, and the reentry mode, so those
+                arguments must keep their defaults
+                (``F14_BEHAVIOR_REF_SETTINGS``).
             conversion_window: How long users have to complete the
                 funnel. Default: 14.
             conversion_window_unit: Time unit for conversion window.
@@ -3367,7 +3381,7 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep] | BehaviorRef,
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3404,8 +3418,8 @@ class Workspace:
 
         Args:
             steps: Funnel step specifications. At least 2 required.
-                A ``BehaviorRef`` to a saved funnel behavior replaces the
-                list; see :meth:`query_funnel`.
+                A ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list; see :meth:`query_funnel`.
             conversion_window: Conversion window size. Default: 14.
             conversion_window_unit: Time unit. Default: ``"day"``.
             order: Step ordering mode. Default: ``"loose"``.
@@ -4341,7 +4355,7 @@ class Workspace:
     def _resolve_and_build_retention_params(
         self,
         *,
-        born_event: str | RetentionEvent | BehaviorRef,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
         return_event: str | RetentionEvent | None,
         retention_unit: TimeUnit,
         alignment: RetentionAlignment,
@@ -4373,7 +4387,7 @@ class Workspace:
 
         Args:
             born_event: Born event spec (string or RetentionEvent), or a
-                BehaviorRef to a saved retention behavior.
+                BehaviorRef or SavedBehavior for a saved retention behavior.
             return_event: Return event spec (string or RetentionEvent);
                 None with a BehaviorRef.
             retention_unit: Retention period unit.
@@ -4400,6 +4414,8 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(born_event, SavedBehavior):
+            born_event = born_event.to_ref()
         if isinstance(born_event, BehaviorRef):
             changed_settings = [
                 name
@@ -4526,7 +4542,7 @@ class Workspace:
 
     def query_retention(
         self,
-        born_event: str | RetentionEvent | BehaviorRef,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
         return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
@@ -4559,12 +4575,13 @@ class Workspace:
         Args:
             born_event: Event that defines cohort membership. Accepts
                 an event name string or a ``RetentionEvent`` object
-                for per-event filters. A ``BehaviorRef`` to a saved
-                retention behavior replaces both events: the saved
-                behavior sets the events, the retention unit, the
-                alignment, the buckets, and the unbounded mode, so
-                ``return_event`` stays ``None`` and those arguments keep
-                their defaults (``R15_BEHAVIOR_REF_SETTINGS``).
+                for per-event filters. A ``BehaviorRef`` or
+                ``SavedBehavior`` for a saved retention behavior replaces
+                both events: the saved behavior sets the events, the
+                retention unit, the alignment, the buckets, and the
+                unbounded mode, so ``return_event`` stays ``None`` and
+                those arguments keep their defaults
+                (``R15_BEHAVIOR_REF_SETTINGS``).
             return_event: Event that defines return. Accepts an event
                 name string or a ``RetentionEvent`` object. Required
                 unless ``born_event`` is a ``BehaviorRef``.
@@ -4707,7 +4724,7 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent | BehaviorRef,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
         return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
@@ -4740,8 +4757,8 @@ class Workspace:
 
         Args:
             born_event: Event that defines cohort membership, or a
-                ``BehaviorRef`` to a saved retention behavior; see
-                :meth:`query_retention`.
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved retention
+                behavior; see :meth:`query_retention`.
             return_event: Event that defines return. Required unless
                 ``born_event`` is a ``BehaviorRef``.
             retention_unit: Retention period unit. Default: ``"week"``.

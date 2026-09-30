@@ -66,10 +66,13 @@ may include API changes.
   dict merges last. A `filters` override is
   refused (`MR1_FILTER_OVERRIDE`), because the server merges override lists
   item by item; use report-level `where=` or an inline `Metric` instead.
+  A `SavedMetric` works in the same places, and `SavedMetric.to_ref()`
+  makes the reference with overrides.
 - `BehaviorRef` runs a saved behavior by id. `query_funnel()` and
   `build_funnel_params()` take it in place of the step list, and
   `query_retention()` and `build_retention_params()` take it in place of
-  the born and return events. The engines refuse a behavior of the wrong
+  the born and return events. A `SavedBehavior` works in the same places,
+  and `SavedBehavior.to_ref()` makes the reference. The engines refuse a behavior of the wrong
   type (`F13_BEHAVIOR_REF_TYPE`, `R14_BEHAVIOR_REF_TYPE`) and any behavior
   setting that the saved behavior owns (`F14_BEHAVIOR_REF_SETTINGS`,
   `R15_BEHAVIOR_REF_SETTINGS`).

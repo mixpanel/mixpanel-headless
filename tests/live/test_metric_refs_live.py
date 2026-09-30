@@ -1,7 +1,7 @@
 """Live tests for querying a saved metric by reference.
 
-Read-only. Each test picks a saved behavior metric that the caller can view,
-queries it by reference (``MetricRef``), sends the same saved definition
+Read-only. Each test picks a saved behavior metric that the caller can view
+(``list_metrics``), queries it by reference, sends the same saved definition
 inline, and checks that both give the same numbers. Nothing is created,
 changed, or deleted.
 
@@ -55,29 +55,24 @@ def ws() -> mp.Workspace:
 
 
 @pytest.fixture(scope="module")
-def saved_metric(ws: mp.Workspace) -> dict[str, Any]:
+def saved_metric(ws: mp.Workspace) -> mp.SavedMetric:
     """A viewable saved behavior metric whose definition can be sent inline.
 
-    Reads ``GET /projects/{pid}/metrics`` through the raw client (read-only).
+    Reads the saved metrics with ``list_metrics(viewable_only=True)``.
     """
-    raw = ws.api.app_request("GET", f"/projects/{ws.api.project_id}/metrics")
-    rows: list[dict[str, Any]] = list(raw.values()) if isinstance(raw, dict) else raw
     candidates = [
-        row
-        for row in rows
-        if row.get("type") == "metric"
-        and row.get("can_view") is True
-        and isinstance(row.get("definition"), dict)
-        and (row["definition"].get("behavior") or {}).get("type")
-        in _INLINE_BEHAVIOR_TYPES
+        metric
+        for metric in ws.list_metrics(metric_type="metric", viewable_only=True)
+        if metric.behavior_type in _INLINE_BEHAVIOR_TYPES
+        and isinstance(metric.definition.get("measurement"), dict)
     ]
     if not candidates:
         pytest.skip("no viewable saved behavior metric of a known type")
     return min(
         candidates,
-        key=lambda row: (
-            _INLINE_BEHAVIOR_TYPES.index(row["definition"]["behavior"]["type"]),
-            int(row["id"]),
+        key=lambda metric: (
+            _INLINE_BEHAVIOR_TYPES.index(str(metric.behavior_type)),
+            metric.id,
         ),
     )
 
@@ -121,36 +116,32 @@ def _inline_params(
 
 
 def test_reference_matches_inline_definition(
-    ws: mp.Workspace, saved_metric: dict[str, Any]
+    ws: mp.Workspace, saved_metric: mp.SavedMetric
 ) -> None:
     """A saved metric by reference gives the numbers of its inline definition."""
-    definition = saved_metric["definition"]
+    definition = saved_metric.definition
 
-    by_reference = ws.query(
-        mp.MetricRef(int(saved_metric["id"])), from_date=_FROM, to_date=_TO
-    )
+    by_reference = ws.query(saved_metric, from_date=_FROM, to_date=_TO)
     inline = ws.run_params(_inline_params(ws, definition, definition["measurement"]))
 
     assert by_reference.params["sections"]["show"] == [
-        {"type": "metric", "id": int(saved_metric["id"])}
+        {"type": "metric", "id": saved_metric.id}
     ]
     assert _only_series(by_reference) == _only_series(inline)
     assert any(value for value in _only_series(by_reference).values())
 
 
 def test_math_override_matches_inline_change(
-    ws: mp.Workspace, saved_metric: dict[str, Any]
+    ws: mp.Workspace, saved_metric: mp.SavedMetric
 ) -> None:
     """A math override gives the numbers of the inline definition with that math."""
-    definition = saved_metric["definition"]
+    definition = saved_metric.definition
     new_math: Literal["total", "unique"] = (
-        "total" if definition["measurement"].get("math") == "unique" else "unique"
+        "total" if saved_metric.math == "unique" else "unique"
     )
 
     by_reference = ws.query(
-        mp.MetricRef(int(saved_metric["id"]), math=new_math),
-        from_date=_FROM,
-        to_date=_TO,
+        saved_metric.to_ref(math=new_math), from_date=_FROM, to_date=_TO
     )
     inline = ws.run_params(
         _inline_params(ws, definition, {**definition["measurement"], "math": new_math})

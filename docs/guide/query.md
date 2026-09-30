@@ -537,6 +537,8 @@ The params keep the reference as `{"type": "metric", "id": 88999}`. The server r
 
 The default `type` is `"metric"`. The server corrects the kind of a top-level reference, so `MetricRef(id)` also works for a saved formula or a warehouse metric. Set `type="formula"` or `type="warehouse"` when you know the kind.
 
+A `SavedMetric` from `ws.list_metrics()` or `ws.get_metric()` works the same way: pass it as is, or call `saved.to_ref(...)` with overrides. It takes its kind from the saved metric. See [Saved Metrics and Behaviors](saved-metrics.md#query-by-reference).
+
 ### Overrides
 
 The typed fields of `MetricRef` change the saved definition for one query only:
@@ -584,7 +586,7 @@ The server runs a warehouse metric by saved id only, and it gives the warehouse 
 
 ### Saved behaviors in funnels and retention
 
-A saved behavior is a reusable "what users did": a funnel, a retention pair, or a simple behavior. `BehaviorRef(id, type)` passes one to the funnel and retention engines in place of the steps or the events:
+A saved behavior is a reusable "what users did": a funnel, a retention pair, or a simple behavior. `BehaviorRef(id, type)`, or a `SavedBehavior` from `ws.list_behaviors()` or `ws.get_behavior()`, passes one to the funnel and retention engines in place of the steps or the events:
 
 ```python
 # The saved funnel sets the steps, the window, the order, and the exclusions

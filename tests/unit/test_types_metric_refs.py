@@ -18,6 +18,14 @@ from mixpanel_headless.types import (
     BehaviorRef,
     CustomPropertyRef,
     MetricRef,
+    SavedBehavior,
+    SavedMetric,
+)
+from tests.unit._saved_metric_fixtures import (
+    behavior_metric_json,
+    formula_metric_json,
+    saved_behavior_json,
+    warehouse_metric_json,
 )
 
 # =============================================================================
@@ -303,6 +311,106 @@ class TestBehaviorRef:
         ref = BehaviorRef(1, "funnel")
         with pytest.raises(dataclasses.FrozenInstanceError):
             ref.type = "retention"  # type: ignore[misc]
+
+
+# =============================================================================
+# SavedMetric.to_ref / SavedBehavior.to_ref
+# =============================================================================
+
+
+class TestSavedMetricToRef:
+    """Tests for SavedMetric.to_ref() — a saved metric as a MetricRef."""
+
+    @pytest.mark.parametrize(
+        ("row", "kind"),
+        [
+            (behavior_metric_json(), "metric"),
+            (formula_metric_json(), "formula"),
+            (warehouse_metric_json(), "warehouse"),
+        ],
+    )
+    def test_kind_comes_from_the_saved_metric(
+        self, row: dict[str, Any], kind: str
+    ) -> None:
+        """The reference carries the id and the kind of the saved metric."""
+        metric = SavedMetric.model_validate(row)
+        assert metric.to_ref() == MetricRef(metric.id, type=kind)  # type: ignore[arg-type]
+
+    def test_typed_overrides_pass_through(self) -> None:
+        """Every keyword reaches the reference field of the same name."""
+        metric = SavedMetric.model_validate(behavior_metric_json(metric_id=42))
+        ref = metric.to_ref(
+            label="First buyers",
+            math="unique",
+            property="amount",
+            per_user="total",
+            percentile_value=90,
+            segment_method="first",
+            funnel_order="any",
+            step_index=1,
+            bucket_index=2,
+            hidden=False,
+            overrides={"measurement": {"actionMode": "include"}},
+        )
+        assert ref == MetricRef(
+            42,
+            label="First buyers",
+            math="unique",
+            property="amount",
+            per_user="total",
+            percentile_value=90,
+            segment_method="first",
+            funnel_order="any",
+            step_index=1,
+            bucket_index=2,
+            hidden=False,
+            overrides={"measurement": {"actionMode": "include"}},
+        )
+
+    def test_reference_guards_still_apply(self) -> None:
+        """A filters override is refused on the way through."""
+        metric = SavedMetric.model_validate(behavior_metric_json())
+        with pytest.raises(ParamValidationError) as exc_info:
+            metric.to_ref(overrides={"behavior": {"filters": []}})
+        assert exc_info.value.code == "MR1_FILTER_OVERRIDE"
+
+    def test_formula_refuses_behavior_overrides(self) -> None:
+        """A saved formula takes no measurement override."""
+        metric = SavedMetric.model_validate(formula_metric_json())
+        with pytest.raises(ParamValidationError) as exc_info:
+            metric.to_ref(math="unique")
+        assert exc_info.value.code == "MR6_OVERRIDE_NOT_APPLICABLE"
+
+    def test_legacy_kind_is_refused(self) -> None:
+        """MR5_INVALID_TYPE: the server runs no legacy behavior row by reference."""
+        metric = SavedMetric.model_validate(
+            {**behavior_metric_json(), "type": "behavior"}
+        )
+        with pytest.raises(ParamValidationError) as exc_info:
+            metric.to_ref()
+        assert exc_info.value.code == "MR5_INVALID_TYPE"
+        assert "behavior" in str(exc_info.value)
+
+
+class TestSavedBehaviorToRef:
+    """Tests for SavedBehavior.to_ref() — a saved behavior as a BehaviorRef."""
+
+    @pytest.mark.parametrize("kind", ["simple", "funnel", "retention"])
+    def test_type_and_id(self, kind: str) -> None:
+        """The reference carries the id and the type of the saved behavior."""
+        behavior = SavedBehavior.model_validate(
+            saved_behavior_json(behavior_id=31, behavior_type=kind)
+        )
+        assert behavior.to_ref() == BehaviorRef(31, kind)  # type: ignore[arg-type]
+
+    def test_unknown_type_is_refused(self) -> None:
+        """BR2_INVALID_TYPE: an unknown stored type cannot be referenced."""
+        behavior = SavedBehavior.model_validate(
+            saved_behavior_json(behavior_type="cohort")
+        )
+        with pytest.raises(ParamValidationError) as exc_info:
+            behavior.to_ref()
+        assert exc_info.value.code == "BR2_INVALID_TYPE"
 
 
 # =============================================================================
