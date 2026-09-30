@@ -20,9 +20,12 @@ name: Conformance
 # Drift can show up in three steps: the tooling unit tests (some compare
 # committed files with the live library), the corpus runner (it replays the
 # committed vectors against the live library), and the record-mode drift
-# check. Each step maps exit code 1 to drift. A crash (any other nonzero
-# exit), a type error in conformance/, a failed recording run, and a
-# stamp-provenance finding always fail the job.
+# check. Each step maps exit code 1 to drift (the drift check only when it
+# printed a drift report). On a pull request, a tooling-test or runner
+# failure that the merge-base with main does not have is a regression, not
+# drift, and fails the job. A crash (any other nonzero exit), a type error in
+# conformance/, a failed recording run, and a stamp-provenance finding always
+# fail the job.
 
 on:
   pull_request:
@@ -128,17 +131,20 @@ jobs:
           fi
           uv run python -m conformance.record.check_stamps --main-ref origin/main "${BASE_ARGS[@]}"
 
-      # The drift check records from this checkout's code, not from the code
-      # at the stamp. So a re-pin is honest only when src/ and tests/ here
-      # equal src/ and tests/ at the new stamp. Without this check, a library
-      # change merged after the release would land under the release stamp.
+      # The drift check records from this checkout's code and locked
+      # dependencies, not from those at the stamp. So a re-pin is honest only
+      # when src/, tests/, pyproject.toml, and uv.lock here equal the same
+      # paths at the new stamp. Without this check, a library change or a
+      # dependency bump merged after the release would land under the release
+      # stamp (the manifest records the httpx, hypothesis, and pydantic
+      # versions).
       - name: Re-pin stamp names this code
         if: steps.policy.outputs.mode == 'strict'
         run: |
           STAMP=$(jq -r .source_commit conformance/vectors/manifest.json)
-          if ! git diff --quiet "$STAMP" HEAD -- src tests; then
-            git diff --stat "$STAMP" HEAD -- src tests
-            echo "::error title=Re-pin stamp::src/ or tests/ changed after $STAMP. Re-extract, and stamp the current main commit instead (conformance/record/README.md, \"When to re-pin\")."
+          if ! git diff --quiet "$STAMP" HEAD -- src tests pyproject.toml uv.lock; then
+            git diff --stat "$STAMP" HEAD -- src tests pyproject.toml uv.lock
+            echo "::error title=Re-pin stamp::src/, tests/, pyproject.toml, or uv.lock changed after $STAMP. Re-extract, and stamp the current main commit instead (conformance/record/README.md, \"When to re-pin\")."
             exit 1
           fi
 
@@ -168,11 +174,62 @@ jobs:
             *) echo "::error title=Corpus runner::pytest crashed (exit $CODE)."; exit "$CODE" ;;
           esac
 
+      # On a pull request in report mode, a tooling-test or runner failure is
+      # either drift that main already has or a regression in this PR. To
+      # tell them apart, run each failing suite again on the merge-base with
+      # main, and fail on any failure that the merge-base does not have. That
+      # includes a new test or a new vector that fails. Limit: in a PR that
+      # also changes src/, the PR's own library drift counts as new.
+      - name: New failures against the merge-base
+        id: baseline
+        if: github.event_name == 'pull_request' && steps.policy.outputs.mode == 'report' && (steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift')
+        env:
+          TOOLING: ${{ steps.tooling.outputs.result }}
+          RUNNER: ${{ steps.runner.outputs.result }}
+        run: |
+          REPORTS=/tmp/conformance-report
+          BASE=$(git merge-base HEAD origin/main)
+          git worktree add --detach /tmp/base-tree "$BASE"
+          if [ -f .python-version ]; then
+            cp .python-version /tmp/base-tree/
+          fi
+          cd /tmp/base-tree
+          uv sync --all-extras --frozen
+
+          # pytest's short summary lists one "FAILED <node id> - ..." or
+          # "ERROR <node id> - ..." line per failure. Node ids have no spaces.
+          failed_ids() {
+            grep -E '^(FAILED|ERROR) ' "$1" | sed -E 's/^(FAILED|ERROR) ([^ ]+).*/\2/' | sort -u || true
+          }
+
+          NEW=0
+          for ENTRY in "tooling-tests conformance/tests $TOOLING" "corpus-runner conformance/runner $RUNNER"; do
+            read -r REPORT SUITE RESULT <<< "$ENTRY"
+            [ "$RESULT" = drift ] || continue
+            set +e
+            uv run pytest "$SUITE" -o addopts="" -q > "$REPORTS/base-$REPORT.txt" 2>&1
+            set -e
+            failed_ids "$REPORTS/$REPORT.txt" > "$REPORTS/head-failed-$REPORT.txt"
+            failed_ids "$REPORTS/base-$REPORT.txt" > "$REPORTS/base-failed-$REPORT.txt"
+            comm -23 "$REPORTS/head-failed-$REPORT.txt" "$REPORTS/base-failed-$REPORT.txt" > "$REPORTS/new-$REPORT.txt"
+            if [ -s "$REPORTS/new-$REPORT.txt" ]; then
+              echo "::error title=New $REPORT failures::This PR adds $(wc -l < "$REPORTS/new-$REPORT.txt" | tr -d " ") failure(s) that the merge-base with main does not have."
+              cat "$REPORTS/new-$REPORT.txt"
+              NEW=1
+            fi
+          done
+          if [ "$NEW" = 0 ]; then
+            echo "result=same" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$NEW"
+
       # Re-extracts the full corpus with the committed manifest's own stamps
       # injected back in (the date and commit are inputs, never the wall
       # clock or `git rev-parse`), then byte-diffs it in both directions
       # against the committed vectors (conformance.record.diff). A failure in
-      # the recording run itself always fails the job. `uv run python -m
+      # the recording run itself always fails the job. An uncaught exception
+      # in the diff tool also exits 1, so exit 1 counts as drift only when
+      # the tool printed its drift report. `uv run python -m
       # pytest` (not bare `uv run pytest`) puts the repo root on sys.path for
       # the plugin import (see conformance/record/README.md).
       - name: Record-mode drift check
@@ -191,16 +248,20 @@ jobs:
           uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors 2>&1 | tee /tmp/conformance-report/drift-check.txt
           CODE=${PIPESTATUS[0]}
           set -e
-          case "$CODE" in
-            0) echo "result=clean" >> "$GITHUB_OUTPUT" ;;
-            1) echo "result=drift" >> "$GITHUB_OUTPUT" ;;
-            *) echo "::error title=Drift check::conformance.record.diff failed (exit $CODE)."; exit "$CODE" ;;
-          esac
+          if [ "$CODE" = 0 ]; then
+            echo "result=clean" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = 1 ] && grep -q '^drift check: FAILED' /tmp/conformance-report/drift-check.txt; then
+            echo "result=drift" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error title=Drift check::conformance.record.diff failed (exit $CODE) without a drift report."
+            exit "$CODE"
+          fi
 
       # The report and the re-extracted corpus show which vectors this commit
       # changed, which keeps a large per-release re-pin easy to review.
+      # always(): upload also when the merge-base comparison fails.
       - name: Upload drift report
-        if: steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift' || steps.corpus.outputs.result == 'drift'
+        if: always() && (steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift' || steps.corpus.outputs.result == 'drift')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: conformance-drift
@@ -214,6 +275,7 @@ jobs:
           TOOLING: ${{ steps.tooling.outputs.result }}
           RUNNER: ${{ steps.runner.outputs.result }}
           CORPUS: ${{ steps.corpus.outputs.result }}
+          BASELINE: ${{ steps.baseline.outputs.result }}
           EVENT: ${{ github.event_name }}
           SHA: ${{ github.sha }}
         run: |
@@ -256,6 +318,10 @@ jobs:
             exit 1
           fi
 
+          if [ "$BASELINE" = same ]; then
+            echo "The merge-base with main has the same tooling-test and runner failures, so this PR adds none." >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "::warning title=Conformance drift::The code no longer matches the corpus. This is expected between releases. See the job summary."
           if [ "$EVENT" = release ]; then
             echo "Re-pin the corpus now, with the release commit \`$SHA\` as the stamp. See conformance/record/README.md, \"When to re-pin\"." >> "$GITHUB_STEP_SUMMARY"

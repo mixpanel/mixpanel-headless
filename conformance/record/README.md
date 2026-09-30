@@ -76,7 +76,8 @@ The Conformance workflow runs in one of two modes:
   `conformance/`, pushes to `main`, releases, manual runs). The job
   summary and a warning annotation report drift, the drift report and the
   re-extracted corpus upload as the `conformance-drift` artifact, and the
-  job passes.
+  job passes. On a pull request, a failure that the merge-base with `main`
+  does not have still fails the job (see below).
 
 In both modes, a type error in `conformance/`, a crashed pytest session, a
 failed recording run, and a stamp-provenance finding fail the job.
@@ -92,8 +93,9 @@ The cycle:
    code drifted, its job summary names the release commit to stamp.
 3. **Re-pin PR.** After the release commit is on `main`, open one
    conformance-only PR from a worktree cut from `origin/main`:
-   1. Check that `src/` and `tests/` still equal the release commit:
-      `git diff --quiet <release SHA> origin/main -- src tests`.
+   1. Check that `src/`, `tests/`, `pyproject.toml`, and `uv.lock` still
+      equal the release commit:
+      `git diff --quiet <release SHA> origin/main -- src tests pyproject.toml uv.lock`.
    2. Re-extract with `--mp-record-commit=<release SHA>` and
       `--mp-record-date=<today>`.
    3. Regenerate the contract with `--generated-from <the same SHA>`, and
@@ -102,20 +104,27 @@ The cycle:
 
    Strict mode applies. Rule 2 passes because the stamp moved with the
    content, and rule 1 passes because the SHA is on `main`. The workflow
-   also fails the PR if `src/` or `tests/` differ from the new stamp.
+   also fails the PR if `src/`, `tests/`, `pyproject.toml`, or `uv.lock`
+   differ from the new stamp.
 
-If a library change reached `main` after the release, the release SHA no
-longer names the code that records the corpus: the drift check records from
-the PR's own code, not from the code at the stamp. Stamp the current `main`
-commit instead, say so in the ledger entry, and pin the TypeScript port to
-that SHA.
+If a library change or a dependency bump reached `main` after the release,
+the release SHA no longer names the code that records the corpus: the drift
+check records from the PR's own code and locked dependencies, not from those
+at the stamp (the manifest records the `httpx`, `hypothesis`, and `pydantic`
+versions). Stamp the current `main` commit instead, say so in the ledger
+entry, and pin the TypeScript port to that SHA. To keep release stamps,
+re-pin before the next library or dependency PR merges.
 
 A conformance tooling PR between re-pins runs in report mode. Some tooling
 tests compare committed files with the live library (the enums snapshot,
 the generated help bundle, contract census counts), so a failure there can
-be drift, and the workflow cannot tell it from a tooling bug. Run
-`just conformance` locally and read the job summary before you merge. The
-next re-pin runs everything in strict mode.
+be drift that `main` already has, or a regression in the PR. To tell them
+apart, the workflow runs each failing suite (tooling tests, corpus runner)
+again on the merge-base with `main`, and fails on any failure that the
+merge-base does not have. That includes a new test or a new authored vector
+that fails. Limit: in a PR that also changes `src/`, the PR's own library
+drift counts as new, so keep library changes and tooling changes in
+separate PRs.
 
 After each re-pin PR merges, the TypeScript port (`mixpanel-headless-ts`)
 re-pins to the same SHA: set `conformance-runner/corpus.config.json`
