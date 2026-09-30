@@ -1,0 +1,686 @@
+"""Show-clause builders for insights, funnel, and retention metrics.
+
+Pure functions that turn typed inline query values (``Metric``,
+``CohortMetric``, ``Formula``, ``FunnelStep``, ``RetentionEvent``, and the
+engine arguments around them) into the ``sections.show`` fragments of
+Mixpanel bookmark params. They do no I/O and no validation: the Workspace
+query builders validate the arguments before they call these functions and
+validate the assembled bookmark after.
+
+A metric show clause is ``{"type": "metric", "behavior": ..., "measurement":
+...}``. The behavior says what users did and the measurement says how to
+count it. Each part has its own builder, so one inline value always gives the
+same behavior and measurement wherever the library writes them.
+
+Key order in every returned dict is part of the contract. The library sends
+these dicts as JSON in insertion order, so a change of order changes the
+request bytes.
+
+These are internal helpers. Import them from
+``mixpanel_headless._internal.query.metric_builders``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
+
+from mixpanel_headless._internal.bookmark_builders import (
+    _build_composed_properties,
+    build_filter_entry,
+)
+from mixpanel_headless._literal_types import (
+    FiltersCombinator,
+    FunnelReentryMode,
+    MathType,
+    PerUserAggregation,
+    RetentionAlignment,
+    RetentionMathType,
+    RetentionUnboundedMode,
+    SegmentMethod,
+    TimeUnit,
+)
+from mixpanel_headless.types import (
+    CohortMetric,
+    CustomPropertyRef,
+    Exclusion,
+    Filter,
+    Formula,
+    FunnelStep,
+    HoldingConstant,
+    InlineCustomProperty,
+    Metric,
+    PropertySpec,
+    RetentionEvent,
+    _sanitize_raw_cohort,
+)
+
+# =============================================================================
+# Shared pieces
+# =============================================================================
+
+
+def assemble_metric_clause(
+    behavior: dict[str, Any],
+    measurement: dict[str, Any],
+) -> dict[str, Any]:
+    """Wrap a behavior block and a measurement block in a metric show clause.
+
+    Args:
+        behavior: The ``behavior`` block (what users did).
+        measurement: The ``measurement`` block (how to count it).
+
+    Returns:
+        A dict with the keys ``type``, ``behavior``, and ``measurement``,
+        in that order. The two blocks are used as given, not copied.
+    """
+    return {
+        "type": "metric",
+        "behavior": behavior,
+        "measurement": measurement,
+    }
+
+
+def build_measurement_property(prop: PropertySpec) -> dict[str, Any]:
+    """Build the ``measurement.property`` dict of an insights metric.
+
+    Args:
+        prop: A property name, a saved custom property reference, or an
+            inline custom property.
+
+    Returns:
+        The property dict. A saved custom property gives its id with an
+        empty name. An inline custom property gives its formula and inputs
+        under ``customProperty``. A property name gives the name with the
+        ``events`` resource type.
+
+    Example:
+        ```python
+        build_measurement_property("amount")
+        # {"name": "amount", "resourceType": "events"}
+
+        build_measurement_property(CustomPropertyRef(42))
+        # {"customPropertyId": 42, "name": "", "resourceType": "events"}
+        ```
+    """
+    if isinstance(prop, CustomPropertyRef):
+        return {
+            "customPropertyId": prop.id,
+            "name": "",
+            "resourceType": "events",
+        }
+    if isinstance(prop, InlineCustomProperty):
+        cp_dict: dict[str, Any] = {
+            "displayFormula": prop.formula,
+            "composedProperties": _build_composed_properties(prop.inputs),
+            "name": "",
+            "description": "",
+            "resourceType": prop.resource_type,
+        }
+        if prop.property_type is not None:
+            cp_dict["propertyType"] = prop.property_type
+        return {
+            "customProperty": cp_dict,
+            "name": "",
+            "resourceType": prop.resource_type,
+            "dataset": "$mixpanel",
+            "dataGroupId": None,
+        }
+    return {
+        "name": prop,
+        "resourceType": "events",
+    }
+
+
+# =============================================================================
+# Insights metrics
+# =============================================================================
+
+
+def build_metric_measurement(
+    *,
+    math: MathType,
+    property: PropertySpec | None = None,
+    per_user: PerUserAggregation | None = None,
+    percentile_value: int | float | None = None,
+    segment_method: SegmentMethod | None = None,
+) -> dict[str, Any]:
+    """Build the ``measurement`` block of an insights event metric.
+
+    The user-facing ``"percentile"`` math is written as
+    ``"custom_percentile"``, the name the bookmark format uses. Each optional
+    argument that is ``None`` leaves its key out.
+
+    Args:
+        math: Aggregation function.
+        property: Property for property-based math.
+        per_user: Per-user pre-aggregation.
+        percentile_value: Percentile to compute. Written for any math.
+        segment_method: How qualifying events count per user.
+
+    Returns:
+        The measurement dict. Keys, in order: ``math``, then ``property``,
+        ``perUserAggregation``, ``percentile``, and ``segmentMethod`` when
+        set.
+
+    Example:
+        ```python
+        build_metric_measurement(math="percentile", property="ms", percentile_value=95)
+        # {"math": "custom_percentile",
+        #  "property": {"name": "ms", "resourceType": "events"},
+        #  "percentile": 95}
+        ```
+    """
+    bookmark_math = "custom_percentile" if math == "percentile" else math
+    measurement: dict[str, Any] = {"math": bookmark_math}
+    if property is not None:
+        measurement["property"] = build_measurement_property(property)
+    if per_user is not None:
+        measurement["perUserAggregation"] = per_user
+    if percentile_value is not None:
+        measurement["percentile"] = percentile_value
+    if segment_method is not None:
+        measurement["segmentMethod"] = segment_method
+    return measurement
+
+
+def build_event_behavior(
+    event: str,
+    *,
+    filters: Sequence[Filter] | None = None,
+    filters_combinator: FiltersCombinator = "all",
+) -> dict[str, Any]:
+    """Build the ``behavior`` block of an insights metric over one event.
+
+    Args:
+        event: Mixpanel event name.
+        filters: Per-metric filters. ``None`` or an empty list gives an
+            empty filter list.
+        filters_combinator: How the filters combine (``"all"`` or
+            ``"any"``). Written as ``filtersDeterminer``.
+
+    Returns:
+        The behavior dict with ``type: "event"``.
+    """
+    behavior_filters: list[dict[str, Any]] = []
+    if filters:
+        behavior_filters = [build_filter_entry(f) for f in filters]
+    return {
+        "type": "event",
+        "name": event,
+        "resourceType": "events",
+        "filtersDeterminer": filters_combinator,
+        "filters": behavior_filters,
+    }
+
+
+def _event_metric_clause(
+    behavior: dict[str, Any],
+    measurement: dict[str, Any],
+    *,
+    hidden: bool,
+) -> dict[str, Any]:
+    """Assemble an event metric clause and mark it hidden when asked.
+
+    Args:
+        behavior: The event behavior block.
+        measurement: The insights measurement block.
+        hidden: Whether to add ``isHidden: True``. A visible event metric
+            has no ``isHidden`` key.
+
+    Returns:
+        The metric show clause.
+    """
+    clause = assemble_metric_clause(behavior, measurement)
+    if hidden:
+        clause["isHidden"] = True
+    return clause
+
+
+def build_metric_clause(metric: Metric, *, hidden: bool = False) -> dict[str, Any]:
+    """Build the show clause of a typed ``Metric``.
+
+    Args:
+        metric: The inline metric. Its own math, property, per-user,
+            percentile, filters, and segment method apply; query-level
+            defaults do not.
+        hidden: Whether the query shows the metric only through a formula.
+            ``True`` adds ``isHidden: True``; ``False`` writes no
+            ``isHidden`` key.
+
+    Returns:
+        The metric show clause.
+
+    Example:
+        ```python
+        build_metric_clause(Metric("Login", math="unique"))
+        # {"type": "metric",
+        #  "behavior": {"type": "event", "name": "Login", "resourceType": "events",
+        #               "filtersDeterminer": "all", "filters": []},
+        #  "measurement": {"math": "unique"}}
+        ```
+    """
+    behavior = build_event_behavior(
+        metric.event,
+        filters=metric.filters,
+        filters_combinator=metric.filters_combinator,
+    )
+    measurement = build_metric_measurement(
+        math=metric.math,
+        property=metric.property,
+        per_user=metric.per_user,
+        percentile_value=metric.percentile_value,
+        segment_method=metric.segment_method,
+    )
+    return _event_metric_clause(behavior, measurement, hidden=hidden)
+
+
+def build_plain_event_clause(
+    event: str,
+    *,
+    math: MathType,
+    math_property: str | None,
+    per_user: PerUserAggregation | None,
+    percentile_value: int | float | None,
+    hidden: bool = False,
+) -> dict[str, Any]:
+    """Build the show clause of a bare event name.
+
+    A bare event name takes the query-level math, property, per-user, and
+    percentile settings. It has no filters and no segment method.
+
+    Args:
+        event: Mixpanel event name.
+        math: Query-level aggregation function.
+        math_property: Query-level property for property-based math.
+        per_user: Query-level per-user pre-aggregation.
+        percentile_value: Query-level percentile value.
+        hidden: Whether the query shows the metric only through a formula.
+            ``True`` adds ``isHidden: True``.
+
+    Returns:
+        The metric show clause.
+    """
+    behavior = build_event_behavior(event)
+    measurement = build_metric_measurement(
+        math=math,
+        property=math_property,
+        per_user=per_user,
+        percentile_value=percentile_value,
+    )
+    return _event_metric_clause(behavior, measurement, hidden=hidden)
+
+
+def build_cohort_metric_clause(
+    metric: CohortMetric,
+    *,
+    hidden: bool = False,
+) -> dict[str, Any]:
+    """Build the show clause of a ``CohortMetric`` (cohort size over time).
+
+    The measurement is always ``unique``; query-level math does not apply.
+    Unlike an event metric, a cohort metric clause always has an
+    ``isHidden`` key.
+
+    Args:
+        metric: The cohort metric. A saved cohort id is written as
+            ``behavior.id``. An inline definition is written as
+            ``behavior.raw_cohort``, with the series name added, because
+            the server reads the name from there to build labels.
+        hidden: The value of ``isHidden``.
+
+    Returns:
+        The metric show clause.
+    """
+    behavior: dict[str, Any] = {
+        "type": "cohort",
+        "name": metric.name or "",
+        "resourceType": "cohorts",
+        "dataGroupId": None,
+        "dataset": "$mixpanel",
+        "filtersDeterminer": "all",
+        "filters": [],
+    }
+    if isinstance(metric.cohort, int):
+        behavior["id"] = metric.cohort
+    else:
+        raw = _sanitize_raw_cohort(metric.cohort.to_dict())
+        # Server-side cohort processing expects `name` in the raw_cohort
+        # dict (matching the stored cohort format). Without it, label
+        # generation crashes.
+        raw["name"] = metric.name or ""
+        behavior["raw_cohort"] = raw
+
+    clause = assemble_metric_clause(
+        behavior,
+        {
+            "math": "unique",
+            "property": None,
+            "perUserAggregation": None,
+        },
+    )
+    clause["isHidden"] = hidden
+    return clause
+
+
+def build_formula_clause(formula: Formula) -> dict[str, Any]:
+    """Build the show clause of a ``Formula``.
+
+    The letters of the expression name the other show clauses of the query
+    by position, so the clause has an empty ``referencedMetrics`` list.
+
+    Args:
+        formula: The formula. A non-empty label is written as ``name``.
+
+    Returns:
+        The formula show clause.
+
+    Example:
+        ```python
+        build_formula_clause(Formula("(B / A) * 100", label="Conversion %"))
+        # {"type": "formula", "definition": "(B / A) * 100", "measurement": {},
+        #  "referencedMetrics": [], "name": "Conversion %"}
+        ```
+    """
+    clause: dict[str, Any] = {
+        "type": "formula",
+        "definition": formula.expression,
+        "measurement": {},
+        "referencedMetrics": [],
+    }
+    if formula.label:
+        clause["name"] = formula.label
+    return clause
+
+
+def build_show_section(
+    events: Sequence[str | Metric | CohortMetric],
+    *,
+    math: MathType,
+    math_property: str | None,
+    per_user: PerUserAggregation | None,
+    percentile_value: int | float | None,
+    formulas: Sequence[Formula],
+) -> list[dict[str, Any]]:
+    """Build the ``sections.show`` list of an insights query.
+
+    Metrics come first, in the given order, and formulas follow. When the
+    query has a formula, every metric is hidden, so the chart shows the
+    formula results only.
+
+    Args:
+        events: Bare event names, ``Metric`` objects, and ``CohortMetric``
+            objects.
+        math: Query-level aggregation function for bare event names.
+        math_property: Query-level property for bare event names.
+        per_user: Query-level per-user pre-aggregation for bare event names.
+        percentile_value: Query-level percentile value for bare event names.
+        formulas: Formulas to append after the metrics.
+
+    Returns:
+        One show clause per event, then one per formula.
+
+    Example:
+        ```python
+        show = build_show_section(
+            ["Signup", Metric("Purchase", math="unique")],
+            math="unique",
+            math_property=None,
+            per_user=None,
+            percentile_value=None,
+            formulas=[Formula("B / A")],
+        )
+        # Three clauses: two hidden metrics, then the formula.
+        ```
+    """
+    hidden = bool(formulas)
+    show: list[dict[str, Any]] = []
+    for item in events:
+        if isinstance(item, CohortMetric):
+            show.append(build_cohort_metric_clause(item, hidden=hidden))
+        elif isinstance(item, Metric):
+            show.append(build_metric_clause(item, hidden=hidden))
+        else:
+            show.append(
+                build_plain_event_clause(
+                    item,
+                    math=math,
+                    math_property=math_property,
+                    per_user=per_user,
+                    percentile_value=percentile_value,
+                    hidden=hidden,
+                )
+            )
+    show.extend(build_formula_clause(f) for f in formulas)
+    return show
+
+
+# =============================================================================
+# Funnel metrics
+# =============================================================================
+
+
+def build_funnel_step_behavior(step: FunnelStep, *, order: str) -> dict[str, Any]:
+    """Build one entry of the ``behaviors`` list of a funnel behavior.
+
+    Args:
+        step: The funnel step.
+        order: The funnel-level step order. A step order override
+            replaces it.
+
+    Returns:
+        The step behavior dict. A step label adds ``renamed`` at the end.
+    """
+    behavior_entry: dict[str, Any] = {
+        "type": "event",
+        "id": None,
+        "name": step.event,
+        "filters": [],
+        "filtersDeterminer": step.filters_combinator,
+        "funnelOrder": order,
+    }
+    if step.filters:
+        behavior_entry["filters"] = [build_filter_entry(f) for f in step.filters]
+    if step.label is not None:
+        behavior_entry["renamed"] = step.label
+    if step.order is not None:
+        behavior_entry["funnelOrder"] = step.order
+    return behavior_entry
+
+
+def build_funnel_behavior(
+    *,
+    steps: Sequence[FunnelStep],
+    conversion_window: int,
+    conversion_window_unit: str,
+    order: str,
+    exclusions: Sequence[Exclusion],
+    holding_constant: Sequence[HoldingConstant],
+    reentry_mode: FunnelReentryMode | None = None,
+) -> dict[str, Any]:
+    """Build the ``behavior`` block of a funnel metric.
+
+    Args:
+        steps: The funnel steps, in order.
+        conversion_window: Conversion window size.
+        conversion_window_unit: Conversion window time unit.
+        order: Funnel step order (``"loose"`` or ``"any"``).
+        exclusions: Events to exclude between steps. ``Exclusion`` step
+            numbers are 0-based; the bookmark format is 1-based, and an
+            open end runs to the last step.
+        holding_constant: Properties to hold constant across steps.
+            Written as ``aggregateBy``.
+        reentry_mode: How users enter the funnel again after they convert.
+            ``None`` leaves ``funnelReentryMode`` out.
+
+    Returns:
+        The funnel behavior dict with ``type: "funnel"``.
+
+    Example:
+        ```python
+        behavior = build_funnel_behavior(
+            steps=[FunnelStep("Signup"), FunnelStep("Purchase")],
+            conversion_window=14,
+            conversion_window_unit="day",
+            order="loose",
+            exclusions=[Exclusion("Logout")],
+            holding_constant=[],
+        )
+        # behavior["exclusions"] == [{"event": "Logout", "steps": {"from": 1, "to": 2}}]
+        ```
+    """
+    behaviors = [build_funnel_step_behavior(step, order=order) for step in steps]
+
+    exclusions_list: list[dict[str, Any]] = []
+    for ex in exclusions:
+        api_from = ex.from_step + 1
+        api_to = (ex.to_step + 1) if ex.to_step is not None else len(steps)
+        exclusions_list.append(
+            {
+                "event": ex.event,
+                "steps": {
+                    "from": api_from,
+                    "to": api_to,
+                },
+            }
+        )
+
+    aggregate_by: list[dict[str, Any]] = [
+        {"value": hc.property, "resourceType": hc.resource_type}
+        for hc in holding_constant
+    ]
+
+    behavior: dict[str, Any] = {
+        "type": "funnel",
+        "resourceType": "events",
+        "behaviors": behaviors,
+        "conversionWindowDuration": conversion_window,
+        "conversionWindowUnit": conversion_window_unit,
+        "funnelOrder": order,
+        "exclusions": exclusions_list,
+        "aggregateBy": aggregate_by,
+        "filter": [],
+    }
+    if reentry_mode is not None:
+        behavior["funnelReentryMode"] = reentry_mode
+    return behavior
+
+
+def build_funnel_measurement(
+    *,
+    math: str,
+    math_property: str | None,
+) -> dict[str, Any]:
+    """Build the ``measurement`` block of a funnel metric.
+
+    Args:
+        math: Funnel aggregation function.
+        math_property: Numeric event property for property math. ``None``
+            or an empty string writes a null property.
+
+    Returns:
+        The measurement dict with ``math``, ``property``, and a null
+        ``stepIndex``.
+    """
+    return {
+        "math": math,
+        "property": (
+            {
+                "name": math_property,
+                "type": "number",
+                "resourceType": "events",
+            }
+            if math_property
+            else None
+        ),
+        "stepIndex": None,
+    }
+
+
+# =============================================================================
+# Retention metrics
+# =============================================================================
+
+
+def build_retention_event_behavior(event: RetentionEvent) -> dict[str, Any]:
+    """Build one entry of the ``behaviors`` list of a retention behavior.
+
+    Args:
+        event: The born event or the return event.
+
+    Returns:
+        The event behavior dict.
+    """
+    behavior_entry: dict[str, Any] = {
+        "type": "event",
+        "id": None,
+        "name": event.event,
+        "filters": [],
+        "filtersDeterminer": event.filters_combinator,
+    }
+    if event.filters:
+        behavior_entry["filters"] = [build_filter_entry(f) for f in event.filters]
+    return behavior_entry
+
+
+def build_retention_behavior(
+    *,
+    born_event: RetentionEvent,
+    return_event: RetentionEvent,
+    retention_unit: TimeUnit,
+    alignment: RetentionAlignment,
+    bucket_sizes: Sequence[int] | None,
+    unbounded_mode: RetentionUnboundedMode | None = None,
+) -> dict[str, Any]:
+    """Build the ``behavior`` block of a retention metric.
+
+    Args:
+        born_event: The event that puts a user in a cohort.
+        return_event: The event that counts as a return.
+        retention_unit: Retention period unit.
+        alignment: Retention alignment mode.
+        bucket_sizes: Custom bucket sizes. ``None`` or an empty list gives
+            an empty list.
+        unbounded_mode: How retention counts in unbounded periods. ``None``
+            leaves ``retentionUnboundedMode`` out.
+
+    Returns:
+        The retention behavior dict with ``type: "retention"`` and exactly
+        two event behaviors.
+    """
+    behavior: dict[str, Any] = {
+        "type": "retention",
+        "resourceType": "events",
+        "behaviors": [
+            build_retention_event_behavior(born_event),
+            build_retention_event_behavior(return_event),
+        ],
+        "retentionUnit": retention_unit,
+        "retentionAlignmentType": alignment,
+        "retentionCustomBucketSizes": list(bucket_sizes) if bucket_sizes else [],
+        "filter": [],
+    }
+    if unbounded_mode is not None:
+        behavior["retentionUnboundedMode"] = unbounded_mode
+    return behavior
+
+
+def build_retention_measurement(
+    *,
+    math: RetentionMathType,
+    cumulative: bool = False,
+) -> dict[str, Any]:
+    """Build the ``measurement`` block of a retention metric.
+
+    Args:
+        math: Retention aggregation function.
+        cumulative: Whether to count retention cumulatively. ``True`` adds
+            ``retentionCumulative: True``; ``False`` leaves the key out.
+
+    Returns:
+        The measurement dict.
+    """
+    measurement: dict[str, Any] = {"math": math}
+    if cumulative:
+        measurement["retentionCumulative"] = True
+    return measurement
