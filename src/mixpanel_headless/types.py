@@ -5798,6 +5798,26 @@ def _str_at(data: object, *keys: str) -> str | None:
     return data if isinstance(data, str) else None
 
 
+def _has_percentile(*measurements: object) -> bool:
+    """Return whether any measurement holds a percentile value.
+
+    Args:
+        *measurements: Measurement mappings (raw overrides or a stored
+            definition), or anything else, which counts as no value.
+
+    Returns:
+        ``True`` when one of them has a number (not a ``bool``) at
+        ``"percentile"``.
+    """
+    for measurement in measurements:
+        if not isinstance(measurement, Mapping):
+            continue
+        value = measurement.get("percentile")
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return True
+    return False
+
+
 class MetricDisplay(BaseModel):
     """Presentation settings stored with a saved metric.
 
@@ -6288,7 +6308,12 @@ class SavedMetric(BaseModel):
         Raises:
             ParamValidationError: ``MR5_INVALID_TYPE`` for a legacy kind
                 (such as ``behavior``) that the server does not run by
-                reference, or any :class:`MetricRef` guard on the overrides.
+                reference, ``V26_PERCENTILE_REQUIRES_VALUE`` when
+                ``math="percentile"`` has no percentile value in the
+                arguments, the raw overrides, or the stored measurement (a
+                saved metric holds its definition, so this check is exact;
+                a bare :class:`MetricRef` cannot make it), or any
+                :class:`MetricRef` guard on the overrides.
 
         Example:
             ```python
@@ -6303,6 +6328,21 @@ class SavedMetric(BaseModel):
                 f"{sorted(_METRIC_REF_KINDS)} can be queried by id; send its "
                 f"definition inline instead.",
                 code="MR5_INVALID_TYPE",
+            )
+        if (
+            self.type == "metric"
+            and math == "percentile"
+            and percentile_value is None
+            and not _has_percentile(
+                (overrides or {}).get("measurement"),
+                self.definition.get("measurement"),
+            )
+        ):
+            raise ParamValidationError(
+                f"Saved metric {self.id} stores no percentile value, so "
+                "math='percentile' needs one: pass percentile_value, for "
+                "example to_ref(math='percentile', percentile_value=95)",
+                code="V26_PERCENTILE_REQUIRES_VALUE",
             )
         return MetricRef(
             self.id,

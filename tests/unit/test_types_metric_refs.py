@@ -377,6 +377,52 @@ class TestSavedMetricToRef:
             overrides={"measurement": {"actionMode": "include"}},
         )
 
+    @staticmethod
+    def _saved(measurement: dict[str, Any]) -> SavedMetric:
+        """Return a saved behavior metric with the given stored measurement.
+
+        Args:
+            measurement: The stored ``definition["measurement"]``.
+
+        Returns:
+            The parsed saved metric.
+        """
+        row = behavior_metric_json()
+        row["definition"]["measurement"] = measurement
+        return SavedMetric.model_validate(row)
+
+    @pytest.mark.parametrize(
+        "measurement",
+        [{"math": "unique"}, {"math": "total", "percentile": None}, {}],
+    )
+    def test_percentile_without_any_value_raises_v26(
+        self, measurement: dict[str, Any]
+    ) -> None:
+        """math="percentile" with no value anywhere raises V26_PERCENTILE_REQUIRES_VALUE."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            self._saved(measurement).to_ref(math="percentile")
+        assert exc_info.value.code == "V26_PERCENTILE_REQUIRES_VALUE"
+        assert "percentile_value" in exc_info.value.message
+
+    @pytest.mark.parametrize(
+        ("measurement", "kwargs"),
+        [
+            ({"math": "custom_percentile", "percentile": 95}, {}),
+            ({"math": "unique"}, {"percentile_value": 90}),
+            ({"math": "unique"}, {"overrides": {"measurement": {"percentile": 99}}}),
+        ],
+    )
+    def test_percentile_with_a_value_somewhere_passes(
+        self, measurement: dict[str, Any], kwargs: dict[str, Any]
+    ) -> None:
+        """A stored, typed, or raw-override percentile value lets the reference pass."""
+        ref = self._saved(measurement).to_ref(math="percentile", **kwargs)
+        assert ref.math == "percentile"
+
+    def test_bare_metric_ref_still_needs_no_value(self) -> None:
+        """A bare MetricRef cannot see the saved value, so it is not refused."""
+        assert MetricRef(1, math="percentile").percentile_value is None
+
     def test_reference_guards_still_apply(self) -> None:
         """A filters override is refused on the way through."""
         metric = SavedMetric.model_validate(behavior_metric_json())

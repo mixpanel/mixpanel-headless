@@ -71,7 +71,11 @@ may include API changes.
   `Metric` rules where they contradict each other
   (`V3_PER_USER_INCOMPATIBLE`, `V14_METRIC_REJECTS_PROPERTY`); a field
   that the saved definition or the raw `overrides` can supply (a property,
-  a per-user aggregation, a percentile value) is not required. The raw `overrides` are stored as a read-only
+  a per-user aggregation, a percentile value) is not required.
+  `SavedMetric.to_ref(math="percentile")` without a percentile value in
+  the arguments or the raw overrides is refused when the stored
+  measurement has none (`V26_PERCENTILE_REQUIRES_VALUE`), because a saved
+  metric holds its definition. The raw `overrides` are stored as a read-only
   copy.
 - A query-level `math`, `math_property`, `per_user`, or `percentile_value`
   in a query that has saved-metric references and no plain event name is
