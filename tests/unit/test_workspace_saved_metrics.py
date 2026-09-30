@@ -315,11 +315,86 @@ class TestDeleteMetric:
         assert exc_info.value.status_code == 403
 
 
+class TestDeleteMetricGuard:
+    """delete_metric refuses a metric that the caller cannot edit, unless forced."""
+
+    def _handler(self, captured: list[httpx.Request], row: dict[str, Any]) -> Any:
+        """Build a handler that answers the pre-read with ``row``.
+
+        Args:
+            captured: List the handler appends each request to.
+            row: The metric row of the pre-read.
+
+        Returns:
+            A MockTransport handler.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the GET with the row and the DELETE with an empty map."""
+            captured.append(request)
+            if request.method == "GET":
+                return httpx.Response(200, json=envelope(row))
+            return httpx.Response(200, json={"status": "ok", "results": {}})
+
+        return handler
+
+    def test_refusal_names_the_metric_and_the_way_out(self, temp_dir: Path) -> None:
+        """can_update_basic false raises SM6 after the read and sends no DELETE."""
+        captured: list[httpx.Request] = []
+        row = {**behavior_metric_json(7, "Their metric"), "can_update_basic": False}
+        ws = _make_workspace(temp_dir, self._handler(captured, row))
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.delete_metric(7)
+        exc = exc_info.value
+        assert exc.code == "SM6_DELETE_NOT_PERMITTED"
+        assert exc.code in CODED_GUARD_REGISTRY
+        message = str(exc)
+        assert "7" in message
+        assert "Their metric" in message
+        assert "ana@example.com" in message
+        assert "superadmin" in message
+        assert "force=True" in message
+        assert exc.details == {
+            "metric_ids": [7],
+            "name": "Their metric",
+            "created_by": "ana@example.com",
+        }
+        assert [r.method for r in captured] == ["GET"]
+
+    def test_force_deletes_anyway(self, temp_dir: Path) -> None:
+        """force=True skips the permission guard but keeps the existence read."""
+        captured: list[httpx.Request] = []
+        row = {**behavior_metric_json(7), "can_update_basic": False}
+        ws = _make_workspace(temp_dir, self._handler(captured, row))
+        ws.delete_metric(7, force=True)
+        assert [r.method for r in captured] == ["GET", "DELETE"]
+
+    def test_missing_permission_key_does_not_refuse(self, temp_dir: Path) -> None:
+        """A pre-read row without can_update_basic is left to the server."""
+        captured: list[httpx.Request] = []
+        row = behavior_metric_json(7)
+        del row["can_update_basic"]
+        del row["created_by"]
+        ws = _make_workspace(temp_dir, self._handler(captured, row))
+        ws.delete_metric(7)
+        assert [r.method for r in captured] == ["GET", "DELETE"]
+
+    def test_refusal_without_a_creator(self, temp_dir: Path) -> None:
+        """A locked row with no creator still refuses; details hold None."""
+        captured: list[httpx.Request] = []
+        row = {**behavior_metric_json(7), "can_update_basic": False}
+        del row["created_by"]
+        ws = _make_workspace(temp_dir, self._handler(captured, row))
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.delete_metric(7)
+        assert exc_info.value.details["created_by"] is None
+
+
 class TestDeleteMetrics:
     """Tests for Workspace.delete_metrics()."""
 
-    def test_one_bulk_delete(self, temp_dir: Path) -> None:
-        """delete_metrics() sends one DELETE with every id and no pre-read."""
+    def test_force_sends_one_bulk_delete(self, temp_dir: Path) -> None:
+        """delete_metrics(force=True) sends one DELETE with every id and no read."""
         captured: list[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -328,11 +403,74 @@ class TestDeleteMetrics:
             return httpx.Response(200, json={"status": "ok", "results": {}})
 
         ws = _make_workspace(temp_dir, handler)
-        ws.delete_metrics((1, 2, 3))
+        ws.delete_metrics((1, 2, 3), force=True)
         assert [r.method for r in captured] == ["DELETE"]
         assert json.loads(captured[0].content) == {
             "metrics": [{"id": 1}, {"id": 2}, {"id": 3}]
         }
+
+    def test_reads_the_list_once_then_deletes(self, temp_dir: Path) -> None:
+        """Without force, one list read checks the targets, then one DELETE goes out."""
+        captured: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the list with two editable rows and the DELETE with a map."""
+            captured.append(request)
+            if request.method == "GET":
+                return httpx.Response(
+                    200, json=envelope(behavior_metric_json(1), behavior_metric_json(2))
+                )
+            return httpx.Response(200, json={"status": "ok", "results": {}})
+
+        ws = _make_workspace(temp_dir, handler)
+        ws.delete_metrics([1, 2, 99])
+        assert [(r.method, r.url.path) for r in captured] == [
+            ("GET", "/api/app/projects/12345/metrics"),
+            ("DELETE", "/api/app/projects/12345/metrics"),
+        ]
+        assert json.loads(captured[1].content) == {
+            "metrics": [{"id": 1}, {"id": 2}, {"id": 99}]
+        }
+
+    def test_refuses_rows_the_caller_cannot_edit(self, temp_dir: Path) -> None:
+        """A target with can_update_basic false refuses the whole request (SM6)."""
+        captured: list[httpx.Request] = []
+        locked_a = {**behavior_metric_json(2, "Theirs A"), "can_update_basic": False}
+        locked_b = {**behavior_metric_json(3, "Theirs B"), "can_update_basic": False}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the list with one editable and two locked rows."""
+            captured.append(request)
+            return httpx.Response(
+                200, json=envelope(behavior_metric_json(1), locked_a, locked_b)
+            )
+
+        ws = _make_workspace(temp_dir, handler)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.delete_metrics([1, 2, 3])
+        exc = exc_info.value
+        assert exc.code == "SM6_DELETE_NOT_PERMITTED"
+        assert exc.details["metric_ids"] == [2, 3]
+        assert "2" in str(exc) and "3" in str(exc)
+        assert "force=True" in str(exc)
+        assert [r.method for r in captured] == ["GET"]
+
+    def test_missing_permission_key_does_not_refuse(self, temp_dir: Path) -> None:
+        """A row without can_update_basic is left to the server."""
+        captured: list[httpx.Request] = []
+        row = behavior_metric_json(1)
+        del row["can_update_basic"]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the list with a row that has no permission key."""
+            captured.append(request)
+            if request.method == "GET":
+                return httpx.Response(200, json=envelope(row))
+            return httpx.Response(200, json={"status": "ok", "results": {}})
+
+        ws = _make_workspace(temp_dir, handler)
+        ws.delete_metrics([1])
+        assert [r.method for r in captured] == ["GET", "DELETE"]
 
     def test_empty_sequence_sends_nothing(self, temp_dir: Path) -> None:
         """An empty id sequence sends no request."""
@@ -451,11 +589,43 @@ class TestDeleteBehavior:
         assert [r.method for r in captured] == ["GET"]
 
 
+class TestDeleteBehaviorGuard:
+    """delete_behavior refuses a behavior that the caller cannot edit, unless forced."""
+
+    def test_refusal_and_force(self, temp_dir: Path) -> None:
+        """can_update_basic false raises BH4; force=True deletes anyway."""
+        captured: list[httpx.Request] = []
+        row = {**saved_behavior_json(3001, "Their funnel"), "can_update_basic": False}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the GET with the locked row and the DELETE with a map."""
+            captured.append(request)
+            if request.method == "GET":
+                return httpx.Response(200, json=envelope(row))
+            return httpx.Response(200, json={"status": "ok", "results": {}})
+
+        ws = _make_workspace(temp_dir, handler)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.delete_behavior(3001)
+        exc = exc_info.value
+        assert exc.code == "BH4_DELETE_NOT_PERMITTED"
+        assert "Their funnel" in str(exc)
+        assert "force=True" in str(exc)
+        assert exc.details == {
+            "behavior_ids": [3001],
+            "name": "Their funnel",
+            "created_by": "ana@example.com",
+        }
+        assert [r.method for r in captured] == ["GET"]
+        ws.delete_behavior(3001, force=True)
+        assert [r.method for r in captured] == ["GET", "GET", "DELETE"]
+
+
 class TestDeleteBehaviors:
     """Tests for Workspace.delete_behaviors()."""
 
-    def test_one_bulk_delete(self, temp_dir: Path) -> None:
-        """delete_behaviors() sends one DELETE with every id and no pre-read."""
+    def test_force_sends_one_bulk_delete(self, temp_dir: Path) -> None:
+        """delete_behaviors(force=True) sends one DELETE with every id and no read."""
         captured: list[httpx.Request] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -464,9 +634,46 @@ class TestDeleteBehaviors:
             return httpx.Response(200, json={"status": "ok", "results": {}})
 
         ws = _make_workspace(temp_dir, handler)
-        ws.delete_behaviors([7, 8])
+        ws.delete_behaviors([7, 8], force=True)
         assert [r.method for r in captured] == ["DELETE"]
         assert json.loads(captured[0].content) == {"behaviors": [{"id": 7}, {"id": 8}]}
+
+    def test_reads_the_list_once_then_deletes(self, temp_dir: Path) -> None:
+        """Without force, one list read checks the targets, then one DELETE goes out."""
+        captured: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the list with an editable row and the DELETE with a map."""
+            captured.append(request)
+            if request.method == "GET":
+                return httpx.Response(200, json=envelope(saved_behavior_json(7)))
+            return httpx.Response(200, json={"status": "ok", "results": {}})
+
+        ws = _make_workspace(temp_dir, handler)
+        ws.delete_behaviors([7, 8])
+        assert [(r.method, r.url.path) for r in captured] == [
+            ("GET", "/api/app/projects/12345/behaviors"),
+            ("DELETE", "/api/app/projects/12345/behaviors"),
+        ]
+
+    def test_refuses_rows_the_caller_cannot_edit(self, temp_dir: Path) -> None:
+        """A target with can_update_basic false refuses the whole request (BH4)."""
+        captured: list[httpx.Request] = []
+        locked = {**saved_behavior_json(8, "Theirs"), "can_update_basic": False}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the list with one editable and one locked row."""
+            captured.append(request)
+            return httpx.Response(200, json=envelope(saved_behavior_json(7), locked))
+
+        ws = _make_workspace(temp_dir, handler)
+        with pytest.raises(ParamValidationError) as exc_info:
+            ws.delete_behaviors([7, 8])
+        exc = exc_info.value
+        assert exc.code == "BH4_DELETE_NOT_PERMITTED"
+        assert exc.code in CODED_GUARD_REGISTRY
+        assert exc.details["behavior_ids"] == [8]
+        assert [r.method for r in captured] == ["GET"]
 
     def test_empty_sequence_sends_nothing(self, temp_dir: Path) -> None:
         """An empty id sequence sends no request."""

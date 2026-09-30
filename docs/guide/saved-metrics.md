@@ -121,14 +121,18 @@ The bulk routes skip ids that do not name an active row, with no error. The sing
 | Method | Requests | Unknown id |
 |---|---|---|
 | `delete_metric(id)` | GET, then bulk DELETE | `ParamValidationError` with code `SM5_NOT_FOUND_FOR_DELETE`; nothing is deleted |
-| `delete_metrics(ids)` | One bulk DELETE | Skipped by the server, no error |
+| `delete_metrics(ids)` | List read, then one bulk DELETE | Skipped by the server, no error |
 | `delete_behavior(id)` | GET, then bulk DELETE | `ServerError` (the server answers the read with 500); nothing is deleted |
-| `delete_behaviors(ids)` | One bulk DELETE | Skipped by the server, no error |
+| `delete_behaviors(ids)` | List read, then one bulk DELETE | Skipped by the server, no error |
+
+!!! warning "Superadmins can delete other users' metrics and behaviors"
+    The server's bulk delete lets a project superadmin delete metrics and behaviors that other users own, even when the row's `can_update_basic` flag is false for that account. So the library refuses, before any delete, a target whose `can_update_basic` is false: `ParamValidationError` with code `SM6_DELETE_NOT_PERMITTED` (metrics) or `BH4_DELETE_NOT_PERMITTED` (behaviors). The single-id methods check the row they read; the bulk methods read the list once and refuse the whole request, naming every refused id. A row without the flag is not refused, and ids that the list does not hold are left to the server, which skips them. Pass `force=True` (CLI: `--force`) to delete anyway; `force` skips the list read of the bulk methods, and the single-id methods still read the row to confirm that it exists.
 
 === "Python"
 
     ```python
     ws.delete_metric(104700)
+    ws.delete_metric(118228, force=True)    # a metric that another user owns
 
     stale = ws.list_metrics(name_contains="[old]")
     ws.delete_metrics([m.id for m in stale])
@@ -141,7 +145,8 @@ The bulk routes skip ids that do not name an active row, with no error. The sing
 
     ```bash
     mp metrics delete 104700              # one id: read first, then delete
-    mp metrics delete 104700 118228       # several ids: one bulk request
+    mp metrics delete 104700 118228       # several ids: list read, then one bulk request
+    mp metrics delete 118228 --force      # delete a metric that your account cannot edit
     mp behaviors delete 3001
     ```
 

@@ -2018,8 +2018,10 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         "RL4_REPORT_TYPE_CONFLICT",
         "RL5_RESOLVED_REPORT_INCONSISTENT",
         "RL6_INVALID_ID",
-        # -- saved metrics: the delete_metric pre-read found no metric -------
+        # -- saved metrics and saved behaviors: delete guards ----------------
         "SM5_NOT_FOUND_FOR_DELETE",
+        "SM6_DELETE_NOT_PERMITTED",
+        "BH4_DELETE_NOT_PERMITTED",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

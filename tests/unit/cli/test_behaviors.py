@@ -122,7 +122,7 @@ class TestBehaviorsDelete:
 
         result = runner.invoke(app, ["behaviors", "delete", "3001"])
         assert result.exit_code == 0, result.output
-        mock_ws.delete_behavior.assert_called_once_with(3001)
+        mock_ws.delete_behavior.assert_called_once_with(3001, force=False)
         mock_ws.delete_behaviors.assert_not_called()
         assert result.stdout == ""
         assert "Deleted saved behavior 3001" in result.stderr
@@ -135,7 +135,7 @@ class TestBehaviorsDelete:
 
         result = runner.invoke(app, ["behaviors", "delete", "7", "8"])
         assert result.exit_code == 0, result.output
-        mock_ws.delete_behaviors.assert_called_once_with([7, 8])
+        mock_ws.delete_behaviors.assert_called_once_with([7, 8], force=False)
         mock_ws.delete_behavior.assert_not_called()
         assert "7, 8" in result.stderr
         assert "skips" in result.stderr
@@ -152,3 +152,45 @@ class TestBehaviorsDelete:
         result = runner.invoke(app, ["behaviors", "delete", "999"])
         assert result.exit_code != 0
         assert "Server error (500)" in result.stderr
+
+
+class TestBehaviorsDeleteForce:
+    """Tests for the --force flag of mp behaviors delete."""
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_force_passes_through(self, mock_get_ws: MagicMock) -> None:
+        """--force reaches both the single and the bulk delete."""
+        mock_ws = MagicMock()
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["behaviors", "delete", "3001", "--force"])
+        assert result.exit_code == 0, result.output
+        mock_ws.delete_behavior.assert_called_once_with(3001, force=True)
+
+        result = runner.invoke(app, ["behaviors", "delete", "1", "2", "--force"])
+        assert result.exit_code == 0, result.output
+        mock_ws.delete_behaviors.assert_called_once_with([1, 2], force=True)
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_permission_refusal_exits_nonzero(self, mock_get_ws: MagicMock) -> None:
+        """A delete guard refusal exits non-zero with the message on stderr."""
+        from mixpanel_headless.exceptions import ParamValidationError
+
+        mock_ws = MagicMock()
+        mock_ws.delete_behavior.side_effect = ParamValidationError(
+            "This account cannot edit saved behavior 3001. Pass force=True "
+            "(CLI: --force) to delete it anyway.",
+            code="BH4_DELETE_NOT_PERMITTED",
+        )
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["behaviors", "delete", "3001"])
+        assert result.exit_code != 0
+        assert "--force" in result.stderr
+
+    def test_help_explains_the_guard(self) -> None:
+        """The delete help names --force and the superadmin hazard."""
+        result = runner.invoke(app, ["behaviors", "delete", "--help"])
+        assert result.exit_code == 0
+        assert "--force" in result.stdout
+        assert "superadmin" in result.stdout

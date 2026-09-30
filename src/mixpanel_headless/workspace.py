@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NoReturn
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -8702,8 +8702,8 @@ class Workspace:
             SavedMetric, client.get_metric(metric_id), endpoint="get_metric"
         )
 
-    def delete_metric(self, metric_id: int) -> None:
-        """Delete one saved metric, after a read that confirms it exists.
+    def delete_metric(self, metric_id: int, *, force: bool = False) -> None:
+        """Delete one saved metric, after a read that confirms it exists and is yours to edit.
 
         The server has no working single-metric delete, and its bulk delete
         skips unknown ids with no error. So this method reads the metric
@@ -8712,12 +8712,24 @@ class Workspace:
         the server; reports that refer to the metric keep a copy of its
         definition but lose the link.
 
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own, even when the metric's ``can_update_basic``
+        flag is false for that account. So this method refuses a metric
+        whose ``can_update_basic`` is false, unless ``force`` is true. A
+        read without the flag does not refuse; the server stays the
+        authority.
+
         Args:
             metric_id: The saved metric id.
+            force: Delete even when the read says that the caller cannot
+                edit the metric (a superadmin account can delete metrics
+                that other users own). The existence read still runs.
 
         Raises:
             ParamValidationError: The read found no active metric with this
                 id (404); nothing was deleted (``SM5_NOT_FOUND_FOR_DELETE``).
+                The read shows ``can_update_basic`` false and ``force`` is
+                false; nothing was deleted (``SM6_DELETE_NOT_PERMITTED``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot read or edit the metric, or lacks
@@ -8729,11 +8741,12 @@ class Workspace:
             ```python
             ws = Workspace()
             ws.delete_metric(104700)
+            ws.delete_metric(118228, force=True)  # a metric another user owns
             ```
         """
         client = self._require_api_client()
         try:
-            client.get_metric(metric_id)
+            row = client.get_metric(metric_id)
         except QueryError as exc:
             if exc.status_code != 404:
                 raise
@@ -8747,9 +8760,11 @@ class Workspace:
                     "status_code": 404,
                 },
             ) from exc
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("metric", [row])
         client.delete_metrics([metric_id])
 
-    def delete_metrics(self, metric_ids: Sequence[int]) -> None:
+    def delete_metrics(self, metric_ids: Sequence[int], *, force: bool = False) -> None:
         """Delete several saved metrics with one bulk request.
 
         The server skips ids that do not name an active metric of the
@@ -8757,10 +8772,21 @@ class Workspace:
         :meth:`delete_metric` to delete one metric with an existence check.
         An empty sequence sends no request.
 
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own. So, unless ``force`` is true, this method
+        reads the metric list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
         Args:
             metric_ids: The saved metric ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
 
         Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``SM6_DELETE_NOT_PERMITTED``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit one of the metrics, or lacks
@@ -8779,7 +8805,88 @@ class Workspace:
         if not metric_ids:
             return
         client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("metric", metric_ids, client.list_metrics())
         client.delete_metrics(list(metric_ids))
+
+    @staticmethod
+    def _check_bulk_delete(
+        entity: Literal["metric", "behavior"],
+        target_ids: Sequence[int],
+        rows: list[dict[str, Any]],
+    ) -> None:
+        """Refuse a bulk delete when a target row says the caller cannot edit it.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            target_ids: The ids to delete.
+            rows: The listed rows of the project.
+
+        Raises:
+            ParamValidationError: A listed target has ``can_update_basic``
+                false (``SM6_DELETE_NOT_PERMITTED`` or
+                ``BH4_DELETE_NOT_PERMITTED``).
+        """
+        by_id = {row.get("id"): row for row in rows}
+        wanted = list(dict.fromkeys(target_ids))
+        refused = [
+            by_id[target]
+            for target in wanted
+            if target in by_id and by_id[target].get("can_update_basic") is False
+        ]
+        if refused:
+            Workspace._refuse_delete(entity, refused)
+
+    @staticmethod
+    def _refuse_delete(
+        entity: Literal["metric", "behavior"], rows: list[dict[str, Any]]
+    ) -> NoReturn:
+        """Raise the delete guard refusal for rows the caller cannot edit.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            rows: The refused rows (one for a single delete).
+
+        Raises:
+            ParamValidationError: Always (``SM6_DELETE_NOT_PERMITTED`` for
+                metrics, ``BH4_DELETE_NOT_PERMITTED`` for behaviors).
+        """
+        code = (
+            "SM6_DELETE_NOT_PERMITTED"
+            if entity == "metric"
+            else "BH4_DELETE_NOT_PERMITTED"
+        )
+        ids = [row.get("id") for row in rows]
+        noun = f"saved {entity}"
+        advice = (
+            "The server would still delete it for a project superadmin account. "
+            "Pass force=True (CLI: --force) to delete it anyway."
+        )
+        if len(rows) == 1:
+            row = rows[0]
+            creator = row.get("created_by")
+            email = creator.get("email") if isinstance(creator, dict) else None
+            by = f", created by {email}" if email else ""
+            raise ParamValidationError(
+                f"This account cannot edit {noun} {row.get('id')} "
+                f"({row.get('name')!r}{by}): its can_update_basic flag is false. "
+                f"{advice}",
+                code=code,
+                details={
+                    f"{entity}_ids": ids,
+                    "name": row.get("name"),
+                    "created_by": email,
+                },
+            )
+        joined = ", ".join(str(i) for i in ids)
+        raise ParamValidationError(
+            f"This account cannot edit {noun}s {joined}: their can_update_basic "
+            f"flag is false. Nothing was deleted. The server would still delete "
+            f"them for a project superadmin account. Pass force=True (CLI: "
+            f"--force) to delete them anyway.",
+            code=code,
+            details={f"{entity}_ids": ids},
+        )
 
     def list_behaviors(
         self,
@@ -8863,8 +8970,8 @@ class Workspace:
             SavedBehavior, client.get_behavior(behavior_id), endpoint="get_behavior"
         )
 
-    def delete_behavior(self, behavior_id: int) -> None:
-        """Delete one saved behavior, after a read that confirms it exists.
+    def delete_behavior(self, behavior_id: int, *, force: bool = False) -> None:
+        """Delete one saved behavior, after a read that confirms it exists and is yours to edit.
 
         Sends the bulk delete with the one id, because the bulk route is the
         one that checks the caller's permission; the single-behavior route
@@ -8873,10 +8980,21 @@ class Workspace:
         read fails with a server 500 (``ServerError``), and nothing is
         deleted.
 
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created, even when the behavior's
+        ``can_update_basic`` flag is false for that account. So this method
+        refuses a behavior whose ``can_update_basic`` is false, unless
+        ``force`` is true. A read without the flag does not refuse.
+
         Args:
             behavior_id: The saved behavior id.
+            force: Delete even when the read says that the caller cannot
+                edit the behavior. The existence read still runs.
 
         Raises:
+            ParamValidationError: The read shows ``can_update_basic`` false
+                and ``force`` is false; nothing was deleted
+                (``BH4_DELETE_NOT_PERMITTED``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot read or edit the behavior (403).
@@ -8891,10 +9009,14 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        client.get_behavior(behavior_id)
+        row = client.get_behavior(behavior_id)
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("behavior", [row])
         client.delete_behaviors([behavior_id])
 
-    def delete_behaviors(self, behavior_ids: Sequence[int]) -> None:
+    def delete_behaviors(
+        self, behavior_ids: Sequence[int], *, force: bool = False
+    ) -> None:
         """Delete several saved behaviors with one bulk request.
 
         The server skips ids that do not name a behavior of the project,
@@ -8902,10 +9024,21 @@ class Workspace:
         :meth:`delete_behavior` to delete one behavior with an existence
         check. An empty sequence sends no request.
 
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created. So, unless ``force`` is true, this method
+        reads the behavior list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
         Args:
             behavior_ids: The saved behavior ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
 
         Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``BH4_DELETE_NOT_PERMITTED``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit one of the behaviors (403).
@@ -8922,6 +9055,8 @@ class Workspace:
         if not behavior_ids:
             return
         client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("behavior", behavior_ids, client.list_behaviors())
         client.delete_behaviors(list(behavior_ids))
 
     # =============================================================================

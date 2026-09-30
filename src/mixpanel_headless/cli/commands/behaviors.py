@@ -126,6 +126,17 @@ def delete_behaviors(
         list[int],
         typer.Argument(help="One or more saved behavior IDs to delete."),
     ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help=(
+                "Delete behaviors that your account cannot edit (can_update_basic "
+                "false). A superadmin account can delete behaviors that other "
+                "users created."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Delete one or more saved behaviors.
 
@@ -134,20 +145,26 @@ def delete_behaviors(
     request, and the server skips the IDs that do not name a behavior,
     with no error.
 
+    The server lets a project superadmin delete behaviors that other users
+    created. So the command refuses, before any delete, a behavior whose
+    can_update_basic flag is false for your account. Pass --force to
+    delete it anyway.
+
     Args:
         ctx: Typer context with global options.
         behavior_ids: The saved behavior identifiers.
+        force: Delete behaviors that your account cannot edit.
     """
     workspace = get_workspace(ctx)
 
     if len(behavior_ids) == 1:
         with status_spinner(ctx, "Deleting saved behavior..."):
-            workspace.delete_behavior(behavior_ids[0])
+            workspace.delete_behavior(behavior_ids[0], force=force)
         err_console.print(f"[green]Deleted saved behavior {behavior_ids[0]}.[/green]")
         return
 
     with status_spinner(ctx, "Deleting saved behaviors..."):
-        workspace.delete_behaviors(behavior_ids)
+        workspace.delete_behaviors(behavior_ids, force=force)
     joined = ", ".join(str(i) for i in behavior_ids)
     err_console.print(
         f"[green]Sent one delete for {len(behavior_ids)} saved behaviors: "

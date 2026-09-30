@@ -147,6 +147,17 @@ def delete_metrics(
         list[int],
         typer.Argument(help="One or more saved metric IDs to delete."),
     ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help=(
+                "Delete metrics that your account cannot edit (can_update_basic "
+                "false). A superadmin account can delete metrics that other "
+                "users own."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Delete one or more saved metrics.
 
@@ -154,20 +165,26 @@ def delete_metrics(
     Several IDs go in one bulk request, and the server skips the IDs that
     do not name an active metric, with no error.
 
+    The server lets a project superadmin delete metrics that other users
+    own. So the command refuses, before any delete, a metric whose
+    can_update_basic flag is false for your account. Pass --force to
+    delete it anyway.
+
     Args:
         ctx: Typer context with global options.
         metric_ids: The saved metric identifiers.
+        force: Delete metrics that your account cannot edit.
     """
     workspace = get_workspace(ctx)
 
     if len(metric_ids) == 1:
         with status_spinner(ctx, "Deleting saved metric..."):
-            workspace.delete_metric(metric_ids[0])
+            workspace.delete_metric(metric_ids[0], force=force)
         err_console.print(f"[green]Deleted saved metric {metric_ids[0]}.[/green]")
         return
 
     with status_spinner(ctx, "Deleting saved metrics..."):
-        workspace.delete_metrics(metric_ids)
+        workspace.delete_metrics(metric_ids, force=force)
     joined = ", ".join(str(i) for i in metric_ids)
     err_console.print(
         f"[green]Sent one delete for {len(metric_ids)} saved metrics: {joined}.[/green] "

@@ -32,6 +32,13 @@ may include API changes.
   behavior id with a 500 (`ServerError`). `delete_metrics` and
   `delete_behaviors` send one bulk request, and the server skips unknown
   ids.
+- The server's bulk delete lets a project superadmin delete metrics and
+  behaviors that other users own. The delete methods refuse, before any
+  delete, a target whose `can_update_basic` flag is false for the caller:
+  `ParamValidationError` with the new codes `SM6_DELETE_NOT_PERMITTED` and
+  `BH4_DELETE_NOT_PERMITTED`. The bulk methods read the list once and
+  refuse the whole request, naming every refused id. `force=True` (CLI:
+  `--force`) deletes anyway.
 - New result types `SavedMetric` and `SavedBehavior`, plus `MetricDisplay`
   and `MetricGoal`. Reads are open: any `type`, any `math`, and unknown
   keys parse and survive `model_dump()`. Typed accessors (`behavior_type`,
@@ -43,7 +50,8 @@ may include API changes.
   `list` takes `--type`, `--name-contains`, and, for metrics,
   `--verified/--no-verified` and `--viewable-only`; the table view shows
   `can_view`. `delete` takes one or more ids: one id reads first, several
-  ids go in one bulk request.
+  ids go in one bulk request. `delete` takes `--force` to pass the
+  permission guard.
 - `mp help` gains the "saved metrics" and "saved behaviors" domains, and a
   new guide page, "Saved Metrics and Behaviors".
 - `MixpanelAPIClient.app_request` takes a per-call `timeout`.

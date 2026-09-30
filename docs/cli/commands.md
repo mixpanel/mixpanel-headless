@@ -28,10 +28,10 @@ Two project-scoped groups read and delete saved metrics and saved behaviors. Ful
 |---------|---------|
 | `mp metrics list [--type metric\|formula\|warehouse] [--verified \| --no-verified] [--name-contains TEXT] [--viewable-only]` | List saved metrics. The server list includes metrics that you cannot view; `--viewable-only` drops them. The filters apply locally. `--format table` shows `id`, `name`, `type`, `verified`, `can_view`, `modified`. |
 | `mp metrics get ID` | Print one saved metric with its definition. |
-| `mp metrics delete ID [ID ...]` | One ID: read, then delete (an unknown ID fails and deletes nothing). Several IDs: one bulk request; the server skips unknown IDs. No prompt; the message goes to stderr. |
+| `mp metrics delete ID [ID ...] [--force]` | One ID: read, then delete (an unknown ID fails and deletes nothing). Several IDs: one list read, then one bulk request; the server skips unknown IDs. A metric whose `can_update_basic` is false for your account is refused before any delete (a superadmin's delete would reach metrics that other users own); `--force` deletes it anyway. No prompt; the message goes to stderr. |
 | `mp behaviors list [--type simple\|funnel\|retention] [--name-contains TEXT]` | List saved behaviors. `--format table` shows `id`, `name`, `type`, `verified`, `can_view`, `modified`. |
 | `mp behaviors get ID` | Print one saved behavior with its definition. The server answers an unknown ID with a 500. |
-| `mp behaviors delete ID [ID ...]` | Same rules as `mp metrics delete`, through the bulk behavior route. |
+| `mp behaviors delete ID [ID ...] [--force]` | Same rules as `mp metrics delete`, including the `can_update_basic` guard and `--force`, through the bulk behavior route. |
 
 ## Built-in help
 

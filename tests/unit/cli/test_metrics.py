@@ -173,7 +173,7 @@ class TestMetricsDelete:
 
         result = runner.invoke(app, ["metrics", "delete", "104700"])
         assert result.exit_code == 0, result.output
-        mock_ws.delete_metric.assert_called_once_with(104700)
+        mock_ws.delete_metric.assert_called_once_with(104700, force=False)
         mock_ws.delete_metrics.assert_not_called()
         assert result.stdout == ""
         assert "Deleted saved metric 104700" in result.stderr
@@ -186,7 +186,7 @@ class TestMetricsDelete:
 
         result = runner.invoke(app, ["metrics", "delete", "1", "2", "3"])
         assert result.exit_code == 0, result.output
-        mock_ws.delete_metrics.assert_called_once_with([1, 2, 3])
+        mock_ws.delete_metrics.assert_called_once_with([1, 2, 3], force=False)
         mock_ws.delete_metric.assert_not_called()
         assert "1, 2, 3" in result.stderr
         assert "skips" in result.stderr
@@ -209,3 +209,45 @@ class TestMetricsDelete:
         """delete with no ID is a usage error."""
         result = runner.invoke(app, ["metrics", "delete"])
         assert result.exit_code == 2
+
+
+class TestMetricsDeleteForce:
+    """Tests for the --force flag of mp metrics delete."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_force_passes_through(self, mock_get_ws: MagicMock) -> None:
+        """--force reaches both the single and the bulk delete."""
+        mock_ws = MagicMock()
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["metrics", "delete", "104700", "--force"])
+        assert result.exit_code == 0, result.output
+        mock_ws.delete_metric.assert_called_once_with(104700, force=True)
+
+        result = runner.invoke(app, ["metrics", "delete", "1", "2", "--force"])
+        assert result.exit_code == 0, result.output
+        mock_ws.delete_metrics.assert_called_once_with([1, 2], force=True)
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_permission_refusal_exits_nonzero(self, mock_get_ws: MagicMock) -> None:
+        """A delete guard refusal exits non-zero with the message on stderr."""
+        from mixpanel_headless.exceptions import ParamValidationError
+
+        mock_ws = MagicMock()
+        mock_ws.delete_metric.side_effect = ParamValidationError(
+            "This account cannot edit saved metric 104700. Pass force=True "
+            "(CLI: --force) to delete it anyway.",
+            code="SM6_DELETE_NOT_PERMITTED",
+        )
+        mock_get_ws.return_value = mock_ws
+
+        result = runner.invoke(app, ["metrics", "delete", "104700"])
+        assert result.exit_code != 0
+        assert "--force" in result.stderr
+
+    def test_help_explains_the_guard(self) -> None:
+        """The delete help names --force and the superadmin hazard."""
+        result = runner.invoke(app, ["metrics", "delete", "--help"])
+        assert result.exit_code == 0
+        assert "--force" in result.stdout
+        assert "superadmin" in result.stdout
