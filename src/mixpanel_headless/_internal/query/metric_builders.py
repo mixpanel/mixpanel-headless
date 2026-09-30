@@ -393,13 +393,16 @@ def build_metric_behavior(metric: Metric) -> dict[str, Any]:
 
     Returns:
         An event behavior for one event name (the bytes of every release),
-        a custom-event behavior for a custom event, and a simple behavior
-        for a ``SimpleBehavior`` or a list of more than one event. A list
-        of one event gives the behavior of that event alone.
+        a custom-event behavior for a custom event, a simple behavior for
+        a ``SimpleBehavior`` or a list of more than one event, and a
+        behavior reference for a ``BehaviorRef``. A list of one event gives
+        the behavior of that event alone.
     """
     event = metric.event
     filters = metric.filters
     combinator = metric.filters_combinator
+    if isinstance(event, BehaviorRef):
+        return build_behavior_ref(event)
     if isinstance(event, SimpleBehavior):
         return build_simple_behavior(event.events, name=event.name)
     if not isinstance(event, str | CustomEventRef):
@@ -651,8 +654,6 @@ def build_show_section(
                     hidden=hidden,
                 )
             )
-        elif isinstance(item, MetricRef):
-            show.append(build_metric_ref_clause(item, hidden=hidden))
         else:
             show.append(build_inline_metric_clause(item, hidden=hidden))
     show.extend(build_formula_clause(f) for f in formulas)
@@ -1105,19 +1106,23 @@ def build_retention_measurement(
 # =============================================================================
 
 
-def build_funnel_metric_behavior(behavior: FunnelBehavior) -> dict[str, Any]:
-    """Build the ``behavior`` block of a ``FunnelBehavior``.
+def build_funnel_metric_behavior(
+    behavior: FunnelBehavior | BehaviorRef,
+) -> dict[str, Any]:
+    """Build the ``behavior`` block of a ``FunnelBehavior`` or a saved funnel.
 
     Plain names become ``FunnelStep``, ``Exclusion``, and
     ``HoldingConstant`` objects first, as in ``query_funnel``, so the
     block is the one ``query_funnel`` writes for the same arguments.
 
     Args:
-        behavior: The funnel behavior.
+        behavior: The funnel behavior, or a reference to a saved funnel.
 
     Returns:
-        The funnel behavior dict.
+        The funnel behavior dict, or ``{"type", "id"}`` for a reference.
     """
+    if isinstance(behavior, BehaviorRef):
+        return build_behavior_ref(behavior)
     steps = [FunnelStep(s) if isinstance(s, str) else s for s in behavior.steps]
     exclusions = [
         Exclusion(e) if isinstance(e, str) else e for e in behavior.exclusions or []
@@ -1185,16 +1190,21 @@ def build_funnel_metric_clause(
     return clause
 
 
-def build_retention_metric_behavior(behavior: RetentionBehavior) -> dict[str, Any]:
-    """Build the ``behavior`` block of a ``RetentionBehavior``.
+def build_retention_metric_behavior(
+    behavior: RetentionBehavior | BehaviorRef,
+) -> dict[str, Any]:
+    """Build the ``behavior`` block of a ``RetentionBehavior`` or a saved one.
 
     Args:
-        behavior: The retention behavior. Plain names become
-            ``RetentionEvent`` objects first, as in ``query_retention``.
+        behavior: The retention behavior, or a reference to a saved
+            retention behavior. Plain names become ``RetentionEvent``
+            objects first, as in ``query_retention``.
 
     Returns:
-        The retention behavior dict.
+        The retention behavior dict, or ``{"type", "id"}`` for a reference.
     """
+    if isinstance(behavior, BehaviorRef):
+        return build_behavior_ref(behavior)
     born = behavior.born_event
     back = behavior.return_event
     return build_retention_behavior(
@@ -1238,16 +1248,20 @@ def build_retention_metric_clause(
 def build_inline_metric_clause(
     metric: FormulaOperand, *, hidden: bool = False
 ) -> dict[str, Any]:
-    """Build the show clause of any inline metric except a formula.
+    """Build the show clause of any metric except a formula.
 
     Args:
-        metric: A ``Metric``, ``CohortMetric``, ``FunnelMetric``, or
-            ``RetentionMetric``.
+        metric: A ``Metric``, ``CohortMetric``, ``FunnelMetric``,
+            ``RetentionMetric``, or a ``MetricRef`` to a saved metric.
         hidden: Whether the query shows the metric only through a formula.
 
     Returns:
-        The metric show clause from the builder of the metric's kind.
+        The metric show clause from the builder of the metric's kind. A
+        ``MetricRef`` gives the top-level reference clause of
+        :func:`build_metric_ref_clause`.
     """
+    if isinstance(metric, MetricRef):
+        return build_metric_ref_clause(metric, hidden=hidden)
     if isinstance(metric, CohortMetric):
         return build_cohort_metric_clause(metric, hidden=hidden)
     if isinstance(metric, FunnelMetric):
@@ -1257,7 +1271,9 @@ def build_inline_metric_clause(
     return build_metric_clause(metric, hidden=hidden)
 
 
-def build_metric_definition(metric: FormulaOperand) -> dict[str, Any]:
+def build_metric_definition(
+    metric: Metric | CohortMetric | FunnelMetric | RetentionMetric,
+) -> dict[str, Any]:
     """Build the saved definition of an inline metric.
 
     A saved behavior metric stores ``{behavior, measurement}``. Both blocks
@@ -1266,7 +1282,8 @@ def build_metric_definition(metric: FormulaOperand) -> dict[str, Any]:
 
     Args:
         metric: A ``Metric``, ``CohortMetric``, ``FunnelMetric``, or
-            ``RetentionMetric``.
+            ``RetentionMetric``. A behavior given as a ``BehaviorRef`` stays
+            a reference in the definition.
 
     Returns:
         ``{"behavior": ..., "measurement": ...}``.
@@ -1323,14 +1340,22 @@ def build_formula_operands(formula: Formula) -> list[dict[str, Any]]:
         formula: The formula.
 
     Returns:
-        One ``{"type": "metric", "behavior": ..., "measurement": ...}``
-        entry per operand, in order. A formula without operands gives an
-        empty list.
+        One entry per operand, in order: ``{"type": "metric", "behavior":
+        ..., "measurement": ...}`` for an inline metric, and the
+        ``{"type", "id"}`` operand of :func:`build_operand_ref_clause` for a
+        ``MetricRef``. A formula without operands gives an empty list.
+
+    Raises:
+        ParamValidationError: ``MR2_OPERAND_OVERRIDE`` for a ``MetricRef``
+            operand with overrides.
     """
-    return [
-        {"type": "metric", **build_metric_definition(operand)}
-        for operand in formula.metrics or []
-    ]
+    operands: list[dict[str, Any]] = []
+    for operand in formula.metrics or []:
+        if isinstance(operand, MetricRef):
+            operands.append(build_operand_ref_clause(operand))
+        else:
+            operands.append({"type": "metric", **build_metric_definition(operand)})
+    return operands
 
 
 def build_formula_definition(formula: Formula) -> dict[str, Any]:

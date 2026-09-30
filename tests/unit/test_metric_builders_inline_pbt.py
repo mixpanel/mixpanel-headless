@@ -37,6 +37,7 @@ from mixpanel_headless._literal_types import (
     SegmentMethod,
 )
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortMetric,
     CustomEventRef,
     Formula,
@@ -44,6 +45,7 @@ from mixpanel_headless.types import (
     FunnelBehavior,
     FunnelMetric,
     Metric,
+    MetricRef,
     RetentionBehavior,
     RetentionMetric,
     SimpleBehavior,
@@ -60,6 +62,12 @@ refs = st.integers(min_value=1, max_value=10**9).map(CustomEventRef)
 events = st.one_of(names, refs)
 """One event: a name or a custom event reference."""
 
+ids = st.integers(min_value=1, max_value=10**9)
+"""Saved-entity ids."""
+
+simple_refs = ids.map(lambda i: BehaviorRef(i, "simple"))
+"""References to saved simple behaviors."""
+
 metrics = st.builds(
     Metric,
     event=st.one_of(
@@ -71,40 +79,49 @@ metrics = st.builds(
             events=st.lists(events, min_size=1, max_size=4),
             name=st.one_of(st.none(), names),
         ),
+        simple_refs,
     ),
     math=st.sampled_from(["total", "unique", "dau"]),
     segment_method=st.one_of(st.none(), st.sampled_from(get_args(SegmentMethod))),
 )
-"""Metrics over one event, a custom event, a list, or a simple behavior."""
+"""Metrics over one event, a custom event, a list, or a simple behavior (inline or saved)."""
+
+funnel_behaviors = st.builds(
+    FunnelBehavior,
+    steps=st.lists(names, min_size=2, max_size=5),
+    conversion_window=st.integers(min_value=1, max_value=30),
+    conversion_window_unit=st.sampled_from(
+        [u for u in get_args(ConversionWindowUnit) if u != "session"]
+    ),
+    order=st.sampled_from(get_args(FunnelOrder)),
+)
+"""Inline funnel behaviors."""
 
 funnel_metrics = st.builds(
     FunnelMetric,
-    behavior=st.builds(
-        FunnelBehavior,
-        steps=st.lists(names, min_size=2, max_size=5),
-        conversion_window=st.integers(min_value=1, max_value=30),
-        conversion_window_unit=st.sampled_from(
-            [u for u in get_args(ConversionWindowUnit) if u != "session"]
-        ),
-        order=st.sampled_from(get_args(FunnelOrder)),
-    ),
+    behavior=st.one_of(funnel_behaviors, ids.map(lambda i: BehaviorRef(i, "funnel"))),
     math=st.sampled_from(["conversion_rate_unique", "unique", "total"]),
     step_index=st.one_of(st.none(), st.integers(min_value=0, max_value=4)),
 )
-"""Funnel metrics over generated funnels."""
+"""Funnel metrics over generated funnels, inline or saved."""
+
+retention_behaviors = st.builds(
+    RetentionBehavior,
+    born_event=names,
+    return_event=names,
+    alignment=st.sampled_from(get_args(RetentionAlignment)),
+)
+"""Inline retention behaviors."""
 
 retention_metrics = st.builds(
     RetentionMetric,
-    behavior=st.builds(
-        RetentionBehavior,
-        born_event=names,
-        return_event=names,
-        alignment=st.sampled_from(get_args(RetentionAlignment)),
+    behavior=st.one_of(
+        retention_behaviors, ids.map(lambda i: BehaviorRef(i, "retention"))
     ),
     bucket_index=st.one_of(st.none(), st.integers(min_value=0, max_value=30)),
     retention_cumulative=st.booleans(),
 )
-"""Retention metrics over generated retention behaviors."""
+"""Retention metrics over generated retention behaviors, inline or saved."""
 
 cohort_metrics = st.builds(
     CohortMetric,
@@ -113,10 +130,16 @@ cohort_metrics = st.builds(
 )
 """Cohort size metrics over saved cohorts."""
 
-inline_metrics: st.SearchStrategy[FormulaOperand] = st.one_of(
-    metrics, funnel_metrics, retention_metrics, cohort_metrics
-)
-"""Any inline metric that can be a formula operand."""
+inline_metrics: st.SearchStrategy[
+    Metric | CohortMetric | FunnelMetric | RetentionMetric
+] = st.one_of(metrics, funnel_metrics, retention_metrics, cohort_metrics)
+"""Any inline metric."""
+
+operand_refs = st.builds(MetricRef, ids, type=st.sampled_from(["metric", "warehouse"]))
+"""Saved-metric references that can be formula operands."""
+
+operands: st.SearchStrategy[FormulaOperand] = st.one_of(inline_metrics, operand_refs)
+"""Any formula operand: an inline metric or a saved-metric reference."""
 
 
 class TestDefinitionCompilerProperties:
@@ -124,7 +147,9 @@ class TestDefinitionCompilerProperties:
 
     @given(inline_metrics, st.booleans())
     def test_definition_equals_clause_blocks(
-        self, metric: FormulaOperand, hidden: bool
+        self,
+        metric: Metric | CohortMetric | FunnelMetric | RetentionMetric,
+        hidden: bool,
     ) -> None:
         """The definition is the behavior and measurement of the show clause."""
         clause = build_inline_metric_clause(metric, hidden=hidden)
@@ -133,14 +158,35 @@ class TestDefinitionCompilerProperties:
             "measurement": clause["measurement"],
         }
 
-    @given(st.one_of(funnel_metrics, retention_metrics))
+    @given(st.one_of(funnel_behaviors, retention_behaviors))
     def test_behavior_definition_equals_metric_behavior(
-        self, metric: FunnelMetric | RetentionMetric
+        self, behavior: FunnelBehavior | RetentionBehavior
     ) -> None:
         """A saved behavior stores the behavior block of its metric clause."""
+        metric = (
+            FunnelMetric(behavior)
+            if isinstance(behavior, FunnelBehavior)
+            else RetentionMetric(behavior)
+        )
         clause = build_inline_metric_clause(metric)
-        assert build_behavior_definition(metric.behavior) == {
-            "behavior": clause["behavior"]
+        assert build_behavior_definition(behavior) == {"behavior": clause["behavior"]}
+
+    @given(
+        st.one_of(
+            simple_refs.map(Metric),
+            ids.map(lambda i: FunnelMetric(BehaviorRef(i, "funnel"))),
+            ids.map(lambda i: RetentionMetric(BehaviorRef(i, "retention"))),
+        )
+    )
+    def test_saved_behavior_stays_a_reference(
+        self, metric: Metric | FunnelMetric | RetentionMetric
+    ) -> None:
+        """A saved behavior is written as ``{type, id}`` and nothing else."""
+        ref = metric.event if isinstance(metric, Metric) else metric.behavior
+        assert isinstance(ref, BehaviorRef)
+        assert build_metric_definition(metric)["behavior"] == {
+            "type": ref.type,
+            "id": ref.id,
         }
 
     @given(st.lists(events, min_size=1, max_size=5), st.one_of(st.none(), names))
@@ -154,16 +200,19 @@ class TestDefinitionCompilerProperties:
         assert "name" not in saved
         assert saved == {k: v for k, v in query_block.items() if k != "name"}
 
-    @given(st.lists(inline_metrics, min_size=1, max_size=4), st.data())
+    @given(st.lists(operands, min_size=1, max_size=4), st.data())
     def test_formula_operands_are_operand_definitions(
-        self, operands: list[FormulaOperand], data: st.DataObject
+        self, several: list[FormulaOperand], data: st.DataObject
     ) -> None:
-        """Each ``referencedMetrics`` entry is its operand's definition."""
-        index = data.draw(st.integers(min_value=0, max_value=len(operands) - 1))
-        formula = Formula(f"{letters_for_index(index)} * 2", metrics=operands)
+        """Each entry is its operand's definition, or ``{type, id}`` for a ref."""
+        index = data.draw(st.integers(min_value=0, max_value=len(several) - 1))
+        formula = Formula(f"{letters_for_index(index)} * 2", metrics=several)
         entries = build_formula_clause(formula)["referencedMetrics"]
         assert entries == [
-            {"type": "metric", **build_metric_definition(op)} for op in operands
+            {"type": op.type, "id": op.id}
+            if isinstance(op, MetricRef)
+            else {"type": "metric", **build_metric_definition(op)}
+            for op in several
         ]
         assert build_formula_definition(formula)["formula"]["referencedMetrics"] == (
             entries

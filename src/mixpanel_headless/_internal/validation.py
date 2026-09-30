@@ -2295,6 +2295,21 @@ def _prefixed(errors: list[ValidationError], prefix: str) -> list[ValidationErro
     return [replace(e, path=f"{prefix}.{e.path}") for e in errors]
 
 
+def _metric_property_errors(prop: object) -> list[ValidationError]:
+    """Check the custom property of a funnel or retention metric, if any.
+
+    Args:
+        prop: The ``property`` of the metric.
+
+    Returns:
+        The CP errors of a custom property, at path ``"property"``; empty
+        for a property name or ``None``.
+    """
+    if isinstance(prop, (CustomPropertyRef, InlineCustomProperty)):
+        return _validate_custom_property(prop, "property")
+    return []
+
+
 def validate_funnel_metric_args(
     metric: FunnelMetric, *, path: str
 ) -> list[ValidationError]:
@@ -2304,7 +2319,8 @@ def validate_funnel_metric_args(
     :func:`validate_funnel_args` (steps, window, session math, exclusions,
     held properties, reentry mode). Query-level arguments that a metric
     does not carry (dates, breakdowns) are left at neutral values, so they
-    add no error.
+    add no error. A saved funnel (``BehaviorRef``) owns its steps and
+    settings, so only the custom property check runs for it.
 
     Args:
         metric: The funnel metric.
@@ -2314,6 +2330,8 @@ def validate_funnel_metric_args(
         The errors, with paths under ``path``.
     """
     behavior = metric.behavior
+    if isinstance(behavior, BehaviorRef):
+        return _prefixed(_metric_property_errors(metric.property), path)
     steps = [FunnelStep(s) if isinstance(s, str) else s for s in behavior.steps]
     exclusions = [
         Exclusion(e) if isinstance(e, str) else e for e in behavior.exclusions or []
@@ -2339,8 +2357,7 @@ def validate_funnel_metric_args(
         group_by=None,
         reentry_mode=behavior.reentry_mode,
     )
-    if isinstance(metric.property, (CustomPropertyRef, InlineCustomProperty)):
-        errors.extend(_validate_custom_property(metric.property, "property"))
+    errors.extend(_metric_property_errors(metric.property))
     return _prefixed(errors, path)
 
 
@@ -2352,7 +2369,9 @@ def validate_retention_metric_args(
     The retention behavior of a ``RetentionMetric`` takes the rules and
     codes of :func:`validate_retention_args` (events, buckets, unit,
     alignment, math, unbounded mode). Query-level arguments that a metric
-    does not carry are left at neutral values.
+    does not carry are left at neutral values. A saved retention behavior
+    (``BehaviorRef``) owns its events and settings, so only the custom
+    property check runs for it.
 
     Args:
         metric: The retention metric.
@@ -2362,6 +2381,8 @@ def validate_retention_metric_args(
         The errors, with paths under ``path``.
     """
     behavior = metric.behavior
+    if isinstance(behavior, BehaviorRef):
+        return _prefixed(_metric_property_errors(metric.property), path)
     kind_errors = check_retention_event_kinds(
         behavior.born_event, behavior.return_event
     )
@@ -2381,8 +2402,7 @@ def validate_retention_metric_args(
         unbounded_mode=behavior.unbounded_mode,
     )
     errors.extend(_scan_custom_properties(retention_events=[born_event, return_event]))
-    if isinstance(metric.property, (CustomPropertyRef, InlineCustomProperty)):
-        errors.extend(_validate_custom_property(metric.property, "property"))
+    errors.extend(_metric_property_errors(metric.property))
     return _prefixed(errors, path)
 
 
@@ -2495,7 +2515,8 @@ def _validate_formula_operand_args(
     Returns:
         Type errors (``V21_INVALID_EVENT_TYPE``), the funnel and retention
         rules, the Metric rules, and custom property errors, under
-        ``"{fpath}.metrics[i]"``.
+        ``"{fpath}.metrics[i]"``. A ``MetricRef`` operand was checked at
+        construction (no override, not a formula) and adds nothing.
     """
     errors: list[ValidationError] = []
     for j, operand in enumerate(formula.metrics or []):
@@ -2512,13 +2533,13 @@ def _validate_formula_operand_args(
                 errors.extend(
                     _scan_filters_for_custom_properties(operand.filters, opath)
                 )
-        elif not isinstance(operand, CohortMetric):
+        elif not isinstance(operand, CohortMetric | MetricRef):
             errors.append(
                 ValidationError(
                     path=opath,
                     message=(
                         f"Formula operand must be a Metric, CohortMetric, "
-                        f"FunnelMetric, or RetentionMetric, "
+                        f"FunnelMetric, RetentionMetric, or MetricRef, "
                         f"got {type(operand).__name__}"
                     ),
                     code="V21_INVALID_EVENT_TYPE",
@@ -3265,8 +3286,12 @@ def _validate_show_clause(
             )
         )
 
-    # B8: Event behaviors need a name
-    if btype in ("event", "simple", "custom-event"):
+    # B8: Event behaviors need a name. A saved-behavior reference (an id
+    # and no inline behaviors) takes its name from the saved behavior.
+    is_behavior_ref = behavior.get("id") is not None and "behaviors" not in behavior
+    if btype in ("event", "simple", "custom-event") and not (
+        btype == "simple" and is_behavior_ref
+    ):
         value = behavior.get("value", {})
         has_name = (
             isinstance(value, dict) and value.get("name") is not None

@@ -2042,6 +2042,8 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         # -- formula operands and metrics over several events: types.py ------
         "FM3_NESTED_FORMULA",
         "MT3_FILTERS_WITH_BEHAVIOR",
+        # -- saved behaviors inside inline metrics: types.py ------------------
+        "BH5_BEHAVIOR_REF_TYPE",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

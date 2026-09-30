@@ -7603,22 +7603,24 @@ class Metric:
     top-level query defaults; Metric objects override them.
 
     The event is one event name, a saved custom event
-    (:class:`CustomEventRef`), a list of names and custom events, or a
-    :class:`SimpleBehavior`. A metric over more than one event counts the
-    events as one series: unique users are counted once across all the
-    events, and totals add up. ``query_funnel`` and ``query_retention`` do
-    not take more than one event per step; use a custom event there.
+    (:class:`CustomEventRef`), a list of names and custom events, a
+    :class:`SimpleBehavior`, or a saved simple behavior
+    (:class:`BehaviorRef` of type ``"simple"``). A metric over more than
+    one event counts the events as one series: unique users are counted
+    once across all the events, and totals add up. ``query_funnel`` and
+    ``query_retention`` do not take more than one event per step; use a
+    custom event there.
 
     Attributes:
         event: Mixpanel event name, a custom event reference, a list of
-            them, or a simple behavior.
+            them, a simple behavior, or a saved simple behavior reference.
         math: Aggregation function. Default: ``"total"``.
         property: Property for property-based math types (name, ref, or inline).
         per_user: Per-user pre-aggregation (average, total, min, max).
         filters: Per-metric filters (applied in addition to global ``where``).
             On a list of events they apply to every event. They cannot be
-            combined with a ``SimpleBehavior``; put per-event filters on
-            its ``FunnelStep`` entries.
+            combined with a ``SimpleBehavior`` or a ``BehaviorRef``; put
+            per-event filters on the ``FunnelStep`` entries of a behavior.
         filters_combinator: How per-metric filters combine.
             ``"all"`` = AND (default), ``"any"`` = OR.
 
@@ -7643,8 +7645,10 @@ class Metric:
         ```
     """
 
-    event: str | CustomEventRef | list[str | CustomEventRef] | SimpleBehavior
-    """Event name, custom event reference, list of them, or simple behavior."""
+    event: (
+        str | CustomEventRef | list[str | CustomEventRef] | SimpleBehavior | BehaviorRef
+    )
+    """Event name, custom event, list of them, simple behavior, or saved behavior."""
 
     math: MathType = "total"
     """Aggregation function."""
@@ -7687,7 +7691,9 @@ class Metric:
                 a list of events is empty (``BH1_STEP_COUNT``), a name in
                 the list is blank (``BH2_EMPTY_EVENT``) or contains control
                 characters (``EV2_CONTROL_CHAR_EVENT``), filters are set on
-                a simple behavior (``MT3_FILTERS_WITH_BEHAVIOR``),
+                a simple behavior or a behavior reference
+                (``MT3_FILTERS_WITH_BEHAVIOR``), a behavior reference is not
+                of type ``"simple"`` (``BH5_BEHAVIOR_REF_TYPE``),
                 math requires a property but none is set
                 (``V13_METRIC_MATH_PROPERTY``), math="percentile" but
                 percentile_value is missing
@@ -7697,12 +7703,14 @@ class Metric:
         event = self.event
         if isinstance(event, str):
             _validate_event_name(event, "Metric")
-        elif isinstance(event, SimpleBehavior):
+        elif isinstance(event, SimpleBehavior | BehaviorRef):
+            if isinstance(event, BehaviorRef):
+                _check_behavior_ref_type(event, "simple", "Metric.event")
             if self.filters:
                 raise ParamValidationError(
                     "Metric filters cannot be combined with a SimpleBehavior "
-                    "event; put per-event filters on FunnelStep entries of "
-                    "the behavior instead",
+                    "or BehaviorRef event; put per-event filters on "
+                    "FunnelStep entries of the behavior instead",
                     code="MT3_FILTERS_WITH_BEHAVIOR",
                 )
         elif not isinstance(event, CustomEventRef):
@@ -7759,7 +7767,9 @@ class Formula:
         expression: Formula expression, e.g. ``"(B / A) * 100"``.
         label: Optional display label for the formula result.
         metrics: The formula's own operands, or ``None`` to name the other
-            metrics of the query.
+            metrics of the query. An operand is an inline metric or a
+            ``MetricRef`` to a saved behavior or warehouse metric (with no
+            overrides, because the server ignores overrides on an operand).
 
     Example:
         ```python
@@ -7809,7 +7819,9 @@ class Formula:
         Raises:
             ParamValidationError: If expression is empty
                 (``FM1_EMPTY_EXPRESSION``). With ``metrics``: if an operand
-                is a formula (``FM3_NESTED_FORMULA``), the expression is not
+                is a formula or a reference to a saved formula
+                (``FM3_NESTED_FORMULA``), a ``MetricRef`` operand sets an
+                override (``MR2_OPERAND_OVERRIDE``), the expression is not
                 in the server grammar (``FM4_SYNTAX``), a literal has an
                 uppercase E (``FM5_UPPER_E``), a letter names no operand
                 (``FM2_UNKNOWN_LETTER``), or the expression uses no letter
@@ -7822,15 +7834,23 @@ class Formula:
             )
         if self.metrics is None:
             return
+        from mixpanel_headless._internal.query.formula import validate_operand_formula
+        from mixpanel_headless._internal.query.metric_builders import (
+            build_operand_ref_clause,
+        )
+
         for i, operand in enumerate(self.metrics):
-            if isinstance(operand, Formula):
+            if isinstance(operand, Formula) or (
+                isinstance(operand, MetricRef) and operand.type == "formula"
+            ):
                 raise ParamValidationError(
-                    f"Formula.metrics[{i}] is a Formula; an operand of a "
+                    f"Formula.metrics[{i}] is a formula; an operand of a "
                     "formula cannot be another formula",
                     code="FM3_NESTED_FORMULA",
                 )
-        from mixpanel_headless._internal.query.formula import validate_operand_formula
-
+            if isinstance(operand, MetricRef):
+                # Raises MR2_OPERAND_OVERRIDE for a reference with overrides.
+                build_operand_ref_clause(operand)
         validate_operand_formula(self.expression, len(self.metrics))
 
 
@@ -12065,6 +12085,32 @@ def _validate_behavior_event(event: str, where: str) -> None:
         )
 
 
+def _check_behavior_ref_type(
+    ref: BehaviorRef, needed: Literal["simple", "funnel", "retention"], where: str
+) -> None:
+    """Check that a saved-behavior reference has the type a metric needs.
+
+    The server expands a behavior id without checking its type, so a
+    reference of another type would run the wrong behavior.
+
+    Args:
+        ref: The saved-behavior reference.
+        needed: The behavior type the metric needs.
+        where: The field path for messages, for example
+            ``"FunnelMetric.behavior"``.
+
+    Raises:
+        ParamValidationError: If the types differ
+            (``BH5_BEHAVIOR_REF_TYPE``).
+    """
+    if ref.type != needed:
+        raise ParamValidationError(
+            f"{where} is BehaviorRef({ref.id}, {ref.type!r}); it needs a "
+            f"{needed} behavior",
+            code="BH5_BEHAVIOR_REF_TYPE",
+        )
+
+
 def _property_math_problem(
     math: str, prop: PropertySpec | None
 ) -> Literal["missing", "rejected"] | None:
@@ -12385,7 +12431,8 @@ class FunnelMetric:
     refuses it too.
 
     Attributes:
-        behavior: The funnel to measure.
+        behavior: The funnel to measure: a ``FunnelBehavior``, or a
+            ``BehaviorRef`` of type ``"funnel"`` for a saved funnel.
         math: The funnel aggregation. Default:
             ``"conversion_rate_unique"``.
         property: The property to aggregate. Required for a property math
@@ -12409,8 +12456,8 @@ class FunnelMetric:
         ```
     """
 
-    behavior: FunnelBehavior
-    """The funnel to measure."""
+    behavior: FunnelBehavior | BehaviorRef
+    """The funnel to measure, inline or saved."""
 
     math: FunnelMathType = "conversion_rate_unique"
     """The funnel aggregation."""
@@ -12431,10 +12478,13 @@ class FunnelMetric:
         for ``math_property``, with the same codes.
 
         Raises:
-            ParamValidationError: If a property math has no property
-                (``F10_MATH_MISSING_PROPERTY``) or a math that takes no
-                property has one (``F11_MATH_REJECTS_PROPERTY``).
+            ParamValidationError: If a saved behavior is not a funnel
+                (``BH5_BEHAVIOR_REF_TYPE``), a property math has no
+                property (``F10_MATH_MISSING_PROPERTY``), or a math that
+                takes no property has one (``F11_MATH_REJECTS_PROPERTY``).
         """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(self.behavior, "funnel", "FunnelMetric.behavior")
         problem = _property_math_problem(self.math, self.property)
         if problem == "missing":
             raise ParamValidationError(
@@ -12460,7 +12510,9 @@ class RetentionMetric:
     operand of a :class:`Formula`.
 
     Attributes:
-        behavior: The retention behavior to measure.
+        behavior: The retention behavior to measure: a
+            ``RetentionBehavior``, or a ``BehaviorRef`` of type
+            ``"retention"`` for a saved retention behavior.
         math: The retention aggregation. Default: ``"retention_rate"``.
         bucket_index: The zero-based bucket that a line or bar chart
             trends: ``0`` is the first bucket (before one unit ends),
@@ -12483,8 +12535,8 @@ class RetentionMetric:
         ```
     """
 
-    behavior: RetentionBehavior
-    """The retention behavior to measure."""
+    behavior: RetentionBehavior | BehaviorRef
+    """The retention behavior to measure, inline or saved."""
 
     math: RetentionMathType = "retention_rate"
     """The retention aggregation."""
@@ -12505,10 +12557,15 @@ class RetentionMetric:
         """Validate construction arguments.
 
         Raises:
-            ParamValidationError: If ``average`` has no property, or
-                ``retention_rate`` or ``unique`` has one
+            ParamValidationError: If a saved behavior is not a retention
+                behavior (``BH5_BEHAVIOR_REF_TYPE``), or ``average`` has no
+                property, or ``retention_rate`` or ``unique`` has one
                 (``BH3_PROPERTY_MATH``).
         """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(
+                self.behavior, "retention", "RetentionMetric.behavior"
+            )
         problem = _property_math_problem(self.math, self.property)
         if problem == "missing":
             raise ParamValidationError(
@@ -12526,11 +12583,14 @@ class RetentionMetric:
             )
 
 
-FormulaOperand: TypeAlias = Metric | CohortMetric | FunnelMetric | RetentionMetric
+FormulaOperand: TypeAlias = (
+    Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+)
 """One operand of a :class:`Formula` that holds its own operands.
 
-An inline metric of any kind except a formula: a formula cannot be an
-operand of another formula.
+An inline metric of any kind except a formula, or a saved behavior or
+warehouse metric by reference (:class:`MetricRef` with no overrides): a
+formula cannot be an operand of another formula.
 """
 
 
