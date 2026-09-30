@@ -147,6 +147,47 @@ may include API changes.
   metric reference raises `FM7_WAREHOUSE_OPERAND` (the server accepts only
   behavior metrics as operands), and an operand reference with an override
   raises `MR2_OPERAND_OVERRIDE`.
+- **Saved metrics and saved behaviors: create and update.**
+  `Workspace.create_metric(params, *, validate=True)`,
+  `update_metric(metric_id, params, *, validate=True)`,
+  `bulk_update_metrics(entries, *, validate=True)`,
+  `create_behavior(params, *, validate=True)`, and
+  `update_behavior(behavior_id, params, *, validate=True)`, with the params
+  models `CreateMetricParams`, `UpdateMetricParams`,
+  `BulkUpdateMetricEntry`, `CreateBehaviorParams`, and
+  `UpdateBehaviorParams`. The kind of a saved metric comes from its
+  definition: a `Metric` or `CohortMetric` saves the `behavior` and
+  `measurement` of the show clause that `Workspace.query` writes for it, so
+  a saved metric queries the same way as its inline twin. New definition
+  values `WarehouseMetric` (writes the server defaults
+  `aggregation="none"` and `syncInterval="hourly"`, because the server
+  stores the request as sent), `RawMetricDefinition`, and
+  `RawBehaviorDefinition` (a wire definition dict, for example one that a
+  get returned), the `MetricDefinition` alias, and the `Literal` aliases
+  `WarehouseAggregation` and `WarehouseSyncInterval`.
+- The server checks a create against its JSON Schema but stores an update
+  as sent, so every write runs the same client-side checks before any
+  request, with new `ParamValidationError` codes: `SM1_EMPTY_NAME`,
+  `SM2_NAME_TOO_LONG` (the server fails with a 500 over 255 characters),
+  `SM3_KIND_CHANGE` (a new definition must keep the stored kind and
+  warehouse source), `SM4_SCHEMA` (a mirror of the server POST schema
+  names the failing field path; `validate=False` skips it), and
+  `FM6_OPERAND_ATTRIBUTION` (a saved formula operand cannot set a segment
+  method or an attribution model). The server drops `owned_by` and
+  `verified` from a create, so `create_metric` sets them in a second
+  request; the two requests are not atomic. An update with new display or
+  goals but no definition reads the metric and sends its full definition
+  back, because the server replaces a definition in full.
+- CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
+  `--definition-file FILE|-` takes the wire definition that `get` prints,
+  so get, edit, and update is a round trip. `mp metrics verify` names on
+  stderr the ids that the server skipped.
+- `MetricDisplay` gains the write side of the server model: the
+  experiment sizing keys `minimumDetectableEffect`, `oneSided`, and `power`
+  are accepted by the bookmark schema check too. `MetricGoal.id` is
+  optional; a new goal gets a UUID on write, `date` and `datetime`
+  checkpoints are written as naive ISO timestamps, and the deprecated goal
+  keys `unit` and `direction` are never written.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
