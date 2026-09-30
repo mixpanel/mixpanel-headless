@@ -31,6 +31,10 @@ Safety rules (the script enforces each one):
 - At the end, the script lists the project again and checks that no entity of
   this run is still active: no recorded id, and no row outside the start
   snapshot with this run's prefix.
+- A failed request in the cleanup, the sweep, or the final check does not stop
+  the rest. The script records what it could not check or delete, still runs
+  the final check and writes the log, and exits 1 with a message that names
+  the cleanup that may be missing.
 
 This script is **not** in CI. It touches the live Mixpanel API. Run it by hand
 when the server contract needs a new recording.
@@ -184,6 +188,7 @@ class ProbeRun:
     start_behaviors: set[int] = field(default_factory=set)
     swept_metrics: dict[int, str] = field(default_factory=dict)
     swept_behaviors: dict[int, str] = field(default_factory=dict)
+    cleanup_problems: list[str] = field(default_factory=list)
     last_status: int | None = None
     last_body: Any = None
 
@@ -761,9 +766,74 @@ def _list_rows(run: ProbeRun, collection: str) -> dict[int, dict[str, Any]]:
 
     Returns:
         A map from entity id to the entity dict.
+
+    Raises:
+        MixpanelHeadlessError: If the request fails, or if the response is not
+            an id-keyed map.
     """
     rows = run.ws.api.app_request("GET", f"/projects/{run.pid}/{collection}")
+    if not isinstance(rows, dict):
+        raise MixpanelHeadlessError(
+            f"unexpected {collection} list response: {type(rows).__name__}",
+            code="PROBE_LIST_SHAPE",
+        )
     return {int(k): v for k, v in rows.items() if isinstance(v, dict)}
+
+
+def _list_or_error(
+    run: ProbeRun, collection: str
+) -> tuple[dict[int, dict[str, Any]] | None, str | None]:
+    """List the rows of a collection, and return a request error as text.
+
+    Args:
+        run: The probe run.
+        collection: ``"metrics"`` or ``"behaviors"``.
+
+    Returns:
+        ``(rows, None)`` on success, or ``(None, error text)`` when the list
+        request fails.
+    """
+    try:
+        return _list_rows(run, collection), None
+    except MixpanelHeadlessError as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def _note_problem(run: ProbeRun, message: str) -> None:
+    """Record and print a cleanup step that failed or could not be checked.
+
+    Args:
+        run: The probe run.
+        message: What failed, and which entities of this run may remain.
+    """
+    run.cleanup_problems.append(message)
+    print(f"  CLEANUP WARNING: {message}", flush=True)
+
+
+def _describe_failure(record: ProbeRecord) -> str:
+    """Describe a failed request of the cleanup in a few words.
+
+    Args:
+        record: The recorded request and response.
+
+    Returns:
+        ``status N``, or ``no response (<error>)`` when no response came.
+    """
+    if record.status is None:
+        return f"no response ({record.response_body})"
+    return f"status {record.status}"
+
+
+def _failed(record: ProbeRecord) -> bool:
+    """Return whether a recorded request got no 2xx response.
+
+    Args:
+        record: The recorded request and response.
+
+    Returns:
+        ``True`` if the status is missing or not 2xx.
+    """
+    return record.status is None or not 200 <= record.status < 300
 
 
 def _is_own_row(run: ProbeRun, row: dict[str, Any]) -> bool:
@@ -819,49 +889,69 @@ def final_check(run: ProbeRun) -> bool:
     result is on this run's entities only. A difference from the start
     snapshot is reported as information.
 
+    A list request that fails does not stop the check. The collection is
+    reported as not confirmed, and the check fails.
+
     Args:
         run: The probe run.
 
     Returns:
-        ``True`` if no entity of this run is still active.
+        ``True`` if both lists worked, no entity of this run is still active,
+        and no cleanup step failed.
     """
-    metric_rows = _list_rows(run, "metrics")
-    behavior_rows = _list_rows(run, "behaviors")
-    end_metrics, end_behaviors = set(metric_rows), set(behavior_rows)
-    own_metrics = set(run.created_metrics) | set(run.swept_metrics)
-    own_behaviors = set(run.created_behaviors) | set(run.swept_behaviors)
-    left_metrics = sorted(
-        i
-        for i, row in metric_rows.items()
-        if i in own_metrics or (i not in run.start_metrics and _is_own_row(run, row))
-    )
-    left_behaviors = sorted(
-        i
-        for i, row in behavior_rows.items()
-        if i in own_behaviors
-        or (i not in run.start_behaviors and _is_own_row(run, row))
-    )
+    summary: list[str] = []
+    notes: list[str] = []
+    still_active: dict[str, list[int]] = {}
+    for collection in ("metrics", "behaviors"):
+        is_metric = collection == "metrics"
+        created = set(run.created_metrics if is_metric else run.created_behaviors)
+        swept = run.swept_metrics if is_metric else run.swept_behaviors
+        start = run.start_metrics if is_metric else run.start_behaviors
+        still_active[collection] = []
+        rows, error = _list_or_error(run, collection)
+        if rows is None:
+            _note_problem(
+                run,
+                f"final check could not list {collection}: {error}; cleanup of "
+                f"this run's {collection} is not confirmed (recorded ids "
+                f"{sorted(created)}, prefix {run.prefix})",
+            )
+            summary.append(f"{collection} not listed")
+            continue
+        own = created | set(swept)
+        still_active[collection] = sorted(
+            i
+            for i, row in rows.items()
+            if i in own or (i not in start and _is_own_row(run, row))
+        )
+        summary.append(f"{len(rows)} {collection}")
+        listed = set(rows)
+        if listed != start:
+            notes.append(
+                f"{collection} +{sorted(listed - start)} -{sorted(start - listed)}"
+            )
     print(
-        f"project {run.pid}: {len(end_metrics)} metrics, "
-        f"{len(end_behaviors)} behaviors at end "
+        f"project {run.pid}: {', '.join(summary)} at end "
         f"(start {len(run.start_metrics)} / {len(run.start_behaviors)})"
     )
     print(
         f"  created this run: {len(set(run.created_metrics))} metrics, "
         f"{len(set(run.created_behaviors))} behaviors recorded; "
         f"{len(run.swept_metrics)} metrics, {len(run.swept_behaviors)} behaviors "
-        f"unrecorded; still active: metrics {left_metrics}, "
-        f"behaviors {left_behaviors}"
+        f"unrecorded; still active: metrics {still_active['metrics']}, "
+        f"behaviors {still_active['behaviors']}"
     )
-    if end_metrics != run.start_metrics or end_behaviors != run.start_behaviors:
-        print(
-            "  note: id sets differ from the start snapshot: "
-            f"metrics +{sorted(end_metrics - run.start_metrics)} "
-            f"-{sorted(run.start_metrics - end_metrics)}; "
-            f"behaviors +{sorted(end_behaviors - run.start_behaviors)} "
-            f"-{sorted(run.start_behaviors - end_behaviors)}"
-        )
-    return not left_metrics and not left_behaviors
+    if notes:
+        print(f"  note: id sets differ from the start snapshot: {'; '.join(notes)}")
+    if run.cleanup_problems:
+        print(f"  cleanup may be incomplete: {len(run.cleanup_problems)} problem(s):")
+        for problem in run.cleanup_problems:
+            print(f"    - {problem}")
+    return (
+        not still_active["metrics"]
+        and not still_active["behaviors"]
+        and not run.cleanup_problems
+    )
 
 
 def probe_gate(run: ProbeRun) -> ProbeRecord:
@@ -1377,13 +1467,19 @@ def cleanup(run: ProbeRun) -> None:
     metric_ids = sorted(set(run.created_metrics))
     behavior_ids = sorted(set(run.created_behaviors))
     if metric_ids:
-        call_app(
+        record = call_app(
             run,
             "delete_metrics_bulk",
             "DELETE",
             f"/projects/{pid}/metrics",
             {"metrics": [{"id": i} for i in metric_ids]},
         )
+        if _failed(record):
+            _note_problem(
+                run,
+                f"bulk DELETE of recorded metrics {metric_ids} failed with "
+                f"{_describe_failure(record)}; they may remain",
+            )
         call_app(
             run,
             "delete_metrics_bulk_again",
@@ -1399,13 +1495,19 @@ def cleanup(run: ProbeRun) -> None:
             f"/projects/{pid}/metrics/{metric_ids[0]}",
         )
     if behavior_ids:
-        call_app(
+        record = call_app(
             run,
             "delete_behaviors_bulk",
             "DELETE",
             f"/projects/{pid}/behaviors",
             {"behaviors": [{"id": i} for i in behavior_ids]},
         )
+        if _failed(record):
+            _note_problem(
+                run,
+                f"bulk DELETE of recorded behaviors {behavior_ids} failed with "
+                f"{_describe_failure(record)}; they may remain",
+            )
 
 
 def sweep_unrecorded(run: ProbeRun) -> tuple[list[int], list[int]]:
@@ -1418,6 +1520,10 @@ def sweep_unrecorded(run: ProbeRun) -> tuple[list[int], list[int]]:
     start snapshot, and whose id is not recorded. The prefix holds the run
     timestamp and a random part, so such a row belongs to this run. The
     delete goes through the target check, which reads the prefix again.
+
+    Each step handles its own request error: a failed list or delete of one
+    collection is recorded as a cleanup problem, and the sweep goes on with
+    the next collection.
 
     Args:
         run: The probe run.
@@ -1432,17 +1538,25 @@ def sweep_unrecorded(run: ProbeRun) -> tuple[list[int], list[int]]:
         start = run.start_metrics if is_metric else run.start_behaviors
         swept = run.swept_metrics if is_metric else run.swept_behaviors
         new_ids: list[int] = []
-        for entity_id, row in _list_rows(run, collection).items():
+        found[collection] = new_ids
+        rows, error = _list_or_error(run, collection)
+        if rows is None:
+            _note_problem(
+                run,
+                f"could not list {collection}: {error}; unrecorded rows with "
+                f"prefix {run.prefix} may remain",
+            )
+            continue
+        for entity_id, row in rows.items():
             if entity_id in start or entity_id in created or entity_id in swept:
                 continue
             if _is_own_row(run, row):
                 swept[entity_id] = str(row["name"])
                 new_ids.append(entity_id)
         new_ids.sort()
-        found[collection] = new_ids
         if new_ids:
             print(f"  unrecorded {collection} of this run: {new_ids}", flush=True)
-            call_app(
+            record = call_app(
                 run,
                 f"delete_unrecorded_{collection}",
                 "DELETE",
@@ -1450,7 +1564,36 @@ def sweep_unrecorded(run: ProbeRun) -> tuple[list[int], list[int]]:
                 {collection: [{"id": i} for i in new_ids]},
                 note="rows with this run's prefix that no create response recorded",
             )
+            if _failed(record):
+                _note_problem(
+                    run,
+                    f"bulk DELETE of unrecorded {collection} {new_ids} failed "
+                    f"with {_describe_failure(record)}; they may remain",
+                )
     return found["metrics"], found["behaviors"]
+
+
+def finish_run(run: ProbeRun) -> bool:
+    """Run the cleanup, then the sweep, then the final check.
+
+    The sweep runs even when the cleanup raises, and the final check runs even
+    when the cleanup or the sweep raises. Request errors do not raise here:
+    the steps record them as cleanup problems.
+
+    Args:
+        run: The probe run.
+
+    Returns:
+        The result of ``final_check``.
+    """
+    try:
+        try:
+            cleanup(run)
+        finally:
+            sweep_unrecorded(run)
+    finally:
+        confirmed = final_check(run)
+    return confirmed
 
 
 def _fake_user_id(real: int, user_ids: dict[int, int]) -> int:
@@ -1627,6 +1770,7 @@ def write_outputs(
             for r in run.records
         ],
         "comparisons": run.comparisons,
+        "cleanup_problems": run.cleanup_problems,
     }
     log_path.write_text(json.dumps(log, indent=2, sort_keys=True), encoding="utf-8")
     print(f"  wrote {log_path}")
@@ -1747,17 +1891,15 @@ def main() -> int:
                 probe_full(run, warehouse=args.warehouse)
         finally:
             try:
-                cleanup(run)
+                if not finish_run(run):
+                    exit_code = 1
             finally:
-                sweep_unrecorded(run)
-            if not final_check(run):
-                exit_code = 1
-            write_outputs(
-                run,
-                None if args.gate_only else args.out,
-                args.log,
-                only={"create_metric_warehouse"} if args.warehouse_only else None,
-            )
+                write_outputs(
+                    run,
+                    None if args.gate_only else args.out,
+                    args.log,
+                    only={"create_metric_warehouse"} if args.warehouse_only else None,
+                )
     finally:
         ws.close()
     return exit_code
