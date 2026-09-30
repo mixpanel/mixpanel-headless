@@ -69,9 +69,9 @@ may include API changes.
   A `SavedMetric` works in the same places, and `SavedMetric.to_ref()`
   makes the reference with overrides. The typed fields follow the inline
   `Metric` rules where they contradict each other
-  (`V3_PER_USER_INCOMPATIBLE`, `V14_METRIC_REJECTS_PROPERTY`,
-  `V26_PERCENTILE_REQUIRES_VALUE`); a field that the saved definition can
-  supply is not required. The raw `overrides` are stored as a read-only
+  (`V3_PER_USER_INCOMPATIBLE`, `V14_METRIC_REJECTS_PROPERTY`); a field
+  that the saved definition or the raw `overrides` can supply (a property,
+  a per-user aggregation, a percentile value) is not required. The raw `overrides` are stored as a read-only
   copy.
 - A query-level `math`, `math_property`, `per_user`, or `percentile_value`
   in a query that has saved-metric references and no plain event name is

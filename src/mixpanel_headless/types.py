@@ -7918,8 +7918,7 @@ class MetricRef:
                 reference sets a behavior-metric override
                 (``MR6_OVERRIDE_NOT_APPLICABLE``), the typed measurement
                 fields contradict each other (``V3_PER_USER_INCOMPATIBLE``,
-                ``V14_METRIC_REJECTS_PROPERTY``,
-                ``V26_PERCENTILE_REQUIRES_VALUE``, the codes of the inline
+                ``V14_METRIC_REJECTS_PROPERTY``, the codes of the inline
                 ``Metric`` rules), or ``overrides`` holds a filter list
                 (``MR1_FILTER_OVERRIDE``). ``overrides`` is stored as a
                 read-only copy, so a later change to the caller's mapping
@@ -7992,18 +7991,19 @@ class MetricRef:
         """Run the inline ``Metric`` combination rules on the typed fields.
 
         Only contradictions among the fields that are set are refused. A
-        field that the saved definition can supply (a property, a per-user
-        aggregation) is not required, because the server deep-merges the
-        overrides into the saved measurement: ``MetricRef(id,
-        math="median")`` keeps the saved property.
+        field that the saved definition or the raw ``overrides`` can supply
+        (a property, a per-user aggregation, a percentile value) is not
+        required, because the server deep-merges the overrides into the
+        saved measurement: ``MetricRef(id, math="median")`` keeps the saved
+        property, and ``MetricRef(id, math="percentile",
+        overrides={"measurement": {"percentile": 95}})`` sets the value.
 
         Raises:
             ParamValidationError: ``V3_PER_USER_INCOMPATIBLE`` when
                 ``per_user`` is set with a user-count math (``unique``,
-                ``dau``, ``wau``, ``mau``), ``V14_METRIC_REJECTS_PROPERTY``
-                when ``property`` is set with a math that takes no property,
-                and ``V26_PERCENTILE_REQUIRES_VALUE`` when
-                ``math="percentile"`` has no ``percentile_value``.
+                ``dau``, ``wau``, ``mau``), and
+                ``V14_METRIC_REJECTS_PROPERTY`` when ``property`` is set with
+                a math that takes no property.
         """
         from mixpanel_headless._internal.bookmark_enums import (
             MATH_NO_PER_USER,
@@ -8026,12 +8026,6 @@ class MetricRef:
                 f"MetricRef property is only valid with property-based math "
                 f"types ({', '.join(sorted(takes_property))}), not {math_type!r}",
                 code="V14_METRIC_REJECTS_PROPERTY",
-            )
-        if math_type == "percentile" and self.percentile_value is None:
-            raise ParamValidationError(
-                'MetricRef math="percentile" requires percentile_value (e.g., '
-                'MetricRef(id, math="percentile", percentile_value=95))',
-                code="V26_PERCENTILE_REQUIRES_VALUE",
             )
 
     def _check_override_values(self) -> None:

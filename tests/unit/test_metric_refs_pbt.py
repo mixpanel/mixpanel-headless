@@ -65,7 +65,7 @@ _TAKES_PROPERTY = MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL
 def _consistent(
     math: Any, prop: Any, per_user: Any, percentile_value: Any
 ) -> tuple[Any, Any, Any, Any]:
-    """Drop or fill measurement fields so that they do not contradict.
+    """Drop measurement fields so that they do not contradict.
 
     Args:
         math: The drawn math, or ``None``.
@@ -74,16 +74,13 @@ def _consistent(
         percentile_value: The drawn percentile value, or ``None``.
 
     Returns:
-        The four fields, with ``per_user`` dropped for a user-count math,
-        ``property`` dropped for a math that takes none, and a percentile
-        value added for ``math="percentile"``.
+        The four fields, with ``per_user`` dropped for a user-count math and
+        ``property`` dropped for a math that takes none.
     """
     if math in MATH_NO_PER_USER:
         per_user = None
     if math is not None and math not in _TAKES_PROPERTY:
         prop = None
-    if math == "percentile" and percentile_value is None:
-        percentile_value = 95
     return math, prop, per_user, percentile_value
 
 
@@ -213,8 +210,6 @@ def test_measurement_rules_match_the_inline_rules(fields: tuple[Any, ...]) -> No
         expected = "V3_PER_USER_INCOMPATIBLE"
     elif math is not None and prop is not None and math not in _TAKES_PROPERTY:
         expected = "V14_METRIC_REJECTS_PROPERTY"
-    elif math == "percentile" and percentile_value is None:
-        expected = "V26_PERCENTILE_REQUIRES_VALUE"
     try:
         MetricRef(
             1,

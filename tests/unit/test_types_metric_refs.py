@@ -484,11 +484,13 @@ class TestMetricRefMeasurementRules:
             MetricRef(1, math=math, property="amount")  # type: ignore[arg-type]
         assert exc_info.value.code == "V14_METRIC_REJECTS_PROPERTY"
 
-    def test_percentile_without_value_raises_v26(self) -> None:
-        """math="percentile" without a value raises V26_PERCENTILE_REQUIRES_VALUE."""
-        with pytest.raises(ParamValidationError) as exc_info:
-            MetricRef(1, math="percentile", property="ms")
-        assert exc_info.value.code == "V26_PERCENTILE_REQUIRES_VALUE"
+    @pytest.mark.parametrize("overrides", [None, {"measurement": {"percentile": 95}}])
+    def test_percentile_without_typed_value_passes(
+        self, overrides: dict[str, Any] | None
+    ) -> None:
+        """math="percentile" needs no typed value: raw overrides or the saved metric can supply it."""
+        ref = MetricRef(1, math="percentile", overrides=overrides)
+        assert ref.percentile_value is None
 
     @pytest.mark.parametrize(
         "kwargs",
@@ -498,13 +500,14 @@ class TestMetricRefMeasurementRules:
             {"per_user": "total"},
             {"math": "total", "property": "amount"},
             {"math": "percentile", "percentile_value": 95},
+            {"math": "percentile"},
             {"per_user": "average", "math": "average"},
         ],
     )
     def test_partial_overrides_that_the_saved_metric_completes_pass(
         self, kwargs: dict[str, Any]
     ) -> None:
-        """A field the saved definition can supply (property, per_user) is not required."""
+        """A field the saved definition can supply (property, per_user, percentile) is not required."""
         assert MetricRef(1, **kwargs).id == 1
 
     @pytest.mark.parametrize(
