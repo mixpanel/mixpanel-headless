@@ -7,7 +7,8 @@ Properties tested:
 - SavedMetric parses any JSON object with the required keys
 - SavedMetric keeps every unknown key, in ``model_extra`` and in dumps
 - SavedMetric accessors never raise and return the documented types
-- referenced_metric_ids returns each operand id once, in first-use order
+- referenced_metric_ids returns each operand id once, in first-use order,
+  and skips a ``metric_id`` string that ``int()`` rejects
 - SavedBehavior parses any JSON object with the required keys, keeps
   unknown keys, and its accessor never raises
 
@@ -84,6 +85,9 @@ definitions: st.SearchStrategy[dict[str, Any]] = st.one_of(
     st.dictionaries(st.text(max_size=10), json_values, max_size=5),
     st.dictionaries(st.sampled_from(_ACCESSOR_KEYS), _nested_values, max_size=5),
 )
+
+# Digit strings that pass str.isdigit() but that int() rejects (superscripts)
+_INT_REJECTED_DIGITS = ("²", "1²", "³⁴")
 
 # Unknown top-level keys: identifier-like names that are not model fields
 _extra_keys = st.from_regex(r"[a-z][a-z_]{0,15}", fullmatch=True)
@@ -205,6 +209,9 @@ class TestSavedMetricProperties:
             st.one_of(
                 st.fixed_dictionaries({"id": st.integers(min_value=0)}),
                 st.fixed_dictionaries({"metric_id": st.integers(min_value=0).map(str)}),
+                st.fixed_dictionaries(
+                    {"metric_id": st.sampled_from(_INT_REJECTED_DIGITS)}
+                ),
                 st.fixed_dictionaries({"behavior": json_values}),
             ),
             max_size=8,
@@ -214,6 +221,8 @@ class TestSavedMetricProperties:
         self, operands: list[dict[str, Any]]
     ) -> None:
         """Operand ids come back once each, in the order they first appear.
+
+        A ``metric_id`` string that ``int()`` rejects is skipped.
 
         Args:
             operands: Generated formula operands, with or without an id.
@@ -231,6 +240,8 @@ class TestSavedMetricProperties:
         expected: list[int] = []
         for operand in operands:
             raw = operand.get("id", operand.get("metric_id"))
+            if raw in _INT_REJECTED_DIGITS:
+                continue
             if raw is not None and int(raw) not in expected:
                 expected.append(int(raw))
         assert metric.referenced_metric_ids == expected

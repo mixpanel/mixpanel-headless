@@ -9,6 +9,7 @@ they do not know and never raise.
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from typing import Any
 
@@ -28,6 +29,9 @@ from tests.unit._saved_metric_fixtures import (
     saved_behavior_json,
     warehouse_metric_json,
 )
+
+_INT_DIGIT_LIMIT: int = getattr(sys, "get_int_max_str_digits", lambda: 0)()
+"""Python's limit on digits for ``int(str)``, or 0 when it has none."""
 
 # =============================================================================
 # SavedMetric — parsing
@@ -192,6 +196,37 @@ class TestSavedMetricAccessors:
         ]
         metric = SavedMetric.model_validate(row)
         assert metric.referenced_metric_ids == [9, 3]
+
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            pytest.param("²", id="superscript"),
+            pytest.param("1²", id="digit-and-superscript"),
+            pytest.param(
+                "5" * 5000,
+                id="5000-digits",
+                marks=pytest.mark.skipif(
+                    not 0 < _INT_DIGIT_LIMIT < 5000,
+                    reason="int() on this Python accepts 5000 digits",
+                ),
+            ),
+        ],
+    )
+    def test_referenced_ids_skip_metric_id_that_int_rejects(self, bad_id: str) -> None:
+        """A ``metric_id`` that passes ``isdigit()`` but not ``int()`` is skipped.
+
+        Args:
+            bad_id: A digit string that ``int()`` raises ValueError for.
+        """
+        assert bad_id.isdigit()
+        row = formula_metric_json()
+        row["definition"]["formula"]["referencedMetrics"] = [
+            {"type": "metric", "metric_id": "12"},
+            {"type": "metric", "metric_id": bad_id},
+            {"type": "metric", "id": 34},
+        ]
+        metric = SavedMetric.model_validate(row)
+        assert metric.referenced_metric_ids == [12, 34]
 
     def test_warehouse_accessors_are_empty(self) -> None:
         """A warehouse metric has no behavior, math, formula, display, or goals."""

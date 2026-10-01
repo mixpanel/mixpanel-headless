@@ -6154,7 +6154,8 @@ class SavedMetric(BaseModel):
 
         An operand refers to a saved metric through its integer ``id``, or
         through the string ``metric_id`` that the server adds in responses.
-        Inline operands have no id and are not listed.
+        Inline operands have no id and are not listed, and neither are
+        operands whose ``metric_id`` does not convert to an integer.
 
         Returns:
             Each id once, in first-use order. An empty list for a metric that
@@ -6177,7 +6178,12 @@ class SavedMetric(BaseModel):
             else:
                 raw_str = operand.get("metric_id")
                 if isinstance(raw_str, str) and raw_str.isdigit():
-                    metric_id = int(raw_str)
+                    # isdigit() accepts superscripts, and int() refuses
+                    # strings past Python's digit limit.
+                    try:
+                        metric_id = int(raw_str)
+                    except ValueError:
+                        continue
             if metric_id is not None and metric_id not in ids:
                 ids.append(metric_id)
         return ids
