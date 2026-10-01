@@ -2,8 +2,10 @@
 
 Invariants: typed overrides never write a list (the server merges lists
 item by item), raw overrides merge last and win, the reference clause
-always holds its type and id, and the overrides are plain JSON. Hypothesis
-profiles come from ``tests/conftest.py`` (``default``, ``dev``, ``ci``).
+always holds its type and id, the overrides are plain JSON, and
+``SavedMetric.to_ref`` reports an ``overrides`` that is not a mapping as
+``MR7_INVALID_OVERRIDE``. Hypothesis profiles come from
+``tests/conftest.py`` (``default``, ``dev``, ``ci``).
 """
 
 from __future__ import annotations
@@ -33,7 +35,12 @@ from mixpanel_headless._literal_types import (
     SegmentMethod,
 )
 from mixpanel_headless.exceptions import ParamValidationError
-from mixpanel_headless.types import CustomPropertyRef, MetricRef
+from mixpanel_headless.types import (
+    CustomPropertyRef,
+    MetricRef,
+    SavedMetric,
+)
+from tests.unit._saved_metric_fixtures import behavior_metric_json
 
 _MATHS = sorted(
     set(get_args(MathType))
@@ -222,3 +229,33 @@ def test_measurement_rules_match_the_inline_rules(fields: tuple[Any, ...]) -> No
         assert exc.code == expected
     else:
         assert expected is None
+
+
+_not_mappings = st.one_of(
+    st.text(max_size=5),
+    st.integers(),
+    st.booleans(),
+    st.lists(_json_scalars, max_size=3),
+)
+"""Raw overrides values that are not a mapping."""
+
+
+@given(
+    overrides=_not_mappings,
+    stored=st.sampled_from(
+        [{"math": "unique"}, {"math": "custom_percentile", "percentile": 95}]
+    ),
+)
+def test_to_ref_reports_mr7_for_non_mapping_overrides(
+    overrides: Any, stored: dict[str, Any]
+) -> None:
+    """SavedMetric.to_ref reports a non-mapping overrides as MR7_INVALID_OVERRIDE."""
+    row = behavior_metric_json()
+    row["definition"]["measurement"] = stored
+    saved = SavedMetric.model_validate(row)
+    try:
+        saved.to_ref(math="percentile", overrides=overrides)
+    except ParamValidationError as exc:
+        assert exc.code == "MR7_INVALID_OVERRIDE"
+    else:
+        raise AssertionError(f"to_ref accepted overrides={overrides!r}")

@@ -207,6 +207,8 @@ class TestMetricRefOverrideValueGuard:
             {"label": "   "},
             {"hidden": 1},
             {"overrides": [("measurement", {})]},
+            {"overrides": []},
+            {"overrides": "x"},
             {"overrides": {1: "x"}},
         ],
     )
@@ -418,6 +420,31 @@ class TestSavedMetricToRef:
         """A stored, typed, or raw-override percentile value lets the reference pass."""
         ref = self._saved(measurement).to_ref(math="percentile", **kwargs)
         assert ref.math == "percentile"
+
+    @pytest.mark.parametrize(
+        "measurement",
+        [{"math": "unique"}, {"math": "custom_percentile", "percentile": 95}],
+    )
+    @pytest.mark.parametrize("overrides", [[], "x", [1], {1: "x"}])
+    def test_malformed_overrides_raise_mr7(
+        self, measurement: dict[str, Any], overrides: Any
+    ) -> None:
+        """A non-mapping overrides gets MR7_INVALID_OVERRIDE, not an AttributeError or V26."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            self._saved(measurement).to_ref(math="percentile", overrides=overrides)
+        assert exc_info.value.code == "MR7_INVALID_OVERRIDE"
+
+    @pytest.mark.parametrize("raw", [[], "x", None])
+    def test_non_mapping_measurement_override_holds_no_value(self, raw: Any) -> None:
+        """A raw measurement that is not a mapping supplies no percentile value."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            self._saved({"math": "unique"}).to_ref(
+                math="percentile", overrides={"measurement": raw}
+            )
+        assert exc_info.value.code == "V26_PERCENTILE_REQUIRES_VALUE"
+        stored = self._saved({"math": "custom_percentile", "percentile": 95})
+        ref = stored.to_ref(math="percentile", overrides={"measurement": raw})
+        assert ref.overrides == {"measurement": () if raw == [] else raw}
 
     def test_bare_metric_ref_still_needs_no_value(self) -> None:
         """A bare MetricRef cannot see the saved value, so it is not refused."""

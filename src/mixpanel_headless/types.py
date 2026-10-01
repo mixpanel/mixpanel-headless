@@ -6308,12 +6308,14 @@ class SavedMetric(BaseModel):
         Raises:
             ParamValidationError: ``MR5_INVALID_TYPE`` for a legacy kind
                 (such as ``behavior``) that the server does not run by
-                reference, ``V26_PERCENTILE_REQUIRES_VALUE`` when
-                ``math="percentile"`` has no percentile value in the
-                arguments, the raw overrides, or the stored measurement (a
-                saved metric holds its definition, so this check is exact;
-                a bare :class:`MetricRef` cannot make it), or any
-                :class:`MetricRef` guard on the overrides.
+                reference, any :class:`MetricRef` guard on the arguments
+                (these run first, so an ``overrides`` that is not a mapping
+                gets ``MR7_INVALID_OVERRIDE``), or
+                ``V26_PERCENTILE_REQUIRES_VALUE`` when ``math="percentile"``
+                has no percentile value in the arguments, the raw overrides,
+                or the stored measurement (a saved metric holds its
+                definition, so this check is exact; a bare
+                :class:`MetricRef` cannot make it).
 
         Example:
             ```python
@@ -6329,22 +6331,11 @@ class SavedMetric(BaseModel):
                 f"definition inline instead.",
                 code="MR5_INVALID_TYPE",
             )
-        if (
-            self.type == "metric"
-            and math == "percentile"
-            and percentile_value is None
-            and not _has_percentile(
-                (overrides or {}).get("measurement"),
-                self.definition.get("measurement"),
-            )
-        ):
-            raise ParamValidationError(
-                f"Saved metric {self.id} stores no percentile value, so "
-                "math='percentile' needs one: pass percentile_value, for "
-                "example to_ref(math='percentile', percentile_value=95)",
-                code="V26_PERCENTILE_REQUIRES_VALUE",
-            )
-        return MetricRef(
+        # Build the reference first: its guards report a malformed argument
+        # (MR7 for an overrides that is not a mapping), and after them
+        # ref.overrides is a mapping or None. A math on a formula or
+        # warehouse kind is refused there too (MR6).
+        ref = MetricRef(
             self.id,
             type=cast(Literal["metric", "formula", "warehouse"], self.type),
             label=label,
@@ -6359,6 +6350,21 @@ class SavedMetric(BaseModel):
             hidden=hidden,
             overrides=overrides,
         )
+        if (
+            math == "percentile"
+            and percentile_value is None
+            and not _has_percentile(
+                ref.overrides.get("measurement") if ref.overrides else None,
+                self.definition.get("measurement"),
+            )
+        ):
+            raise ParamValidationError(
+                f"Saved metric {self.id} stores no percentile value, so "
+                "math='percentile' needs one: pass percentile_value, for "
+                "example to_ref(math='percentile', percentile_value=95)",
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
+        return ref
 
 
 # =============================================================================
