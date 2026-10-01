@@ -121,7 +121,7 @@ class TestMetricRefOperandConstruction:
     def test_behavior_metric_refs_are_operands(self) -> None:
         """Behavior-metric references are accepted operands."""
         operands: list[FormulaOperand] = [MetricRef(10), MetricRef(11), Metric("Login")]
-        assert Formula("A + B + C", metrics=operands).metrics == operands
+        assert Formula("A + B + C", metrics=operands).metrics == tuple(operands)
 
     def test_warehouse_ref_raises_fm7(self) -> None:
         """A warehouse reference raises FM7_WAREHOUSE_OPERAND."""
@@ -140,7 +140,7 @@ class TestMetricRefOperandConstruction:
 
     def test_bare_ref_to_a_warehouse_metric_is_not_detected(self) -> None:
         """A bare MetricRef keeps the default kind, so the client cannot refuse it."""
-        assert Formula("A", metrics=[MetricRef(11)]).metrics == [MetricRef(11)]
+        assert Formula("A", metrics=[MetricRef(11)]).metrics == (MetricRef(11),)
 
     def test_fm7_is_registered(self) -> None:
         """FM7_WAREHOUSE_OPERAND is a minted registry code."""

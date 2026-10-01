@@ -22,7 +22,7 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import KW_ONLY, MISSING, dataclass, field, fields
 from datetime import date as dt_date
 from datetime import datetime
@@ -7774,7 +7774,9 @@ class Formula:
             ``type="warehouse"`` (as ``SavedMetric.to_ref()`` makes for a
             warehouse metric) is refused, but a bare ``MetricRef(id)``
             keeps the default kind, so the client cannot detect a warehouse
-            metric behind it.
+            metric behind it. Pass a list or another sequence; the formula
+            keeps a tuple copy, so a later change to the caller's list does
+            not change the operands that the guards checked.
 
     Example:
         ```python
@@ -7815,8 +7817,8 @@ class Formula:
     label: str | None = None
     """Optional display label for the formula result."""
 
-    metrics: list[FormulaOperand] | None = None
-    """The formula's own operands, or ``None`` to use the query's metrics."""
+    metrics: Sequence[FormulaOperand] | None = None
+    """The formula's own operands (a tuple), or ``None`` for the query's metrics."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
@@ -7845,7 +7847,11 @@ class Formula:
             build_operand_ref_clause,
         )
 
-        for i, operand in enumerate(self.metrics):
+        # Keep a tuple copy, so the guards below check exactly the operands
+        # that the builders later write.
+        operands = tuple(self.metrics)
+        object.__setattr__(self, "metrics", operands)
+        for i, operand in enumerate(operands):
             if isinstance(operand, Formula) or (
                 isinstance(operand, MetricRef) and operand.type == "formula"
             ):
@@ -7865,7 +7871,7 @@ class Formula:
             if isinstance(operand, MetricRef):
                 # Raises MR2_OPERAND_OVERRIDE for a reference with overrides.
                 build_operand_ref_clause(operand)
-        validate_operand_formula(self.expression, len(self.metrics))
+        validate_operand_formula(self.expression, len(operands))
 
 
 _METRIC_REF_KINDS: Final[frozenset[str]] = frozenset({"metric", "formula", "warehouse"})

@@ -813,6 +813,19 @@ class TestFormulaWithOperands:
         # The save schema has no legacy behavior filter key.
         assert "filter" not in definition["formula"]["referencedMetrics"][1]["behavior"]
 
+    def test_caller_list_changes_do_not_reach_the_output(self) -> None:
+        """The clause and the definition keep the operands given at construction."""
+        operands: list[Metric | CohortMetric | FunnelMetric | RetentionMetric] = [
+            Metric("Purchase", math="total"),
+            Metric("Checkout", math="unique"),
+        ]
+        formula = Formula("A / B", metrics=operands)
+        expected = build_formula_definition(formula)
+        operands.pop()
+        operands.append(CohortMetric(12))
+        assert build_formula_definition(formula) == expected
+        assert len(build_formula_clause(formula)["referencedMetrics"]) == 2
+
     def test_definition_needs_operands(self) -> None:
         """A formula without operands has no saved definition."""
         with pytest.raises(ValueError, match="own operands"):

@@ -27,6 +27,7 @@ from mixpanel_headless.types import (
     Exclusion,
     Filter,
     Formula,
+    FormulaOperand,
     FunnelBehavior,
     FunnelMetric,
     FunnelStep,
@@ -554,7 +555,7 @@ class TestFormulaOperands:
             CohortMetric(12),
         ]
         formula = Formula("(A + B) * C / D", label="Mix", metrics=[*operands])
-        assert formula.metrics == operands
+        assert formula.metrics == tuple(operands)
         assert formula.label == "Mix"
 
     def test_letters_after_z_name_later_operands(self) -> None:
@@ -562,7 +563,37 @@ class TestFormulaOperands:
         operands: list[Metric | CohortMetric | FunnelMetric | RetentionMetric] = [
             Metric(f"E{i}") for i in range(27)
         ]
-        assert Formula("BA / A", metrics=[*operands]).metrics == operands
+        assert Formula("BA / A", metrics=[*operands]).metrics == tuple(operands)
+
+    def test_operands_are_a_tuple_copy(self) -> None:
+        """The operands are stored as a tuple, not the caller's list."""
+        operands: list[FormulaOperand] = [Metric("Signup"), Metric("Purchase")]
+        formula = Formula("B / A", metrics=operands)
+        # A list never equals a tuple, so this also proves the stored type.
+        assert formula.metrics == (Metric("Signup"), Metric("Purchase"))
+
+    def test_caller_list_changes_do_not_reach_the_formula(self) -> None:
+        """A later pop or append on the caller's list skips no guard."""
+        operands: list[FormulaOperand] = [Metric("Signup"), Metric("Purchase")]
+        formula = Formula("B / A", metrics=operands)
+        operands.pop()
+        operands.append(MetricRef(11, type="warehouse"))
+        operands.append(Metric("Login"))
+        assert formula.metrics == (Metric("Signup"), Metric("Purchase"))
+
+    def test_operands_cannot_be_appended(self) -> None:
+        """The stored operands have no ``append``."""
+        formula = Formula("A", metrics=[Metric("Signup")])
+        with pytest.raises(AttributeError):
+            formula.metrics.append(Metric("Login"))  # type: ignore[union-attr]
+
+    def test_list_and_tuple_operands_are_equal(self) -> None:
+        """A list and a tuple of the same operands make equal formulas."""
+        from_list = Formula("A", label="L", metrics=[Metric("Signup")])
+        from_tuple = Formula("A", label="L", metrics=(Metric("Signup"),))
+        assert from_list == from_tuple
+        assert repr(from_list) == repr(from_tuple)
+        assert "metrics=(Metric(" in repr(from_list)
 
     def test_empty_expression_keeps_fm1(self) -> None:
         """An empty expression raises FM1 before any operand rule."""

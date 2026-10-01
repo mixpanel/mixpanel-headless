@@ -118,7 +118,9 @@ may include API changes.
   operands (`FormulaOperand`): the letters name the operands, and the
   formula can be the whole query. New error codes: `FM2_UNKNOWN_LETTER`,
   `FM3_NESTED_FORMULA`, `FM4_SYNTAX`, `FM5_UPPER_E`; an expression with no
-  letter gets `V16_FORMULA_SYNTAX`.
+  letter gets `V16_FORMULA_SYNTAX`. The formula stores its operands as a
+  tuple copy, so a later change to the list passed in does not change the
+  operands that the checks ran on.
 - New error codes for behaviors and inline metrics: `BH1_STEP_COUNT`,
   `BH2_EMPTY_EVENT`, `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`,
   `CE1_INVALID_ID` (a custom event id is a positive integer, never a
