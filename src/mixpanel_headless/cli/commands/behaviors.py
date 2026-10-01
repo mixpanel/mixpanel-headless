@@ -19,6 +19,7 @@ import typer
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    ExitCode,
     err_console,
     get_workspace,
     handle_errors,
@@ -234,7 +235,8 @@ def update_behavior(
     """Update a saved behavior.
 
     Only the options you pass change. The server does not check an update,
-    so the client checks a new definition before the request.
+    so the client checks a new definition before the request. A command
+    with no option to change sends nothing.
 
     Args:
         ctx: Typer context with global options.
@@ -246,8 +248,19 @@ def update_behavior(
         no_validate: Skip the client-side schema check.
         format: Output format (json, jsonl, table, csv, plain).
         jq_filter: Optional jq filter for JSON output.
+
+    Raises:
+        typer.Exit: With code 3, before any request, when no option to
+            change is given.
     """
     from mixpanel_headless.types import RawBehaviorDefinition, UpdateBehaviorParams
+
+    if all(value is None for value in (name, description, definition_file, verified)):
+        err_console.print(
+            "[red]Error:[/red] Nothing to update: pass --name, --description, "
+            "--definition-file, or --verified/--no-verified."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
 
     params = UpdateBehaviorParams(
         name=name,

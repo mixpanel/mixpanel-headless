@@ -213,7 +213,10 @@ may include API changes.
 - CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
   `--definition-file FILE|-` takes the wire definition that `get` prints,
   so get, edit, and update is a round trip. `mp metrics verify` names on
-  stderr the ids that the server skipped.
+  stderr the ids that the server skipped. Before any request, `update`
+  exits 3 when no option to change is given, and `mp metrics update`
+  exits 3 when `--kind` or `--warehouse-source-id` comes without
+  `--definition-file`.
 - `MetricDisplay` gains the write side of the server model: the
   experiment sizing keys `minimumDetectableEffect`, `oneSided`, and `power`
   are accepted by the bookmark schema check too. `MetricGoal.id` is

@@ -340,6 +340,23 @@ class TestBehaviorsUpdate:
         assert params.name is None
         assert params.verified is False
 
+    @pytest.mark.parametrize("extra", [[], ["--no-validate"]])
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_no_change_option_exits_3(
+        self, mock_get_ws: MagicMock, extra: list[str]
+    ) -> None:
+        """An update with no option to change is refused before any request.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            extra: Options that change nothing.
+        """
+        result = runner.invoke(app, ["behaviors", "update", "3001", *extra])
+        assert result.exit_code == 3, result.output
+        assert "Nothing to update" in result.stderr
+        assert "--definition-file" in result.stderr
+        mock_get_ws.assert_not_called()
+
 
 class TestWriteErrorsHideTheRequest:
     """An error of a behaviors write command shows the message, never the request."""

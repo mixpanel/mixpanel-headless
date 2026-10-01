@@ -22,6 +22,7 @@ import typer
 from mixpanel_headless._literal_types import QueryTimeUnit
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    ExitCode,
     err_console,
     get_workspace,
     handle_errors,
@@ -365,7 +366,9 @@ def update_metric(
 
     Only the options you pass change. A new definition must have the kind of
     the stored metric. The server does not check an update, so the client
-    checks the definition before the request.
+    checks the definition before the request. `--kind` and
+    `--warehouse-source-id` describe the definition file, so they need
+    `--definition-file`. A command with no option to change sends nothing.
 
     Args:
         ctx: Typer context with global options.
@@ -381,6 +384,11 @@ def update_metric(
         format: Output format (json, jsonl, table, csv, plain).
         jq_filter: Optional jq filter for JSON output.
 
+    Raises:
+        typer.Exit: With code 3, before any request, when `--kind` or
+            `--warehouse-source-id` comes without `--definition-file`, or
+            when no option to change is given.
+
     Example:
         ```bash
         mp metrics get 104700 --jq .definition > definition.json
@@ -389,6 +397,24 @@ def update_metric(
         ```
     """
     from mixpanel_headless.types import UpdateMetricParams
+
+    if definition_file is None and (
+        kind is not None or warehouse_source_id is not None
+    ):
+        err_console.print(
+            "[red]Error:[/red] --kind and --warehouse-source-id require "
+            "--definition-file."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
+    if all(
+        value is None
+        for value in (name, description, definition_file, owner_id, verified)
+    ):
+        err_console.print(
+            "[red]Error:[/red] Nothing to update: pass --name, --description, "
+            "--definition-file, --owner-id, or --verified/--no-verified."
+        )
+        raise typer.Exit(ExitCode.INVALID_ARGS)
 
     params = UpdateMetricParams(
         name=name,

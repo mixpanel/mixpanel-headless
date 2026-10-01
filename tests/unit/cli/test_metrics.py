@@ -576,16 +576,64 @@ class TestMetricsUpdate:
         assert mock_ws.update_metric.call_args.kwargs == {"validate": True}
 
     @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
-    def test_no_flags_leave_everything(self, mock_get_ws: MagicMock) -> None:
-        """Without flags every field is None."""
+    def test_one_flag_leaves_the_other_fields(self, mock_get_ws: MagicMock) -> None:
+        """With only --verified, every other field is None."""
         mock_ws = MagicMock()
         mock_ws.update_metric.return_value = _metrics()[0]
         mock_get_ws.return_value = mock_ws
-        result = runner.invoke(app, ["metrics", "update", "1"])
+        result = runner.invoke(app, ["metrics", "update", "1", "--verified"])
         assert result.exit_code == 0, result.output
         _metric_id, params = mock_ws.update_metric.call_args.args
-        assert params.verified is None
+        assert params.verified is True
         assert params.name is None
+        assert params.definition is None
+
+    @pytest.mark.parametrize(
+        "extra",
+        [[], ["--no-validate"], ["--format", "table"]],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_no_change_option_exits_3(
+        self, mock_get_ws: MagicMock, extra: list[str]
+    ) -> None:
+        """An update with no option to change is refused before any request.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            extra: Options that change nothing.
+        """
+        result = runner.invoke(app, ["metrics", "update", "1", *extra])
+        assert result.exit_code == 3, result.output
+        assert "Nothing to update" in result.stderr
+        assert "--definition-file" in result.stderr
+        mock_get_ws.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--kind", "formula"],
+            ["--warehouse-source-id", "7"],
+            ["--name", "New", "--kind", "metric"],
+            ["--verified", "--warehouse-source-id", "7"],
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_definition_options_without_a_file_exit_3(
+        self, mock_get_ws: MagicMock, extra: list[str]
+    ) -> None:
+        """--kind or --warehouse-source-id without --definition-file is refused.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            extra: The options of the command line.
+        """
+        result = runner.invoke(app, ["metrics", "update", "1", *extra])
+        assert result.exit_code == 3, result.output
+        assert (
+            "--kind and --warehouse-source-id require --definition-file"
+            in result.stderr
+        )
+        mock_get_ws.assert_not_called()
 
 
 class TestMetricsVerify:
