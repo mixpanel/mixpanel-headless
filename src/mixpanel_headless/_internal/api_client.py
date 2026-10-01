@@ -113,17 +113,19 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
     """Extract a human-readable error message from a parsed error body.
 
     Mixpanel error bodies are either a JSON object with an ``error`` key, a
-    plain-text blob, or nothing at all. Any of those can be empty or blank,
-    which must not produce a blank exception message.
+    JSON object with a ``message`` key (some App API 500s), a plain-text
+    blob, or nothing at all. Any of those can be empty or blank, which must
+    not produce a blank exception message.
 
     Args:
         response_body: Parsed JSON object, raw text, or None.
         default: Message to use when the body carries no usable error text.
 
     Returns:
-        The extracted message, or ``default`` when the body is missing,
-        blank, or has no ``error`` key. Non-string ``error`` values (lists,
-        nested objects) are stringified rather than returned as-is.
+        The ``error`` text when it is not blank, else the ``message`` text
+        when it is a non-blank string, else ``default``. Non-string
+        ``error`` values (lists, nested objects) are stringified rather than
+        returned as-is.
 
     Example:
         ```python
@@ -131,6 +133,8 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
         # "Invalid project"
         _error_message({"error": ["bad steps", "bad dates"]}, "Request failed")
         # "['bad steps', 'bad dates']"
+        _error_message({"message": "Error ID: 7f73"}, "Request failed")
+        # "Error ID: 7f73"
         _error_message("   ", "Request failed")
         # "Request failed"  (blank text falls back to the default)
         _error_message(None, "Request failed")
@@ -139,9 +143,10 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
     """
     if isinstance(response_body, dict):
         raw = response_body.get("error")
-        if raw is None:
-            return default
-        text = raw if isinstance(raw, str) else str(raw)
+        text = "" if raw is None else str(raw)
+        if not text.strip():
+            message = response_body.get("message")
+            text = message if isinstance(message, str) else ""
     elif isinstance(response_body, str):
         text = response_body[:200]
     else:

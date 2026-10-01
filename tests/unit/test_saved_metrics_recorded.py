@@ -282,7 +282,7 @@ class TestRecordedErrors:
         assert exc_info.value.code == "SM5_NOT_FOUND_FOR_DELETE"
 
     def test_500_unknown_behavior(self) -> None:
-        """The unknown-behavior 500 (key ``message``) raises ServerError with the body."""
+        """The unknown-behavior 500 (key ``message``) raises ServerError with its text."""
         body = _load("error_500_unknown_behavior")
         assert "error" not in body
         ws = _workspace(_replay(500, "error_500_unknown_behavior"))
@@ -290,6 +290,8 @@ class TestRecordedErrors:
             ws.get_behavior(999999999)
         assert exc_info.value.status_code == 500
         assert exc_info.value.response_body == body
+        assert exc_info.value.message == f"Server error: {body['message']}"
+        assert "Error ID: 7f73afdc3d244d959af85fc10fa3e550" in exc_info.value.message
 
     def test_500_unknown_behavior_stops_a_delete(self) -> None:
         """delete_behavior of an unknown id fails on its read and sends no DELETE."""

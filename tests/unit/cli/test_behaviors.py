@@ -10,16 +10,28 @@ Tests cover all behaviors subcommands:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import typer.testing
 
+from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import ServerError
 from mixpanel_headless.types import SavedBehavior
+from mixpanel_headless.workspace import Workspace
+from tests.conftest import make_session
 from tests.unit._saved_metric_fixtures import saved_behavior_json
 
 runner = typer.testing.CliRunner()
+
+_UNKNOWN_BEHAVIOR_500 = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "saved_metrics"
+    / "error_500_unknown_behavior.json"
+)
 
 
 def _behaviors() -> list[SavedBehavior]:
@@ -109,6 +121,26 @@ class TestBehaviorsGet:
         result = runner.invoke(app, ["behaviors", "get", "2", "--jq", ".name"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout) == "Return visits"
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_unknown_id_prints_server_message(self, mock_get_ws: MagicMock) -> None:
+        """The recorded unknown-behavior 500 prints its support text and Error ID."""
+        body = json.loads(_UNKNOWN_BEHAVIOR_500.read_text(encoding="utf-8"))
+        session = make_session()
+        client = MixpanelAPIClient(
+            session=session,
+            _transport=httpx.MockTransport(
+                lambda request: httpx.Response(500, json=body)
+            ),
+        )
+        mock_get_ws.return_value = Workspace(session=session, _api_client=client)
+
+        result = runner.invoke(app, ["behaviors", "get", "999999999"])
+        assert result.exit_code != 0
+        stderr = " ".join(result.stderr.split())
+        assert "Server error (500)" in stderr
+        assert "https://mixpanel.com/get-support" in stderr
+        assert "Error ID: 7f73afdc3d244d959af85fc10fa3e550" in stderr
 
 
 class TestBehaviorsDelete:

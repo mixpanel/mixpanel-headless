@@ -115,6 +115,11 @@ may include API changes.
   report links guide, and the `Workspace` API page called
   `mp.Metric.total("Login")`, which does not exist. They now use
   `mp.Metric("Login", math="total")`.
+- An error response whose body has a `message` key and no usable `error`
+  key now puts the server's `message` text in the exception message, and
+  the CLI prints it. Before, the exception held only the generic text (for
+  example, `Server error: 500`), and the server's support text and Error
+  ID were lost. When both keys are present, `error` wins.
 
 ## 0.3.0 — 2026-09-22
 
