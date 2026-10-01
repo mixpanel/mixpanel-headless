@@ -12157,21 +12157,25 @@ def _property_math_problem(
 
     Uses the same property-math sets as the query validators: a math in
     the property-requiring set needs a property, ``total`` takes one
-    optionally, and every other math takes none.
+    optionally, and every other math takes none. For a math that needs a
+    property, an empty or whitespace-only name counts as no property: it
+    names nothing to aggregate, and the funnel builder writes an empty
+    name as a null property.
 
     Args:
         math: The math type.
         prop: The measurement property, or ``None``.
 
     Returns:
-        ``"missing"`` when the math needs a property and none is set,
-        ``"rejected"`` when a property is set on a math that takes none,
-        or ``None`` when the two agree.
+        ``"missing"`` when the math needs a property and none is set or
+        the name is blank, ``"rejected"`` when a property is set on a math
+        that takes none, or ``None`` when the two agree.
     """
     from mixpanel_headless._internal.bookmark_enums import MATH_PROPERTY_OPTIONAL
 
     if math in _MATH_REQUIRING_PROPERTY:
-        return "missing" if prop is None else None
+        blank = prop is None or (isinstance(prop, str) and not prop.strip())
+        return "missing" if blank else None
     if prop is not None and math not in MATH_PROPERTY_OPTIONAL:
         return "rejected"
     return None
@@ -12480,7 +12484,8 @@ class FunnelMetric:
     :meth:`Workspace.query_funnel` and ``math_property``: a funnel metric
     and a ``query_funnel`` call over the same funnel give the same number.
     A property math with no property is refused, because the query server
-    refuses it too.
+    refuses it too. For a property math, an empty or whitespace-only
+    property name counts as no property.
 
     Attributes:
         behavior: The funnel to measure: a ``FunnelBehavior``, or a
@@ -12489,7 +12494,8 @@ class FunnelMetric:
             ``"conversion_rate_unique"``.
         property: The property to aggregate. Required for a property math
             (``average``, ``median``, ``min``, ``max``, the percentiles, and
-            ``histogram``); optional for ``total``; refused for the others.
+            ``histogram``), and a blank name does not count; optional for
+            ``total``; refused for the others.
         step_index: The zero-based step to measure. ``None`` measures the
             whole funnel.
         label: The series label. ``None`` lets the server name the series
@@ -12527,14 +12533,16 @@ class FunnelMetric:
         """Validate construction arguments.
 
         The property rules are the rules of :meth:`Workspace.query_funnel`
-        for ``math_property``, with the same codes.
+        for ``math_property``, with the same codes. One rule is stricter:
+        a blank property name on a property math counts as no property.
 
         Raises:
             ParamValidationError: If a saved behavior is not a funnel
                 (``BH5_BEHAVIOR_REF_TYPE``), ``step_index`` is not an
                 integer >= 0 (``MT4_INVALID_INDEX``), a property math has no
-                property (``F10_MATH_MISSING_PROPERTY``), or a math that
-                takes no property has one (``F11_MATH_REJECTS_PROPERTY``).
+                property or a blank property name
+                (``F10_MATH_MISSING_PROPERTY``), or a math that takes no
+                property has one (``F11_MATH_REJECTS_PROPERTY``).
         """
         if isinstance(self.behavior, BehaviorRef):
             _check_behavior_ref_type(self.behavior, "funnel", "FunnelMetric.behavior")
@@ -12573,9 +12581,9 @@ class RetentionMetric:
             ``N`` is unit ``N``. ``None`` uses the report default.
         retention_cumulative: Whether to count retention cumulatively.
             Default: ``False``.
-        property: The property to aggregate. Required for ``average``;
-            optional for ``total``; refused for ``retention_rate`` and
-            ``unique``.
+        property: The property to aggregate. Required for ``average``, and
+            a blank name does not count; optional for ``total``; refused
+            for ``retention_rate`` and ``unique``.
         label: The series label. ``None`` lets the server name the series
             after the two events.
 
@@ -12614,8 +12622,8 @@ class RetentionMetric:
             ParamValidationError: If a saved behavior is not a retention
                 behavior (``BH5_BEHAVIOR_REF_TYPE``), ``bucket_index`` is not
                 an integer >= 0 (``MT4_INVALID_INDEX``), or ``average`` has no
-                property, or ``retention_rate`` or ``unique`` has one
-                (``BH3_PROPERTY_MATH``).
+                property or a blank property name, or ``retention_rate`` or
+                ``unique`` has one (``BH3_PROPERTY_MATH``).
         """
         if isinstance(self.behavior, BehaviorRef):
             _check_behavior_ref_type(

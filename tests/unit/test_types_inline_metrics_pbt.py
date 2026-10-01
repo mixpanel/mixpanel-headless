@@ -134,3 +134,34 @@ class TestPropertyMathProperties:
         else:
             metric = RetentionMetric(behavior, math=math, property=prop)  # type: ignore[arg-type]
             assert metric.property == prop
+
+    @given(
+        st.sampled_from(
+            sorted(set(get_args(FunnelMathType)) & MATH_REQUIRING_PROPERTY)
+        ),
+        blank_names,
+    )
+    def test_funnel_metric_blank_property_is_missing(
+        self, math: str, prop: str
+    ) -> None:
+        """A blank property name on a funnel property math raises F10."""
+        behavior = FunnelBehavior(["Signup", "Purchase"])
+        with pytest.raises(ParamValidationError) as excinfo:
+            FunnelMetric(behavior, math=math, property=prop)  # type: ignore[arg-type]
+        assert excinfo.value.code == "F10_MATH_MISSING_PROPERTY"
+
+    @given(
+        st.sampled_from(
+            sorted(set(get_args(RetentionMathType)) & MATH_REQUIRING_PROPERTY)
+        ),
+        blank_names,
+    )
+    def test_retention_metric_blank_property_is_missing(
+        self, math: str, prop: str
+    ) -> None:
+        """A blank property name on a retention property math raises BH3."""
+        behavior = RetentionBehavior("Signup", "Login")
+        with pytest.raises(ParamValidationError) as excinfo:
+            RetentionMetric(behavior, math=math, property=prop)  # type: ignore[arg-type]
+        assert excinfo.value.code == "BH3_PROPERTY_MATH"
+        assert "requires a property" in excinfo.value.message

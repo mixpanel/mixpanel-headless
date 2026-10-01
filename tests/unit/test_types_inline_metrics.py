@@ -380,6 +380,28 @@ class TestFunnelMetric:
             excinfo.value.message
         )
 
+    @pytest.mark.parametrize("prop", ["", "   ", "\t"])
+    def test_blank_property_with_property_math_raises_f10(self, prop: str) -> None:
+        """A blank property name counts as no property for a property math."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FunnelMetric(_funnel(), math="average", property=prop)
+        assert excinfo.value.code == "F10_MATH_MISSING_PROPERTY"
+        assert "FunnelMetric math='average' requires a property" in (
+            excinfo.value.message
+        )
+
+    def test_property_name_with_property_math_passes(self) -> None:
+        """A property math with a property name builds."""
+        metric = FunnelMetric(_funnel(), math="average", property="amount")
+        assert metric.property == "amount"
+
+    @pytest.mark.parametrize("prop", ["", "   "])
+    def test_blank_property_with_rate_math_raises_f11(self, prop: str) -> None:
+        """A math that takes no property still refuses a blank property name."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            FunnelMetric(_funnel(), property=prop)
+        assert excinfo.value.code == "F11_MATH_REJECTS_PROPERTY"
+
     @pytest.mark.parametrize(
         "math", ["conversion_rate_unique", "conversion_rate_session", "unique"]
     )
@@ -444,6 +466,29 @@ class TestRetentionMetric:
         assert "RetentionMetric math='average' requires a property" in (
             excinfo.value.message
         )
+
+    @pytest.mark.parametrize("prop", ["", "   ", "\t"])
+    def test_blank_property_with_property_math_raises_bh3(self, prop: str) -> None:
+        """A blank property name counts as no property for ``average``."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            RetentionMetric(_retention(), math="average", property=prop)
+        assert excinfo.value.code == "BH3_PROPERTY_MATH"
+        assert "RetentionMetric math='average' requires a property" in (
+            excinfo.value.message
+        )
+
+    def test_property_name_with_property_math_passes(self) -> None:
+        """``average`` with a property name builds."""
+        metric = RetentionMetric(_retention(), math="average", property="amount")
+        assert metric.property == "amount"
+
+    @pytest.mark.parametrize("prop", ["", "   "])
+    def test_blank_property_with_rate_math_raises_bh3(self, prop: str) -> None:
+        """A math that takes no property still refuses a blank property name."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            RetentionMetric(_retention(), property=prop)
+        assert excinfo.value.code == "BH3_PROPERTY_MATH"
+        assert "does not take a property" in excinfo.value.message
 
     @pytest.mark.parametrize("math", ["retention_rate", "unique"])
     def test_rate_or_count_math_with_property_raises_bh3(self, math: str) -> None:

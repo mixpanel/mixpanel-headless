@@ -113,7 +113,10 @@ may include API changes.
   `RetentionBehavior`, put funnel and retention measurements in
   `Workspace.query()` and `build_params()`, next to other metrics. The
   behaviors use the parameter names and defaults of `query_funnel()` and
-  `query_retention()`, and their rules keep the same error codes.
+  `query_retention()`, and their rules keep the same error codes. For a
+  math that needs a property, an empty or whitespace-only property name
+  counts as no property (`F10_MATH_MISSING_PROPERTY` for a funnel metric,
+  `BH3_PROPERTY_MATH` for a retention metric).
 - `Formula(expression, label=None, metrics=[...])` holds its own
   operands (`FormulaOperand`): the letters name the operands, and the
   formula can be the whole query. New error codes: `FM2_UNKNOWN_LETTER`,
