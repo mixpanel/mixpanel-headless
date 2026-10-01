@@ -25,6 +25,7 @@ from mixpanel_headless.exceptions import (
 from mixpanel_headless.types import (
     BehaviorRef,
     CustomPropertyRef,
+    InlineCustomProperty,
     MetricRef,
     SavedBehavior,
     SavedMetric,
@@ -206,6 +207,11 @@ class TestMetricRefOverrideValueGuard:
             {"label": ""},
             {"label": "   "},
             {"hidden": 1},
+            {"property": 123},
+            {"property": True},
+            {"property": 1.5},
+            {"property": ["amount"]},
+            {"property": {"name": "amount"}},
             {"overrides": [("measurement", {})]},
             {"overrides": []},
             {"overrides": "x"},
@@ -217,6 +223,33 @@ class TestMetricRefOverrideValueGuard:
         with pytest.raises(ParamValidationError) as exc_info:
             MetricRef(1, **kwargs)
         assert exc_info.value.code == "MR7_INVALID_OVERRIDE"
+
+    def test_bad_property_message_names_the_accepted_types(self) -> None:
+        """The property message names the three accepted property types."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            MetricRef(1, property=123)  # type: ignore[arg-type]
+        message = str(exc_info.value)
+        assert "CustomPropertyRef" in message
+        assert "InlineCustomProperty" in message
+        assert "123" in message
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            "amount",
+            CustomPropertyRef(3),
+            InlineCustomProperty.numeric("A * B", A="price", B="quantity"),
+        ],
+    )
+    def test_accepts_each_property_type(self, prop: Any) -> None:
+        """A property name, a saved custom property, and an inline one are valid."""
+        assert MetricRef(1, math="average", property=prop).property == prop
+
+    @pytest.mark.parametrize("prop", ["", "   "])
+    def test_accepts_blank_property_like_metric(self, prop: str) -> None:
+        """A blank property name passes, as it does on an inline Metric."""
+        assert mp.Metric("Purchase", math="average", property=prop).property == prop
+        assert MetricRef(1, math="average", property=prop).property == prop
 
     @pytest.mark.parametrize(
         "math", ["unique", "percentile", "conversion_rate_unique", "retention_rate"]

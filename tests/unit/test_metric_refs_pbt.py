@@ -2,10 +2,11 @@
 
 Invariants: typed overrides never write a list (the server merges lists
 item by item), raw overrides merge last and win, the reference clause
-always holds its type and id, the overrides are plain JSON, and
-``SavedMetric.to_ref`` reports an ``overrides`` that is not a mapping as
-``MR7_INVALID_OVERRIDE``. Hypothesis profiles come from
-``tests/conftest.py`` (``default``, ``dev``, ``ci``).
+always holds its type and id, the overrides are plain JSON, and a
+``property`` that is not a property name, a ``CustomPropertyRef``, or an
+``InlineCustomProperty`` raises ``MR7_INVALID_OVERRIDE``, as does an
+``overrides`` that is not a mapping on ``SavedMetric.to_ref``. Hypothesis
+profiles come from ``tests/conftest.py`` (``default``, ``dev``, ``ci``).
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from mixpanel_headless._literal_types import (
 from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     CustomPropertyRef,
+    InlineCustomProperty,
     MetricRef,
     SavedMetric,
 )
@@ -50,9 +52,22 @@ _MATHS = sorted(
 
 _labels = st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
 _properties = st.one_of(
-    st.text(min_size=1, max_size=20),
+    st.text(max_size=20),
     st.integers(min_value=1, max_value=10**6).map(CustomPropertyRef),
+    st.sampled_from(["price", "quantity"]).map(
+        lambda name: InlineCustomProperty.numeric("A * 2", A=name)
+    ),
 )
+"""Every accepted property type: a name, a saved custom property, an inline one."""
+
+_not_properties = st.one_of(
+    st.booleans(),
+    st.integers(),
+    st.floats(),
+    st.lists(st.text(max_size=5), max_size=3),
+    st.dictionaries(st.text(max_size=5), st.text(max_size=5), max_size=3),
+)
+"""Values that are not a property name, a CustomPropertyRef, or an InlineCustomProperty."""
 
 
 _measurement_fields = st.tuples(
@@ -229,6 +244,17 @@ def test_measurement_rules_match_the_inline_rules(fields: tuple[Any, ...]) -> No
         assert exc.code == expected
     else:
         assert expected is None
+
+
+@given(prop=_not_properties)
+def test_property_outside_the_accepted_types_raises_mr7(prop: Any) -> None:
+    """A property that is not a name or a custom property raises MR7_INVALID_OVERRIDE."""
+    try:
+        MetricRef(1, property=prop)
+    except ParamValidationError as exc:
+        assert exc.code == "MR7_INVALID_OVERRIDE"
+    else:
+        raise AssertionError(f"MetricRef accepted property={prop!r}")
 
 
 _not_mappings = st.one_of(

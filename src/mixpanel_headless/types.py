@@ -7767,6 +7767,9 @@ _PER_USER_AGGREGATIONS: Final[frozenset[str]] = frozenset(get_args(PerUserAggreg
 _FUNNEL_ORDERS: Final[frozenset[str]] = frozenset(get_args(FunnelOrder))
 """Runtime view of :data:`FunnelOrder`."""
 
+_PROPERTY_SPEC_TYPES: Final[tuple[type, ...]] = get_args(PropertySpec)
+"""Runtime view of :data:`PropertySpec`: the classes a property can be."""
+
 _BEHAVIOR_REF_KINDS: Final[frozenset[str]] = frozenset(
     {"simple", "funnel", "retention"}
 )
@@ -8089,6 +8092,13 @@ class MetricRef:
         elif self.math is not None and self.math not in _METRIC_REF_MATHS:
             problem = (
                 f"math {self.math!r} is not an insights, funnel, or retention math"
+            )
+        elif self.property is not None and not isinstance(
+            self.property, _PROPERTY_SPEC_TYPES
+        ):
+            problem = (
+                "property must be a property name (str), a CustomPropertyRef, "
+                f"or an InlineCustomProperty, got {self.property!r}"
             )
         elif self.per_user is not None and self.per_user not in _PER_USER_AGGREGATIONS:
             problem = (
