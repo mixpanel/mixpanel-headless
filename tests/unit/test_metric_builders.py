@@ -7,7 +7,7 @@ dicts, and key order where the order reaches the serialized request.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_type_hints
 
 from mixpanel_headless._internal.bookmark_builders import build_filter_entry
 from mixpanel_headless._internal.query.metric_builders import (
@@ -26,6 +26,11 @@ from mixpanel_headless._internal.query.metric_builders import (
     build_retention_event_behavior,
     build_retention_measurement,
     build_show_section,
+)
+from mixpanel_headless._literal_types import (
+    ConversionWindowUnit,
+    FunnelMathType,
+    FunnelOrder,
 )
 from mixpanel_headless.types import (
     CohortCriteria,
@@ -826,6 +831,20 @@ class TestBuildFunnelMeasurement:
         """An empty property name writes a null property."""
         result = build_funnel_measurement(math="average", math_property="")
         assert result["property"] is None
+
+
+class TestFunnelBuilderTypes:
+    """Tests that the funnel builders keep the funnel Literal types."""
+
+    def test_order_window_unit_and_math_use_the_literal_aliases(self) -> None:
+        """Order, window unit, and funnel math are typed with the aliases, not str."""
+        step_hints = get_type_hints(build_funnel_step_behavior)
+        behavior_hints = get_type_hints(build_funnel_behavior)
+        measurement_hints = get_type_hints(build_funnel_measurement)
+        assert step_hints["order"] == FunnelOrder
+        assert behavior_hints["order"] == FunnelOrder
+        assert behavior_hints["conversion_window_unit"] == ConversionWindowUnit
+        assert measurement_hints["math"] == FunnelMathType
 
 
 # =============================================================================

@@ -30,7 +30,10 @@ from mixpanel_headless._internal.bookmark_builders import (
     build_filter_entry,
 )
 from mixpanel_headless._literal_types import (
+    ConversionWindowUnit,
     FiltersCombinator,
+    FunnelMathType,
+    FunnelOrder,
     FunnelReentryMode,
     MathType,
     PerUserAggregation,
@@ -460,7 +463,9 @@ def build_show_section(
 # =============================================================================
 
 
-def build_funnel_step_behavior(step: FunnelStep, *, order: str) -> dict[str, Any]:
+def build_funnel_step_behavior(
+    step: FunnelStep, *, order: FunnelOrder
+) -> dict[str, Any]:
     """Build one entry of the ``behaviors`` list of a funnel behavior.
 
     Args:
@@ -492,8 +497,8 @@ def build_funnel_behavior(
     *,
     steps: Sequence[FunnelStep],
     conversion_window: int,
-    conversion_window_unit: str,
-    order: str,
+    conversion_window_unit: ConversionWindowUnit,
+    order: FunnelOrder,
     exclusions: Sequence[Exclusion],
     holding_constant: Sequence[HoldingConstant],
     reentry_mode: FunnelReentryMode | None = None,
@@ -568,7 +573,7 @@ def build_funnel_behavior(
 
 def build_funnel_measurement(
     *,
-    math: str,
+    math: FunnelMathType,
     math_property: str | None,
 ) -> dict[str, Any]:
     """Build the ``measurement`` block of a funnel metric.
