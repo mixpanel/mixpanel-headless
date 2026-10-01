@@ -6,12 +6,21 @@ The project can be shared with other users. Safety rules, enforced in code:
 - The tests run only when ``MP_LIVE_ACCOUNT`` is set, and they write only
   when the account's project id equals ``MP_LIVE_WRITE_PROJECT``; otherwise
   they skip before any write.
-- Every created entity has a ``zz-`` name prefix.
+- Every created entity has a name prefix unique to the run:
+  ``zz-headless-live-`` plus eight random hex characters.
 - A test changes or deletes only ids that its own creates returned in the
   same run. Each update and delete first asserts that its target id is in
   the created set.
-- The module teardown deletes only the created ids, then writes an audit
-  record (the run prefix, the created ids, and any id still active) to
+- Before the first test, the module records the ids of the active metrics
+  and behaviors (the start snapshot).
+- The module teardown deletes the created ids. A create can commit on the
+  server and still fail on the client (a timeout, or a ``create_metric``
+  whose follow-up update fails), so its id never reaches the created set.
+  The teardown then also deletes every active metric and behavior whose
+  name starts with the run prefix and whose id is not in the start
+  snapshot.
+- The teardown writes an audit record (the run prefix, the created ids,
+  the swept ids, and any id still active) to
   ``saved_metrics_write_live.json`` in the temp directory.
 
 Usage:
@@ -38,7 +47,7 @@ import json
 import os
 import tempfile
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -138,9 +147,27 @@ def ws() -> mp.Workspace:
     return workspace
 
 
+def _run_ids(
+    rows: Iterable[mp.SavedMetric | mp.SavedBehavior], before: set[int]
+) -> set[int]:
+    """Return the ids of the rows that this run created, tracked or not.
+
+    Args:
+        rows: Active saved metrics or saved behaviors.
+        before: The ids of the start snapshot.
+
+    Returns:
+        The ids whose name starts with the run prefix and that the start
+        snapshot does not hold.
+    """
+    return {
+        row.id for row in rows if row.name.startswith(_PREFIX) and row.id not in before
+    }
+
+
 @pytest.fixture(scope="module")
 def created(ws: mp.Workspace) -> Iterator[_Created]:
-    """Track created ids and delete exactly those at module teardown.
+    """Track created ids; at module teardown, delete them and sweep untracked ones.
 
     Args:
         ws: The write Workspace.
@@ -148,6 +175,8 @@ def created(ws: mp.Workspace) -> Iterator[_Created]:
     Yields:
         The tracker that each create adds its id to.
     """
+    before_metrics = {m.id for m in ws.list_metrics()}
+    before_behaviors = {b.id for b in ws.list_behaviors()}
     tracker = _Created()
     yield tracker
     assert str(ws.api.project_id) == _write_project()
@@ -155,13 +184,30 @@ def created(ws: mp.Workspace) -> Iterator[_Created]:
         ws.delete_metrics(sorted(tracker.metrics))
     if tracker.behaviors:
         ws.delete_behaviors(sorted(tracker.behaviors))
-    remaining_metrics = {m.id for m in ws.list_metrics()} & tracker.metrics
-    remaining_behaviors = {b.id for b in ws.list_behaviors()} & tracker.behaviors
+    swept_metrics = _run_ids(ws.list_metrics(), before_metrics) - tracker.metrics
+    swept_behaviors = (
+        _run_ids(ws.list_behaviors(), before_behaviors) - tracker.behaviors
+    )
+    assert str(ws.api.project_id) == _write_project()
+    if swept_metrics:
+        ws.delete_metrics(sorted(swept_metrics))
+    if swept_behaviors:
+        ws.delete_behaviors(sorted(swept_behaviors))
+    active_metrics = ws.list_metrics()
+    active_behaviors = ws.list_behaviors()
+    remaining_metrics = {
+        m.id for m in active_metrics if m.id in tracker.metrics
+    } | _run_ids(active_metrics, before_metrics)
+    remaining_behaviors = {
+        b.id for b in active_behaviors if b.id in tracker.behaviors
+    } | _run_ids(active_behaviors, before_behaviors)
     audit = {
         "prefix": _PREFIX,
         "project_id": str(ws.api.project_id),
         "created_metrics": sorted(tracker.metrics),
         "created_behaviors": sorted(tracker.behaviors),
+        "swept_metrics": sorted(swept_metrics),
+        "swept_behaviors": sorted(swept_behaviors),
         "active_after_teardown": sorted(remaining_metrics | remaining_behaviors),
     }
     audit_path = os.path.join(tempfile.gettempdir(), "saved_metrics_write_live.json")
