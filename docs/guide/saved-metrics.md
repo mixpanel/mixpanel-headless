@@ -264,7 +264,16 @@ A saved behavior takes a `SimpleBehavior`, a `FunnelBehavior`, a `RetentionBehav
     mp behaviors get 3001 --jq .definition | mp behaviors create --name "Checkout (copy)" --definition-file -
     ```
 
-`owned_by` and `verified` go in a second request, because the server drops them from a create. The two requests are not atomic: if the second one fails, the metric exists without the owner or the verified flag, the log names its id, and the error propagates. `verified=False` sends nothing, because a new metric is unverified.
+`owned_by` and `verified` go in a second request, because the server drops them from a create. The two requests are not atomic: if the second one fails, the metric exists without the owner or the verified flag. The method then raises `MixpanelHeadlessError` with the code `CREATE_FOLLOW_UP_FAILED`. Its message and `details["metric_id"]` give the id of the created metric, `details["fields"]` names the values that were not set, and `__cause__` holds the error of the second request. Set the values with `update_metric`, or remove the metric with `delete_metric`. `verified=False` sends nothing, because a new metric is unverified.
+
+```python
+try:
+    saved = ws.create_metric(params)
+except mp.MixpanelHeadlessError as exc:
+    if exc.code != "CREATE_FOLLOW_UP_FAILED":
+        raise
+    ws.delete_metric(exc.details["metric_id"])
+```
 
 ## Update
 

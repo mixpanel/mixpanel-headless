@@ -17,6 +17,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -31,7 +32,12 @@ from mixpanel_headless._internal.query.metric_builders import (
     build_formula_definition,
     build_metric_definition,
 )
-from mixpanel_headless.exceptions import ParamValidationError, QueryError
+from mixpanel_headless.exceptions import (
+    MixpanelHeadlessError,
+    ParamValidationError,
+    QueryError,
+    ResponseValidationError,
+)
 from mixpanel_headless.types import (
     BulkUpdateMetricEntry,
     CohortMetric,
@@ -346,7 +352,7 @@ class TestCreateMetric:
     def test_failed_follow_up_patch_raises_and_logs_the_id(
         self, temp_dir: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A failed PATCH raises; the log names the metric that the POST created.
+        """A failed PATCH raises an error that names the created metric; the log too.
 
         Args:
             temp_dir: Temporary directory fixture.
@@ -363,13 +369,76 @@ class TestCreateMetric:
         ws = _make_workspace(temp_dir, server)
         with (
             caplog.at_level(logging.WARNING, logger="mixpanel_headless.workspace"),
-            pytest.raises(QueryError),
+            pytest.raises(MixpanelHeadlessError) as exc_info,
+        ):
+            ws.create_metric(
+                CreateMetricParams(
+                    name="m", definition=Metric("Login"), owned_by=8, verified=True
+                )
+            )
+        exc = exc_info.value
+        assert not isinstance(exc, QueryError)
+        assert exc.code == "CREATE_FOLLOW_UP_FAILED"
+        assert exc.details == {"metric_id": 9, "fields": ["owned_by", "verified"]}
+        assert "created saved metric 9" in exc.message
+        assert "Forbidden" in exc.message
+        assert isinstance(exc.__cause__, QueryError)
+        assert exc.__cause__.status_code == 403
+        assert "9" in caplog.text
+        assert "created" in caplog.text
+
+    @pytest.mark.parametrize(
+        "extra",
+        [{}, {"owned_by": 8}, {"verified": True}],
+    )
+    def test_post_row_without_id_raises_response_validation_error(
+        self, temp_dir: Path, extra: dict[str, Any]
+    ) -> None:
+        """A one-row POST answer without an id raises before any follow-up.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            extra: Owner and verified params; each one needs a follow-up.
+        """
+        row = behavior_metric_json(9)
+        del row["id"]
+        server = _Server(
+            {
+                ("POST", _METRICS_PATH): httpx.Response(
+                    200, json={"status": "ok", "results": {"9": row}}
+                ),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(ResponseValidationError) as exc_info:
+            ws.create_metric(
+                CreateMetricParams(name="m", definition=Metric("Login"), **extra)
+            )
+        assert exc_info.value.code == "RESPONSE_VALIDATION_ERROR"
+        assert server.calls() == [("POST", _METRICS_PATH)]
+
+    def test_non_library_error_in_follow_up_is_not_relabeled(
+        self, temp_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An exception outside the library hierarchy propagates as it is.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            caplog: Pytest log capture fixture.
+        """
+        server = _Server({("POST", _METRICS_PATH): _ok(behavior_metric_json(9))})
+        ws = _make_workspace(temp_dir, server)
+        with (
+            caplog.at_level(logging.WARNING, logger="mixpanel_headless.workspace"),
+            patch.object(
+                MixpanelAPIClient, "update_metric", side_effect=RuntimeError("bug")
+            ),
+            pytest.raises(RuntimeError, match="bug"),
         ):
             ws.create_metric(
                 CreateMetricParams(name="m", definition=Metric("Login"), owned_by=8)
             )
-        assert "9" in caplog.text
-        assert "created" in caplog.text
+        assert "follow-up" not in caplog.text
 
     def test_duplicate_name_propagates(self, temp_dir: Path) -> None:
         """A 409 from the server raises QueryError."""

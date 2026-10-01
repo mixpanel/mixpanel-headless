@@ -864,6 +864,54 @@ class TestWriteErrorsHideTheRequest:
         assert "secret_column" not in output
         assert stored["definition"]["query"] not in output
 
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_failed_follow_up_names_the_created_metric(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """A create whose verified update fails prints the new id, not the SQL."""
+        created = warehouse_metric_json(41)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Accept the create, then refuse the follow-up update.
+
+            Args:
+                request: The create or the follow-up request.
+
+            Returns:
+                The created metric, or the 403 response.
+            """
+            if request.method == "POST":
+                return httpx.Response(200, json=envelope(created))
+            assert (request.method, request.url.path) == (
+                "PATCH",
+                f"{_METRICS_PATH}/41",
+            )
+            return httpx.Response(403, json={"error": "Permission denied"})
+
+        mock_get_ws.return_value = _workspace_on(handler)
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "Revenue",
+                "--warehouse-source-id",
+                "55",
+                "--verified",
+                "--definition-file",
+                _write_definition(
+                    tmp_path, {"query": _SECRET_SQL, "metricType": "numeric"}
+                ),
+            ],
+        )
+        assert result.exit_code == 1, result.output
+        assert "created saved metric 41" in result.stderr
+        assert "Permission denied" in result.stderr
+        output = result.stderr + result.stdout
+        assert "secret_column" not in output
+        assert created["definition"]["query"] not in output
+
     @pytest.mark.parametrize(
         ("args", "method"),
         [

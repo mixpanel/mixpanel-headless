@@ -179,14 +179,19 @@ may include API changes.
   `FM6_OPERAND_ATTRIBUTION` (a saved formula operand cannot set a segment
   method or an attribution model). The server drops `owned_by` and
   `verified` from a create, so `create_metric` sets them in a second
-  request; the two requests are not atomic. An update with new display or
-  goals but no definition reads the metric and sends its full definition
-  back, because the server replaces a definition in full. A create that
-  the server's schema refuses raises `QueryError` (400) with a short
-  message: the failure and its schema location, without the HTML-escaped
-  copy of the request that the server appends. The full body stays in
-  `response_body`. The CLI prints only the short message for such a 400,
-  not the server's copy of the request. Only a body with every field of
+  request; the two requests are not atomic. When the second request fails,
+  `create_metric` raises `MixpanelHeadlessError` with code
+  `CREATE_FOLLOW_UP_FAILED`: its message and `details["metric_id"]` give
+  the id of the created metric, and the error of the second request is
+  chained. A create answer without a metric id raises
+  `ResponseValidationError` before the second request. An update with new
+  display or goals but no definition reads the metric and sends its full
+  definition back, because the server replaces a definition in full. A
+  create that the server's schema refuses raises `QueryError` (400) with a
+  short message: the failure and its schema location, without the
+  HTML-escaped copy of the request that the server appends. The full body
+  stays in `response_body`. The CLI prints only the short message for such
+  a 400, not the server's copy of the request. Only a body with every field of
   the server's schema refusal (`status`, `error`, and `details` with
   `path`, `schema`, and `data`) counts; another 400 keeps its server
   message and the usual CLI output. An error of `mp metrics

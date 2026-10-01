@@ -9132,8 +9132,9 @@ class Workspace:
         drops ``owned_by`` and ``verified`` from a create, so when the params
         set an owner or ``verified=True``, a second request (an update)
         sets them. The two requests are not atomic: if the second one fails,
-        the metric exists without the owner or the verified flag, the log
-        names its id, and the error propagates.
+        the metric exists without the owner or the verified flag, and the
+        method raises an error that names the id of the created metric
+        (see Raises).
 
         In a project with sharing on, a new metric is private to its
         creator; this API cannot share it.
@@ -9173,6 +9174,13 @@ class Workspace:
                 (409).
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The create succeeded, but the second
+                request (owner or verified flag) failed
+                (``code="CREATE_FOLLOW_UP_FAILED"``). ``details`` holds
+                ``metric_id`` (the created metric) and ``fields`` (the
+                values that were not set); the error of the second request
+                is chained as ``__cause__``. The errors above come from the
+                create itself, so nothing was created.
 
         Example:
             ```python
@@ -9211,23 +9219,34 @@ class Workspace:
             body["warehouse_source_id"] = parts.warehouse_source_id
 
         client = self._require_api_client()
-        row = client.create_metric(body)
+        created = validate_response_model(
+            SavedMetric, client.create_metric(body), endpoint="create_metric"
+        )
         follow_up: dict[str, Any] = {}
         if params.owned_by is not None:
             follow_up["owned_by"] = {"id": params.owned_by}
         if params.verified:
             follow_up["verified"] = True
-        if follow_up:
-            try:
-                row = client.update_metric(row["id"], follow_up)
-            except Exception:
-                logger.warning(
-                    "create_metric: created saved metric %s, but the follow-up "
-                    "update of %s failed",
-                    row.get("id"),
-                    sorted(follow_up),
-                )
-                raise
+        if not follow_up:
+            return created
+        try:
+            row = client.update_metric(created.id, follow_up)
+        except MixpanelHeadlessError as exc:
+            fields = sorted(follow_up)
+            logger.warning(
+                "create_metric: created saved metric %s, but the follow-up "
+                "update of %s failed",
+                created.id,
+                fields,
+            )
+            raise MixpanelHeadlessError(
+                f"create_metric: created saved metric {created.id}, but the "
+                f"follow-up update of {', '.join(fields)} failed: {exc.message}. "
+                f"The metric exists without these values; set them with "
+                f"update_metric or remove the metric with delete_metric.",
+                code="CREATE_FOLLOW_UP_FAILED",
+                details={"metric_id": created.id, "fields": fields},
+            ) from exc
         return validate_response_model(SavedMetric, row, endpoint="create_metric")
 
     def update_metric(
