@@ -17109,7 +17109,10 @@ class CreateBehaviorParams(BaseModel):
     Attributes:
         name: Behavior name, unique among the active behaviors of the
             project. Surrounding whitespace is stripped.
-        behavior: What users did.
+        behavior: What users did: a ``SimpleBehavior``,
+            ``FunnelBehavior``, or ``RetentionBehavior`` built in code, or
+            a ``RawBehaviorDefinition`` that wraps a wire definition dict
+            (for example the definition of a stored behavior).
         description: Behavior description.
 
     Example:
@@ -17164,7 +17167,9 @@ class UpdateBehaviorParams(BaseModel):
     Attributes:
         name: New name (stripped).
         description: New description; ``""`` clears it.
-        behavior: New definition, of the same type as the stored behavior.
+        behavior: New definition, of the same type as the stored behavior:
+            a ``SimpleBehavior``, ``FunnelBehavior``, or
+            ``RetentionBehavior``, or a ``RawBehaviorDefinition``.
         verified: ``True`` marks the behavior as verified again; ``False``
             clears the flag.
 

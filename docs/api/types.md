@@ -583,7 +583,12 @@ Result types of the saved metric and saved behavior methods. They accept any `ty
 
 ### Create and update
 
-The write methods take these params. The kind of a saved metric comes from its definition (`MetricDefinition`); a saved behavior takes its type from `RawBehaviorDefinition`.
+The write methods take these params. The kind of a saved metric comes from its definition (`MetricDefinition`): `Metric`, `CohortMetric`, `FunnelMetric`, or `RetentionMetric` gives a behavior metric, a `Formula` with its own operands gives a saved formula, `WarehouseMetric` gives a warehouse metric, and `RawMetricDefinition` gives the kind it names.
+
+A saved behavior takes a `BehaviorDefinition`, and its wire type comes from that value:
+
+- `SimpleBehavior`, `FunnelBehavior`, or `RetentionBehavior` (see [Insights Query Types](#insights-query-types)): use one of these to build a new behavior in code. The library compiles it with the builders of an inline behavior, without a name, and the wire type is `simple`, `funnel`, or `retention`.
+- `RawBehaviorDefinition`: use it for a wire definition dict, for example the `definition` of a `SavedBehavior` that you copy or edit. The wire type comes from `definition["behavior"]["type"]`.
 
 ::: mixpanel_headless.CreateMetricParams
     options:
