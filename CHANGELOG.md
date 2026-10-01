@@ -186,7 +186,10 @@ may include API changes.
   message: the failure and its schema location, without the HTML-escaped
   copy of the request that the server appends. The full body stays in
   `response_body`. The CLI prints only the short message for such a 400,
-  not the server's copy of the request. An error of `mp metrics
+  not the server's copy of the request. Only a body with every field of
+  the server's schema refusal (`status`, `error`, and `details` with
+  `path`, `schema`, and `data`) counts; another 400 keeps its server
+  message and the usual CLI output. An error of `mp metrics
   create|update|verify|delete` or `mp behaviors create|update|delete` (for
   example a 409 duplicate name or a 403) never prints the request params
   or body, which hold the definition and, for a warehouse metric, its SQL;

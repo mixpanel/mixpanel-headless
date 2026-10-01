@@ -373,6 +373,34 @@ class TestHandleErrors:
         assert "secret_column" not in captured.err
         assert "API error" not in captured.err
 
+    def test_other_structured_400_keeps_the_usual_output(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A 400 with a details dict but not the schema shape prints the usual lines."""
+
+        @handle_errors
+        def create_fail() -> None:
+            raise QueryError(
+                "Bad request",
+                status_code=400,
+                response_body={
+                    "details": {"reason": "locked"},
+                    "error": "Workspace is read-only",
+                    "status": "error",
+                },
+                request_body={"title": "Revenue", "description": "debug-context"},
+            )
+
+        with pytest.raises(click.exceptions.Exit) as exc_info:
+            create_fail()
+
+        assert exc_info.value.exit_code == ExitCode.INVALID_ARGS
+        captured = capsys.readouterr()
+        assert "Bad request" in captured.err
+        assert "API error" in captured.err
+        assert "Workspace is read-only" in captured.err
+        assert "debug-context" in captured.err
+
     def test_rate_limit_error_with_retry_after(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

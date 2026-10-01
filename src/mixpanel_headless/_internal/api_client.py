@@ -23,7 +23,7 @@ import re
 import time
 from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import httpx
@@ -197,6 +197,35 @@ def _id_map_rows(result: object, endpoint: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _has_schema_refusal_shape(body: object) -> TypeGuard[dict[str, Any]]:
+    """Return whether a body has every field of the JSON Schema refusal.
+
+    The recorded shape is ``{"error": <non-empty str>, "details": {"path":
+    <list>, "schema": <dict>, "data": <any>}, "status": "error"}``. A 400
+    from another check can also carry ``error`` and a ``details`` dict, so
+    all of these fields must be present.
+
+    Args:
+        body: The parsed response body.
+
+    Returns:
+        ``True`` when every field of the recorded shape is present with the
+        recorded type.
+    """
+    if not isinstance(body, dict) or body.get("status") != "error":
+        return False
+    raw = body.get("error")
+    if not isinstance(raw, str) or not raw.strip():
+        return False
+    details = body.get("details")
+    return (
+        isinstance(details, dict)
+        and isinstance(details.get("path"), list)
+        and isinstance(details.get("schema"), dict)
+        and "data" in details
+    )
+
+
 def _schema_error_message(body: object) -> str | None:
     """Shorten the server's JSON Schema 400 body into a readable message.
 
@@ -213,24 +242,18 @@ def _schema_error_message(body: object) -> str | None:
     Returns:
         The message without the request repr, unescaped, with the schema
         location in reading order and a note on the wrong-branch risk; or
-        ``None`` when the body does not have that shape.
+        ``None`` when the body does not have that shape (see
+        ``_has_schema_refusal_shape``).
     """
-    if not isinstance(body, dict) or not isinstance(body.get("details"), dict):
+    if not _has_schema_refusal_shape(body):
         return None
-    raw = body.get("error")
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    text = html.unescape(raw)
+    text = html.unescape(body["error"])
     cut = text.find("{'")
     if cut > 0:
         text = text[:cut]
     text = text.strip()
-    path = body["details"].get("path")
-    location = ""
-    if isinstance(path, list):
-        parts = [str(part) for part in reversed(path) if part != "root"]
-        if parts:
-            location = f" (schema location: {'.'.join(parts)})"
+    parts = [str(part) for part in reversed(body["details"]["path"]) if part != "root"]
+    location = f" (schema location: {'.'.join(parts)})" if parts else ""
     return (
         f"The server refused the request body: {text}{location}. The server "
         f"message can name the wrong branch of its schema; with validate=True "

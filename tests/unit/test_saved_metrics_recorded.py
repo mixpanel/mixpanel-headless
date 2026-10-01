@@ -353,6 +353,50 @@ class TestRecordedErrors:
 # =============================================================================
 
 
+_SCHEMA_DETAILS: dict[str, Any] = {"data": None, "path": ["root"], "schema": {}}
+
+_UNRELATED_400_BODIES: list[dict[str, Any]] = [
+    {"error": "Workspace is read-only", "details": {"reason": "locked"}},
+    {
+        "error": "Workspace is read-only",
+        "details": {"reason": "locked"},
+        "status": "error",
+    },
+    {"error": "Workspace is read-only", "details": _SCHEMA_DETAILS},
+    {"error": "Workspace is read-only", "details": _SCHEMA_DETAILS, "status": "ok"},
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "schema": {}},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": "root", "schema": {}},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": ["root"]},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": ["root"], "schema": "object"},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"path": ["root"], "schema": {}},
+        "status": "error",
+    },
+]
+"""400 bodies with a ``details`` dict that are not the JSON Schema refusal.
+
+Each one lacks a field (or has the wrong type for a field) of the recorded
+``{"error", "details": {"path", "schema", "data"}, "status": "error"}`` shape.
+"""
+
+
 class TestRecordedWriteErrors:
     """The recorded 400 and 409 bodies of creates map to readable QueryErrors."""
 
@@ -421,6 +465,39 @@ class TestRecordedWriteErrors:
             assert not is_schema_refusal(_load(name)), name
         assert not is_schema_refusal("Bad request")
         assert not is_schema_refusal(None)
+
+    @pytest.mark.parametrize("body", _UNRELATED_400_BODIES)
+    def test_other_structured_400_is_not_a_schema_refusal(
+        self, body: dict[str, Any]
+    ) -> None:
+        """A 400 with a details dict but not the full schema shape does not count.
+
+        Args:
+            body: A 400 body that lacks one distinguishing field.
+        """
+        assert not is_schema_refusal(body)
+
+    @pytest.mark.parametrize("body", _UNRELATED_400_BODIES)
+    def test_other_structured_400_keeps_the_plain_message(
+        self, body: dict[str, Any]
+    ) -> None:
+        """A 400 with a details dict but not the full schema shape is not rewritten.
+
+        Args:
+            body: A 400 body that lacks one distinguishing field.
+        """
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json=body)
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.message == "Workspace is read-only"
+        assert "refused the request body" not in exc_info.value.message
+        assert exc_info.value.__cause__ is None
 
     def test_400_wrong_branch_message_carries_a_note(self) -> None:
         """A 400 whose text can name the wrong schema branch says so."""
