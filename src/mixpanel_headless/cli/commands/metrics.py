@@ -247,7 +247,7 @@ _NoValidateOption = Annotated[
 
 
 @metrics_app.command("create")
-@handle_errors
+@handle_errors(redact_request=True)
 def create_metric(
     ctx: typer.Context,
     name: Annotated[
@@ -318,7 +318,7 @@ def create_metric(
 
 
 @metrics_app.command("update")
-@handle_errors
+@handle_errors(redact_request=True)
 def update_metric(
     ctx: typer.Context,
     metric_id: Annotated[
@@ -410,7 +410,7 @@ def update_metric(
 
 
 @metrics_app.command("verify")
-@handle_errors
+@handle_errors(redact_request=True)
 def verify_metrics(
     ctx: typer.Context,
     metric_ids: Annotated[
@@ -538,7 +538,7 @@ def query_metric(
 
 
 @metrics_app.command("delete")
-@handle_errors
+@handle_errors(redact_request=True)
 def delete_metrics(
     ctx: typer.Context,
     metric_ids: Annotated[

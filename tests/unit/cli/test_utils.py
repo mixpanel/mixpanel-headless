@@ -274,6 +274,73 @@ class TestHandleErrors:
         # Should show request params
         assert "NonExistent" in captured.err
 
+    def test_query_error_shows_request_body_by_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without redaction, a QueryError prints the request body lines."""
+
+        @handle_errors
+        def create_fail() -> None:
+            raise QueryError(
+                "A dashboard with that title already exists",
+                status_code=409,
+                request_body={"title": "Revenue", "description": "debug-context"},
+            )
+
+        with pytest.raises(click.exceptions.Exit):
+            create_fail()
+
+        captured = capsys.readouterr()
+        assert "title:" in captured.err
+        assert "debug-context" in captured.err
+
+    @pytest.mark.parametrize("status_code", [403, 409])
+    def test_redact_request_hides_request_lines(
+        self, capsys: pytest.CaptureFixture[str], status_code: int
+    ) -> None:
+        """handle_errors(redact_request=True) prints the error, not the request.
+
+        Args:
+            capsys: Pytest output capture.
+            status_code: The HTTP status of the error.
+        """
+
+        @handle_errors(redact_request=True)
+        def create_fail() -> None:
+            raise QueryError(
+                "A metric with that name already exists",
+                status_code=status_code,
+                response_body={"error": "Server says no", "status": "error"},
+                request_params={"source": "SELECT secret_column FROM t"},
+                request_body={
+                    "type": "warehouse",
+                    "definition": {"query": "SELECT secret_column FROM t"},
+                },
+            )
+
+        with pytest.raises(click.exceptions.Exit) as exc_info:
+            create_fail()
+
+        assert exc_info.value.exit_code == ExitCode.INVALID_ARGS
+        captured = capsys.readouterr()
+        assert "A metric with that name already exists" in captured.err
+        assert "Server says no" in captured.err
+        assert "secret_column" not in captured.err
+        assert "definition:" not in captured.err
+        assert ("Hint:" in captured.err) == (status_code == 403)
+
+    def test_redact_request_keeps_the_function_metadata(self) -> None:
+        """The parametrized decorator keeps the name and docstring of the command."""
+
+        @handle_errors(redact_request=True)
+        def create_metric_command() -> str:
+            """Create a metric."""
+            return "ok"
+
+        assert create_metric_command() == "ok"
+        assert create_metric_command.__name__ == "create_metric_command"
+        assert create_metric_command.__doc__ == "Create a metric."
+
     def test_schema_refusal_prints_only_the_message(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

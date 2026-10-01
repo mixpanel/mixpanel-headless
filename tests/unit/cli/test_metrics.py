@@ -30,6 +30,7 @@ from mixpanel_headless.workspace import Workspace
 from tests.conftest import make_session
 from tests.unit._saved_metric_fixtures import (
     behavior_metric_json,
+    envelope,
     formula_metric_json,
     warehouse_metric_json,
 )
@@ -690,3 +691,181 @@ class TestMetricsQuery:
         """A --unit outside day, week, month is a usage error."""
         result = runner.invoke(app, ["metrics", "query", "1", "--unit", "year"])
         assert result.exit_code == 3
+
+
+_SECRET_SQL = "SELECT secret_column FROM warehouse.revenue"
+"""Warehouse SQL that no error output may show."""
+
+_METRICS_PATH = "/api/app/projects/12345/metrics"
+"""App API path of the saved metrics of the test project."""
+
+
+def _workspace_on(handler: Any) -> Workspace:
+    """Build a Workspace whose API client answers with a mock transport.
+
+    Args:
+        handler: The ``httpx.MockTransport`` handler.
+
+    Returns:
+        A Workspace on project 12345.
+    """
+    session = make_session(project_id="12345", region="us", oauth_token="t")
+    client = MixpanelAPIClient(session=session, _transport=httpx.MockTransport(handler))
+    return Workspace(session=session, _api_client=client)
+
+
+class TestWriteErrorsHideTheRequest:
+    """An error of a write command shows the message, never the request."""
+
+    @pytest.mark.parametrize(
+        ("status", "message"),
+        [
+            (409, "A metric with that name already exists"),
+            (403, "Cannot save metric with your current plan"),
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_create_error_prints_no_sql(
+        self, mock_get_ws: MagicMock, tmp_path: Path, status: int, message: str
+    ) -> None:
+        """A 409 or 403 on a warehouse create prints the message, not the SQL.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            tmp_path: Pytest temporary directory.
+            status: The HTTP status of the server error.
+            message: The server's error text.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Refuse the create.
+
+            Args:
+                request: The create request.
+
+            Returns:
+                The error response.
+            """
+            assert (request.method, request.url.path) == ("POST", _METRICS_PATH)
+            return httpx.Response(status, json={"error": message, "status": "error"})
+
+        mock_get_ws.return_value = _workspace_on(handler)
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "create",
+                "--name",
+                "Revenue",
+                "--warehouse-source-id",
+                "55",
+                "--definition-file",
+                _write_definition(
+                    tmp_path, {"query": _SECRET_SQL, "metricType": "numeric"}
+                ),
+            ],
+        )
+        assert result.exit_code == 3, result.output
+        assert message in result.stderr
+        assert "secret_column" not in result.stderr
+        assert "secret_column" not in result.stdout
+        assert "definition:" not in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_update_error_prints_no_sql(
+        self, mock_get_ws: MagicMock, tmp_path: Path
+    ) -> None:
+        """A 409 on a warehouse update prints the message, not the new or stored SQL."""
+        stored = warehouse_metric_json()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the read, then refuse the update.
+
+            Args:
+                request: The read or the update request.
+
+            Returns:
+                The stored metric, or the 409 response.
+            """
+            assert request.url.path == f"{_METRICS_PATH}/{stored['id']}"
+            if request.method == "GET":
+                return httpx.Response(200, json=envelope(stored))
+            return httpx.Response(
+                409,
+                json={"error": "A metric with that name already exists"},
+            )
+
+        mock_get_ws.return_value = _workspace_on(handler)
+        result = runner.invoke(
+            app,
+            [
+                "metrics",
+                "update",
+                str(stored["id"]),
+                "--name",
+                "Taken name",
+                "--definition-file",
+                _write_definition(
+                    tmp_path, {"query": _SECRET_SQL, "metricType": "timeseries"}
+                ),
+            ],
+        )
+        assert result.exit_code == 3, result.output
+        assert "A metric with that name already exists" in result.stderr
+        output = result.stderr + result.stdout
+        assert "secret_column" not in output
+        assert stored["definition"]["query"] not in output
+
+    @pytest.mark.parametrize(
+        ("args", "method"),
+        [
+            (["metrics", "update", "1", "--name", "n"], "update_metric"),
+            (["metrics", "verify", "1", "2"], "bulk_update_metrics"),
+            (["metrics", "delete", "1"], "delete_metric"),
+            (["metrics", "delete", "1", "2"], "delete_metrics"),
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_every_write_command_hides_the_request(
+        self, mock_get_ws: MagicMock, args: list[str], method: str
+    ) -> None:
+        """update, verify, and delete print no request params or body either.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            args: The command line.
+            method: The Workspace method that the command calls.
+        """
+        mock_ws = MagicMock()
+        getattr(mock_ws, method).side_effect = QueryError(
+            "Permission denied",
+            status_code=403,
+            request_params={"note": _SECRET_SQL},
+            request_body={"definition": {"query": _SECRET_SQL}},
+        )
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(app, args)
+        assert result.exit_code == 3, result.output
+        assert "Permission denied" in result.stderr
+        assert "secret_column" not in result.stderr
+
+    @patch("mixpanel_headless.cli.commands.dashboards.get_workspace")
+    def test_other_command_groups_keep_their_debug_lines(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """Another command group still prints the request lines of a QueryError."""
+        mock_ws = MagicMock()
+        mock_ws.create_dashboard.side_effect = QueryError(
+            "A dashboard with that title already exists",
+            status_code=409,
+            request_params={"source": "debug-param"},
+            request_body={"title": "Revenue", "description": "debug-body"},
+        )
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(app, ["dashboards", "create", "--title", "Revenue"])
+        assert result.exit_code == 3, result.output
+        assert "A dashboard with that title already exists" in result.stderr
+        assert "source:" in result.stderr
+        assert "debug-param" in result.stderr
+        assert "title:" in result.stderr
+        assert "debug-body" in result.stderr

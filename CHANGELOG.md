@@ -186,7 +186,11 @@ may include API changes.
   message: the failure and its schema location, without the HTML-escaped
   copy of the request that the server appends. The full body stays in
   `response_body`. The CLI prints only the short message for such a 400,
-  not the server's copy of the request or the request body.
+  not the server's copy of the request. An error of `mp metrics
+  create|update|verify|delete` or `mp behaviors create|update|delete` (for
+  example a 409 duplicate name or a 403) never prints the request params
+  or body, which hold the definition and, for a warehouse metric, its SQL;
+  the exception keeps them for Python callers.
 - Saved definitions from the typed values: `CreateMetricParams` takes a
   `FunnelMetric`, a `RetentionMetric`, a `Metric` over several events, and
   a `Formula` with its own operands (a `MetricRef` operand stays a

@@ -133,7 +133,7 @@ _NoValidateOption = Annotated[
 
 
 @behaviors_app.command("create")
-@handle_errors
+@handle_errors(redact_request=True)
 def create_behavior(
     ctx: typer.Context,
     name: Annotated[
@@ -195,7 +195,7 @@ def create_behavior(
 
 
 @behaviors_app.command("update")
-@handle_errors
+@handle_errors(redact_request=True)
 def update_behavior(
     ctx: typer.Context,
     behavior_id: Annotated[
@@ -272,7 +272,7 @@ def update_behavior(
 
 
 @behaviors_app.command("delete")
-@handle_errors
+@handle_errors(redact_request=True)
 def delete_behaviors(
     ctx: typer.Context,
     behavior_ids: Annotated[

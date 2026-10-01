@@ -16,11 +16,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 import typer.testing
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
-from mixpanel_headless.exceptions import ServerError
+from mixpanel_headless.exceptions import QueryError, ServerError
 from mixpanel_headless.types import RawBehaviorDefinition, SavedBehavior
 from mixpanel_headless.workspace import Workspace
 from tests.conftest import make_session
@@ -338,3 +339,46 @@ class TestBehaviorsUpdate:
         assert params.behavior is None
         assert params.name is None
         assert params.verified is False
+
+
+class TestWriteErrorsHideTheRequest:
+    """An error of a behaviors write command shows the message, never the request."""
+
+    @pytest.mark.parametrize(
+        ("args", "method"),
+        [
+            (["behaviors", "create", "--name", "b", "--definition-file", "-"], None),
+            (["behaviors", "update", "3001", "--name", "n"], "update_behavior"),
+            (["behaviors", "delete", "3001"], "delete_behavior"),
+            (["behaviors", "delete", "1", "2"], "delete_behaviors"),
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_every_write_command_hides_the_request(
+        self, mock_get_ws: MagicMock, args: list[str], method: str | None
+    ) -> None:
+        """create, update, and delete print no request params or body.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            args: The command line.
+            method: The Workspace method that the command calls
+                (``create_behavior`` when ``None``).
+        """
+        mock_ws = MagicMock()
+        getattr(mock_ws, method or "create_behavior").side_effect = QueryError(
+            "A behavior with that name already exists",
+            status_code=409,
+            request_params={"note": "secret-definition"},
+            request_body={"definition": {"behavior": {"name": "secret-definition"}}},
+        )
+        mock_get_ws.return_value = mock_ws
+        result = runner.invoke(
+            app,
+            args,
+            input=json.dumps({"behavior": {"type": "funnel", "behaviors": []}}),
+        )
+        assert result.exit_code == 3, result.output
+        assert "A behavior with that name already exists" in result.stderr
+        assert "secret-definition" not in result.stderr
+        assert "definition:" not in result.stderr
