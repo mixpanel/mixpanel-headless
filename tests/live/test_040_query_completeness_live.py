@@ -13,13 +13,15 @@ Organized by:
 - Cross-Parameter Interactions (X01-X07): combined features
 
 Usage:
-    uv run pytest tests/live/test_040_query_completeness_live.py -v -m live
-    uv run pytest tests/live/test_040_query_completeness_live.py -v -m live -k Smoke
-    uv run pytest tests/live/test_040_query_completeness_live.py -v -m live -k Offline
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_040_query_completeness_live.py -v -m live
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_040_query_completeness_live.py -v -m live -k Smoke
 
-Pre-requisites:
-    - Active OAuth token: ``mp account login NAME``
-    - Project switched to target project with events
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      that uses the Workspace skips when it is unset; the suite never uses
+      the default session. The tests that build no Workspace (type
+      validation) run without it. The Workspace uses the account's default
+      project, which needs events.
 """
 
 from __future__ import annotations
@@ -46,8 +48,10 @@ from mixpanel_headless import (
     Workspace,
 )
 from mixpanel_headless.exceptions import APIError, QueryError
+from tests.live._live_settings import live_workspace
 
-# All tests require the `live` marker — skipped by default
+# All tests require the `live` marker. The Workspace fixture skips when
+# MP_LIVE_ACCOUNT is unset, so tests that build no Workspace still run.
 pytestmark = pytest.mark.live
 
 
@@ -110,12 +114,12 @@ def _dig(d: dict[str, Any], *keys: str | int) -> Any:
 
 @pytest.fixture(scope="module")
 def ws() -> Iterator[Workspace]:
-    """Live Workspace connected to the active project.
+    """Live Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Yields:
-        Workspace instance using default credentials.
+        Workspace instance; the test skips when ``MP_LIVE_ACCOUNT`` is unset.
     """
-    workspace = Workspace()
+    workspace = live_workspace()
     yield workspace
     workspace.close()
 

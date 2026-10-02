@@ -2,8 +2,13 @@
 
 Provides:
 - Tmp v3 home isolation (so the user's real ~/.mp/ is never touched)
-- Helpers to copy the user's existing OAuth tokens into the tmp layout
+- Helpers to copy the OAuth tokens of the ``MP_LIVE_ACCOUNT`` account into
+  the tmp layout, and to read that account's region and default project
 - Per-mode skip fixtures that gate tests on credential availability
+
+The OAuth browser tests use only the account that ``MP_LIVE_ACCOUNT``
+names. They never read the active account or project of the real config,
+so they cannot fall back to the default session.
 
 Reference: ~/.claude/plans/design-a-qa-plan-vast-wall.md.
 """
@@ -12,15 +17,28 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-# Where the user's real (legacy v2) OAuth tokens live, if they've logged in.
-LEGACY_TOKENS_PATH = Path.home() / ".mp" / "oauth" / "tokens_us.json"
-LEGACY_CONFIG_PATH = Path.home() / ".mp" / "config.toml"
+from mixpanel_headless._internal.auth.account import Region
+from mixpanel_headless._internal.auth.storage import account_dir, accounts_root
+from tests.live._live_settings import LIVE_ACCOUNT_ENV
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover
+    import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
+
+# The real per-account state directory and config file, captured at import
+# time: the ``tmp_mp_home`` fixture points HOME at a tmp directory later.
+REAL_ACCOUNTS_ROOT = accounts_root()
+REAL_CONFIG_PATH = Path(
+    os.environ.get("MP_CONFIG_PATH") or (Path.home() / ".mp" / "config.toml")
+)
 
 
 # =============================================================================
@@ -28,23 +46,44 @@ LEGACY_CONFIG_PATH = Path.home() / ".mp" / "config.toml"
 # =============================================================================
 
 
+def isolate_mp_home(home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point HOME, the config path, and both storage roots into ``home``.
+
+    Creates ``<home>/.mp/`` at mode 0o700 and sets HOME, MP_CONFIG_PATH,
+    MP_STORAGE_DIR, and MP_OAUTH_STORAGE_DIR. Both storage variables get the
+    same tmp directory: the library prefers MP_STORAGE_DIR, and a run may
+    export it (the live conftest puts it back for every test), so setting
+    only MP_OAUTH_STORAGE_DIR would leave the storage root outside ``home``.
+
+    Args:
+        home: The directory to use as the tmp ``$HOME``.
+        monkeypatch: Restores the environment after the test.
+
+    Returns:
+        ``home``.
+    """
+    mp_dir = home / ".mp"
+    mp_dir.mkdir(mode=0o700)
+    storage = str(mp_dir / "oauth")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("MP_CONFIG_PATH", str(mp_dir / "config.toml"))
+    monkeypatch.setenv("MP_STORAGE_DIR", storage)
+    monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", storage)
+    return home
+
+
 @pytest.fixture
 def tmp_mp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Yield a tmp ``$HOME`` with isolated v3 ``~/.mp/`` and ``MP_CONFIG_PATH``.
 
-    Sets HOME, MP_CONFIG_PATH, MP_OAUTH_STORAGE_DIR; creates ~/.mp/ at
-    mode 0o700; yields the tmp HOME path. The dev's real ~/.mp/ is
-    completely untouched.
+    Uses :func:`isolate_mp_home`, so HOME, MP_CONFIG_PATH, and both storage
+    roots point into the tmp directory. The dev's real ~/.mp/ is completely
+    untouched.
 
     Yields:
         Path to the tmp $HOME root.
     """
-    mp_dir = tmp_path / ".mp"
-    mp_dir.mkdir(mode=0o700)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("MP_CONFIG_PATH", str(mp_dir / "config.toml"))
-    monkeypatch.setenv("MP_OAUTH_STORAGE_DIR", str(mp_dir / "oauth"))
-    yield tmp_path
+    yield isolate_mp_home(tmp_path, monkeypatch)
 
 
 # =============================================================================
@@ -52,73 +91,120 @@ def tmp_mp_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
 # =============================================================================
 
 
-def copy_user_oauth_tokens_to_account(home: Path, account_name: str) -> Path:
-    """Copy the user's real ~/.mp/oauth/tokens_us.json into the v3 layout.
+def live_account_name() -> str:
+    """Return the ``MP_LIVE_ACCOUNT`` account name, or skip the test.
 
-    Reads from ``~/.mp/oauth/tokens_us.json`` (the user's actual on-disk
-    tokens from their existing v2 OAuth account) and writes them to
-    ``<home>/.mp/accounts/<account_name>/tokens.json`` per the new v3 path
-    convention. Strips the legacy ``project_id`` field (Phase 4 drops it).
+    Returns:
+        The account name.
+    """
+    account = os.environ.get(LIVE_ACCOUNT_ENV)
+    if not account:
+        pytest.skip(
+            f"{LIVE_ACCOUNT_ENV} is not set; the OAuth browser tests use that "
+            "account's tokens"
+        )
+    return account
+
+
+def live_account_tokens_path() -> Path:
+    """Return the real ``tokens.json`` path of the ``MP_LIVE_ACCOUNT`` account.
+
+    Returns:
+        ``<real accounts root>/<account>/tokens.json``. The file may not exist.
+    """
+    return REAL_ACCOUNTS_ROOT / live_account_name() / "tokens.json"
+
+
+def _live_account_record() -> dict[str, Any]:
+    """Read the ``MP_LIVE_ACCOUNT`` entry of the real config file.
+
+    Returns:
+        The ``[accounts.<name>]`` table, or an empty dict when the config is
+        missing or has no such account.
+
+    Raises:
+        OSError: If the config file exists but cannot be read.
+        UnicodeDecodeError: If the config file is not UTF-8.
+        tomllib.TOMLDecodeError: If the config file is not valid TOML.
+    """
+    account = live_account_name()
+    if not REAL_CONFIG_PATH.exists():
+        return {}
+    raw: dict[str, Any] = tomllib.loads(REAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    accounts = raw.get("accounts", {})
+    record = accounts.get(account) if isinstance(accounts, dict) else None
+    return record if isinstance(record, dict) else {}
+
+
+def live_account_project_id() -> str:
+    """Return the default project of the ``MP_LIVE_ACCOUNT`` account, or skip.
+
+    Returns:
+        The project id from the account's ``default_project``.
+    """
+    project = _live_account_record().get("default_project")
+    if isinstance(project, int):
+        project = str(project)
+    if not isinstance(project, str) or not project:
+        pytest.skip(f"account {live_account_name()!r} has no default_project")
+    return project
+
+
+def live_account_region() -> Region:
+    """Return the region of the ``MP_LIVE_ACCOUNT`` account.
+
+    Returns:
+        The account's ``region`` (``us`` when the record has none or an
+        unknown value).
+    """
+    region = _live_account_record().get("region")
+    if region == "eu":
+        return "eu"
+    if region == "in":
+        return "in"
+    return "us"
+
+
+def copy_live_account_tokens(home: Path, account_name: str) -> Path:
+    """Copy the ``MP_LIVE_ACCOUNT`` account's OAuth tokens into the tmp layout.
+
+    Reads the account's real ``tokens.json`` and writes it to the
+    ``tokens.json`` of ``account_name`` under the storage root that the
+    library uses now: :func:`account_dir` reads the same environment as the
+    token resolver, which ``tmp_mp_home`` points into the tmp home.
 
     Args:
-        home: The tmp $HOME path (from the ``tmp_mp_home`` fixture).
+        home: The tmp $HOME path (from the ``tmp_mp_home`` fixture). The
+            destination must be inside it, so real tokens are never
+            overwritten.
         account_name: V3 account name to host the tokens under.
 
     Returns:
         Path to the new tokens.json.
 
     Raises:
-        FileNotFoundError: If the user's legacy tokens file doesn't exist
-            (no real OAuth login configured).
+        FileNotFoundError: If the account has no tokens on disk.
     """
-    if not LEGACY_TOKENS_PATH.exists():
+    source = live_account_tokens_path()
+    if not source.exists():
         raise FileNotFoundError(
-            f"User's legacy OAuth tokens not found at {LEGACY_TOKENS_PATH}. "
-            "Live OAuth tests require a prior `mp account login NAME`."
+            f"OAuth tokens not found at {source}. Live OAuth tests require a "
+            f"prior `mp account login {live_account_name()}`."
         )
-    payload: dict[str, Any] = json.loads(LEGACY_TOKENS_PATH.read_text(encoding="utf-8"))
+    payload: dict[str, Any] = json.loads(source.read_text(encoding="utf-8"))
     payload.pop("project_id", None)  # v3 drops this field
 
-    account_dir = home / ".mp" / "accounts" / account_name
-    account_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    dst = account_dir / "tokens.json"
+    dst_dir = account_dir(account_name)
+    if not dst_dir.is_relative_to(home):
+        pytest.fail(
+            f"token destination {dst_dir} is outside the tmp home {home}; "
+            "use the tmp_mp_home fixture"
+        )
+    dst_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    dst = dst_dir / "tokens.json"
     dst.write_text(json.dumps(payload), encoding="utf-8")
     dst.chmod(0o600)
     return dst
-
-
-def get_user_active_project_id() -> str | None:
-    """Read the project ID from the user's real config (v1/v2/v3 tolerant).
-
-    Returns:
-        The first project_id we can find, or None.
-    """
-    if not LEGACY_CONFIG_PATH.exists():
-        return None
-    try:
-        import sys
-
-        if sys.version_info >= (3, 11):
-            import tomllib
-        else:  # pragma: no cover
-            import tomli as tomllib  # type: ignore[import-not-found, unused-ignore]
-        raw: dict[str, Any] = tomllib.loads(
-            LEGACY_CONFIG_PATH.read_text(encoding="utf-8")
-        )
-    except Exception:  # noqa: BLE001 - any parse failure → no project
-        return None
-    # v2 layout
-    active = raw.get("active", {})
-    pid = active.get("project_id")
-    if isinstance(pid, str):
-        return pid
-    if isinstance(pid, int):
-        return str(pid)
-    # v3 layout
-    pid = active.get("project")
-    if isinstance(pid, str):
-        return pid
-    return None
 
 
 # =============================================================================
@@ -126,8 +212,11 @@ def get_user_active_project_id() -> str | None:
 # =============================================================================
 
 
-def _oauth_token_is_fresh() -> bool:
-    """Check whether the user's OAuth token at ``LEGACY_TOKENS_PATH`` is unexpired.
+def _oauth_token_is_fresh(tokens_path: Path) -> bool:
+    """Check whether the OAuth token in ``tokens_path`` is unexpired.
+
+    Args:
+        tokens_path: A ``tokens.json`` file.
 
     Returns:
         ``True`` if the tokens file exists and its ``expires_at`` is in the
@@ -135,12 +224,10 @@ def _oauth_token_is_fresh() -> bool:
     """
     from datetime import datetime, timedelta, timezone
 
-    if not LEGACY_TOKENS_PATH.exists():
+    if not tokens_path.exists():
         return False
     try:
-        payload: dict[str, Any] = json.loads(
-            LEGACY_TOKENS_PATH.read_text(encoding="utf-8")
-        )
+        payload: dict[str, Any] = json.loads(tokens_path.read_text(encoding="utf-8"))
         expires_raw = payload.get("expires_at")
         if not isinstance(expires_raw, str):
             return False
@@ -154,21 +241,31 @@ def _oauth_token_is_fresh() -> bool:
 
 @pytest.fixture
 def require_oauth_browser_available() -> None:
-    """Skip if the user has no real (and unexpired) OAuth tokens on disk.
+    """Skip unless ``MP_LIVE_ACCOUNT`` names an OAuth browser account with fresh tokens.
 
-    We check both presence AND freshness — an expired token would cause the
-    Mixpanel server to return 401 even though our code is sending the right
-    bearer, and we'd misread the failure as a code bug.
+    We check the account type, the default project, and both presence AND
+    freshness of the tokens — an expired token would cause the Mixpanel
+    server to return 401 even though our code is sending the right bearer,
+    and we'd misread the failure as a code bug.
     """
-    if not LEGACY_TOKENS_PATH.exists():
+    account = live_account_name()
+    account_type = _live_account_record().get("type")
+    if account_type != "oauth_browser":
         pytest.skip(
-            f"OAuth browser mode requires real tokens at {LEGACY_TOKENS_PATH} "
-            "(run `mp account login NAME` first)."
+            f"{LIVE_ACCOUNT_ENV}={account!r} is not an oauth_browser account "
+            f"(type {account_type!r})"
         )
-    if not _oauth_token_is_fresh():
+    live_account_project_id()
+    tokens_path = live_account_tokens_path()
+    if not tokens_path.exists():
         pytest.skip(
-            f"OAuth tokens at {LEGACY_TOKENS_PATH} are expired. "
-            "Run `mp account login NAME` to refresh, then re-run these tests."
+            f"OAuth browser mode requires tokens at {tokens_path} "
+            f"(run `mp account login {account}` first)."
+        )
+    if not _oauth_token_is_fresh(tokens_path):
+        pytest.skip(
+            f"OAuth tokens at {tokens_path} are expired. "
+            f"Run `mp account login {account}` to refresh, then re-run these tests."
         )
 
 
