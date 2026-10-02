@@ -609,8 +609,217 @@ class TestUpdateMetric:
             ("PATCH", f"{_METRICS_PATH}/1"),
         ]
         assert server.body(1) == {
-            "definition": {**stored["definition"], "display": {"prefix": "#"}}
+            "definition": {
+                **stored["definition"],
+                "display": {"prefix": "#", "suffix": " users", "precision": 0},
+            }
         }
+
+    @pytest.mark.parametrize(
+        ("display", "expected"),
+        [
+            (
+                MetricDisplay(precision=2),
+                {"prefix": "$", "suffix": " usd", "precision": 2},
+            ),
+            (
+                MetricDisplay(prefix=None, precision=2),
+                {"suffix": " usd", "precision": 2},
+            ),
+            (MetricDisplay(suffix=" dollars"), {"prefix": "$", "suffix": " dollars"}),
+            (MetricDisplay(), {"prefix": "$", "suffix": " usd"}),
+            (
+                MetricDisplay(hide_trendline=True),
+                {"prefix": "$", "suffix": " usd", "hideTrendline": True},
+            ),
+        ],
+    )
+    def test_display_merges_into_the_stored_display(
+        self, temp_dir: Path, display: MetricDisplay, expected: dict[str, Any]
+    ) -> None:
+        """Set keys replace stored ones, a key set to None goes, unset keys stay.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            display: The display of the update.
+            expected: The display that the PATCH sends.
+        """
+        stored = behavior_metric_json(1)
+        stored["definition"]["display"] = {"prefix": "$", "suffix": " usd"}
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/1"): _ok(stored),
+                ("PATCH", f"{_METRICS_PATH}/1"): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(1, UpdateMetricParams(display=display))
+        assert server.body(1)["definition"]["display"] == expected
+        assert server.body(1)["definition"]["goals"] == stored["definition"]["goals"]
+
+    def test_new_definition_merges_the_display_into_the_stored_one(
+        self, temp_dir: Path
+    ) -> None:
+        """A typed definition plus a display merges the display into the stored one."""
+        stored = behavior_metric_json(1)
+        stored["definition"]["display"] = {"prefix": "$", "suffix": " usd"}
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/1"): _ok(stored),
+                ("PATCH", f"{_METRICS_PATH}/1"): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(
+            1,
+            UpdateMetricParams(
+                definition=Metric("Login"), display=MetricDisplay(precision=2)
+            ),
+        )
+        definition = server.body(1)["definition"]
+        assert definition["behavior"] == _LOGIN_BEHAVIOR
+        assert definition["display"] == {
+            "prefix": "$",
+            "suffix": " usd",
+            "precision": 2,
+        }
+
+    @pytest.mark.parametrize(
+        ("display", "expected"),
+        [
+            (None, {"suffix": "%"}),
+            (MetricDisplay(precision=2), {"suffix": "%", "precision": 2}),
+        ],
+    )
+    def test_new_definition_with_its_own_display(
+        self,
+        temp_dir: Path,
+        display: MetricDisplay | None,
+        expected: dict[str, Any],
+    ) -> None:
+        """A new definition that has a display is the base; the stored display is not.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            display: The display of the update, or None.
+            expected: The display that the PATCH sends.
+        """
+        stored = behavior_metric_json(1)
+        stored["definition"]["display"] = {"prefix": "$", "suffix": " usd"}
+        new = {
+            "behavior": _LOGIN_BEHAVIOR,
+            "measurement": {"math": "total"},
+            "display": {"suffix": "%"},
+        }
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/1"): _ok(stored),
+                ("PATCH", f"{_METRICS_PATH}/1"): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(
+            1,
+            UpdateMetricParams(
+                definition=RawMetricDefinition("metric", new), display=display
+            ),
+        )
+        assert server.body(1)["definition"]["display"] == expected
+
+    def test_new_goals_replace_the_stored_goals(self, temp_dir: Path) -> None:
+        """Goals are a list: new goals replace the stored list in full."""
+        stored = behavior_metric_json(1)
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/1"): _ok(stored),
+                ("PATCH", f"{_METRICS_PATH}/1"): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(
+            1,
+            UpdateMetricParams(
+                goals=[MetricGoal(id="g2", label="New", checkpoints=[])]
+            ),
+        )
+        assert server.body(1)["definition"]["goals"] == [
+            {"id": "g2", "label": "New", "checkpoints": [], "target_type": "absolute"}
+        ]
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (
+                WarehouseMetric(55, "SELECT 2", "timeseries"),
+                {"aggregation": "sum", "syncInterval": "daily"},
+            ),
+            (
+                WarehouseMetric(55, "SELECT 2", "timeseries", aggregation="last_value"),
+                {"aggregation": "last_value", "syncInterval": "daily"},
+            ),
+            (
+                WarehouseMetric(
+                    55,
+                    "SELECT 2",
+                    "timeseries",
+                    aggregation="none",
+                    sync_interval="hourly",
+                ),
+                {"aggregation": "none", "syncInterval": "hourly"},
+            ),
+        ],
+    )
+    def test_warehouse_update_keeps_unset_aggregation_and_sync(
+        self, temp_dir: Path, value: WarehouseMetric, expected: dict[str, str]
+    ) -> None:
+        """An unset aggregation or sync interval keeps the stored value; a set one is written.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            value: The new warehouse definition.
+            expected: The aggregation and sync interval that the PATCH sends.
+        """
+        stored = warehouse_metric_json(4)
+        stored["definition"]["aggregation"] = "sum"
+        stored["definition"]["syncInterval"] = "daily"
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/4"): _ok(stored),
+                ("PATCH", f"{_METRICS_PATH}/4"): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_metric(4, UpdateMetricParams(definition=value))
+        definition = server.body(1)["definition"]
+        assert definition["query"] == "SELECT 2"
+        assert {
+            "aggregation": definition["aggregation"],
+            "syncInterval": definition["syncInterval"],
+        } == expected
+
+    def test_bulk_warehouse_update_keeps_unset_aggregation_and_sync(
+        self, temp_dir: Path
+    ) -> None:
+        """A bulk entry with a SQL-only warehouse definition keeps the stored values."""
+        stored = warehouse_metric_json(4)
+        stored["definition"]["aggregation"] = "sum"
+        server = _Server(
+            {
+                ("GET", f"{_METRICS_PATH}/4"): _ok(stored),
+                ("PATCH", _METRICS_PATH): _ok(stored),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.bulk_update_metrics(
+            [
+                BulkUpdateMetricEntry(
+                    id=4, definition=WarehouseMetric(55, "SELECT 2", "timeseries")
+                )
+            ]
+        )
+        (entry,) = server.body(1)["metrics"]
+        assert entry["definition"]["aggregation"] == "sum"
+        assert entry["definition"]["syncInterval"] == "daily"
 
     def test_goals_empty_list_removes_goals(self, temp_dir: Path) -> None:
         """goals=[] sends the stored definition with an empty goal list."""

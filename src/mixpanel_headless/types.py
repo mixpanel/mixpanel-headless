@@ -16618,9 +16618,15 @@ class WarehouseMetric:
     Valid only as the definition of :class:`CreateMetricParams` or
     :class:`UpdateMetricParams`. The server runs the SQL of the saved metric
     at query time, so a warehouse metric is queried by reference, never
-    inline. The wire definition always holds ``aggregation`` and
-    ``syncInterval``, because the server stores the request as sent and does
-    not fill in its defaults.
+    inline.
+
+    The server stores the request as sent and does not fill in defaults for
+    ``aggregation`` and ``syncInterval``. So when ``aggregation`` or
+    ``sync_interval`` is ``None``, ``create_metric`` writes the server
+    defaults (``"none"`` and ``"hourly"``), and ``update_metric`` (or
+    ``bulk_update_metrics``) keeps the stored value. An update that changes
+    only the SQL keeps a stored ``"sum"`` and ``"daily"``. A set value is
+    always written.
 
     Attributes:
         source_id: The warehouse source to run the query on (see the
@@ -16630,8 +16636,12 @@ class WarehouseMetric:
             per time bucket).
         value_column: The result column that holds the value.
         time_column: The result column that holds the time, for a timeseries.
-        aggregation: How the metric aggregates the query rows.
-        sync_interval: How long a query result stays cached.
+        aggregation: How the metric aggregates the query rows; ``None``
+            writes ``"none"`` on a create and keeps the stored value on an
+            update.
+        sync_interval: How long a query result stays cached; ``None``
+            writes ``"hourly"`` on a create and keeps the stored value on an
+            update.
 
     Example:
         ```python
@@ -16663,11 +16673,14 @@ class WarehouseMetric:
     time_column: str | None = None
     """The result column that holds the time (wire key ``timeColumn``)."""
 
-    aggregation: WarehouseAggregation = "none"
-    """How the metric aggregates the query rows."""
+    aggregation: WarehouseAggregation | None = None
+    """How the metric aggregates the query rows; ``None`` writes ``"none"`` on
+    a create and keeps the stored value on an update."""
 
-    sync_interval: WarehouseSyncInterval = "hourly"
-    """How long a query result stays cached (wire key ``syncInterval``)."""
+    sync_interval: WarehouseSyncInterval | None = None
+    """How long a query result stays cached (wire key ``syncInterval``);
+    ``None`` writes ``"hourly"`` on a create and keeps the stored value on an
+    update."""
 
 
 @dataclass(frozen=True)
@@ -16983,14 +16996,23 @@ class UpdateMetricParams(BaseModel):
 
     A new definition replaces the stored one in full, but keeps the stored
     ``display`` and ``goals`` unless the params or the new definition set
-    them. Pass ``goals=[]`` to remove the goals.
+    them.
+
+    ``display`` merges into the stored display (or into the display of the
+    new definition, when it has one): the keys that you set replace the
+    stored ones, a key that you set to ``None`` is removed, and the other
+    keys keep their stored values. So ``MetricDisplay(precision=2)`` keeps
+    a stored prefix and suffix. ``goals`` is a list and replaces the stored
+    goals in full; pass ``goals=[]`` to remove them.
 
     Attributes:
         name: New name (stripped).
         description: New description; ``""`` clears it.
         definition: New definition, of the same kind as the stored metric.
-        display: New presentation settings.
-        goals: New goals; ``[]`` removes them.
+        display: Presentation settings to merge into the stored display;
+            a key set to ``None`` is removed.
+        goals: New goals, which replace the stored goals in full; ``[]``
+            removes them.
         owned_by: User id of the new owner. An owner cannot be removed.
         verified: ``True`` marks the metric as verified again (and stamps
             the verification time again); ``False`` clears the flag.
@@ -17016,10 +17038,10 @@ class UpdateMetricParams(BaseModel):
     """New definition, of the same kind as the stored metric."""
 
     display: MetricDisplay | None = None
-    """New presentation settings."""
+    """Presentation settings to merge into the stored display."""
 
     goals: list[MetricGoal] | None = None
-    """New goals; ``[]`` removes them."""
+    """New goals, which replace the stored goals in full; ``[]`` removes them."""
 
     owned_by: int | None = None
     """User id of the new owner."""

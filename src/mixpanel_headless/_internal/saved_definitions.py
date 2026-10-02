@@ -7,8 +7,8 @@ Pure functions that the ``Workspace`` write methods (``create_metric``,
 - :func:`metric_wire_parts` and :func:`behavior_wire_definition` turn a
   definition value into the kind, the wire ``definition`` dict, and (for a
   warehouse metric) the warehouse source that the App API expects.
-- :func:`display_to_wire`, :func:`goal_to_wire`, and
-  :func:`apply_presentation` write the presentation values.
+- :func:`display_to_wire`, :func:`merge_display`, :func:`goal_to_wire`,
+  and :func:`apply_presentation` write the presentation values.
 - The ``check_*`` functions raise :class:`ParamValidationError` with a
   registry code. The server checks a POST against its JSON Schema but
   stores a PATCH as sent, so the client runs the same checks on both.
@@ -75,6 +75,16 @@ _OPERAND_ATTRIBUTION_KEYS: Final[tuple[str, ...]] = (
     "multiAttribution",
 )
 """Operand measurement keys that a saved formula cannot use."""
+
+_WAREHOUSE_CREATE_DEFAULTS: Final[dict[str, str]] = {
+    "aggregation": "none",
+    "syncInterval": "hourly",
+}
+"""What a create writes for an unset warehouse aggregation and sync interval.
+
+These are the server defaults. The server stores a request as sent and
+fills in none of them, so the client writes them.
+"""
 
 
 @dataclass(frozen=True)
@@ -161,9 +171,10 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
         wire: dict[str, Any] = {
             "query": definition.sql,
             "metricType": definition.metric_type,
-            "aggregation": definition.aggregation,
-            "syncInterval": definition.sync_interval,
         }
+        for key, value in _warehouse_settings(definition).items():
+            if value is not None:
+                wire[key] = value
         if definition.time_column is not None:
             wire["timeColumn"] = definition.time_column
         if definition.value_column is not None:
@@ -178,6 +189,22 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
         definition=_copy_mapping(definition.definition),
         warehouse_source_id=definition.warehouse_source_id,
     )
+
+
+def _warehouse_settings(definition: WarehouseMetric) -> dict[str, str | None]:
+    """Return the aggregation and sync interval of a warehouse metric by wire key.
+
+    Args:
+        definition: The warehouse metric.
+
+    Returns:
+        ``{"aggregation": ..., "syncInterval": ...}``; a value is ``None``
+        when the caller left it unset.
+    """
+    return {
+        "aggregation": definition.aggregation,
+        "syncInterval": definition.sync_interval,
+    }
 
 
 def behavior_wire_definition(
@@ -243,6 +270,46 @@ def display_to_wire(display: MetricDisplay) -> dict[str, Any]:
     return display.model_dump(by_alias=True, exclude_none=True)
 
 
+def merge_display(base: object, display: MetricDisplay) -> dict[str, Any]:
+    """Merge a ``MetricDisplay`` into a wire ``display`` dict.
+
+    Only the keys that the caller set explicitly change: a key set to a
+    value replaces the base value, and a key set to ``None`` is removed.
+    Keys that the caller did not set keep their base value. Unknown keys
+    that the model holds count as set.
+
+    Args:
+        base: The current wire display (for example the stored one), or
+            ``None`` or any non-mapping value for no display.
+        display: The new presentation settings.
+
+    Returns:
+        A new wire display dict; ``base`` is not changed.
+
+    Example:
+        ```python
+        merge_display({"prefix": "$", "suffix": " usd"}, MetricDisplay(precision=2))
+        # {"prefix": "$", "suffix": " usd", "precision": 2}
+        merge_display({"prefix": "$", "suffix": " usd"}, MetricDisplay(prefix=None))
+        # {"suffix": " usd"}
+        ```
+    """
+    merged = copy.deepcopy(dict(base)) if isinstance(base, Mapping) else {}
+    fields = type(display).model_fields
+    explicit = {
+        (fields[name].alias or name) if name in fields else name
+        for name in display.model_fields_set
+    }
+    for key, value in display.model_dump(by_alias=True).items():
+        if key not in explicit:
+            continue
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
+
+
 def goal_to_wire(goal: MetricGoal) -> dict[str, Any]:
     """Write a ``MetricGoal`` as a wire goal dict.
 
@@ -302,13 +369,15 @@ def apply_presentation(
 
     Args:
         definition: The wire definition to change.
-        display: New presentation settings; ``None`` leaves the
-            ``display`` key as it is.
-        goals: New goals; ``None`` leaves the ``goals`` key as it is, and
-            an empty sequence writes an empty list.
+        display: New presentation settings, merged into the ``display`` key
+            of the definition (see :func:`merge_display`); ``None`` leaves
+            the ``display`` key as it is.
+        goals: New goals, which replace the ``goals`` list in full; ``None``
+            leaves the ``goals`` key as it is, and an empty sequence writes
+            an empty list.
     """
     if display is not None:
-        definition["display"] = display_to_wire(display)
+        definition["display"] = merge_display(definition.get("display"), display)
     if goals is not None:
         definition["goals"] = [goal_to_wire(goal) for goal in goals]
 
@@ -795,10 +864,16 @@ class MetricDefinitionChange:
     """A saved metric definition change that passed the local checks.
 
     Attributes:
-        parts: The new definition with the params display and goals written
-            in, or ``None`` when only the presentation changes.
+        parts: The new definition with the params goals written in, or
+            ``None`` when only the presentation changes. The params display
+            is not written in: it merges into a display that is known only
+            after the read (see :func:`finish_metric_change`).
         display: New presentation settings, or ``None``.
         goals: New goals, or ``None``.
+        inherited_keys: Wire keys that the new definition leaves unset and
+            that the stored definition supplies: the ``aggregation`` and
+            ``syncInterval`` of a ``WarehouseMetric`` whose value is
+            ``None``.
     """
 
     parts: MetricWireParts | None
@@ -810,6 +885,9 @@ class MetricDefinitionChange:
     goals: tuple[MetricGoal, ...] | None
     """New goals, or ``None``."""
 
+    inherited_keys: tuple[str, ...] = ()
+    """Wire keys that the stored definition supplies."""
+
 
 def prepare_metric_change(
     definition: MetricDefinition | None,
@@ -820,10 +898,12 @@ def prepare_metric_change(
 ) -> MetricDefinitionChange | None:
     """Run the local checks of a saved metric definition change.
 
-    Runs before any request. A new definition gets the params display and
-    goals written in, passes the saved formula operand rule, and (with
-    ``validate``) passes the mirror of the server POST schema. Without a new
-    definition, only the new display and goals are checked.
+    Runs before any request. A new definition gets the params goals written
+    in, passes the saved formula operand rule, and (with ``validate``)
+    passes the mirror of the server POST schema. The params display is
+    checked on its own, because it merges into a display that is known only
+    after the read. Without a new definition, only the new display and
+    goals are checked.
 
     Args:
         definition: The new definition, or ``None``.
@@ -848,8 +928,19 @@ def prepare_metric_change(
         if validate:
             check_presentation(display=display, goals=goal_tuple)
         return MetricDefinitionChange(parts=None, display=display, goals=goal_tuple)
-    parts = prepare_new_metric(definition, display, goal_tuple, validate=validate)
-    return MetricDefinitionChange(parts=parts, display=display, goals=goal_tuple)
+    parts = prepare_new_metric(definition, None, goal_tuple, validate=validate)
+    if validate:
+        check_presentation(display=display, goals=None)
+    inherited: tuple[str, ...] = ()
+    if isinstance(definition, WarehouseMetric):
+        inherited = tuple(
+            key
+            for key, value in _warehouse_settings(definition).items()
+            if value is None
+        )
+    return MetricDefinitionChange(
+        parts=parts, display=display, goals=goal_tuple, inherited_keys=inherited
+    )
 
 
 def prepare_new_metric(
@@ -862,9 +953,10 @@ def prepare_new_metric(
 ) -> MetricWireParts:
     """Build a saved metric definition and run its local checks.
 
-    The params display and goals are written into the definition. Then a
-    saved formula passes the operand rule, and (with ``validate``) the
-    definition passes the mirror of the server POST schema.
+    The params display (merged into the display of the definition, if it
+    has one) and goals are written into the definition. Then a saved
+    formula passes the operand rule, and (with ``validate``) the definition
+    passes the mirror of the server POST schema.
 
     Args:
         definition: The definition value.
@@ -878,7 +970,9 @@ def prepare_new_metric(
             ``RawMetricDefinition`` loses the legacy keys that the server's
             create schema leaves out (see :func:`strip_server_skipped_keys`),
             with or without ``validate``. In a definition compiled from a
-            typed value, the mirror refuses them.
+            typed value, the mirror refuses them. A ``WarehouseMetric``
+            gets the server defaults for an unset aggregation or sync
+            interval.
 
     Returns:
         The wire pieces, with display and goals written in.
@@ -891,6 +985,9 @@ def prepare_new_metric(
     parts = metric_wire_parts(definition)
     if for_create and isinstance(definition, RawMetricDefinition):
         strip_server_skipped_keys(parts.kind, parts.definition)
+    if for_create and isinstance(definition, WarehouseMetric):
+        for key, value in _WAREHOUSE_CREATE_DEFAULTS.items():
+            parts.definition.setdefault(key, value)
     apply_presentation(parts.definition, display=display, goals=goals)
     if parts.kind == "formula":
         check_formula_operands(parts.definition)
@@ -904,11 +1001,19 @@ def finish_metric_change(
 ) -> dict[str, Any]:
     """Merge a checked definition change with the stored metric.
 
-    A new definition must have the stored kind and warehouse source. It
-    keeps the stored ``display`` and ``goals`` unless it sets them itself
-    (from the params or its own keys), because the server replaces a
-    definition in full. A presentation-only change sends the stored
-    definition back with the new display and goals.
+    The server replaces a definition in full, so the method builds the full
+    definition to send:
+
+    - A presentation-only change sends the stored definition back with the
+      new display and goals.
+    - A new definition must have the stored kind and warehouse source. It
+      keeps the stored ``display`` and ``goals`` unless it has its own (its
+      own keys, or the params goals).
+    - The params display merges into the display of the new definition, if
+      it has one, or else into the stored display (see
+      :func:`merge_display`). The params goals replace the goals in full.
+    - An unset ``aggregation`` or ``syncInterval`` of a ``WarehouseMetric``
+      takes the stored value.
 
     Args:
         change: The output of :func:`prepare_metric_change`.
@@ -934,7 +1039,8 @@ def finish_metric_change(
         new_source_id=change.parts.warehouse_source_id,
     )
     definition = copy.deepcopy(change.parts.definition)
-    for key in ("display", "goals"):
+    for key in ("display", "goals", *change.inherited_keys):
         if key not in definition and key in stored.definition:
             definition[key] = copy.deepcopy(stored.definition[key])
+    apply_presentation(definition, display=change.display, goals=None)
     return definition

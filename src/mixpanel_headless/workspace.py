@@ -9280,6 +9280,15 @@ class Workspace:
           unless the params or the new definition set them.
         - Display or goals without a definition send the stored definition
           back with the new values, as the web app does.
+        - The params display merges into the stored display (or into the
+          display of the new definition, when it has one): the keys that
+          you set replace the stored ones, a key set to ``None`` is
+          removed, and the other keys stay. The params goals replace the
+          stored goals in full.
+        - A ``WarehouseMetric`` whose ``aggregation`` or ``sync_interval``
+          is ``None`` keeps the stored value, so an update of the SQL alone
+          keeps a stored ``"sum"`` and ``"daily"``. A
+          ``RawMetricDefinition`` is sent as given.
 
         The read and the update are not atomic; an edit in the web app
         between them is overwritten. A failed read raises; the method never

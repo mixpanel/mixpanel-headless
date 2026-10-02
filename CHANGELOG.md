@@ -159,9 +159,11 @@ may include API changes.
   definition: a `Metric` or `CohortMetric` saves the `behavior` and
   `measurement` of the show clause that `Workspace.query` writes for it, so
   a saved metric queries the same way as its inline twin. New definition
-  values `WarehouseMetric` (writes the server defaults
-  `aggregation="none"` and `syncInterval="hourly"`, because the server
-  stores the request as sent), `RawMetricDefinition`, and
+  values `WarehouseMetric` (its `aggregation` and `sync_interval` default
+  to `None`: a create then writes the server defaults `"none"` and
+  `"hourly"`, because the server stores the request as sent, and an update
+  keeps the stored values, so an update of the SQL alone keeps a stored
+  `"sum"` and `"daily"`), `RawMetricDefinition`, and
   `RawBehaviorDefinition` (a wire definition dict, for example one that a
   get returned), the `MetricDefinition` alias, and the `Literal` aliases
   `WarehouseAggregation` and `WarehouseSyncInterval`.
@@ -186,12 +188,16 @@ may include API changes.
   chained. A create answer without a metric id raises
   `ResponseValidationError` before the second request. An update with new
   display or goals but no definition reads the metric and sends its full
-  definition back, because the server replaces a definition in full. A
-  create that the server's schema refuses raises `QueryError` (400) with a
-  short message: the failure and its schema location, without the
-  HTML-escaped copy of the request that the server appends. The full body
-  stays in `response_body`. The CLI prints only the short message for such
-  a 400, not the server's copy of the request. Only a body with every field of
+  definition back, because the server replaces a definition in full. The
+  new display merges into the stored one (or into the display of a new
+  definition that has one): the keys that the caller sets replace the
+  stored ones, a key set to `None` is removed, and the other keys stay.
+  New goals replace the stored goals in full. A create that the server's
+  schema refuses raises `QueryError` (400) with a short message: the
+  failure and its schema location, without the HTML-escaped copy of the
+  request that the server appends. The full body stays in `response_body`.
+  The CLI prints only the short message for such a 400, not the server's
+  copy of the request. Only a body with every field of
   the server's schema refusal (`status`, `error`, and `details` with
   `path`, `schema`, and `data`) counts; another 400 keeps its server
   message and the usual CLI output. An error of `mp metrics

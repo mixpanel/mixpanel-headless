@@ -6,7 +6,8 @@ before any request:
 
 - ``metric_wire_parts`` / ``behavior_wire_definition``: kind, definition
   dict, and warehouse source of each definition value
-- ``display_to_wire`` / ``goal_to_wire`` / ``apply_presentation``
+- ``display_to_wire`` / ``merge_display`` / ``goal_to_wire`` /
+  ``apply_presentation``
 - ``check_name`` / ``check_description`` (``SM1_EMPTY_NAME``,
   ``SM2_NAME_TOO_LONG``)
 - ``check_metric_definition`` / ``check_behavior_definition``
@@ -42,6 +43,7 @@ from mixpanel_headless._internal.saved_definitions import (
     find_server_skipped_keys,
     finish_metric_change,
     goal_to_wire,
+    merge_display,
     metric_wire_parts,
     prepare_metric_change,
     prepare_new_metric,
@@ -136,16 +138,32 @@ class TestMetricWireParts:
             },
         }
 
-    def test_warehouse_metric_writes_server_defaults(self) -> None:
-        """A WarehouseMetric writes aggregation and syncInterval explicitly."""
+    def test_warehouse_metric_leaves_unset_values_out(self) -> None:
+        """metric_wire_parts writes aggregation and syncInterval only when they are set."""
         parts = metric_wire_parts(WarehouseMetric(55, "SELECT 1", "numeric"))
         assert parts.kind == "warehouse"
         assert parts.warehouse_source_id == 55
+        assert parts.definition == {"query": "SELECT 1", "metricType": "numeric"}
+
+    @pytest.mark.parametrize("validate", [True, False])
+    def test_warehouse_create_writes_server_defaults(self, validate: bool) -> None:
+        """A create writes the server defaults for an unset aggregation and sync interval.
+
+        Args:
+            validate: Whether the schema mirror runs.
+        """
+        parts = prepare_new_metric(
+            WarehouseMetric(55, "SELECT 1", "numeric", sync_interval="daily"),
+            None,
+            None,
+            validate=validate,
+            for_create=True,
+        )
         assert parts.definition == {
             "query": "SELECT 1",
             "metricType": "numeric",
             "aggregation": "none",
-            "syncInterval": "hourly",
+            "syncInterval": "daily",
         }
 
     def test_warehouse_metric_columns(self) -> None:
@@ -268,18 +286,61 @@ class TestPresentation:
             "target_input": 0.2,
         }
 
-    def test_apply_presentation_replaces_keys(self) -> None:
-        """Display and goals from the params replace the keys of the definition."""
-        definition: dict[str, Any] = {"behavior": {}, "display": {"prefix": "$"}}
+    def test_apply_presentation_merges_display_and_replaces_goals(self) -> None:
+        """A display merges into the definition's display; goals replace the list."""
+        definition: dict[str, Any] = {
+            "behavior": {},
+            "display": {"prefix": "$", "precision": 0},
+            "goals": [{"id": "old"}],
+        }
         apply_presentation(
             definition,
             display=MetricDisplay(suffix="%"),
             goals=[MetricGoal(id="g", label="L")],
         )
-        assert definition["display"] == {"suffix": "%"}
+        assert definition["display"] == {"prefix": "$", "precision": 0, "suffix": "%"}
         assert definition["goals"] == [
             {"id": "g", "label": "L", "checkpoints": [], "target_type": "absolute"}
         ]
+
+    @pytest.mark.parametrize(
+        ("display", "expected"),
+        [
+            (
+                MetricDisplay(precision=2),
+                {"prefix": "$", "suffix": " usd", "precision": 2},
+            ),
+            (MetricDisplay(prefix=None), {"suffix": " usd"}),
+            (MetricDisplay(prefix=None, suffix=None), {}),
+            (MetricDisplay(), {"prefix": "$", "suffix": " usd"}),
+            (
+                MetricDisplay(minimumDetectableEffect=0.1),
+                {"prefix": "$", "suffix": " usd", "minimumDetectableEffect": 0.1},
+            ),
+            (
+                MetricDisplay.model_validate({"chartType": "bar", "suffix": None}),
+                {"prefix": "$", "chartType": "bar"},
+            ),
+        ],
+    )
+    def test_merge_display(
+        self, display: MetricDisplay, expected: dict[str, Any]
+    ) -> None:
+        """Set keys replace, a key set to None goes, unset keys stay; wire keys are used.
+
+        Args:
+            display: The new display.
+            expected: The merged wire display.
+        """
+        base = {"prefix": "$", "suffix": " usd"}
+        assert merge_display(base, display) == expected
+        assert base == {"prefix": "$", "suffix": " usd"}
+
+    def test_merge_display_without_a_base(self) -> None:
+        """Without a stored display, the set non-None keys are the display."""
+        display = MetricDisplay(prefix=None, precision=2, hide_trendline=True)
+        assert merge_display(None, display) == {"precision": 2, "hideTrendline": True}
+        assert merge_display(None, display) == display_to_wire(display)
 
     def test_apply_presentation_none_leaves_keys(self) -> None:
         """None leaves the definition keys as they are; an empty list clears goals."""
@@ -555,18 +616,72 @@ class TestPrepareMetricChange:
         assert prepare_metric_change(None, None, None, validate=True) is None
 
     def test_definition_with_presentation(self) -> None:
-        """A new definition gets the params display and goals written in."""
+        """A new definition gets the goals written in; the display waits for the read."""
+        display = MetricDisplay(suffix=" users")
         change = prepare_metric_change(
             Metric("Login"),
-            MetricDisplay(suffix=" users"),
+            display,
             [MetricGoal(id="g", label="L")],
             validate=True,
         )
         assert change is not None
         assert change.parts is not None
         assert change.parts.kind == "metric"
-        assert change.parts.definition["display"] == {"suffix": " users"}
+        assert "display" not in change.parts.definition
+        assert change.display == display
         assert change.parts.definition["goals"][0]["id"] == "g"
+
+    def test_definition_with_a_bad_display_raises_before_any_read(self) -> None:
+        """The display of a definition change is checked too."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            prepare_metric_change(
+                Metric("Login"),
+                MetricDisplay.model_validate({"chartType": "bar"}),
+                None,
+                validate=True,
+            )
+        assert exc_info.value.details["path"] == "definition.display.chartType"
+
+    @pytest.mark.parametrize(
+        ("value", "inherited"),
+        [
+            (
+                WarehouseMetric(55, "SELECT 1", "numeric"),
+                ("aggregation", "syncInterval"),
+            ),
+            (
+                WarehouseMetric(55, "SELECT 1", "numeric", sync_interval="daily"),
+                ("aggregation",),
+            ),
+            (
+                WarehouseMetric(
+                    55, "SELECT 1", "numeric", aggregation="sum", sync_interval="daily"
+                ),
+                (),
+            ),
+            (
+                RawMetricDefinition(
+                    "warehouse", {"query": "q", "metricType": "numeric"}
+                ),
+                (),
+            ),
+        ],
+    )
+    def test_unset_warehouse_values_are_inherited(
+        self, value: WarehouseMetric | RawMetricDefinition, inherited: tuple[str, ...]
+    ) -> None:
+        """A typed warehouse change lists its unset keys; a raw one lists none.
+
+        Args:
+            value: The new warehouse definition.
+            inherited: The wire keys that the stored definition supplies.
+        """
+        change = prepare_metric_change(value, None, None, validate=True)
+        assert change is not None
+        assert change.parts is not None
+        assert change.inherited_keys == inherited
+        for key in inherited:
+            assert key not in change.parts.definition
 
     def test_schema_failure_raises_before_any_read(self) -> None:
         """A bad raw definition raises SM4_SCHEMA with validate=True."""
@@ -643,19 +758,23 @@ class TestFinishMetricChange:
         assert definition["display"] == stored.definition["display"]
         assert definition["goals"] == stored.definition["goals"]
 
-    def test_params_presentation_wins(self) -> None:
-        """Display and goals from the params replace the stored ones."""
+    def test_params_display_merges_and_goals_replace(self) -> None:
+        """The params display merges into the stored one; params goals replace them."""
         stored = SavedMetric.model_validate(behavior_metric_json())
         change = prepare_metric_change(
             Metric("Login"), MetricDisplay(precision=3), [], validate=True
         )
         assert change is not None
         definition = finish_metric_change(change, stored)
-        assert definition["display"] == {"precision": 3}
+        assert definition["display"] == {
+            "prefix": "",
+            "suffix": " users",
+            "precision": 3,
+        }
         assert definition["goals"] == []
 
     def test_presentation_only_uses_the_stored_definition(self) -> None:
-        """Without a new definition, the stored one goes back with the new display."""
+        """Without a new definition, the stored one goes back with the merged display."""
         stored = SavedMetric.model_validate(behavior_metric_json())
         change = prepare_metric_change(
             None, MetricDisplay(prefix="#"), None, validate=True
@@ -664,9 +783,48 @@ class TestFinishMetricChange:
         definition = finish_metric_change(change, stored)
         assert definition["behavior"] == stored.definition["behavior"]
         assert definition["measurement"] == stored.definition["measurement"]
-        assert definition["display"] == {"prefix": "#"}
+        assert definition["display"] == {
+            "prefix": "#",
+            "suffix": " users",
+            "precision": 0,
+        }
         assert definition["goals"] == stored.definition["goals"]
-        assert stored.definition["display"] != {"prefix": "#"}
+        assert stored.definition["display"]["prefix"] == ""
+
+    def test_warehouse_change_copies_unset_values_from_the_stored_one(self) -> None:
+        """A typed warehouse change takes unset aggregation and sync interval from the read."""
+        stored = SavedMetric.model_validate(warehouse_metric_json())
+        change = prepare_metric_change(
+            WarehouseMetric(55, "SELECT 2", "timeseries", sync_interval="hourly"),
+            None,
+            None,
+            validate=True,
+        )
+        assert change is not None
+        definition = finish_metric_change(change, stored)
+        assert definition == {
+            "query": "SELECT 2",
+            "metricType": "timeseries",
+            "aggregation": "last_value",
+            "syncInterval": "hourly",
+        }
+
+    def test_raw_warehouse_change_is_sent_as_given(self) -> None:
+        """A raw warehouse definition takes no aggregation from the stored one."""
+        stored = SavedMetric.model_validate(warehouse_metric_json())
+        change = prepare_metric_change(
+            RawMetricDefinition(
+                "warehouse", {"query": "SELECT 2", "metricType": "timeseries"}
+            ),
+            None,
+            None,
+            validate=True,
+        )
+        assert change is not None
+        assert finish_metric_change(change, stored) == {
+            "query": "SELECT 2",
+            "metricType": "timeseries",
+        }
 
     def test_kind_change_refused(self) -> None:
         """A formula definition for a behavior metric raises SM3_KIND_CHANGE."""

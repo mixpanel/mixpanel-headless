@@ -287,7 +287,8 @@ The server checks a create against its JSON Schema, but it stores an update as s
     # Metadata: one request, no read
     ws.update_metric(104700, mp.UpdateMetricParams(description="Unique buyers per week."))
 
-    # Presentation: reads the metric, then sends its full definition with the change
+    # Presentation: reads the metric, then sends its full definition with the change.
+    # The display merges into the stored one: the stored prefix and suffix stay.
     ws.update_metric(104700, mp.UpdateMetricParams(display=mp.MetricDisplay(precision=1)))
     ws.update_metric(104700, mp.UpdateMetricParams(goals=[]))   # remove the goals
 
@@ -316,6 +317,16 @@ The server checks a create against its JSON Schema, but it stores an update as s
     ```
 
 A new definition replaces the stored one in full, because that is what the server does. It keeps the stored `display` and `goals` unless the params or the new definition set them. The read and the update are not atomic: an edit in the web app between them is overwritten. A failed read raises; the library never guesses the stored definition.
+
+The params `display` merges into the stored display, or into the display of the new definition when it has one:
+
+- A key that you set replaces the stored value. With a stored display of `{"prefix": "$", "suffix": " usd"}`, `MetricDisplay(precision=2)` sends `{"prefix": "$", "suffix": " usd", "precision": 2}`.
+- A key that you set to `None` is removed: `MetricDisplay(prefix=None)` sends `{"suffix": " usd"}`.
+- A key that you do not set keeps its stored value.
+
+The params `goals` is a list, so it replaces the stored goals in full.
+
+A `WarehouseMetric` whose `aggregation` or `sync_interval` is `None` keeps the stored value on an update, so an update that changes only the SQL keeps a stored `"sum"` and `"daily"`. A set value is written. On a create, `None` writes the server defaults, `"none"` and `"hourly"`. A `RawMetricDefinition` is sent as given.
 
 `bulk_update_metrics` reads each metric that gets a new definition, then sends one request. The server skips ids that do not name a metric of the project, with no error; `mp metrics verify` names the skipped ids on stderr.
 
@@ -405,7 +416,7 @@ Other traps the library handles for you:
 
 - `owned_by` and `verified` are dropped by a create, so the library sends them in a second request.
 - The server answers every get, create, and update with a map keyed by id; the library unwraps it.
-- A warehouse definition always holds `aggregation` and `syncInterval`, because the server stores the request as sent and fills in no defaults.
+- A new warehouse metric always holds `aggregation` and `syncInterval`, because the server stores the request as sent and fills in no defaults. An update of a `WarehouseMetric` keeps the stored values that you leave unset.
 - A behavior description is omitted when it is `None`, because the behavior schema does not accept `null`.
 - The saved definition of a typed value holds no legacy behavior `filter` key, although the query builders write one for funnel and retention behaviors. The server reads past it at query time, and a create rejects it.
 - A create removes the legacy keys from a raw definition, so a copy of a stored metric or behavior works.

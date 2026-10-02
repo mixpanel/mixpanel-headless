@@ -44,15 +44,15 @@ class TestWarehouseMetric:
     """WarehouseMetric holds a warehouse query and the server defaults."""
 
     def test_defaults(self) -> None:
-        """Aggregation and sync interval default to the server fallbacks."""
+        """Aggregation and sync interval default to None: a create writes the server defaults, an update keeps the stored values."""
         wm = WarehouseMetric(55, "SELECT 1", "numeric")
         assert wm.source_id == 55
         assert wm.sql == "SELECT 1"
         assert wm.metric_type == "numeric"
         assert wm.value_column is None
         assert wm.time_column is None
-        assert wm.aggregation == "none"
-        assert wm.sync_interval == "hourly"
+        assert wm.aggregation is None
+        assert wm.sync_interval is None
 
     def test_frozen(self) -> None:
         """WarehouseMetric instances are immutable."""
