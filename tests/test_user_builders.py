@@ -189,6 +189,166 @@ class TestFilterToSelectorBooleans:
         assert result == 'properties["opted_out"] == false'
 
 
+class TestFilterToSelectorInclusiveNumbers:
+    """Tests for at-least, at-most, and not-between number translation."""
+
+    def test_at_least(self) -> None:
+        """At-least produces an inclusive ``>=`` comparison."""
+        f = Filter.at_least("score", 80, resource_type="people")
+        assert filter_to_selector(f) == 'properties["score"] >= 80'
+
+    def test_at_most(self) -> None:
+        """At-most produces an inclusive ``<=`` comparison."""
+        f = Filter.at_most("errors", 5.5, resource_type="people")
+        assert filter_to_selector(f) == 'properties["errors"] <= 5.5'
+
+    def test_not_between(self) -> None:
+        """Not-between matches values outside the range, in parentheses."""
+        f = Filter.not_between("age", 18, 65, resource_type="people")
+        assert filter_to_selector(f) == (
+            '(properties["age"] < 18 or properties["age"] > 65)'
+        )
+
+    def test_not_between_keeps_and_precedence(self) -> None:
+        """The parenthesized OR stays one term when AND-combined with others."""
+        result = filters_to_selector(
+            [Filter.is_set("age"), Filter.not_between("age", 18, 65)]
+        )
+        assert result == (
+            'defined(properties["age"]) and '
+            '(properties["age"] < 18 or properties["age"] > 65)'
+        )
+
+
+#: The cast ``datetime()`` wrapper every date translation applies to the property.
+_LAST_SEEN = 'datetime(properties["$last_seen"])'
+
+
+class TestFilterToSelectorAbsoluteDates:
+    """Tests for absolute date operators (project-time day boundaries)."""
+
+    def test_since(self) -> None:
+        """Since is inclusive of the start of the given day."""
+        f = Filter.since("$last_seen", "2026-09-01", resource_type="people")
+        assert filter_to_selector(f) == (
+            f'{_LAST_SEEN} >= datetime("2026-09-01T00:00:00")'
+        )
+
+    def test_before(self) -> None:
+        """Before excludes the given day."""
+        f = Filter.before("$last_seen", "2026-09-01", resource_type="people")
+        assert filter_to_selector(f) == (
+            f'{_LAST_SEEN} < datetime("2026-09-01T00:00:00")'
+        )
+
+    def test_on(self) -> None:
+        """On covers the whole day, from 00:00:00 to 23:59:59 inclusive."""
+        f = Filter.on("$last_seen", "2026-09-01", resource_type="people")
+        assert filter_to_selector(f) == (
+            f'{_LAST_SEEN} >= datetime("2026-09-01T00:00:00") and '
+            f'{_LAST_SEEN} <= datetime("2026-09-01T23:59:59")'
+        )
+
+    def test_not_on(self) -> None:
+        """Not-on matches a set value outside the day, in parentheses."""
+        f = Filter.not_on("$last_seen", "2026-09-01", resource_type="people")
+        assert filter_to_selector(f) == (
+            f'({_LAST_SEEN} < datetime("2026-09-01T00:00:00") or '
+            f'{_LAST_SEEN} > datetime("2026-09-01T23:59:59"))'
+        )
+
+    def test_date_between(self) -> None:
+        """Date-between includes both the first and the last day."""
+        f = Filter.date_between(
+            "$last_seen", "2026-09-01", "2026-09-30", resource_type="people"
+        )
+        assert filter_to_selector(f) == (
+            f'{_LAST_SEEN} >= datetime("2026-09-01T00:00:00") and '
+            f'{_LAST_SEEN} <= datetime("2026-09-30T23:59:59")'
+        )
+
+    def test_date_between_single_day_matches_on(self) -> None:
+        """A one-day date-between range produces the same selector as on."""
+        between = Filter.date_between("d", "2026-09-01", "2026-09-01")
+        assert filter_to_selector(between) == filter_to_selector(
+            Filter.on("d", "2026-09-01")
+        )
+
+    def test_date_not_between(self) -> None:
+        """Date-not-between matches a set value outside the range."""
+        f = Filter.date_not_between(
+            "$last_seen", "2026-09-01", "2026-09-30", resource_type="people"
+        )
+        assert filter_to_selector(f) == (
+            f'({_LAST_SEEN} < datetime("2026-09-01T00:00:00") or '
+            f'{_LAST_SEEN} > datetime("2026-09-30T23:59:59"))'
+        )
+
+    def test_last_calendar_day_needs_no_next_day(self) -> None:
+        """The last representable date translates without date arithmetic."""
+        f = Filter.on("d", "9999-12-31")
+        assert filter_to_selector(f).endswith('<= datetime("9999-12-31T23:59:59")')
+
+    def test_property_name_is_escaped(self) -> None:
+        """Quotes in the property name stay escaped inside the cast."""
+        f = Filter.since('we"ird', "2026-09-01")
+        assert filter_to_selector(f) == (
+            'datetime(properties["we\\"ird"]) >= datetime("2026-09-01T00:00:00")'
+        )
+
+
+class TestFilterToSelectorRelativeDates:
+    """Tests for relative date operators (server clock via the NOW macro)."""
+
+    def test_in_the_last_days(self) -> None:
+        """In-the-last spans N days back from the server's current time."""
+        f = Filter.in_the_last("$last_seen", 7, "day", resource_type="people")
+        assert filter_to_selector(f) == (
+            f"{_LAST_SEEN} >= datetime(NOW - 604800) and {_LAST_SEEN} < datetime(NOW)"
+        )
+
+    def test_not_in_the_last_days(self) -> None:
+        """Not-in-the-last matches a set value before the window or in the future."""
+        f = Filter.not_in_the_last("$last_seen", 7, "day", resource_type="people")
+        assert filter_to_selector(f) == (
+            f"({_LAST_SEEN} < datetime(NOW - 604800) or {_LAST_SEEN} >= datetime(NOW))"
+        )
+
+    def test_in_the_next_days(self) -> None:
+        """In-the-next spans N days forward from the server's current time."""
+        f = Filter.in_the_next("renews_at", 7, "day", resource_type="people")
+        assert filter_to_selector(f) == (
+            'datetime(properties["renews_at"]) >= datetime(NOW) and '
+            'datetime(properties["renews_at"]) < datetime(NOW + 604800)'
+        )
+
+    @pytest.mark.parametrize(
+        ("quantity", "unit", "seconds"),
+        [
+            (24, "hour", 86400),
+            (1, "day", 86400),
+            (2, "week", 1209600),
+            (1, "month", 2592000),
+            (3, "month", 7776000),
+        ],
+    )
+    def test_unit_seconds(self, quantity: int, unit: str, seconds: int) -> None:
+        """Units convert to seconds with 7-day weeks and 30-day months."""
+        f = Filter.in_the_last("d", quantity, unit)  # type: ignore[arg-type]
+        assert f"datetime(NOW - {seconds})" in filter_to_selector(f)
+
+    def test_now_macro_has_spaces_around_minus(self) -> None:
+        """``NOW - n`` keeps its spaces: ``NOW -n`` is a syntax error server-side."""
+        result = filter_to_selector(Filter.in_the_last("d", 1, "hour"))
+        assert "NOW - 3600" in result
+        assert "NOW -3600" not in result
+
+    def test_fifty_year_window_is_allowed(self) -> None:
+        """A window of exactly 50 years (18250 days) translates."""
+        f = Filter.in_the_last("d", 18250, "day")
+        assert "datetime(NOW - 1576800000)" in filter_to_selector(f)
+
+
 # =============================================================================
 # filter_to_selector — value formatting
 # =============================================================================
@@ -709,3 +869,225 @@ class TestCodedEngageSelectorCodes:
             filter_to_selector(f)
         assert isinstance(excinfo.value, ParamValidationError)
         assert excinfo.value.code == "ES13_UNSUPPORTED_OPERATOR"
+
+    @pytest.mark.parametrize(
+        "f",
+        [
+            Filter.starts_with("url", "https://", resource_type="people"),
+            Filter.ends_with("email", "@example.com", resource_type="people"),
+            Filter.list_contains("cart", Brand="nike", resource_type="people"),
+        ],
+        ids=["starts_with", "ends_with", "list_contains"],
+    )
+    def test_es14_direct_raises_coded_error(self, f: Filter) -> None:
+        """Constructors with no Engage selector form raise ES14."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES14_NO_SELECTOR_EQUIVALENT"
+
+    def test_es14_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES14 for a starts-with filter."""
+        f = Filter.starts_with("url", "https://", resource_type="people")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([Filter.is_set("url"), f])
+        assert excinfo.value.code == "ES14_NO_SELECTOR_EQUIVALENT"
+
+    @pytest.mark.parametrize("operator", ["since", "before", "on", "not_on"])
+    def test_es15_direct_raises_coded_error(self, operator: str) -> None:
+        """A non-string value for a single-date operator raises ES15."""
+        f = Filter("d", operator, 20260901)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES15_DATE_EXPECTS_STR"
+
+    def test_es15_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES15 for a non-string date."""
+        f = Filter("d", "was since", None)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES15_DATE_EXPECTS_STR"
+
+    @pytest.mark.parametrize(
+        ("value", "code"),
+        [
+            ("09/01/2026", "V8_DATE_FORMAT"),
+            ('2026-09-01") or true or ("', "V8_DATE_FORMAT"),
+            ("2026-02-30", "V8_DATE_INVALID"),
+        ],
+    )
+    def test_v8_twin_rejects_bad_date_string(self, value: str, code: str) -> None:
+        """A malformed date string is rejected with the factory's V8 code."""
+        f = Filter("d", "was on", value)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == code
+
+    @pytest.mark.parametrize(
+        "value",
+        ["2026-09-01", ["2026-09-01"], ["2026-09-01", 5], ("2026-09-01", "2026-09-02")],
+        ids=["str", "one-item", "non-str-item", "tuple"],
+    )
+    def test_es16_direct_raises_coded_error(self, value: object) -> None:
+        """A date range that is not a list of two strings raises ES16."""
+        f = Filter("d", "was between", value)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES16_DATE_RANGE_EXPECTS_PAIR"
+
+    def test_es16_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES16 for a bad date-not-between range."""
+        f = Filter("d", "was not between", None)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES16_DATE_RANGE_EXPECTS_PAIR"
+
+    def test_v8_twin_rejects_bad_range_bound(self) -> None:
+        """A malformed bound in a date range raises the factory's V8 code."""
+        f = Filter("d", "was between", ["2026-09-01", "2026-13-01"])
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "V8_DATE_INVALID"
+
+    @pytest.mark.parametrize(
+        "value",
+        ["7", 0, -3, True, 7.0],
+        ids=["str", "zero", "negative", "bool", "float"],
+    )
+    def test_es17_direct_raises_coded_error(self, value: object) -> None:
+        """A relative quantity that is not a positive int raises ES17."""
+        f = Filter("d", "was in the", value, _date_unit="day")  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES17_RELATIVE_QUANTITY_INVALID"
+
+    @pytest.mark.parametrize(
+        "f",
+        [
+            Filter.in_the_last("d", 18251, "day"),
+            Filter.not_in_the_last("d", 609, "month"),
+            Filter.in_the_next("d", 2608, "week"),
+            Filter.in_the_last("d", 438001, "hour"),
+        ],
+        ids=["days", "months", "weeks", "hours"],
+    )
+    def test_es17_rejects_window_over_fifty_years(self, f: Filter) -> None:
+        """A relative window longer than 50 years raises ES17."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES17_RELATIVE_QUANTITY_INVALID"
+
+    def test_es17_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES17 for a bad in-the-next quantity."""
+        f = Filter("d", "was in the next", None, _date_unit="day")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES17_RELATIVE_QUANTITY_INVALID"
+
+    @pytest.mark.parametrize("unit", [None, "year", "days"])
+    def test_es18_direct_raises_coded_error(self, unit: object) -> None:
+        """A missing or unknown relative date unit raises ES18."""
+        f = Filter("d", "was in the", 7, _date_unit=unit)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES18_RELATIVE_UNIT_INVALID"
+
+    def test_es18_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES18 for a not-in-the-last filter."""
+        f = Filter("d", "was not in the", 7)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES18_RELATIVE_UNIT_INVALID"
+
+    def test_es19_direct_raises_coded_error(self) -> None:
+        """Non-number value for 'is at least' raises ES19."""
+        f = Filter("p", "is at least", "x")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES19_AT_LEAST_EXPECTS_NUMBER"
+
+    def test_es19_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES19 for non-number at-least values."""
+        f = Filter("p", "at_least", [1])  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES19_AT_LEAST_EXPECTS_NUMBER"
+
+    def test_es20_direct_raises_coded_error(self) -> None:
+        """Non-number value for 'is at most' raises ES20."""
+        f = Filter("p", "is at most", None)
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "ES20_AT_MOST_EXPECTS_NUMBER"
+
+    def test_es20_seam_raises_coded_error(self) -> None:
+        """filters_to_selector surfaces ES20 for non-number at-most values."""
+        f = Filter("p", "at_most", "5")
+        with pytest.raises(ParamValidationError) as excinfo:
+            filters_to_selector([f])
+        assert excinfo.value.code == "ES20_AT_MOST_EXPECTS_NUMBER"
+
+    @pytest.mark.parametrize(
+        ("value", "code"),
+        [
+            ([1], "ES10_BETWEEN_EXPECTS_PAIR"),
+            ("nope", "ES10_BETWEEN_EXPECTS_PAIR"),
+            (["low", 10], "ES11_BETWEEN_LOWER_NOT_NUMBER"),
+            ([0, None], "ES12_BETWEEN_UPPER_NOT_NUMBER"),
+        ],
+    )
+    def test_not_between_reuses_between_codes(self, value: object, code: str) -> None:
+        """Not-between shares the between shape rules and their codes."""
+        f = Filter("p", "not between", value)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == code
+
+
+class TestUnsupportedFilterMessages:
+    """Unsupported constructors name the Filter method and give a workaround."""
+
+    @pytest.mark.parametrize(
+        ("f", "constructor"),
+        [
+            (Filter.starts_with("url", "https://"), "Filter.starts_with()"),
+            (Filter.ends_with("email", "@example.com"), "Filter.ends_with()"),
+            (Filter.list_contains("cart", Brand="nike"), "Filter.list_contains()"),
+        ],
+    )
+    def test_message_names_constructor(self, f: Filter, constructor: str) -> None:
+        """The ES14 message names the public constructor, not the wire operator."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        message = str(excinfo.value)
+        assert message.startswith(constructor)
+        assert "query_user(where=...)" in message
+
+    def test_starts_with_suggests_contains_then_dataframe(self) -> None:
+        """The starts-with message suggests contains plus a result.df check."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(Filter.starts_with("url", "https://"))
+        message = str(excinfo.value)
+        assert "Filter.contains('url', 'https://')" in message
+        assert "result.df" in message
+
+    def test_list_contains_suggests_contains_for_string_lists(self) -> None:
+        """The list-contains message points at contains for a list of strings."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(Filter.list_contains("cart", Brand="nike"))
+        assert "Filter.contains('cart', " in str(excinfo.value)
+
+    def test_unknown_operator_shows_raw_selector_workaround(self) -> None:
+        """The ES13 message shows a raw selector string as the way out."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(make_unchecked_filter("p", "was frobnicated", None))
+        message = str(excinfo.value)
+        assert "'was frobnicated'" in message
+        assert 'where=\'properties["plan"] == "premium"\'' in message
+
+    def test_relative_window_message_names_constructor(self) -> None:
+        """The over-long window message names the constructor and the fix."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(Filter.in_the_next("d", 609, "month"))
+        message = str(excinfo.value)
+        assert message.startswith("Filter.in_the_next()")
+        assert "Filter.since()" in message

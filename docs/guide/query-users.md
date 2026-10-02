@@ -1,6 +1,6 @@
 # User Profile Queries
 
-Query user profiles from Mixpanel's Engage API — filter by properties, sort, select fields, count matching profiles, and fetch large result sets with parallel pagination. Uses the same `Filter` vocabulary as all other query engines.
+Query user profiles from Mixpanel's Engage API — filter by properties, sort, select fields, count matching profiles, and fetch large result sets with parallel pagination. Uses the same `Filter` vocabulary as the other query engines, with the exceptions listed in [Filtering Profiles](#filtering-profiles).
 
 !!! tip "Recommended"
     `Workspace.query_user()` is the 5th engine in the unified query system. It answers **identity** questions ("who are these users?") that complement the behavioral questions answered by insights, funnels, retention, and flows.
@@ -48,6 +48,38 @@ result = ws.query_user(
 )
 print(result.df)  # distinct_id | last_seen | email | name | ltv
 ```
+
+## Filtering Profiles
+
+`where=` takes a `Filter`, a list of filters (AND-combined), or a raw Engage selector string. `query_user()` translates each `Filter` into an Engage selector:
+
+```python
+# Users seen since September 1 (a day in the project timezone)
+ws.query_user(where=Filter.since("$last_seen", "2026-09-01", resource_type="people"))
+
+# Users seen in the last 7 days with a lifetime value of at least 100
+ws.query_user(
+    where=[
+        Filter.in_the_last("$last_seen", 7, "day", resource_type="people"),
+        Filter.at_least("ltv", 100, resource_type="people"),
+    ],
+)
+```
+
+| `Filter` constructors | Engage meaning |
+|---|---|
+| `equals`, `not_equals`, `contains`, `not_contains` | String comparisons. `contains` on a list property tests membership. |
+| `greater_than`, `less_than`, `at_least`, `at_most`, `between`, `not_between` | Number comparisons. `between` includes both bounds; `not_between` excludes them. |
+| `is_set`, `is_not_set`, `is_true`, `is_false` | Existence and boolean checks. |
+| `on`, `not_on`, `before`, `since`, `date_between`, `date_not_between` | Whole days in the project timezone. `before` excludes its day; the others include theirs. |
+| `in_the_last`, `not_in_the_last`, `in_the_next` | Rolling windows from the server's clock (see below). |
+| `in_cohort` | One per query, sent as a cohort filter. |
+
+**Relative dates are rolling windows.** The Engage selector has no calendar functions, so a relative filter counts back (or forward) from the moment the server runs the query: `in_the_last("$last_seen", 7, "day")` covers the last 168 hours. Insights starts the same window at the start of a calendar day, so counts near the start of the window can differ. A week is 7 days and a month is 30 days, as in Insights. A window can span at most 50 years; use `since()`, `before()`, or `date_between()` for a longer range.
+
+**Not supported.** `starts_with`, `ends_with`, and `list_contains` have no Engage selector form, and a raw selector string cannot express them either. They raise `BookmarkValidationError`, and the message names a workaround (for example, narrow with `contains` and finish the match in `result.df`). `not_in_cohort` is rejected too.
+
+**Raw selectors.** Pass a string for any other expression the Engage selector accepts, for example `where='properties["$last_seen"] > datetime("2026-09-01T00:00:00")'`. A `datetime("…")` literal is read in the project timezone.
 
 ## Aggregate Mode
 

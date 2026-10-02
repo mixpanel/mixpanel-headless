@@ -946,16 +946,31 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 126 minted full codes, no duplicates.
+        """The registry lists all 133 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
         pydantic-internal, so those sites stay builtin under the design's
         P3 policy). 045-report-links added the six ``RL*`` guards: ``RL1``
         to ``RL4`` in the first cut, ``RL5`` (``ResolvedReport`` consistency)
-        and ``RL6`` (positive ids in the URL builders) from PR review.
+        and ``RL6`` (positive ids in the URL builders) from PR review. The
+        engage selector translation of date and inclusive-number filters
+        added the seven ``ES14``-``ES20`` guards.
         """
-        assert len(CODED_GUARD_REGISTRY) == 126
+        assert len(CODED_GUARD_REGISTRY) == 133
+
+    def test_engage_selector_date_codes_registered(self) -> None:
+        """The ES14-ES20 engage selector guards are registered codes."""
+        codes = {
+            "ES14_NO_SELECTOR_EQUIVALENT",
+            "ES15_DATE_EXPECTS_STR",
+            "ES16_DATE_RANGE_EXPECTS_PAIR",
+            "ES17_RELATIVE_QUANTITY_INVALID",
+            "ES18_RELATIVE_UNIT_INVALID",
+            "ES19_AT_LEAST_EXPECTS_NUMBER",
+            "ES20_AT_MOST_EXPECTS_NUMBER",
+        }
+        assert codes <= CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
         """Every reused twin code already exists in the code universe."""
