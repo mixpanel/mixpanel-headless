@@ -208,9 +208,15 @@ may include API changes.
   definition never holds a name. A `Formula` without operands raises the
   new code `SM7_FORMULA_WITHOUT_OPERANDS`. The saved definition of a typed
   value holds no legacy behavior `filter` key: the server reads past it at
-  query time, but its create schema rejects it. On a create, `SM4_SCHEMA`
-  refuses such legacy keys in every definition, raw or compiled from a
-  typed value; an update sends them as given.
+  query time, but its create schema rejects it. Stored definitions carry
+  such legacy keys (for example a behavior `filter`, legacy funnel step
+  keys, and the `id` and `type` of a measurement), so a create removes
+  them from a `RawMetricDefinition` or `RawBehaviorDefinition`, with or
+  without `validate`, and a copy of a stored metric or behavior works (in
+  Python and through `mp metrics create` / `mp behaviors create
+  --definition-file`). In a definition compiled from a typed value,
+  `SM4_SCHEMA` refuses them, because one there means a builder bug. An
+  update sends them as given.
 - `Workspace.query` and `build_params` refuse a `WarehouseMetric` with the
   new code `MR3_WAREHOUSE_INLINE`: the server runs warehouse SQL only by
   saved id, so a warehouse metric is saved first and queried by reference.

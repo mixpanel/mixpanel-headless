@@ -9127,6 +9127,14 @@ class Workspace:
         query formula holds, so the saved metric queries the same way as its
         inline twin.
 
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or the ``id`` and ``type`` of a measurement) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawMetricDefinition``, with or without
+        ``validate``, and a copy of a stored metric works. A definition
+        compiled from a typed value never has one; if it does, the method
+        refuses it (``SM4_SCHEMA``).
+
         Before any request, the method checks the name and description and
         the definition (see Raises). Then it sends the create. The server
         drops ``owned_by`` and ``verified`` from a create, so when the params
@@ -9144,9 +9152,10 @@ class Workspace:
                 goals, owner, and verified flag.
             validate: Check the definition with the mirror of the server
                 schema before the request (default), including the refusal
-                of legacy keys such as a behavior ``filter``. ``False``
-                sends it as given; the server still checks a create and
-                answers a failing definition with a 400 (``QueryError``).
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
 
         Returns:
             The created ``SavedMetric`` (after the second request, when one
@@ -9706,13 +9715,22 @@ class Workspace:
         definition (see Raises). In a project with sharing on, a new
         behavior is private to its creator; this API cannot share it.
 
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or a legacy funnel step key of an exclusion) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawBehaviorDefinition``, with or
+        without ``validate``, and a copy of a stored behavior works. A
+        definition compiled from a typed value never has one; if it does,
+        the method refuses it (``SM4_SCHEMA``).
+
         Args:
             params: Name, behavior definition, and optional description.
             validate: Check the definition with the mirror of the server
                 schema before the request (default), including the refusal
-                of legacy keys such as a behavior ``filter``. ``False``
-                sends it as given; the server still checks a create and
-                answers a failing definition with a 400 (``QueryError``).
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
 
         Returns:
             The created ``SavedBehavior``.
@@ -9745,7 +9763,7 @@ class Workspace:
         """
         check_name(params.name, entity="saved behavior")
         check_description(params.description, entity="saved behavior")
-        definition = behavior_wire_definition(params.behavior)
+        definition = behavior_wire_definition(params.behavior, for_create=True)
         behavior_type = self._saved_behavior_type(definition)
         if validate:
             check_behavior_definition(definition, for_create=True)

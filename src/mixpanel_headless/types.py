@@ -16681,6 +16681,13 @@ class RawMetricDefinition:
     outside the definition. The write methods check the dict with the
     mirror of the server's POST schema before they send it.
 
+    Stored definitions can carry legacy keys (for example a behavior
+    ``filter``, or the ``id`` and ``type`` of a measurement) that the
+    server reads past at query time but refuses on a create.
+    ``create_metric`` removes them from the copy that it sends, so a copy
+    of a stored metric works. An update sends the dict as given, because
+    the server stores an update as sent.
+
     Attributes:
         type: The metric kind: ``"metric"`` (a behavior metric),
             ``"formula"``, or ``"warehouse"``.
@@ -16750,6 +16757,13 @@ class RawBehaviorDefinition:
     saved behavior comes from ``definition["behavior"]["type"]``. The write
     methods check the dict with the mirror of the server's POST schema
     before they send it.
+
+    Stored definitions can carry legacy keys (for example a behavior
+    ``filter``, or a legacy funnel step key of an exclusion) that the
+    server reads past at query time but refuses on a create.
+    ``create_behavior`` removes them from the copy that it sends, so a copy
+    of a stored behavior works. An update sends the dict as given, because
+    the server stores an update as sent.
 
     Attributes:
         definition: The wire definition dict.

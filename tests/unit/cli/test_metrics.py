@@ -23,6 +23,10 @@ import pytest
 import typer.testing
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.saved_definitions import (
+    find_server_skipped_keys,
+    strip_server_skipped_keys,
+)
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import ParamValidationError, QueryError
 from mixpanel_headless.types import RawMetricDefinition, SavedMetric
@@ -32,6 +36,8 @@ from tests.unit._saved_metric_fixtures import (
     behavior_metric_json,
     envelope,
     formula_metric_json,
+    legacy_formula_metric_json,
+    legacy_funnel_metric_json,
     warehouse_metric_json,
 )
 
@@ -965,3 +971,54 @@ class TestWriteErrorsHideTheRequest:
         assert "debug-param" in result.stderr
         assert "title:" in result.stderr
         assert "debug-body" in result.stderr
+
+
+class TestCopyThroughStdin:
+    """`mp metrics get --jq .definition | mp metrics create --definition-file -`."""
+
+    @pytest.mark.parametrize(
+        ("row", "kind"),
+        [
+            (legacy_funnel_metric_json(), "metric"),
+            (legacy_formula_metric_json(), "formula"),
+        ],
+    )
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_stored_definition_with_legacy_keys_copies(
+        self, mock_get_ws: MagicMock, row: dict[str, Any], kind: str
+    ) -> None:
+        """The printed definition of a stored metric creates a copy without legacy keys.
+
+        Args:
+            mock_get_ws: Patched get_workspace.
+            row: A stored metric whose definition has legacy keys.
+            kind: The metric kind of the row.
+        """
+        bodies: list[Any] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record the create body and accept it.
+
+            Args:
+                request: The create request.
+
+            Returns:
+                The created metric.
+            """
+            assert (request.method, request.url.path) == ("POST", _METRICS_PATH)
+            bodies.append(json.loads(request.content))
+            return httpx.Response(200, json=envelope(behavior_metric_json(7)))
+
+        mock_get_ws.return_value = _workspace_on(handler)
+        result = runner.invoke(
+            app,
+            ["metrics", "create", "--name", "copy", "--definition-file", "-"],
+            input=json.dumps(row["definition"]),
+        )
+        assert result.exit_code == 0, result.output
+        (body,) = bodies
+        assert body["type"] == kind
+        assert find_server_skipped_keys(kind, body["definition"]) == []
+        expected = json.loads(json.dumps(row["definition"]))
+        strip_server_skipped_keys(kind, expected)
+        assert body["definition"] == expected

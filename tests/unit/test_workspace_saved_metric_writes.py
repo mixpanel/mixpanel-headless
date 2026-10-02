@@ -13,6 +13,7 @@ Every refusal test also checks that no request left the client.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from pathlib import Path
@@ -31,6 +32,10 @@ from mixpanel_headless._internal.query.metric_builders import (
     build_behavior_definition,
     build_formula_definition,
     build_metric_definition,
+)
+from mixpanel_headless._internal.saved_definitions import (
+    find_server_skipped_keys,
+    strip_server_skipped_keys,
 )
 from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
@@ -67,6 +72,9 @@ from tests.unit._saved_metric_fixtures import (
     behavior_metric_json,
     envelope,
     formula_metric_json,
+    legacy_behavior_json,
+    legacy_formula_metric_json,
+    legacy_funnel_metric_json,
     saved_behavior_json,
     warehouse_metric_json,
 )
@@ -1169,14 +1177,10 @@ class TestTypedWrites:
         assert exc_info.value.details["path"] == "definition.behavior.filter"
         assert server.requests == []
 
-    def test_create_refuses_a_raw_legacy_key_update_sends_it(
+    def test_create_strips_a_raw_legacy_key_update_sends_it(
         self, temp_dir: Path
     ) -> None:
-        """A raw legacy key fails SM4 on create; an update sends it as given.
-
-        A create with ``validate=False`` also sends it, and leaves the
-        refusal to the server.
-        """
+        """A raw legacy key is removed on create, also with validate=False; an update sends it."""
         raw = RawMetricDefinition(
             "metric",
             {
@@ -1192,30 +1196,96 @@ class TestTypedWrites:
             }
         )
         ws = _make_workspace(temp_dir, server)
-        with pytest.raises(ParamValidationError) as exc_info:
-            ws.create_metric(CreateMetricParams(name="n", definition=raw))
-        assert exc_info.value.details["path"] == "definition.behavior.filter"
-        assert server.requests == []
-        ws.update_metric(1, UpdateMetricParams(definition=raw))
-        assert server.body(1)["definition"]["behavior"]["filter"] == []
+        ws.create_metric(CreateMetricParams(name="n", definition=raw))
+        assert server.body(0)["definition"]["behavior"] == {
+            "type": "event",
+            "name": "Login",
+        }
         ws.create_metric(CreateMetricParams(name="n", definition=raw), validate=False)
-        assert server.body(2)["definition"]["behavior"]["filter"] == []
+        assert "filter" not in server.body(1)["definition"]["behavior"]
+        ws.update_metric(1, UpdateMetricParams(definition=raw))
+        assert server.body(3)["definition"]["behavior"]["filter"] == []
 
-    def test_create_behavior_refuses_a_raw_legacy_key(self, temp_dir: Path) -> None:
-        """A raw behavior definition with a legacy key fails SM4 on create."""
-        server = _Server({})
+    @pytest.mark.parametrize(
+        ("row", "kind"),
+        [
+            (legacy_funnel_metric_json(), "metric"),
+            (legacy_formula_metric_json(), "formula"),
+        ],
+    )
+    @pytest.mark.parametrize("validate", [True, False])
+    def test_copy_of_a_stored_metric_with_legacy_keys(
+        self, temp_dir: Path, row: dict[str, Any], kind: str, validate: bool
+    ) -> None:
+        """to_raw_definition then create_metric sends no legacy key.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            row: A stored metric whose definition has legacy keys.
+            kind: The metric kind of the row.
+            validate: Whether the schema mirror runs.
+        """
+        server = _Server({("POST", _METRICS_PATH): _ok(behavior_metric_json(5))})
         ws = _make_workspace(temp_dir, server)
-        with pytest.raises(ParamValidationError) as exc_info:
-            ws.create_behavior(
-                CreateBehaviorParams(
-                    name="b",
-                    behavior=RawBehaviorDefinition(
-                        {"behavior": {"type": "funnel", "filter": []}}
-                    ),
-                )
-            )
-        assert exc_info.value.code == "SM4_SCHEMA"
-        assert server.requests == []
+        source = SavedMetric.model_validate(row)
+        ws.create_metric(
+            CreateMetricParams(name="copy", definition=source.to_raw_definition()),
+            validate=validate,
+        )
+        body = server.body(0)
+        assert body["type"] == kind
+        expected = copy.deepcopy(row["definition"])
+        strip_server_skipped_keys(kind, expected)
+        assert body["definition"] == expected
+        assert find_server_skipped_keys(kind, body["definition"]) == []
+        assert source.definition == row["definition"]
+
+    @pytest.mark.parametrize("validate", [True, False])
+    def test_copy_of_a_stored_behavior_with_legacy_keys(
+        self, temp_dir: Path, validate: bool
+    ) -> None:
+        """A stored behavior copied through RawBehaviorDefinition sends no legacy key.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            validate: Whether the schema mirror runs.
+        """
+        row = legacy_behavior_json()
+        server = _Server({("POST", _BEHAVIORS_PATH): _ok(saved_behavior_json(6))})
+        ws = _make_workspace(temp_dir, server)
+        source = SavedBehavior.model_validate(row)
+        ws.create_behavior(
+            CreateBehaviorParams(
+                name="copy", behavior=RawBehaviorDefinition(source.definition)
+            ),
+            validate=validate,
+        )
+        definition = server.body(0)["definition"]
+        assert find_server_skipped_keys("behavior", definition) == []
+        assert definition["behavior"]["exclusions"] == [
+            {"event": "Refund", "steps": {"from": 0, "to": 1}}
+        ]
+        assert (
+            definition["behavior"]["behaviors"]
+            == (row["definition"]["behavior"]["behaviors"])
+        )
+        assert server.body(0)["type"] == "funnel"
+
+    def test_update_behavior_sends_a_raw_legacy_key(self, temp_dir: Path) -> None:
+        """An update of a behavior sends a raw definition with its legacy keys."""
+        row = legacy_behavior_json(3)
+        server = _Server(
+            {
+                ("GET", f"{_BEHAVIORS_PATH}/3"): _ok(saved_behavior_json(3)),
+                ("PATCH", f"{_BEHAVIORS_PATH}/3"): _ok(saved_behavior_json(3)),
+            }
+        )
+        ws = _make_workspace(temp_dir, server)
+        ws.update_behavior(
+            3,
+            UpdateBehaviorParams(behavior=RawBehaviorDefinition(row["definition"])),
+        )
+        assert server.body(1)["definition"] == row["definition"]
 
     def test_update_behavior_type_change_refused(self, temp_dir: Path) -> None:
         """A retention behavior for a stored funnel behavior raises SM3."""

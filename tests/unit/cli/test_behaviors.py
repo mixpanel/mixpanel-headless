@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -20,12 +21,17 @@ import pytest
 import typer.testing
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.saved_definitions import find_server_skipped_keys
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.exceptions import QueryError, ServerError
 from mixpanel_headless.types import RawBehaviorDefinition, SavedBehavior
 from mixpanel_headless.workspace import Workspace
 from tests.conftest import make_session
-from tests.unit._saved_metric_fixtures import saved_behavior_json
+from tests.unit._saved_metric_fixtures import (
+    envelope,
+    legacy_behavior_json,
+    saved_behavior_json,
+)
 
 runner = typer.testing.CliRunner()
 
@@ -399,3 +405,46 @@ class TestWriteErrorsHideTheRequest:
         assert "A behavior with that name already exists" in result.stderr
         assert "secret-definition" not in result.stderr
         assert "definition:" not in result.stderr
+
+
+class TestCopyThroughStdin:
+    """`mp behaviors get --jq .definition | mp behaviors create --definition-file -`."""
+
+    @patch("mixpanel_headless.cli.commands.behaviors.get_workspace")
+    def test_stored_definition_with_legacy_keys_copies(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """The printed definition of a stored behavior creates a copy without legacy keys."""
+        row = legacy_behavior_json()
+        bodies: list[Any] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record the create body and accept it.
+
+            Args:
+                request: The create request.
+
+            Returns:
+                The created behavior.
+            """
+            assert request.method == "POST"
+            bodies.append(json.loads(request.content))
+            return httpx.Response(200, json=envelope(saved_behavior_json(9)))
+
+        session = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(handler)
+        )
+        mock_get_ws.return_value = Workspace(session=session, _api_client=client)
+        result = runner.invoke(
+            app,
+            ["behaviors", "create", "--name", "copy", "--definition-file", "-"],
+            input=json.dumps(row["definition"]),
+        )
+        assert result.exit_code == 0, result.output
+        (body,) = bodies
+        assert body["type"] == "funnel"
+        assert find_server_skipped_keys("behavior", body["definition"]) == []
+        assert body["definition"]["behavior"]["exclusions"] == [
+            {"event": "Refund", "steps": {"from": 0, "to": 1}}
+        ]

@@ -45,6 +45,7 @@ from mixpanel_headless._internal.saved_definitions import (
     metric_wire_parts,
     prepare_metric_change,
     prepare_new_metric,
+    strip_server_skipped_keys,
 )
 from mixpanel_headless.exceptions import CODED_GUARD_REGISTRY, ParamValidationError
 from mixpanel_headless.types import (
@@ -68,8 +69,12 @@ from mixpanel_headless.types import (
     WarehouseMetric,
 )
 from tests.unit._saved_metric_fixtures import (
+    LEGACY_KEY_PATHS,
     behavior_metric_json,
     formula_metric_json,
+    legacy_behavior_json,
+    legacy_formula_metric_json,
+    legacy_funnel_metric_json,
     saved_behavior_json,
     warehouse_metric_json,
 )
@@ -946,28 +951,102 @@ class TestServerSkippedKeys:
         )
         definition = behavior_wire_definition(FunnelBehavior(["a", "b"]))
         assert definition == {"behavior": {"type": "funnel", "filter": []}}
+        assert behavior_wire_definition(
+            FunnelBehavior(["a", "b"]), for_create=True
+        ) == {"behavior": {"type": "funnel", "filter": []}}
         with pytest.raises(ParamValidationError) as exc_info:
             check_behavior_definition(definition, for_create=True)
         assert exc_info.value.details["path"] == "definition.behavior.filter"
 
-    def test_create_refuses_a_raw_skipped_key(self) -> None:
-        """A raw definition with a legacy key fails SM4 on create, not on update."""
-        raw = RawMetricDefinition(
-            "metric",
-            {
-                "behavior": {"type": "event", "name": "x", "filter": []},
-                "measurement": {},
-            },
-        )
-        with pytest.raises(ParamValidationError) as exc_info:
-            prepare_new_metric(raw, None, None, validate=True, for_create=True)
-        assert exc_info.value.code == "SM4_SCHEMA"
-        assert exc_info.value.details["path"] == "definition.behavior.filter"
-        prepare_new_metric(raw, None, None, validate=True, for_create=False)
-        prepare_new_metric(raw, None, None, validate=False, for_create=True)
+    @pytest.mark.parametrize(
+        ("kind", "row"),
+        [
+            ("metric", legacy_funnel_metric_json()),
+            ("formula", legacy_formula_metric_json()),
+            ("behavior", legacy_behavior_json()),
+        ],
+    )
+    def test_strip_removes_every_skipped_key(
+        self, kind: str, row: dict[str, Any]
+    ) -> None:
+        """strip_server_skipped_keys removes the keys in place and returns their paths.
 
-    def test_behavior_create_refuses_a_raw_skipped_key(self) -> None:
-        """A raw behavior definition with a legacy key fails SM4 on create only."""
+        Args:
+            kind: The definition kind.
+            row: A stored row whose definition has legacy keys.
+        """
+        definition = row["definition"]
+        assert strip_server_skipped_keys(kind, definition) == LEGACY_KEY_PATHS[kind]
+        assert find_server_skipped_keys(kind, definition) == []
+        assert strip_server_skipped_keys(kind, definition) == []
+
+    def test_strip_keeps_the_keys_that_a_create_accepts(self) -> None:
+        """Only skipped keys go: operand metric_id and the other keys stay."""
+        definition = legacy_formula_metric_json()["definition"]
+        strip_server_skipped_keys("formula", definition)
+        assert definition == {
+            "formula": {
+                "definition": "A / B",
+                "referencedMetrics": [
+                    {"type": "metric", "id": 104700, "metric_id": "104700"},
+                    {
+                        "type": "metric",
+                        "behavior": {"type": "event", "name": "Visit"},
+                        "measurement": {"math": "total"},
+                    },
+                ],
+            }
+        }
+
+    @pytest.mark.parametrize("validate", [True, False])
+    def test_create_strips_a_raw_skipped_key(self, validate: bool) -> None:
+        """A raw definition loses its legacy keys on create, with or without validate.
+
+        Args:
+            validate: Whether the schema mirror runs.
+        """
+        raw = SavedMetric.model_validate(
+            legacy_funnel_metric_json()
+        ).to_raw_definition()
+        parts = prepare_new_metric(raw, None, None, validate=validate, for_create=True)
+        assert find_server_skipped_keys("metric", parts.definition) == []
+        assert parts.definition["behavior"]["exclusions"] == [
+            {"event": "Refund", "steps": {"from": 0, "to": 1}}
+        ]
+        assert parts.definition["measurement"] == {"math": "conversion_rate_unique"}
+        assert parts.definition["display"] == {"suffix": "%", "precision": 1}
+        assert raw.definition["behavior"]["filter"] == []
+
+    def test_update_keeps_a_raw_skipped_key(self) -> None:
+        """An update sends a raw definition with its legacy keys, as given."""
+        raw = SavedMetric.model_validate(
+            legacy_funnel_metric_json()
+        ).to_raw_definition()
+        parts = prepare_new_metric(raw, None, None, validate=True, for_create=False)
+        assert (
+            find_server_skipped_keys("metric", parts.definition)
+            == (LEGACY_KEY_PATHS["metric"])
+        )
+
+    def test_behavior_wire_definition_strips_a_raw_definition_for_create(
+        self,
+    ) -> None:
+        """A raw behavior loses its legacy keys for a create, not otherwise."""
+        raw = RawBehaviorDefinition(legacy_behavior_json()["definition"])
+        created = behavior_wire_definition(raw, for_create=True)
+        assert find_server_skipped_keys("behavior", created) == []
+        assert created["behavior"]["exclusions"] == [
+            {"event": "Refund", "steps": {"from": 0, "to": 1}}
+        ]
+        check_behavior_definition(created, for_create=True)
+        assert (
+            find_server_skipped_keys("behavior", behavior_wire_definition(raw))
+            == (LEGACY_KEY_PATHS["behavior"])
+        )
+        assert raw.definition["behavior"]["filter"] == []
+
+    def test_behavior_check_still_refuses_a_skipped_key(self) -> None:
+        """check_behavior_definition refuses a legacy key on create only."""
         definition = {"behavior": {"type": "funnel", "filter": []}}
         with pytest.raises(ParamValidationError) as exc_info:
             check_behavior_definition(definition, for_create=True)

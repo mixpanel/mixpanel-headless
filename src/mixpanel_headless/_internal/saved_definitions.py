@@ -58,6 +58,7 @@ from mixpanel_headless.types import (
     MetricDisplay,
     MetricGoal,
     RawBehaviorDefinition,
+    RawMetricDefinition,
     RetentionMetric,
     SavedMetric,
     WarehouseMetric,
@@ -179,7 +180,9 @@ def metric_wire_parts(definition: MetricDefinition) -> MetricWireParts:
     )
 
 
-def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
+def behavior_wire_definition(
+    behavior: BehaviorDefinition, *, for_create: bool = False
+) -> dict[str, Any]:
     """Turn a saved behavior definition value into its wire definition.
 
     Args:
@@ -187,6 +190,11 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
             ``RetentionBehavior`` (compiled with the same builders as the
             behavior of a query metric, without a name), or a
             ``RawBehaviorDefinition`` (copied as given).
+        for_create: The definition goes into a create, so the copy of a
+            ``RawBehaviorDefinition`` loses the legacy keys that the
+            server's create schema leaves out (see
+            :func:`strip_server_skipped_keys`). A compiled definition is
+            never changed.
 
     Returns:
         A new ``{"behavior": {...}}`` dict that the caller may change.
@@ -198,7 +206,10 @@ def behavior_wire_definition(behavior: BehaviorDefinition) -> dict[str, Any]:
         ```
     """
     if isinstance(behavior, RawBehaviorDefinition):
-        return _copy_mapping(behavior.definition)
+        definition = _copy_mapping(behavior.definition)
+        if for_create:
+            strip_server_skipped_keys("behavior", definition)
+        return definition
     return build_behavior_definition(behavior)
 
 
@@ -375,9 +386,12 @@ def check_metric_definition(
             ``"warehouse"``.
         definition: The wire definition.
         for_create: Also refuse the legacy keys that the server's create
-            schema leaves out (see :func:`find_server_skipped_keys`). An
-            update does not refuse them, because the server stores an
-            update as sent and stored definitions carry them.
+            schema leaves out (see :func:`find_server_skipped_keys`). The
+            create path removes them from a raw definition first (see
+            :func:`prepare_new_metric`), so this refusal catches them in a
+            compiled definition. An update does not refuse them, because
+            the server stores an update as sent and stored definitions
+            carry them.
 
     Raises:
         ParamValidationError: The definition fails the mirror
@@ -400,7 +414,9 @@ def check_behavior_definition(
     Args:
         definition: The wire definition, ``{"behavior": {...}}``.
         for_create: Also refuse the legacy keys that the server's create
-            schema leaves out.
+            schema leaves out. The create path removes them from a raw
+            definition first (see :func:`behavior_wire_definition`), so
+            this refusal catches them in a compiled definition.
 
     Raises:
         ParamValidationError: The definition fails the mirror
@@ -424,8 +440,10 @@ def check_behavior_definition(
 # that schema, whose objects forbid extra keys. So such a key is read past at
 # query time but rejects a create. The mirror declares the same fields with
 # the same marker, and these helpers find them in a definition. A create
-# refuses them in every definition, raw or compiled from a typed value; an
-# update sends a definition as given, because stored definitions carry them.
+# removes them from a raw definition (stored definitions carry them, and a
+# copy must work) and refuses them in a definition compiled from a typed
+# value, where one means a builder bug. An update sends a definition as
+# given, because the server stores an update as sent.
 
 _SKIPPED_KEY_ROOTS: Final[dict[str, type[BaseModel]]] = {
     **SAVED_METRIC_DEFINITION_MODELS,
@@ -473,13 +491,16 @@ def _nested_model(annotation: Any) -> type[BaseModel] | None:
     return None
 
 
-def _walk_skipped(model: type[BaseModel], data: Any, path: str) -> list[str]:
+def _walk_skipped(
+    model: type[BaseModel], data: Any, path: str, *, remove: bool = False
+) -> list[str]:
     """Find the skipped keys of one mirror model in a value, recursively.
 
     Args:
         model: The mirror model that describes ``data``.
         data: The value to walk (mappings and lists are walked).
         path: The dotted path of ``data``.
+        remove: Also delete each skipped key from its ``dict``.
 
     Returns:
         The dotted path of each skipped key, in walk order.
@@ -487,21 +508,26 @@ def _walk_skipped(model: type[BaseModel], data: Any, path: str) -> list[str]:
     found: list[str] = []
     if isinstance(data, list):
         for index, item in enumerate(data):
-            found += _walk_skipped(model, item, f"{path}[{index}]")
+            found += _walk_skipped(model, item, f"{path}[{index}]", remove=remove)
         return found
     if not isinstance(data, Mapping):
         return found
     fields = {(info.alias or name): info for name, info in model.model_fields.items()}
+    skipped: list[str] = []
     for key, value in data.items():
         info = fields.get(key)
         if info is None:
             continue
         if _is_skipped(info):
             found.append(f"{path}.{key}")
+            skipped.append(key)
             continue
         nested = _nested_model(info.annotation)
         if nested is not None:
-            found += _walk_skipped(nested, value, f"{path}.{key}")
+            found += _walk_skipped(nested, value, f"{path}.{key}", remove=remove)
+    if remove and isinstance(data, dict):
+        for key in skipped:
+            del data[key]
     return found
 
 
@@ -522,6 +548,37 @@ def find_server_skipped_keys(kind: str, definition: Mapping[str, Any]) -> list[s
         ```
     """
     return _walk_skipped(_SKIPPED_KEY_ROOTS[kind], definition, "definition")
+
+
+def strip_server_skipped_keys(kind: str, definition: dict[str, Any]) -> list[str]:
+    """Remove, in place, the legacy keys that the server's create schema leaves out.
+
+    The keys are the mirror fields marked ``SkipJsonSchema``, at every depth
+    the mirror describes (for example ``behavior.filter``, the legacy funnel
+    step keys of an exclusion, and the legacy ``id`` and ``type`` of a
+    measurement). The server reads past them at query time, so the
+    definition means the same without them. Keys that the create schema
+    accepts, such as the ``metric_id`` of a saved formula operand, stay.
+
+    Args:
+        kind: ``"metric"``, ``"formula"``, ``"warehouse"``, or ``"behavior"``.
+        definition: The wire definition; it is changed in place.
+
+    Returns:
+        The dotted path of each removed key, in walk order.
+
+    Example:
+        ```python
+        definition = {"behavior": {"type": "event", "filter": []}}
+        strip_server_skipped_keys("behavior", definition)
+        # ["definition.behavior.filter"]
+        definition
+        # {"behavior": {"type": "event"}}
+        ```
+    """
+    return _walk_skipped(
+        _SKIPPED_KEY_ROOTS[kind], definition, "definition", remove=True
+    )
 
 
 def _refuse_skipped_keys(
@@ -817,8 +874,11 @@ def prepare_new_metric(
             legacy-key refusal of ``for_create``, and the server then
             answers a failing create with a 400; the operand rule still
             runs.
-        for_create: The definition goes into a create, so the mirror also
-            refuses legacy keys that the server's create schema leaves out.
+        for_create: The definition goes into a create. A
+            ``RawMetricDefinition`` loses the legacy keys that the server's
+            create schema leaves out (see :func:`strip_server_skipped_keys`),
+            with or without ``validate``. In a definition compiled from a
+            typed value, the mirror refuses them.
 
     Returns:
         The wire pieces, with display and goals written in.
@@ -829,6 +889,8 @@ def prepare_new_metric(
             fails the schema mirror (``SM4_SCHEMA``).
     """
     parts = metric_wire_parts(definition)
+    if for_create and isinstance(definition, RawMetricDefinition):
+        strip_server_skipped_keys(parts.kind, parts.definition)
     apply_presentation(parts.definition, display=display, goals=goals)
     if parts.kind == "formula":
         check_formula_operands(parts.definition)
