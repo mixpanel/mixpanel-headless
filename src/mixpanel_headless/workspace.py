@@ -9658,7 +9658,8 @@ class Workspace:
         Args:
             where: Filter profiles by property values. Accepts a single
                 ``Filter``, a list of ``Filter`` objects (AND-combined),
-                a raw selector string, or ``None``.
+                a raw selector string, or ``None``. See :meth:`query_user`
+                for the supported ``Filter`` constructors.
             cohort: Filter by cohort membership. An ``int`` for a saved
                 cohort ID, or a ``CohortDefinition`` for an inline
                 cohort definition.
@@ -10045,7 +10046,25 @@ class Workspace:
         Args:
             where: Filter profiles by property values. Accepts a single
                 ``Filter``, a list of ``Filter`` objects (AND-combined),
-                a raw selector string, or ``None``.
+                a raw Engage selector string, or ``None``. These
+                ``Filter`` constructors are supported: ``equals``,
+                ``not_equals``, ``contains``, ``not_contains``,
+                ``greater_than``, ``less_than``, ``at_least``,
+                ``at_most``, ``between``, ``not_between``, ``is_set``,
+                ``is_not_set``, ``is_true``, ``is_false``, ``on``,
+                ``not_on``, ``before``, ``since``, ``date_between``,
+                ``date_not_between``, ``in_the_last``,
+                ``not_in_the_last``, ``in_the_next``, and one
+                ``in_cohort``. Absolute dates are whole days in the
+                project timezone. ``in_the_last``, ``not_in_the_last``,
+                and ``in_the_next`` are rolling windows measured from
+                the server's clock when the query runs, not calendar
+                days. A week is 7 days, a month is 30 days, and a
+                window can span at most 50 years. ``starts_with``,
+                ``ends_with``, and ``list_contains`` have no Engage
+                selector form: they raise ``BookmarkValidationError``
+                with a workaround in the message. ``not_in_cohort`` is
+                also rejected.
             cohort: Filter by cohort membership. An ``int`` for a saved
                 cohort ID, or a ``CohortDefinition`` for an inline
                 cohort definition.
@@ -10256,7 +10275,9 @@ class Workspace:
         Args:
             where: Filter profiles by property values. Accepts a single
                 ``Filter``, a list of ``Filter`` objects (AND-combined),
-                a raw selector string, or ``None``.
+                a raw selector string, or ``None``. The supported
+                ``Filter`` constructors and the date rules are the same
+                as for :meth:`query_user`.
             cohort: Filter by cohort membership. An ``int`` for a saved
                 cohort ID, or a ``CohortDefinition`` for an inline
                 cohort definition.

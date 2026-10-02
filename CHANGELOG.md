@@ -65,6 +65,23 @@ may include API changes.
 - Plugin: examples and parameter names that no longer matched the
   library are corrected (for example, `query_user()` takes `where=`, not
   `filters=`).
+- `Workspace.query_user(where=...)` now accepts the date filters
+  (`Filter.on`, `not_on`, `before`, `since`, `date_between`,
+  `date_not_between`, `in_the_last`, `not_in_the_last`, `in_the_next`)
+  and `Filter.at_least`, `at_most`, and `not_between`. Before, these
+  failed with `Unsupported filter operator`. Absolute dates are whole
+  days in the project timezone, as in Insights. Relative dates are
+  rolling windows measured from the server's clock when the query runs,
+  not calendar days, so a count near the start of the window can differ
+  from Insights; a window can span at most 50 years.
+- `Filter.starts_with`, `ends_with`, and `list_contains` still cannot be
+  used in `query_user(where=...)`, because the Engage profile selector
+  has no form for them. They now fail with a `ParamValidationError`
+  (code `ES14_NO_SELECTOR_EQUIVALENT`, wrapped in
+  `BookmarkValidationError`) whose message names the constructor and a
+  workaround. New codes `ES15` to `ES20` reject a malformed value on a
+  directly constructed date, relative-date, `at_least`, or `at_most`
+  `Filter`.
 
 ## 0.3.0 — 2026-09-22
 
