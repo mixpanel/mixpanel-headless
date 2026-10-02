@@ -112,6 +112,43 @@ The server has no pagination, no filters, and no search. One request fetches eve
 
 `get_metric` raises `QueryError` with `status_code == 404` for an unknown or deleted id. The server does not answer an unknown behavior id with 404: `get_behavior` raises `ServerError` (500) instead.
 
+## Query by reference
+
+A saved metric runs in a query by id. Pass a `SavedMetric` to `ws.query()` or `ws.build_params()` anywhere a `Metric` goes, or pass the reference it makes with `to_ref()`:
+
+```python
+import mixpanel_headless as mp
+
+# The verified metrics of the project, side by side
+verified = ws.list_metrics(verified=True)
+result = ws.query(verified[:3], from_date="2026-09-01", to_date="2026-09-28")
+
+# One metric with a report-level change (an override)
+signup_rate = ws.get_metric(88999)
+result = ws.query(signup_rate.to_ref(segment_method="first"), group_by="$os")
+
+# A reference by id alone, without reading the metric first
+result = ws.query(mp.MetricRef(88999), last=30)
+```
+
+The params keep the reference as `{"type": ..., "id": ..., "overrides": ...}`. The server replaces it with the saved definition at query time. So a report or a report link built from the params follows later edits to the saved metric, as a report built in the web app does.
+
+The keyword arguments of `to_ref()` are the typed overrides of `MetricRef` (`label`, `math`, `property`, `per_user`, `percentile_value`, `segment_method`, `funnel_order`, `step_index`, `bucket_index`, `hidden`, and a raw `overrides` dict). They change the saved definition for one query only. Filters are not an override: the server merges override lists item by item, so the library refuses a `filters` override (`MR1_FILTER_OVERRIDE`). Use report-level `where=` instead, or send the metric inline. A legacy row (`type: "behavior"`) does not run by reference (`MR5_INVALID_TYPE`).
+
+A saved behavior runs in the funnel and retention engines in place of the steps or the events:
+
+```python
+checkout = ws.get_behavior(3120)                 # a saved funnel behavior
+result = ws.query_funnel(checkout, last=90)       # or checkout.to_ref()
+
+onboarding = ws.get_behavior(4410)               # a saved retention behavior
+result = ws.query_retention(onboarding)
+```
+
+The saved behavior owns its steps and settings, so the engine arguments that change them (for example `conversion_window` or `retention_unit`) must keep their defaults. The engines check the behavior type: a funnel query needs a `funnel` behavior, and a retention query needs a `retention` behavior.
+
+A reference changes the result labels: the series takes the saved name, with no math suffix such as `[Total Events]`. See [Insights Queries — Saved Metrics by Reference](query.md#saved-metrics-by-reference) for the override table, warehouse metrics, and every rule.
+
 ## Delete
 
 The server's single-metric delete route answers 501, and its single-behavior delete route skips the permission check. So the library deletes through the **bulk** routes only. A delete is a soft delete on the server: the row leaves the lists, and reports that refer to it keep a copy of the definition but lose the link.
@@ -176,5 +213,5 @@ Projects without sharing add more flags (for example `can_update_restricted`). T
 
 - [API Reference — Workspace](../api/workspace.md) — Method signatures and docstrings
 - [API Reference — Types](../api/types.md) — `SavedMetric`, `SavedBehavior`, `MetricDisplay`, `MetricGoal`
-- [Insights Queries](query.md) — Inline metrics and formulas
+- [Insights Queries](query.md) — Inline metrics, formulas, and saved metrics by reference
 - [Entity Management](entity-management.md) — Dashboards, reports, cohorts, and other entities

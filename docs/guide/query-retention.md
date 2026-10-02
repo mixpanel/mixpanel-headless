@@ -139,6 +139,18 @@ result = ws.query_retention(
 
 See [Insights Queries — Filters](query.md#filters) for the full list of `Filter` factory methods.
 
+### A Saved Retention Behavior
+
+Pass a `BehaviorRef` as `born_event`, with no `return_event`, to run a saved retention behavior by id. The saved behavior sets both events, the retention unit, the alignment, the buckets, and the unbounded mode, so leave those arguments at their defaults:
+
+```python
+from mixpanel_headless import BehaviorRef
+
+result = ws.query_retention(BehaviorRef(4410, "retention"), math="unique")
+```
+
+See [Saved Metrics by Reference](query.md#saved-behaviors-in-funnels-and-retention) for the rules.
+
 ## Retention Unit
 
 Control the retention period granularity:

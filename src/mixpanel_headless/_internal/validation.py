@@ -3,10 +3,10 @@
 Two validation layers:
 
 - ``validate_query_args()``: Validates Python-level arguments before
-  bookmark construction (Layer 1, rules V0-V27, CF1-CF2, CB1-CB3,
+  bookmark construction (Layer 1, rules V0-V29, CF1-CF2, CB1-CB3,
   CM1-CM5).
 - ``validate_bookmark()``: Validates the bookmark JSON dict after
-  construction (Layer 2, rules B1-B26).
+  construction (Layer 2, rules B1-B29).
 
 Both return ``list[ValidationError]``. Callers decide whether to raise
 ``BookmarkValidationError``.
@@ -68,6 +68,7 @@ from mixpanel_headless._literal_types import (
 )
 from mixpanel_headless.exceptions import ValidationError
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortBreakdown,
     CohortDefinition,
     CohortMetric,
@@ -84,6 +85,7 @@ from mixpanel_headless.types import (
     InlineCustomProperty,
     MathType,
     Metric,
+    MetricRef,
     PerUserAggregation,
     RetentionEvent,
 )
@@ -224,7 +226,7 @@ def _scan_custom_properties(
     | Sequence[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
     | None = None,
     where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
-    events: Sequence[str | Metric | CohortMetric] | None = None,
+    events: Sequence[str | Metric | CohortMetric | MetricRef] | None = None,
     funnel_steps: Sequence[str | FunnelStep] | None = None,
     flow_steps: Sequence[FlowStep] | None = None,
     retention_events: Sequence[RetentionEvent] | None = None,
@@ -247,8 +249,8 @@ def _scan_custom_properties(
     Args:
         group_by: Breakdown specification (may contain custom properties).
         where: Filter specification (may contain custom properties).
-        events: Event specifications (Metric.property and Metric.filters
-            may contain custom properties).
+        events: Event specifications (Metric.property, Metric.filters,
+            and MetricRef.property may contain custom properties).
         funnel_steps: Funnel step specifications (FunnelStep.filters
             may contain custom properties).
         flow_steps: Flow step specifications (FlowStep.filters
@@ -293,9 +295,15 @@ def _scan_custom_properties(
                 fpath = f"where[{i}]" if len(filters) > 1 else "where"
                 errors.extend(_validate_custom_property(f._property, fpath))
 
-    # Scan events (Metric.property AND Metric.filters)
+    # Scan events (Metric.property AND Metric.filters; MetricRef.property)
     if events is not None:
         for idx, item in enumerate(events):
+            if isinstance(item, MetricRef) and isinstance(
+                item.property, (CustomPropertyRef, InlineCustomProperty)
+            ):
+                errors.extend(
+                    _validate_custom_property(item.property, f"events[{idx}]")
+                )
             if isinstance(item, Metric):
                 if isinstance(item.property, (CustomPropertyRef, InlineCustomProperty)):
                     errors.extend(
@@ -776,6 +784,185 @@ def validate_group_by_args(
 # =============================================================================
 
 
+def _validate_funnel_math_property(
+    math: str,
+    math_property: str | None,
+) -> list[ValidationError]:
+    """Check that a funnel math and its property agree (F10, F11).
+
+    Args:
+        math: Funnel aggregation function.
+        math_property: Numeric property name, or ``None``.
+
+    Returns:
+        ``F10_MATH_MISSING_PROPERTY`` when a property math has no property,
+        ``F11_MATH_REJECTS_PROPERTY`` when another math has one, or an empty
+        list.
+    """
+    errors: list[ValidationError] = []
+
+    # F10: Property math requires math_property
+    if math in MATH_REQUIRING_PROPERTY and math_property is None:
+        errors.append(
+            ValidationError(
+                path="math_property",
+                message=(
+                    f"math='{math}' requires a math_property "
+                    f"(numeric property name to aggregate)"
+                ),
+                code="F10_MATH_MISSING_PROPERTY",
+            )
+        )
+
+    # F11: Non-property math rejects math_property
+    if (
+        math not in MATH_REQUIRING_PROPERTY
+        and math not in MATH_PROPERTY_OPTIONAL
+        and math_property is not None
+    ):
+        valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
+        errors.append(
+            ValidationError(
+                path="math_property",
+                message=(
+                    f"math='{math}' does not support math_property; "
+                    f"valid math types for property aggregation: {valid}"
+                ),
+                code="F11_MATH_REJECTS_PROPERTY",
+            )
+        )
+    return errors
+
+
+def _behavior_ref_errors(
+    behavior: BehaviorRef,
+    *,
+    engine: Literal["funnel", "retention"],
+    path: str,
+    changed_settings: Sequence[str],
+    type_code: str,
+    settings_code: str,
+) -> list[ValidationError]:
+    """Check a saved-behavior reference against the engine that runs it.
+
+    The server expands a behavior id without checking its type, so the
+    client checks it. The saved behavior owns the behavior settings (steps,
+    windows, order, and so on), and the server replaces the whole behavior
+    block, so an engine argument that changes one of them would be ignored.
+
+    Args:
+        behavior: The saved-behavior reference.
+        engine: The behavior type the engine needs.
+        path: Argument name that holds the reference, for the type error.
+        changed_settings: Names of the behavior-setting arguments that the
+            caller set away from their defaults.
+        type_code: Code for a type mismatch.
+        settings_code: Code for each changed setting.
+
+    Returns:
+        One type error when the type differs, plus one error per changed
+        setting.
+    """
+    errors: list[ValidationError] = []
+    if behavior.type != engine:
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    f"BehaviorRef({behavior.id}, {behavior.type!r}) is a "
+                    f"{behavior.type} behavior; this query needs a {engine} "
+                    f"behavior"
+                ),
+                code=type_code,
+            )
+        )
+    for name in changed_settings:
+        errors.append(
+            ValidationError(
+                path=name,
+                message=(
+                    f"{name} cannot be set with a BehaviorRef: the saved "
+                    f"behavior sets it, and the server replaces the whole "
+                    f"behavior with the saved one. Change the saved behavior, "
+                    f"or pass the {engine} inline to set {name}."
+                ),
+                code=settings_code,
+            )
+        )
+    return errors
+
+
+def validate_funnel_ref_args(
+    *,
+    behavior: BehaviorRef,
+    changed_settings: Sequence[str],
+    math: FunnelMathType = "conversion_rate_unique",
+    math_property: str | None = None,
+    from_date: str | None,
+    to_date: str | None,
+    last: int,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None,
+    data_group_id: int | None = None,
+) -> list[ValidationError]:
+    """Validate funnel arguments when a saved behavior replaces the steps.
+
+    Runs the rules that apply to a query over a saved funnel behavior: the
+    behavior type (F13), no behavior setting away from its default (F14),
+    the math and property rules (F10, F11), and the shared time, group-by,
+    data group, and custom property rules.
+
+    Args:
+        behavior: The saved-behavior reference passed as ``steps``.
+        changed_settings: Names of the behavior-setting arguments
+            (``conversion_window``, ``order``, ``exclusions``, and so on)
+            that the caller set away from their defaults.
+        math: Funnel aggregation function.
+        math_property: Numeric property name, or ``None``.
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+        last: Number of days for relative date range.
+        group_by: Breakdown specification.
+        data_group_id: Optional data group ID for group-level analytics.
+
+    Returns:
+        List of validation errors. Empty list means all arguments are valid.
+
+    Example:
+        ```python
+        errors = validate_funnel_ref_args(
+            behavior=BehaviorRef(5, "funnel"),
+            changed_settings=[],
+            from_date=None,
+            to_date=None,
+            last=30,
+            group_by=None,
+        )
+        assert errors == []
+        ```
+    """
+    errors: list[ValidationError] = []
+    errors.extend(_validate_data_group_id(data_group_id))
+    errors.extend(
+        _behavior_ref_errors(
+            behavior,
+            engine="funnel",
+            path="steps",
+            changed_settings=changed_settings,
+            type_code="F13_BEHAVIOR_REF_TYPE",
+            settings_code="F14_BEHAVIOR_REF_SETTINGS",
+        )
+    )
+    errors.extend(_validate_funnel_math_property(math, math_property))
+    errors.extend(validate_time_args(from_date=from_date, to_date=to_date, last=last))
+    errors.extend(validate_group_by_args(group_by=group_by))
+    errors.extend(_scan_custom_properties(group_by=group_by))
+    return errors
+
+
 def validate_funnel_args(
     *,
     steps: Sequence[str | FunnelStep],
@@ -1000,36 +1187,8 @@ def validate_funnel_args(
                 )
             )
 
-    # F10: Property math requires math_property
-    if math in MATH_REQUIRING_PROPERTY and math_property is None:
-        errors.append(
-            ValidationError(
-                path="math_property",
-                message=(
-                    f"math='{math}' requires a math_property "
-                    f"(numeric property name to aggregate)"
-                ),
-                code="F10_MATH_MISSING_PROPERTY",
-            )
-        )
-
-    # F11: Non-property math rejects math_property
-    if (
-        math not in MATH_REQUIRING_PROPERTY
-        and math not in MATH_PROPERTY_OPTIONAL
-        and math_property is not None
-    ):
-        valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
-        errors.append(
-            ValidationError(
-                path="math_property",
-                message=(
-                    f"math='{math}' does not support math_property; "
-                    f"valid math types for property aggregation: {valid}"
-                ),
-                code="F11_MATH_REJECTS_PROPERTY",
-            )
-        )
+    # F10-F11: math and math_property must agree
+    errors.extend(_validate_funnel_math_property(math, math_property))
 
     # F4: Non-empty exclusion event names and step range validation
     if exclusions is not None:
@@ -1174,6 +1333,177 @@ _VALID_RETENTION_MODES: frozenset[str] = frozenset({"curve", "trends", "table"})
 
 _MAX_RETENTION_BUCKETS = 730
 """Maximum number of custom retention buckets allowed by the API."""
+
+
+def _validate_retention_query_rules(
+    *,
+    math: RetentionMathType,
+    mode: RetentionMode,
+    unit: QueryTimeUnit,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None,
+) -> list[ValidationError]:
+    """Check the retention rules that do not depend on the behavior.
+
+    Covers math (R9), display mode (R10), time unit (R11), group-by names
+    (R12), mixed breakdowns (CB3), and custom properties in the breakdown
+    (CP1-CP6).
+
+    Args:
+        math: Retention aggregation function.
+        mode: Display mode.
+        unit: Time unit for retention buckets.
+        group_by: Breakdown specification.
+
+    Returns:
+        List of validation errors, in rule order.
+    """
+    errors: list[ValidationError] = []
+
+    # R9: math validation (public-facing subset)
+    if math not in _VALID_RETENTION_MATH_PUBLIC:
+        errors.append(
+            _enum_error(
+                path="math",
+                field="math",
+                value=math,
+                valid=_VALID_RETENTION_MATH_PUBLIC,
+                code="R9_INVALID_MATH",
+            )
+        )
+
+    # R10: mode validation
+    if mode not in _VALID_RETENTION_MODES:
+        errors.append(
+            _enum_error(
+                path="mode",
+                field="mode",
+                value=str(mode),
+                valid=_VALID_RETENTION_MODES,
+                code="R10_INVALID_MODE",
+            )
+        )
+
+    # R11: unit must be valid for retention context (day, week, month only)
+    if unit not in VALID_RETENTION_UNITS:
+        errors.append(
+            _enum_error(
+                path="unit",
+                field="unit",
+                value=str(unit),
+                valid=VALID_RETENTION_UNITS,
+                code="R11_INVALID_UNIT",
+            )
+        )
+
+    # R12: group_by strings must be non-empty
+    # CB3: CohortBreakdown and GroupBy are mutually exclusive in retention
+    if group_by is not None:
+        gb_list = group_by if isinstance(group_by, list) else [group_by]
+        for i, g in enumerate(gb_list):
+            if isinstance(g, str) and not g.strip():
+                gpath = f"group_by[{i}]" if len(gb_list) > 1 else "group_by"
+                errors.append(
+                    ValidationError(
+                        path=gpath,
+                        message="group_by property name must be a non-empty string",
+                        code="R12_EMPTY_GROUP_BY",
+                    )
+                )
+
+        has_cohort = any(isinstance(g, CohortBreakdown) for g in gb_list)
+        has_property = any(isinstance(g, (str, GroupBy)) for g in gb_list)
+        if has_cohort and has_property:
+            errors.append(
+                ValidationError(
+                    path="group_by",
+                    message=(
+                        "query_retention does not support mixing "
+                        "CohortBreakdown with property GroupBy"
+                    ),
+                    code="CB3_RETENTION_MIXED_BREAKDOWN",
+                )
+            )
+
+    # CP1-CP6: Custom property validation
+    errors.extend(_scan_custom_properties(group_by=group_by))
+    return errors
+
+
+def validate_retention_ref_args(
+    *,
+    behavior: BehaviorRef,
+    changed_settings: Sequence[str],
+    math: RetentionMathType = "retention_rate",
+    mode: RetentionMode = "curve",
+    unit: QueryTimeUnit = "day",
+    from_date: str | None = None,
+    to_date: str | None = None,
+    last: int = 30,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None = None,
+    data_group_id: int | None = None,
+) -> list[ValidationError]:
+    """Validate retention arguments when a saved behavior replaces the events.
+
+    Runs the rules that apply to a query over a saved retention behavior:
+    the behavior type (R14), no behavior setting away from its default
+    (R15), and the math, mode, unit, time, group-by, data group, and custom
+    property rules.
+
+    Args:
+        behavior: The saved-behavior reference passed as ``born_event``.
+        changed_settings: Names of the behavior-setting arguments
+            (``return_event``, ``retention_unit``, ``alignment``,
+            ``bucket_sizes``, ``unbounded_mode``) that the caller set away
+            from their defaults.
+        math: Retention aggregation function.
+        mode: Display mode.
+        unit: Time unit for retention buckets.
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+        last: Number of days for relative date range.
+        group_by: Breakdown specification.
+        data_group_id: Optional data group ID for group-level analytics.
+
+    Returns:
+        List of validation errors. Empty list means all arguments are valid.
+
+    Example:
+        ```python
+        errors = validate_retention_ref_args(
+            behavior=BehaviorRef(6, "retention"),
+            changed_settings=[],
+        )
+        assert errors == []
+        ```
+    """
+    errors: list[ValidationError] = []
+    errors.extend(_validate_data_group_id(data_group_id))
+    errors.extend(
+        _behavior_ref_errors(
+            behavior,
+            engine="retention",
+            path="born_event",
+            changed_settings=changed_settings,
+            type_code="R14_BEHAVIOR_REF_TYPE",
+            settings_code="R15_BEHAVIOR_REF_SETTINGS",
+        )
+    )
+    errors.extend(validate_time_args(from_date=from_date, to_date=to_date, last=last))
+    errors.extend(validate_group_by_args(group_by=group_by))
+    errors.extend(
+        _validate_retention_query_rules(
+            math=math, mode=mode, unit=unit, group_by=group_by
+        )
+    )
+    return errors
 
 
 def validate_retention_args(
@@ -1388,73 +1718,12 @@ def validate_retention_args(
             )
         )
 
-    # R9: math validation (public-facing subset)
-    if math not in _VALID_RETENTION_MATH_PUBLIC:
-        errors.append(
-            _enum_error(
-                path="math",
-                field="math",
-                value=math,
-                valid=_VALID_RETENTION_MATH_PUBLIC,
-                code="R9_INVALID_MATH",
-            )
+    # R9-R12, CB3, CP1-CP6: measurement, display, and breakdown rules
+    errors.extend(
+        _validate_retention_query_rules(
+            math=math, mode=mode, unit=unit, group_by=group_by
         )
-
-    # R10: mode validation
-    if mode not in _VALID_RETENTION_MODES:
-        errors.append(
-            _enum_error(
-                path="mode",
-                field="mode",
-                value=str(mode),
-                valid=_VALID_RETENTION_MODES,
-                code="R10_INVALID_MODE",
-            )
-        )
-
-    # R11: unit must be valid for retention context (day, week, month only)
-    if unit not in VALID_RETENTION_UNITS:
-        errors.append(
-            _enum_error(
-                path="unit",
-                field="unit",
-                value=str(unit),
-                valid=VALID_RETENTION_UNITS,
-                code="R11_INVALID_UNIT",
-            )
-        )
-
-    # R12: group_by strings must be non-empty
-    # CB3: CohortBreakdown and GroupBy are mutually exclusive in retention
-    if group_by is not None:
-        gb_list = group_by if isinstance(group_by, list) else [group_by]
-        for i, g in enumerate(gb_list):
-            if isinstance(g, str) and not g.strip():
-                gpath = f"group_by[{i}]" if len(gb_list) > 1 else "group_by"
-                errors.append(
-                    ValidationError(
-                        path=gpath,
-                        message="group_by property name must be a non-empty string",
-                        code="R12_EMPTY_GROUP_BY",
-                    )
-                )
-
-        has_cohort = any(isinstance(g, CohortBreakdown) for g in gb_list)
-        has_property = any(isinstance(g, (str, GroupBy)) for g in gb_list)
-        if has_cohort and has_property:
-            errors.append(
-                ValidationError(
-                    path="group_by",
-                    message=(
-                        "query_retention does not support mixing "
-                        "CohortBreakdown with property GroupBy"
-                    ),
-                    code="CB3_RETENTION_MIXED_BREAKDOWN",
-                )
-            )
-
-    # CP1-CP6: Custom property validation
-    errors.extend(_scan_custom_properties(group_by=group_by))
+    )
 
     # R13: unbounded_mode validation
     if (
@@ -1882,9 +2151,66 @@ def validate_flow_bookmark(
 # =============================================================================
 
 
+_MEASUREMENT_ARGUMENTS: tuple[tuple[str, str, object], ...] = (
+    ("math", "math", "total"),
+    ("math_property", "property", None),
+    ("per_user", "per_user", None),
+    ("percentile_value", "percentile_value", None),
+)
+"""Query-level measurement arguments: (argument, MetricRef field, default)."""
+
+
+def _ignored_query_measurement(
+    *,
+    math: MathType,
+    math_property: str | None,
+    per_user: PerUserAggregation | None,
+    percentile_value: int | float | None,
+) -> list[ValidationError]:
+    """Refuse query-level measurement arguments that no event would use (V29).
+
+    The caller makes sure that the query has saved-metric references and
+    no plain event name, so nothing consumes these arguments.
+
+    Args:
+        math: Query-level aggregation function.
+        math_property: Query-level property.
+        per_user: Query-level per-user aggregation.
+        percentile_value: Query-level percentile value.
+
+    Returns:
+        One ``V29_QUERY_MEASUREMENT_IGNORED`` error per argument that differs
+        from its default, in argument order.
+    """
+    values = {
+        "math": math,
+        "math_property": math_property,
+        "per_user": per_user,
+        "percentile_value": percentile_value,
+    }
+    errors: list[ValidationError] = []
+    for argument, field, default in _MEASUREMENT_ARGUMENTS:
+        value = values[argument]
+        if value == default:
+            continue
+        errors.append(
+            ValidationError(
+                path=argument,
+                message=(
+                    f"{argument}={value!r} applies only to plain event names, "
+                    "and this query has none: a saved metric keeps its saved "
+                    "measurement. Set it on the reference instead, for "
+                    f"example MetricRef(id, {field}={value!r})."
+                ),
+                code="V29_QUERY_MEASUREMENT_IGNORED",
+            )
+        )
+    return errors
+
+
 def validate_query_args(
     *,
-    events: Sequence[str | Metric | CohortMetric],
+    events: Sequence[str | Metric | CohortMetric | MetricRef],
     math: MathType,
     math_property: str | None,
     per_user: PerUserAggregation | None,
@@ -1903,16 +2229,18 @@ def validate_query_args(
     | None,
     formulas: Sequence[Any] | None = None,
     data_group_id: int | None = None,
+    where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
 ) -> list[ValidationError]:
     """Validate query arguments before bookmark construction (Layer 1).
 
-    Implements validation rules V0-V27, delegating time (V7-V10, V15,
+    Implements validation rules V0-V29, delegating time (V7-V10, V15,
     V20) and group-by (V11-V12, V18, V24) to extracted helpers.
     Returns all errors found, not just the first, so callers can
     fix multiple issues in a single pass.
 
     Args:
-        events: Event names or Metric objects.
+        events: Event names, Metric and CohortMetric objects, and
+            MetricRef references to saved metrics.
         math: Top-level aggregation function.
         math_property: Property for property-based math.
         per_user: Per-user pre-aggregation.
@@ -1926,9 +2254,17 @@ def validate_query_args(
         formulas: Resolved Formula objects (for expression validation).
         data_group_id: Optional data group ID for group-level analytics.
             Must be a positive integer if provided. Default: ``None``.
+        where: Report-level filters. Used only for the warehouse-reference
+            warning (V28); the filters themselves are validated elsewhere.
+            The warning needs the warehouse kind on the reference
+            (``MetricRef(id, type="warehouse")`` or
+            ``SavedMetric.to_ref()``): a bare ``MetricRef(id)`` keeps the
+            default kind, because the client cannot know the saved kind
+            without a read. Default: ``None``.
 
     Returns:
         List of validation errors. Empty list means all arguments are valid.
+        V28 entries have ``severity="warning"``.
     """
     errors: list[ValidationError] = []
 
@@ -1949,18 +2285,22 @@ def validate_query_args(
     for idx, item in enumerate(events):
         epath = f"events[{idx}]"
 
-        # V21: Type guard — must be str, Metric, or CohortMetric
-        if not isinstance(item, (str, Metric, CohortMetric)):
+        # V21: Type guard — must be str, Metric, CohortMetric, or MetricRef
+        if not isinstance(item, (str, Metric, CohortMetric, MetricRef)):
             errors.append(
                 ValidationError(
                     path=epath,
                     message=(
-                        f"Event must be a string, Metric, or CohortMetric, "
-                        f"got {type(item).__name__}"
+                        f"Event must be a string, Metric, CohortMetric, or "
+                        f"MetricRef, got {type(item).__name__}"
                     ),
                     code="V21_INVALID_EVENT_TYPE",
                 )
             )
+            continue
+
+        # MetricRef: the saved metric names its own events
+        if isinstance(item, MetricRef):
             continue
 
         # CohortMetric: validate cohort type, then skip event-name validation
@@ -2020,6 +2360,21 @@ def validate_query_args(
     # string events.  When all events are CohortMetric (or Metric, which
     # carries its own math), there are no consumers — skip V1/V2/V3/V26/V27.
     has_plain_events = any(isinstance(item, str) for item in events)
+
+    # V29: A query-level measurement argument that no event uses. A saved
+    # metric keeps its saved measurement (only its own overrides change
+    # it), so with references and no plain event name the argument would
+    # be dropped. A Metric ignores the arguments too, and keeps doing so
+    # silently when no reference is present.
+    if not has_plain_events and any(isinstance(item, MetricRef) for item in events):
+        errors.extend(
+            _ignored_query_measurement(
+                math=math,
+                math_property=math_property,
+                per_user=per_user,
+                percentile_value=percentile_value,
+            )
+        )
 
     # V1: Property math requires property
     if has_plain_events and math in MATH_REQUIRING_PROPERTY and math_property is None:
@@ -2277,6 +2632,34 @@ def validate_query_args(
                     )
                 )
 
+    # V28: The server gives a warehouse metric no breakdown and no filter.
+    # The query still runs, so this is a warning, not an error. The check
+    # reads the kind on the reference: a bare MetricRef(id) keeps the
+    # default "metric" even when the saved metric is a warehouse metric,
+    # because the client cannot know the saved kind without a read (the
+    # server corrects the kind only at query time). SavedMetric.to_ref()
+    # and MetricRef(id, type="warehouse") carry the kind.
+    ignored = [
+        name
+        for name, value in (("group_by", group_by), ("where", where))
+        if value is not None and not (isinstance(value, (list, tuple)) and not value)
+    ]
+    if ignored:
+        for idx, item in enumerate(events):
+            if isinstance(item, MetricRef) and item.type == "warehouse":
+                errors.append(
+                    ValidationError(
+                        path=f"events[{idx}]",
+                        message=(
+                            f"MetricRef({item.id}) is a warehouse metric: the "
+                            f"server applies no {' and no '.join(ignored)} to "
+                            f"it, so its series is not broken down or filtered."
+                        ),
+                        code="V28_WAREHOUSE_BREAKDOWN",
+                        severity="warning",
+                    )
+                )
+
     return errors
 
 
@@ -2420,25 +2803,103 @@ def validate_bookmark(
 # =============================================================================
 
 
+def _validate_reference_id(ref_id: Any, path: str) -> list[ValidationError]:
+    """Check that a saved-entity reference id is a positive integer (B27).
+
+    Args:
+        ref_id: The ``id`` value of a reference clause or operand.
+        path: JSONPath of the clause, for error reporting.
+
+    Returns:
+        One ``B27_INVALID_REFERENCE_ID`` error, or an empty list.
+    """
+    if isinstance(ref_id, int) and not isinstance(ref_id, bool) and ref_id > 0:
+        return []
+    return [
+        ValidationError(
+            path=f"{path}.id",
+            message=f"Saved metric id must be a positive integer (got {ref_id!r})",
+            code="B27_INVALID_REFERENCE_ID",
+        )
+    ]
+
+
+def _validate_formula_operands(
+    clause: dict[str, Any],
+    path: str,
+    bookmark_type: str,
+) -> list[ValidationError]:
+    """Validate the ``referencedMetrics`` operands of a formula clause.
+
+    An operand that refers to a saved metric needs a positive integer id
+    (B27) and a ``type`` (B29): the server reads the type of an operand
+    directly and fails when it is absent. Any other operand is validated as
+    an inline metric clause.
+
+    Args:
+        clause: The formula show clause.
+        path: JSONPath of the formula clause.
+        bookmark_type: Context for math type validation.
+
+    Returns:
+        List of validation errors for the operands.
+    """
+    operands = clause.get("referencedMetrics")
+    if not isinstance(operands, list):
+        return []
+    errors: list[ValidationError] = []
+    for j, operand in enumerate(operands):
+        operand_path = f"{path}.referencedMetrics[{j}]"
+        if (
+            isinstance(operand, dict)
+            and operand.get("id") is not None
+            and "behavior" not in operand
+        ):
+            errors.extend(_validate_reference_id(operand["id"], operand_path))
+            if operand.get("type") is None:
+                errors.append(
+                    ValidationError(
+                        path=operand_path,
+                        message=(
+                            "Formula operand with an 'id' needs a 'type' "
+                            "(for example 'metric')"
+                        ),
+                        code="B29_OPERAND_MISSING_TYPE",
+                    )
+                )
+            continue
+        errors.extend(
+            _validate_show_clause(operand, j, bookmark_type, path=operand_path)
+        )
+    return errors
+
+
 def _validate_show_clause(
     clause: dict[str, Any],
     index: int,
     bookmark_type: str,
+    *,
+    path: str | None = None,
 ) -> list[ValidationError]:
     """Validate a single sections.show[] entry.
 
-    Handles both multi-metric (behavior+measurement) and formula show clauses.
+    Handles inline metric clauses (behavior + measurement), formula clauses
+    and their operands, and references to saved metrics (an ``id`` with no
+    ``behavior``, which the server expands at query time).
 
     Args:
         clause: The show clause dict.
         index: Index in the show array.
         bookmark_type: Context for math type validation.
+        path: JSONPath of the clause. Default: ``sections.show[index]``.
+            Formula operands pass their own path.
 
     Returns:
         List of validation errors for this clause.
     """
     errors: list[ValidationError] = []
-    path = f"sections.show[{index}]"
+    if path is None:
+        path = f"sections.show[{index}]"
 
     if not isinstance(clause, dict):
         errors.append(
@@ -2450,9 +2911,31 @@ def _validate_show_clause(
         )
         return errors
 
-    # Formula show clause — minimal validation (only for pure formula clauses)
+    # Formula show clause — check the id of a saved-formula reference, then
+    # the operands (pure formula clauses)
     is_formula = "formula" in clause or clause.get("type") == "formula"
     if is_formula and "behavior" not in clause:
+        if clause.get("id") is not None:
+            errors.extend(_validate_reference_id(clause["id"], path))
+        errors.extend(_validate_formula_operands(clause, path, bookmark_type))
+        return errors
+
+    # Saved-metric reference: the server expands the id at query time
+    if clause.get("id") is not None and "behavior" not in clause:
+        return _validate_reference_id(clause["id"], path)
+
+    # B28: The server runs a warehouse metric by saved id only
+    if clause.get("type") == "warehouse":
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    "Warehouse show clause needs the 'id' of a saved warehouse "
+                    "metric; the server does not run an inline warehouse query"
+                ),
+                code="B28_WAREHOUSE_MISSING_ID",
+            )
+        )
         return errors
 
     # Multi-metric show clause: requires behavior

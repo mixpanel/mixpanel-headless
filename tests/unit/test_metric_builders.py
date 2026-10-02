@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from typing import Any, get_type_hints
 
+import pytest
+
 from mixpanel_headless._internal.bookmark_builders import build_filter_entry
 from mixpanel_headless._internal.query.metric_builders import (
     assemble_metric_clause,
+    build_behavior_ref,
     build_cohort_metric_clause,
     build_event_behavior,
     build_formula_clause,
@@ -21,6 +24,9 @@ from mixpanel_headless._internal.query.metric_builders import (
     build_measurement_property,
     build_metric_clause,
     build_metric_measurement,
+    build_metric_ref_clause,
+    build_metric_ref_overrides,
+    build_operand_ref_clause,
     build_plain_event_clause,
     build_retention_behavior,
     build_retention_event_behavior,
@@ -32,7 +38,9 @@ from mixpanel_headless._literal_types import (
     FunnelMathType,
     FunnelOrder,
 )
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortCriteria,
     CohortDefinition,
     CohortMetric,
@@ -44,6 +52,7 @@ from mixpanel_headless.types import (
     HoldingConstant,
     InlineCustomProperty,
     Metric,
+    MetricRef,
     PropertyInput,
     RetentionEvent,
 )
@@ -632,6 +641,22 @@ class TestBuildShowSection:
         }
         assert show[1]["measurement"] == {"math": "total"}
 
+    def test_plain_strings_take_the_query_percentile(self) -> None:
+        """The query-level percentile value reaches a bare event name."""
+        show = build_show_section(
+            ["Load"],
+            math="percentile",
+            math_property="ms",
+            per_user=None,
+            percentile_value=95,
+            formulas=[],
+        )
+        assert show[0]["measurement"] == {
+            "math": "custom_percentile",
+            "property": {"name": "ms", "resourceType": "events"},
+            "percentile": 95,
+        }
+
     def test_no_events(self) -> None:
         """No events and no formulas give an empty list."""
         assert (
@@ -971,3 +996,294 @@ class TestBuildRetentionMeasurement:
             "math": "unique",
             "retentionCumulative": True,
         }
+
+
+# =============================================================================
+# Saved-metric references
+# =============================================================================
+
+
+class TestBuildMetricRefOverrides:
+    """Tests for build_metric_ref_overrides() — typed fields to wire paths."""
+
+    def test_no_overrides(self) -> None:
+        """A bare reference has an empty overrides dict."""
+        assert build_metric_ref_overrides(MetricRef(42)) == {}
+
+    def test_label_is_the_clause_name(self) -> None:
+        """A label overrides the saved name, which the server sets on expansion."""
+        assert build_metric_ref_overrides(MetricRef(1, label="Buyers")) == {
+            "name": "Buyers"
+        }
+
+    def test_funnel_order_is_a_behavior_path(self) -> None:
+        """funnel_order writes behavior.funnelOrder."""
+        assert build_metric_ref_overrides(MetricRef(1, funnel_order="any")) == {
+            "behavior": {"funnelOrder": "any"}
+        }
+
+    def test_hidden_false_is_written(self) -> None:
+        """hidden=False is an explicit override, not an absent one."""
+        assert build_metric_ref_overrides(MetricRef(1, hidden=False)) == {
+            "isHidden": False
+        }
+
+    def test_percentile_math_maps_like_inline(self) -> None:
+        """The percentile math uses the same wire name as an inline Metric."""
+        assert build_metric_ref_overrides(
+            MetricRef(1, math="percentile", percentile_value=95)
+        ) == {"measurement": {"math": "custom_percentile", "percentile": 95}}
+
+    def test_engine_math_passes_through(self) -> None:
+        """Funnel and retention maths are written as given."""
+        assert build_metric_ref_overrides(
+            MetricRef(1, math="conversion_rate_total")
+        ) == {"measurement": {"math": "conversion_rate_total"}}
+
+    def test_property_uses_the_inline_property_shape(self) -> None:
+        """A property override has the same shape as an inline Metric property."""
+        assert build_metric_ref_overrides(
+            MetricRef(1, property=CustomPropertyRef(9))
+        ) == {
+            "measurement": {
+                "property": {
+                    "customPropertyId": 9,
+                    "name": "",
+                    "resourceType": "events",
+                }
+            }
+        }
+
+    def test_every_typed_field_in_order(self) -> None:
+        """Every typed field reaches its wire path, in a fixed key order."""
+        result = build_metric_ref_overrides(
+            MetricRef(
+                3,
+                label="Revenue per user",
+                math="average",
+                property="amount",
+                per_user="total",
+                percentile_value=50,
+                segment_method="first",
+                funnel_order="loose",
+                step_index=1,
+                bucket_index=2,
+                hidden=True,
+            )
+        )
+        assert result == {
+            "name": "Revenue per user",
+            "behavior": {"funnelOrder": "loose"},
+            "measurement": {
+                "math": "average",
+                "property": {"name": "amount", "resourceType": "events"},
+                "perUserAggregation": "total",
+                "percentile": 50,
+                "segmentMethod": "first",
+                "stepIndex": 1,
+                "retentionBucketIndex": 2,
+            },
+            "isHidden": True,
+        }
+        assert list(result) == ["name", "behavior", "measurement", "isHidden"]
+        assert list(result["measurement"]) == [
+            "math",
+            "property",
+            "perUserAggregation",
+            "percentile",
+            "segmentMethod",
+            "stepIndex",
+            "retentionBucketIndex",
+        ]
+
+    def test_zero_indexes_are_written(self) -> None:
+        """Index zero is a real override, not an absent one."""
+        assert build_metric_ref_overrides(
+            MetricRef(1, step_index=0, bucket_index=0)
+        ) == {"measurement": {"stepIndex": 0, "retentionBucketIndex": 0}}
+
+    def test_raw_overrides_merge_last(self) -> None:
+        """Raw overrides merge into the typed dict, and a raw value wins."""
+        ref = MetricRef(
+            1,
+            math="unique",
+            segment_method="all",
+            overrides={
+                "measurement": {"math": "total", "actionMode": "include"},
+                "display": {"prefix": "$"},
+            },
+        )
+        assert build_metric_ref_overrides(ref) == {
+            "measurement": {
+                "math": "total",
+                "segmentMethod": "all",
+                "actionMode": "include",
+            },
+            "display": {"prefix": "$"},
+        }
+
+    def test_raw_scalar_replaces_typed_dict(self) -> None:
+        """A raw non-dict value replaces a typed dict at the same key."""
+        ref = MetricRef(1, math="unique", overrides={"measurement": None})
+        assert build_metric_ref_overrides(ref) == {"measurement": None}
+
+    def test_result_does_not_share_raw_objects(self) -> None:
+        """The result is a copy, so a change to it never reaches the reference."""
+        raw: dict[str, Any] = {"measurement": {"multiAttribution": {"type": "x"}}}
+        ref = MetricRef(1, overrides=raw)
+        result = build_metric_ref_overrides(ref)
+        result["measurement"]["multiAttribution"]["type"] = "changed"
+        assert raw == {"measurement": {"multiAttribution": {"type": "x"}}}
+
+    def test_raw_list_values_are_deep_copies(self) -> None:
+        """A raw list value is copied with its items."""
+        raw: dict[str, Any] = {"goals": [{"id": "g1", "label": "Target"}]}
+        result = build_metric_ref_overrides(MetricRef(1, overrides=raw))
+        assert result == {"goals": [{"id": "g1", "label": "Target"}]}
+        result["goals"][0]["label"] = "changed"
+        assert raw == {"goals": [{"id": "g1", "label": "Target"}]}
+
+
+class TestBuildMetricRefClause:
+    """Tests for build_metric_ref_clause() — a saved metric as a show clause."""
+
+    def test_bare_reference(self) -> None:
+        """A bare reference is the type and the id only."""
+        result = build_metric_ref_clause(MetricRef(42))
+        assert result == {"type": "metric", "id": 42}
+        assert list(result) == ["type", "id"]
+
+    def test_with_overrides(self) -> None:
+        """Typed fields go into an overrides dict after the id."""
+        result = build_metric_ref_clause(MetricRef(42, segment_method="first"))
+        assert result == {
+            "type": "metric",
+            "id": 42,
+            "overrides": {"measurement": {"segmentMethod": "first"}},
+        }
+        assert list(result) == ["type", "id", "overrides"]
+
+    @pytest.mark.parametrize("kind", ["formula", "warehouse"])
+    def test_other_kinds(self, kind: Any) -> None:
+        """A formula or warehouse reference writes its own type."""
+        assert build_metric_ref_clause(MetricRef(8, type=kind)) == {
+            "type": kind,
+            "id": 8,
+        }
+
+    def test_hidden_by_query(self) -> None:
+        """A query formula hides the reference with a top-level isHidden."""
+        result = build_metric_ref_clause(MetricRef(42), hidden=True)
+        assert result == {"type": "metric", "id": 42, "isHidden": True}
+
+    def test_explicit_hidden_override_wins(self) -> None:
+        """hidden=False on the reference overrides the query-level hiding."""
+        result = build_metric_ref_clause(MetricRef(42, hidden=False), hidden=True)
+        assert result == {
+            "type": "metric",
+            "id": 42,
+            "isHidden": True,
+            "overrides": {"isHidden": False},
+        }
+        assert list(result) == ["type", "id", "isHidden", "overrides"]
+
+    def test_empty_raw_overrides_write_no_key(self) -> None:
+        """An empty raw mapping writes no overrides key."""
+        assert build_metric_ref_clause(MetricRef(42, overrides={})) == {
+            "type": "metric",
+            "id": 42,
+        }
+
+
+class TestBuildOperandRefClause:
+    """Tests for build_operand_ref_clause() — a saved metric as a formula operand."""
+
+    def test_always_writes_type(self) -> None:
+        """An operand always has its type, because the server reads it."""
+        result = build_operand_ref_clause(MetricRef(104700))
+        assert result == {"type": "metric", "id": 104700}
+        assert list(result) == ["type", "id"]
+
+    def test_warehouse_operand(self) -> None:
+        """A warehouse reference keeps its type as an operand."""
+        assert build_operand_ref_clause(MetricRef(5, type="warehouse")) == {
+            "type": "warehouse",
+            "id": 5,
+        }
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"label": "A"},
+            {"math": "unique"},
+            {"property": "amount"},
+            {"per_user": "total"},
+            {"percentile_value": 90},
+            {"segment_method": "first"},
+            {"funnel_order": "any"},
+            {"step_index": 0},
+            {"bucket_index": 0},
+            {"hidden": True},
+            {"hidden": False},
+            {"overrides": {"measurement": {"actionMode": "include"}}},
+        ],
+    )
+    def test_refuses_any_override(self, kwargs: dict[str, Any]) -> None:
+        """MR2_OPERAND_OVERRIDE: the server ignores operand overrides."""
+        with pytest.raises(ParamValidationError) as exc_info:
+            build_operand_ref_clause(MetricRef(5, **kwargs))
+        assert exc_info.value.code == "MR2_OPERAND_OVERRIDE"
+        assert "ignores" in str(exc_info.value)
+
+    def test_empty_raw_overrides_are_allowed(self) -> None:
+        """An empty raw mapping is no override."""
+        assert build_operand_ref_clause(MetricRef(5, overrides={})) == {
+            "type": "metric",
+            "id": 5,
+        }
+
+
+class TestBuildBehaviorRef:
+    """Tests for build_behavior_ref() — a saved behavior as a behavior block."""
+
+    @pytest.mark.parametrize("kind", ["simple", "funnel", "retention"])
+    def test_type_and_id_only(self, kind: Any) -> None:
+        """The block has the type and the id, and no behaviors key."""
+        result = build_behavior_ref(BehaviorRef(77, kind))
+        assert result == {"type": kind, "id": 77}
+        assert list(result) == ["type", "id"]
+
+
+class TestBuildShowSectionWithReferences:
+    """Tests for build_show_section() with MetricRef items."""
+
+    def test_reference_among_metrics(self) -> None:
+        """A reference keeps its place, and a formula hides it."""
+        show = build_show_section(
+            [MetricRef(10, segment_method="first"), "Login"],
+            math="unique",
+            math_property=None,
+            per_user=None,
+            percentile_value=None,
+            formulas=[Formula("A / B")],
+        )
+        assert show[0] == {
+            "type": "metric",
+            "id": 10,
+            "isHidden": True,
+            "overrides": {"measurement": {"segmentMethod": "first"}},
+        }
+        assert show[1]["behavior"]["name"] == "Login"
+        assert show[2]["type"] == "formula"
+
+    def test_reference_ignores_query_defaults(self) -> None:
+        """Query-level math never reaches a reference."""
+        show = build_show_section(
+            [MetricRef(10)],
+            math="average",
+            math_property="amount",
+            per_user="total",
+            percentile_value=None,
+            formulas=[],
+        )
+        assert show == [{"type": "metric", "id": 10}]

@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NoReturn
+from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -85,6 +85,7 @@ from mixpanel_headless._internal.bookmark_schema import (
 from mixpanel_headless._internal.config import ConfigManager
 from mixpanel_headless._internal.query.metric_builders import (
     assemble_metric_clause,
+    build_behavior_ref,
     build_funnel_behavior,
     build_funnel_measurement,
     build_retention_behavior,
@@ -127,8 +128,10 @@ from mixpanel_headless._internal.validation import (
     validate_flow_args,
     validate_flow_bookmark,
     validate_funnel_args,
+    validate_funnel_ref_args,
     validate_query_args,
     validate_retention_args,
+    validate_retention_ref_args,
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
@@ -171,6 +174,7 @@ from mixpanel_headless.types import (
     AnnotationTag,
     AuditResponse,
     AuditViolation,
+    BehaviorRef,
     BlueprintConfig,
     BlueprintFinishParams,
     BlueprintTemplate,
@@ -251,6 +255,7 @@ from mixpanel_headless.types import (
     MarkLookupTableReadyParams,
     MathType,
     Metric,
+    MetricRef,
     NumericAverageResult,
     NumericBucketResult,
     NumericSumResult,
@@ -322,6 +327,29 @@ logger = logging.getLogger(__name__)
 # Limit validation bounds (Mixpanel API restriction)
 _MIN_LIMIT = 1
 _MAX_LIMIT = 100_000
+
+_FUNNEL_BEHAVIOR_DEFAULTS: Final[dict[str, object]] = {
+    "conversion_window": 14,
+    "conversion_window_unit": "day",
+    "order": "loose",
+}
+"""Signature defaults of the funnel behavior settings.
+
+With a ``BehaviorRef`` the saved behavior owns these settings, so a value
+other than the default is refused. Keep in step with the ``query_funnel``
+and ``build_funnel_params`` signatures.
+"""
+
+_RETENTION_BEHAVIOR_DEFAULTS: Final[dict[str, object]] = {
+    "retention_unit": "week",
+    "alignment": "birth",
+}
+"""Signature defaults of the retention behavior settings.
+
+With a ``BehaviorRef`` the saved behavior owns these settings, so a value
+other than the default is refused. Keep in step with the
+``query_retention`` and ``build_retention_params`` signatures.
+"""
 
 
 def _check_event_properties_count(event_properties: list[str] | None) -> None:
@@ -2131,7 +2159,7 @@ class Workspace:
     def _build_query_params(
         self,
         *,
-        events: Sequence[str | Metric | CohortMetric],
+        events: Sequence[str | Metric | CohortMetric | MetricRef],
         math: MathType,
         math_property: str | None,
         per_user: PerUserAggregation | None,
@@ -2160,7 +2188,7 @@ class Workspace:
         the Mixpanel insights query API.
 
         Args:
-            events: Event names or Metric objects.
+            events: Event names, Metric, CohortMetric, and MetricRef objects.
             math: Top-level aggregation function.
             math_property: Property for property-based math.
             per_user: Per-user pre-aggregation.
@@ -2248,8 +2276,10 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2283,14 +2313,16 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a Formula
-                object, or a sequence mixing strings, Metrics,
-                CohortMetrics, and Formulas. Formula objects in the
-                list are extracted and appended as formula show clauses.
-                When events includes a CohortMetric, ``math``,
-                ``math_property``, and ``per_user`` are silently
-                ignored for that entry — cohort size is always counted
-                as unique users (CM3).
+                a Metric object, a CohortMetric object, a MetricRef or a
+                SavedMetric (from ``list_metrics`` or ``get_metric``), a
+                Formula object, or a sequence mixing them. Formula
+                objects in the list are extracted and appended as formula
+                show clauses. ``math``, ``math_property``, and
+                ``per_user`` apply to plain strings only: a CohortMetric
+                always counts unique users (CM3), and a saved metric keeps
+                its saved definition except for its own overrides. The
+                params keep each saved metric as a reference, so the
+                server expands the saved definition at query time.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2378,6 +2410,9 @@ class Workspace:
                  Metric("Purchase", math="unique"),
                  Formula("(B / A) * 100", label="Conversion Rate")],
             )
+
+            # A saved metric by id, with a report-level override
+            result = ws.query(MetricRef(88999, segment_method="first"))
             ```
         """
         params = self._resolve_and_build_params(
@@ -2456,8 +2491,10 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2491,9 +2528,11 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``Formula``, or a
-                sequence mixing strings, ``Metric``s, ``CohortMetric``s,
-                and ``Formula``s.
+                a ``Metric``, ``CohortMetric``, ``MetricRef``,
+                ``SavedMetric``, ``Formula``, or a sequence mixing them. A
+                ``MetricRef`` or ``SavedMetric`` stays a reference in the
+                params (``{"type", "id", "overrides"}``), so a report built
+                from them follows the saved metric.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2574,8 +2613,10 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
         from_date: str | None,
         to_date: str | None,
         last: int,
@@ -2608,7 +2649,7 @@ class Workspace:
 
         Args:
             events: Raw events input (str, Metric, CohortMetric,
-                Formula, or sequence).
+                MetricRef, SavedMetric, Formula, or sequence).
             from_date: Start date (YYYY-MM-DD) or None.
             to_date: End date (YYYY-MM-DD) or None.
             last: Relative time range in days.
@@ -2636,15 +2677,20 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Type guard: events must be str, Metric, CohortMetric, Formula, or sequence thereof
-        if not isinstance(events, (str, Metric, CohortMetric, Formula, list, tuple)):
+        # Type guard: events must be str, Metric, CohortMetric, MetricRef,
+        # SavedMetric, Formula, or sequence thereof
+        if not isinstance(
+            events,
+            (str, Metric, CohortMetric, MetricRef, SavedMetric, Formula, list, tuple),
+        ):
             raise BookmarkValidationError(
                 [
                     ValidationError(
                         path="events",
                         message=(
-                            f"events must be a string, Metric, CohortMetric, Formula, or "
-                            f"sequence, got {type(events).__name__}"
+                            f"events must be a string, Metric, CohortMetric, "
+                            f"MetricRef, SavedMetric, Formula, or sequence, got "
+                            f"{type(events).__name__}"
                         ),
                         code="V21_INVALID_EVENT_TYPE",
                     )
@@ -2666,11 +2712,15 @@ class Workspace:
                 ]
             )
 
-        # Normalize events to sequence, separating Formula objects
+        # Normalize events to sequence, separating Formula objects. A
+        # SavedMetric becomes a MetricRef, so it stays a reference.
         if isinstance(events, str):
-            events_list: list[str | Metric | CohortMetric] = [events]
+            events_list: list[str | Metric | CohortMetric | MetricRef] = [events]
             formulas_from_list: list[Formula] = []
-        elif isinstance(events, (Metric, CohortMetric)):
+        elif isinstance(events, SavedMetric):
+            events_list = [events.to_ref()]
+            formulas_from_list = []
+        elif isinstance(events, (Metric, CohortMetric, MetricRef)):
             events_list = [events]
             formulas_from_list = []
         elif isinstance(events, Formula):
@@ -2689,6 +2739,8 @@ class Workspace:
             for item in events:
                 if isinstance(item, Formula):
                     formulas_from_list.append(item)
+                elif isinstance(item, SavedMetric):
+                    events_list.append(item.to_ref())
                 else:
                     events_list.append(item)
 
@@ -2730,11 +2782,16 @@ class Workspace:
             group_by=group_by,
             formulas=resolved_formulas,
             data_group_id=data_group_id,
+            where=where,
         )
         # CP1-CP6: Custom property validation for where filters
         arg_errors.extend(_scan_custom_properties(where=where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
+        for w in (e for e in arg_errors if e.severity == "warning"):
+            logger.warning(
+                "insights query validation warning: %s [%s]", w.message, w.code
+            )
 
         # Build bookmark params
         params = self._build_query_params(
@@ -2839,7 +2896,60 @@ class Workspace:
             reentry_mode=reentry_mode,
         )
         measurement = build_funnel_measurement(math=math, math_property=math_property)
-        show: list[dict[str, Any]] = [assemble_metric_clause(behavior, measurement)]
+        return self._assemble_funnel_params(
+            assemble_metric_clause(behavior, measurement),
+            from_date=from_date,
+            to_date=to_date,
+            last=last,
+            unit=unit,
+            group_by=group_by,
+            where=where,
+            mode=mode,
+            time_comparison=time_comparison,
+            data_group_id=data_group_id,
+        )
+
+    def _assemble_funnel_params(
+        self,
+        show_clause: dict[str, Any],
+        *,
+        from_date: str | None,
+        to_date: str | None,
+        last: int,
+        unit: QueryTimeUnit,
+        group_by: str
+        | GroupBy
+        | CohortBreakdown
+        | list[str | GroupBy | CohortBreakdown]
+        | None,
+        where: Filter | list[Filter] | None,
+        mode: str,
+        time_comparison: TimeComparison | None = None,
+        data_group_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Wrap a funnel metric clause in the full funnel bookmark params.
+
+        Shared by the inline-steps path and the saved-behavior path, so both
+        get the same sections and display options.
+
+        Args:
+            show_clause: The funnel metric show clause.
+            from_date: Start date (YYYY-MM-DD) or None.
+            to_date: End date (YYYY-MM-DD) or None.
+            last: Relative date range in days.
+            unit: Time granularity.
+            group_by: Breakdown specification.
+            where: Filter conditions.
+            mode: Display mode (steps, trends, table).
+            time_comparison: Optional period-over-period comparison.
+                Adds ``timeComparison`` to ``displayOptions``.
+            data_group_id: Optional data group ID for group-level
+                analytics. Default: ``None``.
+
+        Returns:
+            Bookmark params dict ready for insights query API.
+        """
+        show: list[dict[str, Any]] = [show_clause]
 
         # Build sections using shared builders
         time_section = build_time_section(
@@ -2886,7 +2996,7 @@ class Workspace:
     def _resolve_and_build_funnel_params(
         self,
         *,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         conversion_window: int,
         conversion_window_unit: ConversionWindowUnit,
         order: FunnelOrder,
@@ -2918,7 +3028,8 @@ class Workspace:
         (Layer 2).
 
         Args:
-            steps: Funnel step specs (strings or FunnelStep objects).
+            steps: Funnel step specs (strings or FunnelStep objects), or a
+                BehaviorRef or SavedBehavior for a saved funnel behavior.
             conversion_window: Conversion window size.
             conversion_window_unit: Conversion window time unit.
             order: Funnel step ordering mode.
@@ -2946,6 +3057,63 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(steps, SavedBehavior):
+            steps = steps.to_ref()
+        if isinstance(steps, BehaviorRef):
+            changed_settings = [
+                name
+                for name, changed in (
+                    (
+                        "conversion_window",
+                        conversion_window
+                        != _FUNNEL_BEHAVIOR_DEFAULTS["conversion_window"],
+                    ),
+                    (
+                        "conversion_window_unit",
+                        conversion_window_unit
+                        != _FUNNEL_BEHAVIOR_DEFAULTS["conversion_window_unit"],
+                    ),
+                    ("order", order != _FUNNEL_BEHAVIOR_DEFAULTS["order"]),
+                    ("exclusions", bool(exclusions)),
+                    ("holding_constant", bool(holding_constant)),
+                    ("reentry_mode", reentry_mode is not None),
+                )
+                if changed
+            ]
+            arg_errors = validate_funnel_ref_args(
+                behavior=steps,
+                changed_settings=changed_settings,
+                math=math,
+                math_property=math_property,
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                group_by=group_by,
+                data_group_id=data_group_id,
+            )
+            arg_errors.extend(_scan_custom_properties(where=where))
+            if any(e.severity == "error" for e in arg_errors):
+                raise BookmarkValidationError(arg_errors)
+            params = self._assemble_funnel_params(
+                assemble_metric_clause(
+                    build_behavior_ref(steps),
+                    build_funnel_measurement(math=math, math_property=math_property),
+                ),
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                unit=unit,
+                group_by=group_by,
+                where=where,
+                mode=mode,
+                time_comparison=time_comparison,
+                data_group_id=data_group_id,
+            )
+            bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
+            if any(e.severity == "error" for e in bookmark_errors):
+                raise BookmarkValidationError(bookmark_errors)
+            return params
+
         # Normalize steps: str → FunnelStep
         normalized_steps = [FunnelStep(s) if isinstance(s, str) else s for s in steps]
 
@@ -3019,7 +3187,7 @@ class Workspace:
 
     def query_funnel(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3057,7 +3225,13 @@ class Workspace:
         Args:
             steps: Funnel step specifications. At least 2 required.
                 Accepts event name strings or ``FunnelStep`` objects
-                for per-step filters, labels, and ordering.
+                for per-step filters, labels, and ordering. A
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list: the saved behavior sets the
+                steps, the conversion window, the order, the exclusions,
+                the held properties, and the reentry mode, so those
+                arguments must keep their defaults
+                (``F14_BEHAVIOR_REF_SETTINGS``).
             conversion_window: How long users have to complete the
                 funnel. Default: 14.
             conversion_window_unit: Time unit for conversion window.
@@ -3131,6 +3305,9 @@ class Workspace:
                 last=90,
             )
             print(result.df)
+
+            # A saved funnel behavior by id
+            result = ws.query_funnel(BehaviorRef(3120, "funnel"), last=90)
             ```
         """
         params = self._resolve_and_build_funnel_params(
@@ -3204,7 +3381,7 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3241,6 +3418,8 @@ class Workspace:
 
         Args:
             steps: Funnel step specifications. At least 2 required.
+                A ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list; see :meth:`query_funnel`.
             conversion_window: Conversion window size. Default: 14.
             conversion_window_unit: Time unit. Default: ``"day"``.
             order: Step ordering mode. Default: ``"loose"``.
@@ -3392,7 +3571,60 @@ class Workspace:
         measurement = build_retention_measurement(
             math=math, cumulative=retention_cumulative
         )
-        show: list[dict[str, Any]] = [assemble_metric_clause(behavior, measurement)]
+        return self._assemble_retention_params(
+            assemble_metric_clause(behavior, measurement),
+            from_date=from_date,
+            to_date=to_date,
+            last=last,
+            unit=unit,
+            group_by=group_by,
+            where=where,
+            mode=mode,
+            time_comparison=time_comparison,
+            data_group_id=data_group_id,
+        )
+
+    def _assemble_retention_params(
+        self,
+        show_clause: dict[str, Any],
+        *,
+        from_date: str | None,
+        to_date: str | None,
+        last: int,
+        unit: QueryTimeUnit,
+        group_by: str
+        | GroupBy
+        | CohortBreakdown
+        | list[str | GroupBy | CohortBreakdown]
+        | None,
+        where: Filter | list[Filter] | None,
+        mode: RetentionMode,
+        time_comparison: TimeComparison | None = None,
+        data_group_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Wrap a retention metric clause in the full retention bookmark params.
+
+        Shared by the inline-events path and the saved-behavior path, so both
+        get the same sections, display options, and sorting.
+
+        Args:
+            show_clause: The retention metric show clause.
+            from_date: Start date (YYYY-MM-DD) or None.
+            to_date: End date (YYYY-MM-DD) or None.
+            last: Relative date range in days.
+            unit: Time granularity.
+            group_by: Breakdown specification.
+            where: Filter conditions.
+            mode: Display mode (curve, trends, table).
+            time_comparison: Optional period-over-period comparison.
+                Adds ``timeComparison`` to ``displayOptions``.
+            data_group_id: Optional data group ID for group-level
+                analytics. Default: ``None``.
+
+        Returns:
+            Bookmark params dict ready for insights query API.
+        """
+        show: list[dict[str, Any]] = [show_clause]
 
         # Build sections using shared builders
         time_section = build_time_section(
@@ -4123,8 +4355,8 @@ class Workspace:
     def _resolve_and_build_retention_params(
         self,
         *,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None,
         retention_unit: TimeUnit,
         alignment: RetentionAlignment,
         bucket_sizes: list[int] | None,
@@ -4154,8 +4386,10 @@ class Workspace:
         (Layer 2).
 
         Args:
-            born_event: Born event spec (string or RetentionEvent).
-            return_event: Return event spec (string or RetentionEvent).
+            born_event: Born event spec (string or RetentionEvent), or a
+                BehaviorRef or SavedBehavior for a saved retention behavior.
+            return_event: Return event spec (string or RetentionEvent);
+                None with a BehaviorRef.
             retention_unit: Retention period unit.
             alignment: Retention alignment mode.
             bucket_sizes: Custom bucket sizes or None.
@@ -4180,6 +4414,66 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(born_event, SavedBehavior):
+            born_event = born_event.to_ref()
+        if isinstance(born_event, BehaviorRef):
+            changed_settings = [
+                name
+                for name, changed in (
+                    ("return_event", return_event is not None),
+                    (
+                        "retention_unit",
+                        retention_unit
+                        != _RETENTION_BEHAVIOR_DEFAULTS["retention_unit"],
+                    ),
+                    (
+                        "alignment",
+                        alignment != _RETENTION_BEHAVIOR_DEFAULTS["alignment"],
+                    ),
+                    ("bucket_sizes", bucket_sizes is not None),
+                    ("unbounded_mode", unbounded_mode is not None),
+                )
+                if changed
+            ]
+            ref_errors = validate_retention_ref_args(
+                behavior=born_event,
+                changed_settings=changed_settings,
+                math=math,
+                mode=mode,
+                unit=unit,
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                group_by=group_by,
+                data_group_id=data_group_id,
+            )
+            ref_errors.extend(_scan_custom_properties(where=where))
+            if any(e.severity == "error" for e in ref_errors):
+                raise BookmarkValidationError(ref_errors)
+            ref_params = self._assemble_retention_params(
+                assemble_metric_clause(
+                    build_behavior_ref(born_event),
+                    build_retention_measurement(
+                        math=math, cumulative=retention_cumulative
+                    ),
+                ),
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                unit=unit,
+                group_by=group_by,
+                where=where,
+                mode=mode,
+                time_comparison=time_comparison,
+                data_group_id=data_group_id,
+            )
+            ref_bookmark_errors = validate_bookmark(
+                ref_params, bookmark_type="retention"
+            )
+            if any(e.severity == "error" for e in ref_bookmark_errors):
+                raise BookmarkValidationError(ref_bookmark_errors)
+            return ref_params
+
         # Normalize events: str → RetentionEvent
         norm_born = (
             RetentionEvent(born_event) if isinstance(born_event, str) else born_event
@@ -4190,10 +4484,11 @@ class Workspace:
             else return_event
         )
 
-        # Layer 1: Argument validation
+        # Layer 1: Argument validation. A missing return event is reported
+        # by R2 the same way as an empty one.
         arg_errors = validate_retention_args(
             born_event=norm_born.event,
-            return_event=norm_return.event,
+            return_event=norm_return.event if norm_return is not None else "",
             retention_unit=retention_unit,
             alignment=alignment,
             bucket_sizes=bucket_sizes,
@@ -4211,10 +4506,10 @@ class Workspace:
         arg_errors.extend(
             _scan_custom_properties(
                 where=where,
-                retention_events=[norm_born, norm_return],
+                retention_events=[e for e in (norm_born, norm_return) if e is not None],
             )
         )
-        if any(e.severity == "error" for e in arg_errors):
+        if norm_return is None or any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
         # Build bookmark params
@@ -4247,8 +4542,8 @@ class Workspace:
 
     def query_retention(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4280,9 +4575,16 @@ class Workspace:
         Args:
             born_event: Event that defines cohort membership. Accepts
                 an event name string or a ``RetentionEvent`` object
-                for per-event filters.
+                for per-event filters. A ``BehaviorRef`` or
+                ``SavedBehavior`` for a saved retention behavior replaces
+                both events: the saved behavior sets the events, the
+                retention unit, the alignment, the buckets, and the
+                unbounded mode, so ``return_event`` stays ``None`` and
+                those arguments keep their defaults
+                (``R15_BEHAVIOR_REF_SETTINGS``).
             return_event: Event that defines return. Accepts an event
-                name string or a ``RetentionEvent`` object.
+                name string or a ``RetentionEvent`` object. Required
+                unless ``born_event`` is a ``BehaviorRef``.
             retention_unit: Retention period unit. Default: ``"week"``.
             alignment: Retention alignment mode. Default: ``"birth"``.
             bucket_sizes: Custom bucket sizes (positive ints in
@@ -4346,6 +4648,9 @@ class Workspace:
                 last=90,
             )
             print(result.df)
+
+            # A saved retention behavior by id
+            result = ws.query_retention(BehaviorRef(4410, "retention"))
             ```
         """
         params = self._resolve_and_build_retention_params(
@@ -4419,8 +4724,8 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4451,8 +4756,11 @@ class Workspace:
         :meth:`create_bookmark`, or testing.
 
         Args:
-            born_event: Event that defines cohort membership.
-            return_event: Event that defines return.
+            born_event: Event that defines cohort membership, or a
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved retention
+                behavior; see :meth:`query_retention`.
+            return_event: Event that defines return. Required unless
+                ``born_event`` is a ``BehaviorRef``.
             retention_unit: Retention period unit. Default: ``"week"``.
             alignment: Retention alignment mode. Default: ``"birth"``.
             bucket_sizes: Custom bucket sizes. Default: ``None``.

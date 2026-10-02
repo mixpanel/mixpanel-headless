@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 129 minted full codes, no duplicates.
+        """The registry lists all 137 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -958,8 +958,11 @@ class TestCodedGuardRegistry:
         ``SM5_NOT_FOUND_FOR_DELETE`` (the pre-read of ``delete_metric``
         found no metric), ``SM6_DELETE_NOT_PERMITTED``, and
         ``BH4_DELETE_NOT_PERMITTED`` (the caller cannot edit a target).
+        Saved-entity references added eight: six ``MR*`` guards for
+        ``MetricRef`` and formula operands, and two ``BR*`` guards for
+        ``BehaviorRef``.
         """
-        assert len(CODED_GUARD_REGISTRY) == 129
+        assert len(CODED_GUARD_REGISTRY) == 137
         for code in (
             "SM5_NOT_FOUND_FOR_DELETE",
             "SM6_DELETE_NOT_PERMITTED",
@@ -968,8 +971,13 @@ class TestCodedGuardRegistry:
             assert code in CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
-        """Every reused twin code already exists in the code universe."""
-        assert len(CODED_GUARD_TWIN_CODES) == 9
+        """Every reused twin code already exists in the code universe.
+
+        ``MetricRef`` reuses two per-Metric query validator codes for its
+        measurement rules (``V3_PER_USER_INCOMPATIBLE``,
+        ``V14_METRIC_REJECTS_PROPERTY``).
+        """
+        assert len(CODED_GUARD_TWIN_CODES) == 11
         assert CODED_GUARD_TWIN_CODES <= PRE_EXISTING_CODE_UNIVERSE
 
     def test_twins_disjoint_from_minted(self) -> None:

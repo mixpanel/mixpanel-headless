@@ -97,6 +97,20 @@ Types for using saved or inline custom properties as property references in quer
       show_root_heading: true
       show_root_toc_entry: true
 
+## Saved Entity References
+
+References to saved metrics and saved behaviors by id. The params keep the reference, and the server expands the saved definition at query time. See [Saved Metrics by Reference](../guide/query.md#saved-metrics-by-reference) for usage guide.
+
+::: mixpanel_headless.MetricRef
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.BehaviorRef
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ## Advanced Query Types
 
 Types for advanced query features — period-over-period comparison, frequency analysis, and frequency filtering across query engines.
