@@ -247,7 +247,9 @@ signed_in = SimpleBehavior(
 result = ws.query(Metric(signed_in, math="unique"))
 ```
 
-Filters go on each event. The query server ignores filters on the behavior as a whole, so `SimpleBehavior` has none, and `Metric(filters=...)` cannot be combined with a `SimpleBehavior` (`MT3_FILTERS_WITH_BEHAVIOR`).
+Filters go on each event, as `FunnelStep` items with their own `filters`. The query server ignores filters on the behavior as a whole, so `SimpleBehavior` has none, and `Metric(filters=...)` cannot be combined with a `SimpleBehavior` (`MT3_FILTERS_WITH_BEHAVIOR`).
+
+A plain list of events takes event names and `CustomEventRef` items only. Any other item, for example a `FunnelStep`, raises `MT5_INVALID_EVENT_TYPE`. In a list, `Metric(filters=...)` applies to every event, so a step's own filters have no place there. Put the steps in a `SimpleBehavior` instead.
 
 A saved simple behavior works as the event too: `Metric(BehaviorRef(4410, "simple"), math="unique")`. The saved behavior sets the events, so `Metric(filters=...)` cannot be combined with it either.
 

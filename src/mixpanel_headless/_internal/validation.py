@@ -74,6 +74,7 @@ from mixpanel_headless.types import (
     CohortBreakdown,
     CohortDefinition,
     CohortMetric,
+    CustomEventRef,
     CustomPropertyRef,
     Exclusion,
     Filter,
@@ -351,6 +352,13 @@ _MULTI_EVENT_HINT = (
     "custom event that unions them and use its name '$custom_event:<id>'."
 )
 """Fix-it text for more than one event where the server takes one."""
+
+_PER_EVENT_FILTERS_HINT = (
+    "Metric filters apply to every event of a list. For per-event filters, "
+    "put FunnelStep items in a SimpleBehavior: "
+    'Metric(SimpleBehavior([FunnelStep("A", filters=[...]), FunnelStep("B")]))'
+)
+"""Fix-it text for a list item of a Metric that is not an event name."""
 
 
 def _is_multi_event(value: object) -> bool:
@@ -2532,33 +2540,69 @@ def _event_name_errors(name: str, path: str) -> list[ValidationError]:
     return errors
 
 
-def _metric_event_name_errors(item: Metric, path: str) -> list[ValidationError]:
-    """Check every event name of a Metric (V17, V22).
+def _metric_event_errors(item: Metric, path: str) -> list[ValidationError]:
+    """Check the event kinds and every event name of a Metric (MT5, V17, V22).
+
+    The Metric constructor refuses the same kinds. The query checks them
+    again because the caller can change a list of events after
+    construction.
 
     Args:
         item: The metric.
         path: The path of the metric, for error reporting.
 
     Returns:
-        The name errors of a single event name at ``path``, or of each name
-        inside a list of events or a simple behavior (a plain name or a
-        ``FunnelStep`` event) at ``"{path}.event[i]"``. A custom event or a
-        saved behavior has no name to check.
+        ``MT5_INVALID_EVENT_TYPE`` at ``"{path}.event"`` for an event of no
+        supported kind, and at ``"{path}.event[i]"`` for an item of a list
+        that is not a name or a ``CustomEventRef`` (a ``FunnelStep`` would
+        lose the Metric filters). The name errors of a single event name
+        at ``path``, or of each name inside a list of events or a simple
+        behavior (a plain name or a ``FunnelStep`` event) at
+        ``"{path}.event[i]"``. A custom event or a saved behavior has no
+        name to check.
     """
-    event = item.event
+    event: object = item.event
     if isinstance(event, str):
         return _event_name_errors(event, path)
+    if isinstance(event, CustomEventRef | BehaviorRef):
+        return []
     if isinstance(event, SimpleBehavior):
         entries: Sequence[object] = event.events
+        from_list = False
     elif isinstance(event, list | tuple):
         entries = event
+        from_list = True
     else:
-        return []
+        return [
+            ValidationError(
+                path=f"{path}.event",
+                message=(
+                    "Metric event must be an event name, a CustomEventRef, a "
+                    "list of them, a SimpleBehavior, or a BehaviorRef, got "
+                    f"{type(event).__name__}. {_PER_EVENT_FILTERS_HINT}"
+                ),
+                code="MT5_INVALID_EVENT_TYPE",
+            )
+        ]
     errors: list[ValidationError] = []
     for i, entry in enumerate(entries):
+        epath = f"{path}.event[{i}]"
+        if from_list and not isinstance(entry, str | CustomEventRef):
+            errors.append(
+                ValidationError(
+                    path=epath,
+                    message=(
+                        "An item of a list of events must be an event name or "
+                        f"a CustomEventRef, got {type(entry).__name__}. "
+                        f"{_PER_EVENT_FILTERS_HINT}"
+                    ),
+                    code="MT5_INVALID_EVENT_TYPE",
+                )
+            )
+            continue
         name = entry.event if isinstance(entry, FunnelStep) else entry
         if isinstance(name, str):
-            errors.extend(_event_name_errors(name, f"{path}.event[{i}]"))
+            errors.extend(_event_name_errors(name, epath))
     return errors
 
 
@@ -2642,7 +2686,7 @@ def _validate_formula_operand_args(
         elif isinstance(operand, RetentionMetric):
             errors.extend(validate_retention_metric_args(operand, path=opath))
         elif isinstance(operand, Metric):
-            errors.extend(_metric_event_name_errors(operand, opath))
+            errors.extend(_metric_event_errors(operand, opath))
             errors.extend(_validate_metric_rules(operand, opath))
             errors.extend(_scan_metric_custom_properties(operand, opath))
         elif isinstance(operand, CohortMetric):
@@ -2787,10 +2831,10 @@ def validate_query_args(
             errors.extend(_cohort_metric_errors(item, epath))
             continue
 
-        # V17/V22: each event name, including each name inside a Metric over
-        # several events or a simple behavior
+        # MT5/V17/V22: the event kinds of a Metric, then each event name,
+        # including each name inside a list of events or a simple behavior
         if isinstance(item, Metric):
-            errors.extend(_metric_event_name_errors(item, epath))
+            errors.extend(_metric_event_errors(item, epath))
         else:
             errors.extend(_event_name_errors(item, epath))
 

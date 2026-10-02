@@ -577,6 +577,75 @@ class TestMetricEvents:
         """MT3_FILTERS_WITH_BEHAVIOR is a minted registry code."""
         assert "MT3_FILTERS_WITH_BEHAVIOR" in CODED_GUARD_REGISTRY
 
+    @pytest.mark.parametrize(
+        "item",
+        [FunnelStep("Buy"), 123, 1.5, True, None, {"event": "Buy"}, ["Buy"]],
+        ids=["funnel-step", "int", "float", "bool", "none", "dict", "nested-list"],
+    )
+    @pytest.mark.parametrize(
+        "filters", [None, [Filter.equals("country", "US")]], ids=["bare", "filtered"]
+    )
+    def test_list_item_of_another_type_raises_mt5(
+        self, item: object, filters: list[Filter] | None
+    ) -> None:
+        """A list item that is not a name or a CustomEventRef raises MT5."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(["Login", item], filters=filters)  # type: ignore[list-item]
+        assert excinfo.value.code == "MT5_INVALID_EVENT_TYPE"
+        assert "Metric.event[1]" in excinfo.value.message
+        assert f"got {type(item).__name__}" in excinfo.value.message
+
+    def test_funnel_steps_with_metric_filters_raise_mt5(self) -> None:
+        """Steps with Metric filters are refused, and the message names SimpleBehavior."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(
+                [FunnelStep("a"), FunnelStep("b")],  # type: ignore[list-item]
+                filters=[Filter.equals("country", "US")],
+            )
+        assert excinfo.value.code == "MT5_INVALID_EVENT_TYPE"
+        message = excinfo.value.message
+        assert "Metric.event[0]" in message
+        assert "Metric filters apply to every event" in message
+        assert "Metric(SimpleBehavior([FunnelStep(" in message
+
+    def test_single_funnel_step_in_a_list_raises_mt5(self) -> None:
+        """A list of one step is refused, not written as the step's repr."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric([FunnelStep("X")])  # type: ignore[list-item]
+        assert excinfo.value.code == "MT5_INVALID_EVENT_TYPE"
+        assert "Metric.event[0]" in excinfo.value.message
+
+    def test_number_before_a_name_raises_mt5(self) -> None:
+        """A number first in the list raises MT5, not a raw TypeError."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric([123, "A"])  # type: ignore[list-item]
+        assert excinfo.value.code == "MT5_INVALID_EVENT_TYPE"
+        assert "Metric.event[0]" in excinfo.value.message
+
+    @pytest.mark.parametrize(
+        "event",
+        [FunnelStep("X"), 123, None, {"Login": 1}],
+        ids=["funnel-step", "int", "none", "dict"],
+    )
+    def test_event_of_another_type_raises_mt5(self, event: object) -> None:
+        """An event that is no name, custom event, list, or behavior raises MT5."""
+        with pytest.raises(ParamValidationError) as excinfo:
+            Metric(event)  # type: ignore[arg-type]
+        assert excinfo.value.code == "MT5_INVALID_EVENT_TYPE"
+        assert "Metric.event must be" in excinfo.value.message
+        assert f"got {type(event).__name__}" in excinfo.value.message
+        assert "SimpleBehavior" in excinfo.value.message
+
+    def test_simple_behavior_of_filtered_steps_passes(self) -> None:
+        """Steps with their own filters go in a SimpleBehavior."""
+        us = Filter.equals("country", "US")
+        behavior = SimpleBehavior([FunnelStep("a", filters=[us]), FunnelStep("b")])
+        assert Metric(behavior, math="unique").event == behavior
+
+    def test_mt5_is_registered(self) -> None:
+        """MT5_INVALID_EVENT_TYPE is a minted registry code."""
+        assert "MT5_INVALID_EVENT_TYPE" in CODED_GUARD_REGISTRY
+
 
 # =============================================================================
 # Formula with operands

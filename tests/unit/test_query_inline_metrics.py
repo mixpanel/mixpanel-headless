@@ -350,6 +350,72 @@ class TestEventNamesInsideMetrics:
         ]
 
 
+class TestEventTypesInsideMetrics:
+    """Layer 1 refuses the list items that the Metric constructor refuses (MT5)."""
+
+    def test_step_put_in_the_list_later_gives_mt5(self) -> None:
+        """A FunnelStep put into the caller's list after construction is refused."""
+        events: list[Any] = ["Login", "Signup"]
+        metric = Metric(events, filters=[Filter.equals("country", "US")])
+        events[1] = FunnelStep("Signup")
+        errors = _args([metric])
+        assert [(e.code, e.path) for e in errors] == [
+            ("MT5_INVALID_EVENT_TYPE", "events[0].event[1]")
+        ]
+        assert "got FunnelStep" in errors[0].message
+        assert "SimpleBehavior" in errors[0].message
+
+    @pytest.mark.parametrize("item", [123, True, None], ids=["int", "bool", "none"])
+    def test_other_item_put_in_the_list_later_gives_mt5(self, item: object) -> None:
+        """A number, a bool, or None put into the list later is refused."""
+        events: list[Any] = ["Login"]
+        metric = Metric(events)
+        events.append(item)
+        errors = _args([metric])
+        assert [(e.code, e.path) for e in errors] == [
+            ("MT5_INVALID_EVENT_TYPE", "events[0].event[1]")
+        ]
+
+    def test_operand_item_gives_mt5_under_its_path(self) -> None:
+        """A formula operand's list items are checked under the operand's path."""
+        events: list[Any] = ["A", "B"]
+        formula = Formula("A", metrics=[Metric(events)])
+        events[0] = FunnelStep("A")
+        errors = _args([], [formula])
+        assert [(e.code, e.path) for e in errors] == [
+            ("MT5_INVALID_EVENT_TYPE", "formula.metrics[0].event[0]")
+        ]
+
+    def test_event_of_another_type_gives_mt5(self) -> None:
+        """A Metric whose event is no supported kind is refused.
+
+        Construction refuses it first, so the test sets the field after
+        construction to reach the query check.
+        """
+        metric = Metric("Login")
+        object.__setattr__(metric, "event", FunnelStep("Login"))
+        errors = _args([metric])
+        assert [(e.code, e.path) for e in errors] == [
+            ("MT5_INVALID_EVENT_TYPE", "events[0].event")
+        ]
+
+    def test_names_custom_events_and_behavior_steps_pass(self) -> None:
+        """Names, custom events, and steps inside a SimpleBehavior pass."""
+        behavior = SimpleBehavior([FunnelStep("a", filters=[Filter.equals("c", "US")])])
+        assert _args([Metric(["Login", CustomEventRef(3)]), Metric(behavior)]) == []
+
+    def test_build_params_refuses_a_step_put_in_the_list_later(
+        self, ws: Workspace
+    ) -> None:
+        """``build_params`` raises instead of writing unfiltered entries."""
+        events: list[Any] = ["Login", "Signup"]
+        metric = Metric(events, filters=[Filter.equals("country", "US")])
+        events[0] = FunnelStep("Login")
+        with pytest.raises(BookmarkValidationError) as excinfo:
+            ws.build_params(metric)
+        assert [e.code for e in excinfo.value.errors] == ["MT5_INVALID_EVENT_TYPE"]
+
+
 # =============================================================================
 # Layer 2: validate_bookmark
 # =============================================================================
@@ -421,6 +487,54 @@ class TestBuildParamsWithNewKinds:
         """A metric over a list writes a simple behavior."""
         params = ws.build_params(Metric(["Login", "Signup"], math="unique"))
         assert params["sections"]["show"][0]["behavior"]["type"] == "simple"
+
+    def test_simple_behavior_of_filtered_steps(self, ws: Workspace) -> None:
+        """Per-step filters in a SimpleBehavior reach each event entry."""
+        us = Filter.equals("country", "US")
+        behavior = SimpleBehavior(
+            [
+                FunnelStep("a", filters=[us]),
+                FunnelStep("b", filters=[us], filters_combinator="any"),
+            ]
+        )
+        us_entry = {
+            "resourceType": "events",
+            "filterType": "string",
+            "defaultType": "string",
+            "filterValue": ["US"],
+            "filterOperator": "equals",
+            "value": "country",
+        }
+        params = ws.build_params(Metric(behavior, math="unique"))
+        assert params["sections"]["show"] == [
+            {
+                "type": "metric",
+                "behavior": {
+                    "type": "simple",
+                    "name": "a or b",
+                    "resourceType": "events",
+                    "filtersDeterminer": "all",
+                    "filters": [],
+                    "behaviors": [
+                        {
+                            "type": "event",
+                            "id": None,
+                            "name": "a",
+                            "filters": [us_entry],
+                            "filtersDeterminer": "all",
+                        },
+                        {
+                            "type": "event",
+                            "id": None,
+                            "name": "b",
+                            "filters": [us_entry],
+                            "filtersDeterminer": "any",
+                        },
+                    ],
+                },
+                "measurement": {"math": "unique"},
+            }
+        ]
 
     def test_operand_formula_alone(self, ws: Workspace) -> None:
         """A formula with operands can be the whole query."""

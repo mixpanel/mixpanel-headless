@@ -2048,6 +2048,8 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
         # -- custom event ids and metric indexes: types.py -------------------
         "CE1_INVALID_ID",
         "MT4_INVALID_INDEX",
+        # -- items of a list of events in a Metric: types.py ----------------
+        "MT5_INVALID_EVENT_TYPE",
     }
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.

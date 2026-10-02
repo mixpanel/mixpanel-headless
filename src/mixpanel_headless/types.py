@@ -7594,6 +7594,14 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
+_PER_EVENT_FILTERS_HINT: Final[str] = (
+    "Metric filters apply to every event of a list. For per-event filters, "
+    "put FunnelStep items in a SimpleBehavior: "
+    'Metric(SimpleBehavior([FunnelStep("A", filters=[...]), FunnelStep("B")]))'
+)
+"""The fix that an ``MT5_INVALID_EVENT_TYPE`` message names."""
+
+
 @dataclass(frozen=True)
 class Metric:
     """Encapsulates the event(s) to query with their aggregation settings.
@@ -7614,19 +7622,29 @@ class Metric:
     Attributes:
         event: Mixpanel event name, a custom event reference, a list of
             them, a simple behavior, or a saved simple behavior reference.
+            A list takes event names and ``CustomEventRef`` items only; a
+            ``FunnelStep`` goes in a ``SimpleBehavior``.
         math: Aggregation function. Default: ``"total"``.
         property: Property for property-based math types (name, ref, or inline).
         per_user: Per-user pre-aggregation (average, total, min, max).
         filters: Per-metric filters (applied in addition to global ``where``).
             On a list of events they apply to every event. They cannot be
-            combined with a ``SimpleBehavior`` or a ``BehaviorRef``; put
-            per-event filters on the ``FunnelStep`` entries of a behavior.
+            combined with a ``SimpleBehavior`` or a ``BehaviorRef``. For
+            per-event filters, put ``FunnelStep`` items with their own
+            filters in a ``SimpleBehavior``:
+            ``Metric(SimpleBehavior([FunnelStep("A", filters=[...]), "B"]))``.
         filters_combinator: How per-metric filters combine.
             ``"all"`` = AND (default), ``"any"`` = OR.
 
     Example:
         ```python
-        from mixpanel_headless import CustomEventRef, Metric
+        from mixpanel_headless import (
+            CustomEventRef,
+            Filter,
+            FunnelStep,
+            Metric,
+            SimpleBehavior,
+        )
 
         # Simple event with defaults
         m1 = Metric("Login")
@@ -7642,6 +7660,10 @@ class Metric:
 
         # A saved custom event by id
         m5 = Metric(CustomEventRef(42), math="unique")
+
+        # Per-event filters: FunnelStep items in a SimpleBehavior
+        ios_login = FunnelStep("Login", filters=[Filter.equals("platform", "iOS")])
+        m6 = Metric(SimpleBehavior([ios_login, "SSO Login"]), math="unique")
         ```
     """
 
@@ -7688,7 +7710,11 @@ class Metric:
         Raises:
             ParamValidationError: If event is empty or contains control
                 characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
-                a list of events is empty (``BH1_STEP_COUNT``), a name in
+                event is not a name, a ``CustomEventRef``, a list, a
+                ``SimpleBehavior``, or a ``BehaviorRef``, or an item of a
+                list is not a name or a ``CustomEventRef``, for example a
+                ``FunnelStep`` (``MT5_INVALID_EVENT_TYPE``), a list of
+                events is empty (``BH1_STEP_COUNT``), a name in
                 the list is blank (``BH2_EMPTY_EVENT``) or contains control
                 characters (``EV2_CONTROL_CHAR_EVENT``), filters are set on
                 a simple behavior or a behavior reference
@@ -7714,6 +7740,13 @@ class Metric:
                     code="MT3_FILTERS_WITH_BEHAVIOR",
                 )
         elif not isinstance(event, CustomEventRef):
+            if not isinstance(event, list | tuple):
+                raise ParamValidationError(
+                    "Metric.event must be an event name (str), a CustomEventRef, "
+                    "a list of them, a SimpleBehavior, or a BehaviorRef, got "
+                    f"{type(event).__name__}. {_PER_EVENT_FILTERS_HINT}",
+                    code="MT5_INVALID_EVENT_TYPE",
+                )
             if len(event) < 1:
                 raise ParamValidationError(
                     "Metric needs at least 1 event (got 0)",
@@ -7722,6 +7755,15 @@ class Metric:
             for i, item in enumerate(event):
                 if isinstance(item, str):
                     _validate_behavior_event(item, f"Metric.event[{i}]")
+                elif not isinstance(item, CustomEventRef):
+                    # A FunnelStep here would lose the Metric filters, and
+                    # any other value would be written as the event name.
+                    raise ParamValidationError(
+                        f"Metric.event[{i}] must be an event name (str) or a "
+                        f"CustomEventRef, got {type(item).__name__}. "
+                        f"{_PER_EVENT_FILTERS_HINT}",
+                        code="MT5_INVALID_EVENT_TYPE",
+                    )
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
             raise ParamValidationError(
                 f"Metric math={self.math!r} requires a property "
