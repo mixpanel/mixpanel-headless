@@ -5,6 +5,7 @@ query engines: show-clause builders for the bookmark JSON format, and
 translators and validators for engines that don't use that format.
 
 Modules:
+    formula: Formula expression syntax, operand letters, and letter indexes
     metric_builders: Typed metrics, formulas, funnel steps, and retention
         events → bookmark show clauses
     user_builders: Filter → engage selector string translation

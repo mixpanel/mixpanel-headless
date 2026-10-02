@@ -123,6 +123,7 @@ from mixpanel_headless._internal.services.replays import (
 from mixpanel_headless._internal.transforms import transform_event, transform_profile
 from mixpanel_headless._internal.validation import (
     _scan_custom_properties,
+    check_retention_event_kinds,
     contains_control_chars,
     validate_bookmark,
     validate_flow_args,
@@ -242,6 +243,7 @@ from mixpanel_headless.types import (
     FrequencyResult,
     FunnelInfo,
     FunnelMathType,
+    FunnelMetric,
     FunnelQueryResult,
     FunnelResult,
     FunnelStep,
@@ -278,6 +280,7 @@ from mixpanel_headless.types import (
     RetentionAlignment,
     RetentionEvent,
     RetentionMathType,
+    RetentionMetric,
     RetentionMode,
     RetentionQueryResult,
     RetentionResult,
@@ -2159,7 +2162,9 @@ class Workspace:
     def _build_query_params(
         self,
         *,
-        events: Sequence[str | Metric | CohortMetric | MetricRef],
+        events: Sequence[
+            str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+        ],
         math: MathType,
         math_property: str | None,
         per_user: PerUserAggregation | None,
@@ -2276,10 +2281,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
         | MetricRef
         | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2313,11 +2329,14 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a MetricRef or a
-                SavedMetric (from ``list_metrics`` or ``get_metric``), a
-                Formula object, or a sequence mixing them. Formula
-                objects in the list are extracted and appended as formula
-                show clauses. ``math``, ``math_property``, and
+                a Metric object, a CohortMetric object, a FunnelMetric,
+                a RetentionMetric, a MetricRef or a SavedMetric (from
+                ``list_metrics`` or ``get_metric``), a Formula object, or
+                a sequence mixing them. Formula objects in the list are
+                extracted and appended as formula show clauses. A Formula
+                with its own operands (``metrics=``) can be the only
+                item. A Metric can count a custom event or more than one
+                event as one series. ``math``, ``math_property``, and
                 ``per_user`` apply to plain strings only: a CohortMetric
                 always counts unique users (CM3), and a saved metric keeps
                 its saved definition except for its own overrides. The
@@ -2491,10 +2510,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
         | MetricRef
         | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2528,11 +2558,13 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``MetricRef``,
-                ``SavedMetric``, ``Formula``, or a sequence mixing them. A
-                ``MetricRef`` or ``SavedMetric`` stays a reference in the
-                params (``{"type", "id", "overrides"}``), so a report built
-                from them follows the saved metric.
+                a ``Metric``, ``CohortMetric``, ``FunnelMetric``,
+                ``RetentionMetric``, ``MetricRef``, ``SavedMetric``,
+                ``Formula``, or a sequence mixing them. A ``Formula`` with
+                its own operands can be the only item. A ``MetricRef`` or
+                ``SavedMetric`` stays a reference in the params
+                (``{"type", "id", "overrides"}``), so a report built from
+                them follows the saved metric.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2613,10 +2645,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
         | MetricRef
         | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | MetricRef | SavedMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         from_date: str | None,
         to_date: str | None,
         last: int,
@@ -2677,11 +2720,22 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
-        # Type guard: events must be str, Metric, CohortMetric, MetricRef,
-        # SavedMetric, Formula, or sequence thereof
+        # Type guard: events must be an inline metric, a saved-metric
+        # reference, a Formula, or a sequence thereof
         if not isinstance(
             events,
-            (str, Metric, CohortMetric, MetricRef, SavedMetric, Formula, list, tuple),
+            (
+                str,
+                Metric,
+                CohortMetric,
+                FunnelMetric,
+                RetentionMetric,
+                MetricRef,
+                SavedMetric,
+                Formula,
+                list,
+                tuple,
+            ),
         ):
             raise BookmarkValidationError(
                 [
@@ -2689,7 +2743,8 @@ class Workspace:
                         path="events",
                         message=(
                             f"events must be a string, Metric, CohortMetric, "
-                            f"MetricRef, SavedMetric, Formula, or sequence, got "
+                            f"FunnelMetric, RetentionMetric, MetricRef, "
+                            f"SavedMetric, Formula, or sequence, got "
                             f"{type(events).__name__}"
                         ),
                         code="V21_INVALID_EVENT_TYPE",
@@ -2714,28 +2769,33 @@ class Workspace:
 
         # Normalize events to sequence, separating Formula objects. A
         # SavedMetric becomes a MetricRef, so it stays a reference.
-        if isinstance(events, str):
-            events_list: list[str | Metric | CohortMetric | MetricRef] = [events]
-            formulas_from_list: list[Formula] = []
-        elif isinstance(events, SavedMetric):
+        events_list: list[
+            str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+        ]
+        formulas_from_list: list[Formula] = []
+        if isinstance(events, SavedMetric):
             events_list = [events.to_ref()]
-            formulas_from_list = []
-        elif isinstance(events, (Metric, CohortMetric, MetricRef)):
+        elif isinstance(
+            events,
+            (str, Metric, CohortMetric, FunnelMetric, RetentionMetric, MetricRef),
+        ):
             events_list = [events]
-            formulas_from_list = []
         elif isinstance(events, Formula):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message="Formula cannot be the only item; provide event(s) too",
-                        code="V0_NO_EVENTS",
-                    )
-                ]
-            )
+            # A formula with its own operands needs no other metric.
+            if events.metrics is None:
+                raise BookmarkValidationError(
+                    [
+                        ValidationError(
+                            path="events",
+                            message="Formula cannot be the only item; provide event(s) too",
+                            code="V0_NO_EVENTS",
+                        )
+                    ]
+                )
+            events_list = []
+            formulas_from_list = [events]
         else:
             events_list = []
-            formulas_from_list = []
             for item in events:
                 if isinstance(item, Formula):
                     formulas_from_list.append(item)
@@ -2776,7 +2836,7 @@ class Workspace:
             from_date=from_date,
             to_date=to_date,
             last=last,
-            has_formula=bool(resolved_formulas),
+            has_formula=any(f.metrics is None for f in resolved_formulas),
             rolling=rolling,
             cumulative=cumulative,
             group_by=group_by,
@@ -4473,6 +4533,11 @@ class Workspace:
             if any(e.severity == "error" for e in ref_bookmark_errors):
                 raise BookmarkValidationError(ref_bookmark_errors)
             return ref_params
+
+        # More than one event per retention event: point to custom events
+        kind_errors = check_retention_event_kinds(born_event, return_event)
+        if kind_errors:
+            raise BookmarkValidationError(kind_errors)
 
         # Normalize events: str → RetentionEvent
         norm_born = (

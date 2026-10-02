@@ -22,7 +22,7 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import KW_ONLY, MISSING, dataclass, field, fields
 from datetime import date as dt_date
 from datetime import datetime
@@ -57,6 +57,9 @@ from mixpanel_headless._literal_types import (
     FlowAnchorType,
     FlowNodeType,
     FlowSessionEvent,
+    FunnelReentryMode,
+    RetentionUnboundedMode,
+    TimeUnit,
 )
 from mixpanel_headless._literal_types import FilterPropertyType as FilterPropertyType
 from mixpanel_headless._literal_types import FiltersCombinator as FiltersCombinator
@@ -7591,26 +7594,57 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
+_PER_EVENT_FILTERS_HINT: Final[str] = (
+    "Metric filters apply to every event of a list. For per-event filters, "
+    "put FunnelStep items in a SimpleBehavior: "
+    'Metric(SimpleBehavior([FunnelStep("A", filters=[...]), FunnelStep("B")]))'
+)
+"""The fix that an ``MT5_INVALID_EVENT_TYPE`` message names."""
+
+
 @dataclass(frozen=True)
 class Metric:
-    """Encapsulates a single event to query with its aggregation settings.
+    """Encapsulates the event(s) to query with their aggregation settings.
 
     Used with ``Workspace.query()`` to specify per-event math, property,
     per-user aggregation, and filters. Plain event name strings inherit
     top-level query defaults; Metric objects override them.
 
+    The event is one event name, a saved custom event
+    (:class:`CustomEventRef`), a list of names and custom events, a
+    :class:`SimpleBehavior`, or a saved simple behavior
+    (:class:`BehaviorRef` of type ``"simple"``). A metric over more than
+    one event counts the events as one series: unique users are counted
+    once across all the events, and totals add up. ``query_funnel`` and
+    ``query_retention`` do not take more than one event per step; use a
+    custom event there.
+
     Attributes:
-        event: Mixpanel event name.
+        event: Mixpanel event name, a custom event reference, a list of
+            them, a simple behavior, or a saved simple behavior reference.
+            A list takes event names and ``CustomEventRef`` items only; a
+            ``FunnelStep`` goes in a ``SimpleBehavior``.
         math: Aggregation function. Default: ``"total"``.
         property: Property for property-based math types (name, ref, or inline).
         per_user: Per-user pre-aggregation (average, total, min, max).
         filters: Per-metric filters (applied in addition to global ``where``).
+            On a list of events they apply to every event. They cannot be
+            combined with a ``SimpleBehavior`` or a ``BehaviorRef``. For
+            per-event filters, put ``FunnelStep`` items with their own
+            filters in a ``SimpleBehavior``:
+            ``Metric(SimpleBehavior([FunnelStep("A", filters=[...]), "B"]))``.
         filters_combinator: How per-metric filters combine.
             ``"all"`` = AND (default), ``"any"`` = OR.
 
     Example:
         ```python
-        from mixpanel_headless import Metric
+        from mixpanel_headless import (
+            CustomEventRef,
+            Filter,
+            FunnelStep,
+            Metric,
+            SimpleBehavior,
+        )
 
         # Simple event with defaults
         m1 = Metric("Login")
@@ -7620,11 +7654,23 @@ class Metric:
 
         # With per-user aggregation
         m3 = Metric("Purchase", math="total", per_user="average")
+
+        # Users who did any of two events, counted once
+        m4 = Metric(["Login", "SSO Login"], math="unique")
+
+        # A saved custom event by id
+        m5 = Metric(CustomEventRef(42), math="unique")
+
+        # Per-event filters: FunnelStep items in a SimpleBehavior
+        ios_login = FunnelStep("Login", filters=[Filter.equals("platform", "iOS")])
+        m6 = Metric(SimpleBehavior([ios_login, "SSO Login"]), math="unique")
         ```
     """
 
-    event: str
-    """Mixpanel event name."""
+    event: (
+        str | CustomEventRef | list[str | CustomEventRef] | SimpleBehavior | BehaviorRef
+    )
+    """Event name, custom event, list of them, simple behavior, or saved behavior."""
 
     math: MathType = "total"
     """Aggregation function."""
@@ -7664,13 +7710,60 @@ class Metric:
         Raises:
             ParamValidationError: If event is empty or contains control
                 characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
+                event is not a name, a ``CustomEventRef``, a list, a
+                ``SimpleBehavior``, or a ``BehaviorRef``, or an item of a
+                list is not a name or a ``CustomEventRef``, for example a
+                ``FunnelStep`` (``MT5_INVALID_EVENT_TYPE``), a list of
+                events is empty (``BH1_STEP_COUNT``), a name in
+                the list is blank (``BH2_EMPTY_EVENT``) or contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``), filters are set on
+                a simple behavior or a behavior reference
+                (``MT3_FILTERS_WITH_BEHAVIOR``), a behavior reference is not
+                of type ``"simple"`` (``BH5_BEHAVIOR_REF_TYPE``),
                 math requires a property but none is set
                 (``V13_METRIC_MATH_PROPERTY``), math="percentile" but
                 percentile_value is missing
                 (``V26_PERCENTILE_REQUIRES_VALUE``), or segment_method is
                 invalid (``MT2_INVALID_SEGMENT_METHOD``).
         """
-        _validate_event_name(self.event, "Metric")
+        event = self.event
+        if isinstance(event, str):
+            _validate_event_name(event, "Metric")
+        elif isinstance(event, SimpleBehavior | BehaviorRef):
+            if isinstance(event, BehaviorRef):
+                _check_behavior_ref_type(event, "simple", "Metric.event")
+            if self.filters:
+                raise ParamValidationError(
+                    "Metric filters cannot be combined with a SimpleBehavior "
+                    "or BehaviorRef event; put per-event filters on "
+                    "FunnelStep entries of the behavior instead",
+                    code="MT3_FILTERS_WITH_BEHAVIOR",
+                )
+        elif not isinstance(event, CustomEventRef):
+            if not isinstance(event, list | tuple):
+                raise ParamValidationError(
+                    "Metric.event must be an event name (str), a CustomEventRef, "
+                    "a list of them, a SimpleBehavior, or a BehaviorRef, got "
+                    f"{type(event).__name__}. {_PER_EVENT_FILTERS_HINT}",
+                    code="MT5_INVALID_EVENT_TYPE",
+                )
+            if len(event) < 1:
+                raise ParamValidationError(
+                    "Metric needs at least 1 event (got 0)",
+                    code="BH1_STEP_COUNT",
+                )
+            for i, item in enumerate(event):
+                if isinstance(item, str):
+                    _validate_behavior_event(item, f"Metric.event[{i}]")
+                elif not isinstance(item, CustomEventRef):
+                    # A FunnelStep here would lose the Metric filters, and
+                    # any other value would be written as the event name.
+                    raise ParamValidationError(
+                        f"Metric.event[{i}] must be an event name (str) or a "
+                        f"CustomEventRef, got {type(item).__name__}. "
+                        f"{_PER_EVENT_FILTERS_HINT}",
+                        code="MT5_INVALID_EVENT_TYPE",
+                    )
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
             raise ParamValidationError(
                 f"Metric math={self.math!r} requires a property "
@@ -7697,22 +7790,39 @@ class Metric:
 
 @dataclass(frozen=True)
 class Formula:
-    """A formula expression referencing events by position letter (A, B, C...).
+    """A formula expression over metrics named by position letter (A, B, C...).
 
-    Letters map to event positions in the list passed to
-    ``Workspace.query()``. A is the first event, B the second, etc.
+    Without ``metrics``, the letters name the other metrics of the query:
+    A is the first item in the list passed to ``Workspace.query()``, B the
+    second, and so on. With ``metrics``, the letters name the formula's own
+    operands instead, and the formula needs no other metric in the query.
+    This is also the form of a saved formula.
+
+    Letters run A to Z, then BA, BB, and so on (27 operands end at BA).
+    The expression uses ``+ - * / ^``, parentheses, and numbers.
 
     Can be passed as an element of the events list alongside strings
     and ``Metric`` objects, or use the top-level ``formula`` parameter
-    for single-formula convenience.
+    for single-formula convenience (without operands).
 
     Attributes:
         expression: Formula expression, e.g. ``"(B / A) * 100"``.
         label: Optional display label for the formula result.
+        metrics: The formula's own operands, or ``None`` to name the other
+            metrics of the query. An operand is an inline metric or a
+            ``MetricRef`` to a saved behavior metric (with no overrides,
+            because the server ignores overrides on an operand). The server
+            refuses a warehouse metric as an operand; a ``MetricRef`` with
+            ``type="warehouse"`` (as ``SavedMetric.to_ref()`` makes for a
+            warehouse metric) is refused, but a bare ``MetricRef(id)``
+            keeps the default kind, so the client cannot detect a warehouse
+            metric behind it. Pass a list or another sequence; the formula
+            keeps a tuple copy, so a later change to the caller's list does
+            not change the operands that the guards checked.
 
     Example:
         ```python
-        from mixpanel_headless import Formula, Metric
+        from mixpanel_headless import Formula, FunnelBehavior, FunnelMetric, Metric
 
         # Formula in the events list
         result = ws.query(
@@ -7728,27 +7838,82 @@ class Formula:
             formula="(B / A) * 100",
             formula_label="Conversion %",
         )
+
+        # A formula with its own operands
+        result = ws.query(
+            Formula(
+                "A / B",
+                label="Purchases per checkout conversion",
+                metrics=[
+                    Metric("Purchase", math="total"),
+                    FunnelMetric(FunnelBehavior(["Checkout", "Purchase"])),
+                ],
+            )
+        )
         ```
     """
 
     expression: str
-    """Formula expression referencing events by letter."""
+    """Formula expression referencing metrics by letter."""
 
     label: str | None = None
     """Optional display label for the formula result."""
+
+    metrics: Sequence[FormulaOperand] | None = None
+    """The formula's own operands (a tuple), or ``None`` for the query's metrics."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
             ParamValidationError: If expression is empty
-                (``FM1_EMPTY_EXPRESSION``).
+                (``FM1_EMPTY_EXPRESSION``). With ``metrics``: if an operand
+                is a formula or a reference to a saved formula
+                (``FM3_NESTED_FORMULA``), an operand is a warehouse metric
+                (``FM7_WAREHOUSE_OPERAND``), a ``MetricRef`` operand sets an
+                override (``MR2_OPERAND_OVERRIDE``), the expression is not
+                in the server grammar (``FM4_SYNTAX``), a literal has an
+                uppercase E (``FM5_UPPER_E``), a letter names no operand
+                (``FM2_UNKNOWN_LETTER``), or the expression uses no letter
+                (``V16_FORMULA_SYNTAX``).
         """
         if not self.expression or not self.expression.strip():
             raise ParamValidationError(
                 "Formula.expression must be a non-empty string",
                 code="FM1_EMPTY_EXPRESSION",
             )
+        if self.metrics is None:
+            return
+        from mixpanel_headless._internal.query.formula import validate_operand_formula
+        from mixpanel_headless._internal.query.metric_builders import (
+            build_operand_ref_clause,
+        )
+
+        # Keep a tuple copy, so the guards below check exactly the operands
+        # that the builders later write.
+        operands = tuple(self.metrics)
+        object.__setattr__(self, "metrics", operands)
+        for i, operand in enumerate(operands):
+            if isinstance(operand, Formula) or (
+                isinstance(operand, MetricRef) and operand.type == "formula"
+            ):
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a formula; an operand of a "
+                    "formula cannot be another formula",
+                    code="FM3_NESTED_FORMULA",
+                )
+            if isinstance(operand, MetricRef) and operand.type == "warehouse":
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a warehouse metric; the server "
+                    "accepts only behavior metrics as formula operands. Query "
+                    "a warehouse metric alone by reference, for example "
+                    "ws.query(MetricRef(id, type='warehouse'))",
+                    code="FM7_WAREHOUSE_OPERAND",
+                )
+            if isinstance(operand, MetricRef):
+                # Raises MR2_OPERAND_OVERRIDE for a reference with overrides.
+                build_operand_ref_clause(operand)
+        validate_operand_formula(self.expression, len(operands))
 
 
 _METRIC_REF_KINDS: Final[frozenset[str]] = frozenset({"metric", "formula", "warehouse"})
@@ -11950,6 +12115,589 @@ def _safe_int(value: Any, default: int = 0) -> int:
         stacklevel=2,
     )
     return default
+
+
+# =============================================================================
+# Inline Behaviors and Behavior Metrics
+# =============================================================================
+
+
+def _validate_behavior_event(event: str, where: str) -> None:
+    """Validate one event name that a behavior holds as a plain string.
+
+    Args:
+        event: The event name.
+        where: The field path for messages, for example
+            ``"FunnelBehavior.steps[1]"``.
+
+    Raises:
+        ParamValidationError: If the name is empty or blank
+            (``BH2_EMPTY_EVENT``) or contains control characters
+            (``EV2_CONTROL_CHAR_EVENT``).
+    """
+    if not event.strip():
+        raise ParamValidationError(
+            f"{where} must be a non-empty event name",
+            code="BH2_EMPTY_EVENT",
+        )
+    if _CONTROL_CHAR_RE.search(event):
+        raise ParamValidationError(
+            f"{where} contains control characters: {event!r}",
+            code="EV2_CONTROL_CHAR_EVENT",
+        )
+
+
+def _check_behavior_ref_type(
+    ref: BehaviorRef, needed: Literal["simple", "funnel", "retention"], where: str
+) -> None:
+    """Check that a saved-behavior reference has the type a metric needs.
+
+    The server expands a behavior id without checking its type, so a
+    reference of another type would run the wrong behavior.
+
+    Args:
+        ref: The saved-behavior reference.
+        needed: The behavior type the metric needs.
+        where: The field path for messages, for example
+            ``"FunnelMetric.behavior"``.
+
+    Raises:
+        ParamValidationError: If the types differ
+            (``BH5_BEHAVIOR_REF_TYPE``).
+    """
+    if ref.type != needed:
+        raise ParamValidationError(
+            f"{where} is BehaviorRef({ref.id}, {ref.type!r}); it needs a "
+            f"{needed} behavior",
+            code="BH5_BEHAVIOR_REF_TYPE",
+        )
+
+
+def _check_index(value: int | None, where: str) -> None:
+    """Check an optional zero-based index of a funnel or retention metric.
+
+    Args:
+        value: The index, or ``None``.
+        where: The field path for messages, for example
+            ``"FunnelMetric.step_index"``.
+
+    Raises:
+        ParamValidationError: If the value is set and is not an ``int`` of
+            zero or more (``MT4_INVALID_INDEX``); a ``bool`` is not an index.
+    """
+    if value is not None and not _is_index(value):
+        raise ParamValidationError(
+            f"{where} must be an integer >= 0, got {value!r}",
+            code="MT4_INVALID_INDEX",
+        )
+
+
+def _property_math_problem(
+    math: str, prop: PropertySpec | None
+) -> Literal["missing", "rejected"] | None:
+    """Compare a math type with the presence of a measurement property.
+
+    Uses the same property-math sets as the query validators: a math in
+    the property-requiring set needs a property, ``total`` takes one
+    optionally, and every other math takes none. For a math that needs a
+    property, an empty or whitespace-only name counts as no property: it
+    names nothing to aggregate, and the funnel builder writes an empty
+    name as a null property.
+
+    Args:
+        math: The math type.
+        prop: The measurement property, or ``None``.
+
+    Returns:
+        ``"missing"`` when the math needs a property and none is set or
+        the name is blank, ``"rejected"`` when a property is set on a math
+        that takes none, or ``None`` when the two agree.
+    """
+    from mixpanel_headless._internal.bookmark_enums import MATH_PROPERTY_OPTIONAL
+
+    if math in _MATH_REQUIRING_PROPERTY:
+        blank = prop is None or (isinstance(prop, str) and not prop.strip())
+        return "missing" if blank else None
+    if prop is not None and math not in MATH_PROPERTY_OPTIONAL:
+        return "rejected"
+    return None
+
+
+def _property_maths(maths: tuple[str, ...]) -> list[str]:
+    """List the math types in ``maths`` that accept a measurement property.
+
+    Args:
+        maths: The members of a math ``Literal`` alias.
+
+    Returns:
+        The sorted members that need or accept a property.
+    """
+    from mixpanel_headless._internal.bookmark_enums import MATH_PROPERTY_OPTIONAL
+
+    return sorted(
+        m for m in maths if m in _MATH_REQUIRING_PROPERTY or m in MATH_PROPERTY_OPTIONAL
+    )
+
+
+@dataclass(frozen=True)
+class CustomEventRef:
+    """A reference to a saved custom event by its integer ID.
+
+    A custom event is a saved union of events, with optional filters, under
+    one name. Use this reference as the event of a :class:`Metric` or as
+    an event of a :class:`SimpleBehavior`, to count the custom event
+    instead of one raw event. The query counts each user once across the
+    events of the union.
+
+    The ID is ``CustomEvent.id`` from :meth:`Workspace.create_custom_event`,
+    or ``custom_event_id`` of an entry of :meth:`Workspace.list_custom_events`.
+    Where a query takes an event name only (a ``query_funnel`` step, a
+    ``query_retention`` event), pass the name ``"$custom_event:<id>"``
+    instead. The display name of a custom event is not an event name: it
+    matches no events and returns zero rows, with no error.
+
+    Attributes:
+        id: The custom event's server-assigned ID.
+
+    Example:
+        ```python
+        from mixpanel_headless import CustomEventRef, Metric
+
+        # Unique users of the custom event 42
+        result = ws.query(Metric(CustomEventRef(42), math="unique"))
+
+        # The same custom event as a funnel step, by name
+        result = ws.query_funnel(["$custom_event:42", "Purchase"])
+        ```
+    """
+
+    id: int
+    """The custom event's server-assigned ID."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``CE1_INVALID_ID``); a ``bool`` is not an id.
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"CustomEventRef id must be a positive integer, got {self.id!r}",
+                code="CE1_INVALID_ID",
+            )
+
+
+@dataclass(frozen=True)
+class SimpleBehavior:
+    """One or more events that count as one behavior.
+
+    A user performs the behavior when the user does any of the events. The
+    query counts the events as one series: unique users are counted once
+    across all the events, and totals add up. Each event is an event name,
+    a :class:`CustomEventRef`, or a :class:`FunnelStep` (for per-event
+    filters; the step ``order`` has no effect here).
+
+    Filters go on each event (a ``FunnelStep`` with ``filters``). The
+    query server ignores filters on the behavior as a whole, so this type
+    has none.
+
+    Attributes:
+        events: The events, at least one.
+        name: The series label. The query server counts the events as one
+            series only under a non-empty name, so ``None`` (or a blank
+            name) makes the library join the event names with ``" or "``.
+
+    Example:
+        ```python
+        from mixpanel_headless import (
+            CustomEventRef,
+            Filter,
+            FunnelStep,
+            Metric,
+            SimpleBehavior,
+        )
+
+        # Any of three sign-in events, as one series named "Signed in"
+        signed_in = SimpleBehavior(
+            ["Login", "SSO Login", CustomEventRef(42)], name="Signed in"
+        )
+        result = ws.query(Metric(signed_in, math="unique"))
+
+        # Per-event filters through FunnelStep
+        big_purchase = SimpleBehavior(
+            [FunnelStep("Purchase", filters=[Filter.greater_than("amount", 100)])]
+        )
+        ```
+    """
+
+    events: list[str | CustomEventRef | FunnelStep]
+    """The events, at least one."""
+
+    name: str | None = None
+    """The series label; ``None`` joins the event names with ``" or "``."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If there are no events
+                (``BH1_STEP_COUNT``), an event name is blank
+                (``BH2_EMPTY_EVENT``), or an event name contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``).
+        """
+        if len(self.events) < 1:
+            raise ParamValidationError(
+                "SimpleBehavior needs at least 1 event (got 0)",
+                code="BH1_STEP_COUNT",
+            )
+        for i, event in enumerate(self.events):
+            if isinstance(event, str):
+                _validate_behavior_event(event, f"SimpleBehavior.events[{i}]")
+
+
+@dataclass(frozen=True)
+class FunnelBehavior:
+    """An ordered sequence of two or more steps that users convert through.
+
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_funnel`, so a funnel behavior and a
+    ``query_funnel`` call over the same steps count the same way. The web
+    app starts a new funnel behavior with a 7-day window; pass
+    ``conversion_window=7`` to match it.
+
+    Attributes:
+        steps: The funnel steps, at least two. Each is an event name or a
+            :class:`FunnelStep`.
+        conversion_window: How long users have to complete the funnel.
+            Default: ``14``.
+        conversion_window_unit: The unit of ``conversion_window``.
+            Default: ``"day"``.
+        order: ``"loose"`` requires the steps in order, with other events
+            between them allowed. ``"any"`` accepts the steps in any order.
+            Default: ``"loose"``.
+        exclusions: Events that remove a user from the funnel between
+            steps. Each is an event name or an :class:`Exclusion`.
+        holding_constant: Properties that must keep the same value at every
+            step. One name, one :class:`HoldingConstant`, or a list of them.
+        reentry_mode: How users re-enter the funnel after they convert.
+            ``None`` uses the server default.
+
+    Example:
+        ```python
+        from mixpanel_headless import Exclusion, FunnelBehavior
+
+        checkout = FunnelBehavior(
+            ["View Cart", "Checkout", "Purchase"],
+            conversion_window=1,
+            conversion_window_unit="hour",
+            exclusions=[Exclusion("Remove From Cart", from_step=0, to_step=1)],
+            holding_constant="platform",
+        )
+        ```
+    """
+
+    steps: list[str | FunnelStep]
+    """The funnel steps, at least two."""
+
+    conversion_window: int = 14
+    """How long users have to complete the funnel."""
+
+    conversion_window_unit: ConversionWindowUnit = "day"
+    """The unit of ``conversion_window``."""
+
+    order: FunnelOrder = "loose"
+    """Step ordering mode (``"loose"`` or ``"any"``)."""
+
+    exclusions: list[str | Exclusion] | None = None
+    """Events that remove a user from the funnel between steps."""
+
+    holding_constant: str | HoldingConstant | list[str | HoldingConstant] | None = None
+    """Properties that must keep the same value at every step."""
+
+    reentry_mode: FunnelReentryMode | None = None
+    """How users re-enter the funnel after they convert (server default)."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If there are fewer than two steps
+                (``BH1_STEP_COUNT``), a step name is blank
+                (``BH2_EMPTY_EVENT``), a step name contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``), an exclusion name
+                is blank or contains control characters
+                (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``, as for
+                :class:`Exclusion`), or a property to hold constant is
+                blank (``HC1_EMPTY_PROPERTY``, as for
+                :class:`HoldingConstant`).
+        """
+        if len(self.steps) < 2:
+            raise ParamValidationError(
+                f"FunnelBehavior needs at least 2 steps (got {len(self.steps)})",
+                code="BH1_STEP_COUNT",
+            )
+        for i, step in enumerate(self.steps):
+            if isinstance(step, str):
+                _validate_behavior_event(step, f"FunnelBehavior.steps[{i}]")
+        for exclusion in self.exclusions or []:
+            if isinstance(exclusion, str):
+                Exclusion(exclusion)
+        held = self.holding_constant
+        held_values = [held] if isinstance(held, str | HoldingConstant) else held
+        for value in held_values or []:
+            if isinstance(value, str):
+                HoldingConstant(value)
+
+
+@dataclass(frozen=True)
+class RetentionBehavior:
+    """A born event and a return event: users who come back after they start.
+
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_retention`, so a retention behavior and a
+    ``query_retention`` call over the same events count the same way. The
+    web app starts a new retention behavior with daily buckets; pass
+    ``retention_unit="day"`` to match it. A retention behavior always holds
+    exactly two events.
+
+    Attributes:
+        born_event: The event that puts a user in a cohort. An event name
+            or a :class:`RetentionEvent`.
+        return_event: The event that counts as a return. An event name or a
+            :class:`RetentionEvent`.
+        retention_unit: The bucket unit. Default: ``"week"``.
+        alignment: ``"birth"`` aligns each cohort to its born date;
+            ``"interval_start"`` aligns all cohorts to the same start.
+            Default: ``"birth"``.
+        bucket_sizes: Custom bucket sizes (positive integers in ascending
+            order). ``None`` means uniform buckets.
+        unbounded_mode: How a return counts in later or earlier buckets.
+            ``None`` uses the server default.
+
+    Example:
+        ```python
+        from mixpanel_headless import RetentionBehavior
+
+        weekly = RetentionBehavior("Signup", "Login", retention_unit="week")
+        ```
+    """
+
+    born_event: str | RetentionEvent
+    """The event that puts a user in a cohort."""
+
+    return_event: str | RetentionEvent
+    """The event that counts as a return."""
+
+    retention_unit: TimeUnit = "week"
+    """The bucket unit."""
+
+    alignment: RetentionAlignment = "birth"
+    """Cohort alignment mode."""
+
+    bucket_sizes: list[int] | None = None
+    """Custom bucket sizes, or ``None`` for uniform buckets."""
+
+    unbounded_mode: RetentionUnboundedMode | None = None
+    """How a return counts in other buckets (server default)."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If an event name is blank
+                (``BH2_EMPTY_EVENT``) or contains control characters
+                (``EV2_CONTROL_CHAR_EVENT``).
+        """
+        if isinstance(self.born_event, str):
+            _validate_behavior_event(self.born_event, "RetentionBehavior.born_event")
+        if isinstance(self.return_event, str):
+            _validate_behavior_event(
+                self.return_event, "RetentionBehavior.return_event"
+            )
+
+
+@dataclass(frozen=True)
+class FunnelMetric:
+    """A funnel behavior measured as one metric, such as its conversion rate.
+
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`. The math and property rules are those of
+    :meth:`Workspace.query_funnel` and ``math_property``: a funnel metric
+    and a ``query_funnel`` call over the same funnel give the same number.
+    A property math with no property is refused, because the query server
+    refuses it too. For a property math, an empty or whitespace-only
+    property name counts as no property.
+
+    Attributes:
+        behavior: The funnel to measure: a ``FunnelBehavior``, or a
+            ``BehaviorRef`` of type ``"funnel"`` for a saved funnel.
+        math: The funnel aggregation. Default:
+            ``"conversion_rate_unique"``.
+        property: The property to aggregate. Required for a property math
+            (``average``, ``median``, ``min``, ``max``, the percentiles, and
+            ``histogram``), and a blank name does not count; optional for
+            ``total``; refused for the others.
+        step_index: The zero-based step to measure. ``None`` measures the
+            whole funnel.
+        label: The series label. ``None`` lets the server name the series
+            after the first and last steps.
+
+    Example:
+        ```python
+        from mixpanel_headless import FunnelBehavior, FunnelMetric, Metric
+
+        checkout = FunnelBehavior(["Checkout", "Purchase"])
+        rate = FunnelMetric(checkout, label="Checkout conversion")
+        spend = FunnelMetric(checkout, math="average", property="amount")
+
+        # Conversion rate next to the number of users who checked out
+        result = ws.query([Metric("Checkout", math="unique"), rate])
+        ```
+    """
+
+    behavior: FunnelBehavior | BehaviorRef
+    """The funnel to measure, inline or saved."""
+
+    math: FunnelMathType = "conversion_rate_unique"
+    """The funnel aggregation."""
+
+    property: PropertySpec | None = None
+    """The property to aggregate (name, ref, or inline)."""
+
+    step_index: int | None = None
+    """The zero-based step to measure, or ``None`` for the whole funnel."""
+
+    label: str | None = None
+    """The display name of the metric."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        The property rules are the rules of :meth:`Workspace.query_funnel`
+        for ``math_property``, with the same codes. One rule is stricter:
+        a blank property name on a property math counts as no property.
+
+        Raises:
+            ParamValidationError: If a saved behavior is not a funnel
+                (``BH5_BEHAVIOR_REF_TYPE``), ``step_index`` is not an
+                integer >= 0 (``MT4_INVALID_INDEX``), a property math has no
+                property or a blank property name
+                (``F10_MATH_MISSING_PROPERTY``), or a math that takes no
+                property has one (``F11_MATH_REJECTS_PROPERTY``).
+        """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(self.behavior, "funnel", "FunnelMetric.behavior")
+        _check_index(self.step_index, "FunnelMetric.step_index")
+        problem = _property_math_problem(self.math, self.property)
+        if problem == "missing":
+            raise ParamValidationError(
+                f"FunnelMetric math={self.math!r} requires a property "
+                f"(e.g., FunnelMetric(behavior, math={self.math!r}, "
+                'property="amount"))',
+                code="F10_MATH_MISSING_PROPERTY",
+            )
+        if problem == "rejected":
+            raise ParamValidationError(
+                f"FunnelMetric math={self.math!r} does not take a property; "
+                "math types that take a property: "
+                f"{_property_maths(get_args(FunnelMathType))}",
+                code="F11_MATH_REJECTS_PROPERTY",
+            )
+
+
+@dataclass(frozen=True)
+class RetentionMetric:
+    """A retention behavior measured as one metric, such as its retention rate.
+
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`.
+
+    Attributes:
+        behavior: The retention behavior to measure: a
+            ``RetentionBehavior``, or a ``BehaviorRef`` of type
+            ``"retention"`` for a saved retention behavior.
+        math: The retention aggregation. Default: ``"retention_rate"``.
+        bucket_index: The zero-based bucket that a line or bar chart
+            trends: ``0`` is the first bucket (before one unit ends),
+            ``N`` is unit ``N``. ``None`` uses the report default.
+        retention_cumulative: Whether to count retention cumulatively.
+            Default: ``False``.
+        property: The property to aggregate. Required for ``average``, and
+            a blank name does not count; optional for ``total``; refused
+            for ``retention_rate`` and ``unique``.
+        label: The series label. ``None`` lets the server name the series
+            after the two events.
+
+    Example:
+        ```python
+        from mixpanel_headless import RetentionBehavior, RetentionMetric
+
+        returning = RetentionBehavior("Signup", "Login", retention_unit="day")
+        day_7 = RetentionMetric(returning, bucket_index=7, label="Day 7 retention")
+        result = ws.query(day_7, last=60)
+        ```
+    """
+
+    behavior: RetentionBehavior | BehaviorRef
+    """The retention behavior to measure, inline or saved."""
+
+    math: RetentionMathType = "retention_rate"
+    """The retention aggregation."""
+
+    bucket_index: int | None = None
+    """The zero-based bucket to trend, or ``None`` for the report default."""
+
+    retention_cumulative: bool = False
+    """Whether to count retention cumulatively."""
+
+    property: PropertySpec | None = None
+    """The property to aggregate (name, ref, or inline)."""
+
+    label: str | None = None
+    """The display name of the metric."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If a saved behavior is not a retention
+                behavior (``BH5_BEHAVIOR_REF_TYPE``), ``bucket_index`` is not
+                an integer >= 0 (``MT4_INVALID_INDEX``), or ``average`` has no
+                property or a blank property name, or ``retention_rate`` or
+                ``unique`` has one (``BH3_PROPERTY_MATH``).
+        """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(
+                self.behavior, "retention", "RetentionMetric.behavior"
+            )
+        _check_index(self.bucket_index, "RetentionMetric.bucket_index")
+        problem = _property_math_problem(self.math, self.property)
+        if problem == "missing":
+            raise ParamValidationError(
+                f"RetentionMetric math={self.math!r} requires a property "
+                f"(e.g., RetentionMetric(behavior, math={self.math!r}, "
+                'property="amount"))',
+                code="BH3_PROPERTY_MATH",
+            )
+        if problem == "rejected":
+            raise ParamValidationError(
+                f"RetentionMetric math={self.math!r} does not take a property; "
+                "math types that take a property: "
+                f"{_property_maths(get_args(RetentionMathType))}",
+                code="BH3_PROPERTY_MATH",
+            )
+
+
+FormulaOperand: TypeAlias = (
+    Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+)
+"""One operand of a :class:`Formula` that holds its own operands.
+
+An inline metric of any kind except a formula, or a saved behavior metric
+by reference (:class:`MetricRef` with no overrides): a formula or a
+warehouse metric cannot be an operand of a formula.
+"""
 
 
 # =============================================================================

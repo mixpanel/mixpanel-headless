@@ -44,6 +44,36 @@ Types for `Workspace.query()` — typed Insights engine queries with composable 
       show_root_heading: true
       show_root_toc_entry: true
 
+::: mixpanel_headless.CustomEventRef
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SimpleBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.FunnelBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.FunnelMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RetentionBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RetentionMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ::: mixpanel_headless.Filter
     options:
       show_root_heading: true

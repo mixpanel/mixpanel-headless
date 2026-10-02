@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 137 minted full codes, no duplicates.
+        """The registry lists all 150 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -961,8 +961,19 @@ class TestCodedGuardRegistry:
         Saved-entity references added eight: six ``MR*`` guards for
         ``MetricRef`` and formula operands, and two ``BR*`` guards for
         ``BehaviorRef``.
+        The formula expression rules added ``FM2_UNKNOWN_LETTER``,
+        ``FM4_SYNTAX``, and ``FM5_UPPER_E``. The inline behavior values
+        added ``BH1_STEP_COUNT``, ``BH2_EMPTY_EVENT``, and
+        ``BH3_PROPERTY_MATH``. Formula operands added ``FM3_NESTED_FORMULA``,
+        and metrics over several events added ``MT3_FILTERS_WITH_BEHAVIOR``.
+        Saved behaviors inside inline metrics added
+        ``BH5_BEHAVIOR_REF_TYPE``. Custom event ids and metric indexes added
+        ``CE1_INVALID_ID`` and ``MT4_INVALID_INDEX``. A warehouse formula
+        operand added ``FM7_WAREHOUSE_OPERAND``. A list item of a
+        metric that is not an event name or a custom event added
+        ``MT5_INVALID_EVENT_TYPE``.
         """
-        assert len(CODED_GUARD_REGISTRY) == 137
+        assert len(CODED_GUARD_REGISTRY) == 150
         for code in (
             "SM5_NOT_FOUND_FOR_DELETE",
             "SM6_DELETE_NOT_PERMITTED",
@@ -976,8 +987,12 @@ class TestCodedGuardRegistry:
         ``MetricRef`` reuses two per-Metric query validator codes for its
         measurement rules (``V3_PER_USER_INCOMPATIBLE``,
         ``V14_METRIC_REJECTS_PROPERTY``).
+        ``FunnelMetric`` reuses the two ``query_funnel`` property-math codes
+        (``F10_MATH_MISSING_PROPERTY``, ``F11_MATH_REJECTS_PROPERTY``). A
+        formula with its own operands and no letter reuses
+        ``V16_FORMULA_SYNTAX``.
         """
-        assert len(CODED_GUARD_TWIN_CODES) == 11
+        assert len(CODED_GUARD_TWIN_CODES) == 14
         assert CODED_GUARD_TWIN_CODES <= PRE_EXISTING_CODE_UNIVERSE
 
     def test_twins_disjoint_from_minted(self) -> None:

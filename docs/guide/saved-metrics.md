@@ -147,6 +147,23 @@ result = ws.query_retention(onboarding)
 
 The saved behavior owns its steps and settings, so the engine arguments that change them (for example `conversion_window` or `retention_unit`) must keep their defaults. The engines check the behavior type: a funnel query needs a `funnel` behavior, and a retention query needs a `retention` behavior.
 
+Saved behaviors and saved metrics also work inside inline values. A `BehaviorRef` is the behavior of a `Metric` (type `simple`), a `FunnelMetric` (type `funnel`), or a `RetentionMetric` (type `retention`); another type raises `BH5_BEHAVIOR_REF_TYPE`. A `MetricRef` is an operand of a `Formula` that holds its own operands:
+
+```python
+# A saved funnel as one metric, next to an event
+result = ws.query([
+    mp.Metric("Checkout", math="unique"),
+    mp.FunnelMetric(mp.BehaviorRef(3120, "funnel"), label="Checkout conversion"),
+])
+
+# A ratio of two saved metrics
+result = ws.query(
+    mp.Formula("A / B", label="Ratio", metrics=[mp.MetricRef(88999), mp.MetricRef(89001)])
+)
+```
+
+A `MetricRef` operand takes no override: the server ignores overrides on an operand, so the library refuses them (`MR2_OPERAND_OVERRIDE`). A saved formula is not an operand (`FM3_NESTED_FORMULA`), and neither is a warehouse metric (`FM7_WAREHOUSE_OPERAND`): the server accepts only behavior metrics as operands, so run a warehouse metric alone by reference.
+
 A reference changes the result labels: the series takes the saved name, with no math suffix such as `[Total Events]`. See [Insights Queries — Saved Metrics by Reference](query.md#saved-metrics-by-reference) for the override table, warehouse metrics, and every rule.
 
 ## Delete
