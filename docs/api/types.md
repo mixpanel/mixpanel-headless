@@ -513,6 +513,30 @@ Types for `Workspace.subproperties()` — schema discovery for list-of-object ev
       show_root_heading: true
       show_root_toc_entry: true
 
+## Saved Metric and Behavior Types
+
+Result types of `list_metrics`, `get_metric`, `list_behaviors`, and `get_behavior`. They accept any `type`, any `math`, and unknown keys; the typed accessors return `None` or an empty list for a shape they do not know. `created_by`, `owned_by`, and `last_verified_by` use `CohortCreator` (`{id, name, email}`). See the [Saved Metrics and Behaviors guide](../guide/saved-metrics.md).
+
+::: mixpanel_headless.SavedMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SavedBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.MetricDisplay
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.MetricGoal
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ## Feature Flag Enums
 
 ::: mixpanel_headless.FeatureFlagStatus

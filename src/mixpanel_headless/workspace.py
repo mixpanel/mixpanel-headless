@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NoReturn
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -276,7 +276,9 @@ from mixpanel_headless.types import (
     RetentionMode,
     RetentionQueryResult,
     RetentionResult,
+    SavedBehavior,
     SavedCohort,
+    SavedMetric,
     SavedReportResult,
     SchemaEnforcementConfig,
     SchemaEntry,
@@ -8593,6 +8595,471 @@ class Workspace:
         client.delete_custom_event(custom_event_id)
 
     # =============================================================================
+    # Saved Metrics & Saved Behaviors
+    # =============================================================================
+    # Project entities at /projects/{pid}/metrics and /projects/{pid}/behaviors.
+    # One collection holds all three metric kinds (behavior metric, formula,
+    # warehouse), so one method family serves them. The lists have no server
+    # filters, so the filter arguments apply locally to the one response.
+    # Deletes use the bulk routes only: the single-metric DELETE answers 501,
+    # and the single-behavior DELETE skips the permission check.
+
+    def list_metrics(
+        self,
+        *,
+        metric_type: str | None = None,
+        verified: bool | None = None,
+        name_contains: str | None = None,
+        viewable_only: bool = False,
+    ) -> list[SavedMetric]:
+        """List saved metrics: behavior metrics, formulas, and warehouse metrics.
+
+        Returns what the server returns, which includes metrics that the
+        caller cannot view (``can_view`` is False, but the definition is
+        complete). The server has no pagination, filters, or search, so one
+        request fetches every active metric, and the filters below apply
+        locally to that response. On a large project the request can take
+        more than 30 seconds; the read timeout is at least 120 seconds.
+
+        Args:
+            metric_type: Keep only metrics of this kind: ``"metric"`` (a
+                behavior metric), ``"formula"``, ``"warehouse"``, or the
+                legacy ``"behavior"``. Exact match.
+            verified: ``True`` keeps verified metrics; ``False`` keeps
+                unverified metrics. ``None`` (default) keeps both.
+            name_contains: Keep only metrics whose name contains this text,
+                ignoring case.
+            viewable_only: Drop the metrics that the server marks
+                ``can_view: false`` for the caller, as the web app does.
+                Rows without a ``can_view`` flag are kept. Default False.
+
+        Returns:
+            ``SavedMetric`` objects in server order.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks the metrics permission or scope (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            for metric in ws.list_metrics(verified=True, viewable_only=True):
+                print(metric.id, metric.type, metric.name)
+
+            formulas = ws.list_metrics(metric_type="formula", name_contains="rate")
+            ```
+        """
+        client = self._require_api_client()
+        metrics = validate_response_models(
+            SavedMetric, client.list_metrics(), endpoint="list_metrics"
+        )
+        if metric_type is not None:
+            metrics = [m for m in metrics if m.type == metric_type]
+        if verified is not None:
+            metrics = [m for m in metrics if m.verified is verified]
+        if name_contains is not None:
+            needle = name_contains.casefold()
+            metrics = [m for m in metrics if needle in m.name.casefold()]
+        if viewable_only:
+            metrics = [m for m in metrics if m.can_view is not False]
+        return metrics
+
+    def get_metric(self, metric_id: int) -> SavedMetric:
+        """Get one saved metric by id, with its full definition.
+
+        Args:
+            metric_id: The saved metric id.
+
+        Returns:
+            The ``SavedMetric``. Its typed accessors (``math``,
+            ``formula_expression``, ``referenced_metric_ids``, ``display``,
+            ``goals``) read the definition.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The metric does not exist or is deleted (404), or the
+                caller lacks permission (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            metric = ws.get_metric(104700)
+            print(metric.type, metric.math, metric.definition)
+            ```
+        """
+        client = self._require_api_client()
+        return validate_response_model(
+            SavedMetric, client.get_metric(metric_id), endpoint="get_metric"
+        )
+
+    def delete_metric(self, metric_id: int, *, force: bool = False) -> None:
+        """Delete one saved metric, after a read that confirms it exists and is yours to edit.
+
+        The server has no working single-metric delete, and its bulk delete
+        skips unknown ids with no error. So this method reads the metric
+        first, then sends the bulk delete with the one id. An unknown id
+        raises instead of passing silently. The delete is a soft delete on
+        the server; reports that refer to the metric keep a copy of its
+        definition but lose the link.
+
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own, even when the metric's ``can_update_basic``
+        flag is false for that account. So this method refuses a metric
+        whose ``can_update_basic`` is false, unless ``force`` is true. A
+        read without the flag does not refuse; the server stays the
+        authority.
+
+        Args:
+            metric_id: The saved metric id.
+            force: Delete even when the read says that the caller cannot
+                edit the metric (a superadmin account can delete metrics
+                that other users own). The existence read still runs.
+
+        Raises:
+            ParamValidationError: The read found no active metric with this
+                id (404); nothing was deleted (``SM5_NOT_FOUND_FOR_DELETE``).
+                The read shows ``can_update_basic`` false and ``force`` is
+                false; nothing was deleted (``SM6_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot read or edit the metric, or lacks
+                the warehouse permission for a warehouse metric (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.delete_metric(104700)
+            ws.delete_metric(118228, force=True)  # a metric another user owns
+            ```
+        """
+        client = self._require_api_client()
+        try:
+            row = client.get_metric(metric_id)
+        except QueryError as exc:
+            if exc.status_code != 404:
+                raise
+            raise ParamValidationError(
+                f"Saved metric {metric_id} was not found in project "
+                f"{client.project_id}; nothing was deleted.",
+                code="SM5_NOT_FOUND_FOR_DELETE",
+                details={
+                    "metric_id": metric_id,
+                    "project_id": client.project_id,
+                    "status_code": 404,
+                },
+            ) from exc
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("metric", [row])
+        client.delete_metrics([metric_id])
+
+    def delete_metrics(self, metric_ids: Sequence[int], *, force: bool = False) -> None:
+        """Delete several saved metrics with one bulk request.
+
+        The server skips ids that do not name an active metric of the
+        project, with no error, so a typo in an id passes silently. Use
+        :meth:`delete_metric` to delete one metric with an existence check.
+        An empty sequence sends no request.
+
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own. So, unless ``force`` is true, this method
+        reads the metric list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
+        Args:
+            metric_ids: The saved metric ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
+
+        Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``SM6_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit one of the metrics, or lacks
+                the warehouse permission for a warehouse metric (403);
+                nothing was deleted.
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            stale = ws.list_metrics(name_contains="[old]")
+            ws.delete_metrics([m.id for m in stale])
+            ```
+        """
+        if not metric_ids:
+            return
+        client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("metric", metric_ids, client.list_metrics())
+        client.delete_metrics(list(metric_ids))
+
+    @staticmethod
+    def _check_bulk_delete(
+        entity: Literal["metric", "behavior"],
+        target_ids: Sequence[int],
+        rows: list[dict[str, Any]],
+    ) -> None:
+        """Refuse a bulk delete when a target row says the caller cannot edit it.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            target_ids: The ids to delete.
+            rows: The listed rows of the project.
+
+        Raises:
+            ParamValidationError: A listed target has ``can_update_basic``
+                false (``SM6_DELETE_NOT_PERMITTED`` or
+                ``BH4_DELETE_NOT_PERMITTED``).
+        """
+        by_id = {row.get("id"): row for row in rows}
+        wanted = list(dict.fromkeys(target_ids))
+        refused = [
+            by_id[target]
+            for target in wanted
+            if target in by_id and by_id[target].get("can_update_basic") is False
+        ]
+        if refused:
+            Workspace._refuse_delete(entity, refused)
+
+    @staticmethod
+    def _refuse_delete(
+        entity: Literal["metric", "behavior"], rows: list[dict[str, Any]]
+    ) -> NoReturn:
+        """Raise the delete guard refusal for rows the caller cannot edit.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            rows: The refused rows (one for a single delete).
+
+        Raises:
+            ParamValidationError: Always (``SM6_DELETE_NOT_PERMITTED`` for
+                metrics, ``BH4_DELETE_NOT_PERMITTED`` for behaviors).
+        """
+        code = (
+            "SM6_DELETE_NOT_PERMITTED"
+            if entity == "metric"
+            else "BH4_DELETE_NOT_PERMITTED"
+        )
+        ids = [row.get("id") for row in rows]
+        noun = f"saved {entity}"
+        advice = (
+            "The server would still delete it for a project superadmin account. "
+            "Pass force=True (CLI: --force) to delete it anyway."
+        )
+        if len(rows) == 1:
+            row = rows[0]
+            creator = row.get("created_by")
+            email = creator.get("email") if isinstance(creator, dict) else None
+            by = f", created by {email}" if email else ""
+            raise ParamValidationError(
+                f"This account cannot edit {noun} {row.get('id')} "
+                f"({row.get('name')!r}{by}): its can_update_basic flag is false. "
+                f"{advice}",
+                code=code,
+                details={
+                    f"{entity}_ids": ids,
+                    "name": row.get("name"),
+                    "created_by": email,
+                },
+            )
+        joined = ", ".join(str(i) for i in ids)
+        raise ParamValidationError(
+            f"This account cannot edit {noun}s {joined}: their can_update_basic "
+            f"flag is false. Nothing was deleted. The server would still delete "
+            f"them for a project superadmin account. Pass force=True (CLI: "
+            f"--force) to delete them anyway.",
+            code=code,
+            details={f"{entity}_ids": ids},
+        )
+
+    def list_behaviors(
+        self,
+        *,
+        behavior_type: str | None = None,
+        name_contains: str | None = None,
+    ) -> list[SavedBehavior]:
+        """List saved behaviors: simple, funnel, and retention behaviors.
+
+        The server has no pagination, filters, or search, so one request
+        fetches every active behavior, and the filters below apply locally
+        to that response. The read timeout is at least 120 seconds.
+
+        Args:
+            behavior_type: Keep only behaviors of this type: ``"simple"``,
+                ``"funnel"``, or ``"retention"``. Exact match.
+            name_contains: Keep only behaviors whose name contains this
+                text, ignoring case.
+
+        Returns:
+            ``SavedBehavior`` objects in server order.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks the behaviors permission or scope (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            for behavior in ws.list_behaviors(behavior_type="funnel"):
+                print(behavior.id, behavior.name)
+            ```
+        """
+        client = self._require_api_client()
+        behaviors = validate_response_models(
+            SavedBehavior, client.list_behaviors(), endpoint="list_behaviors"
+        )
+        if behavior_type is not None:
+            behaviors = [b for b in behaviors if b.type == behavior_type]
+        if name_contains is not None:
+            needle = name_contains.casefold()
+            behaviors = [b for b in behaviors if needle in b.name.casefold()]
+        return behaviors
+
+    def get_behavior(self, behavior_id: int) -> SavedBehavior:
+        """Get one saved behavior by id, with its full definition.
+
+        The server does not answer an unknown or deleted id with 404; it
+        answers with a 500, which raises ``ServerError``.
+
+        Args:
+            behavior_id: The saved behavior id.
+
+        Returns:
+            The ``SavedBehavior``.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks permission (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including an unknown or
+                deleted behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            behavior = ws.get_behavior(3001)
+            print(behavior.type, behavior.definition["behavior"])
+            ```
+        """
+        client = self._require_api_client()
+        return validate_response_model(
+            SavedBehavior, client.get_behavior(behavior_id), endpoint="get_behavior"
+        )
+
+    def delete_behavior(self, behavior_id: int, *, force: bool = False) -> None:
+        """Delete one saved behavior, after a read that confirms it exists and is yours to edit.
+
+        Sends the bulk delete with the one id, because the bulk route is the
+        one that checks the caller's permission; the single-behavior route
+        does not. The bulk route skips unknown ids with no error, so this
+        method reads the behavior first. For an unknown or deleted id that
+        read fails with a server 500 (``ServerError``), and nothing is
+        deleted.
+
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created, even when the behavior's
+        ``can_update_basic`` flag is false for that account. So this method
+        refuses a behavior whose ``can_update_basic`` is false, unless
+        ``force`` is true. A read without the flag does not refuse.
+
+        Args:
+            behavior_id: The saved behavior id.
+            force: Delete even when the read says that the caller cannot
+                edit the behavior. The existence read still runs.
+
+        Raises:
+            ParamValidationError: The read shows ``can_update_basic`` false
+                and ``force`` is false; nothing was deleted
+                (``BH4_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot read or edit the behavior (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including the read of an
+                unknown or deleted behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.delete_behavior(3001)
+            ```
+        """
+        client = self._require_api_client()
+        row = client.get_behavior(behavior_id)
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("behavior", [row])
+        client.delete_behaviors([behavior_id])
+
+    def delete_behaviors(
+        self, behavior_ids: Sequence[int], *, force: bool = False
+    ) -> None:
+        """Delete several saved behaviors with one bulk request.
+
+        The server skips ids that do not name a behavior of the project,
+        with no error, so a typo in an id passes silently. Use
+        :meth:`delete_behavior` to delete one behavior with an existence
+        check. An empty sequence sends no request.
+
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created. So, unless ``force`` is true, this method
+        reads the behavior list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
+        Args:
+            behavior_ids: The saved behavior ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
+
+        Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``BH4_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit one of the behaviors (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            drafts = ws.list_behaviors(name_contains="draft")
+            ws.delete_behaviors([b.id for b in drafts])
+            ```
+        """
+        if not behavior_ids:
+            return
+        client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("behavior", behavior_ids, client.list_behaviors())
+        client.delete_behaviors(list(behavior_ids))
+
+    # =============================================================================
     # Data Governance — Tracking & History (Phase 027)
     # =============================================================================
 
@@ -11568,7 +12035,7 @@ class Workspace:
         Example:
             ```python
             ws = Workspace()
-            result = ws.query(mp.Metric.total("Login"), last=7)
+            result = ws.query(mp.Metric("Login", math="total"), last=7)
             link = ws.create_report_link(result, name="Logins, last 7 days")
             print(link.url)
             # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw

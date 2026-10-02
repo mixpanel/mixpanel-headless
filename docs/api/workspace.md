@@ -18,6 +18,7 @@ Workspace orchestrates internal services and provides direct App API access:
 - **Feature Management** — Create, read, update, delete feature flags and experiments via Mixpanel App API (project-scoped)
 - **Operational Tooling** — Manage alerts, annotations, and webhooks via Mixpanel App API (workspace-scoped)
 - **Data Governance** — Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, schema enforcement, data auditing, volume anomalies, and event deletion requests via Mixpanel App API (workspace-scoped)
+- **Saved Metrics & Behaviors** — List, read, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors via Mixpanel App API (project-scoped)
 - **Business Context** — Read and write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
 - **Session Replay** — Discover, sign, fetch, and analyze rrweb session recordings; project them into session-level DataFrames and an LLM-friendly action timeline
 
@@ -118,6 +119,31 @@ events = ws.list_custom_events()
 
 See the [Data Governance guide](../guide/data-governance.md) for complete coverage.
 
+### Saved Metrics & Behaviors
+
+List, read, and delete the saved metrics and saved behaviors of the project. Both collections are **project-scoped** and do not require a workspace ID. One collection holds all three metric kinds (`metric`, `formula`, `warehouse`).
+
+```python
+import mixpanel_headless as mp
+
+ws = mp.Workspace()
+
+# Saved metrics: the full server list, then local filters
+metrics = ws.list_metrics()
+governed = ws.list_metrics(verified=True, viewable_only=True)
+metric = ws.get_metric(104700)
+metric.math, metric.formula_expression, metric.referenced_metric_ids
+
+# Saved behaviors
+funnels = ws.list_behaviors(behavior_type="funnel")
+
+# Deletes go through the bulk routes; the single-id forms read first
+ws.delete_metric(104700)
+ws.delete_behaviors([3001, 3002])
+```
+
+The list includes metrics that the caller cannot view (`can_view` is `False`). See the [Saved Metrics and Behaviors guide](../guide/saved-metrics.md) for complete coverage.
+
 ### Business Context
 
 Read and write the markdown documentation that grounds AI assistants. Two scopes (`level="organization"` shared across the org, `level="project"` per-project), 50,000-character cap enforced client-side before any HTTP call.
@@ -176,7 +202,7 @@ import mixpanel_headless as mp
 ws = mp.Workspace()
 
 # Query → shareable URL (one App API POST; the slug record is stored server-side)
-result = ws.query(mp.Metric.total("Login"), last=7)
+result = ws.query(mp.Metric("Login", math="total"), last=7)
 link = ws.create_report_link(result, name="Logins, last 7 days")
 print(link.url)      # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw
 
@@ -417,6 +443,16 @@ See [Auth → Workspace.use()](auth.md#workspaceuse-in-session-switching) for th
         - list_custom_events
         - update_custom_event
         - delete_custom_event
+        # Saved Metrics
+        - list_metrics
+        - get_metric
+        - delete_metric
+        - delete_metrics
+        # Saved Behaviors
+        - list_behaviors
+        - get_behavior
+        - delete_behavior
+        - delete_behaviors
         # Schema Registry CRUD
         - list_schema_registry
         - create_schema

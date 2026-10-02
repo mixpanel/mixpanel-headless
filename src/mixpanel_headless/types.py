@@ -100,6 +100,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic import ValidationError as _PydanticValidationError
 from pydantic.alias_generators import to_camel
 
 T = TypeVar("T")
@@ -2765,6 +2766,11 @@ class BookmarkHistoryResponse(BaseModel):
 
 class CohortCreator(BaseModel):
     """Creator information for a cohort.
+
+    The App API uses the same ``{id, name, email}`` user shape on saved
+    metrics and saved behaviors, so :class:`SavedMetric` and
+    :class:`SavedBehavior` reuse this model for ``created_by``,
+    ``owned_by``, and ``last_verified_by``.
 
     Attributes:
         id: Creator user ID.
@@ -5760,6 +5766,464 @@ class UpdateLookupTableParams(BaseModel):
 
     name: str | None = None
     """New table name."""
+
+
+# =============================================================================
+# Saved Metrics & Saved Behaviors
+# =============================================================================
+# Result models for the project-scoped /metrics and /behaviors App API
+# collections. Reads are open: any ``type``, any ``math``, and unknown keys
+# parse, because stored rows include shapes that no strict model accepts
+# (legacy kinds, deprecated display and goal keys, maths outside the
+# documented enum). The typed accessors read the ``definition`` by kind and
+# return None or an empty list for a shape they do not know.
+
+
+def _str_at(data: object, *keys: str) -> str | None:
+    """Return the string at a nested key path, or None.
+
+    Args:
+        data: The root value, usually a definition dict.
+        *keys: Dict keys to follow in order.
+
+    Returns:
+        The value at the path when every step is a dict and the value is a
+        string; otherwise None.
+    """
+    for key in keys:
+        if not isinstance(data, dict):
+            return None
+        data = data.get(key)
+    return data if isinstance(data, str) else None
+
+
+class MetricDisplay(BaseModel):
+    """Presentation settings stored with a saved metric.
+
+    Mirrors the ``display`` object of a saved metric definition: number
+    format, the good direction of a change, the chart axis, and the
+    experiment sizing inputs. The wire keys are camelCase
+    (``hideTrendline``, ``minimumDetectableEffect``, ``oneSided``); the
+    fields are snake_case, and both names work at construction. The model is
+    open: it keeps keys that it does not name, such as the ``chartType`` key
+    that some stored rows carry.
+
+    Attributes:
+        prefix: Text before the value (for example ``"$"``).
+        suffix: Text after the value (for example ``"%"``).
+        precision: Number of decimal places (the server allows 0 to 8).
+        abbrev: Whether large numbers are abbreviated (``1.2K``).
+        direction: The good direction of a change (``"up"`` or ``"down"``).
+        axis: Chart axis (``"primary"`` or ``"secondary"``).
+        trendline: Whether the chart shows a trend line.
+        hide_trendline: Whether the chart hides the trend line.
+        minimum_detectable_effect: Experiment sizing input for this metric.
+        one_sided: Whether an experiment tests this metric one-sided.
+        power: Experiment statistical power for this metric.
+
+    Example:
+        ```python
+        metric = ws.get_metric(104700)
+        if metric.display is not None:
+            print(metric.display.prefix, metric.display.precision)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", populate_by_name=True)
+
+    prefix: str | None = None
+    """Text before the value."""
+
+    suffix: str | None = None
+    """Text after the value."""
+
+    precision: int | None = None
+    """Number of decimal places (0 to 8 on the server)."""
+
+    abbrev: bool | None = None
+    """Whether large numbers are abbreviated."""
+
+    direction: str | None = None
+    """The good direction of a change (``"up"`` or ``"down"``)."""
+
+    axis: str | None = None
+    """Chart axis (``"primary"`` or ``"secondary"``)."""
+
+    trendline: bool | None = None
+    """Whether the chart shows a trend line."""
+
+    hide_trendline: bool | None = Field(default=None, alias="hideTrendline")
+    """Whether the chart hides the trend line (wire key ``hideTrendline``)."""
+
+    minimum_detectable_effect: float | None = Field(
+        default=None, alias="minimumDetectableEffect"
+    )
+    """Experiment sizing input (wire key ``minimumDetectableEffect``)."""
+
+    one_sided: bool | None = Field(default=None, alias="oneSided")
+    """Whether an experiment tests this metric one-sided (wire key ``oneSided``)."""
+
+    power: float | None = None
+    """Experiment statistical power for this metric."""
+
+
+class MetricGoal(BaseModel):
+    """A goal stored with a saved metric: a label and dated target values.
+
+    The deprecated goal keys ``unit`` and ``direction`` still appear in
+    stored rows. The model keeps them as unknown keys (``model_extra``); the
+    server no longer reads them.
+
+    Attributes:
+        id: Goal identifier (a UUID string).
+        label: Goal label shown in the web app.
+        checkpoints: ``(timestamp, value)`` pairs; the value is absolute.
+        target_type: ``"absolute"`` or ``"relative"``.
+        target_input: The value the user typed for the target, if any.
+
+    Example:
+        ```python
+        metric = ws.get_metric(104700)
+        for goal in metric.goals:
+            print(goal.label, goal.checkpoints[-1])
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: str
+    """Goal identifier (a UUID string)."""
+
+    label: str
+    """Goal label shown in the web app."""
+
+    checkpoints: list[tuple[str, float]] = Field(default_factory=list)
+    """``(timestamp, value)`` pairs; the value is absolute."""
+
+    target_type: str = "absolute"
+    """``"absolute"`` or ``"relative"``."""
+
+    target_input: float | None = None
+    """The value the user typed for the target, if any."""
+
+
+class SavedBehavior(BaseModel):
+    """A saved behavior: a reusable "what users did", stored per project.
+
+    Returned by :meth:`Workspace.list_behaviors` and
+    :meth:`Workspace.get_behavior`. The wire ``type`` is ``simple``,
+    ``funnel``, or ``retention``; the model accepts any string. The
+    ``definition`` holds one key, ``behavior``, in the show-clause shape of
+    the web app. Unknown keys (for example ``can_update_restricted``, which
+    projects without sharing add) are kept via ``extra="allow"``.
+
+    Attributes:
+        id: Behavior identifier. Treat it as opaque.
+        name: Behavior name (unique among active behaviors in the project).
+        type: Behavior type (``simple``, ``funnel``, or ``retention``).
+        description: Behavior description; the server can send ``None``.
+        definition: The stored definition, ``{"behavior": {...}}``.
+        created: Creation time (naive UTC).
+        modified: Last modification time (naive UTC).
+        created_by: The user who created the behavior.
+        verified: Whether a user marked the behavior as verified.
+        last_verified: When the behavior was last verified (naive UTC).
+        last_verified_by: The user who last verified the behavior.
+        is_visible: Whether the behavior is visible to the caller.
+        is_locked: Whether the behavior is locked against edits.
+        can_view: Whether the caller can view the behavior.
+        can_update_basic: Whether the caller can edit the name and definition.
+        can_share: Whether the caller can share the behavior.
+
+    Example:
+        ```python
+        for behavior in ws.list_behaviors(behavior_type="funnel"):
+            print(behavior.id, behavior.name, behavior.behavior_type)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: int
+    """Behavior identifier. Treat it as opaque."""
+
+    name: str
+    """Behavior name."""
+
+    type: str
+    """Behavior type (``simple``, ``funnel``, or ``retention``)."""
+
+    description: str | None = None
+    """Behavior description; the server can send ``None``."""
+
+    definition: dict[str, Any]
+    """The stored definition, ``{"behavior": {...}}``."""
+
+    created: datetime | None = None
+    """Creation time (naive UTC)."""
+
+    modified: datetime | None = None
+    """Last modification time (naive UTC)."""
+
+    created_by: CohortCreator | None = None
+    """The user who created the behavior (``{id, email, name}``)."""
+
+    verified: bool = False
+    """Whether a user marked the behavior as verified."""
+
+    last_verified: datetime | None = None
+    """When the behavior was last verified (naive UTC)."""
+
+    last_verified_by: CohortCreator | None = None
+    """The user who last verified the behavior (``{id, email, name}``)."""
+
+    is_visible: bool | None = None
+    """Whether the behavior is visible to the caller."""
+
+    is_locked: bool | None = None
+    """Whether the behavior is locked against edits."""
+
+    can_view: bool | None = None
+    """Whether the caller can view the behavior."""
+
+    can_update_basic: bool | None = None
+    """Whether the caller can edit the name and definition."""
+
+    can_share: bool | None = None
+    """Whether the caller can share the behavior."""
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The ``type`` inside the stored behavior definition.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string (for
+            example ``"funnel"``); otherwise None.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+
+class SavedMetric(BaseModel):
+    """A saved metric: a behavior metric, a saved formula, or a warehouse metric.
+
+    Returned by :meth:`Workspace.list_metrics` and
+    :meth:`Workspace.get_metric`. One model covers all three kinds, because
+    the server keeps them in one collection. The wire ``type`` is
+    ``metric`` (a behavior metric), ``formula``, or ``warehouse``; old rows
+    can have ``behavior``, and the model accepts any string. Unknown keys
+    (for example ``allow_staff_override``) are kept via ``extra="allow"``.
+
+    The definition shape depends on the kind:
+
+    - ``metric``: ``{behavior, measurement, display?, goals?}``
+    - ``formula``: ``{formula: {definition, referencedMetrics}, measurement?,
+      display?, goals?}``
+    - ``warehouse``: ``{query, metricType, aggregation?, syncInterval?, ...}``
+
+    The typed accessors (:attr:`behavior_type`, :attr:`math`,
+    :attr:`formula_expression`, :attr:`referenced_metric_ids`,
+    :attr:`display`, :attr:`goals`) read the definition. Each one returns
+    None or an empty list for a shape it does not know; none of them raises.
+
+    The list endpoint also returns metrics that the caller cannot view, with
+    full definitions; for those rows ``can_view`` is False.
+
+    Attributes:
+        id: Metric identifier. Treat it as opaque.
+        name: Metric name (unique among active metrics in the project).
+        type: Metric kind (``metric``, ``formula``, ``warehouse``, or
+            legacy ``behavior``).
+        description: Metric description (the server sends ``""`` when empty).
+        definition: The stored definition; its shape depends on ``type``.
+        created: Creation time (naive UTC).
+        modified: Last modification time (naive UTC).
+        created_by: The user who created the metric.
+        owned_by: The owner, when one is set.
+        contacts: The owner email in a one-item list, or an empty list.
+        verified: Whether a user marked the metric as verified.
+        last_verified: When the metric was last verified (naive UTC).
+        last_verified_by: The user who last verified the metric.
+        warehouse_source_id: The warehouse source, for warehouse metrics only.
+        is_visible: Whether the metric is visible to the caller.
+        is_locked: Whether the metric is locked against edits.
+        can_view: Whether the caller can view the metric.
+        can_update_basic: Whether the caller can edit the name and definition.
+        can_share: Whether the caller can share the metric.
+
+    Example:
+        ```python
+        for metric in ws.list_metrics(verified=True):
+            print(metric.id, metric.type, metric.name, metric.math)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: int
+    """Metric identifier. Treat it as opaque."""
+
+    name: str
+    """Metric name."""
+
+    type: str
+    """Metric kind (``metric``, ``formula``, ``warehouse``, or legacy ``behavior``)."""
+
+    description: str = ""
+    """Metric description (the server sends ``""`` when empty)."""
+
+    definition: dict[str, Any]
+    """The stored definition; its shape depends on ``type``."""
+
+    created: datetime | None = None
+    """Creation time (naive UTC)."""
+
+    modified: datetime | None = None
+    """Last modification time (naive UTC)."""
+
+    created_by: CohortCreator | None = None
+    """The user who created the metric (``{id, email, name}``)."""
+
+    owned_by: CohortCreator | None = None
+    """The owner (``{id, email, name}``), when one is set."""
+
+    contacts: list[str] = Field(default_factory=list)
+    """The owner email in a one-item list, or an empty list."""
+
+    verified: bool = False
+    """Whether a user marked the metric as verified."""
+
+    last_verified: datetime | None = None
+    """When the metric was last verified (naive UTC)."""
+
+    last_verified_by: CohortCreator | None = None
+    """The user who last verified the metric (``{id, email, name}``)."""
+
+    warehouse_source_id: int | None = None
+    """The warehouse source, for warehouse metrics only."""
+
+    is_visible: bool | None = None
+    """Whether the metric is visible to the caller."""
+
+    is_locked: bool | None = None
+    """Whether the metric is locked against edits."""
+
+    can_view: bool | None = None
+    """Whether the caller can view the metric."""
+
+    can_update_basic: bool | None = None
+    """Whether the caller can edit the name and definition."""
+
+    can_share: bool | None = None
+    """Whether the caller can share the metric."""
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The behavior type of a behavior metric.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string (for
+            example ``"event"``, ``"simple"``, ``"funnel"``, ``"retention"``,
+            ``"cohort"``, or ``"people"``); otherwise None, as for formulas
+            and warehouse metrics.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+    @property
+    def math(self) -> str | None:
+        """The aggregation of the metric.
+
+        Returns:
+            ``definition["measurement"]["math"]`` when it is a string (any
+            value, known to the library or not); otherwise None.
+        """
+        return _str_at(self.definition, "measurement", "math")
+
+    @property
+    def formula_expression(self) -> str | None:
+        """The expression of a saved formula.
+
+        Returns:
+            ``definition["formula"]["definition"]`` when it is a string (for
+            example ``"A / B * 100"``); otherwise None.
+        """
+        return _str_at(self.definition, "formula", "definition")
+
+    @property
+    def referenced_metric_ids(self) -> list[int]:
+        """The ids of the saved metrics that a saved formula uses as operands.
+
+        An operand refers to a saved metric through its integer ``id``, or
+        through the string ``metric_id`` that the server adds in responses.
+        Inline operands have no id and are not listed, and neither are
+        operands whose ``metric_id`` does not convert to an integer.
+
+        Returns:
+            Each id once, in first-use order. An empty list for a metric that
+            is not a formula or for a shape the accessor does not know.
+        """
+        formula = self.definition.get("formula")
+        operands = (
+            formula.get("referencedMetrics") if isinstance(formula, dict) else None
+        )
+        if not isinstance(operands, list):
+            return []
+        ids: list[int] = []
+        for operand in operands:
+            if not isinstance(operand, dict):
+                continue
+            raw_id = operand.get("id")
+            metric_id: int | None = None
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+                metric_id = raw_id
+            else:
+                raw_str = operand.get("metric_id")
+                if isinstance(raw_str, str) and raw_str.isdigit():
+                    # isdigit() accepts superscripts, and int() refuses
+                    # strings past Python's digit limit.
+                    try:
+                        metric_id = int(raw_str)
+                    except ValueError:
+                        continue
+            if metric_id is not None and metric_id not in ids:
+                ids.append(metric_id)
+        return ids
+
+    @property
+    def display(self) -> MetricDisplay | None:
+        """The presentation settings of the metric.
+
+        Returns:
+            ``definition["display"]`` parsed as :class:`MetricDisplay`, or
+            None when it is absent or has a shape the model cannot read.
+        """
+        raw = self.definition.get("display")
+        if not isinstance(raw, dict):
+            return None
+        try:
+            return MetricDisplay.model_validate(raw)
+        except _PydanticValidationError:
+            return None
+
+    @property
+    def goals(self) -> list[MetricGoal]:
+        """The goals of the metric.
+
+        Returns:
+            Each entry of ``definition["goals"]`` that parses as
+            :class:`MetricGoal`, in stored order. Entries that do not parse
+            are left out; ``definition["goals"]`` still holds every entry. An
+            empty list when the metric has no goals.
+        """
+        raw = self.definition.get("goals")
+        if not isinstance(raw, list):
+            return []
+        goals: list[MetricGoal] = []
+        for entry in raw:
+            try:
+                goals.append(MetricGoal.model_validate(entry))
+            except _PydanticValidationError:
+                continue
+        return goals
 
 
 # =============================================================================

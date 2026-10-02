@@ -9,6 +9,52 @@ may include API changes.
 
 ### Added
 
+- **Saved metrics and saved behaviors: list, read, and delete.**
+  `Workspace.list_metrics(*, metric_type=None, verified=None,
+  name_contains=None, viewable_only=False)`, `get_metric(metric_id)`,
+  `delete_metric(metric_id)`, and `delete_metrics(metric_ids)` cover all
+  three metric kinds (behavior metric, formula, warehouse metric), which
+  the server keeps in one project-scoped collection.
+  `list_behaviors(*, behavior_type=None, name_contains=None)`,
+  `get_behavior(behavior_id)`, `delete_behavior(behavior_id)`, and
+  `delete_behaviors(behavior_ids)` cover saved behaviors (simple, funnel,
+  retention). The server has no pagination or filters, so the filter
+  arguments apply locally to the one list response, and the list calls
+  wait at least 120 seconds for it. `list_metrics()` returns the full
+  server list by default, which includes metrics that the caller cannot
+  view (`can_view` is `False`); `viewable_only=True` drops them.
+- Deletes go through the bulk routes only: the single-metric delete route
+  answers 501, and the single-behavior delete route skips the permission
+  check. `delete_metric` and `delete_behavior` read the entity first, so
+  an unknown id raises instead of passing silently. An unknown metric id
+  raises `ParamValidationError` with the new code
+  `SM5_NOT_FOUND_FOR_DELETE`; the server answers the read of an unknown
+  behavior id with a 500 (`ServerError`). `delete_metrics` and
+  `delete_behaviors` send one bulk request, and the server skips unknown
+  ids.
+- The server's bulk delete lets a project superadmin delete metrics and
+  behaviors that other users own. The delete methods refuse, before any
+  delete, a target whose `can_update_basic` flag is false for the caller:
+  `ParamValidationError` with the new codes `SM6_DELETE_NOT_PERMITTED` and
+  `BH4_DELETE_NOT_PERMITTED`. The bulk methods read the list once and
+  refuse the whole request, naming every refused id. `force=True` (CLI:
+  `--force`) deletes anyway.
+- New result types `SavedMetric` and `SavedBehavior`, plus `MetricDisplay`
+  and `MetricGoal`. Reads are open: any `type`, any `math`, and unknown
+  keys parse and survive `model_dump()`. Typed accessors (`behavior_type`,
+  `math`, `formula_expression`, `referenced_metric_ids`, `display`,
+  `goals`) return `None` or an empty list for a shape they do not know,
+  and never raise. `created_by`, `owned_by`, and `last_verified_by` reuse
+  `CohortCreator`, which has the same `{id, name, email}` shape.
+- CLI: `mp metrics list|get|delete` and `mp behaviors list|get|delete`.
+  `list` takes `--type`, `--name-contains`, and, for metrics,
+  `--verified/--no-verified` and `--viewable-only`; the table view shows
+  `can_view`. `delete` takes one or more ids: one id reads first, several
+  ids go in one bulk request. `delete` takes `--force` to pass the
+  permission guard.
+- `mp help` gains the "saved metrics" and "saved behaviors" domains, and a
+  new guide page, "Saved Metrics and Behaviors".
+- `MixpanelAPIClient.app_request` takes a per-call `timeout`.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
@@ -65,6 +111,15 @@ may include API changes.
 - Plugin: examples and parameter names that no longer matched the
   library are corrected (for example, `query_user()` takes `where=`, not
   `filters=`).
+- Docs: the report link examples in `Workspace.create_report_link`, the
+  report links guide, and the `Workspace` API page called
+  `mp.Metric.total("Login")`, which does not exist. They now use
+  `mp.Metric("Login", math="total")`.
+- An error response whose body has a `message` key and no usable `error`
+  key now puts the server's `message` text in the exception message, and
+  the CLI prints it. Before, the exception held only the generic text (for
+  example, `Server error: 500`), and the server's support text and Error
+  ID were lost. When both keys are present, `error` wins.
 
 ## 0.3.0 — 2026-09-22
 

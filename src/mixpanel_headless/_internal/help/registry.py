@@ -309,6 +309,24 @@ WORKSPACE_DOMAINS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
         ),
     ),
     (
+        "saved metrics",
+        (
+            "list_metrics",
+            "get_metric",
+            "delete_metric",
+            "delete_metrics",
+        ),
+    ),
+    (
+        "saved behaviors",
+        (
+            "list_behaviors",
+            "get_behavior",
+            "delete_behavior",
+            "delete_behaviors",
+        ),
+    ),
+    (
         "lookup tables",
         (
             "list_lookup_tables",
@@ -624,7 +642,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "guide/business-context.md",
     ),
     # --- entity management: reports, dashboards, cohorts, flags, experiments,
-    #     annotations, webhooks, alerts -------------------------------------
+    #     annotations, webhooks, alerts, saved metrics, saved behaviors ------
     (
         (
             "create_bookmark",
@@ -834,6 +852,30 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         ),
         "alert CRUD, history, screenshots, and bookmark validation (entity management)",
         "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_metrics",
+            "get_metric",
+            "delete_metric",
+            "delete_metrics",
+            "SavedMetric",
+            "MetricDisplay",
+            "MetricGoal",
+        ),
+        "saved metrics — behavior metrics, formulas, and warehouse metrics",
+        "guide/saved-metrics.md",
+    ),
+    (
+        (
+            "list_behaviors",
+            "get_behavior",
+            "delete_behavior",
+            "delete_behaviors",
+            "SavedBehavior",
+        ),
+        "saved behaviors — simple, funnel, and retention",
+        "guide/saved-metrics.md",
     ),
     # --- data governance --------------------------------------------------
     (
