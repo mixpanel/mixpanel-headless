@@ -68,9 +68,7 @@ from mixpanel_headless._internal.auth.session import (
     WorkspaceRef as _WorkspaceRef,
 )
 from mixpanel_headless._internal.bookmark_builders import (
-    _build_composed_properties,
     build_date_range,
-    build_filter_entry,
     build_filter_section,
     build_flow_cohort_filter,
     build_flow_property_filter,
@@ -85,6 +83,14 @@ from mixpanel_headless._internal.bookmark_schema import (
     validate_with_pydantic,
 )
 from mixpanel_headless._internal.config import ConfigManager
+from mixpanel_headless._internal.query.metric_builders import (
+    assemble_metric_clause,
+    build_funnel_behavior,
+    build_funnel_measurement,
+    build_retention_behavior,
+    build_retention_measurement,
+    build_show_section,
+)
 from mixpanel_headless._internal.query.user_builders import (
     extract_cohort_filter,
     filters_to_selector,
@@ -205,7 +211,6 @@ from mixpanel_headless.types import (
     CustomAlert,
     CustomEvent,
     CustomProperty,
-    CustomPropertyRef,
     Dashboard,
     DataVolumeAnomaly,
     DeleteSchemasResponse,
@@ -239,7 +244,6 @@ from mixpanel_headless.types import (
     GroupBy,
     HoldingConstant,
     InitSchemaEnforcementParams,
-    InlineCustomProperty,
     LexiconSchema,
     LexiconTag,
     LookupTable,
@@ -2177,139 +2181,14 @@ class Workspace:
             Bookmark params dict ready for insights query API.
         """
         # --- Build sections.show[] ---
-        show: list[dict[str, Any]] = []
-        for item in events:
-            if isinstance(item, CohortMetric):
-                # CohortMetric: cohort size tracking (CM3: ignore top-level math)
-                cohort_behavior: dict[str, Any] = {
-                    "type": "cohort",
-                    "name": item.name or "",
-                    "resourceType": "cohorts",
-                    "dataGroupId": None,
-                    "dataset": "$mixpanel",
-                    "filtersDeterminer": "all",
-                    "filters": [],
-                }
-                if isinstance(item.cohort, int):
-                    cohort_behavior["id"] = item.cohort
-                else:
-                    raw = _sanitize_raw_cohort(item.cohort.to_dict())
-                    # Server-side cohort processing expects `name` in
-                    # the raw_cohort dict (matching get_raw_cohort_by_id
-                    # DB format). Without it, label generation crashes.
-                    raw["name"] = item.name or ""
-                    cohort_behavior["raw_cohort"] = raw
-
-                entry: dict[str, Any] = {
-                    "type": "metric",
-                    "behavior": cohort_behavior,
-                    "measurement": {
-                        "math": "unique",
-                        "property": None,
-                        "perUserAggregation": None,
-                    },
-                    "isHidden": bool(formulas),
-                }
-                show.append(entry)
-                continue
-
-            if isinstance(item, Metric):
-                event_name = item.event
-                item_math = item.math
-                item_prop = item.property
-                item_per_user = item.per_user
-                item_percentile = item.percentile_value
-                item_filters = item.filters
-                item_filters_combinator = item.filters_combinator
-                item_segment_method = item.segment_method
-            else:
-                event_name = item
-                item_math = math
-                item_prop = math_property
-                item_per_user = per_user
-                item_percentile = percentile_value
-                item_filters = None
-                item_filters_combinator = "all"
-                item_segment_method = None
-
-            # Map user-facing "percentile" to bookmark "custom_percentile"
-            bookmark_math = (
-                "custom_percentile" if item_math == "percentile" else item_math
-            )
-
-            measurement: dict[str, Any] = {"math": bookmark_math}
-            if item_prop is not None:
-                if isinstance(item_prop, CustomPropertyRef):
-                    measurement["property"] = {
-                        "customPropertyId": item_prop.id,
-                        "name": "",
-                        "resourceType": "events",
-                    }
-                elif isinstance(item_prop, InlineCustomProperty):
-                    cp_dict: dict[str, Any] = {
-                        "displayFormula": item_prop.formula,
-                        "composedProperties": _build_composed_properties(
-                            item_prop.inputs
-                        ),
-                        "name": "",
-                        "description": "",
-                        "resourceType": item_prop.resource_type,
-                    }
-                    if item_prop.property_type is not None:
-                        cp_dict["propertyType"] = item_prop.property_type
-                    measurement["property"] = {
-                        "customProperty": cp_dict,
-                        "name": "",
-                        "resourceType": item_prop.resource_type,
-                        "dataset": "$mixpanel",
-                        "dataGroupId": None,
-                    }
-                else:
-                    measurement["property"] = {
-                        "name": item_prop,
-                        "resourceType": "events",
-                    }
-            if item_per_user is not None:
-                measurement["perUserAggregation"] = item_per_user
-            if item_percentile is not None:
-                measurement["percentile"] = item_percentile
-            if item_segment_method is not None:
-                measurement["segmentMethod"] = item_segment_method
-
-            # Build behavior block with optional per-metric filters
-            behavior_filters: list[dict[str, Any]] = []
-            if item_filters:
-                behavior_filters = [build_filter_entry(f) for f in item_filters]
-
-            entry = {
-                "type": "metric",
-                "behavior": {
-                    "type": "event",
-                    "name": event_name,
-                    "resourceType": "events",
-                    "filtersDeterminer": item_filters_combinator,
-                    "filters": behavior_filters,
-                },
-                "measurement": measurement,
-            }
-
-            # Mark hidden when formula is present
-            if formulas:
-                entry["isHidden"] = True
-
-            show.append(entry)
-
-        # Append formula entries to show[]
-        for f in formulas:
-            formula_entry: dict[str, Any] = {
-                "type": "formula",
-                "definition": f.expression,
-                "measurement": {},
-                "referencedMetrics": [],
-            }
-            if f.label:
-                formula_entry["name"] = f.label
-            show.append(formula_entry)
+        show = build_show_section(
+            events,
+            math=math,
+            math_property=math_property,
+            per_user=per_user,
+            percentile_value=percentile_value,
+            formulas=formulas,
+        )
 
         # --- Build sections.time (array) ---
         time_section = build_time_section(
@@ -2892,9 +2771,9 @@ class Workspace:
         *,
         steps: list[FunnelStep],
         conversion_window: int,
-        conversion_window_unit: str,
-        order: str,
-        math: str,
+        conversion_window_unit: ConversionWindowUnit,
+        order: FunnelOrder,
+        math: FunnelMathType,
         math_property: str | None,
         from_date: str | None,
         to_date: str | None,
@@ -2947,89 +2826,18 @@ class Workspace:
         Returns:
             Bookmark params dict ready for insights query API.
         """
-        # Build behaviors array from steps
-        behaviors: list[dict[str, Any]] = []
-        for step in steps:
-            behavior_entry: dict[str, Any] = {
-                "type": "event",
-                "id": None,
-                "name": step.event,
-                "filters": [],
-                "filtersDeterminer": step.filters_combinator,
-                "funnelOrder": order,
-            }
-            # Per-step filters
-            if step.filters:
-                behavior_entry["filters"] = [
-                    build_filter_entry(f) for f in step.filters
-                ]
-            # Per-step label → renamed
-            if step.label is not None:
-                behavior_entry["renamed"] = step.label
-            # Per-step order override
-            if step.order is not None:
-                behavior_entry["funnelOrder"] = step.order
-            behaviors.append(behavior_entry)
-
-        # Build exclusions array
-        exclusions_list: list[dict[str, Any]] = []
-        for ex in exclusions:
-            ex_entry: dict[str, Any] = {
-                "event": ex.event,
-            }
-            # Step range — API uses 1-indexed, Exclusion uses 0-indexed
-            api_from = ex.from_step + 1
-            api_to = (ex.to_step + 1) if ex.to_step is not None else len(steps)
-            ex_entry["steps"] = {
-                "from": api_from,
-                "to": api_to,
-            }
-            exclusions_list.append(ex_entry)
-
-        # Build aggregateBy array
-        aggregate_by: list[dict[str, Any]] = [
-            {"value": hc.property, "resourceType": hc.resource_type}
-            for hc in holding_constant
-        ]
-
-        # Build behavior block
-        behavior: dict[str, Any] = {
-            "type": "funnel",
-            "resourceType": "events",
-            "behaviors": behaviors,
-            "conversionWindowDuration": conversion_window,
-            "conversionWindowUnit": conversion_window_unit,
-            "funnelOrder": order,
-            "exclusions": exclusions_list,
-            "aggregateBy": aggregate_by,
-            "filter": [],
-        }
-        if reentry_mode is not None:
-            behavior["funnelReentryMode"] = reentry_mode
-
-        # Build measurement
-        measurement: dict[str, Any] = {
-            "math": math,
-            "property": (
-                {
-                    "name": math_property,
-                    "type": "number",
-                    "resourceType": "events",
-                }
-                if math_property
-                else None
-            ),
-            "stepIndex": None,
-        }
-
         # Build show clause
-        show: list[dict[str, Any]] = [
-            {
-                "type": "metric",
-                "behavior": behavior,
-                "measurement": measurement,
-            }
-        ]
+        behavior = build_funnel_behavior(
+            steps=steps,
+            conversion_window=conversion_window,
+            conversion_window_unit=conversion_window_unit,
+            order=order,
+            exclusions=exclusions,
+            holding_constant=holding_constant,
+            reentry_mode=reentry_mode,
+        )
+        measurement = build_funnel_measurement(math=math, math_property=math_property)
+        show: list[dict[str, Any]] = [assemble_metric_clause(behavior, measurement)]
 
         # Build sections using shared builders
         time_section = build_time_section(
@@ -3570,49 +3378,19 @@ class Workspace:
         Returns:
             Bookmark params dict ready for insights query API.
         """
-        # Build behaviors array (exactly 2: born + return)
-        behaviors: list[dict[str, Any]] = []
-        for evt in [born_event, return_event]:
-            behavior_entry: dict[str, Any] = {
-                "type": "event",
-                "id": None,
-                "name": evt.event,
-                "filters": [],
-                "filtersDeterminer": evt.filters_combinator,
-            }
-            # Per-event filters
-            if evt.filters:
-                behavior_entry["filters"] = [build_filter_entry(f) for f in evt.filters]
-            behaviors.append(behavior_entry)
-
-        # Build behavior block
-        behavior: dict[str, Any] = {
-            "type": "retention",
-            "resourceType": "events",
-            "behaviors": behaviors,
-            "retentionUnit": retention_unit,
-            "retentionAlignmentType": alignment,
-            "retentionCustomBucketSizes": list(bucket_sizes) if bucket_sizes else [],
-            "filter": [],
-        }
-        if unbounded_mode is not None:
-            behavior["retentionUnboundedMode"] = unbounded_mode
-
-        # Build measurement
-        measurement: dict[str, Any] = {
-            "math": math,
-        }
-        if retention_cumulative:
-            measurement["retentionCumulative"] = True
-
         # Build show clause
-        show: list[dict[str, Any]] = [
-            {
-                "type": "metric",
-                "behavior": behavior,
-                "measurement": measurement,
-            }
-        ]
+        behavior = build_retention_behavior(
+            born_event=born_event,
+            return_event=return_event,
+            retention_unit=retention_unit,
+            alignment=alignment,
+            bucket_sizes=bucket_sizes,
+            unbounded_mode=unbounded_mode,
+        )
+        measurement = build_retention_measurement(
+            math=math, cumulative=retention_cumulative
+        )
+        show: list[dict[str, Any]] = [assemble_metric_clause(behavior, measurement)]
 
         # Build sections using shared builders
         time_section = build_time_section(
