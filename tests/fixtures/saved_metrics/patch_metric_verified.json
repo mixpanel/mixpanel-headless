@@ -36,7 +36,7 @@
         "name": "Example User"
       },
       "modified": "2026-09-30T08:31:04.119",
-      "name": "zz-probe-20260930T083034Z-event-total",
+      "name": "zz-probe-event-total",
       "type": "metric",
       "verified": true
     }

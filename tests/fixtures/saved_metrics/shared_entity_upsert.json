@@ -2,7 +2,7 @@
   "results": {
     "id": 162521,
     "link": "lexicon/transformations/metrics/162521",
-    "name": "zz-probe-20260930T083034Z-event-total",
+    "name": "zz-probe-event-total",
     "owner": {
       "canEdit": true,
       "customDefinitionPermissions": [

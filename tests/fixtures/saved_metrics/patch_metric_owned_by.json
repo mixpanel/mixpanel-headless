@@ -38,7 +38,7 @@
         "name": "Example User"
       },
       "modified": "2026-09-30T08:31:06.467",
-      "name": "zz-probe-20260930T083034Z-event-total",
+      "name": "zz-probe-event-total",
       "owned_by": {
         "email": "user@example.com",
         "id": 1000001,

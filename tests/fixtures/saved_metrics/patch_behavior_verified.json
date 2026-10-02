@@ -48,7 +48,7 @@
         "name": "Example User"
       },
       "modified": "2026-09-30T08:31:10.034",
-      "name": "zz-probe-20260930T083034Z-behavior-funnel",
+      "name": "zz-probe-behavior-funnel",
       "type": "funnel",
       "verified": true
     }

@@ -37,7 +37,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:52.276",
-      "name": "zz-probe-20260930T083034Z-behavior-simple",
+      "name": "zz-probe-behavior-simple",
       "type": "simple"
     },
     "58856": {
@@ -88,7 +88,7 @@
         "name": "Example User"
       },
       "modified": "2026-09-30T08:31:10.034",
-      "name": "zz-probe-20260930T083034Z-behavior-funnel",
+      "name": "zz-probe-behavior-funnel",
       "type": "funnel",
       "verified": true
     },
@@ -134,7 +134,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:57.250",
-      "name": "zz-probe-20260930T083034Z-behavior-retention",
+      "name": "zz-probe-behavior-retention",
       "type": "retention"
     }
   },
