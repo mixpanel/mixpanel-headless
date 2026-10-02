@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 150 minted full codes, no duplicates.
+        """The registry lists all 157 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -971,12 +971,22 @@ class TestCodedGuardRegistry:
         ``CE1_INVALID_ID`` and ``MT4_INVALID_INDEX``. A warehouse formula
         operand added ``FM7_WAREHOUSE_OPERAND``. A list item of a
         metric that is not an event name or a custom event added
-        ``MT5_INVALID_EVENT_TYPE``.
+        ``MT5_INVALID_EVENT_TYPE``. Saved metric and saved
+        behavior writes added ``SM1_EMPTY_NAME``, ``SM2_NAME_TOO_LONG``,
+        ``SM3_KIND_CHANGE``, ``SM4_SCHEMA``, ``SM7_FORMULA_WITHOUT_OPERANDS``,
+        ``FM6_OPERAND_ATTRIBUTION``, and ``MR3_WAREHOUSE_INLINE``.
         """
-        assert len(CODED_GUARD_REGISTRY) == 150
+        assert len(CODED_GUARD_REGISTRY) == 157
         for code in (
+            "SM1_EMPTY_NAME",
+            "SM2_NAME_TOO_LONG",
+            "SM3_KIND_CHANGE",
+            "SM4_SCHEMA",
             "SM5_NOT_FOUND_FOR_DELETE",
             "SM6_DELETE_NOT_PERMITTED",
+            "SM7_FORMULA_WITHOUT_OPERANDS",
+            "FM6_OPERAND_ATTRIBUTION",
+            "MR3_WAREHOUSE_INLINE",
             "BH4_DELETE_NOT_PERMITTED",
         ):
             assert code in CODED_GUARD_REGISTRY

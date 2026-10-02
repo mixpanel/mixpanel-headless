@@ -480,3 +480,205 @@ class TestDeleteBehaviors:
         with client, pytest.raises(QueryError) as exc_info:
             client.delete_behaviors([1])
         assert exc_info.value.status_code == 403
+
+
+# =============================================================================
+# Writes
+# =============================================================================
+
+
+class TestCreateMetric:
+    """Tests for create_metric() API client method."""
+
+    def test_posts_body_and_unwraps_row(self, oauth_credentials: Session) -> None:
+        """create_metric() POSTs the body to the project path and returns the row."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials, _capture(captured, envelope(behavior_metric_json()))
+        )
+        client.set_workspace_id(77)
+        body = {"type": "metric", "name": "m", "definition": {"behavior": {}}}
+        with client:
+            row = client.create_metric(body)
+        assert row["id"] == 104700
+        assert captured[0].method == "POST"
+        assert captured[0].url.path == "/api/app/projects/12345/metrics"
+        assert json.loads(captured[0].content) == body
+
+    def test_409_duplicate_name(self, oauth_credentials: Session) -> None:
+        """A duplicate name raises QueryError with status 409 and the server text."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return the server's duplicate-name body."""
+            return httpx.Response(
+                409,
+                json={
+                    "error": "A metric with that name already exists",
+                    "status": "error",
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "m", "definition": {}})
+        assert exc_info.value.status_code == 409
+        assert "already exists" in exc_info.value.message
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            (
+                {
+                    "status": "error",
+                    "error": "Cannot save metric with your current plan",
+                },
+                "Cannot save metric with your current plan",
+            ),
+            ({"error": ""}, "Permission denied"),
+        ],
+    )
+    def test_403_body_shapes(
+        self, oauth_credentials: Session, body: dict[str, Any], message: str
+    ) -> None:
+        """Both 403 body shapes map to QueryError 403; an empty error gets a default.
+
+        Args:
+            oauth_credentials: Session fixture.
+            body: The 403 response body.
+            message: The expected error message.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return the 403 body."""
+            return httpx.Response(403, json=body)
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "m", "definition": {}})
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.message == message
+
+    def test_timeout_is_not_retried(self, oauth_credentials: Session) -> None:
+        """A read timeout on a write fails after one attempt; a retry could duplicate."""
+        attempts: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Count the attempt and time out."""
+            attempts.append(1)
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(MixpanelHeadlessError):
+            client.create_metric({"type": "metric", "name": "m", "definition": {}})
+        assert len(attempts) == 1
+
+    def test_not_exactly_one_row_raises(self, oauth_credentials: Session) -> None:
+        """An empty map is an unexpected create response."""
+        client = create_mock_client(
+            oauth_credentials, _capture([], {"status": "ok", "results": {}})
+        )
+        with client, pytest.raises(MixpanelHeadlessError, match="create_metric"):
+            client.create_metric({"type": "metric", "name": "m", "definition": {}})
+
+
+class TestUpdateMetric:
+    """Tests for update_metric() API client method."""
+
+    def test_patches_single_route(self, oauth_credentials: Session) -> None:
+        """update_metric() PATCHes /metrics/{id} and returns the row."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials,
+            _capture(captured, envelope(behavior_metric_json(verified=True))),
+        )
+        with client:
+            row = client.update_metric(104700, {"verified": True})
+        assert row["verified"] is True
+        assert captured[0].method == "PATCH"
+        assert captured[0].url.path == "/api/app/projects/12345/metrics/104700"
+        assert json.loads(captured[0].content) == {"verified": True}
+
+    def test_timeout_is_not_retried(self, oauth_credentials: Session) -> None:
+        """A timeout on an update fails after one attempt."""
+        attempts: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Count the attempt and time out."""
+            attempts.append(1)
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(MixpanelHeadlessError):
+            client.update_metric(1, {"name": "n"})
+        assert len(attempts) == 1
+
+
+class TestBulkUpdateMetrics:
+    """Tests for bulk_update_metrics() API client method."""
+
+    def test_patches_collection(self, oauth_credentials: Session) -> None:
+        """bulk_update_metrics() PATCHes /metrics with the entries and unwraps the map."""
+        captured: list[httpx.Request] = []
+        body = envelope(behavior_metric_json(1), behavior_metric_json(2))
+        client = create_mock_client(oauth_credentials, _capture(captured, body))
+        entries = [{"id": 1, "verified": True}, {"id": 2, "verified": True}]
+        with client:
+            rows = client.bulk_update_metrics(entries)
+        assert [r["id"] for r in rows] == [1, 2]
+        assert captured[0].method == "PATCH"
+        assert captured[0].url.path == "/api/app/projects/12345/metrics"
+        assert json.loads(captured[0].content) == {"metrics": entries}
+
+
+class TestCreateBehavior:
+    """Tests for create_behavior() API client method."""
+
+    def test_posts_single_form(self, oauth_credentials: Session) -> None:
+        """create_behavior() POSTs one behavior (not the list form) and returns it."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials, _capture(captured, envelope(saved_behavior_json(58856)))
+        )
+        body = {"type": "funnel", "name": "b", "definition": {"behavior": {}}}
+        with client:
+            row = client.create_behavior(body)
+        assert row["id"] == 58856
+        assert captured[0].method == "POST"
+        assert captured[0].url.path == "/api/app/projects/12345/behaviors"
+        assert json.loads(captured[0].content) == body
+
+    def test_409_duplicate_name(self, oauth_credentials: Session) -> None:
+        """A duplicate behavior name raises QueryError 409."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return the duplicate-name body."""
+            return httpx.Response(
+                409,
+                json={
+                    "error": "A behavior with that name already exists",
+                    "status": "error",
+                },
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(QueryError) as exc_info:
+            client.create_behavior({"type": "simple", "name": "b", "definition": {}})
+        assert exc_info.value.status_code == 409
+
+
+class TestUpdateBehavior:
+    """Tests for update_behavior() API client method."""
+
+    def test_patches_single_route(self, oauth_credentials: Session) -> None:
+        """update_behavior() PATCHes /behaviors/{id} and returns the row."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials,
+            _capture(captured, envelope(saved_behavior_json(3001, verified=True))),
+        )
+        with client:
+            row = client.update_behavior(3001, {"verified": True})
+        assert row["verified"] is True
+        assert captured[0].method == "PATCH"
+        assert captured[0].url.path == "/api/app/projects/12345/behaviors/3001"
+        assert json.loads(captured[0].content) == {"verified": True}

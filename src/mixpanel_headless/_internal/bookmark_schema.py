@@ -939,6 +939,10 @@ class MetricDisplay(BaseModel):
     axis: AxisAssignmentLiteral | None = None
     direction: Literal["up", "down"] | None = None
     hideTrendline: bool | None = None
+    # Experiment sizing inputs, per metric.
+    minimumDetectableEffect: float | None = None
+    oneSided: bool | None = None
+    power: float | None = None
     precision: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8] | None = None
     prefix: str | None = None
     suffix: str | None = None
@@ -1002,9 +1006,11 @@ class Goal(BaseModel):
     checkpoints: list[tuple[str, float]]
     target_type: Literal["absolute", "relative"] = "absolute"
     target_input: float | None = None
-    # Deprecated fields, excluded from output.
-    unit: Ignore[JsonValue]
-    direction: Ignore[JsonValue]
+    # Deprecated fields, excluded from output. Unlike ``Ignore[T]`` fields,
+    # they stay in the server's JSON Schema (``Field(exclude=True)`` only),
+    # so a create accepts them.
+    unit: JsonValue | None = Field(default=None, exclude=True)
+    direction: JsonValue | None = Field(default=None, exclude=True)
 
 
 class SubBehavior(BaseModel):
@@ -1016,6 +1022,7 @@ class SubBehavior(BaseModel):
 
     model_config = _BASE_CONFIG
 
+    idx: str | None = Field(default=None, alias="_idx")
     type: Literal["event", "custom-event", "funnel"] | None = None
     id: int | None = None
     name: str | None = None
@@ -1638,3 +1645,115 @@ PARTIAL_UPDATE_SUB_MODELS.update(
         "displayOptions": DisplayOptions,
     }
 )
+
+
+# =============================================================================
+# Saved metric and saved behavior definitions
+#
+# Mirrors the models that generate the POST JSON Schema of the project
+# ``/metrics`` and ``/behaviors`` App API endpoints:
+# ``analytics/lib/common/mxpnl/report/metric/models.py`` (behavior and formula
+# definitions), ``insights/show.py`` ``WarehouseShowClauseDefinition``, and the
+# ``definition`` object of ``webapp/app_api/projects/behaviors/__types__/
+# behaviors_req.py``. The server validates a POST against that schema and
+# stores a PATCH as sent, so the client runs these mirrors before both.
+# Legacy ``Ignore[T]`` keys stay accepted here, as elsewhere in this module:
+# stored definitions carry them, and the query engine reads past them.
+# =============================================================================
+
+# Mirrors show.py ``WarehouseShowClauseDefinition.metricType``. The
+# aggregation and sync interval literals are defined with
+# ``WarehouseShowClause`` above.
+WarehouseMetricTypeLiteral = Literal["timeseries", "numeric"]
+
+
+class WarehouseShowClauseDefinition(BaseModel):
+    """Mirrors show.py ``WarehouseShowClauseDefinition``.
+
+    The definition of a saved warehouse metric. The server stores the raw
+    request and applies no defaults, so the client writes ``aggregation``
+    and ``syncInterval`` itself.
+    """
+
+    model_config = _BASE_CONFIG
+
+    query: str
+    metricType: WarehouseMetricTypeLiteral
+    aggregation: WarehouseAggregationLiteral = "none"
+    syncInterval: WarehouseSyncIntervalLiteral = "hourly"
+    timeColumn: str | None = None
+    valueColumn: str | None = None
+    measurement: dict[str, Any] | None = None
+    goals: list[Goal] | None = None
+    display: MetricDisplay | None = None
+
+
+class ReferencedMetricClause(BehaviorShowClause):
+    """Mirrors metric/models.py ``ReferencedMetricClause``.
+
+    One operand of a saved formula: a behavior show clause, plus the string
+    ``metric_id`` that the server adds to saved-metric references in its
+    responses. A client that sends a formula back as it read it keeps that
+    key, so the mirror accepts it.
+    """
+
+    metric_id: str | None = None
+
+
+class FormulaInnerDefinition(BaseModel):
+    """Mirrors metric/models.py ``FormulaInnerDefinition``."""
+
+    model_config = _BASE_CONFIG
+
+    definition: str
+    referencedMetrics: list[ReferencedMetricClause]
+
+
+class FormulaMetricDefinition(BaseModel):
+    """Mirrors metric/models.py ``FormulaMetricDefinition``.
+
+    The definition of a saved formula. Its own ``measurement`` is a
+    ``FormulaMeasurement``, which has no ``math`` key.
+    """
+
+    model_config = _BASE_CONFIG
+
+    display: MetricDisplay | None = None
+    measurement: FormulaMeasurement | None = None
+    formula: FormulaInnerDefinition
+    goals: list[Goal] | None = None
+
+
+class BehaviorMetricDefinition(BaseModel):
+    """Mirrors metric/models.py ``BehaviorMetricDefinition``.
+
+    The definition of a saved behavior metric (wire kind ``metric``): the
+    ``behavior`` and ``measurement`` of a show clause, with optional
+    ``display`` and ``goals``.
+    """
+
+    model_config = _BASE_CONFIG
+
+    display: MetricDisplay | None = None
+    measurement: BehaviorMeasurement
+    behavior: Behavior
+    goals: list[Goal] | None = None
+
+
+class SavedBehaviorDefinition(BaseModel):
+    """Mirrors the ``definition`` object of behaviors_req.py.
+
+    The definition of a saved behavior holds one key, ``behavior``.
+    """
+
+    model_config = _BASE_CONFIG
+
+    behavior: Behavior
+
+
+SAVED_METRIC_DEFINITION_MODELS: dict[str, type[BaseModel]] = {
+    "metric": BehaviorMetricDefinition,
+    "formula": FormulaMetricDefinition,
+    "warehouse": WarehouseShowClauseDefinition,
+}
+"""Definition mirror per saved metric kind (the wire ``type`` of the metric)."""

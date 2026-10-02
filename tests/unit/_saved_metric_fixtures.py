@@ -236,6 +236,123 @@ def saved_behavior_json(
     return row
 
 
+LEGACY_KEY_PATHS: dict[str, list[str]] = {
+    "metric": [
+        "definition.behavior.filter",
+        "definition.behavior.exclusions[0].dropdown_tab_index",
+        "definition.behavior.exclusions[0].type",
+        "definition.measurement.id",
+        "definition.measurement.type",
+    ],
+    "formula": [
+        "definition.formula.referencedMetrics[1].behavior.filter",
+        "definition.formula.referencedMetrics[1].measurement.type",
+    ],
+    "behavior": [
+        "definition.behavior.filter",
+        "definition.behavior.exclusions[0].selected_property_type",
+    ],
+}
+"""The legacy key paths of each ``legacy_*_json`` row, per definition kind."""
+
+
+def legacy_funnel_metric_json(metric_id: int = 104900) -> dict[str, Any]:
+    """Return a stored funnel metric whose definition still has legacy keys.
+
+    The server's create schema leaves these keys out, and its query engine
+    reads past them: ``behavior.filter``, the funnel step keys
+    ``dropdown_tab_index`` and ``type`` of an exclusion, and the
+    measurement keys ``id`` and ``type`` (see ``LEGACY_KEY_PATHS``).
+
+    Args:
+        metric_id: The metric id.
+
+    Returns:
+        One saved metric dict of kind ``metric``.
+    """
+    row = behavior_metric_json(metric_id, "Cart to purchase")
+    row["definition"] = {
+        "behavior": {
+            "type": "funnel",
+            "resourceType": "events",
+            "filter": [],
+            "behaviors": [
+                {"type": "event", "name": "View Cart", "filters": []},
+                {"type": "event", "name": "Purchase", "filters": []},
+            ],
+            "conversionWindowDuration": 7,
+            "conversionWindowUnit": "day",
+            "exclusions": [
+                {
+                    "event": "Refund",
+                    "steps": {"from": 0, "to": 1},
+                    "dropdown_tab_index": 0,
+                    "type": "event",
+                }
+            ],
+        },
+        "measurement": {"math": "conversion_rate_unique", "id": 3, "type": "metric"},
+        "display": {"suffix": "%", "precision": 1},
+    }
+    return row
+
+
+def legacy_formula_metric_json(metric_id: int = 118900) -> dict[str, Any]:
+    """Return a stored formula whose inline operand still has legacy keys.
+
+    The first operand refers to a saved metric with the string ``metric_id``
+    that the server adds in responses; its create schema accepts that key.
+    The second operand is an inline metric with ``behavior.filter`` and a
+    measurement ``type`` (see ``LEGACY_KEY_PATHS``).
+
+    Args:
+        metric_id: The metric id.
+
+    Returns:
+        One saved metric dict of kind ``formula``.
+    """
+    row = formula_metric_json(metric_id, "Visits per signup")
+    row["definition"] = {
+        "formula": {
+            "definition": "A / B",
+            "referencedMetrics": [
+                {"type": "metric", "id": 104700, "metric_id": "104700"},
+                {
+                    "type": "metric",
+                    "behavior": {"type": "event", "name": "Visit", "filter": []},
+                    "measurement": {"math": "total", "type": "metric"},
+                },
+            ],
+        }
+    }
+    return row
+
+
+def legacy_behavior_json(behavior_id: int = 3900) -> dict[str, Any]:
+    """Return a stored funnel behavior whose definition still has legacy keys.
+
+    The keys are ``behavior.filter`` and the funnel step key
+    ``selected_property_type`` of an exclusion (see ``LEGACY_KEY_PATHS``).
+
+    Args:
+        behavior_id: The behavior id.
+
+    Returns:
+        One saved behavior dict of type ``funnel``.
+    """
+    row = saved_behavior_json(behavior_id, "Checkout (legacy)")
+    behavior = row["definition"]["behavior"]
+    behavior["filter"] = []
+    behavior["exclusions"] = [
+        {
+            "event": "Refund",
+            "steps": {"from": 0, "to": 1},
+            "selected_property_type": "string",
+        }
+    ]
+    return row
+
+
 def id_map(*rows: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Wrap entity rows in the id-keyed map of an App API ``results`` field.
 

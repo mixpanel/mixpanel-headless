@@ -198,13 +198,21 @@ class TestHintsFor:
         "query",
         [
             "Workspace.list_metrics",
+            "Workspace.create_metric",
+            "Workspace.bulk_update_metrics",
             "Workspace.delete_metrics",
             "SavedMetric",
             "MetricDisplay",
             "MetricGoal",
+            "CreateMetricParams",
+            "RawMetricDefinition",
+            "WarehouseMetric",
             "Workspace.list_behaviors",
+            "Workspace.update_behavior",
             "Workspace.delete_behavior",
             "SavedBehavior",
+            "CreateBehaviorParams",
+            "RawBehaviorDefinition",
         ],
     )
     def test_saved_metrics_and_behaviors_pick_their_guide(self, query: str) -> None:

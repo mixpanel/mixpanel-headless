@@ -113,6 +113,16 @@ from mixpanel_headless._internal.response_validation import (
     validate_response_model,
     validate_response_models,
 )
+from mixpanel_headless._internal.saved_definitions import (
+    behavior_wire_definition,
+    check_behavior_definition,
+    check_description,
+    check_name,
+    check_same_kind,
+    finish_metric_change,
+    prepare_metric_change,
+    prepare_new_metric,
+)
 from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.services.discovery import DiscoveryService
 from mixpanel_headless._internal.services.live_query import LiveQueryService
@@ -191,6 +201,7 @@ from mixpanel_headless.types import (
     BulkUpdateBookmarkEntry,
     BulkUpdateCohortEntry,
     BulkUpdateEventsParams,
+    BulkUpdateMetricEntry,
     BulkUpdatePropertiesParams,
     BusinessContext,
     BusinessContextChain,
@@ -201,6 +212,7 @@ from mixpanel_headless.types import (
     CreateAlertParams,
     CreateAnnotationParams,
     CreateAnnotationTagParams,
+    CreateBehaviorParams,
     CreateBookmarkParams,
     CreateCohortParams,
     CreateCustomEventParams,
@@ -210,6 +222,7 @@ from mixpanel_headless.types import (
     CreateDropFilterParams,
     CreateExperimentParams,
     CreateFeatureFlagParams,
+    CreateMetricParams,
     CreateRcaDashboardParams,
     CreateTagParams,
     CreateWebhookParams,
@@ -300,6 +313,7 @@ from mixpanel_headless.types import (
     UpdateAlertParams,
     UpdateAnnotationParams,
     UpdateAnomalyParams,
+    UpdateBehaviorParams,
     UpdateBookmarkParams,
     UpdateCohortParams,
     UpdateCustomPropertyParams,
@@ -309,6 +323,7 @@ from mixpanel_headless.types import (
     UpdateExperimentParams,
     UpdateFeatureFlagParams,
     UpdateLookupTableParams,
+    UpdateMetricParams,
     UpdatePropertyDefinitionParams,
     UpdateReportLinkParams,
     UpdateSchemaEnforcementParams,
@@ -319,6 +334,7 @@ from mixpanel_headless.types import (
     UserQueryResult,
     ValidateAlertsForBookmarkParams,
     ValidateAlertsForBookmarkResponse,
+    WarehouseMetric,
     WebhookMutationResult,
     WebhookTestParams,
     WebhookTestResult,
@@ -2400,6 +2416,9 @@ class Workspace:
 
         Raises:
             ValueError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``,
+                which defines a saved warehouse metric and is not a query
+                value (``MR3_WAREHOUSE_INLINE``); query it by reference.
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid query parameters.
@@ -2600,6 +2619,8 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``); query it by reference.
 
         Example:
             ```python
@@ -2719,7 +2740,23 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If validation fails at any layer.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``).
         """
+        # A WarehouseMetric defines a saved warehouse metric. The server runs
+        # warehouse SQL only by saved id and ignores an inline query, so the
+        # value is refused here with a pointer to the reference form.
+        items = events if isinstance(events, (list, tuple)) else [events]
+        if any(isinstance(item, WarehouseMetric) for item in items):
+            raise ParamValidationError(
+                "A WarehouseMetric defines a saved warehouse metric; it is not a "
+                "query value, because the server runs warehouse SQL only by saved "
+                "id. Save it with create_metric, then query "
+                'MetricRef(id, type="warehouse") or the SavedMetric that '
+                "create_metric returns.",
+                code="MR3_WAREHOUSE_INLINE",
+            )
+
         # Type guard: events must be an inline metric, a saved-metric
         # reference, a Formula, or a sequence thereof
         if not isinstance(
@@ -9075,6 +9112,340 @@ class Workspace:
             SavedMetric, client.get_metric(metric_id), endpoint="get_metric"
         )
 
+    def create_metric(
+        self, params: CreateMetricParams, *, validate: bool = True
+    ) -> SavedMetric:
+        """Create a saved metric from a typed or raw definition.
+
+        The kind comes from the definition: a ``Metric``, ``CohortMetric``,
+        ``FunnelMetric``, or ``RetentionMetric`` gives a behavior metric, a
+        ``Formula`` with its own operands gives a saved formula, a
+        ``WarehouseMetric`` gives a warehouse metric, and a
+        ``RawMetricDefinition`` gives the kind it names. A behavior metric
+        saves the ``behavior`` and ``measurement`` that :meth:`query` writes
+        for the same value, and a saved formula holds the operands that a
+        query formula holds, so the saved metric queries the same way as its
+        inline twin.
+
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or the ``id`` and ``type`` of a measurement) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawMetricDefinition``, with or without
+        ``validate``, and a copy of a stored metric works. A definition
+        compiled from a typed value never has one; if it does, the method
+        refuses it (``SM4_SCHEMA``).
+
+        Before any request, the method checks the name and description and
+        the definition (see Raises). Then it sends the create. The server
+        drops ``owned_by`` and ``verified`` from a create, so when the params
+        set an owner or ``verified=True``, a second request (an update)
+        sets them. The two requests are not atomic: if the second one fails,
+        the metric exists without the owner or the verified flag, and the
+        method raises an error that names the id of the created metric
+        (see Raises).
+
+        In a project with sharing on, a new metric is private to its
+        creator; this API cannot share it.
+
+        Args:
+            params: Name, definition, and optional description, display,
+                goals, owner, and verified flag.
+            validate: Check the definition with the mirror of the server
+                schema before the request (default), including the refusal
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
+
+        Returns:
+            The created ``SavedMetric`` (after the second request, when one
+            was needed).
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``); a name or description longer than 255
+                characters, which the server fails with a 500
+                (``SM2_NAME_TOO_LONG``); a definition that fails the schema
+                mirror, or a warehouse definition without a source
+                (``SM4_SCHEMA``); a saved formula whose operands use segment
+                method or attribution (``FM6_OPERAND_ATTRIBUTION``); a
+                ``Formula`` without operands (``SM7_FORMULA_WITHOUT_OPERANDS``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The server refused the body (400; the message names
+                the failure and its schema location, and ``response_body``
+                holds the full server body); the pricing-plan gate
+                ("Cannot save metric with your current plan"), a missing
+                permission, or an unknown warehouse source (403; the body can
+                have an empty error); an active metric has the same name
+                (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The create succeeded, but the second
+                request (owner or verified flag) failed
+                (``code="CREATE_FOLLOW_UP_FAILED"``). ``details`` holds
+                ``metric_id`` (the created metric) and ``fields`` (the
+                values that were not set); the error of the second request
+                is chained as ``__cause__``. The errors above come from the
+                create itself, so nothing was created.
+
+        Example:
+            ```python
+            ws = Workspace()
+            saved = ws.create_metric(CreateMetricParams(
+                name="Weekly buyers",
+                definition=Metric("Purchase", math="unique"),
+                description="Unique users who bought.",
+                verified=True,
+            ))
+            print(saved.id, saved.verified)
+            ```
+        """
+        check_name(params.name, entity="saved metric")
+        check_description(params.description, entity="saved metric")
+        parts = prepare_new_metric(
+            params.definition,
+            params.display,
+            params.goals,
+            validate=validate,
+            for_create=True,
+        )
+        if parts.kind == "warehouse" and parts.warehouse_source_id is None:
+            raise ParamValidationError(
+                "A new warehouse metric needs a warehouse source: set "
+                "WarehouseMetric.source_id or RawMetricDefinition."
+                "warehouse_source_id.",
+                code="SM4_SCHEMA",
+                details={"path": "warehouse_source_id"},
+            )
+        body: dict[str, Any] = {"type": parts.kind, "name": params.name}
+        if params.description is not None:
+            body["description"] = params.description
+        body["definition"] = parts.definition
+        if parts.kind == "warehouse":
+            body["warehouse_source_id"] = parts.warehouse_source_id
+
+        client = self._require_api_client()
+        created = validate_response_model(
+            SavedMetric, client.create_metric(body), endpoint="create_metric"
+        )
+        follow_up: dict[str, Any] = {}
+        if params.owned_by is not None:
+            follow_up["owned_by"] = {"id": params.owned_by}
+        if params.verified:
+            follow_up["verified"] = True
+        if not follow_up:
+            return created
+        try:
+            row = client.update_metric(created.id, follow_up)
+        except MixpanelHeadlessError as exc:
+            fields = sorted(follow_up)
+            logger.warning(
+                "create_metric: created saved metric %s, but the follow-up "
+                "update of %s failed",
+                created.id,
+                fields,
+            )
+            raise MixpanelHeadlessError(
+                f"create_metric: created saved metric {created.id}, but the "
+                f"follow-up update of {', '.join(fields)} failed: {exc.message}. "
+                f"The metric exists without these values; set them with "
+                f"update_metric or remove the metric with delete_metric.",
+                code="CREATE_FOLLOW_UP_FAILED",
+                details={"metric_id": created.id, "fields": fields},
+            ) from exc
+        return validate_response_model(SavedMetric, row, endpoint="create_metric")
+
+    def update_metric(
+        self,
+        metric_id: int,
+        params: UpdateMetricParams,
+        *,
+        validate: bool = True,
+    ) -> SavedMetric:
+        """Update a saved metric: metadata, definition, presentation, owner, or verified.
+
+        The server runs no schema check on an update and stores a new
+        definition as sent, so this method runs the same checks as
+        :meth:`create_metric` before any request. It sends one update.
+
+        When the params change the definition, the display, or the goals,
+        the method reads the metric first, because the server replaces the
+        definition in full:
+
+        - A new definition must have the stored kind and, for a warehouse
+          metric, the stored source. It keeps the stored display and goals
+          unless the params or the new definition set them.
+        - Display or goals without a definition send the stored definition
+          back with the new values, as the web app does.
+        - The params display merges into the stored display (or into the
+          display of the new definition, when it has one): the keys that
+          you set replace the stored ones, a key set to ``None`` is
+          removed, and the other keys stay. The params goals replace the
+          stored goals in full.
+        - A ``WarehouseMetric`` whose ``aggregation`` or ``sync_interval``
+          is ``None`` keeps the stored value, so an update of the SQL alone
+          keeps a stored ``"sum"`` and ``"daily"``. A
+          ``RawMetricDefinition`` is sent as given.
+
+        The read and the update are not atomic; an edit in the web app
+        between them is overwritten. A failed read raises; the method never
+        guesses the stored definition.
+
+        Args:
+            metric_id: The saved metric id.
+            params: The fields to change; ``None`` leaves a field as it is.
+                ``verified=True`` stamps the verification time again.
+                ``owned_by`` sets an owner; an owner cannot be removed.
+            validate: Check new definition, display, and goal values with the
+                mirror of the server schema (default). ``False`` sends them
+                as given, and the server stores them unchecked.
+
+        Returns:
+            The updated ``SavedMetric``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``), a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``), a value that fails the
+                schema mirror (``SM4_SCHEMA``), or a saved formula operand
+                with segment method or attribution
+                (``FM6_OPERAND_ATTRIBUTION``). After the read: a new
+                definition of another kind or warehouse source
+                (``SM3_KIND_CHANGE``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The metric does not exist or is deleted (404), the
+                caller cannot edit it or the pricing-plan gate blocks the write
+                (403), or the new name is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.update_metric(104700, UpdateMetricParams(
+                display=MetricDisplay(suffix=" users", precision=0),
+                verified=True,
+            ))
+            ws.update_metric(104700, UpdateMetricParams(
+                definition=Metric("Purchase", math="unique", segment_method="first"),
+            ))
+            ```
+        """
+        check_name(params.name, entity="saved metric")
+        check_description(params.description, entity="saved metric")
+        change = prepare_metric_change(
+            params.definition, params.display, params.goals, validate=validate
+        )
+        client = self._require_api_client()
+        body: dict[str, Any] = {}
+        if params.name is not None:
+            body["name"] = params.name
+        if params.description is not None:
+            body["description"] = params.description
+        if change is not None:
+            stored = validate_response_model(
+                SavedMetric, client.get_metric(metric_id), endpoint="update_metric"
+            )
+            body["definition"] = finish_metric_change(change, stored)
+        if params.owned_by is not None:
+            body["owned_by"] = {"id": params.owned_by}
+        if params.verified is not None:
+            body["verified"] = params.verified
+        row = client.update_metric(metric_id, body)
+        return validate_response_model(SavedMetric, row, endpoint="update_metric")
+
+    def bulk_update_metrics(
+        self,
+        entries: Sequence[BulkUpdateMetricEntry],
+        *,
+        validate: bool = True,
+    ) -> list[SavedMetric]:
+        """Update several saved metrics with one request, for example to verify them.
+
+        Each entry holds a metric id plus the fields to change. The method
+        runs the checks of :meth:`update_metric` on every entry before it
+        sends anything. An entry with a new definition reads its metric
+        first (one read per such entry) to check the kind and to keep the
+        stored display and goals. One bad entry stops the whole batch.
+
+        The server skips ids that do not name a metric of the project, with
+        no error; compare the ids of the result with the ids you sent.
+
+        Args:
+            entries: One entry per metric.
+            validate: Check new definitions with the mirror of the server
+                schema (default).
+
+        Returns:
+            The updated ``SavedMetric`` objects, in server order. An empty
+            ``entries`` sends no request and returns ``[]``.
+
+        Raises:
+            ParamValidationError: An entry breaks a rule of
+                :meth:`update_metric` (``SM1_EMPTY_NAME``,
+                ``SM2_NAME_TOO_LONG``, ``SM4_SCHEMA``,
+                ``FM6_OPERAND_ATTRIBUTION``, ``SM3_KIND_CHANGE``); nothing
+                was sent.
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The read of an entry's metric failed (404), the
+                caller cannot edit one of the metrics (403), or a new name
+                is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            candidates = ws.list_metrics(name_contains="[core]", verified=False)
+            ws.bulk_update_metrics(
+                [BulkUpdateMetricEntry(id=m.id, verified=True) for m in candidates]
+            )
+            ```
+        """
+        prepared = []
+        for entry in entries:
+            check_name(entry.name, entity="saved metric")
+            check_description(entry.description, entity="saved metric")
+            change = prepare_metric_change(
+                entry.definition, None, None, validate=validate
+            )
+            prepared.append((entry, change))
+        if not prepared:
+            return []
+        client = self._require_api_client()
+        wire_entries: list[dict[str, Any]] = []
+        for entry, change in prepared:
+            item: dict[str, Any] = {"id": entry.id}
+            if entry.name is not None:
+                item["name"] = entry.name
+            if entry.description is not None:
+                item["description"] = entry.description
+            if change is not None:
+                stored = validate_response_model(
+                    SavedMetric,
+                    client.get_metric(entry.id),
+                    endpoint="bulk_update_metrics",
+                )
+                item["definition"] = finish_metric_change(change, stored)
+            if entry.owned_by is not None:
+                item["owned_by"] = {"id": entry.owned_by}
+            if entry.verified is not None:
+                item["verified"] = entry.verified
+            wire_entries.append(item)
+        rows = client.bulk_update_metrics(wire_entries)
+        return validate_response_models(
+            SavedMetric, rows, endpoint="bulk_update_metrics"
+        )
+
     def delete_metric(self, metric_id: int, *, force: bool = False) -> None:
         """Delete one saved metric, after a read that confirms it exists and is yours to edit.
 
@@ -9342,6 +9713,183 @@ class Workspace:
         return validate_response_model(
             SavedBehavior, client.get_behavior(behavior_id), endpoint="get_behavior"
         )
+
+    def create_behavior(
+        self, params: CreateBehaviorParams, *, validate: bool = True
+    ) -> SavedBehavior:
+        """Create a saved behavior: a reusable simple, funnel, or retention behavior.
+
+        The wire type of the behavior comes from its definition. Before the
+        request, the method checks the name and description and the
+        definition (see Raises). In a project with sharing on, a new
+        behavior is private to its creator; this API cannot share it.
+
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or a legacy funnel step key of an exclusion) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawBehaviorDefinition``, with or
+        without ``validate``, and a copy of a stored behavior works. A
+        definition compiled from a typed value never has one; if it does,
+        the method refuses it (``SM4_SCHEMA``).
+
+        Args:
+            params: Name, behavior definition, and optional description.
+            validate: Check the definition with the mirror of the server
+                schema before the request (default), including the refusal
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
+
+        Returns:
+            The created ``SavedBehavior``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``); a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``); a definition with no
+                ``behavior.type`` string, or one that fails the schema mirror
+                (``SM4_SCHEMA``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The server refused the body (400); the pricing-plan gate
+                ("Cannot save behavior with your current plan") or a missing
+                permission (403); an active behavior has the same name (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            source = ws.get_behavior(3001)
+            copy = ws.create_behavior(CreateBehaviorParams(
+                name="Checkout (copy)",
+                behavior=RawBehaviorDefinition(source.definition),
+            ))
+            ```
+        """
+        check_name(params.name, entity="saved behavior")
+        check_description(params.description, entity="saved behavior")
+        definition = behavior_wire_definition(params.behavior, for_create=True)
+        behavior_type = self._saved_behavior_type(definition)
+        if validate:
+            check_behavior_definition(definition, for_create=True)
+        body: dict[str, Any] = {"type": behavior_type, "name": params.name}
+        if params.description is not None:
+            body["description"] = params.description
+        body["definition"] = definition
+        client = self._require_api_client()
+        row = client.create_behavior(body)
+        return validate_response_model(SavedBehavior, row, endpoint="create_behavior")
+
+    def update_behavior(
+        self,
+        behavior_id: int,
+        params: UpdateBehaviorParams,
+        *,
+        validate: bool = True,
+    ) -> SavedBehavior:
+        """Update a saved behavior: name, description, definition, or verified flag.
+
+        The server runs no schema check on an update and ignores the
+        behavior type, so a new definition goes through the checks of
+        :meth:`create_behavior` first. A new definition also makes the method
+        read the behavior, to refuse a change of type. The server answers
+        the read of an unknown or deleted id with a 500.
+
+        Args:
+            behavior_id: The saved behavior id.
+            params: The fields to change; ``None`` leaves a field as it is.
+                ``verified=True`` stamps the verification time again.
+            validate: Check a new definition with the mirror of the server
+                schema (default). ``False`` sends it as given, and the server
+                stores it unchecked.
+
+        Returns:
+            The updated ``SavedBehavior``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``), a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``), or a definition with no
+                type or one that fails the schema mirror (``SM4_SCHEMA``).
+                After the read: a definition of another type
+                (``SM3_KIND_CHANGE``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit the behavior (403), or the new
+                name is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including the read of an
+                unknown behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.update_behavior(3001, UpdateBehaviorParams(verified=True))
+            ```
+        """
+        check_name(params.name, entity="saved behavior")
+        check_description(params.description, entity="saved behavior")
+        definition: dict[str, Any] | None = None
+        behavior_type: str | None = None
+        if params.behavior is not None:
+            definition = behavior_wire_definition(params.behavior)
+            behavior_type = self._saved_behavior_type(definition)
+            if validate:
+                check_behavior_definition(definition)
+        client = self._require_api_client()
+        body: dict[str, Any] = {}
+        if params.name is not None:
+            body["name"] = params.name
+        if params.description is not None:
+            body["description"] = params.description
+        if definition is not None and behavior_type is not None:
+            stored = validate_response_model(
+                SavedBehavior,
+                client.get_behavior(behavior_id),
+                endpoint="update_behavior",
+            )
+            check_same_kind(
+                entity="saved behavior",
+                entity_id=behavior_id,
+                stored_kind=stored.type,
+                new_kind=behavior_type,
+            )
+            body["definition"] = definition
+        if params.verified is not None:
+            body["verified"] = params.verified
+        row = client.update_behavior(behavior_id, body)
+        return validate_response_model(SavedBehavior, row, endpoint="update_behavior")
+
+    @staticmethod
+    def _saved_behavior_type(definition: dict[str, Any]) -> str:
+        """Read the wire type of a saved behavior from its definition.
+
+        Args:
+            definition: The wire definition, ``{"behavior": {...}}``.
+
+        Returns:
+            ``definition["behavior"]["type"]``.
+
+        Raises:
+            ParamValidationError: The definition has no type string; the POST
+                needs it as the behavior's wire type (``SM4_SCHEMA``).
+        """
+        behavior = definition.get("behavior")
+        behavior_type = behavior.get("type") if isinstance(behavior, dict) else None
+        if not isinstance(behavior_type, str) or not behavior_type:
+            raise ParamValidationError(
+                "A saved behavior definition needs a behavior type string at "
+                "definition.behavior.type (for example 'funnel').",
+                code="SM4_SCHEMA",
+                details={"path": "definition.behavior.type"},
+            )
+        return behavior_type
 
     def delete_behavior(self, behavior_id: int, *, force: bool = False) -> None:
         """Delete one saved behavior, after a read that confirms it exists and is yours to edit.

@@ -147,6 +147,99 @@ may include API changes.
   metric reference raises `FM7_WAREHOUSE_OPERAND` (the server accepts only
   behavior metrics as operands), and an operand reference with an override
   raises `MR2_OPERAND_OVERRIDE`.
+- **Saved metrics and saved behaviors: create and update.**
+  `Workspace.create_metric(params, *, validate=True)`,
+  `update_metric(metric_id, params, *, validate=True)`,
+  `bulk_update_metrics(entries, *, validate=True)`,
+  `create_behavior(params, *, validate=True)`, and
+  `update_behavior(behavior_id, params, *, validate=True)`, with the params
+  models `CreateMetricParams`, `UpdateMetricParams`,
+  `BulkUpdateMetricEntry`, `CreateBehaviorParams`, and
+  `UpdateBehaviorParams`. The kind of a saved metric comes from its
+  definition: a `Metric` or `CohortMetric` saves the `behavior` and
+  `measurement` of the show clause that `Workspace.query` writes for it, so
+  a saved metric queries the same way as its inline twin. New definition
+  values `WarehouseMetric` (its `aggregation` and `sync_interval` default
+  to `None`: a create then writes the server defaults `"none"` and
+  `"hourly"`, because the server stores the request as sent, and an update
+  keeps the stored values, so an update of the SQL alone keeps a stored
+  `"sum"` and `"daily"`), `RawMetricDefinition`, and
+  `RawBehaviorDefinition` (a wire definition dict, for example one that a
+  get returned), the `MetricDefinition` alias, and the `Literal` aliases
+  `WarehouseAggregation` and `WarehouseSyncInterval`.
+  `SavedMetric.to_raw_definition()` returns a stored metric as a
+  `RawMetricDefinition`, with its kind and warehouse source, for a copy;
+  a legacy `behavior` kind becomes `metric`, and an unknown kind raises
+  `SM4_SCHEMA`.
+- The server checks a create against its JSON Schema but stores an update
+  as sent, so every write runs the same client-side checks before any
+  request, with new `ParamValidationError` codes: `SM1_EMPTY_NAME`,
+  `SM2_NAME_TOO_LONG` (the server fails with a 500 over 255 characters),
+  `SM3_KIND_CHANGE` (a new definition must keep the stored kind and
+  warehouse source), `SM4_SCHEMA` (a mirror of the server POST schema
+  names the failing field path; `validate=False` skips it), and
+  `FM6_OPERAND_ATTRIBUTION` (a saved formula operand cannot set a segment
+  method or an attribution model). The server drops `owned_by` and
+  `verified` from a create, so `create_metric` sets them in a second
+  request; the two requests are not atomic. When the second request fails,
+  `create_metric` raises `MixpanelHeadlessError` with code
+  `CREATE_FOLLOW_UP_FAILED`: its message and `details["metric_id"]` give
+  the id of the created metric, and the error of the second request is
+  chained. A create answer without a metric id raises
+  `ResponseValidationError` before the second request. An update with new
+  display or goals but no definition reads the metric and sends its full
+  definition back, because the server replaces a definition in full. The
+  new display merges into the stored one (or into the display of a new
+  definition that has one): the keys that the caller sets replace the
+  stored ones, a key set to `None` is removed, and the other keys stay.
+  New goals replace the stored goals in full. A create that the server's
+  schema refuses raises `QueryError` (400) with a short message: the
+  failure and its schema location, without the HTML-escaped copy of the
+  request that the server appends. The full body stays in `response_body`.
+  The CLI prints only the short message for such a 400, not the server's
+  copy of the request. Only a body with every field of
+  the server's schema refusal (`status`, `error`, and `details` with
+  `path`, `schema`, and `data`) counts; another 400 keeps its server
+  message and the usual CLI output. An error of `mp metrics
+  create|update|verify|delete` or `mp behaviors create|update|delete` (for
+  example a 409 duplicate name or a 403) never prints the request params
+  or body, which hold the definition and, for a warehouse metric, its SQL;
+  the exception keeps them for Python callers.
+- Saved definitions from the typed values: `CreateMetricParams` takes a
+  `FunnelMetric`, a `RetentionMetric`, a `Metric` over several events, and
+  a `Formula` with its own operands (a `MetricRef` operand stays a
+  reference), compiled by the same builders as `Workspace.query`.
+  `CreateBehaviorParams` takes a `SimpleBehavior`, `FunnelBehavior`, or
+  `RetentionBehavior` (new alias `BehaviorDefinition`); the saved
+  definition never holds a name. A `Formula` without operands raises the
+  new code `SM7_FORMULA_WITHOUT_OPERANDS`. The saved definition of a typed
+  value holds no legacy behavior `filter` key: the server reads past it at
+  query time, but its create schema rejects it. Stored definitions carry
+  such legacy keys (for example a behavior `filter`, legacy funnel step
+  keys, and the `id` and `type` of a measurement), so a create removes
+  them from a `RawMetricDefinition` or `RawBehaviorDefinition`, with or
+  without `validate`, and a copy of a stored metric or behavior works (in
+  Python and through `mp metrics create` / `mp behaviors create
+  --definition-file`). In a definition compiled from a typed value,
+  `SM4_SCHEMA` refuses them, because one there means a builder bug. An
+  update sends them as given.
+- `Workspace.query` and `build_params` refuse a `WarehouseMetric` with the
+  new code `MR3_WAREHOUSE_INLINE`: the server runs warehouse SQL only by
+  saved id, so a warehouse metric is saved first and queried by reference.
+- CLI: `mp metrics query ID` runs a saved metric by reference.
+- CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
+  `--definition-file FILE|-` takes the wire definition that `get` prints,
+  so get, edit, and update is a round trip. `mp metrics verify` names on
+  stderr the ids that the server skipped. Before any request, `update`
+  exits 3 when no option to change is given, and `mp metrics update`
+  exits 3 when `--kind` or `--warehouse-source-id` comes without
+  `--definition-file`.
+- `MetricDisplay` gains the write side of the server model: the
+  experiment sizing keys `minimumDetectableEffect`, `oneSided`, and `power`
+  are accepted by the bookmark schema check too. `MetricGoal.id` is
+  optional; a new goal gets a UUID on write, `date` and `datetime`
+  checkpoints are written as naive ISO timestamps, and the deprecated goal
+  keys `unit` and `direction` are never written.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.

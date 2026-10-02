@@ -559,7 +559,7 @@ Types for `Workspace.subproperties()` — schema discovery for list-of-object ev
 
 ## Saved Metric and Behavior Types
 
-Result types of `list_metrics`, `get_metric`, `list_behaviors`, and `get_behavior`. They accept any `type`, any `math`, and unknown keys; the typed accessors return `None` or an empty list for a shape they do not know. `created_by`, `owned_by`, and `last_verified_by` use `CohortCreator` (`{id, name, email}`). See the [Saved Metrics and Behaviors guide](../guide/saved-metrics.md).
+Result types of the saved metric and saved behavior methods. They accept any `type`, any `math`, and unknown keys; the typed accessors return `None` or an empty list for a shape they do not know. `created_by`, `owned_by`, and `last_verified_by` use `CohortCreator` (`{id, name, email}`). See the [Saved Metrics and Behaviors guide](../guide/saved-metrics.md).
 
 ::: mixpanel_headless.SavedMetric
     options:
@@ -577,6 +577,55 @@ Result types of `list_metrics`, `get_metric`, `list_behaviors`, and `get_behavio
       show_root_toc_entry: true
 
 ::: mixpanel_headless.MetricGoal
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+### Create and update
+
+The write methods take these params. The kind of a saved metric comes from its definition (`MetricDefinition`): `Metric`, `CohortMetric`, `FunnelMetric`, or `RetentionMetric` gives a behavior metric, a `Formula` with its own operands gives a saved formula, `WarehouseMetric` gives a warehouse metric, and `RawMetricDefinition` gives the kind it names.
+
+A saved behavior takes a `BehaviorDefinition`, and its wire type comes from that value:
+
+- `SimpleBehavior`, `FunnelBehavior`, or `RetentionBehavior` (see [Insights Query Types](#insights-query-types)): use one of these to build a new behavior in code. The library compiles it with the builders of an inline behavior, without a name, and the wire type is `simple`, `funnel`, or `retention`.
+- `RawBehaviorDefinition`: use it for a wire definition dict, for example the `definition` of a `SavedBehavior` that you copy or edit. The wire type comes from `definition["behavior"]["type"]`.
+
+::: mixpanel_headless.CreateMetricParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UpdateMetricParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.BulkUpdateMetricEntry
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.WarehouseMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RawMetricDefinition
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.CreateBehaviorParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UpdateBehaviorParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RawBehaviorDefinition
     options:
       show_root_heading: true
       show_root_toc_entry: true

@@ -16,10 +16,13 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from mixpanel_headless._internal.saved_definitions import check_same_kind
+from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import (
     CohortCreator,
     MetricDisplay,
     MetricGoal,
+    RawMetricDefinition,
     SavedBehavior,
     SavedMetric,
 )
@@ -251,7 +254,7 @@ class TestSavedMetricAccessors:
             {"display": "wide"},
             {"display": {"precision": "many"}},
             {"goals": "none"},
-            {"goals": [{"label": "no id"}, 5]},
+            {"goals": [{"id": "no label"}, 5]},
         ],
     )
     def test_unknown_shapes_give_none_or_empty(
@@ -276,7 +279,7 @@ class TestSavedMetricAccessors:
         """Goals that parse are returned; entries that do not are left out."""
         row = behavior_metric_json()
         good = row["definition"]["goals"][0]
-        row["definition"]["goals"] = [good, {"label": "missing id"}, "junk"]
+        row["definition"]["goals"] = [good, {"id": "missing label"}, "junk"]
         metric = SavedMetric.model_validate(row)
         assert [g.id for g in metric.goals] == [good["id"]]
 
@@ -285,6 +288,81 @@ class TestSavedMetricAccessors:
         dumped = SavedMetric.model_validate(behavior_metric_json()).model_dump()
         for name in ("behavior_type", "math", "formula_expression", "goals"):
             assert name not in dumped
+
+
+# =============================================================================
+# SavedMetric — to_raw_definition
+# =============================================================================
+
+
+class TestSavedMetricToRawDefinition:
+    """to_raw_definition returns the stored definition as a write value."""
+
+    @pytest.mark.parametrize(
+        ("row", "kind", "source_id"),
+        [
+            (behavior_metric_json(), "metric", None),
+            (formula_metric_json(), "formula", None),
+            (warehouse_metric_json(), "warehouse", 55),
+        ],
+    )
+    def test_each_kind(
+        self, row: dict[str, Any], kind: str, source_id: int | None
+    ) -> None:
+        """The kind, the definition, and the warehouse source come from the row.
+
+        Args:
+            row: A stored metric of one kind.
+            kind: The expected kind.
+            source_id: The expected warehouse source.
+        """
+        metric = SavedMetric.model_validate(row)
+        raw = metric.to_raw_definition()
+        assert isinstance(raw, RawMetricDefinition)
+        assert raw.type == kind
+        assert raw.definition == row["definition"]
+        assert raw.warehouse_source_id == source_id
+
+    def test_definition_is_a_copy(self) -> None:
+        """Changing the returned definition leaves the saved metric unchanged."""
+        metric = SavedMetric.model_validate(behavior_metric_json())
+        raw = metric.to_raw_definition()
+        raw.definition["measurement"]["copied"] = True
+        assert "copied" not in metric.definition["measurement"]
+
+    def test_legacy_behavior_kind_maps_to_metric(self) -> None:
+        """A legacy ``behavior`` row gives kind ``metric``, as the kind check does."""
+        row = behavior_metric_json()
+        row["type"] = "behavior"
+        raw = SavedMetric.model_validate(row).to_raw_definition()
+        assert raw.type == "metric"
+        assert raw.definition == row["definition"]
+        check_same_kind(
+            entity="saved metric",
+            entity_id=row["id"],
+            stored_kind="behavior",
+            new_kind=raw.type,
+        )
+
+    def test_non_warehouse_row_drops_a_stray_source(self) -> None:
+        """A source id on a behavior metric row is not carried to the copy."""
+        row = behavior_metric_json()
+        row["warehouse_source_id"] = 55
+        raw = SavedMetric.model_validate(row).to_raw_definition()
+        assert raw.warehouse_source_id is None
+
+    def test_unknown_kind_raises(self) -> None:
+        """A kind that no create accepts raises SM4_SCHEMA with the metric id."""
+        row = behavior_metric_json()
+        row["type"] = "profile"
+        metric = SavedMetric.model_validate(row)
+        with pytest.raises(ParamValidationError) as exc_info:
+            metric.to_raw_definition()
+        exc = exc_info.value
+        assert exc.code == "SM4_SCHEMA"
+        assert exc.details["path"] == "type"
+        assert str(row["id"]) in str(exc)
+        assert "'profile'" in str(exc)
 
 
 # =============================================================================
@@ -443,8 +521,9 @@ class TestMetricGoal:
         assert goal.target_input == 0.1
 
     def test_defaults(self) -> None:
-        """Only id and label are required."""
-        goal = MetricGoal(id="g", label="L")
+        """Only the label is required; a new goal has no id yet."""
+        goal = MetricGoal(label="L")
+        assert goal.id is None
         assert goal.checkpoints == []
         assert goal.target_type == "absolute"
         assert goal.target_input is None

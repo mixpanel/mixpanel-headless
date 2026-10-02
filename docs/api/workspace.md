@@ -18,7 +18,7 @@ Workspace orchestrates internal services and provides direct App API access:
 - **Feature Management** — Create, read, update, delete feature flags and experiments via Mixpanel App API (project-scoped)
 - **Operational Tooling** — Manage alerts, annotations, and webhooks via Mixpanel App API (workspace-scoped)
 - **Data Governance** — Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, schema enforcement, data auditing, volume anomalies, and event deletion requests via Mixpanel App API (workspace-scoped)
-- **Saved Metrics & Behaviors** — List, read, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors via Mixpanel App API (project-scoped)
+- **Saved Metrics & Behaviors** — List, read, create, update, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors via Mixpanel App API (project-scoped)
 - **Business Context** — Read and write the markdown documentation that grounds AI assistants (org and project scopes, 50,000-char cap)
 - **Session Replay** — Discover, sign, fetch, and analyze rrweb session recordings; project them into session-level DataFrames and an LLM-friendly action timeline
 
@@ -121,7 +121,7 @@ See the [Data Governance guide](../guide/data-governance.md) for complete covera
 
 ### Saved Metrics & Behaviors
 
-List, read, and delete the saved metrics and saved behaviors of the project. Both collections are **project-scoped** and do not require a workspace ID. One collection holds all three metric kinds (`metric`, `formula`, `warehouse`).
+List, read, create, update, and delete the saved metrics and saved behaviors of the project. Both collections are **project-scoped** and do not require a workspace ID. One collection holds all three metric kinds (`metric`, `formula`, `warehouse`).
 
 ```python
 import mixpanel_headless as mp
@@ -133,6 +133,12 @@ metrics = ws.list_metrics()
 governed = ws.list_metrics(verified=True, viewable_only=True)
 metric = ws.get_metric(104700)
 metric.math, metric.formula_expression, metric.referenced_metric_ids
+
+# Create and update; the client checks each write before the request
+saved = ws.create_metric(mp.CreateMetricParams(
+    name="Weekly buyers", definition=mp.Metric("Purchase", math="unique"), verified=True,
+))
+ws.update_metric(saved.id, mp.UpdateMetricParams(display=mp.MetricDisplay(precision=0)))
 
 # Saved behaviors
 funnels = ws.list_behaviors(behavior_type="funnel")
@@ -446,11 +452,16 @@ See [Auth → Workspace.use()](auth.md#workspaceuse-in-session-switching) for th
         # Saved Metrics
         - list_metrics
         - get_metric
+        - create_metric
+        - update_metric
+        - bulk_update_metrics
         - delete_metric
         - delete_metrics
         # Saved Behaviors
         - list_behaviors
         - get_behavior
+        - create_behavior
+        - update_behavior
         - delete_behavior
         - delete_behaviors
         # Schema Registry CRUD

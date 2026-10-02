@@ -26,7 +26,10 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import (
+    MixpanelAPIClient,
+    is_schema_refusal,
+)
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless.exceptions import ParamValidationError, QueryError, ServerError
@@ -343,3 +346,207 @@ class TestRecordedErrors:
             session=creds, _transport=httpx.MockTransport(_replay(200, name))
         )
         assert getattr(client, call)([1]) is None
+
+
+# =============================================================================
+# Recorded write errors
+# =============================================================================
+
+
+_SCHEMA_DETAILS: dict[str, Any] = {"data": None, "path": ["root"], "schema": {}}
+
+_UNRELATED_400_BODIES: list[dict[str, Any]] = [
+    {"error": "Workspace is read-only", "details": {"reason": "locked"}},
+    {
+        "error": "Workspace is read-only",
+        "details": {"reason": "locked"},
+        "status": "error",
+    },
+    {"error": "Workspace is read-only", "details": _SCHEMA_DETAILS},
+    {"error": "Workspace is read-only", "details": _SCHEMA_DETAILS, "status": "ok"},
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "schema": {}},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": "root", "schema": {}},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": ["root"]},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"data": None, "path": ["root"], "schema": "object"},
+        "status": "error",
+    },
+    {
+        "error": "Workspace is read-only",
+        "details": {"path": ["root"], "schema": {}},
+        "status": "error",
+    },
+]
+"""400 bodies with a ``details`` dict that are not the JSON Schema refusal.
+
+Each one lacks a field (or has the wrong type for a field) of the recorded
+``{"error", "details": {"path", "schema", "data"}, "status": "error"}`` shape.
+"""
+
+
+class TestRecordedWriteErrors:
+    """The recorded 400 and 409 bodies of creates map to readable QueryErrors."""
+
+    @pytest.mark.parametrize(
+        ("name", "call", "fragment", "location"),
+        [
+            (
+                "error_400_unknown_key",
+                "create_metric",
+                "Additional properties are not allowed ('bogusKey' was unexpected)",
+                "definition.behavior",
+            ),
+            (
+                "error_400_behavior_unknown_key",
+                "create_behavior",
+                "Additional properties are not allowed ('bogusKey' was unexpected)",
+                "definition.behavior",
+            ),
+            (
+                "error_400_bad_math",
+                "create_metric",
+                "'not_a_math' is not valid under any of the given schemas",
+                None,
+            ),
+        ],
+    )
+    def test_400_message_is_readable(
+        self, name: str, call: str, fragment: str, location: str | None
+    ) -> None:
+        """The message drops the escaped request repr; the full body stays attached.
+
+        Args:
+            name: The fixture file name.
+            call: The client create method.
+            fragment: Text the readable message keeps.
+            location: The schema location, from the reversed server path.
+        """
+        body = _load(name)
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds, _transport=httpx.MockTransport(_replay(400, name))
+        )
+        with pytest.raises(QueryError) as exc_info:
+            getattr(client, call)({"type": "metric", "name": "n", "definition": {}})
+        exc = exc_info.value
+        assert exc.status_code == 400
+        assert fragment in exc.message
+        assert "&#x27;" not in exc.message
+        assert "{'type'" not in exc.message
+        assert len(exc.message) < 400
+        if location is not None:
+            assert location in exc.message
+        assert exc.response_body == body
+        assert isinstance(exc.__cause__, QueryError)
+
+    def test_schema_refusal_shape(self) -> None:
+        """Only the recorded JSON Schema 400 bodies count as a schema refusal."""
+        for name in (
+            "error_400_unknown_key",
+            "error_400_behavior_unknown_key",
+            "error_400_bad_math",
+            "error_400_global_access_type",
+        ):
+            assert is_schema_refusal(_load(name)), name
+        for name in ("error_409_duplicate_name", "error_404_unknown_metric"):
+            assert not is_schema_refusal(_load(name)), name
+        assert not is_schema_refusal("Bad request")
+        assert not is_schema_refusal(None)
+
+    @pytest.mark.parametrize("body", _UNRELATED_400_BODIES)
+    def test_other_structured_400_is_not_a_schema_refusal(
+        self, body: dict[str, Any]
+    ) -> None:
+        """A 400 with a details dict but not the full schema shape does not count.
+
+        Args:
+            body: A 400 body that lacks one distinguishing field.
+        """
+        assert not is_schema_refusal(body)
+
+    @pytest.mark.parametrize("body", _UNRELATED_400_BODIES)
+    def test_other_structured_400_keeps_the_plain_message(
+        self, body: dict[str, Any]
+    ) -> None:
+        """A 400 with a details dict but not the full schema shape is not rewritten.
+
+        Args:
+            body: A 400 body that lacks one distinguishing field.
+        """
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json=body)
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.message == "Workspace is read-only"
+        assert "refused the request body" not in exc_info.value.message
+        assert exc_info.value.__cause__ is None
+
+    def test_400_wrong_branch_message_carries_a_note(self) -> None:
+        """A 400 whose text can name the wrong schema branch says so."""
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                _replay(400, "error_400_global_access_type")
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        message = exc_info.value.message
+        assert "('math' was unexpected)" in message
+        assert "validate=True" in message
+
+    def test_other_400_bodies_are_left_alone(self) -> None:
+        """A 400 without the schema shape keeps the plain server message."""
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds,
+            _transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json={"error": "Bad request"})
+            ),
+        )
+        with pytest.raises(QueryError) as exc_info:
+            client.create_metric({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.message == "Bad request"
+        assert exc_info.value.__cause__ is None
+
+    @pytest.mark.parametrize(
+        ("name", "call"),
+        [
+            ("error_409_duplicate_name", "create_metric"),
+            ("error_409_duplicate_behavior_name", "create_behavior"),
+        ],
+    )
+    def test_409_duplicate_name(self, name: str, call: str) -> None:
+        """The recorded duplicate-name bodies raise QueryError 409 with the server text.
+
+        Args:
+            name: The fixture file name.
+            call: The client create method.
+        """
+        creds = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=creds, _transport=httpx.MockTransport(_replay(409, name))
+        )
+        with pytest.raises(QueryError) as exc_info:
+            getattr(client, call)({"type": "metric", "name": "n", "definition": {}})
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.message == _load(name)["error"]

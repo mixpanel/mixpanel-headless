@@ -651,6 +651,27 @@ FiltersCombinator = Literal["all", "any"]
 """
 
 # =============================================================================
+# Saved warehouse metrics
+# =============================================================================
+
+WarehouseAggregation = Literal[
+    "none", "sum", "count", "average", "min", "max", "median", "last_value"
+]
+"""How a saved warehouse metric aggregates the rows of its query.
+
+``none`` uses the query rows as they are (the server default).
+``last_value`` keeps the last value, as a synced timeseries does.
+Maps to ``aggregation`` in the stored definition.
+"""
+
+WarehouseSyncInterval = Literal["hourly", "daily", "weekly", "manual"]
+"""How long a query result of a saved warehouse metric stays cached.
+
+``hourly`` is the server fallback. Maps to ``syncInterval`` in the stored
+definition.
+"""
+
+# =============================================================================
 # One-line descriptions for the built-in help
 # =============================================================================
 
@@ -818,6 +839,14 @@ ALIAS_DOCS: dict[str, str] = {
         "(report_type), ReportLink.report_type, and the bookmark_type of "
         "query_saved_report; excludes launch-analysis."
     ),
+    "WarehouseAggregation": (
+        "How a saved warehouse metric aggregates the rows of its SQL query "
+        "(WarehouseMetric.aggregation)."
+    ),
+    "WarehouseSyncInterval": (
+        "How long a query result of a saved warehouse metric stays cached "
+        "(WarehouseMetric.sync_interval)."
+    ),
     # Union / Annotated aliases and constants exported from other modules
     "Account": (
         "Discriminated union over the three account variants, dispatched on "
@@ -833,6 +862,15 @@ ALIAS_DOCS: dict[str, str] = {
         "Any way of naming a property in a query parameter: a plain property "
         "name or a custom-property reference (Metric.property, "
         "GroupBy.property, and the Filter class-method property arguments)."
+    ),
+    "MetricDefinition": (
+        "Any value that defines a saved metric (CreateMetricParams.definition): "
+        "a typed inline metric, a formula with its own operands, a warehouse "
+        "metric, or a raw wire definition with its kind."
+    ),
+    "BehaviorDefinition": (
+        "Any value that defines a saved behavior (CreateBehaviorParams.behavior): "
+        "a typed simple, funnel, or retention behavior, or a raw wire definition."
     ),
     "ReportLinkQueryResult": (
         "Typed result of Workspace.query_report_link; the concrete class "
@@ -858,7 +896,8 @@ instead of the ``typing`` or ``int`` docstring. Most keys are the ``Literal``
 aliases defined in this module; the rest describe exports that live
 elsewhere (``Region`` and ``AccountType`` are exported from
 ``_internal/auth/account.py``, ``BookmarkType``, ``SavedReportType``,
-``EntityType``, ``ReportLinkType``, ``PropertySpec``,
+``EntityType``, ``ReportLinkType``, ``PropertySpec``, ``MetricDefinition``,
+``BehaviorDefinition``,
 ``ReportLinkQueryResult`` and ``BUSINESS_CONTEXT_MAX_CHARS`` from
 ``types.py``, ``Account`` from ``auth_types.py``) so one dict covers every
 such export. ``tests/unit/help/test_registry_completeness.py`` asserts the
@@ -911,6 +950,9 @@ __all__ = [
     "FilterPropertyType",
     "FilterDateUnit",
     "FiltersCombinator",
+    # Saved warehouse metrics
+    "WarehouseAggregation",
+    "WarehouseSyncInterval",
     # Built-in help
     "ALIAS_DOCS",
 ]
