@@ -1669,9 +1669,11 @@ def canonical_fixture_names(value: Any, run_prefix: str) -> Any:
     """Replace the run's unique name prefix with ``FIXTURE_PREFIX`` in a JSON value.
 
     Every string changes, including a name inside a longer text such as the
-    request copy in a 400 error message. Keys, numbers, and other strings stay
-    the same. The live run keeps its unique prefix for its cleanup; only the
-    fixtures get the short one.
+    request copy in a 400 error message, and every dict key that holds the
+    prefix, such as the metric name that keys a query response's ``series``
+    map (it must keep matching ``metric_key``). Numbers and strings without
+    the prefix stay the same. The live run keeps its unique prefix for its
+    cleanup; only the fixtures get the short one.
 
     Args:
         value: A parsed JSON value.
@@ -1692,7 +1694,12 @@ def canonical_fixture_names(value: Any, run_prefix: str) -> Any:
     if isinstance(value, list):
         return [canonical_fixture_names(v, run_prefix) for v in value]
     if isinstance(value, dict):
-        return {k: canonical_fixture_names(v, run_prefix) for k, v in value.items()}
+        return {
+            canonical_fixture_names(k, run_prefix): canonical_fixture_names(
+                v, run_prefix
+            )
+            for k, v in value.items()
+        }
     return value
 
 

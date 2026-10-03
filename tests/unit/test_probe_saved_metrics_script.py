@@ -169,3 +169,20 @@ class TestFixtureNames:
             "id": 7,
             "items": ["text zz-probe-y", None, True],
         }
+
+    def test_canonical_names_change_keys_too(self, probe: ModuleType) -> None:
+        """A key that holds a name, such as a ``series`` label, changes too.
+
+        A query response keys its ``series`` map by the metric name, and the
+        recorded-response test needs that key to equal ``metric_key``.
+        """
+        value = {
+            "metric_key": f"{_RUN_PREFIX}ref",
+            "series": {f"{_RUN_PREFIX}ref": {"2024-09-01T00:00:00": 3}},
+        }
+        result = probe.canonical_fixture_names(value, _RUN_PREFIX)
+        assert result == {
+            "metric_key": "zz-probe-ref",
+            "series": {"zz-probe-ref": {"2024-09-01T00:00:00": 3}},
+        }
+        assert list(result["series"]) == [result["metric_key"]]
