@@ -15,7 +15,9 @@ Safety rules (the script enforces each one):
   required and have no default. The script checks the account and the
   project before every write, and refuses to run otherwise.
 - Every entity it creates has a name prefix that is unique to the run:
-  ``zz-probe-<UTC timestamp>-<random hex>-``.
+  ``zz-probe-<UTC timestamp>-<random hex>-``. The written fixtures carry the
+  short prefix ``zz-probe-`` instead, because the long names match the
+  conformance recorder's secret check.
 - The project is shared with other users. Before the first write, the script
   saves the metric and behavior ids of the project to a snapshot file.
 - Every PATCH, DELETE, and share upsert goes through a target check first.
@@ -84,6 +86,15 @@ REDACTED_EMAIL = "user@example.com"
 
 REDACTED_NAME = "Example User"
 """Replacement for every person name in a recorded body."""
+
+FIXTURE_PREFIX = "zz-probe-"
+"""Name prefix that the fixtures carry in place of the run's unique prefix.
+
+With the unique prefix, some entity names are 40 or more characters with no
+spaces. The conformance recorder's secret check refuses such strings, and
+record-mode extraction then aborts. The short prefix keeps every fixture
+name under that limit.
+"""
 
 FAKE_USER_ID_BASE = 1_000_001
 """First fake user id. Real user ids map to stable fake ids from here."""
@@ -1654,6 +1665,37 @@ def redact(value: Any, user_ids: dict[int, int]) -> Any:
     return out
 
 
+def canonical_fixture_names(value: Any, run_prefix: str) -> Any:
+    """Replace the run's unique name prefix with ``FIXTURE_PREFIX`` in a JSON value.
+
+    Every string changes, including a name inside a longer text such as the
+    request copy in a 400 error message. Keys, numbers, and other strings stay
+    the same. The live run keeps its unique prefix for its cleanup; only the
+    fixtures get the short one.
+
+    Args:
+        value: A parsed JSON value.
+        run_prefix: The unique name prefix of the run.
+
+    Returns:
+        The copy with the short prefix.
+
+    Example:
+        ```python
+        canonical_fixture_names({"name": "zz-probe-20260930T083034Z-3f9a1c-x"},
+                                "zz-probe-20260930T083034Z-3f9a1c-")
+        # {"name": "zz-probe-x"}
+        ```
+    """
+    if isinstance(value, str):
+        return value.replace(run_prefix, FIXTURE_PREFIX)
+    if isinstance(value, list):
+        return [canonical_fixture_names(v, run_prefix) for v in value]
+    if isinstance(value, dict):
+        return {k: canonical_fixture_names(v, run_prefix) for k, v in value.items()}
+    return value
+
+
 def _filter_results(body: Any, keep: Iterable[int]) -> Any:
     """Keep only the given ids in the ``results`` map of a list response.
 
@@ -1735,7 +1777,10 @@ def write_outputs(
     """Write the redacted fixtures and the redacted probe log.
 
     Error fixtures are written only for 4xx and 5xx responses, so that an
-    unexpected success never lands under an ``error_`` name.
+    unexpected success never lands under an ``error_`` name. Fixtures carry
+    ``FIXTURE_PREFIX`` in place of the run's unique prefix (see
+    ``canonical_fixture_names``); the log keeps the real prefix, because it is
+    the audit record of the live run.
 
     Args:
         run: The probe run.
@@ -1756,7 +1801,9 @@ def write_outputs(
             if name.startswith("error_") and record.status < 400:
                 continue
             target = out_dir / file_name.format(status=record.status)
-            body = redact(_own_body(run, record), user_ids)
+            body = canonical_fixture_names(
+                redact(_own_body(run, record), user_ids), run.prefix
+            )
             target.write_text(
                 json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
