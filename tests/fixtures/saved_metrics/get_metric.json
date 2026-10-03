@@ -30,7 +30,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:37.523",
-      "name": "zz-probe-20260930T083034Z-event-total",
+      "name": "zz-probe-event-total",
       "type": "metric"
     }
   },

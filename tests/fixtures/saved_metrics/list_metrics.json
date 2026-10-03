@@ -32,7 +32,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:31:08.179",
-      "name": "zz-probe-20260930T083034Z-event-total",
+      "name": "zz-probe-event-total",
       "owned_by": {
         "email": "user@example.com",
         "id": 1000001,
@@ -82,7 +82,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:40.233",
-      "name": "zz-probe-20260930T083034Z-simple-two-events",
+      "name": "zz-probe-simple-two-events",
       "type": "metric"
     },
     "162523": {
@@ -137,7 +137,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:42.048",
-      "name": "zz-probe-20260930T083034Z-funnel",
+      "name": "zz-probe-funnel",
       "type": "metric"
     },
     "162524": {
@@ -189,7 +189,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:43.709",
-      "name": "zz-probe-20260930T083034Z-retention",
+      "name": "zz-probe-retention",
       "type": "metric"
     },
     "162525": {
@@ -227,7 +227,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:46.124",
-      "name": "zz-probe-20260930T083034Z-cohort",
+      "name": "zz-probe-cohort",
       "type": "metric"
     },
     "162526": {
@@ -281,7 +281,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:48.225",
-      "name": "zz-probe-20260930T083034Z-formula-inline",
+      "name": "zz-probe-formula-inline",
       "type": "formula"
     },
     "162527": {
@@ -319,7 +319,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:49.919",
-      "name": "zz-probe-20260930T083034Z-formula-id-operands",
+      "name": "zz-probe-formula-id-operands",
       "type": "formula"
     },
     "162528": {
@@ -349,7 +349,7 @@
       "is_superadmin": true,
       "is_visible": true,
       "modified": "2026-09-30T08:30:59.703",
-      "name": "zz-probe-20260930T083034Z-funnel-behavior-ref",
+      "name": "zz-probe-funnel-behavior-ref",
       "type": "metric"
     }
   },
