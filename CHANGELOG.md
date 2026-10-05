@@ -5,7 +5,23 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased
+## 0.4.0 — 2026-10-05
+
+Minor release: saved metrics and saved behaviors become first-class
+entities. The library lists, reads, creates, updates, verifies, and deletes
+saved metrics (behavior metrics, formulas, warehouse metrics) and saved
+behaviors. `MetricRef` and `BehaviorRef` query them by reference, so a
+report or report link follows later edits to the saved definition. Inline
+metrics gain the shapes that the Mixpanel web app can save: a metric over
+several events, a custom event by ID, funnel and retention metrics in
+`Workspace.query()`, and a formula with its own operands. One set of
+builders writes both the query and the saved definition, and new
+`mp metrics` and `mp behaviors` command groups cover the same surface.
+Fixes cover `QueryResult.df` for several `group_by` properties and for empty
+results, date filters in `query_user(where=...)`, rate-limit wait times, and
+server error messages. The plugin moves to version 0.4.0: it runs in its
+own Python environment, takes API facts from `mp help`, and adds a
+`session-replay` skill.
 
 ### Added
 
@@ -20,9 +36,9 @@ may include API changes.
   `delete_behaviors(behavior_ids)` cover saved behaviors (simple, funnel,
   retention). The server has no pagination or filters, so the filter
   arguments apply locally to the one list response, and the list calls
-  wait at least 120 seconds for it. `list_metrics()` returns the full
-  server list by default, which includes metrics that the caller cannot
-  view (`can_view` is `False`); `viewable_only=True` drops them.
+  use a read timeout of at least 135 seconds. `list_metrics()` returns
+  the full server list by default, which includes metrics that the caller
+  cannot view (`can_view` is `False`); `viewable_only=True` drops them.
 - Deletes go through the bulk routes only: the single-metric delete route
   answers 501, and the single-behavior delete route skips the permission
   check. `delete_metric` and `delete_behavior` read the entity first, so
@@ -363,6 +379,13 @@ may include API changes.
   result of the same query. Before, it always had `date`, `event`,
   `count`, so total and table results gained a `date` column and lost
   their segment columns when nothing matched.
+
+### Notes
+
+- Plugin: the manifest moves to `0.4.0` with this release. Its skills still
+  need `mixpanel-headless>=0.3.0` and do not yet teach saved metrics,
+  saved behaviors, or metric references. A later plugin release adds that
+  guidance and raises the floor to `0.4.0`.
 
 ## 0.3.0 — 2026-09-22
 

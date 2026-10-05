@@ -38,7 +38,7 @@ The definition of a saved behavior holds one key, `behavior`, in the show-clause
 
 ## List
 
-The server has no pagination, no filters, and no search. One request fetches every active row, and the filter arguments apply locally to that response. On a large project the request can take more than 30 seconds, so the list calls use a read timeout of at least 120 seconds.
+The server has no pagination, no filters, and no search. One request fetches every active row, and the filter arguments apply locally to that response. On a large project the request can take more than 30 seconds, so the list calls use a read timeout of at least 135 seconds.
 
 === "Python"
 

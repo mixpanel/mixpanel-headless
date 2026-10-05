@@ -1,6 +1,6 @@
 {
   "name": "mixpanel-headless",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Analyze Mixpanel data with Python. Skills for queries (insights, funnels, retention, flows, users), schema exploration, session replay, dashboards, and authentication, built on the mixpanel_headless library and its built-in reference (`mp help` / `mp.help()`).",
   "author": {
     "name": "Jared McFarland",
