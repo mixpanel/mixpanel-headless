@@ -16,10 +16,12 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from conformance.record.capture import EntryCallCapture
 from conformance.record.clock import RecordClock
 from conformance.record.plugin import RecordOptions, RecordSession
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.types import Metric
 
 
 def _make_session() -> Session:
@@ -639,6 +641,102 @@ def test_mock_collaborator_invocation_excludes_capture(
     ]
     assert len(calls) == 1
     assert calls[0].excluded_reason == "unserializable_input"
+
+
+def _validate_inline_metric(metric: Metric) -> None:
+    """Call ``validate_query_args`` with one metric and neutral arguments.
+
+    Args:
+        metric: The metric to validate.
+    """
+    from mixpanel_headless._internal import validation
+
+    validation.validate_query_args(
+        events=[metric],
+        math="total",
+        math_property=None,
+        per_user=None,
+        from_date=None,
+        to_date=None,
+        last=30,
+        has_formula=False,
+        rolling=None,
+        cumulative=False,
+        group_by=None,
+        formulas=[],
+    )
+
+
+def _validator_calls(record_session: RecordSession) -> list[EntryCallCapture]:
+    """Return the ``validate_query_args`` calls of the last captured test.
+
+    Args:
+        record_session: The active record session.
+
+    Returns:
+        The matching entry-call captures.
+    """
+    return [
+        c
+        for c in record_session.captures[-1].entry_calls
+        if c.entry.api == "validation.validate_query_args"
+    ]
+
+
+def test_input_its_constructor_refuses_is_unserializable(
+    record_session: RecordSession,
+) -> None:
+    """An input that its constructor refuses on decode is excluded.
+
+    The test changes the event list of a ``Metric`` after construction.
+    The value encodes, but replay rebuilds it through the constructor,
+    which refuses a ``FunnelStep`` there, so no vector can carry it. The
+    check decodes through wrapped constructors, and none of those calls
+    may join the capture (one would record a guard error that the test
+    never caused).
+
+    Raises:
+        AssertionError: If the capture stays includable.
+    """
+    from mixpanel_headless.types import Filter, FunnelStep
+
+    events: list[object] = ["Login", "Signup"]
+    metric = Metric(events, filters=[Filter.equals("country", "US")])  # type: ignore[arg-type]
+    events[1] = FunnelStep("Signup")
+
+    nodeid = "tests/unit/test_fake.py::test_changed_after_construction"
+    record_session.begin_test(nodeid, None)
+    _validate_inline_metric(metric)
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason == "unserializable_input"
+    assert len(record_session.captures[-1].entry_calls) == 1
+
+
+def test_input_its_constructor_accepts_stays_includable(
+    record_session: RecordSession,
+) -> None:
+    """The same call with an unchanged metric records as usual.
+
+    Raises:
+        AssertionError: If the capture is excluded.
+    """
+    from mixpanel_headless.types import Filter
+
+    metric = Metric(["Login", "Signup"], filters=[Filter.equals("country", "US")])
+
+    nodeid = "tests/unit/test_fake.py::test_unchanged_metric"
+    record_session.begin_test(nodeid, None)
+    _validate_inline_metric(metric)
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason is None
+    assert calls[0].input_encoded is not None
+    assert len(record_session.captures[-1].entry_calls) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -53,7 +53,10 @@ from conformance.record.capture import (
 )
 from conformance.record.clock import RecordClock
 from conformance.record.codecs import (
+    UndecodableValueError,
     UnencodableValueError,
+    UnrebuildableValueError,
+    decode_input_kwargs,
     encode_expect_value,
     encode_input_kwargs,
     encode_output,
@@ -905,8 +908,43 @@ class RecordSession:
                 call.input_encoded = encode_input_kwargs(arguments)
             except UnencodableValueError:
                 call.excluded_reason = "unserializable_input"
+        if call.input_encoded is not None and not self._input_rebuilds(
+            call.input_encoded
+        ):
+            call.excluded_reason = "unserializable_input"
         capture.entry_calls.append(call)
         return call, call_args, call_kwargs
+
+    def _input_rebuilds(self, encoded: dict[str, Any]) -> bool:
+        """Return whether the replay can rebuild an encoded call input.
+
+        Replay rebuilds each rich input through its constructor. A test can
+        change an object after construction (for example, put a
+        ``FunnelStep`` into the event list that a ``Metric`` holds), and
+        the constructor then refuses the recorded fields. Such an input is
+        excluded at record time. Any other decode failure is a codec bug,
+        so this check keeps the vector for the runner to fail loudly.
+
+        The decode calls constructors that this session wraps, so it runs
+        one level deeper: the re-entrancy guard then records none of them.
+
+        Args:
+            encoded: The encoded ``call.input`` mapping.
+
+        Returns:
+            False only when a constructor refuses the decoded fields.
+        """
+        state = self._thread_state
+        state.depth += 1
+        try:
+            decode_input_kwargs(encoded)
+        except UnrebuildableValueError:
+            return False
+        except UndecodableValueError:
+            pass  # A codec bug: the runner reports the vector loudly.
+        finally:
+            state.depth -= 1
+        return True
 
     @staticmethod
     def _client_options_for(
