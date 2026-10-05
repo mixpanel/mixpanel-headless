@@ -12,7 +12,7 @@ Uses Hypothesis to verify:
 
 from __future__ import annotations
 
-from typing import get_args
+from typing import Any, get_args
 from unittest.mock import MagicMock
 
 import pytest
@@ -295,6 +295,57 @@ class TestQueryResultDfInvariant:
         df = qr.df
         assert len(df) == n_metrics * n_dates
         assert list(df.columns) == ["date", "event", "count"]
+
+    @given(data=st.data(), depth=st.integers(min_value=1, max_value=4))
+    def test_nested_segments_flatten_losslessly(
+        self, data: st.DataObject, depth: int
+    ) -> None:
+        """Every leaf value becomes one scalar row, rollups padded with $overall."""
+        segment_keys = st.lists(
+            st.text(min_size=1, max_size=8).filter(lambda s: s != "$overall"),
+            min_size=1,
+            max_size=3,
+            unique=True,
+        )
+        leaf_values: list[int] = []
+
+        def build(level: int) -> dict[str, Any]:
+            """Build one level of the series tree with an ``$overall`` rollup."""
+            value = data.draw(st.integers(min_value=0, max_value=10_000))
+            node: dict[str, Any] = {"$overall": {"all": value}}
+            leaf_values.append(value)
+            for key in data.draw(segment_keys):
+                if level == depth:
+                    leaf = data.draw(st.integers(min_value=0, max_value=10_000))
+                    node[key] = {"all": leaf}
+                    leaf_values.append(leaf)
+                else:
+                    node[key] = build(level + 1)
+            return node
+
+        series = {"Metric": build(1)}
+        prop_names = [f"prop_{i}" for i in range(depth)]
+        qr = QueryResult(
+            computed_at="",
+            from_date="",
+            to_date="",
+            headers=["$metric", *prop_names],
+            series=series,
+            params={},
+            meta={},
+        )
+        df = qr.df
+        seg_cols = ["segment"] if depth == 1 else prop_names
+        assert list(df.columns) == ["event", *seg_cols, "count"]
+        assert len(df) == len(leaf_values)
+        assert sorted(df["count"].tolist()) == sorted(leaf_values)
+        assert df[seg_cols].notna().all().all()
+        # Once a row reaches $overall, every deeper column is $overall too.
+        for row in df[seg_cols].itertuples(index=False):
+            values = list(row)
+            if "$overall" in values:
+                first = values.index("$overall")
+                assert all(v == "$overall" for v in values[first:])
 
 
 # =============================================================================

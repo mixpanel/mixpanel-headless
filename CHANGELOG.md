@@ -342,6 +342,13 @@ may include API changes.
   `at_most`, `between`, `not_between`). Before, the selector compared the
   property with `True` or `False`. Now the filter fails with the
   operator's number code.
+- `QueryResult.df` now flattens a `group_by` with two or more properties.
+  Before, it read only one level of nesting: segment values landed in the
+  `date` column and `count` held nested dicts. Each property now gets its
+  own column, named from `result.headers` (or `segment_1` .. `segment_N`
+  when a name does not fit). Rollup rows are kept, with `$overall` in
+  each column below the level they summarize. A single `group_by` still
+  gives one `segment` column.
 
 ## 0.3.0 — 2026-09-22
 
