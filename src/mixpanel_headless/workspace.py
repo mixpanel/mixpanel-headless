@@ -9029,7 +9029,7 @@ class Workspace:
         complete). The server has no pagination, filters, or search, so one
         request fetches every active metric, and the filters below apply
         locally to that response. On a large project the request can take
-        more than 30 seconds; the read timeout is at least 120 seconds.
+        more than 30 seconds; the read timeout is at least 135 seconds.
 
         Args:
             metric_type: Keep only metrics of this kind: ``"metric"`` (a
@@ -9642,7 +9642,7 @@ class Workspace:
 
         The server has no pagination, filters, or search, so one request
         fetches every active behavior, and the filters below apply locally
-        to that response. The read timeout is at least 120 seconds.
+        to that response. The read timeout is at least 135 seconds.
 
         Args:
             behavior_type: Keep only behaviors of this type: ``"simple"``,
