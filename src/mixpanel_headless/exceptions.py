@@ -678,8 +678,10 @@ class RateLimitError(APIError):
     """Mixpanel API rate limit exceeded (HTTP 429).
 
     Raised when the API returns a 429 status. The retry_after property
-    indicates when the request can be retried. Inherits from APIError
-    to provide full request context for debugging.
+    indicates when the request can be retried. The client's retry loops
+    report at most 3600 seconds there: Mixpanel rate limits over a rolling
+    one-hour window, so a larger server ``Retry-After`` is clamped. Inherits
+    from APIError to provide full request context for debugging.
 
     Example:
         ```python
@@ -743,7 +745,11 @@ class RateLimitError(APIError):
 
     @property
     def retry_after(self) -> int | None:
-        """Seconds until retry is allowed, or None if unknown."""
+        """Seconds until retry is allowed, or None if unknown.
+
+        When the client's retry loops raise this error, the value is the
+        server's ``Retry-After``, clamped to at most 3600 seconds.
+        """
         return self._retry_after
 
     @property

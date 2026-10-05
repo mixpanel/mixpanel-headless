@@ -777,8 +777,8 @@ class TestPaginateAllRetryAfter:
 
     @pytest.mark.parametrize(
         "retry_after",
-        ["999999", "1e9", "86400"],
-        ids=["huge-int", "exponent", "one-day"],
+        ["999999", "1e9", "86400", "9" * 400],
+        ids=["huge-int", "exponent", "one-day", "too-long-for-float"],
     )
     def test_oversized_retry_after_is_clamped(
         self, oauth_credentials: Session, retry_after: str
@@ -857,8 +857,8 @@ class TestPaginateAllRetryAfter:
 
     @pytest.mark.parametrize(
         "retry_after",
-        ["999999", "1e9", "86400"],
-        ids=["huge-int", "exponent", "one-day"],
+        ["999999", "1e9", "86400", "9" * 400],
+        ids=["huge-int", "exponent", "one-day", "too-long-for-float"],
     )
     def test_oversized_retry_after_capped_on_error(
         self, oauth_credentials: Session, retry_after: str
