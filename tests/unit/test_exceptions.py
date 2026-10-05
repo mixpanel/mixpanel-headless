@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 157 minted full codes, no duplicates.
+        """The registry lists all 164 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -975,8 +975,10 @@ class TestCodedGuardRegistry:
         behavior writes added ``SM1_EMPTY_NAME``, ``SM2_NAME_TOO_LONG``,
         ``SM3_KIND_CHANGE``, ``SM4_SCHEMA``, ``SM7_FORMULA_WITHOUT_OPERANDS``,
         ``FM6_OPERAND_ATTRIBUTION``, and ``MR3_WAREHOUSE_INLINE``.
+        The engage selector translation of date and inclusive-number
+        filters added the seven ``ES14``-``ES20`` guards.
         """
-        assert len(CODED_GUARD_REGISTRY) == 157
+        assert len(CODED_GUARD_REGISTRY) == 164
         for code in (
             "SM1_EMPTY_NAME",
             "SM2_NAME_TOO_LONG",
@@ -990,6 +992,19 @@ class TestCodedGuardRegistry:
             "BH4_DELETE_NOT_PERMITTED",
         ):
             assert code in CODED_GUARD_REGISTRY
+
+    def test_engage_selector_date_codes_registered(self) -> None:
+        """The ES14-ES20 engage selector guards are registered codes."""
+        codes = {
+            "ES14_NO_SELECTOR_EQUIVALENT",
+            "ES15_DATE_EXPECTS_STR",
+            "ES16_DATE_RANGE_EXPECTS_PAIR",
+            "ES17_RELATIVE_QUANTITY_INVALID",
+            "ES18_RELATIVE_UNIT_INVALID",
+            "ES19_AT_LEAST_EXPECTS_NUMBER",
+            "ES20_AT_MOST_EXPECTS_NUMBER",
+        }
+        assert codes <= CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
         """Every reused twin code already exists in the code universe.
