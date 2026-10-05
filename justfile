@@ -9,7 +9,8 @@ default:
 # CI runs the same commands plus HYPOTHESIS_PROFILE=ci for tests; that
 # profile is the only documented difference (deterministic seed, 200 examples
 # vs default 100). Locally we use the default profile for faster iteration.
-check: lint fmt-check typecheck docstring-cov test-cov conformance build
+# The conformance corpus has its own workflow and recipe (`just conformance`).
+check: lint fmt-check typecheck docstring-cov test-cov build
 
 # Install git hooks so commits are blocked on lint/format failures BEFORE
 # they reach CI. Run once after cloning the repo.
@@ -98,14 +99,20 @@ mutate-check threshold="80":
 test-cov:
     uv run pytest --cov=src/mixpanel_headless --cov-report=term-missing --cov-fail-under=90
 
-# === Conformance (TS-port Phase-1 verification rig) ===
-# Design of record: context/phase1/design/phase1-design.md (D8 for CI parity).
+# === Conformance (recorded corpus that the TypeScript port replays) ===
+# Maintainer tooling. Not part of `check`: library PRs never touch the corpus,
+# and the corpus is re-pinned once per release (conformance/record/README.md,
+# "When to re-pin"). The Conformance workflow runs these checks on PRs that
+# change conformance/, after each merge to main, and on each release.
 
-# Conformance tooling tests + corpus runner. Part of `check` per design D8;
-# deliberately excludes the record-mode drift re-extraction (CI-only, slow).
+# Conformance typecheck, tooling tests, corpus runner, and stamp guard: the
+# local steps of the Conformance workflow. Leaves out the record-mode drift
+# re-extraction (slow; the workflow runs it). Between releases, drift fails
+# some of these steps; that is expected until the next re-pin.
 conformance:
     #!/usr/bin/env bash
     set -euo pipefail
+    uv run mypy conformance/
     uv run pytest conformance/tests -o addopts="" -q
     uv run pytest conformance/runner -o addopts="" -q
     just conformance-stamps
@@ -169,9 +176,9 @@ fmt:
 fmt-check:
     uv run ruff format --check src/ tests/ conformance/
 
-# Type check with mypy
+# Type check with mypy (`just conformance` type-checks conformance/)
 typecheck:
-    uv run mypy src/ tests/ conformance/
+    uv run mypy src/ tests/
 
 # Docstring coverage — src is gated at 99% (see [tool.interrogate] in
 # pyproject.toml); tests is gated at 95% via the second invocation. Bump

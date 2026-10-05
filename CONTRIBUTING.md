@@ -71,6 +71,12 @@ This runs:
 - `mypy --strict` — Type checking
 - `pytest` — Tests
 
+The `conformance/` directory holds a recorded test corpus that the maintainer
+uses to keep a TypeScript port in step with this library. You do not need to
+update it or run its checks: its workflow runs only on pull requests that
+change `conformance/`, and the maintainer re-records the corpus once per
+release.
+
 ## Project Structure
 
 ```

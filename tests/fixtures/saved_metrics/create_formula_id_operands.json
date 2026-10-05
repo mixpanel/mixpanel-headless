@@ -1,0 +1,43 @@
+{
+  "results": {
+    "162527": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:49.910",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "formula": {
+          "definition": "A / B",
+          "referencedMetrics": [
+            {
+              "id": 162521,
+              "metric_id": "162521",
+              "type": "metric"
+            },
+            {
+              "id": 162522,
+              "metric_id": "162522",
+              "type": "metric"
+            }
+          ]
+        }
+      },
+      "description": "",
+      "id": 162527,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:49.919",
+      "name": "zz-probe-formula-id-operands",
+      "type": "formula"
+    }
+  },
+  "status": "ok"
+}

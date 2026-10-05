@@ -181,7 +181,7 @@ class TestOrdering:
         summary and members both contain ``day`` while its name does not
         (``FlowConversionWindowUnit`` today) and expects the same answer.
         """
-        entry = search_module._Entry(
+        entry = search_module.IndexEntry(
             "literal", "Sample", "Buckets per day.", ("value day",)
         )
         hit = entry.match("day")
@@ -204,7 +204,7 @@ class TestOrdering:
 
     def test_name_tier_beats_doc_and_member_tiers(self) -> None:
         """An entry that matches in every tier reports ``name`` with its summary."""
-        entry = search_module._Entry(
+        entry = search_module.IndexEntry(
             "literal", "DayUnit", "Buckets per day.", ("value day",)
         )
         hit = entry.match("day")
@@ -480,3 +480,58 @@ class TestCaching:
         inventory_module.clear_cache()
         search("cohort")
         assert search_module._INDEX is not first
+
+
+class TestPureSearchCore:
+    """``build_index`` and ``search_index`` work over any supplied rows."""
+
+    def test_build_index_dedupes_first_wins_and_sorts_by_code_point(self) -> None:
+        """The first row per ``(category, name)`` wins; uppercase sorts first."""
+        rows = [
+            search_module.IndexEntry("method", "b", "first", ()),
+            search_module.IndexEntry("method", "B", "", ()),
+            search_module.IndexEntry("method", "b", "second", ()),
+            search_module.IndexEntry("class", "z", "", ()),
+        ]
+        index = search_module.build_index(rows)
+        assert [(r.category, r.name, r.summary) for r in index] == [
+            ("class", "z", ""),
+            ("method", "B", ""),
+            ("method", "b", "first"),
+        ]
+
+    def test_search_index_uses_the_supplied_suggester_on_a_miss(self) -> None:
+        """A miss asks ``suggest`` with the stripped term."""
+        seen: list[str] = []
+
+        def suggest(term: str) -> tuple[str, ...]:
+            """Record the term and offer one name.
+
+            Args:
+                term: The stripped search term.
+
+            Returns:
+                A fixed suggestion.
+            """
+            seen.append(term)
+            return ("Alpha",)
+
+        index = search_module.build_index(
+            [search_module.IndexEntry("class", "Alpha", "", ())]
+        )
+        result = search_module.search_index(index, "  zz ", suggest=suggest)
+        assert result.hits == ()
+        assert result.suggestions == ("Alpha",)
+        assert result.term == "  zz "
+        assert seen == ["zz"]
+
+    def test_live_search_equals_search_index_over_the_live_index(self) -> None:
+        """``search`` is ``search_index`` over the cached live index."""
+        live = search("cohort", limit=4)
+        pure = search_module.search_index(
+            search_module._index(),
+            "cohort",
+            limit=4,
+            suggest=lambda _term: (),
+        )
+        assert live == pure

@@ -22,12 +22,13 @@ import math
 import re
 import time
 import warnings
-from collections.abc import Callable, Iterator
-from dataclasses import MISSING, dataclass, field, fields
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import KW_ONLY, MISSING, dataclass, field, fields
 from datetime import date as dt_date
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -56,6 +57,9 @@ from mixpanel_headless._literal_types import (
     FlowAnchorType,
     FlowNodeType,
     FlowSessionEvent,
+    FunnelReentryMode,
+    RetentionUnboundedMode,
+    TimeUnit,
 )
 from mixpanel_headless._literal_types import FilterPropertyType as FilterPropertyType
 from mixpanel_headless._literal_types import FiltersCombinator as FiltersCombinator
@@ -78,6 +82,12 @@ from mixpanel_headless._literal_types import RetentionMode as RetentionMode
 from mixpanel_headless._literal_types import SegmentMethod as SegmentMethod
 from mixpanel_headless._literal_types import TimeComparisonType as TimeComparisonType
 from mixpanel_headless._literal_types import TimeComparisonUnit as TimeComparisonUnit
+from mixpanel_headless._literal_types import (
+    WarehouseAggregation as WarehouseAggregation,
+)
+from mixpanel_headless._literal_types import (
+    WarehouseSyncInterval as WarehouseSyncInterval,
+)
 from mixpanel_headless.auth_types import (
     AccountName,
     AccountType,
@@ -100,6 +110,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic import ValidationError as _PydanticValidationError
 from pydantic.alias_generators import to_camel
 
 T = TypeVar("T")
@@ -2765,6 +2776,11 @@ class BookmarkHistoryResponse(BaseModel):
 
 class CohortCreator(BaseModel):
     """Creator information for a cohort.
+
+    The App API uses the same ``{id, name, email}`` user shape on saved
+    metrics and saved behaviors, so :class:`SavedMetric` and
+    :class:`SavedBehavior` reuse this model for ``created_by``,
+    ``owned_by``, and ``last_verified_by``.
 
     Attributes:
         id: Creator user ID.
@@ -5763,6 +5779,659 @@ class UpdateLookupTableParams(BaseModel):
 
 
 # =============================================================================
+# Saved Metrics & Saved Behaviors
+# =============================================================================
+# Result models for the project-scoped /metrics and /behaviors App API
+# collections. Reads are open: any ``type``, any ``math``, and unknown keys
+# parse, because stored rows include shapes that no strict model accepts
+# (legacy kinds, deprecated display and goal keys, maths outside the
+# documented enum). The typed accessors read the ``definition`` by kind and
+# return None or an empty list for a shape they do not know.
+
+
+def _str_at(data: object, *keys: str) -> str | None:
+    """Return the string at a nested key path, or None.
+
+    Args:
+        data: The root value, usually a definition dict.
+        *keys: Mapping keys to follow in order.
+
+    Returns:
+        The value at the path when every step is a mapping and the value is
+        a string; otherwise None.
+    """
+    for key in keys:
+        if not isinstance(data, Mapping):
+            return None
+        data = data.get(key)
+    return data if isinstance(data, str) else None
+
+
+def _has_percentile(*measurements: object) -> bool:
+    """Return whether any measurement holds a percentile value.
+
+    Args:
+        *measurements: Measurement mappings (raw overrides or a stored
+            definition), or anything else, which counts as no value.
+
+    Returns:
+        ``True`` when one of them has a number (not a ``bool``) at
+        ``"percentile"``.
+    """
+    for measurement in measurements:
+        if not isinstance(measurement, Mapping):
+            continue
+        value = measurement.get("percentile")
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return True
+    return False
+
+
+class MetricDisplay(BaseModel):
+    """Presentation settings stored with a saved metric.
+
+    Mirrors the ``display`` object of a saved metric definition: number
+    format, the good direction of a change, the chart axis, and the
+    experiment sizing inputs. The wire keys are camelCase
+    (``hideTrendline``, ``minimumDetectableEffect``, ``oneSided``); the
+    fields are snake_case, and both names work at construction. The model is
+    open: it keeps keys that it does not name, such as the ``chartType`` key
+    that some stored rows carry.
+
+    Attributes:
+        prefix: Text before the value (for example ``"$"``).
+        suffix: Text after the value (for example ``"%"``).
+        precision: Number of decimal places (the server allows 0 to 8).
+        abbrev: Whether large numbers are abbreviated (``1.2K``).
+        direction: The good direction of a change (``"up"`` or ``"down"``).
+        axis: Chart axis (``"primary"`` or ``"secondary"``).
+        trendline: Whether the chart shows a trend line.
+        hide_trendline: Whether the chart hides the trend line.
+        minimum_detectable_effect: Experiment sizing input for this metric.
+        one_sided: Whether an experiment tests this metric one-sided.
+        power: Experiment statistical power for this metric.
+
+    Example:
+        ```python
+        metric = ws.get_metric(104700)
+        if metric.display is not None:
+            print(metric.display.prefix, metric.display.precision)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", populate_by_name=True)
+
+    prefix: str | None = None
+    """Text before the value."""
+
+    suffix: str | None = None
+    """Text after the value."""
+
+    precision: int | None = None
+    """Number of decimal places (0 to 8 on the server)."""
+
+    abbrev: bool | None = None
+    """Whether large numbers are abbreviated."""
+
+    direction: str | None = None
+    """The good direction of a change (``"up"`` or ``"down"``)."""
+
+    axis: str | None = None
+    """Chart axis (``"primary"`` or ``"secondary"``)."""
+
+    trendline: bool | None = None
+    """Whether the chart shows a trend line."""
+
+    hide_trendline: bool | None = Field(default=None, alias="hideTrendline")
+    """Whether the chart hides the trend line (wire key ``hideTrendline``)."""
+
+    minimum_detectable_effect: float | None = Field(
+        default=None, alias="minimumDetectableEffect"
+    )
+    """Experiment sizing input (wire key ``minimumDetectableEffect``)."""
+
+    one_sided: bool | None = Field(default=None, alias="oneSided")
+    """Whether an experiment tests this metric one-sided (wire key ``oneSided``)."""
+
+    power: float | None = None
+    """Experiment statistical power for this metric."""
+
+
+class MetricGoal(BaseModel):
+    """A goal of a saved metric: a label and dated target values.
+
+    Read from ``SavedMetric.goals`` and written through ``CreateMetricParams``
+    and ``UpdateMetricParams``. The deprecated goal keys ``unit`` and
+    ``direction`` still appear in stored rows. The model keeps them as
+    unknown keys (``model_extra``); the server no longer reads them, and the
+    library never writes them.
+
+    On a write, a goal without an ``id`` gets a new UUID, and a ``date`` or
+    ``datetime`` checkpoint is written as a naive ISO timestamp
+    (``"2026-12-31T00:00:00"``), the form the web app stores.
+
+    Attributes:
+        id: Goal identifier (a UUID string). ``None`` on a new goal.
+        label: Goal label shown in the web app.
+        checkpoints: ``(timestamp, value)`` pairs; the value is absolute.
+        target_type: ``"absolute"`` or ``"relative"``.
+        target_input: The value the user typed for the target, if any.
+
+    Example:
+        ```python
+        metric = ws.get_metric(104700)
+        for goal in metric.goals:
+            print(goal.label, goal.checkpoints[-1])
+
+        goal = MetricGoal(label="Q4", checkpoints=[(date(2026, 12, 31), 5000)])
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: str | None = None
+    """Goal identifier (a UUID string). ``None`` on a new goal."""
+
+    label: str
+    """Goal label shown in the web app."""
+
+    checkpoints: list[tuple[str | datetime | dt_date, float]] = Field(
+        default_factory=list
+    )
+    """``(timestamp, value)`` pairs; the value is absolute.
+
+    Stored goals read back with ISO timestamp strings.
+    """
+
+    target_type: str = "absolute"
+    """``"absolute"`` or ``"relative"``."""
+
+    target_input: float | None = None
+    """The value the user typed for the target, if any."""
+
+
+class SavedBehavior(BaseModel):
+    """A saved behavior: a reusable "what users did", stored per project.
+
+    Returned by :meth:`Workspace.list_behaviors` and
+    :meth:`Workspace.get_behavior`. The wire ``type`` is ``simple``,
+    ``funnel``, or ``retention``; the model accepts any string. The
+    ``definition`` holds one key, ``behavior``, in the show-clause shape of
+    the web app. Unknown keys (for example ``can_update_restricted``, which
+    projects without sharing add) are kept via ``extra="allow"``.
+
+    Attributes:
+        id: Behavior identifier. Treat it as opaque.
+        name: Behavior name (unique among active behaviors in the project).
+        type: Behavior type (``simple``, ``funnel``, or ``retention``).
+        description: Behavior description; the server can send ``None``.
+        definition: The stored definition, ``{"behavior": {...}}``.
+        created: Creation time (naive UTC).
+        modified: Last modification time (naive UTC).
+        created_by: The user who created the behavior.
+        verified: Whether a user marked the behavior as verified.
+        last_verified: When the behavior was last verified (naive UTC).
+        last_verified_by: The user who last verified the behavior.
+        is_visible: Whether the behavior is visible to the caller.
+        is_locked: Whether the behavior is locked against edits.
+        can_view: Whether the caller can view the behavior.
+        can_update_basic: Whether the caller can edit the name and definition.
+        can_share: Whether the caller can share the behavior.
+
+    Example:
+        ```python
+        for behavior in ws.list_behaviors(behavior_type="funnel"):
+            print(behavior.id, behavior.name, behavior.behavior_type)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: int
+    """Behavior identifier. Treat it as opaque."""
+
+    name: str
+    """Behavior name."""
+
+    type: str
+    """Behavior type (``simple``, ``funnel``, or ``retention``)."""
+
+    description: str | None = None
+    """Behavior description; the server can send ``None``."""
+
+    definition: dict[str, Any]
+    """The stored definition, ``{"behavior": {...}}``."""
+
+    created: datetime | None = None
+    """Creation time (naive UTC)."""
+
+    modified: datetime | None = None
+    """Last modification time (naive UTC)."""
+
+    created_by: CohortCreator | None = None
+    """The user who created the behavior (``{id, email, name}``)."""
+
+    verified: bool = False
+    """Whether a user marked the behavior as verified."""
+
+    last_verified: datetime | None = None
+    """When the behavior was last verified (naive UTC)."""
+
+    last_verified_by: CohortCreator | None = None
+    """The user who last verified the behavior (``{id, email, name}``)."""
+
+    is_visible: bool | None = None
+    """Whether the behavior is visible to the caller."""
+
+    is_locked: bool | None = None
+    """Whether the behavior is locked against edits."""
+
+    can_view: bool | None = None
+    """Whether the caller can view the behavior."""
+
+    can_update_basic: bool | None = None
+    """Whether the caller can edit the name and definition."""
+
+    can_share: bool | None = None
+    """Whether the caller can share the behavior."""
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The ``type`` inside the stored behavior definition.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string (for
+            example ``"funnel"``); otherwise None.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+    def to_ref(self) -> BehaviorRef:
+        """Return a reference to this saved behavior, for use in a query.
+
+        Returns:
+            A :class:`BehaviorRef` with ``id`` and ``type`` from this
+            behavior. Pass it to ``query_funnel`` (type ``funnel``) or
+            ``query_retention`` (type ``retention``).
+
+        Raises:
+            ParamValidationError: ``BR2_INVALID_TYPE`` when the stored type
+                is not ``simple``, ``funnel``, or ``retention``.
+
+        Example:
+            ```python
+            checkout = ws.get_behavior(3120)
+            result = ws.query_funnel(checkout.to_ref(), last=90)
+            ```
+        """
+        return BehaviorRef(
+            self.id, cast(Literal["simple", "funnel", "retention"], self.type)
+        )
+
+
+class SavedMetric(BaseModel):
+    """A saved metric: a behavior metric, a saved formula, or a warehouse metric.
+
+    Returned by :meth:`Workspace.list_metrics` and
+    :meth:`Workspace.get_metric`. One model covers all three kinds, because
+    the server keeps them in one collection. The wire ``type`` is
+    ``metric`` (a behavior metric), ``formula``, or ``warehouse``; old rows
+    can have ``behavior``, and the model accepts any string. Unknown keys
+    (for example ``allow_staff_override``) are kept via ``extra="allow"``.
+
+    The definition shape depends on the kind:
+
+    - ``metric``: ``{behavior, measurement, display?, goals?}``
+    - ``formula``: ``{formula: {definition, referencedMetrics}, measurement?,
+      display?, goals?}``
+    - ``warehouse``: ``{query, metricType, aggregation?, syncInterval?, ...}``
+
+    The typed accessors (:attr:`behavior_type`, :attr:`math`,
+    :attr:`formula_expression`, :attr:`referenced_metric_ids`,
+    :attr:`display`, :attr:`goals`) read the definition. Each one returns
+    None or an empty list for a shape it does not know; none of them raises.
+
+    The list endpoint also returns metrics that the caller cannot view, with
+    full definitions; for those rows ``can_view`` is False.
+
+    Attributes:
+        id: Metric identifier. Treat it as opaque.
+        name: Metric name (unique among active metrics in the project).
+        type: Metric kind (``metric``, ``formula``, ``warehouse``, or
+            legacy ``behavior``).
+        description: Metric description (the server sends ``""`` when empty).
+        definition: The stored definition; its shape depends on ``type``.
+        created: Creation time (naive UTC).
+        modified: Last modification time (naive UTC).
+        created_by: The user who created the metric.
+        owned_by: The owner, when one is set.
+        contacts: The owner email in a one-item list, or an empty list.
+        verified: Whether a user marked the metric as verified.
+        last_verified: When the metric was last verified (naive UTC).
+        last_verified_by: The user who last verified the metric.
+        warehouse_source_id: The warehouse source, for warehouse metrics only.
+        is_visible: Whether the metric is visible to the caller.
+        is_locked: Whether the metric is locked against edits.
+        can_view: Whether the caller can view the metric.
+        can_update_basic: Whether the caller can edit the name and definition.
+        can_share: Whether the caller can share the metric.
+
+    Example:
+        ```python
+        for metric in ws.list_metrics(verified=True):
+            print(metric.id, metric.type, metric.name, metric.math)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: int
+    """Metric identifier. Treat it as opaque."""
+
+    name: str
+    """Metric name."""
+
+    type: str
+    """Metric kind (``metric``, ``formula``, ``warehouse``, or legacy ``behavior``)."""
+
+    description: str = ""
+    """Metric description (the server sends ``""`` when empty)."""
+
+    definition: dict[str, Any]
+    """The stored definition; its shape depends on ``type``."""
+
+    created: datetime | None = None
+    """Creation time (naive UTC)."""
+
+    modified: datetime | None = None
+    """Last modification time (naive UTC)."""
+
+    created_by: CohortCreator | None = None
+    """The user who created the metric (``{id, email, name}``)."""
+
+    owned_by: CohortCreator | None = None
+    """The owner (``{id, email, name}``), when one is set."""
+
+    contacts: list[str] = Field(default_factory=list)
+    """The owner email in a one-item list, or an empty list."""
+
+    verified: bool = False
+    """Whether a user marked the metric as verified."""
+
+    last_verified: datetime | None = None
+    """When the metric was last verified (naive UTC)."""
+
+    last_verified_by: CohortCreator | None = None
+    """The user who last verified the metric (``{id, email, name}``)."""
+
+    warehouse_source_id: int | None = None
+    """The warehouse source, for warehouse metrics only."""
+
+    is_visible: bool | None = None
+    """Whether the metric is visible to the caller."""
+
+    is_locked: bool | None = None
+    """Whether the metric is locked against edits."""
+
+    can_view: bool | None = None
+    """Whether the caller can view the metric."""
+
+    can_update_basic: bool | None = None
+    """Whether the caller can edit the name and definition."""
+
+    can_share: bool | None = None
+    """Whether the caller can share the metric."""
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The behavior type of a behavior metric.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string (for
+            example ``"event"``, ``"simple"``, ``"funnel"``, ``"retention"``,
+            ``"cohort"``, or ``"people"``); otherwise None, as for formulas
+            and warehouse metrics.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+    @property
+    def math(self) -> str | None:
+        """The aggregation of the metric.
+
+        Returns:
+            ``definition["measurement"]["math"]`` when it is a string (any
+            value, known to the library or not); otherwise None.
+        """
+        return _str_at(self.definition, "measurement", "math")
+
+    @property
+    def formula_expression(self) -> str | None:
+        """The expression of a saved formula.
+
+        Returns:
+            ``definition["formula"]["definition"]`` when it is a string (for
+            example ``"A / B * 100"``); otherwise None.
+        """
+        return _str_at(self.definition, "formula", "definition")
+
+    @property
+    def referenced_metric_ids(self) -> list[int]:
+        """The ids of the saved metrics that a saved formula uses as operands.
+
+        An operand refers to a saved metric through its integer ``id``, or
+        through the string ``metric_id`` that the server adds in responses.
+        Inline operands have no id and are not listed, and neither are
+        operands whose ``metric_id`` does not convert to an integer.
+
+        Returns:
+            Each id once, in first-use order. An empty list for a metric that
+            is not a formula or for a shape the accessor does not know.
+        """
+        formula = self.definition.get("formula")
+        operands = (
+            formula.get("referencedMetrics") if isinstance(formula, dict) else None
+        )
+        if not isinstance(operands, list):
+            return []
+        ids: list[int] = []
+        for operand in operands:
+            if not isinstance(operand, dict):
+                continue
+            raw_id = operand.get("id")
+            metric_id: int | None = None
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+                metric_id = raw_id
+            else:
+                raw_str = operand.get("metric_id")
+                if isinstance(raw_str, str) and raw_str.isdigit():
+                    # isdigit() accepts superscripts, and int() refuses
+                    # strings past Python's digit limit.
+                    try:
+                        metric_id = int(raw_str)
+                    except ValueError:
+                        continue
+            if metric_id is not None and metric_id not in ids:
+                ids.append(metric_id)
+        return ids
+
+    @property
+    def display(self) -> MetricDisplay | None:
+        """The presentation settings of the metric.
+
+        Returns:
+            ``definition["display"]`` parsed as :class:`MetricDisplay`, or
+            None when it is absent or has a shape the model cannot read.
+        """
+        raw = self.definition.get("display")
+        if not isinstance(raw, dict):
+            return None
+        try:
+            return MetricDisplay.model_validate(raw)
+        except _PydanticValidationError:
+            return None
+
+    @property
+    def goals(self) -> list[MetricGoal]:
+        """The goals of the metric.
+
+        Returns:
+            Each entry of ``definition["goals"]`` that parses as
+            :class:`MetricGoal`, in stored order. Entries that do not parse
+            are left out; ``definition["goals"]`` still holds every entry. An
+            empty list when the metric has no goals.
+        """
+        raw = self.definition.get("goals")
+        if not isinstance(raw, list):
+            return []
+        goals: list[MetricGoal] = []
+        for entry in raw:
+            try:
+                goals.append(MetricGoal.model_validate(entry))
+            except _PydanticValidationError:
+                continue
+        return goals
+
+    def to_ref(
+        self,
+        *,
+        label: str | None = None,
+        math: MathType | FunnelMathType | RetentionMathType | None = None,
+        property: str | CustomPropertyRef | InlineCustomProperty | None = None,
+        per_user: PerUserAggregation | None = None,
+        percentile_value: int | float | None = None,
+        segment_method: SegmentMethod | None = None,
+        funnel_order: FunnelOrder | None = None,
+        step_index: int | None = None,
+        bucket_index: int | None = None,
+        hidden: bool | None = None,
+        overrides: Mapping[str, Any] | None = None,
+    ) -> MetricRef:
+        """Return a reference to this saved metric, for use in a query.
+
+        The reference takes the id and the kind of the saved metric. The
+        keyword arguments are the typed overrides of :class:`MetricRef` and
+        change the saved definition for one query only.
+
+        Args:
+            label: Series name for this query.
+            math: Aggregation override.
+            property: Property override for property math.
+            per_user: Per-user pre-aggregation override.
+            percentile_value: Percentile override.
+            segment_method: Counting override: ``"all"`` or ``"first"``.
+            funnel_order: Step order override for a saved funnel metric.
+            step_index: Funnel step override for a saved funnel metric.
+            bucket_index: Bucket override for a saved retention metric.
+            hidden: Whether the chart hides this series.
+            overrides: Raw overrides, deep-merged after the typed fields.
+
+        Returns:
+            A :class:`MetricRef` with ``id`` and ``type`` from this metric.
+
+        Raises:
+            ParamValidationError: ``MR5_INVALID_TYPE`` for a legacy kind
+                (such as ``behavior``) that the server does not run by
+                reference, any :class:`MetricRef` guard on the arguments
+                (these run first, so an ``overrides`` that is not a mapping
+                gets ``MR7_INVALID_OVERRIDE``), or
+                ``V26_PERCENTILE_REQUIRES_VALUE`` when ``math="percentile"``
+                has no percentile value in the arguments, the raw overrides,
+                or the stored measurement (a saved metric holds its
+                definition, so this check is exact; a bare
+                :class:`MetricRef` cannot make it).
+
+        Example:
+            ```python
+            signup_rate = ws.get_metric(88999)
+            result = ws.query(signup_rate.to_ref(segment_method="first"))
+            ```
+        """
+        if self.type not in _METRIC_REF_KINDS:
+            raise ParamValidationError(
+                f"Saved metric {self.id} has kind {self.type!r}, which the "
+                f"server does not run by reference. Only kinds "
+                f"{sorted(_METRIC_REF_KINDS)} can be queried by id; send its "
+                f"definition inline instead.",
+                code="MR5_INVALID_TYPE",
+            )
+        # Build the reference first: its guards report a malformed argument
+        # (MR7 for an overrides that is not a mapping), and after them
+        # ref.overrides is a mapping or None. A math on a formula or
+        # warehouse kind is refused there too (MR6).
+        ref = MetricRef(
+            self.id,
+            type=cast(Literal["metric", "formula", "warehouse"], self.type),
+            label=label,
+            math=math,
+            property=property,
+            per_user=per_user,
+            percentile_value=percentile_value,
+            segment_method=segment_method,
+            funnel_order=funnel_order,
+            step_index=step_index,
+            bucket_index=bucket_index,
+            hidden=hidden,
+            overrides=overrides,
+        )
+        if (
+            math == "percentile"
+            and percentile_value is None
+            and not _has_percentile(
+                ref.overrides.get("measurement") if ref.overrides else None,
+                self.definition.get("measurement"),
+            )
+        ):
+            raise ParamValidationError(
+                f"Saved metric {self.id} stores no percentile value, so "
+                "math='percentile' needs one: pass percentile_value, for "
+                "example to_ref(math='percentile', percentile_value=95)",
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
+        return ref
+
+    def to_raw_definition(self) -> RawMetricDefinition:
+        """Return the stored definition as a write value, for a copy.
+
+        The value holds a copy of the definition, the kind, and (for a
+        warehouse metric) the warehouse source, which the server keeps
+        outside the definition. A legacy ``behavior`` kind becomes
+        ``metric``, as in the kind check of ``update_metric``.
+
+        Returns:
+            A :class:`RawMetricDefinition` for
+            :class:`CreateMetricParams` or :class:`UpdateMetricParams`.
+
+        Raises:
+            ParamValidationError: The stored kind is not one that a create
+                accepts (``SM4_SCHEMA``).
+
+        Example:
+            ```python
+            source = ws.get_metric(118228)
+            ws.create_metric(mp.CreateMetricParams(
+                name=f"{source.name} (copy)",
+                definition=source.to_raw_definition(),
+            ))
+            ```
+        """
+        kind = "metric" if self.type == "behavior" else self.type
+        if kind not in _SAVED_METRIC_KINDS:
+            raise ParamValidationError(
+                f"Saved metric {self.id} has kind {self.type!r}, which no "
+                f"create accepts. The kinds are {list(_SAVED_METRIC_KINDS)} "
+                f"(a legacy 'behavior' kind counts as 'metric').",
+                code="SM4_SCHEMA",
+                details={"path": "type", "id": self.id, "type": self.type},
+            )
+        return RawMetricDefinition(
+            cast(Literal["metric", "formula", "warehouse"], kind),
+            copy.deepcopy(self.definition),
+            warehouse_source_id=(
+                self.warehouse_source_id if kind == "warehouse" else None
+            ),
+        )
+
+
+# =============================================================================
 # Schema Registry Types (Phase 028)
 # =============================================================================
 
@@ -6986,26 +7655,57 @@ class TimeComparison:
         return cls(type="absolute-end", date=date)
 
 
+_PER_EVENT_FILTERS_HINT: Final[str] = (
+    "Metric filters apply to every event of a list. For per-event filters, "
+    "put FunnelStep items in a SimpleBehavior: "
+    'Metric(SimpleBehavior([FunnelStep("A", filters=[...]), FunnelStep("B")]))'
+)
+"""The fix that an ``MT5_INVALID_EVENT_TYPE`` message names."""
+
+
 @dataclass(frozen=True)
 class Metric:
-    """Encapsulates a single event to query with its aggregation settings.
+    """Encapsulates the event(s) to query with their aggregation settings.
 
     Used with ``Workspace.query()`` to specify per-event math, property,
     per-user aggregation, and filters. Plain event name strings inherit
     top-level query defaults; Metric objects override them.
 
+    The event is one event name, a saved custom event
+    (:class:`CustomEventRef`), a list of names and custom events, a
+    :class:`SimpleBehavior`, or a saved simple behavior
+    (:class:`BehaviorRef` of type ``"simple"``). A metric over more than
+    one event counts the events as one series: unique users are counted
+    once across all the events, and totals add up. ``query_funnel`` and
+    ``query_retention`` do not take more than one event per step; use a
+    custom event there.
+
     Attributes:
-        event: Mixpanel event name.
+        event: Mixpanel event name, a custom event reference, a list of
+            them, a simple behavior, or a saved simple behavior reference.
+            A list takes event names and ``CustomEventRef`` items only; a
+            ``FunnelStep`` goes in a ``SimpleBehavior``.
         math: Aggregation function. Default: ``"total"``.
         property: Property for property-based math types (name, ref, or inline).
         per_user: Per-user pre-aggregation (average, total, min, max).
         filters: Per-metric filters (applied in addition to global ``where``).
+            On a list of events they apply to every event. They cannot be
+            combined with a ``SimpleBehavior`` or a ``BehaviorRef``. For
+            per-event filters, put ``FunnelStep`` items with their own
+            filters in a ``SimpleBehavior``:
+            ``Metric(SimpleBehavior([FunnelStep("A", filters=[...]), "B"]))``.
         filters_combinator: How per-metric filters combine.
             ``"all"`` = AND (default), ``"any"`` = OR.
 
     Example:
         ```python
-        from mixpanel_headless import Metric
+        from mixpanel_headless import (
+            CustomEventRef,
+            Filter,
+            FunnelStep,
+            Metric,
+            SimpleBehavior,
+        )
 
         # Simple event with defaults
         m1 = Metric("Login")
@@ -7015,11 +7715,23 @@ class Metric:
 
         # With per-user aggregation
         m3 = Metric("Purchase", math="total", per_user="average")
+
+        # Users who did any of two events, counted once
+        m4 = Metric(["Login", "SSO Login"], math="unique")
+
+        # A saved custom event by id
+        m5 = Metric(CustomEventRef(42), math="unique")
+
+        # Per-event filters: FunnelStep items in a SimpleBehavior
+        ios_login = FunnelStep("Login", filters=[Filter.equals("platform", "iOS")])
+        m6 = Metric(SimpleBehavior([ios_login, "SSO Login"]), math="unique")
         ```
     """
 
-    event: str
-    """Mixpanel event name."""
+    event: (
+        str | CustomEventRef | list[str | CustomEventRef] | SimpleBehavior | BehaviorRef
+    )
+    """Event name, custom event, list of them, simple behavior, or saved behavior."""
 
     math: MathType = "total"
     """Aggregation function."""
@@ -7059,13 +7771,60 @@ class Metric:
         Raises:
             ParamValidationError: If event is empty or contains control
                 characters (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``),
+                event is not a name, a ``CustomEventRef``, a list, a
+                ``SimpleBehavior``, or a ``BehaviorRef``, or an item of a
+                list is not a name or a ``CustomEventRef``, for example a
+                ``FunnelStep`` (``MT5_INVALID_EVENT_TYPE``), a list of
+                events is empty (``BH1_STEP_COUNT``), a name in
+                the list is blank (``BH2_EMPTY_EVENT``) or contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``), filters are set on
+                a simple behavior or a behavior reference
+                (``MT3_FILTERS_WITH_BEHAVIOR``), a behavior reference is not
+                of type ``"simple"`` (``BH5_BEHAVIOR_REF_TYPE``),
                 math requires a property but none is set
                 (``V13_METRIC_MATH_PROPERTY``), math="percentile" but
                 percentile_value is missing
                 (``V26_PERCENTILE_REQUIRES_VALUE``), or segment_method is
                 invalid (``MT2_INVALID_SEGMENT_METHOD``).
         """
-        _validate_event_name(self.event, "Metric")
+        event = self.event
+        if isinstance(event, str):
+            _validate_event_name(event, "Metric")
+        elif isinstance(event, SimpleBehavior | BehaviorRef):
+            if isinstance(event, BehaviorRef):
+                _check_behavior_ref_type(event, "simple", "Metric.event")
+            if self.filters:
+                raise ParamValidationError(
+                    "Metric filters cannot be combined with a SimpleBehavior "
+                    "or BehaviorRef event; put per-event filters on "
+                    "FunnelStep entries of the behavior instead",
+                    code="MT3_FILTERS_WITH_BEHAVIOR",
+                )
+        elif not isinstance(event, CustomEventRef):
+            if not isinstance(event, list | tuple):
+                raise ParamValidationError(
+                    "Metric.event must be an event name (str), a CustomEventRef, "
+                    "a list of them, a SimpleBehavior, or a BehaviorRef, got "
+                    f"{type(event).__name__}. {_PER_EVENT_FILTERS_HINT}",
+                    code="MT5_INVALID_EVENT_TYPE",
+                )
+            if len(event) < 1:
+                raise ParamValidationError(
+                    "Metric needs at least 1 event (got 0)",
+                    code="BH1_STEP_COUNT",
+                )
+            for i, item in enumerate(event):
+                if isinstance(item, str):
+                    _validate_behavior_event(item, f"Metric.event[{i}]")
+                elif not isinstance(item, CustomEventRef):
+                    # A FunnelStep here would lose the Metric filters, and
+                    # any other value would be written as the event name.
+                    raise ParamValidationError(
+                        f"Metric.event[{i}] must be an event name (str) or a "
+                        f"CustomEventRef, got {type(item).__name__}. "
+                        f"{_PER_EVENT_FILTERS_HINT}",
+                        code="MT5_INVALID_EVENT_TYPE",
+                    )
         if self.math in _MATH_REQUIRING_PROPERTY and self.property is None:
             raise ParamValidationError(
                 f"Metric math={self.math!r} requires a property "
@@ -7092,22 +7851,39 @@ class Metric:
 
 @dataclass(frozen=True)
 class Formula:
-    """A formula expression referencing events by position letter (A, B, C...).
+    """A formula expression over metrics named by position letter (A, B, C...).
 
-    Letters map to event positions in the list passed to
-    ``Workspace.query()``. A is the first event, B the second, etc.
+    Without ``metrics``, the letters name the other metrics of the query:
+    A is the first item in the list passed to ``Workspace.query()``, B the
+    second, and so on. With ``metrics``, the letters name the formula's own
+    operands instead, and the formula needs no other metric in the query.
+    This is also the form of a saved formula.
+
+    Letters run A to Z, then BA, BB, and so on (27 operands end at BA).
+    The expression uses ``+ - * / ^``, parentheses, and numbers.
 
     Can be passed as an element of the events list alongside strings
     and ``Metric`` objects, or use the top-level ``formula`` parameter
-    for single-formula convenience.
+    for single-formula convenience (without operands).
 
     Attributes:
         expression: Formula expression, e.g. ``"(B / A) * 100"``.
         label: Optional display label for the formula result.
+        metrics: The formula's own operands, or ``None`` to name the other
+            metrics of the query. An operand is an inline metric or a
+            ``MetricRef`` to a saved behavior metric (with no overrides,
+            because the server ignores overrides on an operand). The server
+            refuses a warehouse metric as an operand; a ``MetricRef`` with
+            ``type="warehouse"`` (as ``SavedMetric.to_ref()`` makes for a
+            warehouse metric) is refused, but a bare ``MetricRef(id)``
+            keeps the default kind, so the client cannot detect a warehouse
+            metric behind it. Pass a list or another sequence; the formula
+            keeps a tuple copy, so a later change to the caller's list does
+            not change the operands that the guards checked.
 
     Example:
         ```python
-        from mixpanel_headless import Formula, Metric
+        from mixpanel_headless import Formula, FunnelBehavior, FunnelMetric, Metric
 
         # Formula in the events list
         result = ws.query(
@@ -7123,26 +7899,520 @@ class Formula:
             formula="(B / A) * 100",
             formula_label="Conversion %",
         )
+
+        # A formula with its own operands
+        result = ws.query(
+            Formula(
+                "A / B",
+                label="Purchases per checkout conversion",
+                metrics=[
+                    Metric("Purchase", math="total"),
+                    FunnelMetric(FunnelBehavior(["Checkout", "Purchase"])),
+                ],
+            )
+        )
         ```
     """
 
     expression: str
-    """Formula expression referencing events by letter."""
+    """Formula expression referencing metrics by letter."""
 
     label: str | None = None
     """Optional display label for the formula result."""
+
+    metrics: Sequence[FormulaOperand] | None = None
+    """The formula's own operands (a tuple), or ``None`` for the query's metrics."""
 
     def __post_init__(self) -> None:
         """Validate construction arguments.
 
         Raises:
             ParamValidationError: If expression is empty
-                (``FM1_EMPTY_EXPRESSION``).
+                (``FM1_EMPTY_EXPRESSION``). With ``metrics``: if an operand
+                is a formula or a reference to a saved formula
+                (``FM3_NESTED_FORMULA``), an operand is a warehouse metric
+                (``FM7_WAREHOUSE_OPERAND``), a ``MetricRef`` operand sets an
+                override (``MR2_OPERAND_OVERRIDE``), the expression is not
+                in the server grammar (``FM4_SYNTAX``), a literal has an
+                uppercase E (``FM5_UPPER_E``), a letter names no operand
+                (``FM2_UNKNOWN_LETTER``), or the expression uses no letter
+                (``V16_FORMULA_SYNTAX``).
         """
         if not self.expression or not self.expression.strip():
             raise ParamValidationError(
                 "Formula.expression must be a non-empty string",
                 code="FM1_EMPTY_EXPRESSION",
+            )
+        if self.metrics is None:
+            return
+        from mixpanel_headless._internal.query.formula import validate_operand_formula
+        from mixpanel_headless._internal.query.metric_builders import (
+            build_operand_ref_clause,
+        )
+
+        # Keep a tuple copy, so the guards below check exactly the operands
+        # that the builders later write.
+        operands = tuple(self.metrics)
+        object.__setattr__(self, "metrics", operands)
+        for i, operand in enumerate(operands):
+            if isinstance(operand, Formula) or (
+                isinstance(operand, MetricRef) and operand.type == "formula"
+            ):
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a formula; an operand of a "
+                    "formula cannot be another formula",
+                    code="FM3_NESTED_FORMULA",
+                )
+            if isinstance(operand, MetricRef) and operand.type == "warehouse":
+                raise ParamValidationError(
+                    f"Formula.metrics[{i}] is a warehouse metric; the server "
+                    "accepts only behavior metrics as formula operands. Query "
+                    "a warehouse metric alone by reference, for example "
+                    "ws.query(MetricRef(id, type='warehouse'))",
+                    code="FM7_WAREHOUSE_OPERAND",
+                )
+            if isinstance(operand, MetricRef):
+                # Raises MR2_OPERAND_OVERRIDE for a reference with overrides.
+                build_operand_ref_clause(operand)
+        validate_operand_formula(self.expression, len(operands))
+
+
+_METRIC_REF_KINDS: Final[frozenset[str]] = frozenset({"metric", "formula", "warehouse"})
+"""Saved metric kinds that a ``MetricRef`` can name."""
+
+_METRIC_REF_MATHS: Final[frozenset[str]] = (
+    frozenset(get_args(MathType))
+    | frozenset(get_args(FunnelMathType))
+    | frozenset(get_args(RetentionMathType))
+)
+"""Maths a ``MetricRef`` can override: every insights, funnel, and retention math."""
+
+_PER_USER_AGGREGATIONS: Final[frozenset[str]] = frozenset(get_args(PerUserAggregation))
+"""Runtime view of :data:`PerUserAggregation`."""
+
+_FUNNEL_ORDERS: Final[frozenset[str]] = frozenset(get_args(FunnelOrder))
+"""Runtime view of :data:`FunnelOrder`."""
+
+_PROPERTY_SPEC_TYPES: Final[tuple[type, ...]] = get_args(PropertySpec)
+"""Runtime view of :data:`PropertySpec`: the classes a property can be."""
+
+_BEHAVIOR_REF_KINDS: Final[frozenset[str]] = frozenset(
+    {"simple", "funnel", "retention"}
+)
+"""Saved behavior types that a ``BehaviorRef`` can name."""
+
+
+def _is_positive_int(value: object) -> bool:
+    """Return whether a value is a positive ``int`` (``bool`` excluded).
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        ``True`` for an ``int`` greater than zero that is not a ``bool``.
+    """
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _is_index(value: object) -> bool:
+    """Return whether a value is a zero-based index (``bool`` excluded).
+
+    Args:
+        value: The value to check.
+
+    Returns:
+        ``True`` for an ``int`` of zero or more that is not a ``bool``.
+    """
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _find_filters_path(value: object, path: str = "overrides") -> str | None:
+    """Find the first ``filters`` or ``filter`` key in a nested override value.
+
+    Args:
+        value: A mapping, a list, or a scalar from a raw overrides tree.
+        path: The dotted path of ``value``, for the error message.
+
+    Returns:
+        The dotted path of the first filter key, or ``None`` when the tree
+        has none.
+    """
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in ("filters", "filter"):
+                return child_path
+            found = _find_filters_path(child, child_path)
+            if found is not None:
+                return found
+    elif isinstance(value, list | tuple):
+        for index, child in enumerate(value):
+            found = _find_filters_path(child, f"{path}[{index}]")
+            if found is not None:
+                return found
+    return None
+
+
+def _freeze_override_value(value: object) -> object:
+    """Copy one raw override value into a read-only form.
+
+    A mapping becomes a read-only ``MappingProxyType`` over a new dict, and
+    a list or tuple becomes a tuple, recursively. Any other value is
+    deep-copied. So a later change to the caller's objects cannot reach a
+    ``MetricRef`` after its guards ran.
+
+    Args:
+        value: A value from a raw overrides tree.
+
+    Returns:
+        The read-only copy.
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_override_value(child) for key, child in value.items()}
+        )
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_override_value(child) for child in value)
+    return copy.deepcopy(value)
+
+
+@dataclass(frozen=True)
+class MetricRef:
+    """A saved metric, used by id in a query.
+
+    Pass it to ``Workspace.query()`` or ``build_params()`` anywhere a
+    ``Metric`` is accepted. The params keep the reference
+    (``{"type", "id", "overrides"}``), so the server expands the saved
+    definition at query time, and a report or report link built from the
+    params follows later edits to the saved metric.
+
+    The typed fields change the saved definition for this query only. The
+    library writes each one into ``overrides`` at its wire path, and the
+    server deep-merges ``overrides`` into the expanded clause. ``overrides``
+    is an escape hatch for other paths and merges after the typed fields.
+
+    Filters are not an override. The server merges lists item by item, so
+    a filter list in ``overrides`` would change the saved filters by
+    position instead of adding to them. Use report-level ``where=`` to
+    filter every metric, or send the metric inline with its own filters.
+
+    Attributes:
+        id: Saved metric id.
+        type: Saved metric kind: ``"metric"`` (a behavior metric),
+            ``"formula"``, or ``"warehouse"``. The server corrects the kind
+            of a top-level reference, so the default works for any kind
+            when no typed override is set. The client cannot know the saved
+            kind without a read, so set ``type="warehouse"`` (or use
+            ``SavedMetric.to_ref()``) to get the warning for a warehouse
+            metric with ``group_by`` or ``where``.
+        label: Series name for this query. Replaces the saved name.
+        math: Aggregation override (an insights, funnel, or retention math).
+        property: Property override for property math. The server merges
+            it into the saved property dict, so the keys of a saved custom
+            property stay; to replace a saved custom property with a plain
+            property, send the metric inline.
+        per_user: Per-user pre-aggregation override.
+        percentile_value: Percentile override (for example 95).
+        segment_method: Counting override: ``"all"`` or ``"first"``.
+        funnel_order: Step order override for a saved funnel metric.
+        step_index: Funnel step override for a saved funnel metric.
+        bucket_index: Bucket override for a saved retention metric.
+        hidden: Whether the chart hides this series. ``None`` keeps the
+            query default.
+        overrides: Raw overrides, deep-merged after the typed fields. Stored
+            as a read-only copy (``MappingProxyType`` and tuples).
+
+    Example:
+        ```python
+        import mixpanel_headless as mp
+
+        ws = mp.Workspace()
+
+        # A saved metric as it is saved
+        result = ws.query(mp.MetricRef(88999), last=30)
+
+        # The same metric with a report-level change
+        result = ws.query(
+            mp.MetricRef(88999, segment_method="first", label="First purchase"),
+            group_by="$os",
+        )
+        ```
+    """
+
+    id: int
+    """Saved metric id."""
+
+    _: KW_ONLY
+
+    type: Literal["metric", "formula", "warehouse"] = "metric"
+    """Saved metric kind."""
+
+    label: str | None = None
+    """Series name for this query."""
+
+    math: MathType | FunnelMathType | RetentionMathType | None = None
+    """Aggregation override."""
+
+    property: str | CustomPropertyRef | InlineCustomProperty | None = None
+    """Property override for property math."""
+
+    per_user: PerUserAggregation | None = None
+    """Per-user pre-aggregation override."""
+
+    percentile_value: int | float | None = None
+    """Percentile override."""
+
+    segment_method: SegmentMethod | None = None
+    """Counting override."""
+
+    funnel_order: FunnelOrder | None = None
+    """Step order override for a saved funnel metric."""
+
+    step_index: int | None = None
+    """Funnel step override for a saved funnel metric."""
+
+    bucket_index: int | None = None
+    """Bucket override for a saved retention metric."""
+
+    hidden: bool | None = None
+    """Whether the chart hides this series."""
+
+    overrides: Mapping[str, Any] | None = None
+    """Raw overrides, deep-merged after the typed fields (a read-only copy)."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``MR4_INVALID_ID``), the type is not a saved metric kind
+                (``MR5_INVALID_TYPE``), a typed override has a bad value or
+                ``overrides`` is not a string-keyed mapping
+                (``MR7_INVALID_OVERRIDE``), ``segment_method`` is invalid
+                (``MT2_INVALID_SEGMENT_METHOD``), a formula or warehouse
+                reference sets a behavior-metric override
+                (``MR6_OVERRIDE_NOT_APPLICABLE``), the typed measurement
+                fields contradict each other (``V3_PER_USER_INCOMPATIBLE``,
+                ``V14_METRIC_REJECTS_PROPERTY``, the codes of the inline
+                ``Metric`` rules), or ``overrides`` holds a filter list
+                (``MR1_FILTER_OVERRIDE``). ``overrides`` is stored as a
+                read-only copy, so a later change to the caller's mapping
+                does not reach the reference.
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"MetricRef id must be a positive integer, got {self.id!r}",
+                code="MR4_INVALID_ID",
+            )
+        if self.type not in _METRIC_REF_KINDS:
+            raise ParamValidationError(
+                f"MetricRef type must be one of {sorted(_METRIC_REF_KINDS)}, "
+                f"got {self.type!r}",
+                code="MR5_INVALID_TYPE",
+            )
+        self._check_override_values()
+        if self.segment_method is not None and self.segment_method not in (
+            "all",
+            "first",
+        ):
+            raise ParamValidationError(
+                "MetricRef segment_method must be one of ['all', 'first'], "
+                f"got {self.segment_method!r}",
+                code="MT2_INVALID_SEGMENT_METHOD",
+            )
+        if self.type != "metric":
+            behavior_fields = [
+                name
+                for name in (
+                    "math",
+                    "property",
+                    "per_user",
+                    "percentile_value",
+                    "segment_method",
+                    "funnel_order",
+                    "step_index",
+                    "bucket_index",
+                )
+                if getattr(self, name) is not None
+            ]
+            if behavior_fields:
+                raise ParamValidationError(
+                    f"MetricRef type={self.type!r} does not take "
+                    f"{', '.join(behavior_fields)}: those fields change a "
+                    "behavior metric's measurement or behavior. Use label, "
+                    "hidden, or overrides for a formula or warehouse metric.",
+                    code="MR6_OVERRIDE_NOT_APPLICABLE",
+                )
+        self._check_measurement_rules()
+        if self.overrides is not None:
+            # Keep a read-only copy, so the guard below checks exactly what
+            # the builder later writes.
+            frozen = cast(Mapping[str, Any], _freeze_override_value(self.overrides))
+            object.__setattr__(self, "overrides", frozen)
+            filters_path = _find_filters_path(frozen)
+            if filters_path is not None:
+                raise ParamValidationError(
+                    f"MetricRef overrides cannot hold filters ({filters_path}). "
+                    "The server merges override lists item by item, so a "
+                    "filter list changes the saved filters by index instead "
+                    "of adding to them. To filter the metric, use "
+                    "report-level where= (it applies to every metric in the "
+                    "query), or send the metric inline as a Metric with its "
+                    "own filters.",
+                    code="MR1_FILTER_OVERRIDE",
+                )
+
+    def _check_measurement_rules(self) -> None:
+        """Run the inline ``Metric`` combination rules on the typed fields.
+
+        Only contradictions among the fields that are set are refused. A
+        field that the saved definition or the raw ``overrides`` can supply
+        (a property, a per-user aggregation, a percentile value) is not
+        required, because the server deep-merges the overrides into the
+        saved measurement: ``MetricRef(id, math="median")`` keeps the saved
+        property, and ``MetricRef(id, math="percentile",
+        overrides={"measurement": {"percentile": 95}})`` sets the value.
+
+        Raises:
+            ParamValidationError: ``V3_PER_USER_INCOMPATIBLE`` when
+                ``per_user`` is set with a user-count math (``unique``,
+                ``dau``, ``wau``, ``mau``), and
+                ``V14_METRIC_REJECTS_PROPERTY`` when ``property`` is set with
+                a math that takes no property.
+        """
+        from mixpanel_headless._internal.bookmark_enums import (
+            MATH_NO_PER_USER,
+            MATH_PROPERTY_OPTIONAL,
+            MATH_REQUIRING_PROPERTY,
+        )
+
+        math_type = self.math
+        if math_type is None:
+            return
+        if self.per_user is not None and math_type in MATH_NO_PER_USER:
+            raise ParamValidationError(
+                f"MetricRef per_user={self.per_user!r} is incompatible with "
+                f"math={math_type!r}",
+                code="V3_PER_USER_INCOMPATIBLE",
+            )
+        takes_property = MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL
+        if self.property is not None and math_type not in takes_property:
+            raise ParamValidationError(
+                f"MetricRef property is only valid with property-based math "
+                f"types ({', '.join(sorted(takes_property))}), not {math_type!r}",
+                code="V14_METRIC_REJECTS_PROPERTY",
+            )
+
+    def _check_override_values(self) -> None:
+        """Check the value of each typed override and of the raw mapping.
+
+        Raises:
+            ParamValidationError: ``MR7_INVALID_OVERRIDE`` for the first bad
+                value.
+        """
+        problem: str | None = None
+        if self.label is not None and (
+            not isinstance(self.label, str) or not self.label.strip()
+        ):
+            problem = "label must be a non-empty string"
+        elif self.math is not None and self.math not in _METRIC_REF_MATHS:
+            problem = (
+                f"math {self.math!r} is not an insights, funnel, or retention math"
+            )
+        elif self.property is not None and not isinstance(
+            self.property, _PROPERTY_SPEC_TYPES
+        ):
+            problem = (
+                "property must be a property name (str), a CustomPropertyRef, "
+                f"or an InlineCustomProperty, got {self.property!r}"
+            )
+        elif self.per_user is not None and self.per_user not in _PER_USER_AGGREGATIONS:
+            problem = (
+                f"per_user must be one of {sorted(_PER_USER_AGGREGATIONS)}, "
+                f"got {self.per_user!r}"
+            )
+        elif self.percentile_value is not None and (
+            isinstance(self.percentile_value, bool)
+            or not isinstance(self.percentile_value, (int, float))
+            or not math.isfinite(self.percentile_value)
+        ):
+            problem = (
+                f"percentile_value must be a finite number, "
+                f"got {self.percentile_value!r}"
+            )
+        elif self.funnel_order is not None and self.funnel_order not in _FUNNEL_ORDERS:
+            problem = (
+                f"funnel_order must be one of {sorted(_FUNNEL_ORDERS)}, "
+                f"got {self.funnel_order!r}"
+            )
+        elif self.step_index is not None and not _is_index(self.step_index):
+            problem = f"step_index must be an integer >= 0, got {self.step_index!r}"
+        elif self.bucket_index is not None and not _is_index(self.bucket_index):
+            problem = f"bucket_index must be an integer >= 0, got {self.bucket_index!r}"
+        elif self.hidden is not None and not isinstance(self.hidden, bool):
+            problem = f"hidden must be a bool, got {self.hidden!r}"
+        elif self.overrides is not None and (
+            not isinstance(self.overrides, Mapping)
+            or not all(isinstance(key, str) for key in self.overrides)
+        ):
+            problem = "overrides must be a mapping with string keys"
+        if problem is not None:
+            raise ParamValidationError(
+                f"MetricRef {problem}",
+                code="MR7_INVALID_OVERRIDE",
+            )
+
+
+@dataclass(frozen=True)
+class BehaviorRef:
+    """A saved behavior, used by id in a funnel or retention query.
+
+    Pass it to ``Workspace.query_funnel()`` in place of the step list, or to
+    ``Workspace.query_retention()`` in place of the born and return events.
+    The params keep the reference (``{"type", "id"}``), and the server
+    expands the saved behavior at query time. The saved behavior sets the
+    steps, the conversion window, the order, the exclusions, and the other
+    behavior settings.
+
+    Attributes:
+        id: Saved behavior id.
+        type: Saved behavior type: ``"simple"``, ``"funnel"``, or
+            ``"retention"``. The engines check it, because the server
+            expands the id without checking the type.
+
+    Example:
+        ```python
+        import mixpanel_headless as mp
+
+        ws = mp.Workspace()
+        result = ws.query_funnel(mp.BehaviorRef(3120, "funnel"), last=90)
+        ```
+    """
+
+    id: int
+    """Saved behavior id."""
+
+    type: Literal["simple", "funnel", "retention"]
+    """Saved behavior type."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``BR1_INVALID_ID``) or the type is not a saved behavior
+                type (``BR2_INVALID_TYPE``).
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"BehaviorRef id must be a positive integer, got {self.id!r}",
+                code="BR1_INVALID_ID",
+            )
+        if self.type not in _BEHAVIOR_REF_KINDS:
+            raise ParamValidationError(
+                f"BehaviorRef type must be one of {sorted(_BEHAVIOR_REF_KINDS)}, "
+                f"got {self.type!r}",
+                code="BR2_INVALID_TYPE",
             )
 
 
@@ -10979,6 +12249,589 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 # =============================================================================
+# Inline Behaviors and Behavior Metrics
+# =============================================================================
+
+
+def _validate_behavior_event(event: str, where: str) -> None:
+    """Validate one event name that a behavior holds as a plain string.
+
+    Args:
+        event: The event name.
+        where: The field path for messages, for example
+            ``"FunnelBehavior.steps[1]"``.
+
+    Raises:
+        ParamValidationError: If the name is empty or blank
+            (``BH2_EMPTY_EVENT``) or contains control characters
+            (``EV2_CONTROL_CHAR_EVENT``).
+    """
+    if not event.strip():
+        raise ParamValidationError(
+            f"{where} must be a non-empty event name",
+            code="BH2_EMPTY_EVENT",
+        )
+    if _CONTROL_CHAR_RE.search(event):
+        raise ParamValidationError(
+            f"{where} contains control characters: {event!r}",
+            code="EV2_CONTROL_CHAR_EVENT",
+        )
+
+
+def _check_behavior_ref_type(
+    ref: BehaviorRef, needed: Literal["simple", "funnel", "retention"], where: str
+) -> None:
+    """Check that a saved-behavior reference has the type a metric needs.
+
+    The server expands a behavior id without checking its type, so a
+    reference of another type would run the wrong behavior.
+
+    Args:
+        ref: The saved-behavior reference.
+        needed: The behavior type the metric needs.
+        where: The field path for messages, for example
+            ``"FunnelMetric.behavior"``.
+
+    Raises:
+        ParamValidationError: If the types differ
+            (``BH5_BEHAVIOR_REF_TYPE``).
+    """
+    if ref.type != needed:
+        raise ParamValidationError(
+            f"{where} is BehaviorRef({ref.id}, {ref.type!r}); it needs a "
+            f"{needed} behavior",
+            code="BH5_BEHAVIOR_REF_TYPE",
+        )
+
+
+def _check_index(value: int | None, where: str) -> None:
+    """Check an optional zero-based index of a funnel or retention metric.
+
+    Args:
+        value: The index, or ``None``.
+        where: The field path for messages, for example
+            ``"FunnelMetric.step_index"``.
+
+    Raises:
+        ParamValidationError: If the value is set and is not an ``int`` of
+            zero or more (``MT4_INVALID_INDEX``); a ``bool`` is not an index.
+    """
+    if value is not None and not _is_index(value):
+        raise ParamValidationError(
+            f"{where} must be an integer >= 0, got {value!r}",
+            code="MT4_INVALID_INDEX",
+        )
+
+
+def _property_math_problem(
+    math: str, prop: PropertySpec | None
+) -> Literal["missing", "rejected"] | None:
+    """Compare a math type with the presence of a measurement property.
+
+    Uses the same property-math sets as the query validators: a math in
+    the property-requiring set needs a property, ``total`` takes one
+    optionally, and every other math takes none. For a math that needs a
+    property, an empty or whitespace-only name counts as no property: it
+    names nothing to aggregate, and the funnel builder writes an empty
+    name as a null property.
+
+    Args:
+        math: The math type.
+        prop: The measurement property, or ``None``.
+
+    Returns:
+        ``"missing"`` when the math needs a property and none is set or
+        the name is blank, ``"rejected"`` when a property is set on a math
+        that takes none, or ``None`` when the two agree.
+    """
+    from mixpanel_headless._internal.bookmark_enums import MATH_PROPERTY_OPTIONAL
+
+    if math in _MATH_REQUIRING_PROPERTY:
+        blank = prop is None or (isinstance(prop, str) and not prop.strip())
+        return "missing" if blank else None
+    if prop is not None and math not in MATH_PROPERTY_OPTIONAL:
+        return "rejected"
+    return None
+
+
+def _property_maths(maths: tuple[str, ...]) -> list[str]:
+    """List the math types in ``maths`` that accept a measurement property.
+
+    Args:
+        maths: The members of a math ``Literal`` alias.
+
+    Returns:
+        The sorted members that need or accept a property.
+    """
+    from mixpanel_headless._internal.bookmark_enums import MATH_PROPERTY_OPTIONAL
+
+    return sorted(
+        m for m in maths if m in _MATH_REQUIRING_PROPERTY or m in MATH_PROPERTY_OPTIONAL
+    )
+
+
+@dataclass(frozen=True)
+class CustomEventRef:
+    """A reference to a saved custom event by its integer ID.
+
+    A custom event is a saved union of events, with optional filters, under
+    one name. Use this reference as the event of a :class:`Metric` or as
+    an event of a :class:`SimpleBehavior`, to count the custom event
+    instead of one raw event. The query counts each user once across the
+    events of the union.
+
+    The ID is ``CustomEvent.id`` from :meth:`Workspace.create_custom_event`,
+    or ``custom_event_id`` of an entry of :meth:`Workspace.list_custom_events`.
+    Where a query takes an event name only (a ``query_funnel`` step, a
+    ``query_retention`` event), pass the name ``"$custom_event:<id>"``
+    instead. The display name of a custom event is not an event name: it
+    matches no events and returns zero rows, with no error.
+
+    Attributes:
+        id: The custom event's server-assigned ID.
+
+    Example:
+        ```python
+        from mixpanel_headless import CustomEventRef, Metric
+
+        # Unique users of the custom event 42
+        result = ws.query(Metric(CustomEventRef(42), math="unique"))
+
+        # The same custom event as a funnel step, by name
+        result = ws.query_funnel(["$custom_event:42", "Purchase"])
+        ```
+    """
+
+    id: int
+    """The custom event's server-assigned ID."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If the id is not a positive integer
+                (``CE1_INVALID_ID``); a ``bool`` is not an id.
+        """
+        if not _is_positive_int(self.id):
+            raise ParamValidationError(
+                f"CustomEventRef id must be a positive integer, got {self.id!r}",
+                code="CE1_INVALID_ID",
+            )
+
+
+@dataclass(frozen=True)
+class SimpleBehavior:
+    """One or more events that count as one behavior.
+
+    A user performs the behavior when the user does any of the events. The
+    query counts the events as one series: unique users are counted once
+    across all the events, and totals add up. Each event is an event name,
+    a :class:`CustomEventRef`, or a :class:`FunnelStep` (for per-event
+    filters; the step ``order`` has no effect here).
+
+    Filters go on each event (a ``FunnelStep`` with ``filters``). The
+    query server ignores filters on the behavior as a whole, so this type
+    has none.
+
+    Attributes:
+        events: The events, at least one.
+        name: The series label. The query server counts the events as one
+            series only under a non-empty name, so ``None`` (or a blank
+            name) makes the library join the event names with ``" or "``.
+
+    Example:
+        ```python
+        from mixpanel_headless import (
+            CustomEventRef,
+            Filter,
+            FunnelStep,
+            Metric,
+            SimpleBehavior,
+        )
+
+        # Any of three sign-in events, as one series named "Signed in"
+        signed_in = SimpleBehavior(
+            ["Login", "SSO Login", CustomEventRef(42)], name="Signed in"
+        )
+        result = ws.query(Metric(signed_in, math="unique"))
+
+        # Per-event filters through FunnelStep
+        big_purchase = SimpleBehavior(
+            [FunnelStep("Purchase", filters=[Filter.greater_than("amount", 100)])]
+        )
+        ```
+    """
+
+    events: list[str | CustomEventRef | FunnelStep]
+    """The events, at least one."""
+
+    name: str | None = None
+    """The series label; ``None`` joins the event names with ``" or "``."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If there are no events
+                (``BH1_STEP_COUNT``), an event name is blank
+                (``BH2_EMPTY_EVENT``), or an event name contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``).
+        """
+        if len(self.events) < 1:
+            raise ParamValidationError(
+                "SimpleBehavior needs at least 1 event (got 0)",
+                code="BH1_STEP_COUNT",
+            )
+        for i, event in enumerate(self.events):
+            if isinstance(event, str):
+                _validate_behavior_event(event, f"SimpleBehavior.events[{i}]")
+
+
+@dataclass(frozen=True)
+class FunnelBehavior:
+    """An ordered sequence of two or more steps that users convert through.
+
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_funnel`, so a funnel behavior and a
+    ``query_funnel`` call over the same steps count the same way. The web
+    app starts a new funnel behavior with a 7-day window; pass
+    ``conversion_window=7`` to match it.
+
+    Attributes:
+        steps: The funnel steps, at least two. Each is an event name or a
+            :class:`FunnelStep`.
+        conversion_window: How long users have to complete the funnel.
+            Default: ``14``.
+        conversion_window_unit: The unit of ``conversion_window``.
+            Default: ``"day"``.
+        order: ``"loose"`` requires the steps in order, with other events
+            between them allowed. ``"any"`` accepts the steps in any order.
+            Default: ``"loose"``.
+        exclusions: Events that remove a user from the funnel between
+            steps. Each is an event name or an :class:`Exclusion`.
+        holding_constant: Properties that must keep the same value at every
+            step. One name, one :class:`HoldingConstant`, or a list of them.
+        reentry_mode: How users re-enter the funnel after they convert.
+            ``None`` uses the server default.
+
+    Example:
+        ```python
+        from mixpanel_headless import Exclusion, FunnelBehavior
+
+        checkout = FunnelBehavior(
+            ["View Cart", "Checkout", "Purchase"],
+            conversion_window=1,
+            conversion_window_unit="hour",
+            exclusions=[Exclusion("Remove From Cart", from_step=0, to_step=1)],
+            holding_constant="platform",
+        )
+        ```
+    """
+
+    steps: list[str | FunnelStep]
+    """The funnel steps, at least two."""
+
+    conversion_window: int = 14
+    """How long users have to complete the funnel."""
+
+    conversion_window_unit: ConversionWindowUnit = "day"
+    """The unit of ``conversion_window``."""
+
+    order: FunnelOrder = "loose"
+    """Step ordering mode (``"loose"`` or ``"any"``)."""
+
+    exclusions: list[str | Exclusion] | None = None
+    """Events that remove a user from the funnel between steps."""
+
+    holding_constant: str | HoldingConstant | list[str | HoldingConstant] | None = None
+    """Properties that must keep the same value at every step."""
+
+    reentry_mode: FunnelReentryMode | None = None
+    """How users re-enter the funnel after they convert (server default)."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If there are fewer than two steps
+                (``BH1_STEP_COUNT``), a step name is blank
+                (``BH2_EMPTY_EVENT``), a step name contains control
+                characters (``EV2_CONTROL_CHAR_EVENT``), an exclusion name
+                is blank or contains control characters
+                (``EV1_EMPTY_EVENT`` / ``EV2_CONTROL_CHAR_EVENT``, as for
+                :class:`Exclusion`), or a property to hold constant is
+                blank (``HC1_EMPTY_PROPERTY``, as for
+                :class:`HoldingConstant`).
+        """
+        if len(self.steps) < 2:
+            raise ParamValidationError(
+                f"FunnelBehavior needs at least 2 steps (got {len(self.steps)})",
+                code="BH1_STEP_COUNT",
+            )
+        for i, step in enumerate(self.steps):
+            if isinstance(step, str):
+                _validate_behavior_event(step, f"FunnelBehavior.steps[{i}]")
+        for exclusion in self.exclusions or []:
+            if isinstance(exclusion, str):
+                Exclusion(exclusion)
+        held = self.holding_constant
+        held_values = [held] if isinstance(held, str | HoldingConstant) else held
+        for value in held_values or []:
+            if isinstance(value, str):
+                HoldingConstant(value)
+
+
+@dataclass(frozen=True)
+class RetentionBehavior:
+    """A born event and a return event: users who come back after they start.
+
+    The fields use the parameter names and the defaults of
+    :meth:`Workspace.query_retention`, so a retention behavior and a
+    ``query_retention`` call over the same events count the same way. The
+    web app starts a new retention behavior with daily buckets; pass
+    ``retention_unit="day"`` to match it. A retention behavior always holds
+    exactly two events.
+
+    Attributes:
+        born_event: The event that puts a user in a cohort. An event name
+            or a :class:`RetentionEvent`.
+        return_event: The event that counts as a return. An event name or a
+            :class:`RetentionEvent`.
+        retention_unit: The bucket unit. Default: ``"week"``.
+        alignment: ``"birth"`` aligns each cohort to its born date;
+            ``"interval_start"`` aligns all cohorts to the same start.
+            Default: ``"birth"``.
+        bucket_sizes: Custom bucket sizes (positive integers in ascending
+            order). ``None`` means uniform buckets.
+        unbounded_mode: How a return counts in later or earlier buckets.
+            ``None`` uses the server default.
+
+    Example:
+        ```python
+        from mixpanel_headless import RetentionBehavior
+
+        weekly = RetentionBehavior("Signup", "Login", retention_unit="week")
+        ```
+    """
+
+    born_event: str | RetentionEvent
+    """The event that puts a user in a cohort."""
+
+    return_event: str | RetentionEvent
+    """The event that counts as a return."""
+
+    retention_unit: TimeUnit = "week"
+    """The bucket unit."""
+
+    alignment: RetentionAlignment = "birth"
+    """Cohort alignment mode."""
+
+    bucket_sizes: list[int] | None = None
+    """Custom bucket sizes, or ``None`` for uniform buckets."""
+
+    unbounded_mode: RetentionUnboundedMode | None = None
+    """How a return counts in other buckets (server default)."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If an event name is blank
+                (``BH2_EMPTY_EVENT``) or contains control characters
+                (``EV2_CONTROL_CHAR_EVENT``).
+        """
+        if isinstance(self.born_event, str):
+            _validate_behavior_event(self.born_event, "RetentionBehavior.born_event")
+        if isinstance(self.return_event, str):
+            _validate_behavior_event(
+                self.return_event, "RetentionBehavior.return_event"
+            )
+
+
+@dataclass(frozen=True)
+class FunnelMetric:
+    """A funnel behavior measured as one metric, such as its conversion rate.
+
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`. The math and property rules are those of
+    :meth:`Workspace.query_funnel` and ``math_property``: a funnel metric
+    and a ``query_funnel`` call over the same funnel give the same number.
+    A property math with no property is refused, because the query server
+    refuses it too. For a property math, an empty or whitespace-only
+    property name counts as no property.
+
+    Attributes:
+        behavior: The funnel to measure: a ``FunnelBehavior``, or a
+            ``BehaviorRef`` of type ``"funnel"`` for a saved funnel.
+        math: The funnel aggregation. Default:
+            ``"conversion_rate_unique"``.
+        property: The property to aggregate. Required for a property math
+            (``average``, ``median``, ``min``, ``max``, the percentiles, and
+            ``histogram``), and a blank name does not count; optional for
+            ``total``; refused for the others.
+        step_index: The zero-based step to measure. ``None`` measures the
+            whole funnel.
+        label: The series label. ``None`` lets the server name the series
+            after the first and last steps.
+
+    Example:
+        ```python
+        from mixpanel_headless import FunnelBehavior, FunnelMetric, Metric
+
+        checkout = FunnelBehavior(["Checkout", "Purchase"])
+        rate = FunnelMetric(checkout, label="Checkout conversion")
+        spend = FunnelMetric(checkout, math="average", property="amount")
+
+        # Conversion rate next to the number of users who checked out
+        result = ws.query([Metric("Checkout", math="unique"), rate])
+        ```
+    """
+
+    behavior: FunnelBehavior | BehaviorRef
+    """The funnel to measure, inline or saved."""
+
+    math: FunnelMathType = "conversion_rate_unique"
+    """The funnel aggregation."""
+
+    property: PropertySpec | None = None
+    """The property to aggregate (name, ref, or inline)."""
+
+    step_index: int | None = None
+    """The zero-based step to measure, or ``None`` for the whole funnel."""
+
+    label: str | None = None
+    """The display name of the metric."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        The property rules are the rules of :meth:`Workspace.query_funnel`
+        for ``math_property``, with the same codes. One rule is stricter:
+        a blank property name on a property math counts as no property.
+
+        Raises:
+            ParamValidationError: If a saved behavior is not a funnel
+                (``BH5_BEHAVIOR_REF_TYPE``), ``step_index`` is not an
+                integer >= 0 (``MT4_INVALID_INDEX``), a property math has no
+                property or a blank property name
+                (``F10_MATH_MISSING_PROPERTY``), or a math that takes no
+                property has one (``F11_MATH_REJECTS_PROPERTY``).
+        """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(self.behavior, "funnel", "FunnelMetric.behavior")
+        _check_index(self.step_index, "FunnelMetric.step_index")
+        problem = _property_math_problem(self.math, self.property)
+        if problem == "missing":
+            raise ParamValidationError(
+                f"FunnelMetric math={self.math!r} requires a property "
+                f"(e.g., FunnelMetric(behavior, math={self.math!r}, "
+                'property="amount"))',
+                code="F10_MATH_MISSING_PROPERTY",
+            )
+        if problem == "rejected":
+            raise ParamValidationError(
+                f"FunnelMetric math={self.math!r} does not take a property; "
+                "math types that take a property: "
+                f"{_property_maths(get_args(FunnelMathType))}",
+                code="F11_MATH_REJECTS_PROPERTY",
+            )
+
+
+@dataclass(frozen=True)
+class RetentionMetric:
+    """A retention behavior measured as one metric, such as its retention rate.
+
+    Use it in :meth:`Workspace.query` next to other metrics, or as an
+    operand of a :class:`Formula`.
+
+    Attributes:
+        behavior: The retention behavior to measure: a
+            ``RetentionBehavior``, or a ``BehaviorRef`` of type
+            ``"retention"`` for a saved retention behavior.
+        math: The retention aggregation. Default: ``"retention_rate"``.
+        bucket_index: The zero-based bucket that a line or bar chart
+            trends: ``0`` is the first bucket (before one unit ends),
+            ``N`` is unit ``N``. ``None`` uses the report default.
+        retention_cumulative: Whether to count retention cumulatively.
+            Default: ``False``.
+        property: The property to aggregate. Required for ``average``, and
+            a blank name does not count; optional for ``total``; refused
+            for ``retention_rate`` and ``unique``.
+        label: The series label. ``None`` lets the server name the series
+            after the two events.
+
+    Example:
+        ```python
+        from mixpanel_headless import RetentionBehavior, RetentionMetric
+
+        returning = RetentionBehavior("Signup", "Login", retention_unit="day")
+        day_7 = RetentionMetric(returning, bucket_index=7, label="Day 7 retention")
+        result = ws.query(day_7, last=60)
+        ```
+    """
+
+    behavior: RetentionBehavior | BehaviorRef
+    """The retention behavior to measure, inline or saved."""
+
+    math: RetentionMathType = "retention_rate"
+    """The retention aggregation."""
+
+    bucket_index: int | None = None
+    """The zero-based bucket to trend, or ``None`` for the report default."""
+
+    retention_cumulative: bool = False
+    """Whether to count retention cumulatively."""
+
+    property: PropertySpec | None = None
+    """The property to aggregate (name, ref, or inline)."""
+
+    label: str | None = None
+    """The display name of the metric."""
+
+    def __post_init__(self) -> None:
+        """Validate construction arguments.
+
+        Raises:
+            ParamValidationError: If a saved behavior is not a retention
+                behavior (``BH5_BEHAVIOR_REF_TYPE``), ``bucket_index`` is not
+                an integer >= 0 (``MT4_INVALID_INDEX``), or ``average`` has no
+                property or a blank property name, or ``retention_rate`` or
+                ``unique`` has one (``BH3_PROPERTY_MATH``).
+        """
+        if isinstance(self.behavior, BehaviorRef):
+            _check_behavior_ref_type(
+                self.behavior, "retention", "RetentionMetric.behavior"
+            )
+        _check_index(self.bucket_index, "RetentionMetric.bucket_index")
+        problem = _property_math_problem(self.math, self.property)
+        if problem == "missing":
+            raise ParamValidationError(
+                f"RetentionMetric math={self.math!r} requires a property "
+                f"(e.g., RetentionMetric(behavior, math={self.math!r}, "
+                'property="amount"))',
+                code="BH3_PROPERTY_MATH",
+            )
+        if problem == "rejected":
+            raise ParamValidationError(
+                f"RetentionMetric math={self.math!r} does not take a property; "
+                "math types that take a property: "
+                f"{_property_maths(get_args(RetentionMathType))}",
+                code="BH3_PROPERTY_MATH",
+            )
+
+
+FormulaOperand: TypeAlias = (
+    Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+)
+"""One operand of a :class:`Formula` that holds its own operands.
+
+An inline metric of any kind except a formula, or a saved behavior metric
+by reference (:class:`MetricRef` with no overrides): a formula or a
+warehouse metric cannot be an operand of a formula.
+"""
+
+
+# =============================================================================
 # Flow Query Types (Phase 034)
 # =============================================================================
 
@@ -13593,7 +15446,8 @@ class Replay(ResultWithDataFrame):
         including Flutter web and desktop. A stream is a screenshot
         recording when it has any ``mp_wireframe`` event, or when it has
         Meta events and none of them carries a page URL (``href``). A
-        replay with no events, or with no Meta event, is ``"dom"``.
+        replay with no events, or with neither a Meta event nor an
+        ``mp_wireframe`` event, is ``"dom"``.
 
         Returns:
             ``"dom"`` or ``"screenshot"``.
@@ -14799,3 +16653,669 @@ ReportLinkQueryResult = (
 
 Narrow with ``isinstance`` or by :attr:`ResolvedReport.report_type`.
 """
+
+
+# =============================================================================
+# Saved Metrics & Saved Behaviors — write types
+# =============================================================================
+# The read models (SavedMetric, SavedBehavior, MetricDisplay, MetricGoal) sit
+# in the "Saved Metrics & Saved Behaviors" section above. The write types
+# live here, after Metric and CohortMetric, because the params models name
+# them as definition values. The rules that carry registry codes (SM1 to
+# SM4, FM6) run in the Workspace write methods before any request, because a
+# coded error raised inside a pydantic validator loses its code.
+
+_SAVED_METRIC_KINDS: Final[tuple[str, ...]] = ("metric", "formula", "warehouse")
+"""Wire kinds of a saved metric that the POST schema accepts."""
+
+
+def _strip_name(value: object) -> object:
+    """Strip surrounding whitespace from a name before validation.
+
+    Args:
+        value: The raw ``name`` input.
+
+    Returns:
+        The stripped string, or the input unchanged when it is not a string.
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
+@dataclass(frozen=True)
+class WarehouseMetric:
+    """The definition of a saved warehouse metric: a SQL query on a warehouse source.
+
+    Valid only as the definition of :class:`CreateMetricParams` or
+    :class:`UpdateMetricParams`. The server runs the SQL of the saved metric
+    at query time, so a warehouse metric is queried by reference, never
+    inline.
+
+    The server stores the request as sent and does not fill in defaults for
+    ``aggregation`` and ``syncInterval``. So when ``aggregation`` or
+    ``sync_interval`` is ``None``, ``create_metric`` writes the server
+    defaults (``"none"`` and ``"hourly"``), and ``update_metric`` (or
+    ``bulk_update_metrics``) keeps the stored value. An update that changes
+    only the SQL keeps a stored ``"sum"`` and ``"daily"``. A set value is
+    always written.
+
+    Attributes:
+        source_id: The warehouse source to run the query on (see the
+            project's warehouse sources in the web app).
+        sql: The SQL query.
+        metric_type: ``"numeric"`` (one value) or ``"timeseries"`` (a value
+            per time bucket).
+        value_column: The result column that holds the value.
+        time_column: The result column that holds the time, for a timeseries.
+        aggregation: How the metric aggregates the query rows; ``None``
+            writes ``"none"`` on a create and keeps the stored value on an
+            update.
+        sync_interval: How long a query result stays cached; ``None``
+            writes ``"hourly"`` on a create and keeps the stored value on an
+            update.
+
+    Example:
+        ```python
+        definition = WarehouseMetric(
+            55,
+            "SELECT day, revenue FROM finance.daily_revenue",
+            "timeseries",
+            value_column="revenue",
+            time_column="day",
+            aggregation="last_value",
+            sync_interval="daily",
+        )
+        ws.create_metric(CreateMetricParams(name="Daily revenue", definition=definition))
+        ```
+    """
+
+    source_id: int
+    """The warehouse source to run the query on."""
+
+    sql: str
+    """The SQL query (wire key ``query``)."""
+
+    metric_type: Literal["numeric", "timeseries"]
+    """``"numeric"`` or ``"timeseries"`` (wire key ``metricType``)."""
+
+    value_column: str | None = None
+    """The result column that holds the value (wire key ``valueColumn``)."""
+
+    time_column: str | None = None
+    """The result column that holds the time (wire key ``timeColumn``)."""
+
+    aggregation: WarehouseAggregation | None = None
+    """How the metric aggregates the query rows; ``None`` writes ``"none"`` on
+    a create and keeps the stored value on an update."""
+
+    sync_interval: WarehouseSyncInterval | None = None
+    """How long a query result stays cached (wire key ``syncInterval``);
+    ``None`` writes ``"hourly"`` on a create and keeps the stored value on an
+    update."""
+
+
+@dataclass(frozen=True)
+class RawMetricDefinition:
+    """A saved metric definition as a wire dict, with its kind.
+
+    Use it for a definition that no typed value covers (for example a
+    profile metric), or to send back a definition as ``get_metric``
+    returned it: :meth:`SavedMetric.to_raw_definition` builds one with the
+    kind and, for a warehouse metric, the source that the server keeps
+    outside the definition. The write methods check the dict with the
+    mirror of the server's POST schema before they send it.
+
+    Stored definitions can carry legacy keys (for example a behavior
+    ``filter``, or the ``id`` and ``type`` of a measurement) that the
+    server reads past at query time but refuses on a create.
+    ``create_metric`` removes them from the copy that it sends, so a copy
+    of a stored metric works. An update sends the dict as given, because
+    the server stores an update as sent.
+
+    Attributes:
+        type: The metric kind: ``"metric"`` (a behavior metric),
+            ``"formula"``, or ``"warehouse"``.
+        definition: The wire definition dict.
+        warehouse_source_id: The warehouse source of a warehouse metric.
+            Required by ``create_metric``; ``update_metric`` keeps the
+            stored source when it is ``None``.
+
+    Raises:
+        ParamValidationError: ``type`` is not one of the three kinds,
+            ``definition`` is not a mapping, or a metric or formula kind has
+            a ``warehouse_source_id`` (``SM4_SCHEMA``).
+
+    Example:
+        ```python
+        stored = ws.get_metric(104700)
+        definition = stored.to_raw_definition()
+        ```
+    """
+
+    type: Literal["metric", "formula", "warehouse"]
+    """The metric kind."""
+
+    definition: Mapping[str, Any]
+    """The wire definition dict."""
+
+    warehouse_source_id: int | None = None
+    """The warehouse source of a warehouse metric."""
+
+    def __post_init__(self) -> None:
+        """Check the kind, the definition container, and the source id.
+
+        Raises:
+            ParamValidationError: A rule of the server POST schema fails
+                (``SM4_SCHEMA``).
+        """
+        if self.type not in _SAVED_METRIC_KINDS:
+            raise ParamValidationError(
+                f"RawMetricDefinition type must be one of "
+                f"{list(_SAVED_METRIC_KINDS)}, got {self.type!r}.",
+                code="SM4_SCHEMA",
+                details={"path": "type"},
+            )
+        if not isinstance(self.definition, Mapping):
+            raise ParamValidationError(
+                "RawMetricDefinition definition must be a mapping (the "
+                f"`definition` dict of a saved metric), got "
+                f"{type(self.definition).__name__}.",
+                code="SM4_SCHEMA",
+                details={"path": "definition"},
+            )
+        if self.warehouse_source_id is not None and self.type != "warehouse":
+            raise ParamValidationError(
+                f"warehouse_source_id applies to warehouse metrics only, not to "
+                f"type {self.type!r}.",
+                code="SM4_SCHEMA",
+                details={"path": "warehouse_source_id"},
+            )
+
+
+@dataclass(frozen=True)
+class RawBehaviorDefinition:
+    """A saved behavior definition as a wire dict: ``{"behavior": {...}}``.
+
+    Send back a definition as ``get_behavior`` returned it:
+    ``RawBehaviorDefinition(behavior.definition)``. The wire ``type`` of the
+    saved behavior comes from ``definition["behavior"]["type"]``. The write
+    methods check the dict with the mirror of the server's POST schema
+    before they send it.
+
+    Stored definitions can carry legacy keys (for example a behavior
+    ``filter``, or a legacy funnel step key of an exclusion) that the
+    server reads past at query time but refuses on a create.
+    ``create_behavior`` removes them from the copy that it sends, so a copy
+    of a stored behavior works. An update sends the dict as given, because
+    the server stores an update as sent.
+
+    Attributes:
+        definition: The wire definition dict.
+
+    Raises:
+        ParamValidationError: ``definition`` is not a mapping
+            (``SM4_SCHEMA``).
+
+    Example:
+        ```python
+        checkout = RawBehaviorDefinition({
+            "behavior": {
+                "type": "funnel",
+                "behaviors": [
+                    {"type": "event", "name": "View Cart"},
+                    {"type": "event", "name": "Purchase"},
+                ],
+                "conversionWindowDuration": 7,
+                "conversionWindowUnit": "day",
+            }
+        })
+        ```
+    """
+
+    definition: Mapping[str, Any]
+    """The wire definition dict."""
+
+    def __post_init__(self) -> None:
+        """Check the definition container.
+
+        Raises:
+            ParamValidationError: ``definition`` is not a mapping
+                (``SM4_SCHEMA``).
+        """
+        if not isinstance(self.definition, Mapping):
+            raise ParamValidationError(
+                "RawBehaviorDefinition definition must be a mapping "
+                '({"behavior": {...}}), got '
+                f"{type(self.definition).__name__}.",
+                code="SM4_SCHEMA",
+                details={"path": "definition"},
+            )
+
+    @property
+    def behavior_type(self) -> str | None:
+        """The wire type of the behavior.
+
+        Returns:
+            ``definition["behavior"]["type"]`` when it is a string;
+            otherwise None.
+        """
+        return _str_at(self.definition, "behavior", "type")
+
+
+MetricDefinition: TypeAlias = (
+    Metric
+    | CohortMetric
+    | FunnelMetric
+    | RetentionMetric
+    | Formula
+    | WarehouseMetric
+    | RawMetricDefinition
+)
+"""A value that defines a saved metric.
+
+``Metric``, ``CohortMetric``, ``FunnelMetric``, and ``RetentionMetric`` give
+a behavior metric (kind ``metric``); a ``Formula`` with its own operands
+gives a saved formula; ``WarehouseMetric`` gives a warehouse metric; and
+``RawMetricDefinition`` gives the kind it names.
+"""
+
+BehaviorDefinition: TypeAlias = (
+    SimpleBehavior | FunnelBehavior | RetentionBehavior | RawBehaviorDefinition
+)
+"""A value that defines a saved behavior.
+
+The typed behavior values give the wire type of their kind (``simple``,
+``funnel``, ``retention``); ``RawBehaviorDefinition`` takes it from
+``definition["behavior"]["type"]``.
+"""
+
+
+def _definition_instance(
+    value: object,
+    allowed: tuple[type[Any], ...],
+    *,
+    field_name: str,
+    wrapper: str,
+    allow_none: bool,
+) -> object:
+    """Accept a definition value only as an instance of an allowed type.
+
+    Used as a pydantic ``plain`` validator, so a plain dict is never
+    coerced into a dataclass by field names; the caller wraps a wire dict
+    in the raw definition type on purpose.
+
+    Args:
+        value: The field input.
+        allowed: The accepted definition types.
+        field_name: The field name, for the message.
+        wrapper: The raw definition type to suggest for a dict.
+        allow_none: Whether ``None`` is valid (an optional field).
+
+    Returns:
+        ``value`` unchanged.
+
+    Raises:
+        ValueError: ``value`` is not an instance of an allowed type (pydantic
+            reports it as a validation error).
+    """
+    if value is None and allow_none:
+        return value
+    if isinstance(value, allowed):
+        return value
+    names = ", ".join(t.__name__ for t in allowed)
+    raise ValueError(
+        f"{field_name} must be one of: {names}; got {type(value).__name__}. "
+        f"Wrap a wire definition dict in {wrapper}."
+    )
+
+
+_METRIC_DEFINITION_TYPES: Final[tuple[type[Any], ...]] = get_args(MetricDefinition)
+"""The types of ``MetricDefinition``, for instance checks."""
+
+_BEHAVIOR_DEFINITION_TYPES: Final[tuple[type[Any], ...]] = get_args(BehaviorDefinition)
+"""The types of ``BehaviorDefinition``, for instance checks."""
+
+
+class CreateMetricParams(BaseModel):
+    """Parameters for :meth:`Workspace.create_metric`.
+
+    The kind of the saved metric comes from the definition; the caller never
+    writes a wire ``type``. ``create_metric`` checks the params before any
+    request: the name is not empty (``SM1_EMPTY_NAME``), the name and
+    description are at most 255 characters (``SM2_NAME_TOO_LONG``), a
+    ``Formula`` holds its own operands (``SM7_FORMULA_WITHOUT_OPERANDS``),
+    and the definition passes the mirror of the server POST schema
+    (``SM4_SCHEMA``).
+
+    ``owned_by`` and ``verified`` go in a second request, because the server
+    drops them from a create.
+
+    Attributes:
+        name: Metric name, unique among the active metrics of the project.
+            Surrounding whitespace is stripped.
+        definition: What the metric counts.
+        description: Metric description.
+        display: Presentation settings. Replaces a ``display`` key of the
+            definition.
+        goals: Goals. Replace a ``goals`` key of the definition.
+        owned_by: User id of the owner.
+        verified: ``True`` marks the metric as verified.
+
+    Example:
+        ```python
+        params = CreateMetricParams(
+            name="Weekly buyers",
+            definition=Metric("Purchase", math="unique"),
+            description="Unique users who bought.",
+            display=MetricDisplay(suffix=" users"),
+            verified=True,
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    """Metric name (stripped)."""
+
+    definition: MetricDefinition
+    """What the metric counts."""
+
+    description: str | None = None
+    """Metric description."""
+
+    display: MetricDisplay | None = None
+    """Presentation settings."""
+
+    goals: list[MetricGoal] | None = None
+    """Goals."""
+
+    owned_by: int | None = None
+    """User id of the owner (sent in a follow-up request)."""
+
+    verified: bool | None = None
+    """``True`` marks the metric as verified (sent in a follow-up request)."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=False,
+        )
+
+
+class UpdateMetricParams(BaseModel):
+    """Parameters for :meth:`Workspace.update_metric`.
+
+    Every field is optional; ``None`` leaves the stored value as it is.
+    ``update_metric`` runs the same checks as ``create_metric``, because the
+    server stores an update as sent, without its own schema check.
+
+    A new definition replaces the stored one in full, but keeps the stored
+    ``display`` and ``goals`` unless the params or the new definition set
+    them.
+
+    ``display`` merges into the stored display (or into the display of the
+    new definition, when it has one): the keys that you set replace the
+    stored ones, a key that you set to ``None`` is removed, and the other
+    keys keep their stored values. So ``MetricDisplay(precision=2)`` keeps
+    a stored prefix and suffix. ``goals`` is a list and replaces the stored
+    goals in full; pass ``goals=[]`` to remove them.
+
+    Attributes:
+        name: New name (stripped).
+        description: New description; ``""`` clears it.
+        definition: New definition, of the same kind as the stored metric.
+        display: Presentation settings to merge into the stored display;
+            a key set to ``None`` is removed.
+        goals: New goals, which replace the stored goals in full; ``[]``
+            removes them.
+        owned_by: User id of the new owner. An owner cannot be removed.
+        verified: ``True`` marks the metric as verified again (and stamps
+            the verification time again); ``False`` clears the flag.
+
+    Example:
+        ```python
+        params = UpdateMetricParams(
+            description="Unique buyers per week.",
+            display=MetricDisplay(precision=0),
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    definition: MetricDefinition | None = None
+    """New definition, of the same kind as the stored metric."""
+
+    display: MetricDisplay | None = None
+    """Presentation settings to merge into the stored display."""
+
+    goals: list[MetricGoal] | None = None
+    """New goals, which replace the stored goals in full; ``[]`` removes them."""
+
+    owned_by: int | None = None
+    """User id of the new owner."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance or None, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=True,
+        )
+
+
+class BulkUpdateMetricEntry(BaseModel):
+    """One entry of :meth:`Workspace.bulk_update_metrics`.
+
+    Holds the id plus the five fields that the server reads on a bulk
+    update. Its main use is to verify or reassign many metrics in one
+    request.
+
+    Attributes:
+        id: The saved metric id.
+        name: New name (stripped).
+        description: New description.
+        definition: New definition, of the same kind as the stored metric.
+        owned_by: User id of the new owner.
+        verified: New verified state.
+
+    Example:
+        ```python
+        entries = [BulkUpdateMetricEntry(id=m.id, verified=True) for m in metrics]
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: int = Field(gt=0)
+    """The saved metric id."""
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    definition: MetricDefinition | None = None
+    """New definition, of the same kind as the stored metric."""
+
+    owned_by: int | None = None
+    """User id of the new owner."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("definition", mode="plain")
+    @classmethod
+    def _check_definition(cls, value: object) -> object:
+        """Accept only a definition instance or None, never a coerced dict.
+
+        Args:
+            value: The ``definition`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _METRIC_DEFINITION_TYPES,
+            field_name="definition",
+            wrapper="RawMetricDefinition",
+            allow_none=True,
+        )
+
+
+class CreateBehaviorParams(BaseModel):
+    """Parameters for :meth:`Workspace.create_behavior`.
+
+    The wire ``type`` of the saved behavior comes from the behavior value.
+    ``create_behavior`` checks the name (``SM1_EMPTY_NAME``,
+    ``SM2_NAME_TOO_LONG``) and the definition (``SM4_SCHEMA``) before the
+    request.
+
+    Attributes:
+        name: Behavior name, unique among the active behaviors of the
+            project. Surrounding whitespace is stripped.
+        behavior: What users did: a ``SimpleBehavior``,
+            ``FunnelBehavior``, or ``RetentionBehavior`` built in code, or
+            a ``RawBehaviorDefinition`` that wraps a wire definition dict
+            (for example the definition of a stored behavior).
+        description: Behavior description.
+
+    Example:
+        ```python
+        params = CreateBehaviorParams(
+            name="Checkout",
+            behavior=FunnelBehavior(["View Cart", "Checkout", "Purchase"]),
+        )
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    """Behavior name (stripped)."""
+
+    behavior: BehaviorDefinition
+    """What users did."""
+
+    description: str | None = None
+    """Behavior description."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("behavior", mode="plain")
+    @classmethod
+    def _check_behavior(cls, value: object) -> object:
+        """Accept only a behavior definition instance, never a coerced dict.
+
+        Args:
+            value: The ``behavior`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _BEHAVIOR_DEFINITION_TYPES,
+            field_name="behavior",
+            wrapper="RawBehaviorDefinition",
+            allow_none=False,
+        )
+
+
+class UpdateBehaviorParams(BaseModel):
+    """Parameters for :meth:`Workspace.update_behavior`.
+
+    Every field is optional; ``None`` leaves the stored value as it is. A
+    new behavior replaces the stored definition in full and must have the
+    same type as the stored behavior.
+
+    Attributes:
+        name: New name (stripped).
+        description: New description; ``""`` clears it.
+        behavior: New definition, of the same type as the stored behavior:
+            a ``SimpleBehavior``, ``FunnelBehavior``, or
+            ``RetentionBehavior``, or a ``RawBehaviorDefinition``.
+        verified: ``True`` marks the behavior as verified again; ``False``
+            clears the flag.
+
+    Example:
+        ```python
+        params = UpdateBehaviorParams(description="Cart to purchase.", verified=True)
+        ```
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = None
+    """New name (stripped)."""
+
+    description: str | None = None
+    """New description."""
+
+    behavior: BehaviorDefinition | None = None
+    """New definition, of the same type as the stored behavior."""
+
+    verified: bool | None = None
+    """New verified state."""
+
+    _strip = field_validator("name", mode="before")(_strip_name)
+
+    @field_validator("behavior", mode="plain")
+    @classmethod
+    def _check_behavior(cls, value: object) -> object:
+        """Accept only a behavior definition instance or None.
+
+        Args:
+            value: The ``behavior`` input.
+
+        Returns:
+            The input unchanged.
+        """
+        return _definition_instance(
+            value,
+            _BEHAVIOR_DEFINITION_TYPES,
+            field_name="behavior",
+            wrapper="RawBehaviorDefinition",
+            allow_none=True,
+        )

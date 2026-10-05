@@ -149,7 +149,7 @@ The analyzer reads these recordings too. The same `fetch_replay`, `replays_for_u
 `Replay.capture` tells you which kind of recording you have:
 
 - `"screenshot"` — the stream has at least one `mp_wireframe` event, or it has Meta events and none of them carries a page URL (`href`). Every mobile and Flutter SDK sends Meta events without `href`.
-- `"dom"` — every other replay, including a replay with no Meta event. Web replays give the same output as before.
+- `"dom"` — every other replay, including a replay that has neither a Meta event nor an `mp_wireframe` event. Web replays give the same output as before.
 
 The analyzer decides the recording type once, before it reads the events. So a touch that comes before the first wireframe (common on iOS) is still read as a mobile tap.
 

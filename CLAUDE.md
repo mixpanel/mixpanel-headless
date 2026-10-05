@@ -29,7 +29,7 @@ Infrastructure           → ConfigManager, MixpanelAPIClient
 **Capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks, schema graph)
 - **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
-- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
+- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API; list, read, create, update, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
 - **Session replay**: Discover, sign, fetch, and analyze rrweb session recordings (`Workspace.replays_for_user` / `fetch_replay`, `Replay` / `ReplayBundle`, `mp replays`)
 
 ## Package Structure
@@ -71,7 +71,8 @@ src/mixpanel_headless/
     │                        # + query, inspect, dashboards, reports, cohorts, flags,
     │                        # experiments, alerts, annotations, webhooks, lexicon,
     │                        # drop-filters, custom-properties, custom-events,
-    │                        # lookup-tables, schemas, business-context, replays
+    │                        # lookup-tables, schemas, business-context, replays,
+    │                        # metrics, behaviors
     ├── formatters.py        # JSON, JSONL, Table, CSV, Plain output
     └── utils.py             # Error handling, console helpers
 ```
@@ -229,11 +230,22 @@ CI will pass. The only documented difference is that CI sets
 `HYPOTHESIS_PROFILE=ci` (200 deterministic examples vs the local default 100),
 which doesn't change pass/fail outcomes.
 
+**The conformance corpus is maintainer tooling.** `conformance/` holds the
+recorded library behavior that the TypeScript port replays. It has its own
+workflow (`.github/workflows/conformance.yml`) and recipe (`just conformance`),
+and neither is part of `just check` or the CI workflow. The workflow runs on PRs
+that change `conformance/`, after each merge to `main`, and on each release.
+Library PRs never touch `conformance/vectors/` or `conformance/contract/`.
+Between releases the library drifts from the corpus; the workflow reports that
+drift and fails on it only in a re-pin PR. The corpus is re-pinned once per
+release (`conformance/record/README.md`, "When to re-pin").
+
 | Command | Description |
 |---------|-------------|
 | `just` | List all available commands |
 | `just install-hooks` | One-time: install git pre-commit hook (block ruff/format failures) |
 | `just check` | Run all checks (lint + fmt-check + typecheck + test-cov + build) |
+| `just conformance` | Conformance corpus checks (maintainer tooling; not part of `check`) |
 | `just test` | Run tests (supports args: `just test -k foo`) |
 | `just test-dev` | Run tests with dev Hypothesis profile (fast, 10 examples) |
 | `just test-ci` | Run tests with CI Hypothesis profile (thorough, 200 examples) |
