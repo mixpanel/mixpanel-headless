@@ -1,0 +1,50 @@
+{
+  "results": {
+    "162522": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:40.222",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "behaviors": [
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document created",
+              "type": "event"
+            },
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document shared",
+              "type": "event"
+            }
+          ],
+          "name": null,
+          "resourceType": "events",
+          "type": "simple"
+        },
+        "measurement": {
+          "math": "unique"
+        }
+      },
+      "description": "",
+      "id": 162522,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:40.233",
+      "name": "zz-probe-simple-two-events",
+      "type": "metric"
+    }
+  },
+  "status": "ok"
+}

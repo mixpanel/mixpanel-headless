@@ -31,8 +31,8 @@ from pydantic import SecretStr
 from mixpanel_headless import Workspace
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
-from mixpanel_headless.exceptions import BookmarkValidationError
-from mixpanel_headless.types import ProfilePageResult, UserQueryResult
+from mixpanel_headless.exceptions import BookmarkValidationError, ParamValidationError
+from mixpanel_headless.types import Filter, ProfilePageResult, UserQueryResult
 from tests.conftest import make_unchecked_filter
 
 # ---- 042 redesign: canonical fake Session for Workspace(session=…) ----
@@ -1376,5 +1376,91 @@ class TestQueryUserAggregatePropertyEscaping:
             assert call_kwargs.kwargs.get("action") == (
                 'extremes(properties["has\\"quote"])'
             )
+        finally:
+            ws.close()
+
+
+# =============================================================================
+# Date, inclusive-number, and unsupported Filter constructors in where
+# =============================================================================
+
+
+class TestQueryUserFilterOperators:
+    """Every public Filter constructor reaches Engage or fails with guidance."""
+
+    def test_since_filter_reaches_engage_stats(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """A people since() filter becomes a project-time selector in aggregate mode."""
+        mock_api_client.engage_stats.return_value = {"results": 42}
+
+        ws = workspace_factory()
+        try:
+            result = ws.query_user(
+                mode="aggregate",
+                where=Filter.since("$last_seen", "2026-09-01", resource_type="people"),
+            )
+
+            call_kwargs = mock_api_client.engage_stats.call_args.kwargs
+            assert call_kwargs["where"] == (
+                'datetime(properties["$last_seen"]) >= datetime("2026-09-01T00:00:00")'
+            )
+            assert result.value == 42
+        finally:
+            ws.close()
+
+    def test_relative_and_number_filters_reach_profiles_page(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """in_the_last() and at_least() AND-combine into the profiles selector."""
+        mock_api_client.export_profiles_page.return_value = _make_page_result(
+            profiles=[RAW_PROFILE_1], total=1
+        )
+
+        ws = workspace_factory()
+        try:
+            ws.query_user(
+                mode="profiles",
+                where=[
+                    Filter.in_the_last("$last_seen", 7, "day", resource_type="people"),
+                    Filter.at_least("ltv", 100, resource_type="people"),
+                ],
+            )
+
+            call_kwargs = mock_api_client.export_profiles_page.call_args.kwargs
+            assert call_kwargs["where"] == (
+                'datetime(properties["$last_seen"]) >= datetime(NOW - 604800) and '
+                'datetime(properties["$last_seen"]) < datetime(NOW) and '
+                'properties["ltv"] >= 100'
+            )
+        finally:
+            ws.close()
+
+    def test_starts_with_raises_error_naming_constructor(
+        self,
+        workspace_factory: Callable[..., Workspace],
+        mock_api_client: MagicMock,
+    ) -> None:
+        """starts_with() fails before any request, naming the constructor."""
+        ws = workspace_factory()
+        try:
+            with pytest.raises(BookmarkValidationError) as excinfo:
+                ws.query_user(
+                    mode="aggregate",
+                    where=Filter.starts_with("$email", "admin", resource_type="people"),
+                )
+
+            errors = excinfo.value.errors
+            assert [e.code for e in errors] == ["U_FILTER"]
+            assert errors[0].message.startswith("Filter.starts_with()")
+            assert "Filter.contains('$email', 'admin')" in errors[0].message
+            cause = excinfo.value.__cause__
+            assert isinstance(cause, ParamValidationError)
+            assert cause.code == "ES14_NO_SELECTOR_EQUIVALENT"
+            mock_api_client.engage_stats.assert_not_called()
         finally:
             ws.close()

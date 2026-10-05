@@ -1,0 +1,32 @@
+{
+  "details": {
+    "data": null,
+    "path": [
+      "root"
+    ],
+    "schema": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FUNNELS_MATH_TYPES"
+        },
+        {
+          "$ref": "#/definitions/NUMERIC_MATH_TYPES"
+        },
+        {
+          "$ref": "#/definitions/PER_USER_AGGREGATIONS"
+        },
+        {
+          "$ref": "#/definitions/PRIMITIVE_MATH_TYPES"
+        },
+        {
+          "$ref": "#/definitions/RETENTION_MATH_TYPES"
+        },
+        {
+          "$ref": "#/definitions/XAU_MATH_TYPES"
+        }
+      ]
+    }
+  },
+  "error": "root: &#x27;not_a_math&#x27; is not valid under any of the given schemas{&#x27;type&#x27;: &#x27;metric&#x27;, &#x27;name&#x27;: &#x27;zz-probe-bad-math&#x27;, &#x27;definition&#x27;: {&#x27;behavior&#x27;: {&#x27;type&#x27;: &#x27;event&#x27;, &#x27;name&#x27;: &#x27;document created&#x27;, &#x27;resourceType&#x27;: &#x27;events&#x27;, &#x27;filtersDeterminer&#x27;: &#x27;all&#x27;, &#x27;filters&#x27;: []}, &#x27;measurement&#x27;: {&#x27;math&#x27;: &#x27;not_a_math&#x27;}}} is not valid under any of the given schemas",
+  "status": "error"
+}

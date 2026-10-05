@@ -9,6 +9,237 @@ may include API changes.
 
 ### Added
 
+- **Saved metrics and saved behaviors: list, read, and delete.**
+  `Workspace.list_metrics(*, metric_type=None, verified=None,
+  name_contains=None, viewable_only=False)`, `get_metric(metric_id)`,
+  `delete_metric(metric_id)`, and `delete_metrics(metric_ids)` cover all
+  three metric kinds (behavior metric, formula, warehouse metric), which
+  the server keeps in one project-scoped collection.
+  `list_behaviors(*, behavior_type=None, name_contains=None)`,
+  `get_behavior(behavior_id)`, `delete_behavior(behavior_id)`, and
+  `delete_behaviors(behavior_ids)` cover saved behaviors (simple, funnel,
+  retention). The server has no pagination or filters, so the filter
+  arguments apply locally to the one list response, and the list calls
+  wait at least 120 seconds for it. `list_metrics()` returns the full
+  server list by default, which includes metrics that the caller cannot
+  view (`can_view` is `False`); `viewable_only=True` drops them.
+- Deletes go through the bulk routes only: the single-metric delete route
+  answers 501, and the single-behavior delete route skips the permission
+  check. `delete_metric` and `delete_behavior` read the entity first, so
+  an unknown id raises instead of passing silently. An unknown metric id
+  raises `ParamValidationError` with the new code
+  `SM5_NOT_FOUND_FOR_DELETE`; the server answers the read of an unknown
+  behavior id with a 500 (`ServerError`). `delete_metrics` and
+  `delete_behaviors` send one bulk request, and the server skips unknown
+  ids.
+- The server's bulk delete lets a project superadmin delete metrics and
+  behaviors that other users own. The delete methods refuse, before any
+  delete, a target whose `can_update_basic` flag is false for the caller:
+  `ParamValidationError` with the new codes `SM6_DELETE_NOT_PERMITTED` and
+  `BH4_DELETE_NOT_PERMITTED`. The bulk methods read the list once and
+  refuse the whole request, naming every refused id. `force=True` (CLI:
+  `--force`) deletes anyway.
+- New result types `SavedMetric` and `SavedBehavior`, plus `MetricDisplay`
+  and `MetricGoal`. Reads are open: any `type`, any `math`, and unknown
+  keys parse and survive `model_dump()`. Typed accessors (`behavior_type`,
+  `math`, `formula_expression`, `referenced_metric_ids`, `display`,
+  `goals`) return `None` or an empty list for a shape they do not know,
+  and never raise. `created_by`, `owned_by`, and `last_verified_by` reuse
+  `CohortCreator`, which has the same `{id, name, email}` shape.
+- CLI: `mp metrics list|get|delete` and `mp behaviors list|get|delete`.
+  `list` takes `--type`, `--name-contains`, and, for metrics,
+  `--verified/--no-verified` and `--viewable-only`; the table view shows
+  `can_view`. `delete` takes one or more ids: one id reads first, several
+  ids go in one bulk request. `delete` takes `--force` to pass the
+  permission guard.
+- `mp help` gains the "saved metrics" and "saved behaviors" domains, and a
+  new guide page, "Saved Metrics and Behaviors".
+- `MixpanelAPIClient.app_request` takes a per-call `timeout`.
+- `MetricRef` queries a saved metric by id. `Workspace.query()` and
+  `build_params()` accept it anywhere they accept a `Metric`. The params
+  keep the reference (`{"type", "id", "overrides"}`), so the server expands
+  the saved definition at query time, and a report or report link built
+  from the params follows later edits to the saved metric. Typed fields
+  (`label`, `math`, `property`, `per_user`, `percentile_value`,
+  `segment_method`, `funnel_order`, `step_index`, `bucket_index`,
+  `hidden`) become `overrides` at their wire paths, and a raw `overrides`
+  dict merges last. A `filters` override is
+  refused (`MR1_FILTER_OVERRIDE`), because the server merges override lists
+  item by item; use report-level `where=` or an inline `Metric` instead.
+  A `SavedMetric` works in the same places, and `SavedMetric.to_ref()`
+  makes the reference with overrides. The typed fields follow the inline
+  `Metric` rules where they contradict each other
+  (`V3_PER_USER_INCOMPATIBLE`, `V14_METRIC_REJECTS_PROPERTY`); a field
+  that the saved definition or the raw `overrides` can supply (a property,
+  a per-user aggregation, a percentile value) is not required.
+  `SavedMetric.to_ref(math="percentile")` without a percentile value in
+  the arguments or the raw overrides is refused when the stored
+  measurement has none (`V26_PERCENTILE_REQUIRES_VALUE`), because a saved
+  metric holds its definition. The raw `overrides` are stored as a read-only
+  copy.
+- A query-level `math`, `math_property`, `per_user`, or `percentile_value`
+  in a query that has saved-metric references and no plain event name is
+  refused (`V29_QUERY_MEASUREMENT_IGNORED`): no event would use it. Set it
+  on the reference, for example `MetricRef(id, math="unique")`.
+- `BehaviorRef` runs a saved behavior by id. `query_funnel()` and
+  `build_funnel_params()` take it in place of the step list, and
+  `query_retention()` and `build_retention_params()` take it in place of
+  the born and return events. A `SavedBehavior` works in the same places,
+  and `SavedBehavior.to_ref()` makes the reference. The engines refuse a behavior of the wrong
+  type (`F13_BEHAVIOR_REF_TYPE`, `R14_BEHAVIOR_REF_TYPE`) and any behavior
+  setting that the saved behavior owns (`F14_BEHAVIOR_REF_SETTINGS`,
+  `R15_BEHAVIOR_REF_SETTINGS`).
+- A query that pairs a warehouse metric reference with `group_by` or
+  `where` logs a `V28_WAREHOUSE_BREAKDOWN` warning: the server gives a
+  warehouse metric no breakdown and no filter. The warning needs the
+  warehouse kind on the reference (`MetricRef(id, type="warehouse")` or
+  `SavedMetric.to_ref()`); a bare `MetricRef(id)` keeps the default kind.
+- The bookmark validators accept saved-metric references: a show clause
+  with an `id` and no `behavior`, a `type: "warehouse"` clause with an
+  `id`, and formula operands in `referencedMetrics`. New codes:
+  `B27_INVALID_REFERENCE_ID`, `B28_WAREHOUSE_MISSING_ID`, and
+  `B29_OPERAND_MISSING_TYPE`. A saved-formula reference clause gets the
+  positive-id check too. The bookmark schema check gains the warehouse
+  show clause.
+- `Metric` counts more than one event as one series: pass a list of
+  event names and custom events, or a `SimpleBehavior` (optional series
+  name, per-event filters through `FunnelStep`). Unique users are counted
+  once across the events. Metric filters apply to every event.
+- `CustomEventRef(id)` queries a saved custom event by ID, alone or as one
+  of the events of a metric. The guide documents the `"$custom_event:<id>"`
+  name for funnel steps and retention events, and that the display name
+  of a custom event returns zero rows.
+- `FunnelMetric` and `RetentionMetric`, over `FunnelBehavior` and
+  `RetentionBehavior`, put funnel and retention measurements in
+  `Workspace.query()` and `build_params()`, next to other metrics. The
+  behaviors use the parameter names and defaults of `query_funnel()` and
+  `query_retention()`, and their rules keep the same error codes. For a
+  math that needs a property, an empty or whitespace-only property name
+  counts as no property (`F10_MATH_MISSING_PROPERTY` for a funnel metric,
+  `BH3_PROPERTY_MATH` for a retention metric).
+- `Formula(expression, label=None, metrics=[...])` holds its own
+  operands (`FormulaOperand`): the letters name the operands, and the
+  formula can be the whole query. New error codes: `FM2_UNKNOWN_LETTER`,
+  `FM3_NESTED_FORMULA`, `FM4_SYNTAX`, `FM5_UPPER_E`; an expression with no
+  letter gets `V16_FORMULA_SYNTAX`. The formula stores its operands as a
+  tuple copy, so a later change to the list passed in does not change the
+  operands that the checks ran on.
+- New error codes for behaviors and inline metrics: `BH1_STEP_COUNT`,
+  `BH2_EMPTY_EVENT`, `BH3_PROPERTY_MATH`, `MT3_FILTERS_WITH_BEHAVIOR`,
+  `CE1_INVALID_ID` (a custom event id is a positive integer, never a
+  bool), `MT4_INVALID_INDEX` (`FunnelMetric.step_index` and
+  `RetentionMetric.bucket_index` are integers >= 0, never a bool), and
+  `MT5_INVALID_EVENT_TYPE`. A list of events in a `Metric` takes event
+  names and `CustomEventRef` items only. A `FunnelStep` there would lose
+  the `Metric` filters, so it goes in a `SimpleBehavior`, which keeps the
+  filters of each step. The construction check and the query check both
+  refuse any other item. The
+  query checks for event names (`V17_EMPTY_EVENT`, `V22_*`) run on each
+  name inside a list of events or a `SimpleBehavior`, and on formula
+  operands, whose inline cohort definitions and step filters get the
+  top-level checks too.
+- Saved behaviors and saved metrics inside inline values: a `BehaviorRef`
+  is the behavior of a `Metric` (type `simple`), a `FunnelMetric` (type
+  `funnel`), or a `RetentionMetric` (type `retention`); another type raises
+  the new code `BH5_BEHAVIOR_REF_TYPE`. A `MetricRef` is an operand of a
+  `Formula` with its own operands, written as `{"type", "id"}`; a
+  reference to a saved formula raises `FM3_NESTED_FORMULA`, a warehouse
+  metric reference raises `FM7_WAREHOUSE_OPERAND` (the server accepts only
+  behavior metrics as operands), and an operand reference with an override
+  raises `MR2_OPERAND_OVERRIDE`.
+- **Saved metrics and saved behaviors: create and update.**
+  `Workspace.create_metric(params, *, validate=True)`,
+  `update_metric(metric_id, params, *, validate=True)`,
+  `bulk_update_metrics(entries, *, validate=True)`,
+  `create_behavior(params, *, validate=True)`, and
+  `update_behavior(behavior_id, params, *, validate=True)`, with the params
+  models `CreateMetricParams`, `UpdateMetricParams`,
+  `BulkUpdateMetricEntry`, `CreateBehaviorParams`, and
+  `UpdateBehaviorParams`. The kind of a saved metric comes from its
+  definition: a `Metric` or `CohortMetric` saves the `behavior` and
+  `measurement` of the show clause that `Workspace.query` writes for it, so
+  a saved metric queries the same way as its inline twin. New definition
+  values `WarehouseMetric` (its `aggregation` and `sync_interval` default
+  to `None`: a create then writes the server defaults `"none"` and
+  `"hourly"`, because the server stores the request as sent, and an update
+  keeps the stored values, so an update of the SQL alone keeps a stored
+  `"sum"` and `"daily"`), `RawMetricDefinition`, and
+  `RawBehaviorDefinition` (a wire definition dict, for example one that a
+  get returned), the `MetricDefinition` alias, and the `Literal` aliases
+  `WarehouseAggregation` and `WarehouseSyncInterval`.
+  `SavedMetric.to_raw_definition()` returns a stored metric as a
+  `RawMetricDefinition`, with its kind and warehouse source, for a copy;
+  a legacy `behavior` kind becomes `metric`, and an unknown kind raises
+  `SM4_SCHEMA`.
+- The server checks a create against its JSON Schema but stores an update
+  as sent, so every write runs the same client-side checks before any
+  request, with new `ParamValidationError` codes: `SM1_EMPTY_NAME`,
+  `SM2_NAME_TOO_LONG` (the server fails with a 500 over 255 characters),
+  `SM3_KIND_CHANGE` (a new definition must keep the stored kind and
+  warehouse source), `SM4_SCHEMA` (a mirror of the server POST schema
+  names the failing field path; `validate=False` skips it), and
+  `FM6_OPERAND_ATTRIBUTION` (a saved formula operand cannot set a segment
+  method or an attribution model). The server drops `owned_by` and
+  `verified` from a create, so `create_metric` sets them in a second
+  request; the two requests are not atomic. When the second request fails,
+  `create_metric` raises `MixpanelHeadlessError` with code
+  `CREATE_FOLLOW_UP_FAILED`: its message and `details["metric_id"]` give
+  the id of the created metric, and the error of the second request is
+  chained. A create answer without a metric id raises
+  `ResponseValidationError` before the second request. An update with new
+  display or goals but no definition reads the metric and sends its full
+  definition back, because the server replaces a definition in full. The
+  new display merges into the stored one (or into the display of a new
+  definition that has one): the keys that the caller sets replace the
+  stored ones, a key set to `None` is removed, and the other keys stay.
+  New goals replace the stored goals in full. A create that the server's
+  schema refuses raises `QueryError` (400) with a short message: the
+  failure and its schema location, without the HTML-escaped copy of the
+  request that the server appends. The full body stays in `response_body`.
+  The CLI prints only the short message for such a 400, not the server's
+  copy of the request. Only a body with every field of
+  the server's schema refusal (`status`, `error`, and `details` with
+  `path`, `schema`, and `data`) counts; another 400 keeps its server
+  message and the usual CLI output. An error of `mp metrics
+  create|update|verify|delete` or `mp behaviors create|update|delete` (for
+  example a 409 duplicate name or a 403) never prints the request params
+  or body, which hold the definition and, for a warehouse metric, its SQL;
+  the exception keeps them for Python callers.
+- Saved definitions from the typed values: `CreateMetricParams` takes a
+  `FunnelMetric`, a `RetentionMetric`, a `Metric` over several events, and
+  a `Formula` with its own operands (a `MetricRef` operand stays a
+  reference), compiled by the same builders as `Workspace.query`.
+  `CreateBehaviorParams` takes a `SimpleBehavior`, `FunnelBehavior`, or
+  `RetentionBehavior` (new alias `BehaviorDefinition`); the saved
+  definition never holds a name. A `Formula` without operands raises the
+  new code `SM7_FORMULA_WITHOUT_OPERANDS`. The saved definition of a typed
+  value holds no legacy behavior `filter` key: the server reads past it at
+  query time, but its create schema rejects it. Stored definitions carry
+  such legacy keys (for example a behavior `filter`, legacy funnel step
+  keys, and the `id` and `type` of a measurement), so a create removes
+  them from a `RawMetricDefinition` or `RawBehaviorDefinition`, with or
+  without `validate`, and a copy of a stored metric or behavior works (in
+  Python and through `mp metrics create` / `mp behaviors create
+  --definition-file`). In a definition compiled from a typed value,
+  `SM4_SCHEMA` refuses them, because one there means a builder bug. An
+  update sends them as given.
+- `Workspace.query` and `build_params` refuse a `WarehouseMetric` with the
+  new code `MR3_WAREHOUSE_INLINE`: the server runs warehouse SQL only by
+  saved id, so a warehouse metric is saved first and queried by reference.
+- CLI: `mp metrics query ID` runs a saved metric by reference.
+- CLI: `mp metrics create|update|verify` and `mp behaviors create|update`.
+  `--definition-file FILE|-` takes the wire definition that `get` prints,
+  so get, edit, and update is a round trip. `mp metrics verify` names on
+  stderr the ids that the server skipped. Before any request, `update`
+  exits 3 when no option to change is given, and `mp metrics update`
+  exits 3 when `--kind` or `--warehouse-source-id` comes without
+  `--definition-file`.
+- `MetricDisplay` gains the write side of the server model: the
+  experiment sizing keys `minimumDetectableEffect`, `oneSided`, and `power`
+  are accepted by the bookmark schema check too. `MetricGoal.id` is
+  optional; a new goal gets a UUID on write, `date` and `datetime`
+  checkpoints are written as naive ISO timestamps, and the deprecated goal
+  keys `unit` and `direction` are never written.
 - Plugin: repository tests guard the skills. Every Python block must
   parse, every `ws.<method>()` call must name a real method and real
   keyword arguments, and each skill must stay inside its size budget.
@@ -17,6 +248,19 @@ may include API changes.
 
 ### Changed
 
+- `query_retention()` and `build_retention_params()`: `return_event` now
+  defaults to `None`, so a `BehaviorRef` can stand alone. Event retention
+  still needs it; a missing `return_event` gives `R2_EMPTY_RETURN_EVENT`
+  instead of a `TypeError`.
+- A `Formula` without operands whose expression passes the
+  `V16_FORMULA_SYNTAX` and `V19_FORMULA_BOUNDS` checks but is outside
+  the server formula grammar (for example `A ^ -B`) is now refused with
+  `FM4_SYNTAX` before the request, not by the server.
+- `query_funnel()` and `query_retention()` refuse a step or event that
+  holds more than one event (a list or a `SimpleBehavior`) with a message
+  that names custom events as the fix. The funnel code stays
+  `F2_EMPTY_STEP_EVENT`; the retention codes are `R1_EMPTY_BORN_EVENT`
+  and `R2_EMPTY_RETURN_EVENT`.
 - Plugin: the skills now use the library's built-in reference for every
   API fact. The bundled `help.py` script is removed; skills look up
   signatures, types, and allowed values with `mp help <query>` (or
@@ -65,6 +309,39 @@ may include API changes.
 - Plugin: examples and parameter names that no longer matched the
   library are corrected (for example, `query_user()` takes `where=`, not
   `filters=`).
+- Docs: the report link examples in `Workspace.create_report_link`, the
+  report links guide, and the `Workspace` API page called
+  `mp.Metric.total("Login")`, which does not exist. They now use
+  `mp.Metric("Login", math="total")`.
+- An error response whose body has a `message` key and no usable `error`
+  key now puts the server's `message` text in the exception message, and
+  the CLI prints it. Before, the exception held only the generic text (for
+  example, `Server error: 500`), and the server's support text and Error
+  ID were lost. When both keys are present, `error` wins.
+- `Workspace.query_user(where=...)` now accepts the date filters
+  (`Filter.on`, `not_on`, `before`, `since`, `date_between`,
+  `date_not_between`, `in_the_last`, `not_in_the_last`, `in_the_next`)
+  and `Filter.at_least`, `at_most`, and `not_between`. Before, these
+  failed with `Unsupported filter operator`. Absolute dates are whole
+  days in the project timezone, as in Insights. Relative dates are
+  rolling windows measured from the server's clock when the query runs,
+  not calendar days, so a count near the start of the window can differ
+  from Insights; a window can span at most 50 years.
+- `Filter.starts_with`, `ends_with`, and `list_contains` still cannot be
+  used in `query_user(where=...)`, because the Engage profile selector
+  has no form for them. They now fail with a `ParamValidationError`
+  (code `ES14_NO_SELECTOR_EQUIVALENT`, wrapped in
+  `BookmarkValidationError`) whose message names the constructor and a
+  workaround. New codes `ES15` to `ES20` reject a malformed value on a
+  directly constructed date, relative-date, `at_least`, or `at_most`
+  `Filter`. A directly constructed date range with its first day after
+  its last day fails with `FD2_DATE_ORDER`, as the `Filter.date_between`
+  and `Filter.date_not_between` factories do.
+- `query_user(where=...)` no longer accepts `True` or `False` as the
+  number in a number comparison (`greater_than`, `less_than`, `at_least`,
+  `at_most`, `between`, `not_between`). Before, the selector compared the
+  property with `True` or `False`. Now the filter fails with the
+  operator's number code.
 - `QueryResult.df` now flattens a `group_by` with two or more properties.
   Before, it read only one level of nesting: segment values landed in the
   `date` column and `count` held nested dicts. Each property now gets its

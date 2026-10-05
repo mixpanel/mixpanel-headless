@@ -194,6 +194,37 @@ class TestHintsFor:
         (hint,) = hints_for(tokens(query), kind=kind)
         assert hint.url == hint_url("api/help.md")
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Workspace.list_metrics",
+            "Workspace.create_metric",
+            "Workspace.bulk_update_metrics",
+            "Workspace.delete_metrics",
+            "SavedMetric",
+            "MetricDisplay",
+            "MetricGoal",
+            "CreateMetricParams",
+            "RawMetricDefinition",
+            "WarehouseMetric",
+            "Workspace.list_behaviors",
+            "Workspace.update_behavior",
+            "Workspace.delete_behavior",
+            "SavedBehavior",
+            "CreateBehaviorParams",
+            "RawBehaviorDefinition",
+        ],
+    )
+    def test_saved_metrics_and_behaviors_pick_their_guide(self, query: str) -> None:
+        """Saved metric and saved behavior methods and types share one guide.
+
+        Args:
+            query: A help query naming a saved metric or behavior method or type.
+        """
+        kind: HelpKind = "method" if query.startswith("Workspace.") else "model"
+        (hint,) = hints_for(tokens(query), kind=kind)
+        assert hint.url == hint_url("guide/saved-metrics.md")
+
     def test_every_domain_yields_a_hint(self) -> None:
         """Every registered ``Workspace`` domain has at least one hinted method."""
         silent = [

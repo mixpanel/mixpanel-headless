@@ -4080,6 +4080,99 @@ class TestBlankErrorBodyFallbacks:
 
 
 # =============================================================================
+# Error-message fallback to the ``message`` key
+# =============================================================================
+
+
+class TestMessageKeyFallback:
+    """A body without usable ``error`` text uses its ``message`` text instead."""
+
+    def test_500_with_message_only(self, test_credentials: Session) -> None:
+        """A 5xx body with only ``message`` puts that text in the exception."""
+        from mixpanel_headless.exceptions import ServerError
+
+        response = httpx.Response(
+            500, json={"message": "Try again. Error ID: abc123", "status": "error"}
+        )
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(ServerError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Server error: Try again. Error ID: abc123"
+
+    def test_400_with_message_only(self, test_credentials: Session) -> None:
+        """A 4xx body with only ``message`` puts that text in the exception."""
+        response = httpx.Response(400, json={"message": "Bad segment"})
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Bad segment"
+
+    def test_error_wins_over_message(self, test_credentials: Session) -> None:
+        """A body with both keys uses ``error``."""
+        from mixpanel_headless.exceptions import ServerError
+
+        response = httpx.Response(
+            500, json={"error": "Database down", "message": "Something else"}
+        )
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(ServerError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Server error: Database down"
+
+    def test_blank_error_falls_back_to_message(self, test_credentials: Session) -> None:
+        """A blank ``error`` string gives way to a usable ``message``."""
+        response = httpx.Response(400, json={"error": " ", "message": "Bad dates"})
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Bad dates"
+
+    def test_neither_key_keeps_default(self, test_credentials: Session) -> None:
+        """A body with neither key keeps the generic status text."""
+        from mixpanel_headless.exceptions import ServerError
+
+        response = httpx.Response(500, json={"status": "error"})
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(ServerError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Server error: 500"
+
+    @pytest.mark.parametrize("message", ["", "   ", None, 42, ["a", "b"]])
+    def test_unusable_message_keeps_default(
+        self, test_credentials: Session, message: object
+    ) -> None:
+        """A blank or non-string ``message`` keeps the generic status text.
+
+        Args:
+            test_credentials: Session fixture value.
+            message: The unusable ``message`` value.
+        """
+        response = httpx.Response(404, json={"message": message})
+        with (
+            TestBlankErrorBodyFallbacks._client(test_credentials, response) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.message == "Resource not found"
+
+
+# =============================================================================
 # Request-context symmetry across error branches
 # =============================================================================
 

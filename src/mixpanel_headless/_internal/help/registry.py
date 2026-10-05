@@ -309,6 +309,29 @@ WORKSPACE_DOMAINS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
         ),
     ),
     (
+        "saved metrics",
+        (
+            "list_metrics",
+            "get_metric",
+            "create_metric",
+            "update_metric",
+            "bulk_update_metrics",
+            "delete_metric",
+            "delete_metrics",
+        ),
+    ),
+    (
+        "saved behaviors",
+        (
+            "list_behaviors",
+            "get_behavior",
+            "create_behavior",
+            "update_behavior",
+            "delete_behavior",
+            "delete_behaviors",
+        ),
+    ),
+    (
         "lookup tables",
         (
             "list_lookup_tables",
@@ -538,7 +561,14 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
             "GroupBy",
             "ListItemGroupMode",
             "Formula",
+            "FormulaOperand",
             "Metric",
+            "CustomEventRef",
+            "SimpleBehavior",
+            "FunnelBehavior",
+            "FunnelMetric",
+            "RetentionBehavior",
+            "RetentionMetric",
             "CohortBreakdown",
             "CohortMetric",
             "CohortDefinition",
@@ -624,7 +654,7 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         "guide/business-context.md",
     ),
     # --- entity management: reports, dashboards, cohorts, flags, experiments,
-    #     annotations, webhooks, alerts -------------------------------------
+    #     annotations, webhooks, alerts, saved metrics, saved behaviors ------
     (
         (
             "create_bookmark",
@@ -834,6 +864,49 @@ REFERENCE_HINTS: Final[tuple[tuple[tuple[str, ...], str, str], ...]] = (
         ),
         "alert CRUD, history, screenshots, and bookmark validation (entity management)",
         "guide/entity-management.md",
+    ),
+    (
+        (
+            "list_metrics",
+            "get_metric",
+            "create_metric",
+            "update_metric",
+            "bulk_update_metrics",
+            "delete_metric",
+            "delete_metrics",
+            "SavedMetric",
+            "MetricDisplay",
+            "MetricGoal",
+            "MetricRef",
+            "CreateMetricParams",
+            "UpdateMetricParams",
+            "BulkUpdateMetricEntry",
+            "MetricDefinition",
+            "RawMetricDefinition",
+            "WarehouseMetric",
+            "WarehouseAggregation",
+            "WarehouseSyncInterval",
+        ),
+        "saved metrics — behavior metrics, formulas, and warehouse metrics",
+        "guide/saved-metrics.md",
+    ),
+    (
+        (
+            "list_behaviors",
+            "get_behavior",
+            "create_behavior",
+            "update_behavior",
+            "delete_behavior",
+            "delete_behaviors",
+            "SavedBehavior",
+            "BehaviorRef",
+            "CreateBehaviorParams",
+            "UpdateBehaviorParams",
+            "RawBehaviorDefinition",
+            "BehaviorDefinition",
+        ),
+        "saved behaviors — simple, funnel, and retention",
+        "guide/saved-metrics.md",
     ),
     # --- data governance --------------------------------------------------
     (

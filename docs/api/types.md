@@ -44,6 +44,36 @@ Types for `Workspace.query()` — typed Insights engine queries with composable 
       show_root_heading: true
       show_root_toc_entry: true
 
+::: mixpanel_headless.CustomEventRef
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SimpleBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.FunnelBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.FunnelMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RetentionBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RetentionMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
 ::: mixpanel_headless.Filter
     options:
       show_root_heading: true
@@ -93,6 +123,20 @@ Types for using saved or inline custom properties as property references in quer
       show_root_toc_entry: true
 
 ::: mixpanel_headless.PropertyInput
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+## Saved Entity References
+
+References to saved metrics and saved behaviors by id. The params keep the reference, and the server expands the saved definition at query time. See [Saved Metrics by Reference](../guide/query.md#saved-metrics-by-reference) for usage guide.
+
+::: mixpanel_headless.MetricRef
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.BehaviorRef
     options:
       show_root_heading: true
       show_root_toc_entry: true
@@ -509,6 +553,79 @@ Types for `Workspace.subproperties()` — schema discovery for list-of-object ev
       show_root_toc_entry: true
 
 ::: mixpanel_headless.BulkUpdateCohortEntry
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+## Saved Metric and Behavior Types
+
+Result types of the saved metric and saved behavior methods. They accept any `type`, any `math`, and unknown keys; the typed accessors return `None` or an empty list for a shape they do not know. `created_by`, `owned_by`, and `last_verified_by` use `CohortCreator` (`{id, name, email}`). See the [Saved Metrics and Behaviors guide](../guide/saved-metrics.md).
+
+::: mixpanel_headless.SavedMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.SavedBehavior
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.MetricDisplay
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.MetricGoal
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+### Create and update
+
+The write methods take these params. The kind of a saved metric comes from its definition (`MetricDefinition`): `Metric`, `CohortMetric`, `FunnelMetric`, or `RetentionMetric` gives a behavior metric, a `Formula` with its own operands gives a saved formula, `WarehouseMetric` gives a warehouse metric, and `RawMetricDefinition` gives the kind it names.
+
+A saved behavior takes a `BehaviorDefinition`, and its wire type comes from that value:
+
+- `SimpleBehavior`, `FunnelBehavior`, or `RetentionBehavior` (see [Insights Query Types](#insights-query-types)): use one of these to build a new behavior in code. The library compiles it with the builders of an inline behavior, without a name, and the wire type is `simple`, `funnel`, or `retention`.
+- `RawBehaviorDefinition`: use it for a wire definition dict, for example the `definition` of a `SavedBehavior` that you copy or edit. The wire type comes from `definition["behavior"]["type"]`.
+
+::: mixpanel_headless.CreateMetricParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UpdateMetricParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.BulkUpdateMetricEntry
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.WarehouseMetric
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RawMetricDefinition
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.CreateBehaviorParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.UpdateBehaviorParams
+    options:
+      show_root_heading: true
+      show_root_toc_entry: true
+
+::: mixpanel_headless.RawBehaviorDefinition
     options:
       show_root_heading: true
       show_root_toc_entry: true

@@ -7,6 +7,8 @@ passing to Workspace methods, providing early error feedback.
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 from typing import Any, TypeVar, cast, get_args
 
 import typer
@@ -119,6 +121,54 @@ def validate_json_object(value: str, param_name: str) -> dict[str, Any]:
         err_console.print(f"[red]Error:[/red] {param_name} must be a JSON object.")
         raise typer.Exit(ExitCode.INVALID_ARGS)
     return parsed
+
+
+def _stdin_is_tty() -> bool:
+    """Return whether stdin is an interactive terminal.
+
+    A seam for tests: ``CliRunner`` swaps ``sys.stdin``, so the check is
+    read through this function rather than at import time.
+
+    Returns:
+        ``True`` when stdin is a terminal.
+    """
+    return sys.stdin.isatty()
+
+
+def read_json_object_file(path: Path, param_name: str) -> dict[str, Any]:
+    """Read a JSON object from a file, or from stdin when the path is ``-``.
+
+    Used by options that take a whole JSON document, such as the
+    ``--definition-file`` of ``mp metrics create``. Stdin on an interactive
+    terminal is refused, so the command never blocks and waits for typed
+    input.
+
+    Args:
+        path: The file path, or ``-`` for stdin.
+        param_name: Parameter name for error messages.
+
+    Returns:
+        The parsed JSON object as a dict.
+
+    Raises:
+        typer.Exit: With code 3 (INVALID_ARGS) if the file cannot be read,
+            stdin is a terminal, or the text is not a JSON object.
+    """
+    if str(path) == "-":
+        if _stdin_is_tty():
+            err_console.print(
+                f"[red]Error:[/red] {param_name} - reads stdin, but stdin is a "
+                f"terminal. Pipe a JSON object or pass a file path."
+            )
+            raise typer.Exit(ExitCode.INVALID_ARGS)
+        text = sys.stdin.read()
+    else:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            err_console.print(f"[red]Error:[/red] Cannot read {param_name}: {exc}")
+            raise typer.Exit(ExitCode.INVALID_ARGS) from exc
+    return validate_json_object(text, param_name)
 
 
 def validate_entity_type(value: str, param_name: str = "--type") -> EntityType:

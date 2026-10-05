@@ -3,10 +3,10 @@
 Two validation layers:
 
 - ``validate_query_args()``: Validates Python-level arguments before
-  bookmark construction (Layer 1, rules V0-V27, CF1-CF2, CB1-CB3,
+  bookmark construction (Layer 1, rules V0-V29, CF1-CF2, CB1-CB3,
   CM1-CM5).
 - ``validate_bookmark()``: Validates the bookmark JSON dict after
-  construction (Layer 2, rules B1-B26).
+  construction (Layer 2, rules B1-B29).
 
 Both return ``list[ValidationError]``. Callers decide whether to raise
 ``BookmarkValidationError``.
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from difflib import get_close_matches
 from typing import Any, Literal
 
@@ -52,6 +53,7 @@ from mixpanel_headless._internal.bookmark_schema import (
     _sorting_code_mapper,
     validate_with_pydantic,
 )
+from mixpanel_headless._internal.query.formula import parse_formula
 
 # Import specific types needed for isinstance checks at runtime.
 from mixpanel_headless._literal_types import (
@@ -66,11 +68,13 @@ from mixpanel_headless._literal_types import (
     RetentionMode,
     TimeUnit,
 )
-from mixpanel_headless.exceptions import ValidationError
+from mixpanel_headless.exceptions import ParamValidationError, ValidationError
 from mixpanel_headless.types import (
+    BehaviorRef,
     CohortBreakdown,
     CohortDefinition,
     CohortMetric,
+    CustomEventRef,
     CustomPropertyRef,
     Exclusion,
     Filter,
@@ -78,14 +82,18 @@ from mixpanel_headless.types import (
     Formula,
     FrequencyBreakdown,
     FrequencyFilter,
+    FunnelMetric,
     FunnelStep,
     GroupBy,
     HoldingConstant,
     InlineCustomProperty,
     MathType,
     Metric,
+    MetricRef,
     PerUserAggregation,
     RetentionEvent,
+    RetentionMetric,
+    SimpleBehavior,
 )
 
 _CP_INPUT_KEY_RE = re.compile(r"^[A-Z]$")
@@ -224,7 +232,10 @@ def _scan_custom_properties(
     | Sequence[str | GroupBy | CohortBreakdown | FrequencyBreakdown]
     | None = None,
     where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
-    events: Sequence[str | Metric | CohortMetric] | None = None,
+    events: Sequence[
+        str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+    ]
+    | None = None,
     funnel_steps: Sequence[str | FunnelStep] | None = None,
     flow_steps: Sequence[FlowStep] | None = None,
     retention_events: Sequence[RetentionEvent] | None = None,
@@ -247,8 +258,8 @@ def _scan_custom_properties(
     Args:
         group_by: Breakdown specification (may contain custom properties).
         where: Filter specification (may contain custom properties).
-        events: Event specifications (Metric.property and Metric.filters
-            may contain custom properties).
+        events: Event specifications (Metric.property, Metric.filters,
+            and MetricRef.property may contain custom properties).
         funnel_steps: Funnel step specifications (FunnelStep.filters
             may contain custom properties).
         flow_steps: Flow step specifications (FlowStep.filters
@@ -293,20 +304,17 @@ def _scan_custom_properties(
                 fpath = f"where[{i}]" if len(filters) > 1 else "where"
                 errors.extend(_validate_custom_property(f._property, fpath))
 
-    # Scan events (Metric.property AND Metric.filters)
+    # Scan events (Metric.property AND Metric.filters; MetricRef.property)
     if events is not None:
         for idx, item in enumerate(events):
+            if isinstance(item, MetricRef) and isinstance(
+                item.property, (CustomPropertyRef, InlineCustomProperty)
+            ):
+                errors.extend(
+                    _validate_custom_property(item.property, f"events[{idx}]")
+                )
             if isinstance(item, Metric):
-                if isinstance(item.property, (CustomPropertyRef, InlineCustomProperty)):
-                    errors.extend(
-                        _validate_custom_property(item.property, f"events[{idx}]")
-                    )
-                if item.filters:
-                    errors.extend(
-                        _scan_filters_for_custom_properties(
-                            item.filters, f"events[{idx}]"
-                        )
-                    )
+                errors.extend(_scan_metric_custom_properties(item, f"events[{idx}]"))
 
     # Scan funnel steps (FunnelStep.filters)
     if funnel_steps is not None:
@@ -337,6 +345,67 @@ def _scan_custom_properties(
 
 _SESSION_MATH: frozenset[str] = frozenset({"conversion_rate_session"})
 """Session-based math types requiring conversion_window_unit='session'."""
+
+_MULTI_EVENT_HINT = (
+    "A funnel step or a retention event is one event; the query server "
+    "refuses more than one there. To count any of several events, create a "
+    "custom event that unions them and use its name '$custom_event:<id>'."
+)
+"""Fix-it text for more than one event where the server takes one."""
+
+_PER_EVENT_FILTERS_HINT = (
+    "Metric filters apply to every event of a list. For per-event filters, "
+    "put FunnelStep items in a SimpleBehavior: "
+    'Metric(SimpleBehavior([FunnelStep("A", filters=[...]), FunnelStep("B")]))'
+)
+"""Fix-it text for a list item of a Metric that is not an event name."""
+
+
+def _is_multi_event(value: object) -> bool:
+    """Return whether a step value holds more than one event.
+
+    Args:
+        value: A funnel step or retention event value as the caller passed it.
+
+    Returns:
+        ``True`` for a list, a tuple, or a ``SimpleBehavior``.
+    """
+    return isinstance(value, (list, tuple, SimpleBehavior))
+
+
+def check_retention_event_kinds(
+    born_event: object, return_event: object
+) -> list[ValidationError]:
+    """Refuse a retention born or return event that holds more than one event.
+
+    Args:
+        born_event: The born event as the caller passed it.
+        return_event: The return event as the caller passed it.
+
+    Returns:
+        ``R1_EMPTY_BORN_EVENT`` / ``R2_EMPTY_RETURN_EVENT`` errors (the codes
+        of the one-event rule) for a list, tuple, or ``SimpleBehavior``,
+        with a message that points to custom events. Empty otherwise.
+    """
+    errors: list[ValidationError] = []
+    if _is_multi_event(born_event):
+        errors.append(
+            ValidationError(
+                path="born_event",
+                message=f"born_event is more than one event. {_MULTI_EVENT_HINT}",
+                code="R1_EMPTY_BORN_EVENT",
+            )
+        )
+    if _is_multi_event(return_event):
+        errors.append(
+            ValidationError(
+                path="return_event",
+                message=f"return_event is more than one event. {_MULTI_EVENT_HINT}",
+                code="R2_EMPTY_RETURN_EVENT",
+            )
+        )
+    return errors
+
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _FORMULA_POSITION_RE = re.compile(r"[A-Z]")
@@ -776,6 +845,185 @@ def validate_group_by_args(
 # =============================================================================
 
 
+def _validate_funnel_math_property(
+    math: str,
+    math_property: str | None,
+) -> list[ValidationError]:
+    """Check that a funnel math and its property agree (F10, F11).
+
+    Args:
+        math: Funnel aggregation function.
+        math_property: Numeric property name, or ``None``.
+
+    Returns:
+        ``F10_MATH_MISSING_PROPERTY`` when a property math has no property,
+        ``F11_MATH_REJECTS_PROPERTY`` when another math has one, or an empty
+        list.
+    """
+    errors: list[ValidationError] = []
+
+    # F10: Property math requires math_property
+    if math in MATH_REQUIRING_PROPERTY and math_property is None:
+        errors.append(
+            ValidationError(
+                path="math_property",
+                message=(
+                    f"math='{math}' requires a math_property "
+                    f"(numeric property name to aggregate)"
+                ),
+                code="F10_MATH_MISSING_PROPERTY",
+            )
+        )
+
+    # F11: Non-property math rejects math_property
+    if (
+        math not in MATH_REQUIRING_PROPERTY
+        and math not in MATH_PROPERTY_OPTIONAL
+        and math_property is not None
+    ):
+        valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
+        errors.append(
+            ValidationError(
+                path="math_property",
+                message=(
+                    f"math='{math}' does not support math_property; "
+                    f"valid math types for property aggregation: {valid}"
+                ),
+                code="F11_MATH_REJECTS_PROPERTY",
+            )
+        )
+    return errors
+
+
+def _behavior_ref_errors(
+    behavior: BehaviorRef,
+    *,
+    engine: Literal["funnel", "retention"],
+    path: str,
+    changed_settings: Sequence[str],
+    type_code: str,
+    settings_code: str,
+) -> list[ValidationError]:
+    """Check a saved-behavior reference against the engine that runs it.
+
+    The server expands a behavior id without checking its type, so the
+    client checks it. The saved behavior owns the behavior settings (steps,
+    windows, order, and so on), and the server replaces the whole behavior
+    block, so an engine argument that changes one of them would be ignored.
+
+    Args:
+        behavior: The saved-behavior reference.
+        engine: The behavior type the engine needs.
+        path: Argument name that holds the reference, for the type error.
+        changed_settings: Names of the behavior-setting arguments that the
+            caller set away from their defaults.
+        type_code: Code for a type mismatch.
+        settings_code: Code for each changed setting.
+
+    Returns:
+        One type error when the type differs, plus one error per changed
+        setting.
+    """
+    errors: list[ValidationError] = []
+    if behavior.type != engine:
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    f"BehaviorRef({behavior.id}, {behavior.type!r}) is a "
+                    f"{behavior.type} behavior; this query needs a {engine} "
+                    f"behavior"
+                ),
+                code=type_code,
+            )
+        )
+    for name in changed_settings:
+        errors.append(
+            ValidationError(
+                path=name,
+                message=(
+                    f"{name} cannot be set with a BehaviorRef: the saved "
+                    f"behavior sets it, and the server replaces the whole "
+                    f"behavior with the saved one. Change the saved behavior, "
+                    f"or pass the {engine} inline to set {name}."
+                ),
+                code=settings_code,
+            )
+        )
+    return errors
+
+
+def validate_funnel_ref_args(
+    *,
+    behavior: BehaviorRef,
+    changed_settings: Sequence[str],
+    math: FunnelMathType = "conversion_rate_unique",
+    math_property: str | None = None,
+    from_date: str | None,
+    to_date: str | None,
+    last: int,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None,
+    data_group_id: int | None = None,
+) -> list[ValidationError]:
+    """Validate funnel arguments when a saved behavior replaces the steps.
+
+    Runs the rules that apply to a query over a saved funnel behavior: the
+    behavior type (F13), no behavior setting away from its default (F14),
+    the math and property rules (F10, F11), and the shared time, group-by,
+    data group, and custom property rules.
+
+    Args:
+        behavior: The saved-behavior reference passed as ``steps``.
+        changed_settings: Names of the behavior-setting arguments
+            (``conversion_window``, ``order``, ``exclusions``, and so on)
+            that the caller set away from their defaults.
+        math: Funnel aggregation function.
+        math_property: Numeric property name, or ``None``.
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+        last: Number of days for relative date range.
+        group_by: Breakdown specification.
+        data_group_id: Optional data group ID for group-level analytics.
+
+    Returns:
+        List of validation errors. Empty list means all arguments are valid.
+
+    Example:
+        ```python
+        errors = validate_funnel_ref_args(
+            behavior=BehaviorRef(5, "funnel"),
+            changed_settings=[],
+            from_date=None,
+            to_date=None,
+            last=30,
+            group_by=None,
+        )
+        assert errors == []
+        ```
+    """
+    errors: list[ValidationError] = []
+    errors.extend(_validate_data_group_id(data_group_id))
+    errors.extend(
+        _behavior_ref_errors(
+            behavior,
+            engine="funnel",
+            path="steps",
+            changed_settings=changed_settings,
+            type_code="F13_BEHAVIOR_REF_TYPE",
+            settings_code="F14_BEHAVIOR_REF_SETTINGS",
+        )
+    )
+    errors.extend(_validate_funnel_math_property(math, math_property))
+    errors.extend(validate_time_args(from_date=from_date, to_date=to_date, last=last))
+    errors.extend(validate_group_by_args(group_by=group_by))
+    errors.extend(_scan_custom_properties(group_by=group_by))
+    return errors
+
+
 def validate_funnel_args(
     *,
     steps: Sequence[str | FunnelStep],
@@ -876,10 +1124,13 @@ def validate_funnel_args(
     for i, step in enumerate(steps):
         event = step.event if isinstance(step, FunnelStep) else step
         if not isinstance(event, str) or not event.strip():
+            message = "Step event name must be a non-empty string"
+            if _is_multi_event(event):
+                message = f"Step is more than one event. {_MULTI_EVENT_HINT}"
             errors.append(
                 ValidationError(
                     path=f"steps[{i}]",
-                    message="Step event name must be a non-empty string",
+                    message=message,
                     code="F2_EMPTY_STEP_EVENT",
                 )
             )
@@ -1000,36 +1251,8 @@ def validate_funnel_args(
                 )
             )
 
-    # F10: Property math requires math_property
-    if math in MATH_REQUIRING_PROPERTY and math_property is None:
-        errors.append(
-            ValidationError(
-                path="math_property",
-                message=(
-                    f"math='{math}' requires a math_property "
-                    f"(numeric property name to aggregate)"
-                ),
-                code="F10_MATH_MISSING_PROPERTY",
-            )
-        )
-
-    # F11: Non-property math rejects math_property
-    if (
-        math not in MATH_REQUIRING_PROPERTY
-        and math not in MATH_PROPERTY_OPTIONAL
-        and math_property is not None
-    ):
-        valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
-        errors.append(
-            ValidationError(
-                path="math_property",
-                message=(
-                    f"math='{math}' does not support math_property; "
-                    f"valid math types for property aggregation: {valid}"
-                ),
-                code="F11_MATH_REJECTS_PROPERTY",
-            )
-        )
+    # F10-F11: math and math_property must agree
+    errors.extend(_validate_funnel_math_property(math, math_property))
 
     # F4: Non-empty exclusion event names and step range validation
     if exclusions is not None:
@@ -1174,6 +1397,177 @@ _VALID_RETENTION_MODES: frozenset[str] = frozenset({"curve", "trends", "table"})
 
 _MAX_RETENTION_BUCKETS = 730
 """Maximum number of custom retention buckets allowed by the API."""
+
+
+def _validate_retention_query_rules(
+    *,
+    math: RetentionMathType,
+    mode: RetentionMode,
+    unit: QueryTimeUnit,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None,
+) -> list[ValidationError]:
+    """Check the retention rules that do not depend on the behavior.
+
+    Covers math (R9), display mode (R10), time unit (R11), group-by names
+    (R12), mixed breakdowns (CB3), and custom properties in the breakdown
+    (CP1-CP6).
+
+    Args:
+        math: Retention aggregation function.
+        mode: Display mode.
+        unit: Time unit for retention buckets.
+        group_by: Breakdown specification.
+
+    Returns:
+        List of validation errors, in rule order.
+    """
+    errors: list[ValidationError] = []
+
+    # R9: math validation (public-facing subset)
+    if math not in _VALID_RETENTION_MATH_PUBLIC:
+        errors.append(
+            _enum_error(
+                path="math",
+                field="math",
+                value=math,
+                valid=_VALID_RETENTION_MATH_PUBLIC,
+                code="R9_INVALID_MATH",
+            )
+        )
+
+    # R10: mode validation
+    if mode not in _VALID_RETENTION_MODES:
+        errors.append(
+            _enum_error(
+                path="mode",
+                field="mode",
+                value=str(mode),
+                valid=_VALID_RETENTION_MODES,
+                code="R10_INVALID_MODE",
+            )
+        )
+
+    # R11: unit must be valid for retention context (day, week, month only)
+    if unit not in VALID_RETENTION_UNITS:
+        errors.append(
+            _enum_error(
+                path="unit",
+                field="unit",
+                value=str(unit),
+                valid=VALID_RETENTION_UNITS,
+                code="R11_INVALID_UNIT",
+            )
+        )
+
+    # R12: group_by strings must be non-empty
+    # CB3: CohortBreakdown and GroupBy are mutually exclusive in retention
+    if group_by is not None:
+        gb_list = group_by if isinstance(group_by, list) else [group_by]
+        for i, g in enumerate(gb_list):
+            if isinstance(g, str) and not g.strip():
+                gpath = f"group_by[{i}]" if len(gb_list) > 1 else "group_by"
+                errors.append(
+                    ValidationError(
+                        path=gpath,
+                        message="group_by property name must be a non-empty string",
+                        code="R12_EMPTY_GROUP_BY",
+                    )
+                )
+
+        has_cohort = any(isinstance(g, CohortBreakdown) for g in gb_list)
+        has_property = any(isinstance(g, (str, GroupBy)) for g in gb_list)
+        if has_cohort and has_property:
+            errors.append(
+                ValidationError(
+                    path="group_by",
+                    message=(
+                        "query_retention does not support mixing "
+                        "CohortBreakdown with property GroupBy"
+                    ),
+                    code="CB3_RETENTION_MIXED_BREAKDOWN",
+                )
+            )
+
+    # CP1-CP6: Custom property validation
+    errors.extend(_scan_custom_properties(group_by=group_by))
+    return errors
+
+
+def validate_retention_ref_args(
+    *,
+    behavior: BehaviorRef,
+    changed_settings: Sequence[str],
+    math: RetentionMathType = "retention_rate",
+    mode: RetentionMode = "curve",
+    unit: QueryTimeUnit = "day",
+    from_date: str | None = None,
+    to_date: str | None = None,
+    last: int = 30,
+    group_by: str
+    | GroupBy
+    | CohortBreakdown
+    | list[str | GroupBy | CohortBreakdown]
+    | None = None,
+    data_group_id: int | None = None,
+) -> list[ValidationError]:
+    """Validate retention arguments when a saved behavior replaces the events.
+
+    Runs the rules that apply to a query over a saved retention behavior:
+    the behavior type (R14), no behavior setting away from its default
+    (R15), and the math, mode, unit, time, group-by, data group, and custom
+    property rules.
+
+    Args:
+        behavior: The saved-behavior reference passed as ``born_event``.
+        changed_settings: Names of the behavior-setting arguments
+            (``return_event``, ``retention_unit``, ``alignment``,
+            ``bucket_sizes``, ``unbounded_mode``) that the caller set away
+            from their defaults.
+        math: Retention aggregation function.
+        mode: Display mode.
+        unit: Time unit for retention buckets.
+        from_date: Start date (YYYY-MM-DD) or ``None``.
+        to_date: End date (YYYY-MM-DD) or ``None``.
+        last: Number of days for relative date range.
+        group_by: Breakdown specification.
+        data_group_id: Optional data group ID for group-level analytics.
+
+    Returns:
+        List of validation errors. Empty list means all arguments are valid.
+
+    Example:
+        ```python
+        errors = validate_retention_ref_args(
+            behavior=BehaviorRef(6, "retention"),
+            changed_settings=[],
+        )
+        assert errors == []
+        ```
+    """
+    errors: list[ValidationError] = []
+    errors.extend(_validate_data_group_id(data_group_id))
+    errors.extend(
+        _behavior_ref_errors(
+            behavior,
+            engine="retention",
+            path="born_event",
+            changed_settings=changed_settings,
+            type_code="R14_BEHAVIOR_REF_TYPE",
+            settings_code="R15_BEHAVIOR_REF_SETTINGS",
+        )
+    )
+    errors.extend(validate_time_args(from_date=from_date, to_date=to_date, last=last))
+    errors.extend(validate_group_by_args(group_by=group_by))
+    errors.extend(
+        _validate_retention_query_rules(
+            math=math, mode=mode, unit=unit, group_by=group_by
+        )
+    )
+    return errors
 
 
 def validate_retention_args(
@@ -1388,73 +1782,12 @@ def validate_retention_args(
             )
         )
 
-    # R9: math validation (public-facing subset)
-    if math not in _VALID_RETENTION_MATH_PUBLIC:
-        errors.append(
-            _enum_error(
-                path="math",
-                field="math",
-                value=math,
-                valid=_VALID_RETENTION_MATH_PUBLIC,
-                code="R9_INVALID_MATH",
-            )
+    # R9-R12, CB3, CP1-CP6: measurement, display, and breakdown rules
+    errors.extend(
+        _validate_retention_query_rules(
+            math=math, mode=mode, unit=unit, group_by=group_by
         )
-
-    # R10: mode validation
-    if mode not in _VALID_RETENTION_MODES:
-        errors.append(
-            _enum_error(
-                path="mode",
-                field="mode",
-                value=str(mode),
-                valid=_VALID_RETENTION_MODES,
-                code="R10_INVALID_MODE",
-            )
-        )
-
-    # R11: unit must be valid for retention context (day, week, month only)
-    if unit not in VALID_RETENTION_UNITS:
-        errors.append(
-            _enum_error(
-                path="unit",
-                field="unit",
-                value=str(unit),
-                valid=VALID_RETENTION_UNITS,
-                code="R11_INVALID_UNIT",
-            )
-        )
-
-    # R12: group_by strings must be non-empty
-    # CB3: CohortBreakdown and GroupBy are mutually exclusive in retention
-    if group_by is not None:
-        gb_list = group_by if isinstance(group_by, list) else [group_by]
-        for i, g in enumerate(gb_list):
-            if isinstance(g, str) and not g.strip():
-                gpath = f"group_by[{i}]" if len(gb_list) > 1 else "group_by"
-                errors.append(
-                    ValidationError(
-                        path=gpath,
-                        message="group_by property name must be a non-empty string",
-                        code="R12_EMPTY_GROUP_BY",
-                    )
-                )
-
-        has_cohort = any(isinstance(g, CohortBreakdown) for g in gb_list)
-        has_property = any(isinstance(g, (str, GroupBy)) for g in gb_list)
-        if has_cohort and has_property:
-            errors.append(
-                ValidationError(
-                    path="group_by",
-                    message=(
-                        "query_retention does not support mixing "
-                        "CohortBreakdown with property GroupBy"
-                    ),
-                    code="CB3_RETENTION_MIXED_BREAKDOWN",
-                )
-            )
-
-    # CP1-CP6: Custom property validation
-    errors.extend(_scan_custom_properties(group_by=group_by))
+    )
 
     # R13: unbounded_mode validation
     if (
@@ -1882,9 +2215,502 @@ def validate_flow_bookmark(
 # =============================================================================
 
 
+_MEASUREMENT_ARGUMENTS: tuple[tuple[str, str, object], ...] = (
+    ("math", "math", "total"),
+    ("math_property", "property", None),
+    ("per_user", "per_user", None),
+    ("percentile_value", "percentile_value", None),
+)
+"""Query-level measurement arguments: (argument, MetricRef field, default)."""
+
+
+def _ignored_query_measurement(
+    *,
+    math: MathType,
+    math_property: str | None,
+    per_user: PerUserAggregation | None,
+    percentile_value: int | float | None,
+) -> list[ValidationError]:
+    """Refuse query-level measurement arguments that no event would use (V29).
+
+    The caller makes sure that the query has saved-metric references and
+    no plain event name, so nothing consumes these arguments.
+
+    Args:
+        math: Query-level aggregation function.
+        math_property: Query-level property.
+        per_user: Query-level per-user aggregation.
+        percentile_value: Query-level percentile value.
+
+    Returns:
+        One ``V29_QUERY_MEASUREMENT_IGNORED`` error per argument that differs
+        from its default, in argument order.
+    """
+    values = {
+        "math": math,
+        "math_property": math_property,
+        "per_user": per_user,
+        "percentile_value": percentile_value,
+    }
+    errors: list[ValidationError] = []
+    for argument, field, default in _MEASUREMENT_ARGUMENTS:
+        value = values[argument]
+        if value == default:
+            continue
+        errors.append(
+            ValidationError(
+                path=argument,
+                message=(
+                    f"{argument}={value!r} applies only to plain event names, "
+                    "and this query has none: a saved metric keeps its saved "
+                    "measurement. Set it on the reference instead, for "
+                    f"example MetricRef(id, {field}={value!r})."
+                ),
+                code="V29_QUERY_MEASUREMENT_IGNORED",
+            )
+        )
+    return errors
+
+
+def _prefixed(errors: list[ValidationError], prefix: str) -> list[ValidationError]:
+    """Put a path prefix on each error.
+
+    Args:
+        errors: Errors with paths relative to one value.
+        prefix: The path of that value, for example ``"events[1]"``.
+
+    Returns:
+        New errors with ``"{prefix}.{path}"`` paths; codes and messages
+        are unchanged.
+    """
+    return [replace(e, path=f"{prefix}.{e.path}") for e in errors]
+
+
+def _metric_property_errors(prop: object) -> list[ValidationError]:
+    """Check the custom property of a funnel or retention metric, if any.
+
+    Args:
+        prop: The ``property`` of the metric.
+
+    Returns:
+        The CP errors of a custom property, at path ``"property"``; empty
+        for a property name or ``None``.
+    """
+    if isinstance(prop, (CustomPropertyRef, InlineCustomProperty)):
+        return _validate_custom_property(prop, "property")
+    return []
+
+
+def validate_funnel_metric_args(
+    metric: FunnelMetric, *, path: str
+) -> list[ValidationError]:
+    """Run the ``query_funnel`` argument rules on a funnel metric.
+
+    The funnel of a ``FunnelMetric`` takes the rules and codes of
+    :func:`validate_funnel_args` (steps, window, session math, exclusions,
+    held properties, reentry mode). Query-level arguments that a metric
+    does not carry (dates, breakdowns) are left at neutral values, so they
+    add no error. A saved funnel (``BehaviorRef``) owns its steps and
+    settings, so only the custom property check runs for it.
+
+    Args:
+        metric: The funnel metric.
+        path: The path of the metric, for example ``"events[1]"``.
+
+    Returns:
+        The errors, with paths under ``path``.
+    """
+    behavior = metric.behavior
+    if isinstance(behavior, BehaviorRef):
+        return _prefixed(_metric_property_errors(metric.property), path)
+    steps = [FunnelStep(s) if isinstance(s, str) else s for s in behavior.steps]
+    exclusions = [
+        Exclusion(e) if isinstance(e, str) else e for e in behavior.exclusions or []
+    ]
+    held = behavior.holding_constant
+    held_values = [held] if isinstance(held, str | HoldingConstant) else held or []
+    holding_constant = [
+        HoldingConstant(h) if isinstance(h, str) else h for h in held_values
+    ]
+    errors = validate_funnel_args(
+        steps=steps,
+        conversion_window=behavior.conversion_window,
+        conversion_window_unit=behavior.conversion_window_unit,
+        math=metric.math,
+        # The property rules only test whether a property is set; the
+        # FunnelMetric constructor has already checked them.
+        math_property=None if metric.property is None else "property",
+        exclusions=exclusions or None,
+        holding_constant=holding_constant or None,
+        from_date=None,
+        to_date=None,
+        last=30,
+        group_by=None,
+        reentry_mode=behavior.reentry_mode,
+    )
+    errors.extend(_metric_property_errors(metric.property))
+    return _prefixed(errors, path)
+
+
+def validate_retention_metric_args(
+    metric: RetentionMetric, *, path: str
+) -> list[ValidationError]:
+    """Run the ``query_retention`` argument rules on a retention metric.
+
+    The retention behavior of a ``RetentionMetric`` takes the rules and
+    codes of :func:`validate_retention_args` (events, buckets, unit,
+    alignment, math, unbounded mode). Query-level arguments that a metric
+    does not carry are left at neutral values. A saved retention behavior
+    (``BehaviorRef``) owns its events and settings, so only the custom
+    property check runs for it.
+
+    Args:
+        metric: The retention metric.
+        path: The path of the metric, for example ``"events[1]"``.
+
+    Returns:
+        The errors, with paths under ``path``.
+    """
+    behavior = metric.behavior
+    if isinstance(behavior, BehaviorRef):
+        return _prefixed(_metric_property_errors(metric.property), path)
+    kind_errors = check_retention_event_kinds(
+        behavior.born_event, behavior.return_event
+    )
+    if kind_errors:
+        return _prefixed(kind_errors, path)
+    born = behavior.born_event
+    back = behavior.return_event
+    born_event = RetentionEvent(born) if isinstance(born, str) else born
+    return_event = RetentionEvent(back) if isinstance(back, str) else back
+    errors = validate_retention_args(
+        born_event=born_event.event,
+        return_event=return_event.event,
+        retention_unit=behavior.retention_unit,
+        alignment=behavior.alignment,
+        bucket_sizes=behavior.bucket_sizes,
+        math=metric.math,
+        unbounded_mode=behavior.unbounded_mode,
+    )
+    errors.extend(_scan_custom_properties(retention_events=[born_event, return_event]))
+    errors.extend(_metric_property_errors(metric.property))
+    return _prefixed(errors, path)
+
+
+def _validate_metric_rules(item: Metric, mpath: str) -> list[ValidationError]:
+    """Check the math, property, per-user, and percentile rules of a Metric.
+
+    Args:
+        item: The metric.
+        mpath: The path of the metric for error reporting.
+
+    Returns:
+        The V13, V14, V27, V26, V3, and V3b errors, in that order.
+    """
+    errors: list[ValidationError] = []
+    m_math = item.math
+    m_prop = item.property
+    m_per_user = item.per_user
+
+    if m_math in MATH_REQUIRING_PROPERTY and m_prop is None:
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): math='{m_math}' "
+                    f"requires property to be set"
+                ),
+                code="V13_METRIC_MATH_PROPERTY",
+            )
+        )
+
+    if (
+        m_math not in MATH_REQUIRING_PROPERTY
+        and m_math not in MATH_PROPERTY_OPTIONAL
+        and m_prop is not None
+    ):
+        valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): property is only valid with "
+                    f"property-based math types "
+                    f"({', '.join(valid)}), not '{m_math}'"
+                ),
+                code="V14_METRIC_REJECTS_PROPERTY",
+            )
+        )
+
+    # V27: Per-Metric histogram requires per_user
+    if m_math == "histogram" and m_per_user is None:
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): math='histogram' "
+                    f"requires per_user to be set "
+                    f"(e.g. per_user='total')"
+                ),
+                code="V27_HISTOGRAM_REQUIRES_PER_USER",
+            )
+        )
+
+    # V26: Per-Metric percentile requires percentile_value
+    if m_math == "percentile" and item.percentile_value is None:
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): math='percentile' "
+                    f"requires percentile_value to be set"
+                ),
+                code="V26_PERCENTILE_REQUIRES_VALUE",
+            )
+        )
+
+    if m_per_user is not None and m_math in MATH_NO_PER_USER:
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): per_user is incompatible "
+                    f"with math='{m_math}'"
+                ),
+                code="V3_PER_USER_INCOMPATIBLE",
+            )
+        )
+
+    if m_per_user is not None and m_prop is None:
+        errors.append(
+            ValidationError(
+                path=mpath,
+                message=(
+                    f"Metric('{item.event}'): per_user requires property to be set"
+                ),
+                code="V3B_PER_USER_REQUIRES_PROPERTY",
+            )
+        )
+    return errors
+
+
+def _event_name_errors(name: str, path: str) -> list[ValidationError]:
+    """Check one event name (V17, V22).
+
+    Args:
+        name: The event name.
+        path: The path of the name, for error reporting.
+
+    Returns:
+        ``V17_EMPTY_EVENT`` for a blank name, otherwise any of
+        ``V22_CONTROL_CHAR_EVENT`` and ``V22_INVISIBLE_EVENT``, in that
+        order.
+    """
+    # V17: Non-empty after stripping whitespace
+    if not name.strip():
+        return [
+            ValidationError(
+                path=path,
+                message="Event name must be a non-empty string",
+                code="V17_EMPTY_EVENT",
+            )
+        ]
+    errors: list[ValidationError] = []
+    # V22a: No control characters (null bytes, etc.)
+    if _CONTROL_CHAR_RE.search(name):
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    f"Event name contains control characters "
+                    f"(e.g. null bytes): {name!r}"
+                ),
+                code="V22_CONTROL_CHAR_EVENT",
+            )
+        )
+    # V22b: No invisible-only names (zero-width spaces, etc.)
+    if _INVISIBLE_RE.match(name):
+        errors.append(
+            ValidationError(
+                path=path,
+                message="Event name contains only invisible characters",
+                code="V22_INVISIBLE_EVENT",
+            )
+        )
+    return errors
+
+
+def _metric_event_errors(item: Metric, path: str) -> list[ValidationError]:
+    """Check the event kinds and every event name of a Metric (MT5, V17, V22).
+
+    The Metric constructor refuses the same kinds. The query checks them
+    again because the caller can change a list of events after
+    construction.
+
+    Args:
+        item: The metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        ``MT5_INVALID_EVENT_TYPE`` at ``"{path}.event"`` for an event of no
+        supported kind, and at ``"{path}.event[i]"`` for an item of a list
+        that is not a name or a ``CustomEventRef`` (a ``FunnelStep`` would
+        lose the Metric filters). The name errors of a single event name
+        at ``path``, or of each name inside a list of events or a simple
+        behavior (a plain name or a ``FunnelStep`` event) at
+        ``"{path}.event[i]"``. A custom event or a saved behavior has no
+        name to check.
+    """
+    event: object = item.event
+    if isinstance(event, str):
+        return _event_name_errors(event, path)
+    if isinstance(event, CustomEventRef | BehaviorRef):
+        return []
+    if isinstance(event, SimpleBehavior):
+        entries: Sequence[object] = event.events
+        from_list = False
+    elif isinstance(event, list | tuple):
+        entries = event
+        from_list = True
+    else:
+        return [
+            ValidationError(
+                path=f"{path}.event",
+                message=(
+                    "Metric event must be an event name, a CustomEventRef, a "
+                    "list of them, a SimpleBehavior, or a BehaviorRef, got "
+                    f"{type(event).__name__}. {_PER_EVENT_FILTERS_HINT}"
+                ),
+                code="MT5_INVALID_EVENT_TYPE",
+            )
+        ]
+    errors: list[ValidationError] = []
+    for i, entry in enumerate(entries):
+        epath = f"{path}.event[{i}]"
+        if from_list and not isinstance(entry, str | CustomEventRef):
+            errors.append(
+                ValidationError(
+                    path=epath,
+                    message=(
+                        "An item of a list of events must be an event name or "
+                        f"a CustomEventRef, got {type(entry).__name__}. "
+                        f"{_PER_EVENT_FILTERS_HINT}"
+                    ),
+                    code="MT5_INVALID_EVENT_TYPE",
+                )
+            )
+            continue
+        name = entry.event if isinstance(entry, FunnelStep) else entry
+        if isinstance(name, str):
+            errors.extend(_event_name_errors(name, epath))
+    return errors
+
+
+def _cohort_metric_errors(item: CohortMetric, path: str) -> list[ValidationError]:
+    """Refuse a CohortMetric with an inline definition (CM5).
+
+    Args:
+        item: The cohort metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        One ``CM5_INLINE_COHORT_METRIC`` error for an inline
+        ``CohortDefinition`` (the server returns 500 for it), otherwise an
+        empty list.
+    """
+    # CM5: Inline CohortDefinition in CohortMetric triggers a
+    # server-side 500. Only saved cohort IDs are supported.
+    if not isinstance(item.cohort, CohortDefinition):
+        return []
+    return [
+        ValidationError(
+            path=path,
+            message=(
+                "CohortMetric does not support inline CohortDefinition "
+                "(server returns 500). Use a saved cohort ID instead."
+            ),
+            code="CM5_INLINE_COHORT_METRIC",
+        )
+    ]
+
+
+def _scan_metric_custom_properties(item: Metric, path: str) -> list[ValidationError]:
+    """Check the custom properties of a Metric (CP1-CP6).
+
+    Args:
+        item: The metric.
+        path: The path of the metric, for error reporting.
+
+    Returns:
+        The errors of its measurement property and its filters at ``path``,
+        then of the filters of each ``FunnelStep`` inside a simple behavior
+        at ``"{path}.event[i]"``.
+    """
+    errors: list[ValidationError] = []
+    if isinstance(item.property, (CustomPropertyRef, InlineCustomProperty)):
+        errors.extend(_validate_custom_property(item.property, path))
+    if item.filters:
+        errors.extend(_scan_filters_for_custom_properties(item.filters, path))
+    if isinstance(item.event, SimpleBehavior):
+        for si, sub in enumerate(item.event.events):
+            if isinstance(sub, FunnelStep) and sub.filters:
+                errors.extend(
+                    _scan_filters_for_custom_properties(
+                        sub.filters, f"{path}.event[{si}]"
+                    )
+                )
+    return errors
+
+
+def _validate_formula_operand_args(
+    formula: Formula, fpath: str
+) -> list[ValidationError]:
+    """Validate the operands of a formula that holds its own operands.
+
+    Args:
+        formula: The formula; its ``metrics`` is not ``None``.
+        fpath: The path of the formula, for example ``"formula"``.
+
+    Returns:
+        Type errors (``V21_INVALID_EVENT_TYPE``), the funnel and retention
+        rules, the Metric rules, and custom property errors, under
+        ``"{fpath}.metrics[i]"``. A ``MetricRef`` operand was checked at
+        construction (no override, not a formula, not a warehouse metric)
+        and adds nothing.
+    """
+    errors: list[ValidationError] = []
+    for j, operand in enumerate(formula.metrics or []):
+        opath = f"{fpath}.metrics[{j}]"
+        if isinstance(operand, FunnelMetric):
+            errors.extend(validate_funnel_metric_args(operand, path=opath))
+        elif isinstance(operand, RetentionMetric):
+            errors.extend(validate_retention_metric_args(operand, path=opath))
+        elif isinstance(operand, Metric):
+            errors.extend(_metric_event_errors(operand, opath))
+            errors.extend(_validate_metric_rules(operand, opath))
+            errors.extend(_scan_metric_custom_properties(operand, opath))
+        elif isinstance(operand, CohortMetric):
+            errors.extend(_cohort_metric_errors(operand, opath))
+        elif not isinstance(operand, MetricRef):
+            errors.append(
+                ValidationError(
+                    path=opath,
+                    message=(
+                        f"Formula operand must be a Metric, CohortMetric, "
+                        f"FunnelMetric, RetentionMetric, or MetricRef, "
+                        f"got {type(operand).__name__}"
+                    ),
+                    code="V21_INVALID_EVENT_TYPE",
+                )
+            )
+    return errors
+
+
 def validate_query_args(
     *,
-    events: Sequence[str | Metric | CohortMetric],
+    events: Sequence[
+        str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+    ],
     math: MathType,
     math_property: str | None,
     per_user: PerUserAggregation | None,
@@ -1903,40 +2729,62 @@ def validate_query_args(
     | None,
     formulas: Sequence[Any] | None = None,
     data_group_id: int | None = None,
+    where: Filter | FrequencyFilter | Sequence[Filter | FrequencyFilter] | None = None,
 ) -> list[ValidationError]:
     """Validate query arguments before bookmark construction (Layer 1).
 
-    Implements validation rules V0-V27, delegating time (V7-V10, V15,
+    Implements validation rules V0-V29, delegating time (V7-V10, V15,
     V20) and group-by (V11-V12, V18, V24) to extracted helpers.
     Returns all errors found, not just the first, so callers can
     fix multiple issues in a single pass.
 
+    Funnel and retention metrics take the ``query_funnel`` and
+    ``query_retention`` rules (:func:`validate_funnel_metric_args`,
+    :func:`validate_retention_metric_args`). A formula without operands
+    gets V16 and V19 first and ``FM4_SYNTAX`` only when both pass; a
+    formula with operands has its expression checked at construction and
+    its operands checked here.
+
     Args:
-        events: Event names or Metric objects.
+        events: Event names, inline metrics, and MetricRef references
+            to saved metrics.
         math: Top-level aggregation function.
         math_property: Property for property-based math.
         per_user: Per-user pre-aggregation.
         from_date: Start date (YYYY-MM-DD).
         to_date: End date (YYYY-MM-DD).
         last: Number of days for relative date range.
-        has_formula: Whether any formula is present.
+        has_formula: Whether any formula without operands is present (a
+            formula with operands names no event of the query).
         rolling: Rolling window size.
         cumulative: Cumulative analysis mode.
         group_by: Breakdown specification.
         formulas: Resolved Formula objects (for expression validation).
         data_group_id: Optional data group ID for group-level analytics.
             Must be a positive integer if provided. Default: ``None``.
+        where: Report-level filters. Used only for the warehouse-reference
+            warning (V28); the filters themselves are validated elsewhere.
+            The warning needs the warehouse kind on the reference
+            (``MetricRef(id, type="warehouse")`` or
+            ``SavedMetric.to_ref()``): a bare ``MetricRef(id)`` keeps the
+            default kind, because the client cannot know the saved kind
+            without a read. Default: ``None``.
 
     Returns:
         List of validation errors. Empty list means all arguments are valid.
+        V28 entries have ``severity="warning"``.
     """
     errors: list[ValidationError] = []
+    resolved = formulas or []
+    has_operand_formula = any(
+        isinstance(f, Formula) and f.metrics is not None for f in resolved
+    )
 
     # DG1: data_group_id must be positive if provided
     errors.extend(_validate_data_group_id(data_group_id))
 
-    # V0: At least one event required
-    if not events:
+    # V0: At least one event required (a formula with operands is enough)
+    if not events and not has_operand_formula:
         errors.append(
             ValidationError(
                 path="events",
@@ -1949,13 +2797,16 @@ def validate_query_args(
     for idx, item in enumerate(events):
         epath = f"events[{idx}]"
 
-        # V21: Type guard — must be str, Metric, or CohortMetric
-        if not isinstance(item, (str, Metric, CohortMetric)):
+        # V21: Type guard — must be str, an inline metric, or a MetricRef
+        if not isinstance(
+            item, (str, Metric, CohortMetric, FunnelMetric, RetentionMetric, MetricRef)
+        ):
             errors.append(
                 ValidationError(
                     path=epath,
                     message=(
-                        f"Event must be a string, Metric, or CohortMetric, "
+                        f"Event must be a string, Metric, CohortMetric, "
+                        f"FunnelMetric, RetentionMetric, or MetricRef, "
                         f"got {type(item).__name__}"
                     ),
                     code="V21_INVALID_EVENT_TYPE",
@@ -1963,63 +2814,49 @@ def validate_query_args(
             )
             continue
 
+        # MetricRef: the saved metric names its own events
+        if isinstance(item, MetricRef):
+            continue
+
+        # Funnel and retention metrics take the engine rules
+        if isinstance(item, FunnelMetric):
+            errors.extend(validate_funnel_metric_args(item, path=epath))
+            continue
+        if isinstance(item, RetentionMetric):
+            errors.extend(validate_retention_metric_args(item, path=epath))
+            continue
+
         # CohortMetric: validate cohort type, then skip event-name validation
         if isinstance(item, CohortMetric):
-            # CM5: Inline CohortDefinition in CohortMetric triggers a
-            # server-side 500. Only saved cohort IDs are supported.
-            if isinstance(item.cohort, CohortDefinition):
-                errors.append(
-                    ValidationError(
-                        path=epath,
-                        message=(
-                            "CohortMetric does not support inline CohortDefinition "
-                            "(server returns 500). Use a saved cohort ID instead."
-                        ),
-                        code="CM5_INLINE_COHORT_METRIC",
-                    )
-                )
+            errors.extend(_cohort_metric_errors(item, epath))
             continue
 
-        name = item.event if isinstance(item, Metric) else item
-
-        # V17: Non-empty after stripping whitespace
-        if not name.strip():
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message="Event name must be a non-empty string",
-                    code="V17_EMPTY_EVENT",
-                )
-            )
-            continue
-
-        # V22a: No control characters (null bytes, etc.)
-        if _CONTROL_CHAR_RE.search(name):
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message=(
-                        f"Event name contains control characters "
-                        f"(e.g. null bytes): {name!r}"
-                    ),
-                    code="V22_CONTROL_CHAR_EVENT",
-                )
-            )
-
-        # V22b: No invisible-only names (zero-width spaces, etc.)
-        if _INVISIBLE_RE.match(name):
-            errors.append(
-                ValidationError(
-                    path=epath,
-                    message="Event name contains only invisible characters",
-                    code="V22_INVISIBLE_EVENT",
-                )
-            )
+        # MT5/V17/V22: the event kinds of a Metric, then each event name,
+        # including each name inside a list of events or a simple behavior
+        if isinstance(item, Metric):
+            errors.extend(_metric_event_errors(item, epath))
+        else:
+            errors.extend(_event_name_errors(item, epath))
 
     # CM3/FR-020: Top-level math/math_property/per_user only apply to plain
     # string events.  When all events are CohortMetric (or Metric, which
     # carries its own math), there are no consumers — skip V1/V2/V3/V26/V27.
     has_plain_events = any(isinstance(item, str) for item in events)
+
+    # V29: A query-level measurement argument that no event uses. A saved
+    # metric keeps its saved measurement (only its own overrides change
+    # it), so with references and no plain event name the argument would
+    # be dropped. A Metric ignores the arguments too, and keeps doing so
+    # silently when no reference is present.
+    if not has_plain_events and any(isinstance(item, MetricRef) for item in events):
+        errors.extend(
+            _ignored_query_measurement(
+                math=math,
+                math_property=math_property,
+                per_user=per_user,
+                percentile_value=percentile_value,
+            )
+        )
 
     # V1: Property math requires property
     if has_plain_events and math in MATH_REQUIRING_PROPERTY and math_property is None:
@@ -2102,17 +2939,21 @@ def validate_query_args(
             )
         )
 
-    # V16/V19: Formula expression validation
-    resolved = formulas or []
+    # V16/V19: Formula expression validation, then FM4 for the letter form
     for fi, f in enumerate(resolved):
         if isinstance(f, Formula):
             expr = f.expression
             fpath = f"formula[{fi}]" if len(resolved) > 1 else "formula"
+            if f.metrics is not None:
+                # The expression was checked at construction; check operands.
+                errors.extend(_validate_formula_operand_args(f, fpath))
+                continue
+            formula_errors: list[ValidationError] = []
 
             # V16: Formula must contain at least one position letter
             positions = set(_FORMULA_POSITION_RE.findall(expr))
             if not positions:
-                errors.append(
+                formula_errors.append(
                     ValidationError(
                         path=fpath,
                         message=(
@@ -2128,7 +2969,7 @@ def validate_query_args(
                 max_letter = chr(ord("A") + len(events) - 1)
                 out_of_bounds = {p for p in positions if p > max_letter}
                 if out_of_bounds:
-                    errors.append(
+                    formula_errors.append(
                         ValidationError(
                             path=fpath,
                             message=(
@@ -2140,6 +2981,18 @@ def validate_query_args(
                             code="V19_FORMULA_BOUNDS",
                         )
                     )
+
+            # FM4: the server grammar, only when V16 and V19 pass
+            if not formula_errors:
+                try:
+                    parse_formula(expr)
+                except ParamValidationError as exc:
+                    formula_errors.append(
+                        ValidationError(
+                            path=fpath, message=exc.message, code="FM4_SYNTAX"
+                        )
+                    )
+            errors.extend(formula_errors)
 
     # V5: Rolling and cumulative are mutually exclusive
     if rolling is not None and cumulative:
@@ -2191,89 +3044,33 @@ def validate_query_args(
     # V13-V14: Per-Metric validation
     for idx, item in enumerate(events):
         if isinstance(item, Metric):
-            mpath = f"events[{idx}]"
-            m_math = item.math
-            m_prop = item.property
-            m_per_user = item.per_user
+            errors.extend(_validate_metric_rules(item, f"events[{idx}]"))
 
-            if m_math in MATH_REQUIRING_PROPERTY and m_prop is None:
+    # V28: The server gives a warehouse metric no breakdown and no filter.
+    # The query still runs, so this is a warning, not an error. The check
+    # reads the kind on the reference: a bare MetricRef(id) keeps the
+    # default "metric" even when the saved metric is a warehouse metric,
+    # because the client cannot know the saved kind without a read (the
+    # server corrects the kind only at query time). SavedMetric.to_ref()
+    # and MetricRef(id, type="warehouse") carry the kind.
+    ignored = [
+        name
+        for name, value in (("group_by", group_by), ("where", where))
+        if value is not None and not (isinstance(value, (list, tuple)) and not value)
+    ]
+    if ignored:
+        for idx, item in enumerate(events):
+            if isinstance(item, MetricRef) and item.type == "warehouse":
                 errors.append(
                     ValidationError(
-                        path=mpath,
+                        path=f"events[{idx}]",
                         message=(
-                            f"Metric('{item.event}'): math='{m_math}' "
-                            f"requires property to be set"
+                            f"MetricRef({item.id}) is a warehouse metric: the "
+                            f"server applies no {' and no '.join(ignored)} to "
+                            f"it, so its series is not broken down or filtered."
                         ),
-                        code="V13_METRIC_MATH_PROPERTY",
-                    )
-                )
-
-            if (
-                m_math not in MATH_REQUIRING_PROPERTY
-                and m_math not in MATH_PROPERTY_OPTIONAL
-                and m_prop is not None
-            ):
-                valid = sorted(MATH_REQUIRING_PROPERTY | MATH_PROPERTY_OPTIONAL)
-                errors.append(
-                    ValidationError(
-                        path=mpath,
-                        message=(
-                            f"Metric('{item.event}'): property is only valid with "
-                            f"property-based math types "
-                            f"({', '.join(valid)}), not '{m_math}'"
-                        ),
-                        code="V14_METRIC_REJECTS_PROPERTY",
-                    )
-                )
-
-            # V27: Per-Metric histogram requires per_user
-            if m_math == "histogram" and m_per_user is None:
-                errors.append(
-                    ValidationError(
-                        path=mpath,
-                        message=(
-                            f"Metric('{item.event}'): math='histogram' "
-                            f"requires per_user to be set "
-                            f"(e.g. per_user='total')"
-                        ),
-                        code="V27_HISTOGRAM_REQUIRES_PER_USER",
-                    )
-                )
-
-            # V26: Per-Metric percentile requires percentile_value
-            if m_math == "percentile" and item.percentile_value is None:
-                errors.append(
-                    ValidationError(
-                        path=mpath,
-                        message=(
-                            f"Metric('{item.event}'): math='percentile' "
-                            f"requires percentile_value to be set"
-                        ),
-                        code="V26_PERCENTILE_REQUIRES_VALUE",
-                    )
-                )
-
-            if m_per_user is not None and m_math in MATH_NO_PER_USER:
-                errors.append(
-                    ValidationError(
-                        path=mpath,
-                        message=(
-                            f"Metric('{item.event}'): per_user is incompatible "
-                            f"with math='{m_math}'"
-                        ),
-                        code="V3_PER_USER_INCOMPATIBLE",
-                    )
-                )
-
-            if m_per_user is not None and m_prop is None:
-                errors.append(
-                    ValidationError(
-                        path=mpath,
-                        message=(
-                            f"Metric('{item.event}'): per_user requires "
-                            f"property to be set"
-                        ),
-                        code="V3B_PER_USER_REQUIRES_PROPERTY",
+                        code="V28_WAREHOUSE_BREAKDOWN",
+                        severity="warning",
                     )
                 )
 
@@ -2420,25 +3217,110 @@ def validate_bookmark(
 # =============================================================================
 
 
+def _validate_reference_id(ref_id: Any, path: str) -> list[ValidationError]:
+    """Check that a saved-entity reference id is a positive integer (B27).
+
+    Args:
+        ref_id: The ``id`` value of a reference clause or operand.
+        path: JSONPath of the clause, for error reporting.
+
+    Returns:
+        One ``B27_INVALID_REFERENCE_ID`` error, or an empty list.
+    """
+    if isinstance(ref_id, int) and not isinstance(ref_id, bool) and ref_id > 0:
+        return []
+    return [
+        ValidationError(
+            path=f"{path}.id",
+            message=f"Saved metric id must be a positive integer (got {ref_id!r})",
+            code="B27_INVALID_REFERENCE_ID",
+        )
+    ]
+
+
+def _validate_formula_operands(
+    clause: dict[str, Any],
+    path: str,
+    bookmark_type: str,
+) -> list[ValidationError]:
+    """Validate the ``referencedMetrics`` operands of a formula clause.
+
+    An operand that refers to a saved metric needs a positive integer id
+    (B27) and a ``type`` (B29): the server reads the type of an operand
+    directly and fails when it is absent. Any other operand is validated as
+    an inline metric clause.
+
+    Args:
+        clause: The formula show clause.
+        path: JSONPath of the formula clause.
+        bookmark_type: Context for math type validation.
+
+    Returns:
+        List of validation errors for the operands.
+    """
+    operands = clause.get("referencedMetrics")
+    if not isinstance(operands, list):
+        return []
+    errors: list[ValidationError] = []
+    for j, operand in enumerate(operands):
+        operand_path = f"{path}.referencedMetrics[{j}]"
+        if (
+            isinstance(operand, dict)
+            and operand.get("id") is not None
+            and "behavior" not in operand
+        ):
+            errors.extend(_validate_reference_id(operand["id"], operand_path))
+            if operand.get("type") is None:
+                errors.append(
+                    ValidationError(
+                        path=operand_path,
+                        message=(
+                            "Formula operand with an 'id' needs a 'type' "
+                            "(for example 'metric')"
+                        ),
+                        code="B29_OPERAND_MISSING_TYPE",
+                    )
+                )
+            continue
+        errors.extend(
+            _validate_show_clause(operand, j, bookmark_type, path=operand_path)
+        )
+    return errors
+
+
+_BEHAVIOR_MATH_CONTEXT: dict[str, str] = {
+    "funnel": "funnels",
+    "retention": "retention",
+}
+"""Math context of the behavior types that have their own math set."""
+
+
 def _validate_show_clause(
     clause: dict[str, Any],
     index: int,
     bookmark_type: str,
+    *,
+    path: str | None = None,
 ) -> list[ValidationError]:
     """Validate a single sections.show[] entry.
 
-    Handles both multi-metric (behavior+measurement) and formula show clauses.
+    Handles inline metric clauses (behavior + measurement), formula clauses
+    and their operands, and references to saved metrics (an ``id`` with no
+    ``behavior``, which the server expands at query time).
 
     Args:
         clause: The show clause dict.
         index: Index in the show array.
         bookmark_type: Context for math type validation.
+        path: JSONPath of the clause. Default: ``sections.show[index]``.
+            Formula operands pass their own path.
 
     Returns:
         List of validation errors for this clause.
     """
     errors: list[ValidationError] = []
-    path = f"sections.show[{index}]"
+    if path is None:
+        path = f"sections.show[{index}]"
 
     if not isinstance(clause, dict):
         errors.append(
@@ -2450,9 +3332,31 @@ def _validate_show_clause(
         )
         return errors
 
-    # Formula show clause — minimal validation (only for pure formula clauses)
+    # Formula show clause — check the id of a saved-formula reference, then
+    # the operands (pure formula clauses)
     is_formula = "formula" in clause or clause.get("type") == "formula"
     if is_formula and "behavior" not in clause:
+        if clause.get("id") is not None:
+            errors.extend(_validate_reference_id(clause["id"], path))
+        errors.extend(_validate_formula_operands(clause, path, bookmark_type))
+        return errors
+
+    # Saved-metric reference: the server expands the id at query time
+    if clause.get("id") is not None and "behavior" not in clause:
+        return _validate_reference_id(clause["id"], path)
+
+    # B28: The server runs a warehouse metric by saved id only
+    if clause.get("type") == "warehouse":
+        errors.append(
+            ValidationError(
+                path=path,
+                message=(
+                    "Warehouse show clause needs the 'id' of a saved warehouse "
+                    "metric; the server does not run an inline warehouse query"
+                ),
+                code="B28_WAREHOUSE_MISSING_ID",
+            )
+        )
         return errors
 
     # Multi-metric show clause: requires behavior
@@ -2492,8 +3396,12 @@ def _validate_show_clause(
             )
         )
 
-    # B8: Event behaviors need a name
-    if btype in ("event", "simple", "custom-event"):
+    # B8: Event behaviors need a name. A saved-behavior reference (an id
+    # and no inline behaviors) takes its name from the saved behavior.
+    is_behavior_ref = behavior.get("id") is not None and "behaviors" not in behavior
+    if btype in ("event", "simple", "custom-event") and not (
+        btype == "simple" and is_behavior_ref
+    ):
         value = behavior.get("value", {})
         has_name = (
             isinstance(value, dict) and value.get("name") is not None
@@ -2564,10 +3472,13 @@ def _validate_show_clause(
         for fi, bf in enumerate(bfilters):
             errors.extend(_validate_filter_clause(bf, f"{path}.behavior.filters[{fi}]"))
 
-    # Validate measurement
+    # Validate measurement. A funnel or retention behavior takes the maths of
+    # its own report type, in any bookmark (an insights report can hold a
+    # funnel metric).
     measurement = clause.get("measurement")
     if isinstance(measurement, dict):
-        errors.extend(_validate_measurement(measurement, path, bookmark_type))
+        math_context = _BEHAVIOR_MATH_CONTEXT.get(str(btype), bookmark_type)
+        errors.extend(_validate_measurement(measurement, path, math_context))
 
         # B24: Cohort behavior math must be "unique"
         if btype == "cohort":
