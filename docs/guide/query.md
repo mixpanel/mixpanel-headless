@@ -1032,6 +1032,35 @@ print(result.df.head())
 
 For **total** mode, the DataFrame has columns `event`, `count` (no date).
 
+With `group_by`, segment columns go between `event` and `count`:
+
+| `group_by` | Columns |
+|---|---|
+| none | `[date,] event, count` |
+| 1 property | `[date,] event, segment, count` |
+| 2+ properties | `[date,] event, <property_1>, …, <property_N>, count` |
+
+With two or more properties, each property gets its own column, named from `result.headers[1:]`. If those names are missing, are empty or duplicated, are `date`, `event`, or `count`, or do not match the number of levels, the columns are `segment_1` .. `segment_N`.
+
+The DataFrame keeps the `$overall` rollup rows that Mixpanel returns at each level. A rollup row has `$overall` in the column of the level it summarizes and in every column below it:
+
+```python
+result = ws.query("api-query", group_by=["auth", "status_code"], mode="total")
+print(result.df)
+#                       event            auth status_code  count
+# 0  api-query [Total Events]        $overall    $overall   3218
+# 1  api-query [Total Events]  serviceaccount    $overall    312
+# 2  api-query [Total Events]  serviceaccount         200    302
+# 3  api-query [Total Events]  serviceaccount         429     10
+```
+
+For unique counts, averages, and percentiles, a rollup is not the sum of its children, so you cannot rebuild it from the leaf rows. To keep only the leaf rows, drop each row that has `$overall` in a segment column:
+
+```python
+df = result.df
+leaves = df[(df[["auth", "status_code"]] != "$overall").all(axis=1)]
+```
+
 ### Persisting as a Saved Report
 
 The generated bookmark params can be saved as a Mixpanel report:
