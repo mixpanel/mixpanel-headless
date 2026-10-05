@@ -140,6 +140,18 @@ result = ws.query_funnel([
 
 See [Insights Queries — Filters](query.md#filters) for the full list of `Filter` factory methods.
 
+### A Saved Funnel Behavior
+
+Pass a `BehaviorRef` in place of the step list to run a saved funnel behavior by id. The saved behavior sets the steps, the conversion window, the order, the exclusions, the held properties, and the reentry mode, so leave those arguments at their defaults:
+
+```python
+from mixpanel_headless import BehaviorRef
+
+result = ws.query_funnel(BehaviorRef(3120, "funnel"), math="conversion_rate_unique", last=90)
+```
+
+See [Saved Metrics by Reference](query.md#saved-behaviors-in-funnels-and-retention) for the rules.
+
 ## Conversion Window
 
 Control how long users have to complete the funnel:

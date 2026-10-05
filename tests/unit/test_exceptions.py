@@ -946,7 +946,7 @@ class TestCodedGuardRegistry:
         assert collisions == frozenset()
 
     def test_minted_registry_size(self) -> None:
-        """The registry lists all 133 minted full codes, no duplicates.
+        """The registry lists all 164 minted full codes, no duplicates.
 
         The E2 coding pass minted 120 (the design's nominal 123 minus the
         three AT codes for ``AccountTestResult`` — that validator is
@@ -954,10 +954,44 @@ class TestCodedGuardRegistry:
         P3 policy). 045-report-links added the six ``RL*`` guards: ``RL1``
         to ``RL4`` in the first cut, ``RL5`` (``ResolvedReport`` consistency)
         and ``RL6`` (positive ids in the URL builders) from PR review. The
-        engage selector translation of date and inclusive-number filters
-        added the seven ``ES14``-``ES20`` guards.
+        saved metric and saved behavior deletes added
+        ``SM5_NOT_FOUND_FOR_DELETE`` (the pre-read of ``delete_metric``
+        found no metric), ``SM6_DELETE_NOT_PERMITTED``, and
+        ``BH4_DELETE_NOT_PERMITTED`` (the caller cannot edit a target).
+        Saved-entity references added eight: six ``MR*`` guards for
+        ``MetricRef`` and formula operands, and two ``BR*`` guards for
+        ``BehaviorRef``.
+        The formula expression rules added ``FM2_UNKNOWN_LETTER``,
+        ``FM4_SYNTAX``, and ``FM5_UPPER_E``. The inline behavior values
+        added ``BH1_STEP_COUNT``, ``BH2_EMPTY_EVENT``, and
+        ``BH3_PROPERTY_MATH``. Formula operands added ``FM3_NESTED_FORMULA``,
+        and metrics over several events added ``MT3_FILTERS_WITH_BEHAVIOR``.
+        Saved behaviors inside inline metrics added
+        ``BH5_BEHAVIOR_REF_TYPE``. Custom event ids and metric indexes added
+        ``CE1_INVALID_ID`` and ``MT4_INVALID_INDEX``. A warehouse formula
+        operand added ``FM7_WAREHOUSE_OPERAND``. A list item of a
+        metric that is not an event name or a custom event added
+        ``MT5_INVALID_EVENT_TYPE``. Saved metric and saved
+        behavior writes added ``SM1_EMPTY_NAME``, ``SM2_NAME_TOO_LONG``,
+        ``SM3_KIND_CHANGE``, ``SM4_SCHEMA``, ``SM7_FORMULA_WITHOUT_OPERANDS``,
+        ``FM6_OPERAND_ATTRIBUTION``, and ``MR3_WAREHOUSE_INLINE``.
+        The engage selector translation of date and inclusive-number
+        filters added the seven ``ES14``-``ES20`` guards.
         """
-        assert len(CODED_GUARD_REGISTRY) == 133
+        assert len(CODED_GUARD_REGISTRY) == 164
+        for code in (
+            "SM1_EMPTY_NAME",
+            "SM2_NAME_TOO_LONG",
+            "SM3_KIND_CHANGE",
+            "SM4_SCHEMA",
+            "SM5_NOT_FOUND_FOR_DELETE",
+            "SM6_DELETE_NOT_PERMITTED",
+            "SM7_FORMULA_WITHOUT_OPERANDS",
+            "FM6_OPERAND_ATTRIBUTION",
+            "MR3_WAREHOUSE_INLINE",
+            "BH4_DELETE_NOT_PERMITTED",
+        ):
+            assert code in CODED_GUARD_REGISTRY
 
     def test_engage_selector_date_codes_registered(self) -> None:
         """The ES14-ES20 engage selector guards are registered codes."""
@@ -973,8 +1007,17 @@ class TestCodedGuardRegistry:
         assert codes <= CODED_GUARD_REGISTRY
 
     def test_twin_codes_all_pre_exist(self) -> None:
-        """Every reused twin code already exists in the code universe."""
-        assert len(CODED_GUARD_TWIN_CODES) == 9
+        """Every reused twin code already exists in the code universe.
+
+        ``MetricRef`` reuses two per-Metric query validator codes for its
+        measurement rules (``V3_PER_USER_INCOMPATIBLE``,
+        ``V14_METRIC_REJECTS_PROPERTY``).
+        ``FunnelMetric`` reuses the two ``query_funnel`` property-math codes
+        (``F10_MATH_MISSING_PROPERTY``, ``F11_MATH_REJECTS_PROPERTY``). A
+        formula with its own operands and no letter reuses
+        ``V16_FORMULA_SYNTAX``.
+        """
+        assert len(CODED_GUARD_TWIN_CODES) == 14
         assert CODED_GUARD_TWIN_CODES <= PRE_EXISTING_CODE_UNIVERSE
 
     def test_twins_disjoint_from_minted(self) -> None:
