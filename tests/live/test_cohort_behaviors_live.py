@@ -1,13 +1,20 @@
 """Live QA tests for cohort behaviors (Phase 036).
 
 Exercises Filter.in_cohort/not_in_cohort, CohortBreakdown, and
-CohortMetric against the real Mixpanel API on account ``p8``
-(project ID 8). These tests discover real data dynamically and
-create/clean up QA objects with a ``QA-036-`` prefix.
+CohortMetric against the real Mixpanel API. These tests discover real
+data dynamically and create/clean up QA cohorts with a ``QA-036-``
+prefix, so the suite writes to the project.
 
 Usage:
-    uv run pytest tests/live/test_cohort_behaviors_live.py -v
-    uv run pytest tests/live/test_cohort_behaviors_live.py -v -k "CohortFilter"
+    MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id> \
+        uv run pytest tests/live/test_cohort_behaviors_live.py -v -m live
+
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+    - ``MP_LIVE_WRITE_PROJECT`` — the project id this suite may write to.
+      Every test skips unless it is set and the account resolves to that
+      project. The project needs events and at least one saved cohort.
 """
 
 from __future__ import annotations
@@ -36,8 +43,13 @@ from mixpanel_headless.types import (
     FunnelQueryResult,
     RetentionQueryResult,
 )
+from tests.live._live_settings import (
+    live_workspace,
+    requires_live_account,
+    requires_write_project,
+)
 
-pytestmark = pytest.mark.live
+pytestmark = [pytest.mark.live, requires_live_account, requires_write_project]
 
 # =============================================================================
 # Constants
@@ -52,12 +64,13 @@ QA_PREFIX = "QA-036-"
 
 @pytest.fixture(scope="module")
 def ws() -> Workspace:
-    """Create Workspace with p8 credentials.
+    """Create the Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
-        Workspace connected to project 8.
+        Workspace on ``MP_LIVE_WRITE_PROJECT``; the test skips when a
+        setting is missing or the account resolves to another project.
     """
-    return Workspace(account="p8")
+    return live_workspace(write=True)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -75,13 +88,13 @@ def _cleanup_stale_qa_cohorts(ws: Workspace) -> None:
 
 @pytest.fixture(scope="module")
 def real_event(ws: Workspace) -> str:
-    """Discover a real event name from project 8.
+    """Discover a real event name from the project.
 
     Returns:
         First available event name.
     """
     events = ws.events()
-    assert len(events) > 0, "No events found in project 8"
+    assert len(events) > 0, "No events found in the project"
     return events[0]
 
 
@@ -99,13 +112,13 @@ def real_events_pair(ws: Workspace) -> tuple[str, str]:
 
 @pytest.fixture(scope="module")
 def real_cohort(ws: Workspace) -> tuple[int, str]:
-    """Discover a real saved cohort from project 8.
+    """Discover a real saved cohort from the project.
 
     Returns:
         Tuple of (cohort_id, cohort_name).
     """
     cohorts = ws.cohorts()
-    assert len(cohorts) > 0, "No cohorts found in project 8"
+    assert len(cohorts) > 0, "No cohorts found in the project"
     return cohorts[0].id, cohorts[0].name
 
 
@@ -173,12 +186,12 @@ class TestDiscovery:
     """Verify we can discover real data before testing cohort features."""
 
     def test_discover_events(self, ws: Workspace) -> None:
-        """Project 8 has discoverable events."""
+        """The project has discoverable events."""
         events = ws.events()
         assert len(events) > 0
 
     def test_discover_cohorts(self, ws: Workspace) -> None:
-        """Project 8 has discoverable cohorts."""
+        """The project has discoverable cohorts."""
         cohorts = ws.cohorts()
         assert len(cohorts) > 0
         assert cohorts[0].id > 0
@@ -619,6 +632,7 @@ class TestCohortBreakdownRetention:
 
     def test_retention_breakdown_mixed_with_groupby_rejected(
         self,
+        ws: Workspace,
         real_cohort: tuple[int, str],
     ) -> None:
         """CB3: CohortBreakdown + GroupBy in retention raises client-side."""
@@ -627,7 +641,6 @@ class TestCohortBreakdownRetention:
             BookmarkValidationError,
             match="does not support mixing",
         ):
-            ws = Workspace(account="p8")
             ws.build_retention_params(
                 "Signup",
                 "Login",
@@ -636,6 +649,7 @@ class TestCohortBreakdownRetention:
 
     def test_retention_breakdown_mixed_with_string_rejected(
         self,
+        ws: Workspace,
         real_cohort: tuple[int, str],
     ) -> None:
         """CB3: CohortBreakdown + string group_by in retention raises."""
@@ -644,7 +658,6 @@ class TestCohortBreakdownRetention:
             BookmarkValidationError,
             match="does not support mixing",
         ):
-            ws = Workspace(account="p8")
             ws.build_retention_params(
                 "Signup",
                 "Login",
